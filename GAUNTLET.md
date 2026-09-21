@@ -23,6 +23,7 @@ README, GenAI notes, MIT licence check, submission form, buffer.
 | `plans/*.png` | **room layout** — adjacency, proportions, stair positions |
 | `robots/*.png` | **appearance** — silhouette, proportions, palette, signature details |
 | `media/venue-photos/*.jpg` | material, lighting and mood reference, captioned by chapter |
+| `media/other-images/CAPTIONS.md` | **corridor, main staircase, Zaal numeral signage and the dark empty hall** — captioned, with the corrections they force |
 
 `docs/DESIGN.md` ("Room Service") and `KICKOFF-PROMPT-M1.md` from the old planning folder were
 deliberately not brought into this repo. They are superseded by this file. Do not look for them.
@@ -97,7 +98,9 @@ Pass condition: a critic takes a top-down debug screenshot of the rendered map a
 `plans/devoxx-rooms-stairs-annotated.png` and `plans/exhibition-floor-stairs-annotated.png`.
 Room count, relative proportions, door positions and **both** staircase positions must match —
 secondary staircases in the corridor walls between rooms **3|4 and 10|9**, main staircase at the
-corridor's end between **6 and 7**. Numbered Zaal signage must be visible in-scene. Craft polish
+corridor's end between **6 and 7**. Numbered Zaal signage must be visible in-scene, in the venue's own style — a large orange
+panel carrying one big white numeral beside each auditorium entrance, plus the blue Dutch
+wayfinding signs (`uitgang zaal 6/7`, `info`); see `media/other-images/CAPTIONS.md`. Craft polish
 (materials, lighting mood against the venue photos) is only judged once the overlay passes.
 
 **2. Robot appearance fidelity** — all three robots, and "does this look like OUR robot".

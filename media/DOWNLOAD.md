@@ -4,6 +4,14 @@ game.devoxx.be blocks downloads from the Claude workspace and from the Cowork sh
 (needs curl) from this folder; it fills `venue-photos/` and re-fetches the plans and model sheets in case
 the copies in `../plans` and `../robots` are ever out of date.
 
+## `other-images/` — corridor, staircase and dark-hall reference (added 2026-09-21)
+
+Eighteen extra stills, including frame grabs from the drone videos below. **They are captioned,
+with a "what this changes in the build" section, in `other-images/CAPTIONS.md` — read that file
+before building or critiquing venue geometry, materials or signage.** They are the only close
+reference for the cinema corridor, the main staircase, the Zaal numeral signage and the
+exhibition hall when it is empty and dark (chapter 2).
+
 ## Venue photographs (14, copyleft — texture, lighting and framing references)
 Base: https://game.devoxx.be/references/venue/pictures/
 
