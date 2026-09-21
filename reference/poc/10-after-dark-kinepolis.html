@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>After Dark — POC 10 · Kinepolis</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html,body{margin:0;height:100%;background:#0b0c10;color:#e8e6e1;font:14px/1.4 system-ui,sans-serif;overflow:hidden}
+  #hud{position:fixed;left:0;right:0;top:0;display:flex;gap:14px;align-items:center;padding:8px 14px;background:rgba(10,11,14,.9);border-bottom:1px solid #2a2e36;z-index:2;flex-wrap:wrap}
+  #hud b{color:#ffb347;white-space:nowrap}
+  #obj{flex:1;min-width:300px}
+  #keys{color:#9aa0ab;font-size:12px}
+  #skip{margin-left:auto;background:#1c1f26;color:#ffb347;border:1px solid #ffb347;border-radius:6px;padding:4px 10px;cursor:pointer;font:12px system-ui}
+  #skip:hover{background:#2a2e36}
+  canvas{display:block;position:fixed;left:0;top:0}
+  #msg{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(10,11,14,.94);border:1px solid #ffb347;padding:18px 26px;border-radius:10px;font-size:20px;display:none;z-index:3;text-align:center;max-width:70vw}
+  #msg small{display:block;font-size:13px;color:#9aa0ab;margin-top:6px}
+</style>
+</head>
+<body>
+<div id="hud">
+  <b>AFTER DARK · POC 10</b>
+  <span id="obj"></span>
+  <span id="keys"></span>
+  <button id="skip" title="Jump to the next chapter (for testing, or if you are stuck)">Skip chapter ▸</button>
+</div>
+<canvas id="c"></canvas>
+<div id="msg"></div>
+<script>
+'use strict';
+const W=1900, H=700, T=6;
+// =============================================================== robots
+const DEFS={
+  voxxy:{name:'Voxxy',r:9,accel:12,max:290,drag:9,mass:1,color:'#ff7a1a',eye:'#ffd27a',light:{c:[255,120,40],type:'cone',ang:0.38,range:280}},
+  droid:{name:'Droid',r:13,accel:4,max:115,drag:7,mass:3,color:'#4a4f57',eye:'#ffc46b',tall:true,light:{c:[90,220,140],type:'pool',range:95}},
+  biggy:{name:'Biggy',r:17,accel:0.6,max:235,drag:0.35,mass:7,color:'#5f7387',eye:'#ffe9b0',belly:'#d9772a',light:{c:[70,120,255],type:'cone',ang:1.0,range:300}},
+};
+function mkBot(kind,x,y){ return Object.assign({kind,x,y,vx:0,vy:0,face:0,anim:0,ix:0,iy:0,mounted:false,braced:false},DEFS[kind]); }
+function stepBot(b,dt,walls,extra){
+  if(b.mounted){ b.vx=b.vy=0; return; }
+  const il=Math.hypot(b.ix,b.iy);
+  if(il>0){ const tx=b.ix/il*b.max, ty=b.iy/il*b.max; const k=1-Math.exp(-b.accel*dt); b.vx+=(tx-b.vx)*k; b.vy+=(ty-b.vy)*k; }
+  else { const k=Math.exp(-b.drag*dt); b.vx*=k; b.vy*=k; }
+  let sp=Math.hypot(b.vx,b.vy); const cap=Math.max(b.max,b.boostCap||0); if(sp>cap){ b.vx*=cap/sp; b.vy*=cap/sp; } b.boostCap=(b.boostCap||0)*Math.exp(-1.5*dt);
+  if(sp<2 && il===0){ b.vx=b.vy=0; }
+  b.x+=b.vx*dt; b.y+=b.vy*dt;
+  if(sp>1&&(b.vx||b.vy)){ b.face=Math.atan2(b.vy,b.vx); b.anim+=sp*dt/18; }
+  for(const w of walls){
+    if(w.skipFor && w.skipFor(b)) continue;
+    const hit=circleRect(b,w); if(!hit) continue;
+    if(w.onHit && w.onHit(b,hit)) continue;
+    b.x+=hit.nx*hit.pen; b.y+=hit.ny*hit.pen;
+    const vn=b.vx*hit.nx+b.vy*hit.ny;
+    if(vn<0){ const rest=b.kind==='biggy'?0.45:0.05; b.vx-=(1+rest)*vn*hit.nx; b.vy-=(1+rest)*vn*hit.ny; }
+    if(w.why && extra && extra.onBlocked) extra.onBlocked(b,w);
+  }
+}
+function circleRect(c,r){
+  const cx=Math.max(r.x,Math.min(c.x,r.x+r.w)), cy=Math.max(r.y,Math.min(c.y,r.y+r.h));
+  let dx=c.x-cx, dy=c.y-cy, d=Math.hypot(dx,dy); if(d>=c.r) return null;
+  if(d<1e-6){ const l=c.x-r.x, rr=r.x+r.w-c.x, t=c.y-r.y, bb=r.y+r.h-c.y; const m=Math.min(l,rr,t,bb);
+    if(m===l) return {nx:-1,ny:0,pen:l+c.r}; if(m===rr) return {nx:1,ny:0,pen:rr+c.r}; if(m===t) return {nx:0,ny:-1,pen:t+c.r}; return {nx:0,ny:1,pen:bb+c.r}; }
+  return {nx:dx/d,ny:dy/d,pen:c.r-d};
+}
+function botsCollide(a,b,e=0.3){
+  if(a.mounted||b.mounted) return null;
+  const dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy), min=a.r+b.r; if(d>=min||d<1e-6) return null;
+  const nx=dx/d, ny=dy/d, pen=min-d, ma=a.braced?1e6:a.mass, mb=b.braced?1e6:b.mass, tot=ma+mb;
+  a.x-=nx*pen*mb/tot; a.y-=ny*pen*mb/tot; b.x+=nx*pen*ma/tot; b.y+=ny*pen*ma/tot;
+  const rv=(b.vx-a.vx)*nx+(b.vy-a.vy)*ny; if(rv>0) return {rv:0};
+  const j=-(1+e)*rv/(1/ma+1/mb); if(!a.braced){ a.vx-=j*nx/ma; a.vy-=j*ny/ma; } if(!b.braced){ b.vx+=j*nx/mb; b.vy+=j*ny/mb; } return {rv:-rv};
+}
+const inRect=(p,r)=>p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h;
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+// =============================================================== light: visibility polygons (walls cast shadows; glass and low seats do not)
+function rayRect(px,py,dx,dy,r){ // slab test; returns t>0 or Infinity
+  let tmin=-Infinity, tmax=Infinity;
+  for(const [p,d,lo,hi] of [[px,dx,r.x,r.x+r.w],[py,dy,r.y,r.y+r.h]]){
+    if(Math.abs(d)<1e-9){ if(p<lo||p>hi) return Infinity; }
+    else { let t1=(lo-p)/d, t2=(hi-p)/d; if(t1>t2)[t1,t2]=[t2,t1]; tmin=Math.max(tmin,t1); tmax=Math.min(tmax,t2); if(tmin>tmax) return Infinity; }
+  }
+  return tmax<0?Infinity:(tmin>0?tmin:0);
+}
+function castPoly(px,py,a0,a1,range,walls,n){
+  const pts=[]; const occl=walls.filter(w=>!w.glass&&!w.low);
+  for(let i=0;i<=n;i++){ const a=a0+(a1-a0)*i/n, dx=Math.cos(a), dy=Math.sin(a); let t=range;
+    for(const w of occl){ const tt=rayRect(px,py,dx,dy,w); if(tt<t) t=tt; }
+    pts.push({x:px+dx*t,y:py+dy*t}); }
+  return pts;
+}
+function pointInPoly(p,poly){ let c=false; for(let i=0,j=poly.length-1;i<poly.length;j=i++){ const a=poly[i], b=poly[j]; if((a.y>p.y)!==(b.y>p.y) && p.x<(b.x-a.x)*(p.y-a.y)/(b.y-a.y)+a.x) c=!c; } return c; }
+// a light source: {x,y,face,c,type,ang,range,poly,full}
+function buildLights(bots,walls,mirrors){
+  const lights=[];
+  for(const b of bots){ const L=b.light; const src={x:b.x,y:b.y,face:b.face,c:L.c,type:L.type,ang:L.ang,range:L.range*(b.mounted?1.6:1),owner:b.kind,primary:true};
+    if(b.mounted){ const carrier=bots.find(o=>o.kind==='biggy'); src.x=carrier.x; src.y=carrier.y; }
+    if(src.type==='pool'){ src.poly=[{x:src.x,y:src.y},...castPoly(src.x,src.y,0,Math.PI*2,src.range,walls,72)]; src.full=true; }
+    else src.poly=[{x:src.x,y:src.y},...castPoly(src.x,src.y,src.face-src.ang,src.face+src.ang,src.range,walls,48)];
+    lights.push(src);
+    // mirrors: the cinema screen bounces light. Sample points along the mirror lit by this source become secondary cones.
+    for(const m of mirrors){ const cands=[]; for(let k=0;k<=8;k++){ const s={x:m.x0+(m.x1-m.x0)*k/8,y:m.y}; const d=dist(src,s); if(d<src.range-10 && pointInPoly({x:s.x,y:s.y+m.ny*3},src.poly)) cands.push({s,d}); }
+      if(!cands.length) continue; cands.sort((a,b)=>a.d-b.d); const centre=cands[Math.floor(cands.length/2)];
+      for(const cnd of [cands[0],centre,cands[cands.length-1]]){ if(!cnd) continue; const s=cnd.s; const dx=s.x-src.x, dy=s.y-src.y; const rd=Math.atan2(-dy*1,dx); // reflect about a horizontal mirror
+        const sec={x:s.x,y:s.y+m.ny*4,face:rd,c:src.c,type:'cone',ang:0.55,range:Math.max(90,src.range-cnd.d),owner:src.owner,primary:false};
+        sec.poly=[{x:sec.x,y:sec.y},...castPoly(sec.x,sec.y,sec.face-sec.ang,sec.face+sec.ang,sec.range,walls,32)]; lights.push(sec); }
+    }
+  }
+  return lights;
+}
+const litBy=(lights,kind,p)=>lights.some(L=>L.owner===kind&&pointInPoly(p,L.poly)&&dist(L,p)<L.range);
+// =============================================================== input / hud
+const keys={}; addEventListener('keydown',e=>{keys[e.code]=true; if(['Space','Tab','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault(); if(!e.repeat&&scene) scene.key(e.code);}); addEventListener('keyup',e=>keys[e.code]=false);
+function readStick(){ let x=0,y=0; if(keys.KeyA||keys.ArrowLeft)x-=1; if(keys.KeyD||keys.ArrowRight)x+=1; if(keys.KeyW||keys.ArrowUp)y-=1; if(keys.KeyS||keys.ArrowDown)y+=1; return {x,y}; }
+let scene=null, toast=null; window.__dbg={get scene(){return scene;},get toast(){return toast;}};
+function setObjective(t,k){ document.getElementById('obj').innerHTML=t; document.getElementById('keys').textContent=k; }
+function showMsg(html){ const m=document.getElementById('msg'); m.innerHTML=html; m.style.display='block'; }
+function hideMsg(){ document.getElementById('msg').style.display='none'; }
+function flash(t,ms=2200){ toast={t,until:performance.now()+ms}; }
+// =============================================================== FIRST FLOOR — from the Devoxx plan, rotated: plan top (closed cinema section) → left, main staircase → right
+// Closed section x 0..600 (unnumbered cinema rooms A–E, curved foyer, kiosk). Fire door at x=600. Devoxx rooms 3,4,5,6 bottom / 10,9,8,7 top.
+// Secondary staircases: niches in the corridor walls between 3|4 and 10|9. Main staircase: corridor end, between 6 and 7.
+const CY0=300, CY1=400, ROOM_D=230, DOOR=46;
+const rooms=[];
+(function(){ const add=(n,x,w,side,closed)=>rooms.push({n,x,w,y:side<0?CY0-ROOM_D:CY1,h:ROOM_D,side,closed:!!closed});
+  add('A',70,160,-1,1); add('B',240,160,-1,1); add('C',410,160,-1,1); add('D',180,190,1,1); add('E',380,190,1,1);
+  add(10,610,256,-1); add(9,906,320,-1); add(8,1234,375,-1); add(7,1617,263,-1);
+  add(3,610,256,1); add(4,906,320,1); add(5,1234,375,1); add(6,1617,263,1); })();
+const R=n=>rooms.find(r=>r.n===n);
+function roomDoor(r){ const cx=r.x+r.w/2; return r.side<0? {x:cx-DOOR/2,y:CY0-T,w:DOOR,h:12,cx,cy:CY0,side:-1,r} : {x:cx-DOOR/2,y:CY1-T,w:DOOR,h:12,cx,cy:CY1,side:1,r}; }
+const F1={fireX:600,foyer:{x:14,y:CY1,w:160,h:230},kiosk:{x:110,y:412,w:56,h:56},nicheTop:{x:866,y:CY0-60,w:40,h:60},nicheBot:{x:866,y:CY1,w:40,h:60},mainStair:{x:1830,y:CY0+6,w:64,h:CY1-CY0-12}};
+function floor1Walls(){
+  const w=[]; w.push({x:0,y:0,w:W,h:T},{x:0,y:H-T,w:W,h:T},{x:0,y:0,w:T,h:H},{x:W-T,y:0,w:T,h:H});
+  for(const side of [-1,1]){
+    const yy= side<0? CY0-T : CY1; const rs=rooms.filter(r=>r.side===side); let x=0;
+    const gaps=rs.map(r=>{ const d=roomDoor(r); return [d.x,d.x+d.w]; });
+    const niche= side<0? F1.nicheTop : F1.nicheBot; gaps.push([niche.x,niche.x+niche.w]);
+    if(side>0) gaps.push([F1.foyer.x,F1.foyer.x+F1.foyer.w]); // the foyer opens straight onto the corridor
+    gaps.sort((a,b)=>a[0]-b[0]);
+    for(const [g0,g1] of gaps){ if(g0>x) w.push({x,y:yy,w:g0-x,h:T}); x=g1; } w.push({x,y:yy,w:W-x,h:T});
+    for(const r of rs){ w.push({x:r.x-T,y:r.y,w:T,h:r.h},{x:r.x+r.w,y:r.y,w:T,h:r.h}); const by= side<0? r.y-T : r.y+r.h; w.push({x:r.x-T,y:by,w:r.w+2*T,h:T}); }
+    w.push({x:niche.x-T,y:niche.y,w:T,h:niche.h},{x:niche.x+niche.w,y:niche.y,w:T,h:niche.h},{x:niche.x-T,y:side<0?niche.y-T:niche.y+niche.h,w:niche.w+2*T,h:T,stair:side});
+  }
+  const f=F1.foyer; w.push({x:f.x-T,y:f.y,w:T,h:f.h},{x:f.x+f.w,y:f.y,w:T,h:f.h},{x:f.x-T,y:f.y+f.h,w:f.w+2*T,h:T});
+  const k=F1.kiosk; w.push({x:k.x,y:k.y,w:k.w,h:T,glass:true},{x:k.x,y:k.y+k.h-T,w:k.w,h:T,glass:true},{x:k.x+k.w-T,y:k.y,w:T,h:k.h,glass:true},{x:k.x,y:k.y,w:T,h:16,glass:true},{x:k.x,y:k.y+40,w:T,h:16,glass:true},{x:k.x,y:k.y+16,w:T,h:24,hidden:true,skipFor:b=>b.kind==='voxxy',why:b=>`${b.name}: the kiosk hatch is Voxxy-sized`});
+  w.push({x:F1.mainStair.x+F1.mainStair.w,y:CY0,w:T,h:CY1-CY0,stair:0}); // top of the main staircase
+  return w;
+}
+// =============================================================== GROUND FLOOR — from the Devoxx plan, rotated the same way: hall left, lobby + main staircase + entrance right
+const GF={};
+GF.hall={x:30,y:90,w:1010,h:600}; GF.openings=[[120,180],[240,310],[380,460],[540,610]]; // in the hall's right wall (the scalloped wall on the plan)
+GF.food={court:{x:30,y:90,w:300,h:160},gaps:[[80,124],[210,254],[285,329]],soup:{x:60,y:100,w:90,h:30},shelf:{x:165,y:100,w:22,h:16},sandwich:{x:200,y:100,w:70,h:30},coffee:{x:285,y:100,w:45,h:30}};
+GF.stairs=[{x:150,y:300,w:200,h:60,to:'top'},{x:150,y:430,w:200,h:60,to:'bot'}]; // secondary staircases up to the cinema corridor
+GF.tech={x:30,y:560,w:170,h:130}; GF.panel={x:50,y:568,w:26,h:16}; GF.rack={x:140,y:640,w:20,h:24};
+GF.store={x:900,y:90,w:140,h:110}; GF.roller={x:894,y:130,w:T,h:60}; // Devoxx polo & badge store, roller door on its hall side
+GF.booths=[]; const SPONSORS=['Kube Kettle','JavaBeans & Co','Cloudy Bank','Rubber Duck Inc','Legacy Systems SA','Monolith GmbH','NullPointer Insurance','Async Airlines','Big Data Bakery','Sticker Mine','Regex Racing','The Coffee Sponsor'];
+const TABLES=new Set(['2,0','1,1','1,2','0,3','0,1','2,3']);
+(function(){ let k=0; for(let row=0;row<3;row++) for(let col=0;col<4;col++){ const x=400+col*160, y=250+row*140; GF.booths.push({x,y,w:100,h:70,name:SPONSORS[k++],table:TABLES.has(row+','+col),col,row}); } })();
+GF.reception={x:1280,y:120,w:240,h:50}; GF.printer={x:1284,y:158,w:20,h:12};
+GF.mainStair={x:1280,y:200,w:240,h:200}; GF.gate={x:1274,y:200,w:T,h:200};
+GF.bof={x:1300,y:480,w:260,h:200}; GF.toilets={x:1040,y:560,w:120,h:130};
+GF.entrance={x:W-T,y:360,w:T,h:170};
+GF.laneX=[370,530,690,850,1010]; GF.laneY=[215,355,495,645];
+function groundWalls(){
+  const w=[]; w.push({x:0,y:0,w:W,h:T},{x:0,y:H-T,w:W,h:T},{x:0,y:0,w:T,h:H},{x:W-T,y:0,w:T,h:H});
+  const h=GF.hall; w.push({x:h.x-T,y:h.y-T,w:h.w+2*T,h:T},{x:h.x-T,y:h.y,w:T,h:h.h});
+  let y=h.y; for(const [a,b] of GF.openings){ w.push({x:h.x+h.w,y,w:T,h:a-y}); y=b; } w.push({x:h.x+h.w,y,w:T,h:h.y+h.h-y});
+  const c=GF.food.court; w.push({x:c.x+c.w,y:c.y,w:T,h:c.h+T}); let gx=c.x; for(const [a,b] of GF.food.gaps){ w.push({x:gx,y:c.y+c.h,w:a-gx,h:T}); gx=b; } w.push({x:gx,y:c.y+c.h,w:c.x+c.w-gx,h:T});
+  for(const k of ['soup','sandwich','coffee']) w.push({...GF.food[k],low:true});
+  const t=GF.tech; w.push({x:t.x,y:t.y-T,w:t.w+T,h:T},{x:t.x+t.w,y:t.y,w:T,h:40},{x:t.x+t.w,y:t.y+90,w:T,h:t.h-90}); // door on the right, y 600..650
+  const s=GF.store; w.push({x:s.x-T,y:s.y,w:T,h:GF.roller.y-s.y},{x:s.x-T,y:GF.roller.y+GF.roller.h,w:T,h:s.y+s.h-(GF.roller.y+GF.roller.h)},{x:s.x-T,y:s.y+s.h,w:s.w+T,h:T});
+  for(const bo of GF.booths) w.push({x:bo.x,y:bo.y,w:bo.w,h:bo.h,booth:bo,low:bo.table,skipFor:bo.table?(bb=>bb.kind==='voxxy'):null,why:bo.table?(bb=>bb.kind==='voxxy'?null:`${bb.name}: a sponsor table. Only something Voxxy-sized goes under the tablecloth`):(bb=>`${bb.name}: ${bo.name} — a built booth, solid walls`)});
+  w.push({...GF.reception,low:true,why:bb=>`${bb.name}: reception. Badges, lanyards, the printer`});
+  const m=GF.mainStair; w.push({x:m.x,y:m.y-T,w:m.w+T,h:T},{x:m.x,y:m.y+m.h,w:m.w+T,h:T},{x:m.x+m.w,y:m.y,w:T,h:m.h});
+  const b=GF.bof; w.push({x:b.x-T,y:b.y-T,w:b.w+2*T,h:T},{x:b.x-T,y:b.y,w:T,h:60},{x:b.x-T,y:b.y+120,w:T,h:b.h-120},{x:b.x+b.w,y:b.y,w:T,h:b.h},{x:b.x-T,y:b.y+b.h,w:b.w+2*T,h:T});
+  const tl=GF.toilets; w.push({x:tl.x,y:tl.y-T,w:tl.w,h:T},{x:tl.x+tl.w,y:tl.y-T,w:T,h:tl.h});
+  return w;
+}
+// =============================================================== views (what the camera shows per chapter)
+const VIEW_CLOSED={x:0,y:40,w:900,h:620}, VIEW_DEVOXX={x:590,y:40,w:1310,h:620}, VIEW_F1={x:0,y:40,w:1900,h:620}, VIEW_GROUND={x:0,y:0,w:W,h:H};
+const CHAPTER_TITLES=['','1 · Night — the closed cinema section','2 · Expo — the exhibition hall','3 · Lunch — doors open','4 · Keynote — Room 8'];
+function level(){
+  const walls=[]; const setWalls=a=>{ walls.length=0; walls.push(...a); };
+  const bots=[mkBot('voxxy',60,325),mkBot('droid',60,352),mkBot('biggy',66,380)]; let cur=0;
+  const byKind=k=>bots.find(b=>b.kind===k);
+  const r8=R(8), d8=roomDoor(r8);
+  const TALKS={3:'Hands-on: agents that ship',4:'Java 27 in 50 minutes',5:'Kubernetes, but calmer',6:'The last talk about microservices',7:'Deep dive: virtual threads',9:'From developer to builder',10:'BOF: what broke this year'};
+  const S={t:0,chapter:0,phase:'intro',floor:'up',view:VIEW_CLOSED,blockedAt:new Map(),log:[],score:{},skipped:[],swag:[],fade:0};
+  // ---------------------------------------------------------------- shared helpers
+  function onBlocked(b,w){ const last=S.blockedAt.get(w)||-9; if(S.t-last<2.5) return; const m=w.why(b); if(m){ flash(m); S.blockedAt.set(w,S.t); } }
+  function stepAll(dt,extra){ const st=readStick(); bots.forEach((b,i)=>{ if(i===cur){ b.ix=st.x; b.iy=st.y; } else { b.ix=b.iy=0; } if(b.braced){ b.vx=b.vy=0; b.ix=b.iy=0; return; } const before={vx:b.vx,vy:b.vy}; stepBot(b,dt,walls,{onBlocked}); if(extra&&extra.afterStep) extra.afterStep(b,before); });
+    const d=byKind('droid'), bg=byKind('biggy'); if(d.mounted){ d.x=bg.x; d.y=bg.y-6; d.face=bg.face; }
+    for(let i=0;i<3;i++) for(let j=i+1;j<3;j++) botsCollide(bots[i],bots[j]); }
+  function card(html){ showMsg(html); S.pause=true; }
+  function place(v,d,b){ const V=byKind('voxxy'),D=byKind('droid'),B=byKind('biggy'); if(D.mounted) mount(); D.braced=false; [V.x,V.y]=v; [D.x,D.y]=d; [B.x,B.y]=b; bots.forEach(o=>{ o.vx=o.vy=0; o.boostCap=0; }); }
+  function switchKey(c){ if(c==='Digit1')cur=0; if(c==='Digit2'&&!byKind('droid').mounted)cur=1; if(c==='Digit3')cur=2; }
+  function drawPerson(g,p,name,col,hat){ g.fillStyle=col||'#e8d5b5'; g.beginPath(); g.arc(p.x,p.y,p.r||8,0,7); g.fill(); if(hat){ g.fillStyle='#333'; g.fillRect(p.x-6,p.y-11,12,4); } if(name) label(g,p.x,p.y-16,name,10,'#ffd27a'); }
+  function hud(g,t){ const v=S.view; g.fillStyle='#e8e6e1'; g.font='13px system-ui'; g.textAlign='left'; g.fillText(t,v.x+20,v.y+v.h-16); }
+  function bar(g,frac,col,txt){ const v=S.view, cx=v.x+v.w/2, by=v.y+v.h; g.fillStyle='#333'; g.fillRect(cx-150,by-30,300,8); g.fillStyle=col; g.fillRect(cx-150,by-30,300*Math.min(1,frac),8); if(txt) label(g,cx,by-36,txt,11); }
+  function mount(){ const d=byKind('droid'), bg=byKind('biggy'); if(d.mounted){ d.mounted=false; d.x=bg.x-bg.r-d.r-2; d.y=bg.y; flash('Droid climbs down'); return; }
+    if(dist(d,bg)<d.r+bg.r+12 && Math.hypot(bg.vx,bg.vy)<20){ d.mounted=true; flash('Droid climbs onto Biggy — taller lamp, wider pool, higher reach'); cur=2; } else flash('Droid must be next to a standing Biggy'); }
+  // Voxxy or Droid leaning on Biggy: a modest extra acceleration, so a long straight push takes him beyond his own top speed
+  function pushBiggy(dt){ const bg=byKind('biggy'); if(bg.mounted) return; for(const p of bots){ if(p===bg||p.mounted||p.braced) continue; const dx=bg.x-p.x, dy=bg.y-p.y, d=Math.hypot(dx,dy); if(d<1e-6) continue; const nx=dx/d, ny=dy/d; const lean=p.ix*nx+p.iy*ny; if(d<p.r+bg.r+12&&lean>0.3){ const F=p.kind==='voxxy'?170:120; bg.vx+=nx*lean*F*dt; bg.vy+=ny*lean*F*dt; bg.boostCap=Math.max(bg.boostCap||0,Math.hypot(bg.vx,bg.vy)*1.05); const bv=bg.vx*nx+bg.vy*ny, pv=p.vx*nx+p.vy*ny; if(pv>bv){ p.vx-=(pv-bv)*nx*0.5; p.vy-=(pv-bv)*ny*0.5; } if(!bg.pushFlash||S.t-bg.pushFlash>3){ bg.pushFlash=S.t; flash(`${p.name} pushes Biggy — ${Math.hypot(bg.vx,bg.vy)|0} px/s and climbing`); } } } }
+  // ---------------------------------------------------------------- drawing: first floor
+  function drawFloor1(g,lit){
+    g.fillStyle='#1c1f26'; g.fillRect(0,0,W,H);
+    g.fillStyle='#3a2f2a'; g.fillRect(0,CY0,W,CY1-CY0); g.fillStyle='#4a3a33'; for(let x=30;x<W;x+=60) for(let y=CY0+20;y<CY1;y+=30) g.fillRect(x,y,3,3);
+    const f=F1.foyer; g.fillStyle='#2a2430'; g.beginPath(); g.moveTo(f.x,f.y); g.lineTo(f.x+f.w,f.y); g.lineTo(f.x+f.w,f.y+f.h); g.quadraticCurveTo(f.x+f.w*0.2,f.y+f.h*0.9,f.x,f.y+f.h*0.5); g.closePath(); g.fill(); label(g,f.x+f.w/2,f.y+f.h-16,'foyer · bar',9,'#6b7280');
+    g.fillStyle='#5a3a2a'; g.fillRect(f.x+20,f.y+150,70,16);
+    const k=F1.kiosk; g.fillStyle='#2d3340'; g.fillRect(k.x,k.y,k.w,k.h); label(g,k.x+k.w/2,k.y+k.h+12,'kiosk',9,'#6b7280');
+    for(const n of [F1.nicheTop,F1.nicheBot]){ g.fillStyle='#3a2f2a'; g.fillRect(n.x,n.y,n.w,n.h); g.strokeStyle='#6b5a52'; for(let y=n.y+6;y<n.y+n.h;y+=7){ g.beginPath(); g.moveTo(n.x+4,y); g.lineTo(n.x+n.w-4,y); g.stroke(); } }
+    label(g,F1.nicheTop.x+20,F1.nicheTop.y-8,'▼ ground floor',8,'#9aa0ab'); label(g,F1.nicheBot.x+20,F1.nicheBot.y+F1.nicheBot.h+12,'▼ ground floor',8,'#9aa0ab');
+    const m=F1.mainStair; g.fillStyle='#3a2f2a'; g.fillRect(m.x,m.y,m.w,m.h); g.strokeStyle='#6b5a52'; for(let x=m.x+6;x<m.x+m.w;x+=7){ g.beginPath(); g.moveTo(x,m.y+4); g.lineTo(x,m.y+m.h-4); g.stroke(); } label(g,m.x+m.w/2,CY0-10,'main staircase ▼',9,'#9aa0ab');
+    for(const r of rooms){ g.fillStyle=r.n===8?'#2a2436':(r.closed?'#22262f':'#242a36'); g.fillRect(r.x,r.y,r.w,r.h);
+      if(r.n!=='E'&&!(r.n===8&&S.chapter===4)){ const cx=r.x+r.w/2, far= r.side<0? r.y : r.y+r.h, near= r.side<0? r.y+r.h : r.y; const rows=Math.max(5,Math.round(r.w/26)); g.strokeStyle='#3b414d';
+        for(let i=1;i<=rows;i++){ const t=i/(rows+1); const yy=near+(far-near)*(0.18+0.72*t); const half=r.w*0.42*(0.55+0.45*t); g.beginPath(); g.moveTo(cx-half,yy); g.quadraticCurveTo(cx,yy+(r.side<0?-10:10),cx+half,yy); g.stroke(); } }
+      g.fillStyle='#8a94a6'; g.fillRect(r.x+r.w/2-r.w*0.3, r.side<0? r.y+6 : r.y+r.h-9, r.w*0.6,3);
+      g.fillStyle='rgba(232,230,225,.55)'; g.font=`bold ${r.closed?14:22}px system-ui`; g.textAlign='center'; g.fillText(r.closed?'cinema':r.n, r.x+r.w/2, r.side<0? r.y+r.h-14 : r.y+26);
+      if(!r.closed&&lit){ g.fillStyle='rgba(255,179,71,.55)'; g.font='10px system-ui'; g.fillText(r.n===8?'KEYNOTE':TALKS[r.n]||'', r.x+r.w/2, r.side<0? r.y+r.h-38 : r.y+42); } }
+    label(g,300,CY0-ROOM_D-14,'DEVOXX · FIRST FLOOR — cinema section (closed)',10,'#6b7280'); label(g,1250,CY0-ROOM_D-14,'DEVOXX SECTION — rooms 3–10',10,'#6b7280');
+  }
+  function drawGround(g,lit){
+    g.fillStyle='#23262e'; g.fillRect(0,0,W,H); const h=GF.hall; g.fillStyle='#262a33'; g.fillRect(h.x,h.y,h.w,h.h); g.fillStyle='#2f3340'; for(let x=h.x+60;x<h.x+h.w;x+=160) for(let y=h.y+60;y<h.y+h.h;y+=140) g.fillRect(x-3,y-3,6,6);
+    const c=GF.food.court; g.fillStyle='#2a2420'; g.fillRect(c.x,c.y,c.w,c.h); g.fillStyle='#5a3a2a'; for(const k of ['soup','sandwich','coffee']){ const f=GF.food[k]; g.fillRect(f.x,f.y,f.w,f.h); } label(g,c.x+c.w/2,c.y+c.h-12,'CATERING',10,'#c9c6bf');
+    for(const s of GF.stairs){ g.fillStyle='#3a2f2a'; g.fillRect(s.x,s.y,s.w,s.h); g.strokeStyle='#6b5a52'; for(let x=s.x+6;x<s.x+s.w;x+=7){ g.beginPath(); g.moveTo(x,s.y+4); g.lineTo(x,s.y+s.h-4); g.stroke(); } label(g,s.x+s.w/2,s.y+s.h/2+4,'▲ stairs to the cinema rooms',9,'#e8e6e1'); }
+    const t=GF.tech; g.fillStyle='#1c1f26'; g.fillRect(t.x,t.y,t.w,t.h); label(g,t.x+t.w/2,t.y+t.h-10,'technical room',9,'#6b7280');
+    const s=GF.store; g.fillStyle='#1c1f26'; g.fillRect(s.x,s.y,s.w,s.h); label(g,s.x+s.w/2,s.y+s.h/2,'POLO & BADGE',10,'#6b7280'); label(g,s.x+s.w/2,s.y+s.h/2+14,'pickup store',9,'#6b7280');
+    for(const bo of GF.booths){ g.fillStyle=bo.table?'#3b3550':'#3a4a5c'; g.fillRect(bo.x,bo.y,bo.w,bo.h); if(bo.table){ g.fillStyle='#4b4566'; g.fillRect(bo.x+8,bo.y+8,bo.w-16,bo.h-16); } else { g.strokeStyle='#5c6f85'; g.strokeRect(bo.x+3,bo.y+3,bo.w-6,bo.h-6); } label(g,bo.x+bo.w/2,bo.y+bo.h/2+4,bo.name,9,lit?'#e8e6e1':'#6b7280'); }
+    label(g,h.x+h.w/2+120,h.y+h.h-16,'EXHIBITION HALL',12,'rgba(232,230,225,.25)'); if(lit) label(g,h.x+h.w/2+120,h.y+h.h-30,'purple = sponsor tables (Voxxy goes under the cloth) · grey = built booths',8,'rgba(232,230,225,.35)');
+    const r=GF.reception; g.fillStyle='#4a4f57'; g.fillRect(r.x,r.y,r.w,r.h); label(g,r.x+r.w/2,r.y-8,'RECEPTION',9,'#c9c6bf');
+    const m=GF.mainStair; g.fillStyle='#3a2f2a'; g.fillRect(m.x,m.y,m.w,m.h); g.strokeStyle='#6b5a52'; for(let x=m.x+8;x<m.x+m.w;x+=8){ g.beginPath(); g.moveTo(x,m.y+4); g.lineTo(x,m.y+m.h-4); g.stroke(); } label(g,m.x+m.w/2,m.y+m.h/2+4,'MAIN STAIRCASE ▲ first floor',11,'#e8e6e1');
+    const b=GF.bof; g.fillStyle='#1c1f26'; g.fillRect(b.x,b.y,b.w,b.h); label(g,b.x+b.w/2,b.y+b.h/2,'BOF ROOMS',11,'#6b7280');
+    const tl=GF.toilets; g.fillStyle='#1c1f26'; g.fillRect(tl.x,tl.y,tl.w,tl.h); label(g,tl.x+tl.w/2,tl.y+tl.h/2,'toilets',9,'#6b7280'); label(g,1100,540,'wheelchair access',8,'#6b7280');
+    const open=S.chapter>=3; g.fillStyle=open?'#2ecc71':'#c0392b'; g.fillRect(GF.entrance.x-6,GF.entrance.y,12,GF.entrance.h); label(g,W-70,GF.entrance.y-8,open?'MAIN ENTRANCE — open':'MAIN ENTRANCE — shut',9,open?'#2ecc71':'#e8a49a');
+    label(g,1400,60,'DEVOXX · GROUND FLOOR',10,'#6b7280');
+  }
+  function drawBase(g,lit){ if(S.floor==='up') drawFloor1(g,lit); else drawGround(g,lit); }
+  function drawWalls(g,special){ for(const w of walls){ if(w.hidden||w.block||w.booth) continue; if(special&&special(w)) continue; if(w.glass){ g.fillStyle='rgba(150,220,255,.55)'; g.fillRect(w.x,w.y,w.w,w.h); continue; } if(w.seats){ g.fillStyle='#4a5060'; g.fillRect(w.x,w.y,w.w,w.h); continue; } if(w.low&&S.floor==='down') continue; if(['firedoor','lock','spring','jammed','roller','gate'].includes(w.kind)){ g.fillStyle='#c0392b'; g.fillRect(w.x,w.y,w.w,w.h); continue; } g.fillStyle=w.fill?'#111318':'#8d8f96'; g.fillRect(w.x,w.y,w.w,w.h); }
+    if(S.floor==='up') for(const r of rooms){ const d=roomDoor(r); g.fillStyle='rgba(255,179,71,.18)'; g.fillRect(d.x,d.y,d.w,d.h); } }
+  function drawBots(g){ bots.forEach((b,i)=>{ if(!b.mounted) drawBot(g,b,i===cur); }); const d=byKind('droid'); if(d.mounted){ const bg=byKind('biggy'); drawBot(g,Object.assign({},d,{x:bg.x,y:bg.y-14,r:11}),cur===2); label(g,bg.x,bg.y-40,'Droid on Biggy',10); } }
+  const closedJokes={A:'Popcorn machine: OFF',B:'"Reserved for the Devoxx film crew"',C:'projector says NO SIGNAL',D:'locked since the 2019 after-party',E:'door jammed since the last film festival'};
+
+  // ---------------------------------------------------------------- cutscenes: the robots walk somewhere, fade, next chapter
+  const CUT={};
+  function startCut(routes,next,view){ S.phase='cut'; CUT.view=view||S.view; CUT.routes=routes; CUT.next=next; CUT.t=0; CUT.stage='gather'; CUT.st=0; bots.forEach(b=>{ b.ix=b.iy=0; b.braced=false; b.vx=b.vy=0; }); if(byKind('droid').mounted) mount(); }
+  function cutUpdate(dt){ CUT.t+=dt; CUT.st+=dt;
+    if(CUT.stage==='gather'){ S.fade=Math.min(1,CUT.st/0.35); if(CUT.st>0.45){ for(const b of bots){ const r=CUT.routes[b.kind]; if(r&&r.length){ b.x=r[0].x; b.y=r[0].y; r.shift(); } } S.view=CUT.view; CUT.stage='walk'; CUT.st=0; } return; }
+    if(CUT.stage==='walk'){ S.fade=Math.max(0,1-CUT.st/0.4); let done=true;
+      for(const b of bots){ const r=CUT.routes[b.kind]; if(!r||!r.length){ b.vx=b.vy=0; continue; } const t=r[0]; const dx=t.x-b.x, dy=t.y-b.y, d=Math.hypot(dx,dy); if(d<4){ r.shift(); continue; } done=false; const sp=Math.min(d/dt,Math.max(b.max*0.85,150)); b.vx=dx/d*sp; b.vy=dy/d*sp; b.x+=b.vx*dt; b.y+=b.vy*dt; b.face=Math.atan2(dy,dx); b.anim+=sp*dt/18; }
+      if(done||CUT.st>8){ CUT.stage='leave'; CUT.st=0; } return; }
+    S.fade=Math.min(1,CUT.st/0.7); if(CUT.st>0.9){ S.fade=1; CUT.next(); } }
+  function fadeIn(dt){ if(S.fade>0&&S.phase!=='cut') S.fade=Math.max(0,S.fade-dt*1.4); }
+
+  // ================================================================ CHAPTER 1 — NIGHT (first floor, closed cinema section only)
+  const N={};
+  function setupNight(){
+    S.floor='up'; S.view=VIEW_CLOSED; setWalls(floor1Walls()); place([40,330],[40,356],[46,384]);
+    const digits=[0,0,0,0].map(()=>(Math.random()*10)|0); N.digits=digits; N.clues=[]; N.mirrors=[];
+    N.fire={x:F1.fireX,y:CY0,w:14,h:CY1-CY0,kind:'firedoor',why:b=>`${b.name}: fire door, sealed for the night. There's a keypad — we need the 4-digit code`}; walls.push(N.fire); N.keypad={x:F1.fireX-18,y:CY0+8,w:16,h:24};
+    walls.push({x:F1.fireX+14,y:CY0,w:W,h:CY1-CY0,hidden:true}); // nothing beyond the fire door tonight
+    const f=F1.foyer; N.clues.push({x:f.x+55,y:f.y+120,need:['voxxy','droid'],pos:1,digit:digits[0],found:false,hint:'orange + green'});
+    const k=F1.kiosk; N.clues.push({x:k.x+k.w/2,y:k.y+k.h/2,need:['voxxy','biggy'],pos:2,digit:digits[1],found:false,hint:'orange + blue'});
+    const rB=R('B'); const dB=roomDoor(rB); N.lock={x:dB.x,y:dB.y,w:dB.w,h:dB.h,kind:'lock',why:b=>`${b.name}: locked. The release is up by the projector window — too high even for Droid`}; walls.push(N.lock);
+    N.panel={x:dB.x+dB.w+14,y:CY0+10,w:20,h:24,on:false};
+    N.clues.push({x:rB.x+rB.w/2,y:rB.y+40,need:['droid','biggy'],pos:3,digit:digits[2],found:false,hint:'green + blue'});
+    const rE=R('E'); const aisle=[rE.x+50,rE.x+80]; const alcove={x:rE.x+rE.w-46,y:rE.y+rE.h-78,w:40,h:40}; N.alcove=alcove;
+    const whyB=b=>b.kind==='biggy'?'Biggy: too wide for that aisle — but my light goes over the seats':null;
+    for(let y=rE.y+58;y<=rE.y+180;y+=24){ const rightEnd= y>=alcove.y-T-9 ? alcove.x-T : rE.x+rE.w; walls.push({x:rE.x,y,w:aisle[0]-rE.x,h:9,low:true,seats:true,why:whyB}); if(rightEnd-aisle[1]>4) walls.push({x:aisle[1],y,w:rightEnd-aisle[1],h:9,low:true,seats:true,why:whyB}); }
+    walls.push({x:alcove.x-T,y:alcove.y-T,w:alcove.w+2*T,h:T},{x:alcove.x-T,y:alcove.y,w:T,h:alcove.h});
+    N.mirrors.push({x0:rE.x+20,x1:rE.x+rE.w-20,y:rE.y+rE.h,ny:-1});
+    // jammed door: Biggy alone can do this one — the speed INTO the door (vy) across the corridor is enough
+    const dE=roomDoor(rE); N.JAM=70; N.jam={x:dE.x,y:dE.y,w:dE.w,h:dE.h,kind:'jammed',why:b=>b.kind==='biggy'?`Biggy: jammed shut. Give me the width of the corridor and I'll go through it (needs ${N.JAM} px/s)`:`${b.name}: jammed shut. This one is Biggy's — from the far wall, straight at it`,
+      onHit:(b)=>{ if(b.kind==='biggy'&&Math.abs(b.vy)>N.JAM){ N.jam.broken=true; const i=walls.indexOf(N.jam); if(i>=0) walls.splice(i,1); flash(`CRASH — Biggy goes through the jammed door at ${Math.abs(b.vy)|0} px/s`); b.vx*=0.5; b.vy*=0.5; return true; } if(b.kind==='biggy'&&Math.abs(b.vy)>20) flash(`Biggy: ${Math.abs(b.vy)|0} px/s — not enough, further back`); return false; }};
+    walls.push(N.jam);
+    N.clues.push({x:alcove.x+alcove.w/2,y:alcove.y+18,need:['voxxy','droid','biggy'],pos:4,digit:digits[3],found:false,hint:'all three'});
+    N.explored=document.createElement('canvas'); N.explored.width=W; N.explored.height=H; N.eg=N.explored.getContext('2d');
+    N.mask=document.createElement('canvas'); N.mask.width=W; N.mask.height=H; N.mg=N.mask.getContext('2d'); N.lights=[]; N.entered='';
+    setObjective('Chapter 1 · <b>Night</b>. The Devoxx entrance downstairs is shut; you came in through the cinema\'s back door, into the closed section — and the power is out. The fire door to the Devoxx rooms has a keypad: find the <b>4 digits</b>, each visible only under the right <b>mix of lights</b>. Droid can climb on Biggy (E). Biggy can smash the jammed door with a straight run across the corridor.','1/2/3/Tab: switch · WASD · E: use / climb · digits at the keypad · R: restart');
+  }
+  function nightKey(c){ const b=bots[cur], d=byKind('droid'), bg=byKind('biggy');
+    const nearPad=dist(b,{x:N.keypad.x+8,y:N.keypad.y+12})<40;
+    if(!nearPad) switchKey(c);
+    if(c==='KeyE'){ const canMount=!d.mounted && b.kind==='droid' && dist(d,bg)<d.r+bg.r+12 && Math.hypot(bg.vx,bg.vy)<20;
+      if(!N.panel.on && d.mounted && dist(bg,{x:N.panel.x+10,y:N.panel.y+12})<50){ N.panel.on=true; walls.splice(walls.indexOf(N.lock),1); flash('Droid reaches the projector panel from Biggy\'s shoulders — the middle cinema unlocks'); return; }
+      if(!N.panel.on && !canMount && !d.mounted && b.kind==='droid' && dist(b,{x:N.panel.x+10,y:N.panel.y+12})<50){ flash('Droid: too high, even for me. If I stood on Biggy…'); return; }
+      if(b.kind==='droid'||(b.kind==='biggy'&&d.mounted)) mount(); }
+    if(nearPad && /^Digit\d$/.test(c)){ N.entered+=c[5]; if(N.entered.length===4){ const code=N.clues.slice().sort((a,b)=>a.pos-b.pos).map(m=>m.digit).join(''); if(N.entered===code){ S.score.night={t:S.t}; nightDone(); } else { flash('Wrong code'); N.entered=''; } } } }
+  function nightDone(){ const i=walls.indexOf(N.fire); if(i>=0) walls.splice(i,1); const j=walls.findIndex(w=>w.hidden&&w.x===F1.fireX+14); if(j>=0) walls.splice(j,1); flash('Code accepted — the fire door swings open. Down the secondary stairs, to the exhibition hall',4000);
+    const nb=F1.nicheBot; const route=dy=>[{x:F1.fireX+30,y:350+dy},{x:nb.x+20,y:350+dy},{x:nb.x+20,y:nb.y+30}];
+    startCut({voxxy:route(-14),droid:route(0),biggy:route(14)},()=>startChapter(2),VIEW_F1); }
+  function nightUpdate(dt){ stepAll(dt); pushBiggy(dt);
+    N.lights=buildLights(bots,walls,N.mirrors);
+    for(const m of N.clues){ if(!m.found && m.need.every(k=>litBy(N.lights,k,m))){ m.found=true; flash(`Clue: digit ${m.digit} is position ${m.pos}`); } }
+    N.eg.globalCompositeOperation='source-over'; N.eg.fillStyle='rgba(255,255,255,.06)'; for(const L of N.lights){ N.eg.beginPath(); L.poly.forEach((p,i)=>i?N.eg.lineTo(p.x,p.y):N.eg.moveTo(p.x,p.y)); N.eg.closePath(); N.eg.fill(); } }
+  function nightDraw(g){ drawBase(g,false); drawWalls(g); for(const m of N.mirrors){ g.fillStyle='#cfd8e6'; g.fillRect(m.x0,m.y-5,m.x1-m.x0,5); }
+    g.fillStyle=N.panel.on?'#2ecc71':'#e67e22'; g.fillRect(N.panel.x,N.panel.y,N.panel.w,N.panel.h); label(g,N.panel.x+10,N.panel.y+34,'projector panel',8,'#e67e22');
+    g.fillStyle='#c9a227'; g.fillRect(N.keypad.x,N.keypad.y,N.keypad.w,N.keypad.h); label(g,N.keypad.x+8,N.keypad.y-6,'keypad',9,'#c9a227'); if(S.phase!=='cut') label(g,F1.fireX+150,CY0-12,'DEVOXX SECTION — sealed for the night',11,'#c0392b'); label(g,N.keypad.x+8,N.keypad.y+40,N.entered.padEnd(4,'_'),14,'#ffd27a');
+    for(const r of rooms){ if(!r.closed) continue; const d=roomDoor(r); label(g,d.cx,r.side<0?CY0+14:CY1-8,closedJokes[r.n],8,'rgba(255,255,255,.35)'); }
+    if(S.phase!=='cut'){ const mg=N.mg; mg.globalCompositeOperation='source-over'; mg.clearRect(0,0,W,H); mg.fillStyle='rgba(0,0,0,.95)'; mg.fillRect(0,0,W,H);
+      mg.globalCompositeOperation='destination-out'; mg.globalAlpha=0.35; mg.drawImage(N.explored,0,0); mg.globalAlpha=1;
+      for(const L of N.lights){ const grd=mg.createRadialGradient(L.x,L.y,4,L.x,L.y,L.range); grd.addColorStop(0,'rgba(0,0,0,1)'); grd.addColorStop(1,'rgba(0,0,0,0)'); mg.fillStyle=grd; mg.beginPath(); L.poly.forEach((p,i)=>i?mg.lineTo(p.x,p.y):mg.moveTo(p.x,p.y)); mg.closePath(); mg.fill(); }
+      for(const b of bots){ if(b.mounted) continue; const grd=mg.createRadialGradient(b.x,b.y,2,b.x,b.y,34); grd.addColorStop(0,'rgba(0,0,0,.9)'); grd.addColorStop(1,'rgba(0,0,0,0)'); mg.fillStyle=grd; mg.beginPath(); mg.arc(b.x,b.y,34,0,7); mg.fill(); }
+      g.drawImage(N.mask,0,0);
+      g.save(); g.globalCompositeOperation='lighter';
+      for(const L of N.lights){ const [r,gg,bb]=L.c; const grd=g.createRadialGradient(L.x,L.y,4,L.x,L.y,L.range); grd.addColorStop(0,`rgba(${r},${gg},${bb},${L.primary?.5:.35})`); grd.addColorStop(1,`rgba(${r},${gg},${bb},0)`); g.fillStyle=grd; g.beginPath(); L.poly.forEach((p,i)=>i?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y)); g.closePath(); g.fill(); }
+      g.restore(); }
+    for(const m of N.clues){ const now=m.need.every(k=>litBy(N.lights,k,m));
+      if(m.found||now){ g.fillStyle='#fff'; g.font='bold 24px system-ui'; g.textAlign='center'; g.shadowColor='#fff'; g.shadowBlur=12; g.fillText(m.digit,m.x,m.y+8); g.shadowBlur=0; label(g,m.x,m.y+22,['','1st','2nd','3rd','4th'][m.pos],10,'#ffd27a'); }
+      else if(m.need.some(k=>litBy(N.lights,k,m))){ g.strokeStyle='rgba(255,255,255,.35)'; g.setLineDash([2,4]); g.beginPath(); g.arc(m.x,m.y,12,0,7); g.stroke(); g.setLineDash([]); label(g,m.x,m.y-18,'needs '+m.hint,9,'rgba(255,255,255,.6)'); } }
+    drawBots(g); if(S.phase==='cut') label(g,950,CY0-14,'down the secondary staircase between rooms 3 and 4…',12,'#ffd27a');
+    hud(g,`night · ${S.t.toFixed(0)}s · clues ${N.clues.filter(m=>m.found).length}/4 · code: ${N.clues.filter(m=>m.found).sort((a,b)=>a.pos-b.pos).map(m=>m.pos+'→'+m.digit).join('  ')||'—'}`); }
+
+  // ================================================================ booth minigames (optional swag, chapters 2–3)
+  const MG={};
+  function setupMinigames(){ const bo=n=>GF.booths.find(b=>b.name===n);
+    const duckB=bo('Rubber Duck Inc'); MG.duck=Object.assign(mkBot('biggy',duckB.x+duckB.w+30,duckB.y+35),{kind:'duck',name:'duck',r:8,mass:0.6,accel:0,max:500,drag:1.1,light:{c:[0,0,0],type:'pool',range:1}}); MG.duckTarget={x:duckB.x+duckB.w+30,y:duckB.y+35+95,r:22}; MG.duckDone=false; MG.duckHome={x:MG.duck.x,y:MG.duck.y};
+    const stB=bo('Sticker Mine'); MG.sticker={x:stB.x+stB.w/2,y:stB.y+stB.h+14,done:false};
+    const rxB=bo('Regex Racing'); MG.race={pts:[{x:rxB.x-24,y:rxB.y-16},{x:rxB.x+rxB.w+24,y:rxB.y-16},{x:rxB.x+rxB.w+24,y:rxB.y+rxB.h+16},{x:rxB.x-24,y:rxB.y+rxB.h+16}],next:0,t0:0,done:false,LIMIT:5}; }
+  function minigamesKey(c,b){ if(c!=='KeyE') return false;
+    if(!MG.sticker.done&&dist(b,MG.sticker)<40){ if(b.kind==='droid'){ MG.sticker.done=true; S.swag.push('sticker'); flash('Droid peels the top-shelf holographic sticker. Swag +1',3000); } else flash(`${b.name}: the good stickers are on the top shelf. Droid?`); return true; }
+    return false; }
+  function minigamesUpdate(dt){ const d=MG.duck; if(d){ stepBot(d,dt,walls); for(const b of bots){ if(b.mounted) continue; const dx=d.x-b.x, dy=d.y-b.y, dd=Math.hypot(dx,dy); if(dd>0&&dd<b.r+d.r+4){ const nx=dx/dd, ny=dy/dd; const lean=b.ix*nx+b.iy*ny; if(lean>0.3&&Math.hypot(d.vx,d.vy)<40){ const F=b.kind==='biggy'?900:350; d.vx+=nx*lean*F*dt; d.vy+=ny*lean*F*dt; } botsCollide(b,d,0.3); } }
+      if(!MG.duckDone&&Math.hypot(d.vx,d.vy)<5&&dist(d,MG.duckTarget)<MG.duckTarget.r){ MG.duckDone=true; S.swag.push('duck'); flash('The duck stops in the circle. Rubber Duck Inc hands over a giant duck. Swag +1',3000); } }
+    const v=byKind('voxxy'), r=MG.race; if(!r.done){ const p=r.pts[r.next]; if(dist(v,p)<16){ if(r.next===0) r.t0=S.t; r.next++; if(r.next===4){ const el=S.t-r.t0; if(el<=r.LIMIT){ r.done=true; S.swag.push('race'); flash(`Regex Racing lap in ${el.toFixed(1)}s — under ${r.LIMIT}s. Swag +1`,3000); } else { flash(`Regex Racing lap in ${el.toFixed(1)}s — too slow, again`); r.next=0; } } } if(r.next>0&&S.t-r.t0>r.LIMIT){ r.next=0; flash('Regex Racing: time\'s up, lap reset'); } } }
+  function minigamesDraw(g){ const d=MG.duck; const t=MG.duckTarget; g.strokeStyle=MG.duckDone?'#2ecc71':'rgba(255,179,71,.6)'; g.setLineDash([4,4]); g.beginPath(); g.arc(t.x,t.y,t.r,0,7); g.stroke(); g.setLineDash([]); label(g,t.x,t.y+t.r+12,'duck shuffleboard',8,'#9aa0ab');
+    g.fillStyle='#f1c40f'; g.beginPath(); g.arc(d.x,d.y,d.r,0,7); g.fill(); g.fillStyle='#e67e22'; g.fillRect(d.x+4,d.y-2,6,3);
+    const s=MG.sticker; g.fillStyle=s.done?'#2ecc71':'#c9a227'; g.fillRect(s.x-6,s.y-4,12,8); label(g,s.x,s.y+16,s.done?'sticker ✓':'top-shelf sticker (E)',8,'#9aa0ab');
+    const r=MG.race; r.pts.forEach((p,i)=>{ g.fillStyle=r.done?'#2ecc71':(i===r.next?'#ffd27a':'#555'); g.beginPath(); g.arc(p.x,p.y,6,0,7); g.fill(); label(g,p.x,p.y+3,i+1,7,'#111'); }); label(g,r.pts[0].x+62,r.pts[0].y-10,r.done?'lap ✓':`Voxxy lap 1→4 under ${r.LIMIT}s`,8,'#9aa0ab'); }
+
+  // ================================================================ CHAPTER 2 — EXPO (ground floor, dark hall)
+  const X={};
+  function setupExpo(){
+    S.floor='down'; S.view=VIEW_GROUND; setWalls(groundWalls()); place([372,440],[372,470],[372,502]);
+    X.gate={...GF.gate,kind:'gate',why:bb=>`${bb.name}: main staircase — gate down until registration opens`}; walls.push(X.gate);
+    X.NEED=270; X.roller={...GF.roller,kind:'roller',why:bb=>bb.kind==='biggy'?`Biggy: roller door. I'd need ${X.NEED} px/s and I top out at ${bb.max}. Unless someone pushes me all the way down that lane`:`${bb.name}: roller door — the badges and polos are behind it. Biggy at full tilt isn't enough; if I push him along the whole lane…`,
+      onHit:(bb)=>{ if(bb.kind==='biggy'&&bb.vx>X.NEED){ X.rollerBroken=true; const i=walls.indexOf(X.roller); if(i>=0) walls.splice(i,1); flash(`CRASH — Biggy rolls through at ${bb.vx|0} px/s. The Devoxx crew and 3,000 badges are free`,3500); bb.vx*=0.4; return true; } if(bb.kind==='biggy'&&bb.vx>40&&(!X.rollerNear||S.t-X.rollerNear>3)){ X.rollerNear=S.t; flash(`Biggy: ${bb.vx|0} px/s — needs ${X.NEED}. ${bb.vx>bb.max-5?'That\'s my top speed. Somebody push me':'Longer run-up, straighter line'}`); } return false; }};
+    walls.push(X.roller); X.rollerBroken=false;
+    X.power=false; X.cable={carrying:false,connected:false,len:0,pts:[],MAX:1480}; X.breakersLeft=3;
+    X.printer={x:GF.printer.x+10,y:GF.printer.y+6}; X.rack={x:GF.rack.x+10,y:GF.rack.y+12}; X.panel={x:GF.panel.x+13,y:GF.panel.y+8};
+    X.mask=document.createElement('canvas'); X.mask.width=W; X.mask.height=H; X.mg=X.mask.getContext('2d'); setupMinigames();
+    setObjective('Chapter 2 · <b>Expo</b>. The exhibition hall before opening: dark, empty, registration in an hour. <b>Droid</b> flips the three breakers on the high panel in the technical room (E). <b>Voxxy</b> runs the network cable from the rack to the printer at reception — it is short: straight line, <b>under the sponsor tables</b>. <b>Biggy</b> smashes the roller door of the badge store — above his own top speed, so <b>Voxxy pushes him</b> down the long top lane. Booth games on the way are optional swag.','1/2/3/Tab: switch · WASD · E: use · R: restart');
+    card(`<b>Down the secondary staircase.</b><br><span style="font-size:15px">The exhibition hall: twelve sponsor booths, no power, no network, and the badges locked in the pickup store.</span><small>Press any key</small>`);
+  }
+  function expoKey(c){ const b=bots[cur]; switchKey(c); if(c!=='KeyE') return; if(minigamesKey(c,b)) return;
+    if(b.kind==='droid'){ if(!X.power&&dist(b,X.panel)<52){ X.breakersLeft--; if(X.breakersLeft<=0){ X.power=true; flash('Droid flips the last breaker — the hall lights come on, booth by booth',3500); } else flash(`Droid flips a breaker (${3-X.breakersLeft}/3)`); return; } flash('Droid: nothing to reach here'); return; }
+    if(b.kind==='voxxy'){ const C=X.cable; if(!C.carrying&&!C.connected&&dist(b,X.rack)<40){ C.carrying=true; C.len=0; C.pts=[{x:b.x,y:b.y}]; flash('Voxxy takes the cable end. It\'s not long — straight to reception, under the tables'); return; }
+      if(C.carrying&&dist(b,X.printer)<40){ C.carrying=false; C.connected=true; flash(`Cable in — badge printer online (${C.len|0} of ${C.MAX} px used)`,3000); return; }
+      if(C.carrying){ flash('Voxxy: the printer is at reception, through the hall wall on the right'); return; } flash('Voxxy: nothing to plug in here'); return; }
+    if(b.kind==='biggy'){ flash('Biggy: I don\'t do buttons. I do doors.'); } }
+  function expoUpdate(dt){ stepAll(dt); pushBiggy(dt); minigamesUpdate(dt);
+    const v=byKind('voxxy'), C=X.cable; if(C.carrying){ const last=C.pts[C.pts.length-1]; const d=dist(v,last); if(d>6){ C.len+=d; C.pts.push({x:v.x,y:v.y}); } if(C.len>C.MAX){ C.snapAt={x:v.x|0,y:v.y|0,len:C.len|0}; C.carrying=false; C.len=0; C.pts=[]; flash('The cable\'s run out — that route was too long. It snaps back to the rack. Straight line, under the tables, Voxxy!',3500); } }
+    if(!X.power&&!X.hintP&&(inRect(v,GF.tech)||inRect(byKind('biggy'),GF.tech))){ X.hintP=true; flash('Breakers — way up on the wall. Droid?'); }
+    if(X.power&&C.connected&&X.rollerBroken&&S.phase==='play'){ S.score.expo={t:S.t,cable:C.len|0}; startChapter(3); } }
+  function expoDraw(g){ drawBase(g,X.power); drawWalls(g);
+    g.fillStyle=X.power?'#2ecc71':'#e67e22'; g.fillRect(GF.panel.x,GF.panel.y,GF.panel.w,GF.panel.h); label(g,GF.panel.x+13,GF.panel.y+30,X.power?'power ON':`breakers ${3-X.breakersLeft}/3 (high)`,8,X.power?'#2ecc71':'#e67e22');
+    g.fillStyle='#8a8f99'; g.fillRect(GF.rack.x,GF.rack.y,GF.rack.w,GF.rack.h); label(g,GF.rack.x+10,GF.rack.y-6,'network rack',8,'#9aa0ab');
+    g.fillStyle=X.cable.connected?'#2ecc71':'#c9a227'; g.fillRect(GF.printer.x,GF.printer.y,GF.printer.w,GF.printer.h); label(g,GF.printer.x+10,GF.printer.y+24,X.cable.connected?'printer online':'badge printer (no network)',8,X.cable.connected?'#2ecc71':'#c9a227');
+    const C=X.cable; if(C.pts.length>1||C.connected){ g.strokeStyle='#ffd27a'; g.lineWidth=2; g.beginPath(); C.pts.forEach((p,i)=>i?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y)); if(C.carrying){ const v=byKind('voxxy'); g.lineTo(v.x,v.y); } g.stroke(); g.lineWidth=1; }
+    if(!X.rollerBroken){ label(g,GF.roller.x-34,GF.roller.y+GF.roller.h+12,'roller door',8,'#e8a49a'); g.strokeStyle='rgba(255,179,71,.25)'; g.setLineDash([8,10]); g.beginPath(); g.moveTo(370,160); g.lineTo(GF.roller.x-4,160); g.stroke(); g.setLineDash([]); label(g,620,150,'run-up lane → (Voxxy pushes Biggy)',8,'rgba(255,179,71,.5)'); }
+    minigamesDraw(g);
+    if(!X.power){ const mg=X.mg; mg.globalCompositeOperation='source-over'; mg.clearRect(0,0,W,H); mg.fillStyle='rgba(0,0,0,.8)'; mg.fillRect(0,0,W,H); mg.globalCompositeOperation='destination-out';
+      for(const b of bots){ if(b.mounted) continue; const rr=b.light.range*0.6; const grd=mg.createRadialGradient(b.x,b.y,4,b.x,b.y,rr); grd.addColorStop(0,'rgba(0,0,0,1)'); grd.addColorStop(1,'rgba(0,0,0,0)'); mg.fillStyle=grd; mg.beginPath(); mg.arc(b.x,b.y,rr,0,7); mg.fill(); }
+      for(const p of [X.panel,X.rack,X.printer]){ const grd=mg.createRadialGradient(p.x,p.y,2,p.x,p.y,50); grd.addColorStop(0,'rgba(0,0,0,.9)'); grd.addColorStop(1,'rgba(0,0,0,0)'); mg.fillStyle=grd; mg.beginPath(); mg.arc(p.x,p.y,50,0,7); mg.fill(); }
+      g.drawImage(X.mask,0,0); }
+    drawBots(g);
+    if(C.carrying) bar(g,C.len/C.MAX,C.len/C.MAX<0.7?'#2ecc71':C.len/C.MAX<0.9?'#e67e22':'#c0392b',`cable ${C.len|0} / ${C.MAX} px`);
+    hud(g,`expo · ${S.t.toFixed(0)}s · power ${X.power?'✓':'…'} · network ${C.connected?'✓':C.carrying?'running…':'…'} · badges ${X.rollerBroken?'✓':'locked in the store'} · swag ${S.swag.length}/3`); }
+
+  // ================================================================ CHAPTER 3 — LUNCH (ground floor, doors open)
+  const L={};
+  function setupLunch(){
+    S.floor='down'; S.view=VIEW_GROUND; setWalls(groundWalls()); place([600,215],[630,215],[660,215]);
+    X.gate=X.gate||{...GF.gate,kind:'gate'}; X.gate.why=bb=>`${bb.name}: Stephan, at the gate: "The rooms open when I say so. And I say nothing before my soup."`; walls.push(X.gate);
+    if(!MG.duck) setupMinigames();
+    const f=GF.food; L.station={x:f.soup.x+45,y:f.soup.y+15}; L.shelf={x:f.shelf.x+11,y:f.shelf.y+8}; L.ladle=false; L.carrying=false; L.soup=100; L.temp=100; L.delivered=false; L.complaints=0;
+    L.queues=[]; const mkQueue=(x0,n,lbl)=>{ const q={label:lbl,people:[],open:0,x:x0}; for(let i=0;i<n;i++){ const y=f.court.y+f.court.h-10-i*16; q.people.push({x:x0+((i%2)?5:-5),y,hx:x0+((i%2)?5:-5),r:6,color:['#b9a58c','#8c9bb9','#b98c8c','#9bb98c'][(i*7)%4]}); } L.queues.push(q); };
+    mkQueue(102,7,'soup queue'); mkQueue(232,6,'sandwich queue'); mkQueue(307,7,'coffee queue');
+    L.npcs=[{x:1010,y:300,name:'a speaker',line:'The keynote speaker? Hiding from the queues at a sponsor booth. One of the built ones, with walls.'},{x:1200,y:470,name:'JUG leader',line:'Stephan is at the main staircase, arms crossed. He is not opening it before his soup.'},{x:370,y:215,name:'Devoxx crew',line:'Mind the coffee queue with that pot. It bites.'}];
+    const built=GF.booths.filter(b=>!b.table); L.hideBooth=built[(Math.random()*built.length)|0]; const hb=L.hideBooth;
+    L.speaker={x:hb.x+hb.w/2,y:hb.y+hb.h+14,r:7,following:false,onStage:false};
+    const m=GF.mainStair; L.stephan={x:m.x-36,y:m.y+m.h/2,r:8}; L.stage={x:m.x-120,y:m.y+40,w:100,h:120};
+    L.crowd=[]; L.N=36; L.spawnT=0;
+    setObjective('Chapter 3 · <b>Lunch</b>. The main entrance is open and 3,000 people walk in. <b>Stephan</b> stands at the main staircase and wants his <b>tomato soup</b> and the <b>keynote speaker</b> before he opens it. Droid: the ladle is on the high shelf. Biggy: carry the pot (bumps spill it, and it cools). Voxxy: clear a catering queue (E), find the speaker at a built booth. Booth games still count as swag.','1/2/3/Tab: switch · WASD · E: use / ask / clear a queue · R: restart');
+    card(`<b>Power, network, badges.</b> The main entrance opens… and it's already lunchtime.<small>Press any key</small>`);
+  }
+  function spill(amount,why){ if(!L.carrying||L.delivered) return; L.soup=Math.max(0,L.soup-amount); flash(`Splash — ${why} (${L.soup|0}% left)`); if(L.soup<=0){ S.phase='done'; showMsg('The pot is empty. Stephan gets a napkin.<small>R to try again · or Skip chapter</small>'); } }
+  function lunchKey(c){ const b=bots[cur], d=byKind('droid'), bg=byKind('biggy'), v=byKind('voxxy'); switchKey(c); if(c!=='KeyE') return; if(minigamesKey(c,b)) return;
+    if(b.kind==='droid'){ if(!L.ladle && dist(d,L.shelf)<45){ L.ladle=true; flash('Droid reaches the high shelf — ladle secured'); return; } flash('Droid: nothing to reach here'); return; }
+    if(b.kind==='biggy'){ if(!L.carrying && dist(bg,L.station)<70){ if(!L.ladle){ flash('Biggy: no ladle. Droid, the shelf!'); return; } L.carrying=true; L.pickupT=S.t; flash('Biggy has the pot. Careful — it can\'t stop and the soup can\'t either.'); return; }
+      if(L.carrying && !L.delivered && inRect(bg,L.stage)){ L.delivered=true; S.log.push(`soup ${L.soup|0}% at ${L.temp|0}°`); flash(`Stephan: "${L.soup>70?'Finally! Still hot.':L.soup>35?'Half a bowl. It\'s… something.':'Is this a bowl or a hint?'}"`,4000); return; } flash('Biggy: nothing to pick up here'); return; }
+    if(b.kind==='voxxy'){ const q=L.queues.find(q=>Math.abs(v.x-q.x)<50&&v.y<300); if(q&&q.open<=0){ q.open=5; flash(`Voxxy: "Excuse me — soup coming through!" — the ${q.label} makes way for 5s`); return; }
+      const n=L.npcs.find(n=>dist(n,v)<40); if(n){ flash(`${n.name}: "${n.line}"`,4500); return; }
+      if(!L.speaker.following && dist(L.speaker,v)<40){ L.speaker.following=true; S.log.push(`speaker found at ${L.hideBooth.name}`); flash('Keynote speaker: "Oh! Is it time? Lead the way."'); return; } flash('Voxxy: nobody to talk to here'); } }
+  const nearestNode=(x,y)=>({x:GF.laneX.reduce((a,b)=>Math.abs(b-x)<Math.abs(a-x)?b:a),y:GF.laneY.reduce((a,b)=>Math.abs(b-y)<Math.abs(a-y)?b:a)});
+  function spawnVisitor(){ const a={x:W-16,y:430+Math.random()*30,vx:0,vy:0,r:5,mass:0.5,speed:60+Math.random()*40,color:['#b9a58c','#8c9bb9','#c98c8c','#9bb98c'][(Math.random()*4)|0],route:[{x:1700,y:445},{x:1250,y:445},{x:1060,y:420},{x:1010,y:420}],dwell:0}; L.crowd.push(a); }
+  function stepVisitor(a,dt){ if(a.dwell>0){ a.dwell-=dt; a.vx*=0.8; a.vy*=0.8; return; }
+    if(!a.route.length){ const n=nearestNode(a.x,a.y); const xi=GF.laneX.indexOf(n.x), yi=GF.laneY.indexOf(n.y); const opts=[]; if(xi>0) opts.push({x:GF.laneX[xi-1],y:n.y}); if(xi<GF.laneX.length-1) opts.push({x:GF.laneX[xi+1],y:n.y}); if(yi>0) opts.push({x:n.x,y:GF.laneY[yi-1]}); if(yi<GF.laneY.length-1) opts.push({x:n.x,y:GF.laneY[yi+1]}); a.route.push(opts[(Math.random()*opts.length)|0]); a.dwell=Math.random()*2; }
+    const t=a.route[0]; const dx=t.x-a.x, dy=t.y-a.y, d=Math.hypot(dx,dy); if(d<5){ a.route.shift(); return; }
+    let blocked=false; for(const o of L.crowd){ if(o===a) continue; const ox=o.x-a.x, oy=o.y-a.y, od=Math.hypot(ox,oy); if(od<12 && (ox*dx+oy*dy)/(od*d)>0.6){ blocked=true; break; } }
+    const spd=blocked?0:a.speed; const k=1-Math.exp(-8*dt); a.vx+=(dx/d*spd-a.vx)*k; a.vy+=(dy/d*spd-a.vy)*k; a.x+=a.vx*dt; a.y+=a.vy*dt; }
+  function lunchUpdate(dt){
+    pushBiggy(dt); minigamesUpdate(dt); stepAll(dt,{afterStep:(b,before)=>{ if(b.kind==='biggy'&&L.carrying&&!L.delivered){ const dv=Math.hypot(b.vx-before.vx,b.vy-before.vy); const sp=Math.hypot(before.vx,before.vy); if(dv>90&&sp>60) spill(Math.min(25,sp/10),'Biggy hit something'); } }});
+    L.spawnT+=dt; if(L.crowd.length<L.N&&L.spawnT>0.9){ L.spawnT=0; spawnVisitor(); }
+    for(const a of L.crowd){ stepVisitor(a,dt); for(const b of bots){ if(b.mounted) continue; const hit=botsCollide(a,b,0.2); if(hit&&hit.rv>110&&!a.hitCd){ a.hitCd=1.5; L.complaints++; if(b.kind==='biggy'&&L.carrying&&!L.delivered) spill(4,'bumped into an attendee'); else flash(`${b.name} bowled over an attendee (${L.complaints})`); } } if(a.hitCd) a.hitCd=Math.max(0,a.hitCd-dt); }
+    for(const q of L.queues){ q.open=Math.max(0,q.open-dt); for(const p of q.people){ const tx=q.open>0?p.hx-30:p.hx; p.x+=(tx-p.x)*Math.min(1,dt*6); }
+      for(const p of q.people) for(const b of bots){ if(b.braced||b.mounted) continue; const dx=b.x-p.x, dy=b.y-p.y, dd=Math.hypot(dx,dy), min=b.r+p.r; if(dd<min&&dd>0){ const nx=dx/dd, ny=dy/dd; b.x+=nx*(min-dd); b.y+=ny*(min-dd); const vn=b.vx*nx+b.vy*ny; if(vn<0){ b.vx-=vn*nx*1.2; b.vy-=vn*ny*1.2; } if(b.kind==='biggy'&&!p.cd&&Math.hypot(b.vx,b.vy)>40){ p.cd=1; L.complaints++; if(L.carrying&&!L.delivered) spill(4,'bumped into the queue'); else flash(`Biggy shoved the ${q.label} (${L.complaints})`); } } if(p.cd) p.cd=Math.max(0,p.cd-dt); } }
+    if(L.carrying&&!L.delivered){ L.temp=Math.max(0,100-(S.t-L.pickupT)/1.5); if(L.temp<=0){ S.phase='done'; showMsg('Stone cold. Stephan drinks it anyway, out of politeness.<small>R to try again · or Skip chapter</small>'); } }
+    const sp=L.speaker; if(sp.following&&!sp.onStage){ const v=byKind('voxxy'); const tgt=inRect(v,L.stage)?{x:L.stage.x+30,y:L.stage.y+30}:{x:v.x,y:v.y}; const dx=tgt.x-sp.x, dy=tgt.y-sp.y, dd=Math.hypot(dx,dy); if(dd>22){ sp.x+=dx/dd*150*dt; sp.y+=dy/dd*150*dt; for(const w of walls){ if(w.low) continue; const hit=circleRect(sp,w); if(hit){ sp.x+=hit.nx*hit.pen; sp.y+=hit.ny*hit.pen; } } }
+      if(inRect(sp,L.stage)){ sp.onStage=true; flash('Keynote speaker: "Stephan! Sorry — the queues."'); } }
+    if(L.delivered&&sp.onStage&&S.phase==='play'){ S.score.lunch={soup:L.soup|0,temp:L.temp|0,complaints:L.complaints,t:S.t}; lunchDone(); } }
+  function lunchDone(){ const i=walls.indexOf(X.gate); if(i>=0) walls.splice(i,1); flash('Stephan: "Soup. Speaker. Fine — open the stairs." Up the main staircase',4000);
+    const m=GF.mainStair; const route=(dy)=>[{x:m.x-40,y:m.y+m.h/2+dy},{x:m.x+40,y:m.y+m.h/2+dy},{x:m.x+m.w-40,y:m.y+m.h/2+dy}];
+    startCut({voxxy:route(-30),droid:route(0),biggy:route(30)},()=>startChapter(4),VIEW_GROUND); }
+  function lunchDraw(g){ drawBase(g,true); drawWalls(g);
+    if(!L.carrying){ g.fillStyle='#c0392b'; g.beginPath(); g.arc(L.station.x,L.station.y,11,0,7); g.fill(); } label(g,L.station.x,L.station.y+30,'TOMATO SOUP',9,'#ffb347'); label(g,GF.food.sandwich.x+35,GF.food.sandwich.y+42,'sandwiches',8,'#c9c6bf'); label(g,GF.food.coffee.x+22,GF.food.coffee.y+42,'coffee',8,'#c9c6bf');
+    g.fillStyle=L.ladle?'#555':'#c9a227'; g.fillRect(GF.food.shelf.x,GF.food.shelf.y,GF.food.shelf.w,GF.food.shelf.h); label(g,L.shelf.x,GF.food.shelf.y+28,L.ladle?'shelf':'ladle (high)',8,'#c9a227');
+    for(const q of L.queues){ for(const p of q.people){ g.fillStyle=p.color; g.beginPath(); g.arc(p.x,p.y,p.r,0,7); g.fill(); } label(g,q.x,GF.food.court.y+GF.food.court.h+14,q.label+(q.open>0?' — making way':''),8,q.open>0?'#2ecc71':'#9aa0ab'); }
+    minigamesDraw(g);
+    for(const a of L.crowd){ g.fillStyle=a.color; g.beginPath(); g.arc(a.x,a.y,a.r,0,7); g.fill(); }
+    for(const n of L.npcs) drawPerson(g,n,n.name,'#d9c3a5');
+    g.strokeStyle='#ffb347'; g.setLineDash([6,4]); g.strokeRect(L.stage.x,L.stage.y,L.stage.w,L.stage.h); g.setLineDash([]); label(g,L.stage.x+L.stage.w/2,L.stage.y-6,'bring the soup here',9,'#ffb347');
+    drawPerson(g,L.stephan,'Stephan','#e8d5b5',true);
+    const sp=L.speaker; if(sp.following||dist(byKind('voxxy'),sp)<90){ g.fillStyle='#f0e0c0'; g.beginPath(); g.arc(sp.x,sp.y,sp.r,0,7); g.fill(); g.fillStyle='#c0392b'; g.fillRect(sp.x-5,sp.y+8,10,3); label(g,sp.x,sp.y-12,'keynote speaker (TBA)',9,'#ffd27a'); }
+    drawBots(g); const bg=byKind('biggy'); if(L.carrying&&!L.delivered){ g.fillStyle='#8a8f99'; g.beginPath(); g.arc(bg.x,bg.y-bg.r-8,10,0,7); g.fill(); g.fillStyle='#c0392b'; g.beginPath(); g.arc(bg.x,bg.y-bg.r-8,8*Math.sqrt(L.soup/100),0,7); g.fill(); }
+    if(S.phase==='cut') label(g,GF.mainStair.x+GF.mainStair.w/2,GF.mainStair.y-30,'up the main staircase…',12,'#ffd27a');
+    hud(g,`lunch · ${S.t.toFixed(0)}s · ladle ${L.ladle?'✓':'…'} · soup ${L.carrying?(L.delivered?'delivered':L.soup.toFixed(0)+'%'):'at the station'} · temp ${L.carrying?L.temp.toFixed(0)+'°':'—'} · speaker ${sp.onStage?'with Stephan':sp.following?'following Voxxy':'hiding'} · complaints ${L.complaints} · swag ${S.swag.length}/3`);
+    if(L.carrying&&!L.delivered) bar(g,L.temp/100,L.temp>50?'#e67e22':L.temp>25?'#c0392b':'#6b7280'); }
+
+  // ================================================================ CHAPTER 4 — KEYNOTE (first floor, Devoxx section; Room 8 is on the top row: stage at the top, door on the corridor)
+  const K={};
+  function setupKeynote(){
+    S.floor='up'; S.view=VIEW_DEVOXX; setWalls(floor1Walls()); const m=F1.mainStair; place([m.x-30,330],[m.x-30,356],[m.x-24,380]);
+    walls.push({x:F1.fireX,y:CY0,w:14,h:CY1-CY0,kind:'firedoor',why:b=>`${b.name}: the fire door is shut again — the cinema section is closed to the public`}); walls.push({x:0,y:CY0,w:F1.fireX,h:CY1-CY0,hidden:true});
+    if(!L.stephan) L.stephan={r:8}; const cx=r8.x+r8.w/2, top=r8.y; L.stephan.x=cx+40; L.stephan.y=top+30; L.speakerOn={x:cx+70,y:top+30,r:7};
+    K.A8=[[r8.x+90,r8.x+140],[r8.x+235,r8.x+285]]; K.blocks=[[r8.x,K.A8[0][0]],[K.A8[0][1],K.A8[1][0]],[K.A8[1][1],r8.x+r8.w]]; K.seatY0=top+70, K.seatY1=top+200;
+    for(const [x0,x1] of K.blocks) walls.push({x:x0,y:K.seatY0,w:x1-x0,h:K.seatY1-K.seatY0,low:true,block:true,why:b=>`${b.name}: seats. Use the aisles`});
+    K.crate=Object.assign(mkBot('biggy',d8.cx+130,350),{kind:'crate',name:'cake',r:17,mass:20,drag:2.2,accel:0,max:160,light:{c:[0,0,0],type:'pool',range:1}});
+    K.stage={x:cx-110,y:top+6,w:220,h:50}; K.crateMark={x:cx-100,y:top+12,w:44,h:34}; K.hooks=[{x:r8.x+16,y:top+18,done:false},{x:r8.x+r8.w-16,y:top+18,done:false}];
+    K.spots=[{x:K.A8[0][0]+25,y:K.seatY1-20},{x:K.A8[1][0]+25,y:K.seatY1-20},{x:K.A8[1][0]+25,y:K.seatY0+20},{x:K.A8[0][0]+25,y:K.seatY0+20}].map((p,i)=>({...p,n:i+1,on:false})); K.nextSpot=1;
+    K.seats=[]; for(const [x0,x1] of K.blocks) for(let y=K.seatY0+11;y<K.seatY1-5;y+=18) for(let x=x0+10;x<x1-6;x+=14) K.seats.push({x,y,taken:false});
+    const aisleDist=x=>Math.min(...K.A8.map(a=>Math.abs(x-(a[0]+a[1])/2))); K.seats.forEach(s=>{ s.order=s.y*3+aisleDist(s.x)*0.6+Math.random()*30; }); K.seats.sort((a,b)=>a.order-b.order);
+    K.crowd=[]; K.N=Math.min(84,K.seats.length); K.HEAD=14; K.ARRIVAL=80; K.t=0; K.complaints=0; K.seated=0; K.ready=false;
+    setObjective(`Chapter 4 · <b>Keynote</b>. Top of the main staircase — the crowd is right behind you: first attendees in ${K.HEAD}s, ${K.ARRIVAL}s to fill Room 8, front rows first. Before they sit: <b>Biggy</b> pushes the cake onto the stage, <b>Droid</b> hangs the banner (E at both hooks), <b>Voxxy</b> lights spotlights 1→4. Then <b>all three on stage</b> with Stephan and the speaker.`,'1/2/3/Tab: switch · WASD · E: use · R: restart');
+    card(`<b>Up the main staircase.</b><br><span style="font-size:15px">Room 8 has to be ready before 746 people sit down — and the cake is still in the corridor.</span><small>Press any key</small>`);
+  }
+  function spawnAttendee(){ const seat=K.seats.find(s=>!s.taken); if(!seat) return; seat.taken=true; K.crowd.push({x:F1.mainStair.x+20,y:CY0+30+Math.random()*40,vx:0,vy:0,r:5,mass:0.5,seat,stage:0,speed:70+Math.random()*40,color:['#b9a58c','#8c9bb9','#b98c8c','#9bb98c'][(Math.random()*4)|0]}); }
+  function stepAttendee(a,dt){ let tx,ty; if(a.seated) return; const inY=r8.y+r8.h-30;
+    if(a.stage===0){ tx=d8.cx; ty=CY0+50; if(Math.abs(a.x-tx)<6) a.stage=1; }
+    else if(a.stage===1){ tx=d8.cx; ty=inY; if(a.y<inY+6) a.stage=2; }
+    else if(a.stage===2){ const ax=(a.seat.x<K.A8[1][0])?K.A8[0][0]+25:K.A8[1][0]+25; tx=ax; ty=inY; if(Math.abs(a.x-tx)<6){ a.stage=3; a.ax=ax; } }
+    else if(a.stage===3){ tx=a.ax; ty=a.seat.y; if(Math.abs(a.y-ty)<6) a.stage=4; }
+    else { tx=a.seat.x; ty=a.seat.y; if(Math.hypot(a.x-tx,a.y-ty)<4){ a.seated=true; K.seated++; return; } }
+    const dx=tx-a.x, dy=ty-a.y, d=Math.hypot(dx,dy)||1; let blocked=false; for(const o of K.crowd){ if(o===a||o.seated) continue; const ox=o.x-a.x, oy=o.y-a.y, od=Math.hypot(ox,oy); if(od<13 && (ox*dx+oy*dy)/(od*d)>0.5){ blocked=true; break; } }
+    const spd=blocked?0:a.speed; const k=1-Math.exp(-8*dt); a.vx+=(dx/d*spd-a.vx)*k; a.vy+=(dy/d*spd-a.vy)*k; a.x+=a.vx*dt; a.y+=a.vy*dt;
+    if(a.stage<4) for(const w of walls){ if(w.low||w.hidden) continue; const hit=circleRect(a,w); if(hit){ a.x+=hit.nx*hit.pen; a.y+=hit.ny*hit.pen; } } }
+  const jobsDone=()=>inRect(K.crate,K.crateMark)&&K.hooks.every(h=>h.done)&&K.spots.every(s=>s.on);
+  const allOnStage=()=>bots.every(b=>inRect(b,K.stage));
+  function keynoteKey(c){ const b=bots[cur]; switchKey(c);
+    if(c==='KeyE'&&b.kind==='droid'){ const h=K.hooks.find(h=>!h.done&&dist(h,b)<45); if(h){ h.done=true; flash(K.hooks.every(h=>h.done)?'Banner up!':'One hook done — now the other end'); } } }
+  function keynoteUpdate(dt){ K.t+=dt; stepAll(dt); pushBiggy(dt); const bg=byKind('biggy'), v=byKind('voxxy');
+    stepBot(K.crate,dt,walls); for(const b of bots) botsCollide(b,K.crate,0.1);
+    { const dx=K.crate.x-bg.x, dy=K.crate.y-bg.y, dd=Math.hypot(dx,dy); if(dd>0){ const nx=dx/dd, ny=dy/dd; const lean=bg.ix*nx+bg.iy*ny; if(dd<bg.r+K.crate.r+6&&lean>0.3){ K.crate.vx+=nx*lean*900*dt; K.crate.vy+=ny*lean*900*dt; } } }
+    const sp=K.spots.find(s=>s.n===K.nextSpot); if(sp&&dist(sp,v)<22){ sp.on=true; K.nextSpot++; flash(`Spotlight ${sp.n} on`); }
+    const due=Math.min(K.N,Math.floor(Math.max(0,K.t-K.HEAD)/K.ARRIVAL*K.N)); while(K.crowd.length<due) spawnAttendee();
+    for(const a of K.crowd){ stepAttendee(a,dt); if(a.seated) continue;
+      { const hit=botsCollide(a,K.crate,0.1); if(hit&&Math.hypot(K.crate.vx,K.crate.vy)>25&&!a.hitCd){ K.complaints++; a.hitCd=1.5; flash(`The cake crate shoved an attendee (${K.complaints})`); } }
+      for(const b of bots){ if(b.mounted) continue; const hit=botsCollide(a,b,0.2); if(hit&&hit.rv>120&&!a.hitCd){ K.complaints++; a.hitCd=1.5; flash(`${b.name} bowled over an attendee (${K.complaints})`); } }
+      if(a.hitCd) a.hitCd=Math.max(0,a.hitCd-dt); }
+    const full=K.crowd.length>=K.N && K.crowd.every(a=>a.seated);
+    if(!K.ready&&jobsDone()){ K.ready=true; K.spare=Math.max(0,K.HEAD+K.ARRIVAL-K.t); flash('Stage ready! Now all three of you — on stage with Stephan and the speaker',4000); setObjective('Chapter 4 · <b>Keynote</b>. Stage ready. <b>Get all three robots on the stage</b> — Stephan and the speaker are waiting.','1/2/3/Tab: switch · WASD'); }
+    if(K.ready&&allOnStage()){ S.phase='done'; S.score.keynote={spare:K.spare|0,complaints:K.complaints,late:full}; finalCard(); }
+    else if(full&&!K.ready){ S.phase='done'; showMsg(`The room is full and the stage isn't ready.<small>cake ${inRect(K.crate,K.crateMark)?'✓':'✗'} · banner ${K.hooks.filter(h=>h.done).length}/2 · spotlights ${K.spots.filter(s=>s.on).length}/4 · R to try again · or Skip chapter</small>`); } }
+  function keynoteDraw(g){ drawBase(g,true);
+    for(const [x0,x1] of K.blocks){ g.fillStyle='#2f2a3d'; g.fillRect(x0,K.seatY0,x1-x0,K.seatY1-K.seatY0); g.strokeStyle='#4a4560'; for(let y=K.seatY0+11;y<K.seatY1-5;y+=18){ g.beginPath(); g.moveTo(x0+6,y+6); g.lineTo(x1-6,y+6); g.stroke(); } }
+    for(const a of K.crowd){ if(!a.seated) continue; g.fillStyle=a.color; g.beginPath(); g.arc(a.seat.x,a.seat.y,4,0,7); g.fill(); }
+    drawWalls(g);
+    g.strokeStyle=K.ready?'#2ecc71':'#ffb347'; g.setLineDash([6,4]); g.strokeRect(K.stage.x,K.stage.y,K.stage.w,K.stage.h); g.setLineDash([]); label(g,K.stage.x+K.stage.w/2,K.stage.y+K.stage.h+12,K.ready?'EVERYONE ON STAGE':'STAGE',10,K.ready?'#2ecc71':'#ffb347');
+    g.strokeStyle=inRect(K.crate,K.crateMark)?'#2ecc71':'#ffb347'; g.setLineDash([3,3]); g.strokeRect(K.crateMark.x,K.crateMark.y,K.crateMark.w,K.crateMark.h); g.setLineDash([]); label(g,K.crateMark.x+22,K.crateMark.y+K.crateMark.h+10,'cake',9,'#ffb347');
+    for(const h of K.hooks){ g.fillStyle=h.done?'#2ecc71':'#e67e22'; g.fillRect(h.x-5,h.y-5,10,10); }
+    if(K.hooks.every(h=>h.done)){ g.fillStyle='#c0392b'; g.fillRect(K.hooks[0].x,K.hooks[0].y-3,K.hooks[1].x-K.hooks[0].x,6); label(g,r8.x+r8.w/2,K.hooks[0].y-8,'HAPPY DEVOXX',11,'#fff'); }
+    for(const s of K.spots){ g.fillStyle=s.on?'#ffd27a':(s.n===K.nextSpot?'#c9a227':'#555'); g.beginPath(); g.arc(s.x,s.y,8,0,7); g.fill(); label(g,s.x,s.y+4,s.n,10,'#1a1a1a'); }
+    const c=K.crate; g.fillStyle='#8e6b3a'; g.fillRect(c.x-c.r,c.y-c.r,c.r*2,c.r*2); g.strokeStyle='#c49a5c'; g.strokeRect(c.x-c.r+4,c.y-c.r+4,c.r*2-8,c.r*2-8); label(g,c.x,c.y+4,'CAKE',10,'#f4e4c8');
+    for(const a of K.crowd){ if(a.seated) continue; g.fillStyle=a.color; g.beginPath(); g.arc(a.x,a.y,a.r,0,7); g.fill(); }
+    drawPerson(g,L.stephan,'Stephan','#e8d5b5',true); const sk=L.speakerOn; g.fillStyle='#f0e0c0'; g.beginPath(); g.arc(sk.x,sk.y,sk.r,0,7); g.fill(); g.fillStyle='#c0392b'; g.fillRect(sk.x-5,sk.y+8,10,3); label(g,sk.x,sk.y-12,'speaker',9,'#ffd27a');
+    drawBots(g);
+    const prog=Math.min(1,Math.max(0,(K.t-K.HEAD)/K.ARRIVAL)); hud(g,`keynote · cake ${inRect(K.crate,K.crateMark)?'✓':'…'} · banner ${K.hooks.filter(h=>h.done).length}/2 · spotlights ${K.spots.filter(s=>s.on).length}/4 · complaints ${K.complaints}${K.ready?' · on stage '+bots.filter(b=>inRect(b,K.stage)).length+'/3':''}`);
+    bar(g,prog,prog<0.7?'#2ecc71':prog<0.9?'#e67e22':'#c0392b',K.t<K.HEAD?`attendees arrive in ${(K.HEAD-K.t).toFixed(0)}s`:`seated ${K.seated}/${K.N}`); }
+
+  // ================================================================ chapter plumbing + skip
+  const CH={1:{setup:setupNight,key:nightKey,update:nightUpdate,draw:nightDraw},2:{setup:setupExpo,key:expoKey,update:expoUpdate,draw:expoDraw},3:{setup:setupLunch,key:lunchKey,update:lunchUpdate,draw:lunchDraw},4:{setup:setupKeynote,key:keynoteKey,update:keynoteUpdate,draw:keynoteDraw}};
+  function startChapter(n){ S.chapter=n; S.phase='play'; cur=0; toast=null; S.blockedAt.clear(); CH[n].setup(); }
+  function skipChapter(){ const n=S.chapter; S.pause=false; hideMsg(); if(n===0){ startChapter(1); return; }
+    if(S.phase==='cut'){ S.fade=1; CUT.next(); return; }
+    S.skipped.push(n); const sc=S.score; if(n===1) sc.night=sc.night||{t:S.t}; if(n===2) sc.expo=sc.expo||{t:S.t,cable:0}; if(n===3) sc.lunch=sc.lunch||{soup:100,temp:100,complaints:0,t:S.t}; if(n===4) sc.keynote=sc.keynote||{spare:0,complaints:0};
+    if(n<4) startChapter(n+1); else { S.phase='done'; finalCard(); } }
+  function finalCard(){ const n=S.score.night, x=S.score.expo, l=S.score.lunch, k=S.score.keynote; const pts=Math.max(1,Math.min(9,Math.round(3+(l?l.soup/100*2+l.temp/100:0)+(k?k.spare/40:0)-((l?l.complaints:0)+(k?k.complaints:0))*0.3+S.swag.length*0.5))); const sk=S.skipped.length?` · skipped: ${S.skipped.join(', ')}`:'';
+    showMsg(`<b>Keynote starts.</b> ${pts}/9<br><span style="font-size:14px">Night ${n.t|0}s · Expo ${x?(x.t-n.t)|0:0}s (cable ${x?x.cable:0} px) · Soup ${l.soup}% at ${l.temp}° (${l.complaints} complaint${l.complaints===1?'':'s'}) · Stage ready with ${k.spare}s to spare (${k.complaints} complaint${k.complaints===1?'':'s'}) · Swag ${S.swag.length}/3 · Total ${S.t.toFixed(0)}s${sk}</span><small>R to play again</small>`); }
+  setObjective('<b>After Dark</b> — the night before Devoxx, a power cut, three robots, two floors of Kinepolis and one keynote to save.','Press any key to start · 1/2/3/Tab: switch · WASD: move · E: use · Skip chapter: top right');
+  card(`<b>AFTER DARK</b><br><span style="font-size:15px">Kinepolis Antwerp, the night before Devoxx. The entrance is shut, the power is out in the closed cinema section, and somewhere a keynote has to happen tomorrow.<br>Three robots. Two floors. Four chapters.</span><small>Press any key</small>`);
+  return { bots, walls, S, N, X, L, K, MG, get cur(){return cur;}, startChapter, skipChapter, view(){ return S.view; }, get fade(){ return S.fade; },
+    key(c){ if(S.pause){ S.pause=false; hideMsg(); if(S.chapter===0) startChapter(1); return; }
+      if(c==='KeyR'){ load(); return; }
+      if(S.phase!=='play') return;
+      if(c==='Tab'){ do{ cur=(cur+1)%3; }while(bots[cur].mounted); }
+      CH[S.chapter].key(c); },
+    update(dt){ fadeIn(dt); if(S.pause) return; if(S.phase==='cut'){ S.t+=dt; cutUpdate(dt); return; } if(S.phase!=='play') return; S.t+=dt; CH[S.chapter].update(dt); },
+    draw(g){ if(S.chapter===0){ g.fillStyle='#0b0c10'; g.fillRect(0,0,W,H); return; } CH[S.chapter].draw(g);
+      const v=S.view; g.fillStyle='#6b7280'; g.font='12px system-ui'; g.textAlign='right'; g.fillText(CHAPTER_TITLES[S.chapter],v.x+v.w-20,v.y+v.h-16); g.textAlign='left'; } };
+}
+// =============================================================== drawing helpers
+function label(g,x,y,t,size,color){ g.fillStyle=color||'#e8e6e1'; g.font=`${size||11}px system-ui`; g.textAlign='center'; g.fillText(t,x,y); }
+function drawBot(g,b,active){
+  const t=performance.now()/1000;
+  g.fillStyle='rgba(0,0,0,.35)'; g.beginPath(); g.ellipse(b.x+(b.tall?10:4), b.y+(b.tall?8:4), b.r*(b.tall?1.5:1.1), b.r*(b.tall?1.0:0.8),0,0,7); g.fill();
+  const sp=Math.hypot(b.vx,b.vy); const st=Math.sin(b.anim*6)*(sp>5?1:0);
+  g.fillStyle='#222'; const fx=Math.cos(b.face+Math.PI/2)*b.r*0.55, fy=Math.sin(b.face+Math.PI/2)*b.r*0.55, ax=Math.cos(b.face)*st*b.r*0.4, ay=Math.sin(b.face)*st*b.r*0.4;
+  g.beginPath(); g.arc(b.x+fx+ax,b.y+fy+ay,b.r*0.3,0,7); g.fill(); g.beginPath(); g.arc(b.x-fx-ax,b.y-fy-ay,b.r*0.3,0,7); g.fill();
+  g.fillStyle=b.color; g.beginPath(); g.arc(b.x,b.y,b.r,0,7); g.fill();
+  if(b.belly){ g.fillStyle=b.belly; g.beginPath(); g.arc(b.x+Math.cos(b.face)*b.r*0.25,b.y+Math.sin(b.face)*b.r*0.25,b.r*0.5,0,7); g.fill(); }
+  if(b.kind==='droid'){ g.strokeStyle='#8a9099'; g.lineWidth=2; g.beginPath(); g.arc(b.x,b.y,b.r*0.62,0,7); g.stroke(); g.lineWidth=1; }
+  if(b.kind==='voxxy'){ g.strokeStyle='#ff9a4a'; g.lineWidth=3; for(const s of [-1,1]){ const a=b.face+s*Math.PI/2; const sw=Math.sin(b.anim*6)*s*0.5*(sp>5?1:0.15); g.beginPath(); g.moveTo(b.x+Math.cos(a)*b.r*0.8,b.y+Math.sin(a)*b.r*0.8); g.lineTo(b.x+Math.cos(a)*b.r*1.6+Math.cos(b.face)*sw*14,b.y+Math.sin(a)*b.r*1.6+Math.sin(b.face)*sw*14); g.stroke(); } g.lineWidth=1; }
+  const ex=Math.cos(b.face)*b.r*0.55, ey=Math.sin(b.face)*b.r*0.55, px=Math.cos(b.face+Math.PI/2)*b.r*0.3, py=Math.sin(b.face+Math.PI/2)*b.r*0.3;
+  g.fillStyle=b.eye; g.shadowColor=b.eye; g.shadowBlur=8; g.beginPath(); g.arc(b.x+ex+px,b.y+ey+py,b.r*0.16,0,7); g.arc(b.x+ex-px,b.y+ey-py,b.r*0.16,0,7); g.fill(); g.shadowBlur=0;
+  if(active){ g.strokeStyle='#fff'; g.setLineDash([3,3]); g.beginPath(); g.arc(b.x,b.y,b.r+5+Math.sin(t*4)*1.5,0,7); g.stroke(); g.setLineDash([]); }
+  label(g,b.x,b.y-b.r-8,b.name,10);
+}
+// =============================================================== loop (camera follows the chapter's view rect)
+const cv=document.getElementById('c'), g=cv.getContext('2d'); let scale=1, ox=0, oy=0, view={x:0,y:0,w:W,h:H};
+function resize(){ const hud=document.getElementById('hud').offsetHeight; cv.width=innerWidth; cv.height=innerHeight; view=scene?scene.view():view; scale=Math.min(innerWidth/view.w,(innerHeight-hud)/view.h); ox=(innerWidth-view.w*scale)/2-view.x*scale; oy=hud+(innerHeight-hud-view.h*scale)/2-view.y*scale; }
+addEventListener('resize',resize);
+function load(){ hideMsg(); scene=level(); resize(); }
+let last=performance.now();
+function frame(now){ const dt=Math.min(0.033,(now-last)/1000); last=now; scene.update(dt); const v=scene.view(); if(v!==view) resize();
+  g.setTransform(1,0,0,1,0,0); g.fillStyle='#0b0c10'; g.fillRect(0,0,cv.width,cv.height); g.setTransform(scale,0,0,scale,ox,oy); g.save(); g.beginPath(); g.rect(view.x,view.y,view.w,view.h); g.clip(); scene.draw(g); g.restore();
+  if(toast&&now<toast.until){ const cx=view.x+view.w/2, by=view.y+view.h; g.fillStyle='rgba(10,11,14,.85)'; g.fillRect(cx-330,by-52,660,34); label(g,cx,by-30,toast.t,15); }
+  if(scene.fade>0){ g.fillStyle=`rgba(0,0,0,${Math.min(1,scene.fade)})`; g.fillRect(view.x-50,view.y-50,view.w+100,view.h+100); }
+  requestAnimationFrame(frame); }
+document.getElementById('skip').addEventListener('click',e=>{ e.currentTarget.blur(); if(scene) scene.skipChapter(); });
+load(); requestAnimationFrame(frame);
+</script>
+</body>
+</html>

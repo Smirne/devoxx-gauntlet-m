@@ -1,0 +1,9 @@
+# Scale and units — decide before the 3D port (open question, 16 Sep 2026)
+
+The prototype simulates in *map pixels* on a 1900×700 canvas; the plan is drawn at roughly 10 px/m and the prototype scales the corridor axis ×1.25 and compresses room depth, so ≈ 12.5 px/m along the corridor. At that scale the prototype's speeds are arcade speeds: Voxxy 290 px/s ≈ 23 m/s, Biggy 235 px/s ≈ 19 m/s, and a robot with r = 17 px is 2.7 m wide. Fine top-down, wrong in 3D next to a 25 m auditorium — the organisers' demo runs at 1.35 / 2.6 m/s.
+
+## Recommendation
+- The extracted sim keeps the prototype's numbers **unchanged** for milestone 1 (parity is the acceptance test). The unit-free parts are what matters and they carry over as they are: accel and drag are rates in s⁻¹, masses and restitution are ratios, the push and door checks compare speeds to caps.
+- Introduce a single scale constant `PX_PER_M` at the 3D stage (step "maps" of milestone 2) and rebuild the geometry from the plan at real scale (10 plan px = 1 m; room 8 ≈ 30 × 23 m, corridor ≈ 13 m wide on the plan — check against the drone hallway video before trusting it).
+- Then re-tune only the *absolute* speeds and lengths, keeping ratios: Voxxy max 4 m/s (small, quick), Droid 1.6, Biggy 3.5 with accel 0.6 / drag 0.35 unchanged; radii Voxxy 0.35 m, Droid 0.45, Biggy 0.6; door thresholds and the cable length as multiples of the robots' caps and of the room sizes, not fixed px. The tests then assert ratios ("Biggy alone stops below the roller threshold", "the lane route exceeds the cable by ≥ 10 %") rather than pixel counts.
+- Expect pacing to change: distances grow ~6×, speeds shrink ~6× → a chapter that took 3 min top-down could take much longer. Counter-measures, in order: chapter-sized camera and shorter walks (already in POC 10), a run key (Shift, like the organisers' demo), moving clue rooms closer together, and only then shrinking the venue.
