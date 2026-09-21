@@ -1,0 +1,310 @@
+/**
+ * Venue geometry — ported verbatim from `reference/poc/10-after-dark-kinepolis.html`,
+ * which was itself laid out from the annotated Devoxx plans in `plans/`.
+ *
+ * Both floors are rotated 90° counter-clockwise relative to the plans, so the
+ * corridor runs left->right: **plan top -> world left**, plan left column -> world
+ * bottom row. That puts the closed cinema section at x 0..600, Devoxx rooms 3, 4, 5, 6
+ * along the bottom and 10, 9, 8, 7 along the top, the secondary staircases in the
+ * corridor walls between 3|4 and 10|9, and the main staircase at the corridor's end
+ * between 6 and 7 — exactly the annotations in
+ * `plans/devoxx-rooms-stairs-annotated.png`.
+ *
+ * These positions are NON-NEGOTIABLE (CLAUDE.md, GAUNTLET.md Stage 1). The renderer
+ * builds its environment from this module, so the floor-plan overlay check is a
+ * property of the data, not of the drawing code.
+ */
+
+import { W, H, T } from './constants';
+import type { Booth, RoomDef, ViewRect, Wall } from './types';
+
+/* ---------------------------------------------------------------- first floor */
+
+/** Corridor band: the cinema corridor runs between these two y values. */
+export const CY0 = 300;
+export const CY1 = 400;
+/** Auditorium depth. */
+export const ROOM_D = 230;
+/** Auditorium door width. */
+export const DOOR = 46;
+
+export const rooms: RoomDef[] = [];
+{
+  const add = (n: number | string, x: number, w: number, side: -1 | 1, closed = false): void => {
+    rooms.push({ n, x, w, y: side < 0 ? CY0 - ROOM_D : CY1, h: ROOM_D, side, closed });
+  };
+  // Closed cinema section — three unnumbered rooms on top, two below.
+  add('A', 70, 160, -1, true);
+  add('B', 240, 160, -1, true);
+  add('C', 410, 160, -1, true);
+  add('D', 180, 190, 1, true);
+  add('E', 380, 190, 1, true);
+  // Devoxx rooms, widths in the plan's proportions.
+  add(10, 610, 256, -1);
+  add(9, 906, 320, -1);
+  add(8, 1234, 375, -1);
+  add(7, 1617, 263, -1);
+  add(3, 610, 256, 1);
+  add(4, 906, 320, 1);
+  add(5, 1234, 375, 1);
+  add(6, 1617, 263, 1);
+}
+
+/** Look a room up by its plan number or letter. */
+export const R = (n: number | string): RoomDef => {
+  const r = rooms.find((x) => x.n === n);
+  if (!r) throw new Error(`no room ${String(n)}`);
+  return r;
+};
+
+export interface DoorRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Centre of the doorway, on the corridor wall. */
+  cx: number;
+  cy: number;
+  side: -1 | 1;
+  r: RoomDef;
+}
+
+/** The doorway a room opens onto the corridor through. */
+export function roomDoor(r: RoomDef): DoorRect {
+  const cx = r.x + r.w / 2;
+  return r.side < 0
+    ? { x: cx - DOOR / 2, y: CY0 - T, w: DOOR, h: 12, cx, cy: CY0, side: -1, r }
+    : { x: cx - DOOR / 2, y: CY1 - T, w: DOOR, h: 12, cx, cy: CY1, side: 1, r };
+}
+
+export const F1 = {
+  /** The fire door with the keypad, between the closed section and the Devoxx rooms. */
+  fireX: 600,
+  /** Curved foyer with a bar, open straight onto the corridor. */
+  foyer: { x: 14, y: CY1, w: 160, h: 230 },
+  /** Glass kiosk in the foyer, with a Voxxy-sized hatch. */
+  kiosk: { x: 110, y: 412, w: 56, h: 56 },
+  /** Secondary-staircase niche in the top corridor wall, between rooms 10 and 9. */
+  nicheTop: { x: 866, y: CY0 - 60, w: 40, h: 60 },
+  /** Secondary-staircase niche in the bottom corridor wall, between rooms 3 and 4. */
+  nicheBot: { x: 866, y: CY1, w: 40, h: 60 },
+  /** Main staircase, corridor's end between rooms 6 and 7. */
+  mainStair: { x: 1830, y: CY0 + 6, w: 64, h: CY1 - CY0 - 12 },
+} as const;
+
+/** Walls of the cinema level. Room doorways, the two niches and the foyer are gaps. */
+export function floor1Walls(): Wall[] {
+  const w: Wall[] = [];
+  w.push({ x: 0, y: 0, w: W, h: T }, { x: 0, y: H - T, w: W, h: T }, { x: 0, y: 0, w: T, h: H }, { x: W - T, y: 0, w: T, h: H });
+  for (const side of [-1, 1] as const) {
+    const yy = side < 0 ? CY0 - T : CY1;
+    const rs = rooms.filter((r) => r.side === side);
+    let x = 0;
+    const gaps: Array<[number, number]> = rs.map((r) => {
+      const d = roomDoor(r);
+      return [d.x, d.x + d.w];
+    });
+    const niche = side < 0 ? F1.nicheTop : F1.nicheBot;
+    gaps.push([niche.x, niche.x + niche.w]);
+    // The foyer opens straight onto the corridor.
+    if (side > 0) gaps.push([F1.foyer.x, F1.foyer.x + F1.foyer.w]);
+    gaps.sort((a, b) => a[0] - b[0]);
+    for (const [g0, g1] of gaps) {
+      if (g0 > x) w.push({ x, y: yy, w: g0 - x, h: T });
+      x = g1;
+    }
+    w.push({ x, y: yy, w: W - x, h: T });
+    for (const r of rs) {
+      w.push({ x: r.x - T, y: r.y, w: T, h: r.h }, { x: r.x + r.w, y: r.y, w: T, h: r.h });
+      const by = side < 0 ? r.y - T : r.y + r.h;
+      w.push({ x: r.x - T, y: by, w: r.w + 2 * T, h: T });
+    }
+    w.push(
+      { x: niche.x - T, y: niche.y, w: T, h: niche.h },
+      { x: niche.x + niche.w, y: niche.y, w: T, h: niche.h },
+      { x: niche.x - T, y: side < 0 ? niche.y - T : niche.y + niche.h, w: niche.w + 2 * T, h: T, stair: side },
+    );
+  }
+  const f = F1.foyer;
+  w.push({ x: f.x - T, y: f.y, w: T, h: f.h }, { x: f.x + f.w, y: f.y, w: T, h: f.h }, { x: f.x - T, y: f.y + f.h, w: f.w + 2 * T, h: T });
+  const k = F1.kiosk;
+  w.push(
+    { x: k.x, y: k.y, w: k.w, h: T, glass: true },
+    { x: k.x, y: k.y + k.h - T, w: k.w, h: T, glass: true },
+    { x: k.x + k.w - T, y: k.y, w: T, h: k.h, glass: true },
+    { x: k.x, y: k.y, w: T, h: 16, glass: true },
+    { x: k.x, y: k.y + 40, w: T, h: 16, glass: true },
+    { x: k.x, y: k.y + 16, w: T, h: 24, hidden: true, skipFor: (b) => b.kind === 'voxxy', why: (b) => `${b.name}: the kiosk hatch is Voxxy-sized` },
+  );
+  // Top of the main staircase.
+  w.push({ x: F1.mainStair.x + F1.mainStair.w, y: CY0, w: T, h: CY1 - CY0, stair: 0 });
+  return w;
+}
+
+/* ---------------------------------------------------------------- ground floor */
+
+export const SPONSORS = [
+  'Kube Kettle',
+  'JavaBeans & Co',
+  'Cloudy Bank',
+  'Rubber Duck Inc',
+  'Legacy Systems SA',
+  'Monolith GmbH',
+  'NullPointer Insurance',
+  'Async Airlines',
+  'Big Data Bakery',
+  'Sticker Mine',
+  'Regex Racing',
+  'The Coffee Sponsor',
+] as const;
+
+/** Booths laid out as half tables (Voxxy fits under the cloth) rather than built walls. */
+const TABLES = new Set(['2,0', '1,1', '1,2', '0,3', '0,1', '2,3']);
+
+const booths: Booth[] = [];
+{
+  let k = 0;
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 4; col++) {
+      const x = 400 + col * 160;
+      const y = 250 + row * 140;
+      booths.push({ x, y, w: 100, h: 70, name: SPONSORS[k++], table: TABLES.has(row + ',' + col), col, row });
+    }
+  }
+}
+
+export const GF = {
+  hall: { x: 30, y: 90, w: 1010, h: 600 },
+  /** Openings in the hall's right wall — the scalloped wall on the plan. */
+  openings: [
+    [120, 180],
+    [240, 310],
+    [380, 460],
+    [540, 610],
+  ] as Array<[number, number]>,
+  food: {
+    court: { x: 30, y: 90, w: 300, h: 160 },
+    /** The three queue doorways. */
+    gaps: [
+      [80, 124],
+      [210, 254],
+      [285, 329],
+    ] as Array<[number, number]>,
+    soup: { x: 60, y: 100, w: 90, h: 30 },
+    shelf: { x: 165, y: 100, w: 22, h: 16 },
+    sandwich: { x: 200, y: 100, w: 70, h: 30 },
+    coffee: { x: 285, y: 100, w: 45, h: 30 },
+  },
+  /** The two secondary staircases up to the cinema corridor, on the hall's far side. */
+  stairs: [
+    { x: 150, y: 300, w: 200, h: 60, to: 'top' as const },
+    { x: 150, y: 430, w: 200, h: 60, to: 'bot' as const },
+  ],
+  tech: { x: 30, y: 560, w: 170, h: 130 },
+  panel: { x: 50, y: 568, w: 26, h: 16 },
+  rack: { x: 140, y: 640, w: 20, h: 24 },
+  /** Devoxx polo & badge store, roller door on its hall side. */
+  store: { x: 900, y: 90, w: 140, h: 110 },
+  roller: { x: 894, y: 130, w: T, h: 60 },
+  booths,
+  reception: { x: 1280, y: 120, w: 240, h: 50 },
+  printer: { x: 1284, y: 158, w: 20, h: 12 },
+  mainStair: { x: 1280, y: 200, w: 240, h: 200 },
+  gate: { x: 1274, y: 200, w: T, h: 200 },
+  bof: { x: 1300, y: 480, w: 260, h: 200 },
+  toilets: { x: 1040, y: 560, w: 120, h: 130 },
+  entrance: { x: W - T, y: 360, w: T, h: 170 },
+  /** Visitor lane grid for chapter 3. */
+  laneX: [370, 530, 690, 850, 1010],
+  laneY: [215, 355, 495, 645],
+} as const;
+
+/** Walls of the exhibition level. */
+export function groundWalls(): Wall[] {
+  const w: Wall[] = [];
+  w.push({ x: 0, y: 0, w: W, h: T }, { x: 0, y: H - T, w: W, h: T }, { x: 0, y: 0, w: T, h: H }, { x: W - T, y: 0, w: T, h: H });
+  const h = GF.hall;
+  w.push({ x: h.x - T, y: h.y - T, w: h.w + 2 * T, h: T }, { x: h.x - T, y: h.y, w: T, h: h.h });
+  let y: number = h.y;
+  for (const [a, b] of GF.openings) {
+    w.push({ x: h.x + h.w, y, w: T, h: a - y });
+    y = b;
+  }
+  w.push({ x: h.x + h.w, y, w: T, h: h.y + h.h - y });
+  const c = GF.food.court;
+  w.push({ x: c.x + c.w, y: c.y, w: T, h: c.h + T });
+  let gx: number = c.x;
+  for (const [a, b] of GF.food.gaps) {
+    w.push({ x: gx, y: c.y + c.h, w: a - gx, h: T });
+    gx = b;
+  }
+  w.push({ x: gx, y: c.y + c.h, w: c.x + c.w - gx, h: T });
+  for (const k of ['soup', 'sandwich', 'coffee'] as const) w.push({ ...GF.food[k], low: true });
+  const t = GF.tech;
+  // Technical room: door on the right, y 600..650.
+  w.push({ x: t.x, y: t.y - T, w: t.w + T, h: T }, { x: t.x + t.w, y: t.y, w: T, h: 40 }, { x: t.x + t.w, y: t.y + 90, w: T, h: t.h - 90 });
+  const s = GF.store;
+  w.push(
+    { x: s.x - T, y: s.y, w: T, h: GF.roller.y - s.y },
+    { x: s.x - T, y: GF.roller.y + GF.roller.h, w: T, h: s.y + s.h - (GF.roller.y + GF.roller.h) },
+    { x: s.x - T, y: s.y + s.h, w: s.w + T, h: T },
+  );
+  for (const bo of GF.booths) {
+    w.push({
+      x: bo.x,
+      y: bo.y,
+      w: bo.w,
+      h: bo.h,
+      booth: bo,
+      low: bo.table,
+      skipFor: bo.table ? (bb) => bb.kind === 'voxxy' : undefined,
+      why: bo.table
+        ? (bb) => (bb.kind === 'voxxy' ? null : `${bb.name}: a sponsor table. Only something Voxxy-sized goes under the tablecloth`)
+        : (bb) => `${bb.name}: ${bo.name} — a built booth, solid walls`,
+    });
+  }
+  w.push({ ...GF.reception, low: true, why: (bb) => `${bb.name}: reception. Badges, lanyards, the printer` });
+  const m = GF.mainStair;
+  w.push({ x: m.x, y: m.y - T, w: m.w + T, h: T }, { x: m.x, y: m.y + m.h, w: m.w + T, h: T }, { x: m.x + m.w, y: m.y, w: T, h: m.h });
+  const b = GF.bof;
+  w.push(
+    { x: b.x - T, y: b.y - T, w: b.w + 2 * T, h: T },
+    { x: b.x - T, y: b.y, w: T, h: 60 },
+    { x: b.x - T, y: b.y + 120, w: T, h: b.h - 120 },
+    { x: b.x + b.w, y: b.y, w: T, h: b.h },
+    { x: b.x - T, y: b.y + b.h, w: b.w + 2 * T, h: T },
+  );
+  const tl = GF.toilets;
+  w.push({ x: tl.x, y: tl.y - T, w: tl.w, h: T }, { x: tl.x + tl.w, y: tl.y - T, w: T, h: tl.h });
+  return w;
+}
+
+/* ---------------------------------------------------------------- cameras */
+
+/** Chapter 1: the closed section plus the sealed rooms 10 and 3 beyond the fire door. */
+export const VIEW_CLOSED: ViewRect = { x: 0, y: 40, w: 900, h: 620 };
+/** Chapter 4: the Devoxx section with the fire door shut behind. */
+export const VIEW_DEVOXX: ViewRect = { x: 590, y: 40, w: 1310, h: 620 };
+/** The whole cinema level — only during the first cutscene. */
+export const VIEW_F1: ViewRect = { x: 0, y: 40, w: 1900, h: 620 };
+/** Chapters 2 and 3: the whole hall plus the lobby. */
+export const VIEW_GROUND: ViewRect = { x: 0, y: 0, w: W, h: H };
+
+export const CHAPTER_TITLES = [
+  '',
+  '1 · Night — the closed cinema section',
+  '2 · Expo — the exhibition hall',
+  '3 · Lunch — doors open',
+  '4 · Keynote — Room 8',
+] as const;
+
+/** Talk titles on the corridor signage, per Devoxx room. */
+export const TALKS: Readonly<Record<number, string>> = Object.freeze({
+  3: 'Hands-on: agents that ship',
+  4: 'Java 27 in 50 minutes',
+  5: 'Kubernetes, but calmer',
+  6: 'The last talk about microservices',
+  7: 'Deep dive: virtual threads',
+  9: 'From developer to builder',
+  10: 'BOF: what broke this year',
+});

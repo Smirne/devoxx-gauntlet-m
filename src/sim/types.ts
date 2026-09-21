@@ -195,3 +195,95 @@ export interface CutRoute {
 }
 
 export type Phase = 'intro' | 'play' | 'cut' | 'done';
+
+/* ================================================================ render facade
+ *
+ * The renderer only ever reads a `GameSnapshot`. It must not mutate it and must
+ * not contain game logic (CLAUDE.md). Everything the diorama needs to draw a frame
+ * is reachable from here.
+ */
+
+/** A conference-goer, catering worker, Stephan, or the hiding keynote speaker. */
+export interface Person {
+  x: number;
+  y: number;
+  r: number;
+  /** Drawn above the head when present. */
+  name?: string;
+  colour?: string;
+  hat?: boolean;
+  /** 'visitor' | 'queue' | 'stephan' | 'speaker' | 'staff' */
+  role: string;
+  /** Lane-walk target. */
+  tx?: number;
+  ty?: number;
+}
+
+/**
+ * A chapter-specific piece of set dressing or interactive object, described by the
+ * sim so the renderer can pick a mesh for it without knowing the rules.
+ * `kind` values are stable strings, e.g. 'breaker', 'roller', 'keypad', 'pot',
+ * 'ladle', 'cake', 'banner', 'spotlight', 'cable', 'booth', 'seatrow', 'screen',
+ * 'projector-panel', 'printer', 'rack', 'gate', 'firedoor', 'stair', 'sign'.
+ */
+export interface Prop {
+  kind: string;
+  x: number;
+  y: number;
+  w?: number;
+  h?: number;
+  /** 'idle' | 'active' | 'done' | 'broken' | 'open' | 'shut' */
+  state?: string;
+  label?: string;
+  /** For the cable: the polyline laid so far. */
+  pts?: Vec2[];
+  /** Free-form extras a specific prop needs (fill level, spin, digit). */
+  v?: number;
+}
+
+/** Everything the renderer reads for one frame. */
+export interface GameSnapshot {
+  chapter: number;
+  phase: Phase;
+  /** Sim seconds since the chapter started. */
+  t: number;
+  /** Which level is on screen. */
+  floor: 'up' | 'down';
+  view: ViewRect;
+  bots: Bot[];
+  /** Index into `bots` of the robot the player is driving. */
+  active: number;
+  walls: Wall[];
+  lights: LightSource[];
+  mirrors: Mirror[];
+  clues: Clue[];
+  props: Prop[];
+  people: Person[];
+  /** HUD line: the current objective, may contain simple markup. */
+  objective: string;
+  /** HUD line: the controls that matter right now. */
+  keys: string;
+  toast: Toast | null;
+  /** 0 = clear, 1 = black. Cutscenes and chapter transitions. */
+  fade: number;
+  /** A full-screen card that pauses play until dismissed. */
+  card: string | null;
+  /** The keypad code being typed, chapter 1. */
+  entered: string;
+  score: Record<string, number>;
+  swag: string[];
+}
+
+/** The headless game. `src/render` holds one of these and only reads its snapshot. */
+export interface Game {
+  snapshot(): GameSnapshot;
+  /** Advance the sim. `dt` is already clamped to DT_MAX by the caller. */
+  update(dt: number): void;
+  /** A KeyboardEvent.code, on keydown, non-repeating. */
+  key(code: string): void;
+  /** Movement stick, each axis -1..1. */
+  setStick(x: number, y: number): void;
+  skipChapter(): void;
+  /** Jump straight to a chapter — used by tests and the debug overlay. */
+  startChapter(n: number): void;
+}
