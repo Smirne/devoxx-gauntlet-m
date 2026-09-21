@@ -165,8 +165,10 @@ describe('walls', () => {
       [1, -1],
       [-1, -1],
     ];
-    // The worst excursion over every robot, every frame time and every heading:
-    // asserted once per run so the loop stays a stress test rather than 100k matchers.
+    // Every robot, every frame time, every heading. Escapes are collected rather
+    // than asserted per step, so the loop stays a stress test instead of 100k matchers.
+    const escapes: string[] = [];
+    let worstClearance = Infinity;
     for (const kind of KINDS) {
       for (const dt of dts) {
         for (const [ix, iy] of dirs) {
@@ -184,17 +186,18 @@ describe('walls', () => {
             minY = Math.min(minY, b.y);
             maxY = Math.max(maxY, b.y);
           }
-          const where = `${kind} dt=${dt} dir=${ix},${iy}`;
-          expect(`${where} minX>100: ${minX > 100}`).toBe(`${where} minX>100: true`);
-          expect(`${where} maxX<500: ${maxX < 500}`).toBe(`${where} maxX<500: true`);
-          expect(`${where} minY>100: ${minY > 100}`).toBe(`${where} minY>100: true`);
-          expect(`${where} maxY<300: ${maxY < 300}`).toBe(`${where} maxY<300: true`);
+          if (minX <= 100 || maxX >= 500 || minY <= 100 || maxY >= 300) {
+            escapes.push(
+              `${kind} dt=${dt} dir=${ix},${iy}: x ${minX.toFixed(1)}..${maxX.toFixed(1)} y ${minY.toFixed(1)}..${maxY.toFixed(1)}`,
+            );
+          }
           // Contact leaves the robot its own radius clear of the face.
-          expect(minX).toBeGreaterThanOrEqual(100 + b.r - 0.001);
-          expect(maxX).toBeLessThanOrEqual(500 - b.r + 0.001);
+          worstClearance = Math.min(worstClearance, minX - 100 - b.r, 500 - b.r - maxX);
         }
       }
     }
+    expect(escapes).toEqual([]);
+    expect(worstClearance).toBeGreaterThan(-0.001);
   });
 
   it('a boosted Biggy — faster than his own top speed — still cannot tunnel', () => {
