@@ -1,0 +1,32 @@
+{
+  "name": "after-dark",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "After Dark — a Devoxx Belgium Robot Games entry. Voxxy, Droid and Biggy prep Kinepolis Antwerp before doors open.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "progress": "node tools/progress/build-progress.mjs"
+  },
+  "dependencies": {
+    "three": "^0.186.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.186.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11",
+    "vitest": "^3.0.5"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
