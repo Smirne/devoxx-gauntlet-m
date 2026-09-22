@@ -54,8 +54,13 @@ content, so the loss is mostly cosmetic in top-down.
    y 285..568 — and the staircase is the *only* way between lobby and hall. Replace
    `GF.openings`' four gaps with one wide stepped opening and solid concrete either side.
 
-2. **There is a level change.** 5–7 steps down from the lobby into the hall, so the hall floor
-   sits about 1.0 m below the lobby. Nothing in the game models this yet. It is worth having:
+2. **There is a level change.** 5–7 steps down from the lobby into the hall. Michele puts the
+   drop at about **0.5 m** — shallow risers, roughly 80 mm each, which is why it reads as a
+   gentle transition rather than a flight. Use 0.5 m; the step count is a visual detail, the
+   drop is the number that matters. It is also the better number for play: half a metre is 43%
+   of Voxxy's height, so the threshold is a real obstacle a small robot must be helped over,
+   where a full metre would simply have been a wall. Nothing in the game models it yet. It is
+   worth having:
    a robot with Biggy's inertia meeting a flight of steps is the kind of thing this game is
    about, and it gives chapter 2 a real threshold instead of a doorway.
 
