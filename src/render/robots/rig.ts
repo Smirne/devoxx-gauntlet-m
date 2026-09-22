@@ -1,0 +1,474 @@
+/**
+ * rig.ts — the skeleton contract and the shared workshop the three robot
+ * builders are made from.
+ *
+ * Everything here is pure geometry and material maths: no WebGL context is ever
+ * touched, so `tests/robots.smoke.test.ts` can build all three robots headless in
+ * node and measure them against the model sheets in `robots/*.png`.
+ *
+ * Conventions (the whole renderer depends on these):
+ *  - **+Y is up, the sole of the foot sits exactly on y = 0**, so a rig can be
+ *    dropped on the floor with `root.position.y = 0`.
+ *  - **The robot faces +Z.** With +Y up that puts the model's own LEFT on +X
+ *    (right = forward x up = -X), which is why every `...L` bone has x > 0.
+ *  - Distances are **metres**. The sim works in prototype pixels; only the
+ *    renderer converts, with `PX_PER_M` from `src/sim/units.ts`.
+ *  - Bones are bare `Object3D`s with no geometry of their own. Meshes hang off
+ *    them. `gait.ts` writes bone transforms and never touches a mesh, which is
+ *    what keeps the animation independent of the modelling.
+ *
+ * Weathering is done with **vertex colours**, not textures: vitest runs in node
+ * where there is no canvas to bake a texture on, and the brief forbids external
+ * asset files anyway. Every material therefore has `vertexColors: true` and every
+ * geometry gets a colour attribute — always build meshes through `part()`.
+ */
+
+import * as THREE from 'three';
+import type { RobotKind } from '../../sim/types';
+
+/* ------------------------------------------------------------------- maths */
+
+export const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
+
+export const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+
+export function smoothstep(edge0: number, edge1: number, x: number): number {
+  const d = edge1 - edge0;
+  const t = clamp(d === 0 ? 0 : (x - edge0) / d, 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+/* ------------------------------------------------------------------- bones */
+
+/**
+ * The bones every rig must expose. `gait.ts` drives these by name, so a builder
+ * that forgets one fails loudly at construction instead of silently animating
+ * half a robot.
+ */
+export const BONE_NAMES = [
+  'root',
+  'pelvis',
+  'torso',
+  'neck',
+  'head',
+  'shoulderL',
+  'shoulderR',
+  'upperArmL',
+  'upperArmR',
+  'forearmL',
+  'forearmR',
+  'handL',
+  'handR',
+  'hipL',
+  'hipR',
+  'thighL',
+  'thighR',
+  'shinL',
+  'shinR',
+  'footL',
+  'footR',
+] as const;
+
+export type BoneName = (typeof BONE_NAMES)[number];
+
+/**
+ * A built robot. `gait.ts` animates it, the chapter renderer parents `root` into
+ * the scene and moves it from the sim snapshot.
+ */
+export interface RobotRig {
+  /** Which species this is — `gait.ts` picks its character profile from it. */
+  readonly kind: RobotKind;
+  /** Parent this into the scene. Its origin is the point between the feet, on the floor. */
+  readonly root: THREE.Group;
+  /** Every bone in `BONE_NAMES`, plus a few per-robot extras (`antenna`, `ear*`). */
+  readonly bones: Record<string, THREE.Object3D>;
+  /**
+   * Named shell meshes. Not part of the skeleton: these exist so the appearance
+   * checks can measure "is the head wider than the torso" and so effects code can
+   * swap a material without walking the tree.
+   */
+  readonly parts: Record<string, THREE.Object3D>;
+  /** Metres, sole to the top of the head. Matches `ROBOT_HEIGHT_M`. */
+  readonly height: number;
+  /** Emissive materials (eyes, visor strips, ports) for the bloom/light pass. */
+  readonly glow: THREE.MeshStandardMaterial[];
+  /** Where this robot's lamp emits from. Its local +Z is the beam direction. */
+  readonly lampAnchor: THREE.Object3D;
+  dispose(): void;
+}
+
+/** Create a bone, register it under `name`, and parent it. */
+export function joint(
+  bones: Record<string, THREE.Object3D>,
+  parent: THREE.Object3D,
+  name: string,
+  x = 0,
+  y = 0,
+  z = 0,
+): THREE.Object3D {
+  const o = new THREE.Object3D();
+  o.name = name;
+  o.position.set(x, y, z);
+  parent.add(o);
+  bones[name] = o;
+  return o;
+}
+
+/** Fail at build time rather than animating a rig with a missing joint. */
+export function assertBones(kind: RobotKind, bones: Record<string, THREE.Object3D>): void {
+  for (const n of BONE_NAMES) {
+    if (!bones[n]) throw new Error(`${kind}: rig is missing bone "${n}"`);
+  }
+}
+
+/* -------------------------------------------------------------- weathering */
+
+const fract = (v: number): number => v - Math.floor(v);
+
+/** Deterministic lattice hash — the classic sin-based one, stable across runs. */
+function latticeHash(ix: number, iy: number, iz: number, seed: number): number {
+  return fract(Math.sin(ix * 127.1 + iy * 311.7 + iz * 74.7 + seed * 57.33) * 43758.5453123);
+}
+
+/** Trilinear value noise, 0..1. */
+function valueNoise(x: number, y: number, z: number, seed: number): number {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const iz = Math.floor(z);
+  const fx = x - ix;
+  const fy = y - iy;
+  const fz = z - iz;
+  const ux = fx * fx * (3 - 2 * fx);
+  const uy = fy * fy * (3 - 2 * fy);
+  const uz = fz * fz * (3 - 2 * fz);
+  const c = (dx: number, dy: number, dz: number): number => latticeHash(ix + dx, iy + dy, iz + dz, seed);
+  const x00 = lerp(c(0, 0, 0), c(1, 0, 0), ux);
+  const x10 = lerp(c(0, 1, 0), c(1, 1, 0), ux);
+  const x01 = lerp(c(0, 0, 1), c(1, 0, 1), ux);
+  const x11 = lerp(c(0, 1, 1), c(1, 1, 1), ux);
+  return lerp(lerp(x00, x10, uy), lerp(x01, x11, uy), uz);
+}
+
+/** Three octaves is enough blotching at the scale a diorama camera sees. */
+function fbm(x: number, y: number, z: number, seed: number): number {
+  let sum = 0;
+  let amp = 0.5;
+  let f = 1;
+  for (let o = 0; o < 3; o++) {
+    sum += amp * valueNoise(x * f, y * f, z * f, seed + o * 19);
+    f *= 2.13;
+    amp *= 0.5;
+  }
+  return clamp(sum / 0.875, 0, 1);
+}
+
+export interface WeatherOpts {
+  /** 0 = factory fresh, 1 = twenty years in a cinema basement. */
+  amount?: number;
+  /** Any integer; the same seed always produces the same scuffs. */
+  seed?: number;
+  /** Colour the worn patches drift toward: rust, copper, grime. */
+  tint?: THREE.ColorRepresentation;
+  /** Noise frequency in cycles per metre. Small = broad blotches. */
+  scale?: number;
+  /** Extra darkening toward the bottom of the part, where dirt settles. */
+  grime?: number;
+}
+
+const _tint = new THREE.Color();
+
+/**
+ * Bake wear into a geometry's vertex colours.
+ *
+ * The colour attribute is a *multiplier* on the material colour, so the same
+ * material can be shared by a pristine and a battered part. Ratios are computed
+ * from two `THREE.Color`s built the same way, which keeps them in the same
+ * (linear) working space.
+ */
+export function weather(geo: THREE.BufferGeometry, mat: THREE.MeshStandardMaterial, o: WeatherOpts = {}): void {
+  const amount = clamp(o.amount ?? 0.5, 0, 1);
+  const scale = o.scale ?? 7;
+  const seed = o.seed ?? 1;
+  const grime = o.grime ?? 0.25;
+  _tint.set(o.tint ?? '#8c5a32');
+  const base = mat.color;
+  const pos = geo.getAttribute('position') as THREE.BufferAttribute;
+  geo.computeBoundingBox();
+  const bb = geo.boundingBox;
+  const y0 = bb ? bb.min.y : 0;
+  const y1 = bb ? bb.max.y : 1;
+  const col = new Float32Array(pos.count * 3);
+  const safe = (v: number): number => (v < 1e-3 ? 1e-3 : v);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const n = fbm(x * scale, y * scale, z * scale, seed);
+    // Worn-through patches: the top of the noise range only, so wear reads as
+    // discrete blotches and streaks rather than an even dirty wash.
+    const patch = smoothstep(0.54, 0.86, n) * amount;
+    // Broad shading variation plus dirt settling low on the part.
+    const low = 1 - smoothstep(y0, y1 === y0 ? y0 + 1 : y1, y);
+    const shade = 1 - amount * (0.22 * (n - 0.5) * 2 + grime * low * 0.35);
+    const r = lerp(base.r, _tint.r, patch) * shade;
+    const g = lerp(base.g, _tint.g, patch) * shade;
+    const b = lerp(base.b, _tint.b, patch) * shade;
+    col[i * 3] = clamp(r / safe(base.r), 0, 6);
+    col[i * 3 + 1] = clamp(g / safe(base.g), 0, 6);
+    col[i * 3 + 2] = clamp(b / safe(base.b), 0, 6);
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+}
+
+/** Fill a flat white colour attribute so a geometry is safe on a vertexColors material. */
+function plainColour(geo: THREE.BufferGeometry): void {
+  if (geo.getAttribute('color')) return;
+  const pos = geo.getAttribute('position') as THREE.BufferAttribute;
+  const col = new Float32Array(pos.count * 3).fill(1);
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+}
+
+/* -------------------------------------------------------------- materials */
+
+export interface PanelOpts {
+  roughness?: number;
+  metalness?: number;
+  flat?: boolean;
+  /** Draw the inside instead of the outside (helmet liners, recessed faces). */
+  side?: THREE.Side;
+}
+
+/**
+ * The one material factory. `weathering` (0..1) shifts a fresh gloss panel toward
+ * a rough, dead, scuffed one; pair it with `weather()` on the geometry for the
+ * blotches themselves.
+ */
+export function panelMaterial(
+  colour: THREE.ColorRepresentation,
+  weathering = 0,
+  opts: PanelOpts = {},
+): THREE.MeshStandardMaterial {
+  const w = clamp(weathering, 0, 1);
+  const m = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(colour),
+    roughness: opts.roughness ?? clamp(0.22 + 0.62 * w, 0.04, 1),
+    metalness: opts.metalness ?? clamp(0.55 - 0.4 * w, 0, 1),
+    vertexColors: true,
+    flatShading: opts.flat ?? false,
+  });
+  if (opts.side !== undefined) m.side = opts.side;
+  return m;
+}
+
+/** An eye, a visor strip, a status port: dark body, bright emissive. */
+export function glowMaterial(
+  colour: THREE.ColorRepresentation,
+  intensity = 1.8,
+  body: THREE.ColorRepresentation = '#151212',
+): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color: new THREE.Color(body),
+    emissive: new THREE.Color(colour),
+    emissiveIntensity: intensity,
+    roughness: 0.35,
+    metalness: 0,
+    vertexColors: true,
+    toneMapped: false,
+  });
+}
+
+/* ------------------------------------------------------------------ meshes */
+
+/**
+ * The only way a mesh should be made in this folder: it guarantees the colour
+ * attribute the shared `vertexColors` materials need.
+ */
+export function part(
+  geo: THREE.BufferGeometry,
+  mat: THREE.MeshStandardMaterial,
+  wear?: WeatherOpts,
+): THREE.Mesh {
+  if (wear && (wear.amount ?? 0) > 0) weather(geo, mat, wear);
+  else plainColour(geo);
+  const m = new THREE.Mesh(geo, mat);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
+
+/** Keep a part out of the measured silhouette (whip antennae, wires). */
+export const EXCLUDE_FROM_BOUNDS = 'excludeFromBounds';
+
+export function excludeFromBounds<T extends THREE.Object3D>(o: T): T {
+  o.userData[EXCLUDE_FROM_BOUNDS] = true;
+  return o;
+}
+
+/**
+ * A box with rounded edges, built by pushing a segmented box's vertices onto the
+ * offset surface of its inner box. Normals are analytic, so the corners shade
+ * smoothly without needing a merge pass.
+ */
+export function roundedBox(w: number, h: number, d: number, radius: number, segments = 3): THREE.BufferGeometry {
+  const r = Math.max(0.0001, Math.min(radius, Math.min(w, h, d) / 2 - 1e-4));
+  const geo = new THREE.BoxGeometry(w, h, d, segments + 1, segments + 1, segments + 1);
+  const pos = geo.getAttribute('position') as THREE.BufferAttribute;
+  const nrm = geo.getAttribute('normal') as THREE.BufferAttribute;
+  const hx = w / 2 - r;
+  const hy = h / 2 - r;
+  const hz = d / 2 - r;
+  const v = new THREE.Vector3();
+  const inner = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    inner.set(clamp(v.x, -hx, hx), clamp(v.y, -hy, hy), clamp(v.z, -hz, hz));
+    v.sub(inner);
+    const len = v.length();
+    if (len > 1e-6) {
+      v.multiplyScalar(r / len);
+      nrm.setXYZ(i, v.x / r, v.y / r, v.z / r);
+    }
+    v.add(inner);
+    pos.setXYZ(i, v.x, v.y, v.z);
+  }
+  pos.needsUpdate = true;
+  nrm.needsUpdate = true;
+  return geo;
+}
+
+/** A sphere scaled into an ellipsoid — heads, bellies, shoulder domes. */
+export function ellipsoid(rx: number, ry: number, rz: number, wSeg = 36, hSeg = 24): THREE.BufferGeometry {
+  const g = new THREE.SphereGeometry(1, wSeg, hSeg);
+  g.scale(rx, ry, rz);
+  return g;
+}
+
+/**
+ * A curved shell patch cut out of an ellipsoid — visors and armour bands that
+ * have to hug a head or a belly exactly.
+ *
+ * `phiHalf` is the half-width in radians around the front (+Z); `thetaStart` and
+ * `thetaLength` are measured down from the +Y pole, as in `SphereGeometry`.
+ */
+export function spherePatch(
+  rx: number,
+  ry: number,
+  rz: number,
+  phiHalf: number,
+  thetaStart: number,
+  thetaLength: number,
+  wSeg = 28,
+  hSeg = 14,
+): THREE.BufferGeometry {
+  // SphereGeometry puts phi = PI/2 on +Z, so centre the patch there.
+  const g = new THREE.SphereGeometry(1, wSeg, hSeg, Math.PI / 2 - phiHalf, phiHalf * 2, thetaStart, thetaLength);
+  g.scale(rx, ry, rz);
+  return g;
+}
+
+/** A flat disc, axis along +Y. Rotate it to face where you need it. */
+export function puck(radius: number, thickness: number, segments = 24): THREE.BufferGeometry {
+  return new THREE.CylinderGeometry(radius, radius, thickness, segments);
+}
+
+/**
+ * A lathe profile through control points `[radius, y]`, smoothed with a spline —
+ * this is what gives Voxxy its pear body and Biggy his bellows.
+ */
+export function latheProfile(points: Array<[number, number]>, samples = 28, segments = 32): THREE.BufferGeometry {
+  const curve = new THREE.SplineCurve(points.map(([x, y]) => new THREE.Vector2(Math.max(x, 0), y)));
+  const pts = curve.getPoints(samples).map((p) => new THREE.Vector2(Math.max(p.x, 0), p.y));
+  return new THREE.LatheGeometry(pts, segments);
+}
+
+/* -------------------------------------------------------------- hardware */
+
+/** One rivet: a slightly tapered head standing proud of the panel, axis +Y. */
+export function bolt(mat: THREE.MeshStandardMaterial, radius = 0.012, height = 0.01): THREE.Mesh {
+  const g = new THREE.CylinderGeometry(radius * 0.82, radius, height, 8);
+  g.translate(0, height / 2, 0);
+  return part(g, mat);
+}
+
+export interface BoltRingOpts {
+  count: number;
+  /** Ring radius in the XZ plane. */
+  radius: number;
+  y?: number;
+  boltRadius?: number;
+  boltHeight?: number;
+  /** Start angle, radians, measured from +Z. */
+  phase?: number;
+  /**
+   * If given, each rivet is aimed away from this point instead of straight up —
+   * which is how they sit flush on a domed helmet.
+   */
+  aimFrom?: THREE.Vector3;
+}
+
+const _up = new THREE.Vector3(0, 1, 0);
+const _dir = new THREE.Vector3();
+
+/** A ring of rivets around a panel or a crown. */
+export function boltRing(parent: THREE.Object3D, mat: THREE.MeshStandardMaterial, o: BoltRingOpts): void {
+  const y = o.y ?? 0;
+  const phase = o.phase ?? 0;
+  for (let i = 0; i < o.count; i++) {
+    const a = phase + (i / o.count) * Math.PI * 2;
+    const b = bolt(mat, o.boltRadius ?? 0.014, o.boltHeight ?? 0.012);
+    b.position.set(Math.sin(a) * o.radius, y, Math.cos(a) * o.radius);
+    if (o.aimFrom) {
+      _dir.copy(b.position).sub(o.aimFrom).normalize();
+      b.quaternion.setFromUnitVectors(_up, _dir);
+    }
+    parent.add(b);
+  }
+}
+
+/* ----------------------------------------------------------- measurement */
+
+const _mv = new THREE.Vector3();
+
+/**
+ * Exact world-space bounds of a subtree, skipping anything flagged
+ * `excludeFromBounds`. `Box3.setFromObject` would fold a whip antenna into the
+ * silhouette and cannot skip a subtree, which is why this exists: the appearance
+ * checks measure the robot, not its aerial.
+ */
+export function measureBounds(o: THREE.Object3D, target: THREE.Box3 = new THREE.Box3()): THREE.Box3 {
+  target.makeEmpty();
+  o.updateWorldMatrix(true, true);
+  const walk = (node: THREE.Object3D): void => {
+    if (node.userData[EXCLUDE_FROM_BOUNDS] === true) return;
+    if (node instanceof THREE.Mesh) {
+      const pos = node.geometry.getAttribute('position') as THREE.BufferAttribute | undefined;
+      if (pos) {
+        for (let i = 0; i < pos.count; i++) {
+          _mv.fromBufferAttribute(pos, i).applyMatrix4(node.matrixWorld);
+          target.expandByPoint(_mv);
+        }
+      }
+    }
+    for (const c of node.children) walk(c);
+  };
+  walk(o);
+  return target;
+}
+
+/* --------------------------------------------------------------- teardown */
+
+/** Free every geometry and material under `root` exactly once. */
+export function disposeTree(root: THREE.Object3D): void {
+  const geos = new Set<THREE.BufferGeometry>();
+  const mats = new Set<THREE.Material>();
+  root.traverse((o) => {
+    if (o instanceof THREE.Mesh) {
+      geos.add(o.geometry);
+      if (Array.isArray(o.material)) for (const m of o.material) mats.add(m);
+      else mats.add(o.material);
+    }
+  });
+  for (const g of geos) g.dispose();
+  for (const m of mats) m.dispose();
+  root.removeFromParent();
+}
