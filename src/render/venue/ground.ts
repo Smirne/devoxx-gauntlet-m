@@ -118,6 +118,9 @@ function columnGrid(p: VenuePalette): THREE.Group {
  * The four openings the sim leaves are drawn as bays whose leaves stand open, so
  * the way through to the lobby is visible as well as walkable.
  */
+/** The router cabinet's height, metres. A full-height 19-inch floor cabinet. */
+const CABINET_H = 2.05;
+
 const BAY_PITCH = 50;
 const BAY_LEAF = 40;
 const BAY_RECESS = 25;
@@ -518,6 +521,33 @@ export function buildGround(p: VenuePalette): GroundBuild {
   const rack = networkRack(GF.rack, 0, p);
   rack.name = 'network-rack';
   group.add(rack);
+
+  /*
+   * The router cabinet, beside the breakers on the same back wall.
+   *
+   * The carcass and its louvres are static set dressing and belong here; the
+   * cam-lock wheel bolted to its south face is NOT — it carries a live angle out of
+   * the sim's snapshot, so `src/render/scene.ts` draws that from `GameSnapshot.props`
+   * exactly as it draws the cable. The face is the +y one because that is the side
+   * the diorama camera stands on (`src/render/camera.ts`).
+   */
+  {
+    const c = GF.cabinet;
+    const cab = new THREE.Group();
+    cab.name = 'router-cabinet';
+    cab.add(slab(c, 0, CABINET_H, p.rackMetal));
+    // A recessed door panel, so the face is not one flat rectangle at diorama zoom.
+    cab.add(slab({ x: c.x + 5, y: c.y + c.h - 1, w: c.w - 10, h: 2 }, 0.14, CABINET_H - 0.28, p.blackMetal));
+    // Louvre bands across the door, the giveaway that it is full of switch gear.
+    for (let i = 0; i < 4; i++) {
+      cab.add(slab({ x: c.x + 9, y: c.y + c.h + 0.5, w: c.w - 18, h: 1.5 }, 0.34 + i * 0.3, 0.1, p.chafingSteel));
+    }
+    // Hinge stiles down both edges of the face.
+    for (const hx of [c.x + 3, c.x + c.w - 6]) {
+      cab.add(slab({ x: hx, y: c.y + c.h - 0.5, w: 3, h: 2 }, 0.2, CABINET_H - 0.4, p.chafingSteel));
+    }
+    group.add(cab);
+  }
 
   // Polo & badge store: the roller door is the sim's chapter-2 obstacle; this is
   // the slatted leaf that sells it breaking open.

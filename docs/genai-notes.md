@@ -605,3 +605,48 @@ that number is the sheet's whole silhouette including the arms, and the sheet's 
 the body so they always show: the sheet's arms disappear behind the gut at its widest, and that is
 precisely what makes the gut read as the silhouette.
 
+## Session — "The network closet", chapter 2 (builder agent)
+
+**What a human decided.** Michele approved `docs/gameplay-additions.md` §2 on paper — the WiFi
+password beat, built on Biggy's inertia and Droid's brace rather than on a second light-mixing
+puzzle — and asked to see it running. He also set the two hard constraints the agent worked
+inside: `src/sim/constants.ts` stays frozen, and the badge printer gains a third prerequisite
+rather than losing the two it had.
+
+**What the agent did.** Added the cam-lock wheel on a router cabinet in the technical room
+(`GF.cabinet`, `src/sim/chapters/ch2-expo.ts`), rendered the cabinet as venue geometry and the
+turning wheel from the snapshot, rewired the printer to power + cable + router, and added six
+tests. No new physics constant: the beat is assembled entirely out of numbers that were already
+frozen — Biggy's mass and 0.35 drag, `BRACED_MASS`, Voxxy's 0.38 rad cone — plus fourteen
+chapter-local tuning values that describe one prop in one room.
+
+**What was rejected, and why.**
+
+1. **A horizontal capstan wheel** was the physically cleanest reading of "a robot turns a wheel":
+   the rim is a circle in the 2D sim and the tangential component of the impact spins it. It was
+   dropped because it breaks the rule the brief is explicit about — a robot *running past* a
+   capstan spins it, and chapter 1 already fixed exactly that bug for the jammed door by
+   projecting onto the speed *into* the target. The wheel is therefore vertical, on the face the
+   diorama camera looks at, and the torque is `speed into the face x lever arm off the hub`.
+
+2. **Letting the wheel simply coast to a stop** was the obvious first implementation and it was
+   wrong. Measured: a wheel that decays to rest lands on a uniformly-distributed angle, so a solo
+   Biggy opens the cabinet by luck roughly one ram in twenty-five and then waits half a minute to
+   find out. "Realistically cannot" was not good enough — the beat needed to be structurally
+   impossible alone. The fix is a detail every valve wheel actually has: a **sprung detent pawl**,
+   with its eight rest positions offset half a step from the eight index marks. A wheel nobody is
+   holding always walks itself to a detent, and a detent is 22.5 deg from the nearest mark against
+   a 9.2 deg tolerance. `tests/chapters.test.ts` asserts it over ten different run-ups: zero
+   openings, and every resting angle is a detent.
+
+3. **A three-robot success condition** — requiring Voxxy's beam to be on the mark at the instant
+   the cam seats — was considered and dropped as a hidden rule. The light gates *information*
+   instead: the mark's angle is simply unreadable in the HUD and unlit in the scene until Voxxy's
+   cone finds it, which is the same constraint expressed as something the player can see.
+
+4. **A password the player types, or carries as an item**, was ruled out by Michele in the design
+   doc and stayed ruled out. It is a card, once, with the joke on it.
+
+**What is known to be weak.** One clean brace window per heave for a passive player, and a ~19 s
+coast to get there. Tap-braking (E on, E off) is the answer and the game currently only hints at
+it in a toast. See the builder's report.
