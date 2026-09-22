@@ -5,13 +5,15 @@
  * Built from `robots/biggy-robot.png`. The read is ONE THING: **a huge gut
  * bulging out from under a smaller tin hat.**
  *
- * On the sheet's front view the belly's width is 0.98 of the whole figure's
- * height — the belly *is* the robot's width — and the dome is three quarters of
- * the belly across, so the gut overhangs it on every side. An earlier build had
- * the belly at 0.70 of the height and the dome at 0.96 of the belly: the mass had
- * migrated into the arms and the helmet, and the character went with it. Those
- * two ratios are asserted in `tests/robots.smoke.test.ts` so they cannot drift
- * back.
+ * Flood-fill the sheet's front view and it is 390 px tall; the gut is 320 px
+ * across (0.82 of the height), the dome 255 (0.80 of the gut, so the gut
+ * overhangs it on every side), and the widest row of the whole figure is 378 px
+ * (0.97) — the arms, hanging OUTSIDE the gut. One build had the belly at 0.70 of
+ * the height and the dome at 0.96 of the belly: the mass had migrated into the
+ * arms and the helmet, and the character went with it. The next over-corrected
+ * to 0.93 by reading the figure's total width as the gut's, which buried the
+ * arms inside the gut. All three ratios are asserted in
+ * `tests/robots.smoke.test.ts` so none of them can drift again.
  *
  * The rest, in order:
  *   - a blue-gray armoured dome fused on top, with the sheet's PAIRED front
@@ -47,10 +49,10 @@ import {
 /*
  * Vertical layout, metres from the sole, held to ROBOT_HEIGHT_M.biggy = 1.45.
  *
- * Measured off the sheet's FRONT VIEW at 778 px = 1.45 m: dome crown 100% ->
- * dome rim 78% -> belly widest 42% -> belly bottom / belt 28% -> boot top 10% ->
- * sole 0. Across, at the same scale: belly 1.35 m, dome 1.03 m, and the arms
- * tucked just inside the belly's own width.
+ * Measured off the sheet's FRONT VIEW at 390 px = 1.45 m: dome crown 100% ->
+ * dome rim 77% -> belly widest 59% -> belly bottom / belt 28% -> boot top 10% ->
+ * sole 0. Across, at the same scale: belly 1.20 m, dome 0.96 m, and the arms
+ * hanging 0.1 m outside the belly's own width.
  */
 const ANKLE_Y = 0.13;
 const KNEE_Y = 0.27;
@@ -62,33 +64,54 @@ const NECK_Y = 1.06;
 const HEAD_Y = 1.13;
 const SHIN = KNEE_Y - ANKLE_Y;
 const THIGH = HIP_Y - KNEE_Y;
-/**
- * The belly: 1.35 m across against a 1.45 m robot, 0.93 of his height, hanging
- * from 1.15 down to 0.40 and widest below its middle, at 0.72 — a gut hanging
- * over the belt, with the underside tucking back in toward the hip band.
+/*
+ * THE BELLY, AND WHY IT IS NOT AS WIDE AS IT WAS.
+ *
+ * Flood-filling the sheet's FRONT VIEW panel: the figure is 390 px from the
+ * crown of the dome to the sole; the widest row that is still orange — the gut
+ * itself — is 320 px, at 59% of the height; and the widest row of all, 378 px,
+ * is lower down, where the ARMS are outside the gut's own outline. So on the
+ * sheet the belly is 0.82 of the height and the whole figure is 0.97 of it.
+ *
+ * The build this replaces had the belly at 0.93 of the height, from reading the
+ * sheet's total width as the belly's. The cost was not just the proportion: a
+ * belly of revolution 1.35 m across swallows anything hanging inside its own
+ * radius, so from the portrait's three-quarter view the far arm disappeared
+ * into it and came back as a shard above and a floating claw 140 px below. A
+ * gut at the sheet's own width leaves the arms outside it, which is how the
+ * sheet draws them and the only way the far arm can read as one limb.
  */
 const BELLY_TOP = 1.15;
-/** The widest point of the whole robot, and the number the silhouette rests on. */
-const BELLY_MAX_R = 0.675;
-/** Dome: 1.03 m across = 0.76 of the belly, so the belly overhangs it all round. */
-const HELM_R = 0.513;
+/** The widest point of the gut: 1.20 m across = 0.83 of his height (sheet 0.82). */
+const BELLY_MAX_R = 0.6;
+/** Where it is widest, 0.55 of the height — the sheet's is at 0.59. */
+const BELLY_MAX_Y = 0.8;
+/** Dome: 0.96 m across = 0.80 of the belly, so the belly overhangs it all round. */
+const HELM_R = 0.478;
 const HELM_H = 0.32;
 /**
  * The dark visor band in the recess between the belly's shoulder and the dome's
- * rim. The belly is 0.91 across at the band's own height and the rim flares to
- * 1.05, so a 0.97-wide band stands 0.03 proud of the belly and sits 0.035 inside
+ * rim. The belly is 0.86 across at the band's own height and the rim flares to
+ * 0.94, so a 0.90-wide band stands 0.02 proud of the belly and sits 0.02 inside
  * the rim: a real slot, readable from anywhere the diorama camera can stand.
  */
 const BAND_Y0 = 1.045;
 const BAND_Y1 = 1.135;
-const BAND_R = 0.485;
+const BAND_R = 0.452;
 /**
- * Stubby arms. `SHOULDER_X + half the slab` lands exactly on the belly's widest
- * point, so the arms never widen the silhouette and yet still show above and
- * below the bulge, where the belly has fallen away from its maximum — which is
- * precisely how they read on the sheet.
+ * Stubby arms, hung OUTSIDE the gut.
+ *
+ * `SHOULDER_X + half the slab` is 0.705, a tenth of a metre past the belly's
+ * widest radius, and the pair are set 0.09 m forward of the belly's axis. Both
+ * numbers are there for the same reason: the portrait camera stands 34 degrees
+ * off the front, which foreshortens an arm's sideways offset by cos 34 = 0.83
+ * while leaving a solid of revolution exactly as wide as it ever was. An arm
+ * merely level with the belly's edge is therefore BEHIND it from that camera,
+ * which is what swallowed the far arm. At 0.705 out and 0.09 forward the far
+ * arm's own silhouette clears the gut's by 0.03 m for its whole length.
  */
-const SHOULDER_X = 0.61;
+const SHOULDER_X = 0.64;
+const SHOULDER_Z = 0.09;
 const ARM_W = 0.13;
 const ARM_D = 0.185;
 const UPPER_ARM = 0.26;
@@ -102,19 +125,20 @@ const FOREARM = 0.2;
  */
 const BELLY_PROFILE: Array<[number, number]> = [
   [0.4, 0.0],
-  [0.43, 0.26],
-  [0.47, 0.39],
-  [0.52, 0.5],
-  [0.58, 0.59],
-  [0.64, 0.645],
-  [0.72, BELLY_MAX_R],
-  [0.8, 0.668],
-  [0.88, 0.64],
-  [0.95, 0.585],
-  [1.01, 0.51],
-  [1.06, 0.435],
-  [1.11, 0.33],
-  [1.14, 0.2],
+  [0.44, 0.265],
+  [0.48, 0.378],
+  [0.53, 0.462],
+  [0.59, 0.526],
+  [0.66, 0.569],
+  [0.73, 0.592],
+  [BELLY_MAX_Y, BELLY_MAX_R],
+  [0.87, 0.591],
+  [0.93, 0.566],
+  [0.98, 0.522],
+  [1.02, 0.472],
+  [1.06, 0.408],
+  [1.1, 0.32],
+  [1.13, 0.197],
   [BELLY_TOP, 0.0],
 ];
 
@@ -265,14 +289,18 @@ export function buildBiggy(): RobotRig {
    * which is how a "seam" becomes a floating ring — so this is a short collar
    * around the top of the hip band, tucked under the gut's overhang.
    */
-  const belt = part(new THREE.CylinderGeometry(0.415, 0.4, 0.075, 44, 1, true), armourDark, wear(0.6, 8));
+  const belt = part(new THREE.CylinderGeometry(0.385, 0.372, 0.075, 44, 1, true), armourDark, wear(0.6, 8));
   belt.position.y = 0.4 - TORSO_Y;
   torso.add(belt);
-  const hipBand = part(new THREE.CylinderGeometry(0.4, 0.355, 0.15, 40, 1, true), belly, bellyWear(9));
+  const hipBand = part(new THREE.CylinderGeometry(0.372, 0.33, 0.15, 40, 1, true), belly, bellyWear(9));
   hipBand.position.y = 0.345 - TORSO_Y;
   torso.add(hipBand);
-  const underPlate = part(new THREE.CylinderGeometry(0.36, 0.31, 0.09, 36, 1, true), armour, wear(0.65, 10));
-  underPlate.position.y = 0.27 - TORSO_Y;
+  /*
+   * The skirt stops at 0.25, not 0.225: below it there has to be bare shin for
+   * the ankle bellows to be ribs ON a leg rather than a stack of loose rings.
+   */
+  const underPlate = part(new THREE.CylinderGeometry(0.335, 0.3, 0.09, 36, 1, true), armour, wear(0.65, 10));
+  underPlate.position.y = 0.295 - TORSO_Y;
   torso.add(underPlate);
 
   /* ------------------------------------------- visor band under the helmet */
@@ -422,15 +450,21 @@ export function buildBiggy(): RobotRig {
   antennaBase.position.y = 0.012;
   antenna.add(antennaBase);
 
-  // A vestigial neck collar: the helmet is fused to the belly, so this only ever
-  // moves a few degrees (see `gait.ts`, Biggy's headLook is tiny).
-  const collarMesh = part(new THREE.CylinderGeometry(0.16, 0.19, 0.07, 20), armourDark, wear(0.5, 23));
+  /*
+   * A vestigial neck collar: the helmet is fused to the belly, so this only ever
+   * moves a few degrees (see `gait.ts`, Biggy's headLook is tiny). It is tall
+   * enough to actually reach the dome's base at 1.13 — the belly hides the gap
+   * either way, but a shell that does not touch the shell it hangs from is how
+   * detached geometry gets shipped, and now a test says so.
+   */
+  const collarMesh = part(new THREE.CylinderGeometry(0.16, 0.19, 0.13, 20), armourDark, wear(0.5, 23));
+  collarMesh.position.y = 0.01;
   neck.add(collarMesh);
 
   /* ----------------------------------------------------------------- arms */
   for (const side of [1, -1] as const) {
     const L = side > 0 ? 'L' : 'R';
-    const shoulder = joint(bones, torso, `shoulder${L}`, side * SHOULDER_X, SHOULDER_Y - TORSO_Y, 0.05);
+    const shoulder = joint(bones, torso, `shoulder${L}`, side * SHOULDER_X, SHOULDER_Y - TORSO_Y, SHOULDER_Z);
     const upper = joint(bones, shoulder, `upperArm${L}`, 0, 0, 0);
     const fore = joint(bones, upper, `forearm${L}`, 0, -UPPER_ARM, 0);
     const hand = joint(bones, fore, `hand${L}`, 0, -FOREARM, 0);
@@ -500,40 +534,54 @@ export function buildBiggy(): RobotRig {
   /* ----------------------------------------------------------------- legs */
   for (const side of [1, -1] as const) {
     const L = side > 0 ? 'L' : 'R';
-    const hip = joint(bones, pelvis, `hip${L}`, side * 0.21, 0, 0);
+    const hip = joint(bones, pelvis, `hip${L}`, side * 0.19, 0, 0);
     const thigh = joint(bones, hip, `thigh${L}`, 0, 0, 0);
     const shin = joint(bones, thigh, `shin${L}`, 0, -THIGH, 0);
     const foot = joint(bones, shin, `foot${L}`, 0, -SHIN, 0);
 
-    const hipBall = part(ellipsoid(0.125, 0.115, 0.125, 20, 14), armourDark, wear(0.55, 31));
+    const hipBall = part(ellipsoid(0.115, 0.108, 0.115, 20, 14), armourDark, wear(0.55, 31));
     hip.add(hipBall);
-    const thighMesh = part(new THREE.CylinderGeometry(0.128, 0.132, THIGH, 20, 2), armour, wear(0.6, 32));
+    const thighMesh = part(new THREE.CylinderGeometry(0.114, 0.118, THIGH, 20, 2), armour, wear(0.6, 32));
     thighMesh.position.y = -THIGH / 2;
     thigh.add(thighMesh);
-    // A dark ball over the knee pivot, so a bent knee reads as a joint from any
-    // angle rather than as two cylinders that have come apart.
-    const kneeBall = part(ellipsoid(0.125, 0.115, 0.125, 18, 12), rubber, wear(0.4, 33));
+    /*
+     * A dark ball over the knee pivot. It is 0.112 on a hip 0.19 out, so its
+     * outer face is 0.302 against the skirt's 0.315 at the same height: it can
+     * no longer graze the inside of the under-plate, which is what used to shred
+     * the two surfaces into the dark saw-toothed shard above the boot.
+     */
+    const kneeBall = part(ellipsoid(0.112, 0.105, 0.112, 18, 12), rubber, wear(0.4, 33));
     shin.add(kneeBall);
-    const shinMesh = part(new THREE.CylinderGeometry(0.12, 0.125, SHIN, 20, 2), armour, wear(0.6, 34));
+    const shinMesh = part(new THREE.CylinderGeometry(0.108, 0.114, SHIN, 20, 2), armour, wear(0.6, 34));
     shinMesh.position.y = -SHIN / 2;
     shin.add(shinMesh);
 
     /*
-     * Ribbed bellows AT THE ANKLE PIVOT, where the sheet has them — just above
-     * the boot.
+     * Ribbed bellows on the ANKLE, where the sheet has them: three rings sitting
+     * on the shin between the skirt and the boot top.
      *
-     * They used to sit high on the shin, 0.03-0.07 m from the knee. Biggy's legs
-     * are short enough that the idle sway's hip drop bends the knee tens of
-     * degrees (two-bone geometry, not a bug), and rings that far from a pivot
-     * swing out into a crescent that reads as detached from the limb. Centred on
-     * the ankle they turn with the joint they belong to and stay put.
+     * The stack that came before this one read as detached for two reasons, and
+     * moving it to the ankle pivot — which a previous round did — fixed neither.
+     * First, Biggy's knee was folded 63 degrees just standing there (see
+     * `standBend` in gait.ts), and rings on a shin that is itself swung forward
+     * out of the leg's line photograph as a crescent hanging off nothing.
+     * Second, the rings were 0.142 across on a 0.125 shin AND filled the whole
+     * 0.095 m of leg the skirt left visible, so there was no shin next to them
+     * to belong to. Now the knee is straight, the rings are a ribbed sleeve
+     * around the shin rather than a stack beside it, and the shin shows above
+     * them and runs on down into the boot.
      */
     for (let i = 0; i < 3; i++) {
-      const ring = part(new THREE.TorusGeometry(0.113, 0.029, 8, 24), rubber);
+      const ring = part(new THREE.TorusGeometry(0.106, 0.019, 8, 24), rubber);
       ring.rotation.x = Math.PI / 2;
-      ring.position.y = -SHIN + 0.065 - i * 0.032;
+      ring.position.y = -SHIN + 0.098 - i * 0.036;
       shin.add(ring);
     }
+    // The ankle collar the bellows are clamped to, so the sleeve ends on a
+    // fitting rather than in mid-air.
+    const ankleSleeve = part(new THREE.CylinderGeometry(0.1, 0.108, 0.05, 20), rubber, wear(0.4, 38));
+    ankleSleeve.position.y = 0.022;
+    foot.add(ankleSleeve);
 
     /*
      * The boots: the darkest and chunkiest thing on the robot, with a heavy sole.
@@ -546,7 +594,7 @@ export function buildBiggy(): RobotRig {
     const sole = part(roundedBox(0.325, 0.032, 0.365, 0.014, 2), rubber, wear(0.5, 36));
     sole.position.set(0, -0.114, 0.02);
     foot.add(sole);
-    const toeCap = part(roundedBox(0.29, 0.055, 0.075, 0.018, 2), armourDark, wear(0.7, 37));
+    const toeCap = part(roundedBox(0.29, 0.055, 0.075, 0.018, 2), rubber, wear(0.7, 37));
     toeCap.position.set(0, -0.045, 0.165);
     foot.add(toeCap);
     boltRing(foot, steel, {

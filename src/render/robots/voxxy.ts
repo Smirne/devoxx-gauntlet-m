@@ -142,10 +142,22 @@ export function buildVoxxy(): RobotRig {
   // bars photographed as lemon yellow; the model sheet's eye glow samples strongly
   // orange. Lower intensity, more saturated base: R > G > B survives the clip.
   const eyeGlow = glowMaterial('#ff7d0a', 1.45, '#2a1405');
-  /** The soft spill around each bar-eye, on the screen behind the glass. */
-  const eyeHalo = glowMaterial('#ff6a00', 0.26, '#130a03');
+  /**
+   * The falloff, as geometry, because this renderer has no bloom.
+   *
+   * A bright lozenge with one dim oval behind it reads as a flat ellipse with a
+   * dark-orange outline, which is what the last round measured. So: a hot core
+   * inside a broad bright disc, and then three THIN concentric rings stepping
+   * down to nearly the screen's own darkness. Thin is the point — wide steps
+   * are visible bands, and a band darker than the disc is exactly the outline
+   * being got rid of.
+   */
+  const eyeCore = glowMaterial('#ff8a18', 1.56, '#301806');
+  const eyeGlow2 = glowMaterial('#ff7208', 1.12, '#241105');
+  const eyeHalo2 = glowMaterial('#ff6a00', 0.72, '#1c0d04');
+  const eyeHalo = glowMaterial('#ff6400', 0.5, '#170b03');
   const portGlow = glowMaterial('#ff8c22', 1.3, '#1d1208');
-  glow.push(eyeGlow, eyeHalo, portGlow);
+  glow.push(eyeCore, eyeGlow, eyeGlow2, eyeHalo2, eyeHalo, portGlow);
 
   /* ------------------------------------------------------------- skeleton */
   const pelvis = joint(bones, root, 'pelvis', 0, HIP_Y, 0);
@@ -172,11 +184,11 @@ export function buildVoxxy(): RobotRig {
       [0.177, 0.02],
       [0.172, 0.09],
       [0.162, 0.16],
-      [0.148, 0.225],
-      [0.125, 0.275],
-      [0.095, 0.315],
-      [0.055, 0.34],
-      [0.0, 0.352],
+      [0.148, 0.228],
+      [0.127, 0.283],
+      [0.101, 0.325],
+      [0.064, 0.355],
+      [0.0, 0.369],
     ],
     36,
     40,
@@ -228,12 +240,16 @@ export function buildVoxxy(): RobotRig {
   /*
    * Neck: a stub, not a stalk.
    *
-   * The sheet gives Voxxy 18 px of neck against a 395 px head — 4.6% — and the
-   * head sits almost directly on the shoulders. The previous build's was 21% of
-   * the head's width and was the second-biggest reason he read as lanky.
+   * Measured the way the round's verifier measures it — flood-fill the portrait,
+   * count the rows under the head where the figure is narrower than a fifth of
+   * the head box — the sheet gives Voxxy 18 px against a 394 px head, 4.6%. The
+   * build these numbers replace came out at 6.3%: the head no longer rested on
+   * the shoulders, it stood on a visible dark pillar. The body's own shoulders
+   * were raised 0.017 m (see the pear profile above) to close it, because the
+   * head's top is pinned by ROBOT_HEIGHT_M and cannot come down.
    */
-  const neckMesh = part(new THREE.CylinderGeometry(0.046, 0.055, 0.075, 18), dark);
-  neckMesh.position.y = 0.006;
+  const neckMesh = part(new THREE.CylinderGeometry(0.048, 0.058, 0.062, 18), dark);
+  neckMesh.position.y = 0.002;
   neck.add(neckMesh);
 
   /* ----------------------------------------------------------------- head */
@@ -250,9 +266,17 @@ export function buildVoxxy(): RobotRig {
    * head's height above it, a chin 15% below, and a cheek 9% of the head's width
    * either side, between the glass and the ring ports.
    */
-  const VISOR_PHI = 0.66;
-  const VISOR_THETA_MID = 1.7;
-  const VISOR_THETA = 0.66;
+  /*
+   * Sized off the sheet, not by eye. Flood-filling the sheet's front panel and
+   * the in-game portrait the same way gives the visor as a fraction of the head
+   * box: the sheet is 0.683 wide and 0.655 tall, and the build these numbers
+   * replace measured 0.583 and 0.579 — a mask oval where the sheet has a screen
+   * that fills the face. `tests/robots.smoke.test.ts` pins the geometry that
+   * produces it.
+   */
+  const VISOR_PHI = 0.87;
+  const VISOR_THETA_MID = 1.68;
+  const VISOR_THETA = 0.83;
   const visor = part(
     ovalPatch(HEAD_RX * 1.012, HEAD_RY * 1.02, HEAD_RZ * 1.012, 0, VISOR_PHI, VISOR_THETA_MID, VISOR_THETA, 7, 44),
     visorGlass,
@@ -279,25 +303,60 @@ export function buildVoxxy(): RobotRig {
   head.add(screen);
 
   /*
-   * Two LARGE softly glowing amber bar-eyes, curved onto the visor.
+   * Two LARGE softly glowing amber bar-eyes on the dot-matrix screen.
    *
-   * 0.13 m wide and 0.05 tall — a third of the visor's width each, where the
-   * previous pair were flat 11 px rectangles in a 320 px visor and read as two
-   * painted-on dashes.
+   * SHAPE first: the pair this replaces were 0.21 x 0.13 in angle, an aspect of
+   * 2.4 measured off the portrait against the sheet's 1.5-1.6, and 22% of the
+   * visor's height against a sheet nearer 40% — flat painted-on dashes where
+   * the sheet has tall rounded bars. Height went up; width did not.
+   *
+   * SOFTNESS second, and it is the harder half, because this renderer has no
+   * bloom pass to do it. Concentric ovals stepping down in emissive give the
+   * falloff, and the outermost step is a field of LIT DOTS rather than another
+   * solid oval: the eye's edge dissolves into the screen's own matrix instead
+   * of ending on a rim, which is how the sheet's eyes sit on their screen and
+   * the opposite of the "hard-edged ellipse with a dark-orange outline" the
+   * last round measured.
    */
   for (const sx of [-1, 1]) {
-    // The bloom this shot does not have, faked with geometry: a wide dim oval
-    // under a bright core, which is what turns two amber lozenges into two lamps.
     const halo = part(
-      ovalPatch(HEAD_RX * 1.026, HEAD_RY * 1.04, HEAD_RZ * 1.026, sx * 0.3, 0.26, VISOR_THETA_MID + 0.02, 0.165, 5, 28),
+      dotGrid(
+        HEAD_RX * 1.028,
+        HEAD_RY * 1.042,
+        HEAD_RZ * 1.028,
+        sx * 0.31,
+        0.36,
+        VISOR_THETA_MID + 0.02,
+        0.3,
+        23,
+        18,
+        0.3,
+      ),
       eyeHalo,
     );
     head.add(halo);
-    const bar = part(
-      ovalPatch(HEAD_RX * 1.034, HEAD_RY * 1.052, HEAD_RZ * 1.034, sx * 0.3, 0.21, VISOR_THETA_MID + 0.02, 0.13, 5, 28),
-      eyeGlow,
-    );
-    head.add(bar);
+    for (const [phiHalf, thetaHalf, mat, lift] of [
+      [0.3, 0.245, eyeHalo2, 1.032],
+      [0.278, 0.227, eyeGlow2, 1.036],
+      [0.256, 0.209, eyeGlow, 1.04],
+      [0.234, 0.191, eyeCore, 1.044],
+    ] as const) {
+      const lens = part(
+        ovalPatch(
+          HEAD_RX * lift,
+          HEAD_RY * (1 + (lift - 1) * 1.5),
+          HEAD_RZ * lift,
+          sx * 0.31,
+          phiHalf,
+          VISOR_THETA_MID + 0.02,
+          thetaHalf,
+          5,
+          30,
+        ),
+        mat,
+      );
+      head.add(lens);
+    }
   }
 
   /*
@@ -355,11 +414,27 @@ export function buildVoxxy(): RobotRig {
     bones[sx > 0 ? 'earL' : 'earR'] = ear;
     const inner = part(ellipsoid(0.066, 0.068, 0.062, 22, 16), shell);
     ear.add(inner);
-    // The white shell caps the outer-front half of the mushroom.
-    const outerGeo = new THREE.SphereGeometry(1, 22, 16, 0, Math.PI);
-    outerGeo.scale(0.069, 0.071, 0.065);
+    /*
+     * The white shell is a CRESCENT along the ear's outer-top edge, and it is
+     * the same crescent on both ears.
+     *
+     * Two bugs lived in the line this replaces. It built a +Z half-sphere and
+     * then yawed it, which showed half the ear as white where the sheet shows a
+     * rim; and it yawed the right ear by `PI + 0.45`, swinging that ear's cap
+     * round to the back of the head where nothing can see it — which is the
+     * whole of the "one ear is white shell, the other is plain orange" bug (a
+     * flood fill of the portrait measured 83.6% near-white against 1.1%).
+     *
+     * A cap of revolution tilted outward has no azimuth to get wrong: it is
+     * mirror-symmetric by construction, and unlike a wedge aimed at +-X it does
+     * not vanish on whichever ear happens to be facing away from the camera —
+     * the portrait is a three-quarter view, so a rim that only exists on the
+     * outward face is a rim only one ear ever shows.
+     */
+    const outerGeo = new THREE.SphereGeometry(1, 22, 16, 0, Math.PI * 2, 0, 0.66);
+    outerGeo.scale(0.07, 0.072, 0.066);
     const outer = part(outerGeo, white);
-    outer.rotation.y = sx > 0 ? -0.45 : Math.PI + 0.45;
+    outer.rotation.z = -sx * 0.45;
     ear.add(outer);
   }
 

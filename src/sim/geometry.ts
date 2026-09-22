@@ -16,7 +16,7 @@
  */
 
 import { W, H, T } from './constants';
-import type { Booth, RoomDef, ViewRect, Wall } from './types';
+import type { Booth, Rect, RoomDef, ViewRect, Wall } from './types';
 
 /* ---------------------------------------------------------------- first floor */
 
@@ -241,25 +241,46 @@ const booths: Booth[] = [];
   }
 }
 
+/** Depth of a service counter — the wardrobe's hand-in top. */
+const COUNTER = 10;
+
+/**
+ * THE LOBBY, AS MICHELE PLOTTED IT (`docs/ground-floor-lobby-fix.md`).
+ *
+ * Every rect below the hall comes from his own calibrated plot of
+ * `plans/exhibition-floor.jpg`, not from a reading of the plan and not from the
+ * prototype, which had invented most of this quadrant. Two things his plot settles
+ * that no measurement of ours had:
+ *
+ *  - the hall's right edge is **not** a scalloped wall with four holes in it. It is
+ *    a concrete wall across the upper stretch and the SMALL STAIRCASE across the
+ *    lower one, and that staircase is the only way between the hall and the lobby;
+ *  - the lobby floor stands **half a metre above** the hall floor, so that
+ *    staircase is a real threshold rather than a doorway.
+ *
+ * The blocks are clamped at y 6 where the building reaches further "up" in world
+ * terms than a 700-tall canvas has room for — his call, rather than rescaling a
+ * floor that is already correct against the hall.
+ */
 export const GF = {
   hall: { x: 30, y: 90, w: 1010, h: 600 },
   /**
-   * Openings in the hall's right wall — the door bank on the plan.
+   * The **one** opening in the hall's right edge: the stepped threshold onto the
+   * small staircase, world y 285..568.
    *
-   * `plans/exhibition-floor-stairs-annotated.png` draws a continuous bank of
-   * roughly a dozen door leaves along this wall, not four holes: six regular bays
-   * of pier / glazed leaf / pier read as that bank from the hall floor, where four
-   * unequal gaps read as four holes punched in a blank wall. The bay at 396..466 is
-   * the one the chapter-3 visitor route (y 420-445) goes through.
+   * The prototype's four unequal gaps — later six door bays — were fiction, and
+   * they survived into the build unquestioned. The plan draws a run of long steps
+   * exactly here and solid wall either side of it, which is also why the hall and
+   * the lobby are at different levels: see `LOBBY_RISE_M`.
    */
-  openings: [
-    [120, 190],
-    [212, 282],
-    [304, 374],
-    [396, 466],
-    [488, 558],
-    [580, 650],
-  ] as Array<[number, number]>,
+  openings: [[285, 568]] as Array<[number, number]>,
+  /**
+   * The small staircase: 5-7 shallow steps down from the lobby into the hall,
+   * 22 m wide, the only route between the two.
+   */
+  smallStairs: { x: 952, y: 285, w: 93, h: 283 },
+  /** The concrete wall closing the hall's right edge above the threshold. */
+  concreteWall: { x: 1039, y: 90, w: 43, h: 199 },
   food: {
     court: { x: 30, y: 90, w: 300, h: 160 },
     /** The three queue doorways. */
@@ -298,34 +319,70 @@ export const GF = {
   store: { x: 900, y: 90, w: 140, h: 110 },
   roller: { x: 894, y: 130, w: T, h: 60 },
   booths,
-  reception: { x: 1280, y: 120, w: 240, h: 50 },
-  printer: { x: 1284, y: 158, w: 20, h: 12 },
-  mainStair: { x: 1280, y: 200, w: 240, h: 200 },
-  gate: { x: 1274, y: 200, w: T, h: 200 },
   /**
-   * BOF rooms and toilets, moved to the lobby's far (east) end — the quadrant the
-   * plan puts them in.
-   *
-   * `plans/exhibition-floor-stairs-annotated.png` draws the BOF block at plan
-   * c 625-890, r 890-1090 and the toilets just west of it. Under this module's
-   * rotation (plan top -> world left, plan left -> world bottom) that is world
-   * x 1483-1817, y 14-218: far right, TOP. The prototype had compressed the whole
-   * lobby into x 1274-1560 and dropped the BOF block into the bottom-right, which
-   * left a quarter of the ground floor — x 1560 to the east wall — as bare deck
-   * with the plan's densest band of rooms missing from it.
-   *
-   * Nothing in `src/sim` keys off either rect: they are walls and an anchor, and
-   * the chapter-3 visitor route runs along y 420-445, well clear of both.
+   * The wardrobe: the larger, northern half of the reception block, with its
+   * hand-in counter along the south face.
    */
-  bof: { x: 1560, y: 40, w: 320, h: 220 },
+  coatroom: { x: 1172, y: 262, w: 126, h: 122 },
+  /** The reception desk itself — BELOW the coatroom, not beside it. */
+  reception: { x: 1174, y: 388, w: 126, h: 75 },
+  /** The badge printer, on the reception counter (chapter 2's cable run ends here). */
+  printer: { x: 1262, y: 438, w: 20, h: 12 },
+  /** The main staircase up to the Devoxx rooms, east of the reception block. */
+  mainStair: { x: 1305, y: 263, w: 112, h: 197 },
+  /**
+   * The gate across the foot of the main staircase — the one Stephan stands at.
+   *
+   * It closes the staircase's SOUTH face, which is the only side of it anybody can
+   * reach: the wardrobe and the reception desk close the west, and "when Devoxx
+   * opens this passage is closed and you go to the reception first" is exactly the
+   * gate chapter 3 ends on.
+   */
+  gate: { x: 1305, y: 263 + 197, w: 112, h: T },
+  /** BOF rooms: tables, workshops, and usable game space. Top-clamped. */
+  bof: { x: 1195, y: 6, w: 275, h: 151 },
   /** Internal partitions of the BOF block, as offsets from `bof.x`. */
-  bofSplits: [107, 214] as const,
-  toilets: { x: 1060, y: 110, w: 150, h: 130 },
-  entrance: { x: W - T, y: 360, w: T, h: 170 },
+  bofSplits: [92, 184] as const,
+  toilets: { x: 1085, y: 6, w: 105, h: 150 },
+  /**
+   * The main entrance: the LEFT-HAND DOORS ONLY.
+   *
+   * Michele: "The whole wall until the BOF rooms is made of glass doors. Only the
+   * ones on the left are open for Devoxx, so people enter next to the reception."
+   * The rest of that run is fixed glazing (`groundWalls`), and chapter 3's visitors
+   * come in here rather than through the whole wall or off the canvas edge.
+   */
+  entrance: { x: 1472, y: 422, w: 33, h: 136 },
   /** Visitor lane grid for chapter 3. */
   laneX: [370, 530, 690, 850, 1010],
   laneY: [215, 355, 495, 645],
 } as const;
+
+/**
+ * How far the lobby floor stands above the exhibition hall's, metres.
+ *
+ * Michele measured the drop at about half a metre — 5-7 shallow risers of roughly
+ * 80 mm. It is 43% of Voxxy's height, which is what makes the threshold read as a
+ * real obstacle rather than as a ramp, and the sim stays 2D: the steps are an
+ * opening in the hall's right edge, not a height field.
+ *
+ * `src/sim` never reads this; the renderer does, to build the two levels and the
+ * flight between them.
+ */
+export const LOBBY_RISE_M = 0.5;
+
+/**
+ * The height of the ground-floor walking surface above the hall floor, metres, at
+ * a sim x. The level change runs along the hall's right edge, so it depends on x
+ * alone: 0 in the hall, `LOBBY_RISE_M` in the lobby, and interpolated across the
+ * small staircase's footprint.
+ */
+export function groundRiseM(x: number): number {
+  const s = GF.smallStairs;
+  if (x <= s.x) return 0;
+  if (x >= s.x + s.w) return LOBBY_RISE_M;
+  return ((x - s.x) / s.w) * LOBBY_RISE_M;
+}
 
 /** Walls of the exhibition level. */
 export function groundWalls(): Wall[] {
@@ -333,12 +390,39 @@ export function groundWalls(): Wall[] {
   w.push({ x: 0, y: 0, w: W, h: T }, { x: 0, y: H - T, w: W, h: T }, { x: 0, y: 0, w: T, h: H }, { x: W - T, y: 0, w: T, h: H });
   const h = GF.hall;
   w.push({ x: h.x - T, y: h.y - T, w: h.w + 2 * T, h: T }, { x: h.x - T, y: h.y, w: T, h: h.h });
-  let y: number = h.y;
+
+  /*
+   * The hall's right edge: concrete, with one opening in it.
+   *
+   * The concrete block is Michele's own rect and it is thicker than a partition,
+   * so the thin edge slabs are only emitted where it does not already cover the
+   * run — otherwise the renderer would draw two coincident walls.
+   */
+  const cw = GF.concreteWall;
+  const covered = (y0: number, y1: number): boolean => cw.y <= y0 && cw.y + cw.h >= y1;
+  const edge = (y0: number, y1: number): void => {
+    if (y1 <= y0 || covered(y0, y1)) return;
+    w.push({
+      x: h.x + h.w,
+      y: y0,
+      w: T,
+      h: y1 - y0,
+      kind: 'hall-edge',
+      why: (b) => `${b.name}: the hall's outside wall. The steps are the only way through to the lobby`,
+    });
+  };
+  w.push({
+    ...cw,
+    kind: 'concrete',
+    why: (b) => `${b.name}: poured concrete. Round to the steps — they are the only way into the lobby`,
+  });
+  let ey: number = h.y;
   for (const [a, b] of GF.openings) {
-    w.push({ x: h.x + h.w, y, w: T, h: a - y });
-    y = b;
+    edge(ey, a);
+    ey = b;
   }
-  w.push({ x: h.x + h.w, y, w: T, h: h.y + h.h - y });
+  edge(ey, h.y + h.h);
+
   const c = GF.food.court;
   w.push({ x: c.x + c.w, y: c.y, w: T, h: c.h + T });
   let gx: number = c.x;
@@ -371,41 +455,90 @@ export function groundWalls(): Wall[] {
         : (bb) => `${bb.name}: ${bo.name} — a built booth, solid walls`,
     });
   }
-  w.push({ ...GF.reception, low: true, why: (bb) => `${bb.name}: reception. Badges, lanyards, the printer` });
-  const m = GF.mainStair;
-  w.push({ x: m.x, y: m.y - T, w: m.w + T, h: T }, { x: m.x, y: m.y + m.h, w: m.w + T, h: T }, { x: m.x + m.w, y: m.y, w: T, h: m.h });
-  // The BOF block: three rooms off a shared lobby wall, each with its own doorway
-  // on the south side, exactly as the plan subdivides it.
-  const b = GF.bof;
-  const bofDoor = 44;
-  const edges = [0, ...GF.bofSplits, b.w];
-  w.push(
-    { x: b.x - T, y: b.y - T, w: b.w + 2 * T, h: T },
-    { x: b.x - T, y: b.y, w: T, h: b.h },
-    { x: b.x + b.w, y: b.y, w: T, h: b.h },
-  );
-  for (const sx of GF.bofSplits) w.push({ x: b.x + sx, y: b.y, w: T, h: b.h });
-  for (let i = 0; i < edges.length - 1; i++) {
-    const x0 = b.x + edges[i] + (i === 0 ? -T : T);
-    const x1 = b.x + edges[i + 1] + T;
-    const cx = (x0 + x1) / 2;
-    w.push(
-      { x: x0, y: b.y + b.h, w: cx - bofDoor / 2 - x0, h: T },
-      { x: cx + bofDoor / 2, y: b.y + b.h, w: x1 - (cx + bofDoor / 2), h: T },
-    );
-  }
 
-  // Toilets: a proper walled block off the lobby, with one doorway on its south side.
-  const tl = GF.toilets;
-  const tlDoor = 40;
-  const tlCx = tl.x + tl.w / 2;
+  /* ------------------------------------------------------------------ the lobby
+   *
+   * Every lobby block is walled INSIDE its measured rect, so nothing spills over
+   * the footprint Michele plotted and two neighbouring blocks never overlap.
+   */
+
+  /** North, west and east faces, inside `r`. */
+  const shellOf = (r: Rect, kind: string): Wall[] => [
+    { x: r.x, y: r.y, w: r.w, h: T, kind },
+    { x: r.x, y: r.y + T, w: T, h: r.h - T, kind },
+    { x: r.x + r.w - T, y: r.y + T, w: T, h: r.h - T, kind },
+  ];
+
+  /** The south face of `r`, cut by one `door`-wide gap per span. */
+  const southDoors = (r: Rect, spans: Array<[number, number]>, door: number, kind: string): Wall[] => {
+    const out: Wall[] = [];
+    const y = r.y + r.h - T;
+    for (const [x0, x1] of spans) {
+      const cx = (x0 + x1) / 2;
+      out.push({ x: x0, y, w: cx - door / 2 - x0, h: T, kind }, { x: cx + door / 2, y, w: x1 - (cx + door / 2), h: T, kind });
+    }
+    return out;
+  };
+
+  // The reception desk: a counter, so light crosses it and the lamps on it read.
+  w.push({ ...GF.reception, low: true, kind: 'desk', why: (bb) => `${bb.name}: reception. Badges, lanyards, the printer` });
+
+  // The wardrobe: three walls and the hand-in counter along its south face.
+  const co = GF.coatroom;
+  w.push(...shellOf(co, 'coatroom'), {
+    x: co.x,
+    y: co.y + co.h - COUNTER,
+    w: co.w,
+    h: COUNTER,
+    low: true,
+    kind: 'coat-counter',
+    why: (bb) => `${bb.name}: the wardrobe counter. Three thousand coats tomorrow, not one tonight`,
+  });
+
+  // The main staircase. Its south face is left open for the gate a chapter adds
+  // there (`GF.gate`); the reception block closes its west side.
+  const ms = GF.mainStair;
+  w.push(...shellOf(ms, 'mainstair'));
+
+  // The BOF rooms: three workshop rooms off the lobby, one doorway each.
+  const b = GF.bof;
+  const edges = [0, ...GF.bofSplits, b.w];
+  w.push(...shellOf(b, 'bof'));
+  for (const sx of GF.bofSplits) w.push({ x: b.x + sx, y: b.y + T, w: T, h: b.h - 2 * T, kind: 'bof' });
   w.push(
-    { x: tl.x - T, y: tl.y - T, w: tl.w + 2 * T, h: T },
-    { x: tl.x - T, y: tl.y, w: T, h: tl.h },
-    { x: tl.x + tl.w, y: tl.y, w: T, h: tl.h },
-    { x: tl.x - T, y: tl.y + tl.h, w: tlCx - tlDoor / 2 - (tl.x - T), h: T },
-    { x: tlCx + tlDoor / 2, y: tl.y + tl.h, w: tl.x + tl.w + T - (tlCx + tlDoor / 2), h: T },
+    ...southDoors(
+      b,
+      edges.slice(0, -1).map((e0, i): [number, number] => [b.x + e0, b.x + edges[i + 1]]),
+      44,
+      'bof',
+    ),
   );
+
+  // The toilets: one block, one doorway onto the lobby.
+  const tl = GF.toilets;
+  w.push(...shellOf(tl, 'toilets'), ...southDoors(tl, [[tl.x, tl.x + tl.w]], 40, 'toilets'));
+
+  /*
+   * The entrance wall: a glass facade with one set of doors open in it.
+   *
+   * `glass` blocks robots and passes light, which is what a fixed pane does; the
+   * left-hand doors (`GF.entrance`) are simply the gap between the two runs.
+   */
+  const e = GF.entrance;
+  for (const [y0, y1] of [
+    [T, e.y],
+    [e.y + e.h, H - T],
+  ] as Array<[number, number]>) {
+    w.push({
+      x: e.x,
+      y: y0,
+      w: e.w,
+      h: y1 - y0,
+      glass: true,
+      kind: 'facade',
+      why: (bb) => `${bb.name}: fixed glazing. Only the left-hand doors are open for Devoxx`,
+    });
+  }
   return w;
 }
 

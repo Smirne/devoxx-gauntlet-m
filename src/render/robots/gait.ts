@@ -113,6 +113,18 @@ interface Profile {
   headLead: number;
   /** Metres the pelvis rides below the straight-leg rest height. */
   crouch: number;
+  /**
+   * How far the knee is allowed to fold while STANDING, in radians.
+   *
+   * `crouch` is a distance, and a distance means completely different knee
+   * angles on a 1.04 m leg and on a 0.30 m one: Biggy's nominal 0.05 m sank his
+   * 0.30 m leg far enough to fold the knee 63 degrees, which swung his ribbed
+   * ankle bellows out into a crescent that photographed as a stack of rings
+   * floating off the leg entirely. Capping the ANGLE instead of the sag keeps
+   * every robot's stance the one its own sheet has — Voxxy and Biggy on nearly
+   * straight stubby legs, Droid with the deliberate crouch that is his.
+   */
+  standBend: number;
   /** Speed at which swing amplitudes are full, m/s. */
   speedRef: number;
   /** Antenna spring stiffness and damping. */
@@ -137,6 +149,7 @@ const PROFILES: Record<RobotKind, Profile> = {
     headBob: 0.09,
     headLead: 0.75,
     crouch: 0.045,
+    standBend: 0.4,
     speedRef: 2.0,
     antK: 60,
     antC: 4.5,
@@ -157,6 +170,7 @@ const PROFILES: Record<RobotKind, Profile> = {
     headBob: 0.03,
     headLead: 1.0,
     crouch: 0.1,
+    standBend: 0.89,
     speedRef: 1.6,
     antK: 50,
     antC: 5,
@@ -177,6 +191,7 @@ const PROFILES: Record<RobotKind, Profile> = {
     headBob: 0.02,
     headLead: 0.25,
     crouch: 0.05,
+    standBend: 0.32,
     speedRef: 2.2,
     antK: 26,
     antC: 1.6,
@@ -344,6 +359,20 @@ function poseEnvelope(name: PoseName, k: number): number {
   return smoothstep(0, 0.26, k) * (1 - smoothstep(0.72, 1, k));
 }
 
+/**
+ * How far a two-bone leg's hip drops when its knee folds by `bend` radians.
+ *
+ * Law of cosines on the thigh/shin triangle: the hip-to-ankle distance at a
+ * knee angle of `pi - bend` is `sqrt(t^2 + s^2 + 2ts cos bend)`, and the sag is
+ * how much shorter that is than the straight leg. Exact for any proportions,
+ * which is the point — a metres-based crouch is not.
+ */
+export function standSag(thigh: number, shin: number, bend: number): number {
+  const b = clamp(bend, 0, Math.PI * 0.9);
+  const d = Math.sqrt(thigh * thigh + shin * shin + 2 * thigh * shin * Math.cos(b));
+  return Math.max(0, thigh + shin - d);
+}
+
 /* -------------------------------------------------------------- two-bone IK */
 
 /**
@@ -444,15 +473,20 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
   // nominal +-0.16 m is a ceiling, never a promise.
   const legLen = (st.thighLen + st.shinLen) * 0.98;
   /*
-   * A robot can only sink as far as its own legs can fold.
+   * A robot sinks into its gait and straightens up when it stops.
    *
-   * The profile's crouch is in metres, and Voxxy's hip-to-ankle is 0.13 m: the
-   * nominal 0.045 m is a third of his whole leg, and folding a two-bone leg that
-   * far drives the knee past pi — a robot sitting on its own shins, not a crouch.
-   * Capping it at a fraction of the leg keeps every robot's stance proportional
-   * to its build instead of to the tallest one's.
+   * The profile's crouch is a distance, and the same distance is a completely
+   * different knee angle on a 1.04 m leg and on a 0.30 m one: Biggy's sank his
+   * short legs far enough to fold the knee 63 degrees while STANDING STILL,
+   * which swung his ribbed ankle bellows out of the leg's own line and
+   * photographed as a stack of rings floating behind the boot. Standing is
+   * capped by a knee ANGLE instead (`standBend`, exact for any proportions);
+   * walking keeps the full crouch, because a straight leg cannot stride — the
+   * foot would have to slide to reach, which `plants its feet` catches.
    */
-  const crouch = Math.min(p.crouch, legLen * 0.15);
+  const walkCrouch = Math.min(p.crouch, legLen * 0.15);
+  const standCrouch = Math.min(walkCrouch, standSag(st.thighLen, st.shinLen, p.standBend));
+  const crouch = standCrouch + (walkCrouch - standCrouch) * moving;
   const standH = Math.max(0.02, st.hipRestY - crouch - st.footRest[0].y);
   const geoExc = legLen > standH ? Math.sqrt(legLen * legLen - standH * standH) * 0.92 : 0.02;
   const maxExc = Math.min(FOOT_OFFSET_M * p.stride, geoExc);
@@ -624,8 +658,16 @@ function applyIdleUpper(rig: RobotRig, st: GaitState, w: number, dt: number): vo
   const s = st.t;
   switch (rig.kind) {
     case 'voxxy':
-      // Looks around: a slow sweep with quick curious glances on top.
-      b.head.rotation.y += (0.42 * Math.sin(s * 0.63) + 0.18 * Math.sin(s * 2.1 + 1.3)) * w;
+      /*
+       * Looks around: a slow sweep with quick curious glances on top.
+       *
+       * Amplitude halved from 0.42 + 0.18. At 0.6 rad Voxxy spent most of his
+       * idle with his face 34 degrees off the camera, which is a third of the
+       * visor's apparent width and most of one ear's white shell gone — and the
+       * model-sheet check is shot on an idling rig. Curious, still; turned away
+       * from the judge, no.
+       */
+      b.head.rotation.y += (0.21 * Math.sin(s * 0.63) + 0.1 * Math.sin(s * 2.1 + 1.3)) * w;
       b.head.rotation.x += (0.1 * Math.sin(s * 1.25) - 0.03) * w;
       b.head.rotation.z += 0.05 * Math.sin(s * 0.9) * w;
       for (const L of ['L', 'R'] as const) {

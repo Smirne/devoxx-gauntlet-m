@@ -551,11 +551,24 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     runtime.update(dt);
   }
 
+  /**
+   * A keypress. **Dismissing a card must not eat the key that dismissed it.**
+   *
+   * Chapters 2, 3 and 4 open on a "press any key" card, and this used to clear the
+   * card and `return`, so the first deliberate input after every chapter start was
+   * swallowed: pressing 2 to take Droid did nothing the first time, every time,
+   * and the player had to press it twice without ever being told why. The same bug
+   * ate the `R` on the end card's own "R to play again".
+   *
+   * So the card is dismissed and the key then goes on to mean whatever it means.
+   * Keys that only ever dismissed (Space, Enter) still just dismiss — they reach a
+   * runtime that ignores them — and a card shown by `fail()` or `finish()` leaves
+   * `phase` at 'done', where everything below but `R` falls through harmlessly.
+   */
   function key(code: string): void {
     if (card !== null) {
       card = null;
       if (chapter === 0) startChapter(1);
-      return;
     }
     if (code === 'KeyR') {
       restart();

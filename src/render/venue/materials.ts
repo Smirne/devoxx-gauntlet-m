@@ -133,6 +133,12 @@ const SPECS = {
   /** Breaker panel face, with its little status LED. */
   breakerBox: { color: '#4d5560', roughness: 0.6, metalness: 0.35, emissive: '#d8452f', emissiveIntensity: 0.5 },
   printerWhite: { color: '#d9d7d2', roughness: 0.65 },
+  /** The long white reception counter and the wardrobe's hand-in top. */
+  counterWhite: { color: '#e6e2d9', roughness: 0.45 },
+  /** Coats hanging in the wardrobe: a thin, dark, soft crowd of them. */
+  coatFabric: { color: '#39404e', roughness: 1 },
+  /** The forecourt outside the entrance glazing: wet night paving. */
+  paving: { color: '#23262b', roughness: 1 },
   pendantWhite: { color: '#efefeb', roughness: 0.5, emissive: '#fff0d0', emissiveIntensity: 0.85 },
   /** Entrance and facade glazing, with the autumn dark behind it. */
   glazing: { color: '#2c4258', roughness: 0.06, metalness: 0.2, opacity: 0.4 },
