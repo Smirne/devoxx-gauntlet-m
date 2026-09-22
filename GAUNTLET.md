@@ -164,6 +164,25 @@ two first-class pieces the overlay and model-sheet checks above.
 
 If our version wins or ties on craft **and** passes the factual checks, the piece is done.
 
+### Publish the playable build after every round
+
+Michele plays it; that is worth more than another critic. **After every significant round —
+every time a fix pass lands and the build is green — republish the playable build and give him
+the link.**
+
+- Always update **the same artifact**, never publish a new one:
+  **https://claude.ai/artifact/RnHqA2fXkAyGSfEjGybV4R**
+  From a conversation that did not publish it, pass that URL as `url`; publishing without it
+  creates a second artifact and the link Michele has bookmarked goes stale.
+- Build from the **committed** state, never the working tree — parallel agents are usually
+  mid-write. `tools/publish-build.sh` does this: it builds `HEAD` in a throwaway git worktree
+  and prints the `dist/` path to publish.
+- Say in the message which commit it is, and what is *known to be wrong* in it. A build posted
+  without its caveats invites Michele to re-report things the round already knows about.
+- The debug URL API is the useful part for review, so repeat it: `?chapter=N`, `?topdown=1`,
+  `?pose=voxxy|droid|biggy`, `?nofog=1`, `?warm=N`, `?seed=N`, `?nohud=1`.
+- It is keyboard-only and needs WebGL2, so it will not play on a phone. Say so.
+
 ---
 
 ## 4. Tests are the acceptance criteria
