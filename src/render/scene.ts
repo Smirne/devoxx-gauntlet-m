@@ -526,37 +526,47 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    */
   const portraitBox = new THREE.Box3();
   const _corner = new THREE.Vector3();
-  /** World-space corners of every mesh in the rig, flattened — the fit's samples. */
+  /** World-space samples of the rig's surface, flattened — the fit's subject. */
   const portraitPts: number[] = [];
+  /** Samples of the parts the silhouette excludes — a whip antenna, a wire. */
+  const portraitAerial: number[] = [];
 
   /**
-   * Sample the rig with each MESH's own box rather than one box round the whole
-   * robot: a single AABB's corners stick far out past a rounded figure, and
-   * fitting to them leaves a fifth of the frame empty.
+   * Sample the rig's own surface rather than any bounding box.
+   *
+   * A box round the whole robot has corners that stick far out past a rounded
+   * figure, and fitting to those leaves a fifth of the frame empty; per-mesh
+   * boxes are better but still put Droid three points of fill behind the other
+   * two. Vertices are what the camera actually sees, so they are what the fit
+   * measures.
    */
   function collectPortraitPoints(rig: RobotRig): void {
     portraitPts.length = 0;
+    portraitAerial.length = 0;
     rig.root.updateWorldMatrix(true, true);
-    const walk = (node: THREE.Object3D): void => {
-      if (node.userData[EXCLUDE_FROM_BOUNDS] === true) return;
+    const walk = (node: THREE.Object3D, aerial = false): void => {
+      const out = aerial || node.userData[EXCLUDE_FROM_BOUNDS] === true;
       if (node instanceof THREE.Mesh && node.visible) {
-        if (!node.geometry.boundingBox) node.geometry.computeBoundingBox();
-        const bb = node.geometry.boundingBox;
-        if (bb) {
-          for (let c = 0; c < 8; c++) {
-            _corner
-              .set(c & 1 ? bb.max.x : bb.min.x, c & 2 ? bb.max.y : bb.min.y, c & 4 ? bb.max.z : bb.min.z)
-              .applyMatrix4(node.matrixWorld);
-            portraitPts.push(_corner.x, _corner.y, _corner.z);
+        const pos = node.geometry.getAttribute('position') as THREE.BufferAttribute | undefined;
+        if (pos) {
+          // Around 150 samples per mesh: enough that a lathe's or an ellipsoid's
+          // extreme ring is always hit, cheap enough to run a dozen times.
+          const stride = Math.max(1, Math.ceil(pos.count / 150));
+          const into = out ? portraitAerial : portraitPts;
+          for (let i = 0; i < pos.count; i += stride) {
+            _corner.fromBufferAttribute(pos, i).applyMatrix4(node.matrixWorld);
+            into.push(_corner.x, _corner.y, _corner.z);
           }
         }
       }
-      for (const child of node.children) walk(child);
+      for (const child of node.children) walk(child, out);
     };
     walk(rig.root);
   }
   /** Fraction of the half-frame the figure's binding axis fills. */
   const PORTRAIT_FILL = 0.93;
+  /** ...and how close to the edge a whip antenna is allowed to come. */
+  const AERIAL_FILL = 0.995;
   /** How far up the figure its face sits — where the camera's eye goes. */
   const PORTRAIT_FACE = 0.84;
 
@@ -580,23 +590,49 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     measureBounds(rig.root, portraitBox);
     const size = portraitBox.getSize(new THREE.Vector3());
     const height = Math.max(size.y, rig.height, 0.2);
-    const ty = (portraitBox.min.y + portraitBox.max.y) / 2;
+    let ty = (portraitBox.min.y + portraitBox.max.y) / 2;
     const faceY = portraitBox.min.y + height * PORTRAIT_FACE;
 
     collectPortraitPoints(rig);
     const fovY = (portraitCam.fov * Math.PI) / 180;
     let dist = Math.max(height, size.x, size.z) / Math.tan(fovY / 2);
-    for (let i = 0; i < 12; i++) {
+    /*
+     * Pull back until the figure fills `PORTRAIT_FILL` of the frame, and slide
+     * the look-at point until what is left over is split evenly top and bottom.
+     *
+     * Both halves matter. Fitting alone leaves the taller robot's feet nearer the
+     * edge than its head, because a camera looking slightly down does not project
+     * symmetrically about its target; that is how Droid ended up three points of
+     * fill behind the other two with the same nominal fit.
+     */
+    for (let i = 0; i < 24; i++) {
       placePortraitCamera(dist, ty, faceY);
-      let fill = 0;
+      let lo = Infinity;
+      let hi = -Infinity;
+      let wide = 0;
       for (let p = 0; p < portraitPts.length; p += 3) {
         _corner.set(portraitPts[p], portraitPts[p + 1], portraitPts[p + 2]).project(portraitCam);
-        fill = Math.max(fill, Math.abs(_corner.x), Math.abs(_corner.y));
+        if (_corner.y < lo) lo = _corner.y;
+        if (_corner.y > hi) hi = _corner.y;
+        wide = Math.max(wide, Math.abs(_corner.x));
       }
+      if (!Number.isFinite(lo) || !Number.isFinite(hi)) break;
+      const fill = Math.max((hi - lo) / 2, wide);
       if (fill <= 1e-4) break;
-      const k = fill / PORTRAIT_FILL;
+      // The aerial is not part of the silhouette and must not drive the fit, but
+      // it must not walk off the top of the frame either.
+      let aerial = 0;
+      for (let p = 0; p < portraitAerial.length; p += 3) {
+        _corner.set(portraitAerial[p], portraitAerial[p + 1], portraitAerial[p + 2]).project(portraitCam);
+        aerial = Math.max(aerial, Math.abs(_corner.x), Math.abs(_corner.y));
+      }
+      // Recentre: half the frame's height in world units at the target's depth.
+      // Damped: moving the target also changes the camera's pitch, so a full
+      // correction each pass oscillates instead of settling.
+      ty += ((hi + lo) / 2) * dist * Math.tan(fovY / 2) * 0.6;
+      const k = Math.max(fill / PORTRAIT_FILL, aerial / AERIAL_FILL);
       dist *= k;
-      if (Math.abs(k - 1) < 0.002) break;
+      if (Math.abs(k - 1) < 0.002 && Math.abs(hi + lo) < 0.004) break;
     }
     placePortraitCamera(dist, ty, faceY);
   }
@@ -726,6 +762,8 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   let topDown = false;
   let fogOn = true;
   let portrait: RobotKind | null = null;
+  /** Frames left of "re-fit the portrait while the rig settles into its stance". */
+  let portraitSettle = 0;
   let lastChapter = -1;
 
   /** Put the scene graph into whatever the current mode needs. */
@@ -752,7 +790,10 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
         if (kind === portrait) rig.root.position.set(0, 0, 0);
       }
       const rig = rigs.get(portrait);
-      if (rig) aimPortraitCamera(rig);
+      if (rig) {
+        aimPortraitCamera(rig);
+        portraitSettle = 120;
+      }
     }
   }
 
@@ -868,6 +909,20 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     if (!rig) return;
     // Idle, facing +Z: `yawFromSimHeading(PI/2)` is a yaw of 0.
     updateRobot(rig, { speedMps: 0, heading: Math.PI / 2, dt });
+    /*
+     * Re-fit while the rig settles, then stop.
+     *
+     * The fit runs on the pose the builder left, but the first thing the gait
+     * does is drop the pelvis into its standing crouch — Droid's is 0.1 m of a
+     * 2.1 m robot, which is 5% of the frame, and that alone is what made him look
+     * smaller than the other two side by side. Re-fitting for the first couple of
+     * seconds catches the settle; freezing afterwards keeps the idle breathing
+     * from panning the camera.
+     */
+    if (portraitSettle > 0) {
+      portraitSettle--;
+      aimPortraitCamera(rig);
+    }
     renderer.setScissorTest(false);
     renderer.setViewport(0, 0, viewW, viewH);
     renderer.render(scene, portraitCam);

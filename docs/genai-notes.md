@@ -503,3 +503,105 @@ Chapter 3 answered its own measurement more cleanly. The critic sampled the floo
 x = 800, y = 672..706 and got `60` eight times — no shadow anywhere. The same sample on the
 verification shot reads `62, 62, 62, 62, 22, 22, 22`: a cast shadow with an edge in it. The open
 floor at y = 600 reads 59-66 across the same span that used to be a constant 60.
+
+---
+
+## Round 3 — floor-plan fidelity, the signage half
+
+**What the critic actually failed us on.** Geometry, proportions, doors, both staircases, hall and
+lobby had passed. The numbered Zaal signage — an explicit Stage 1 pass condition — had not: numerals
+clipped by the corridor soffit, room 7 lost behind the tensile canopy, and the four near-wall panels
+built facing away from the fixed camera.
+
+**What the agent did.**
+
+1. Replaced the eyeball check with a measurement. Before touching any geometry it raycast every
+   numeral panel toward the camera, in node, through the same `buildVenue()` the game uses. That
+   printed the fault list in one pass and named each blocker: `overhead` (the vault) on 7/8/9/10,
+   `rake-10` and `rake-7` (seat rows laid out *through* the corridor wall in the plan's three shallow
+   houses), `stair-main` on 7, and `zaal-sign-N` on 3/4/5/6 — the near panels were occluded by their
+   own backing slab because they had been built facing -z.
+2. Fixed the causes rather than nudging the panels. The corridor vault was a 0.9 x 0.96 m bar
+   floating at head height a metre out into the corridor; it is now a plate springing off the far
+   wall head and raking up at 0.75 rad, which is steeper than the steepest chapter's sight line, so a
+   ray leaving a panel's top edge can never catch it again. The seat-row constant now clamps to the
+   room's own depth. Room 7's panel moved to the other side of its door, off the staircase.
+3. Cut the near corridor wall down to a 1.15 m parapet with a painted section cap. That is what makes
+   the near-side panels readable at all, and it is also why the main staircase — the venue's
+   signature image, and until now visible only in the top-down debug view — is in the chapter 4 frame.
+4. Wrote the assertion down. `tests/venue.smoke.test.ts` now checks, for all eight rooms and at every
+   chapter pitch, that the numeral faces the camera and that a grid of rays across its face leaves
+   the venue unobstructed, plus that nothing overhead intersects the panel's box and that the panel's
+   frontal area beats the poster box beside it by 1.5x. 170 tests -> 179, none weakened.
+
+**A human decision this round did not get to make on its own.** The near rooms' numerals cannot be
+mounted on the corridor face and also be seen: the diorama camera is fixed on the +z side, so that
+face is structurally invisible. The agent chose the sectional-model convention — mount them on the
+camera-facing return of the same panel — rather than inventing a second camera or a rotating view,
+because GAUNTLET.md fixes the diorama camera per chapter and the prototype has no answer either.
+That choice is documented at the top of `src/render/venue/signage.ts` and is the one place here where
+world-truth was traded for legibility.
+
+**Rejected.** Raising the vault straight up: it clears the panels but then eats a band out of the far
+rooms' interiors at every pitch, and re-introduces the clipping at 33 degrees where the sight line
+climbs faster than a gently raked plate. Fading the near wall dynamically when it occludes: a
+standard trick, but a hard cut costs no per-frame work and reads the same from a camera that never
+moves. Shrinking the numerals to fit under the old soffit: that is the loosening the brief forbids —
+it would have made the test pass and the picture worse.
+
+## Round 3 — robot appearance fidelity (Voxxy and Biggy)
+
+**The critic's verdict this round was a factual fail on two of the three robots**, measured off
+flood-filled silhouettes of the model sheets against the in-game portraits: Voxxy 30% too tall for
+his width (sheet 1.54, build 2.01), a neck 4.5x too long, arms tapering the wrong way, a visor
+wrapped edge-to-edge over the side ports; Biggy's belly down to 0.70 of his height where the sheet
+is 0.98, a dome 27% too wide to be overhung by it, missing paired rivet ports, arms that had taken
+the belly's bulk, and two geometry defects in the lower body. Droid passed.
+
+**What the agent did.** Re-derived every proportion from the sheets by measuring the panels rather
+than by eye — cropping `robots/*.png`, flood-filling each front view and reading a per-row width
+profile — and then rebuilt `voxxy.ts` and `biggy.ts` to those numbers, holding the frozen
+`ROBOT_HEIGHT_M`: Voxxy's head went to 0.58 of his height across and his neck to a 0.038 m stub, his
+arms became bowling pins widest at 78% of their length with the white bands wrapping the club, the
+visor became a rounded-oval panel inset in the front face (a new `ovalPatch` primitive in `rig.ts`)
+with a dot-matrix screen and two large glowing bar-eyes on it, and the lower leg's palette was
+turned back the right way round. Biggy's belly became a 1.35 m lathe — 0.93 of his height, widest
+low — under a 1.03 m dome, 0.76 of it; his arms became low-profile slabs whose outer face lands
+exactly on the belly's widest point; the meridian panelling became latitude seams; the boots became
+the darkest thing on him. Droid got only what the critic asked: the helmet's banding stripes and the
+rectangular brow shelf are gone, replaced by one smooth oval faceplate with the eyes set into it.
+
+**Two real bugs fell out of the measuring**, both of which had been shipping unseen:
+
+1. `latheProfile` wound its triangles in the order the points arrived, so a profile written top-down
+   produced an inside-out shell. Back-face culling threw the surface away and the camera saw the
+   inside of the far wall — which for a convex limb looks almost right, and is why Voxxy's white arm
+   bands had been invisible inside his arms. `latheProfile` now normalises the point order.
+2. `gait.ts` applied its crouch in metres. Voxxy's hip-to-ankle is 0.13 m and his profile's crouch is
+   0.045, so a third of his leg: the two-bone IK folded the knee past pi and the smoke test caught
+   it as a 4.6 rad thigh. The crouch is now capped at a fraction of the robot's own leg length.
+
+**The portrait camera was fixed too**, because a side-by-side check is only fair if the frames are.
+It now fits by projecting the rig's own surface (not a bounding box, whose corners left a fifth of
+the frame empty), recentres so the margin is even top and bottom, keeps the camera's eye at the
+robot's face height, uses a 16-degree lens instead of 30 so the shot is near-orthographic and what a
+critic measures is the model rather than the lens, and re-fits for the first two seconds while the
+gait settles the rig into its stance — a 0.1 m crouch was 5% of Droid's frame and was most of why he
+looked smaller than the other two. All three now fill 93% of the frame height.
+
+**A human decision, kept.** Biggy has two amber eyes inside his visor band; the sheet's band is blank
+in all nine views. Michele's call is that gameplay legibility wins — the player has to see which way
+the heaviest robot is facing — and the reason is written at the deviation in `biggy.ts`.
+
+**Measured after the fix**, the same way the critic measures (flood-fill against the flat page
+background, per-row min/max x, aerial excluded): Voxxy 533 x 836 px, aspect 1.57 against the sheet's
+1.54; Biggy's belly 744 px against 802 px of body height, 0.93, and his dome 571 px, 0.77 of the
+belly. Tests 170 -> 181, none weakened: the new ones assert Voxxy's aspect, his neck as a fraction of
+head width, the direction his arms taper, and both of Biggy's mass ratios, so this cannot drift back.
+
+**Rejected.** Making Biggy's belly 0.98 of his height to match the critic's headline number exactly:
+that number is the sheet's whole silhouette including the arms, and the sheet's own belly measures
+0.82 — 0.93 with the arms tucked inside it is the honest reading of both. Keeping the arms clear of
+the body so they always show: the sheet's arms disappear behind the gut at its widest, and that is
+precisely what makes the gut read as the silhouette.
+
