@@ -281,6 +281,19 @@ export const GF = {
   tech: { x: 30, y: 560, w: 170, h: 130 },
   panel: { x: 50, y: 568, w: 26, h: 16 },
   rack: { x: 140, y: 640, w: 20, h: 24 },
+  /**
+   * The router cabinet, against the technical room's back wall beside the breaker
+   * panel and sealed by a cam-lock wheel (chapter 2, `ch2-expo.ts`).
+   *
+   * It is venue furniture, not a chapter constant: the rect lives here so that
+   * `src/render/venue/ground.ts` can build it without knowing a chapter exists,
+   * exactly as it already does for `roller` and `gate`. Its SOUTH face (y + h) is
+   * the one the wheel is bolted to — the face that looks at the diorama camera,
+   * which sits on the +y side (`src/render/camera.ts`), so the wheel is never seen
+   * edge-on. Clear of `panel` (x 50..76) so Droid cannot reach both at once by
+   * accident, and clear of `rack` (y 640..664).
+   */
+  cabinet: { x: 120, y: 560, w: 64, h: 20 },
   /** Devoxx polo & badge store, roller door on its hall side. */
   store: { x: 900, y: 90, w: 140, h: 110 },
   roller: { x: 894, y: 130, w: T, h: 60 },

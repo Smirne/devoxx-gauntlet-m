@@ -203,6 +203,62 @@ function walkTo(g: DebugGame, kind: RobotKind, target: Vec2, tol = 7): boolean {
   return driveTo(g, kind, pts, tol);
 }
 
+/* ------------------------------------------------- the chapter-2 cam-lock wheel
+ *
+ * The router cabinet in the technical room (`docs/gameplay-additions.md` §2). These
+ * three helpers are the choreography a player performs: Biggy runs at the wheel from
+ * the back of the room, Droid waits beside it, and Droid brakes when the wheel's
+ * stopping distance lands on the mark. Everything they read comes out of the public
+ * snapshot and `ExpoState`, never out of the chapter's internals.
+ */
+
+const HUB: Vec2 = { x: GF.cabinet.x + GF.cabinet.w / 2, y: GF.cabinet.y + GF.cabinet.h + 2 };
+/** Where Droid stands to get a hand on the hub, clear of Biggy's run-up line. */
+const BRACE_SPOT: Vec2 = { x: 118, y: 602 };
+/** `WHEEL_BRAKE` in `ch2-expo.ts`: a braced Droid kills the coast in `vel / 7` radians. */
+const BRAKE_RATE = 7;
+/** `WHEEL_TOL`: the cam seats within this of the mark. */
+const WHEEL_TOL = 0.16;
+
+const TAU = Math.PI * 2;
+const wrap = (a: number): number => ((a % TAU) + TAU) % TAU;
+const angDiff = (a: number, b: number): number => {
+  const d = wrap(a - b);
+  return d > Math.PI ? d - TAU : d;
+};
+
+const expo = (g: DebugGame): ExpoState => g.debug.chapter() as ExpoState;
+
+/**
+ * Biggy charges the cabinet face from the back wall of the technical room. `x`
+ * decides the lever arm: the wheel turns the way he comes in on.
+ */
+function heaveWheel(g: DebugGame, x = 178, steps = 50): void {
+  g.debug.select('biggy');
+  g.debug.place('biggy', x, 671);
+  g.setStick(0, -1);
+  steps_(g, steps);
+  g.setStick(0, 0);
+}
+
+function steps_(g: DebugGame, n: number): void {
+  for (let i = 0; i < n; i++) g.update(DT_MAX);
+}
+
+/** Droid, braced at the right instant, catches the wheel on the mark. */
+function braceOntoMark(g: DebugGame, budget = 2400): boolean {
+  g.debug.select('droid');
+  for (let i = 0; i < budget; i++) {
+    const w = expo(g).wheel;
+    if (w.open) return true;
+    if (!w.held && Math.abs(w.vel) > 0.02 && Math.abs(angDiff(w.ang + w.vel / BRAKE_RATE, w.mark)) < 0.05) {
+      g.key('KeyE');
+    }
+    g.update(DT_MAX);
+  }
+  return expo(g).wheel.open;
+}
+
 /* ================================================================ chapter 1 */
 
 describe('chapter 1 — night', () => {
@@ -403,6 +459,178 @@ describe('chapter 2 — expo', () => {
     g.debug.place('droid', sticker!.x, sticker!.y + 20);
     g.key('KeyE');
     expect(g.snapshot().swag).toContain('sticker');
+  });
+
+  /* ---------------------------------------------------- the network closet */
+
+  it('lets nobody but Biggy break the cam-lock free, and says why in each voice', () => {
+    for (const kind of ['voxxy', 'droid'] as const) {
+      const g = mk(2);
+      g.debug.select(kind);
+      g.debug.place(kind, 172, 640);
+      g.setStick(0, -1);
+      steps_(g, 200);
+      g.setStick(0, 0);
+      const w = expo(g).wheel;
+      expect(w.vel, `${kind} turned the wheel`).toBe(0);
+      expect(w.open).toBe(false);
+    }
+
+    // Each one is told why in its own words, through the wall's own `why`.
+    const g = mk(2);
+    const cab = g.debug.walls().find((w) => w.kind === 'cabinet');
+    expect(cab?.why).toBeDefined();
+    const voxxy = cab?.why?.(bot(g, 'voxxy')) ?? '';
+    const droid = cab?.why?.(bot(g, 'droid')) ?? '';
+    expect(voxxy).toContain('Voxxy');
+    expect(droid).toContain('Droid');
+    expect(voxxy).not.toBe(droid);
+    // Not one script with the name swapped.
+    expect(voxxy.replace(/^Voxxy:\s*/, '')).not.toBe(droid.replace(/^Droid:\s*/, ''));
+    // Biggy has no blocked line here: his answer is the wheel moving.
+    expect(cab?.why?.(bot(g, 'biggy'))).toBeNull();
+  });
+
+  // Ten full coast-downs with the hall's light polygons cast every frame: slow, and
+  // the point of it is the breadth of the sweep, so it gets its own budget.
+  it('turns the wheel for Biggy and strands it on a detent — he never lands the mark alone', { timeout: 30000 }, () => {
+    const g = mk(2);
+    const mark = expo(g).wheel.mark;
+    heaveWheel(g);
+    const spun = expo(g).wheel;
+    expect(spun.vel, 'Biggy did not break the cam free').not.toBe(0);
+    // He overshoots: the coast carries the wheel more than a whole turn.
+    const swept = Math.abs(spun.vel) / 0.11;
+    expect(swept).toBeGreaterThan(Math.PI * 2);
+
+    // Ten different run-up lines, i.e. ten different impact speeds and lever arms.
+    for (let k = 0; k < 10; k++) {
+      const solo = mk(2);
+      heaveWheel(solo, 164 + 2 * k);
+      for (let i = 0; i < 900; i++) {
+        solo.update(DT_MAX);
+        const w = expo(solo).wheel;
+        if (w.open || Math.abs(w.vel) < 5e-4) break;
+      }
+      const w = expo(solo).wheel;
+      expect(w.open, `solo Biggy opened the cabinet from x=${164 + 2 * k}`).toBe(false);
+      // The sprung pawl always walks it back between two marks, a long way off one.
+      expect(Math.abs(angDiff(w.ang, mark)), `run-up x=${164 + 2 * k} rested on the mark`).toBeGreaterThan(WHEEL_TOL * 2);
+    }
+  });
+
+  it('opens the cabinet when a braced Droid catches the wheel on the mark', () => {
+    const g = mk(2);
+    g.debug.place('droid', BRACE_SPOT.x, BRACE_SPOT.y);
+    heaveWheel(g);
+    expect(braceOntoMark(g)).toBe(true);
+
+    const w = expo(g).wheel;
+    expect(w.open).toBe(true);
+    expect(Math.abs(angDiff(w.ang, w.mark))).toBeLessThan(WHEEL_TOL);
+    expect(bot(g, 'droid').braced).toBe(true);
+    // The cabinet stops being a wall once it is open.
+    expect(g.debug.walls().some((x) => x.kind === 'cabinet')).toBe(false);
+
+    // Bracing out of reach of the hub brakes nothing.
+    const far = mk(2);
+    far.debug.place('droid', 60, 660);
+    far.debug.select('droid');
+    far.key('KeyE');
+    heaveWheel(far);
+    expect(expo(far).wheel.held).toBe(false);
+  });
+
+  it('resolves the index mark under Voxxy\'s narrow cone and nobody else\'s', () => {
+    for (const kind of ['voxxy', 'droid', 'biggy'] as const) {
+      const g = mk(2);
+      // Everyone else parked far away, so only this robot's lamp is in the room.
+      for (const other of ['voxxy', 'droid', 'biggy'] as const) {
+        if (other !== kind) g.debug.place(other, 620 + 30 * ['voxxy', 'droid', 'biggy'].indexOf(other), 400);
+      }
+      g.debug.place(kind, HUB.x, HUB.y + 56, -Math.PI / 2);
+      steps_(g, 4);
+      expect(expo(g).wheel.markLit, `${kind} read the mark`).toBe(kind === 'voxxy');
+      const line = g.snapshot().progress;
+      expect(line).toContain(kind === 'voxxy' ? 'mark ' : 'mark unlit');
+    }
+  });
+
+  it('keeps the badge printer offline until power, cable and router are all in', () => {
+    const g = mk(2);
+    const panel = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
+    const rack = { x: GF.rack.x + 10, y: GF.rack.y + 12 };
+    const printer = { x: GF.printer.x + 10, y: GF.printer.y + 6 };
+
+    // Power and cable, but no router: the printer is still dark.
+    g.debug.select('droid');
+    g.debug.place('droid', panel.x + 20, panel.y + 30);
+    for (let i = 0; i < 3; i++) g.key('KeyE');
+    expect(expo(g).power).toBe(true);
+
+    expect(walkTo(g, 'voxxy', { x: rack.x + 10, y: rack.y - 14 })).toBe(true);
+    g.key('KeyE');
+    expect(walkTo(g, 'voxxy', { x: printer.x - 4, y: printer.y + 18 })).toBe(true);
+    g.key('KeyE');
+    expect(expo(g).cable.connected).toBe(true);
+
+    expect(expo(g).printerOnline).toBe(false);
+    expect(g.snapshot().props.find((p) => p.kind === 'printer')?.state).not.toBe('done');
+    expect(g.snapshot().progress).toContain('router:');
+
+    // And the chapter does not end on power + cable + roller door alone.
+    const noRouter = mk(2);
+    steps_(noRouter, 2);
+    expect(noRouter.snapshot().chapter).toBe(2);
+
+    // Now the router.
+    g.debug.place('droid', BRACE_SPOT.x, BRACE_SPOT.y);
+    heaveWheel(g);
+    expect(braceOntoMark(g)).toBe(true);
+    expect(expo(g).printerOnline).toBe(true);
+    expect(g.snapshot().props.find((p) => p.kind === 'printer')?.state).toBe('done');
+    expect(g.snapshot().progress).toContain('router ✓');
+  });
+
+  it('runs chapter 2 end to end — breakers, cable, router and the roller door', () => {
+    const g = mk(2);
+    const panel = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
+    const rack = { x: GF.rack.x + 10, y: GF.rack.y + 12 };
+    const printer = { x: GF.printer.x + 10, y: GF.printer.y + 6 };
+
+    // 1. the router cabinet, while everyone is still in the technical room
+    g.debug.place('droid', BRACE_SPOT.x, BRACE_SPOT.y);
+    heaveWheel(g);
+    expect(braceOntoMark(g)).toBe(true);
+    // Droid gets off the wheel again before he is needed anywhere else.
+    g.key('KeyE');
+    expect(bot(g, 'droid').braced).toBe(false);
+
+    // 2. the breakers
+    g.debug.select('droid');
+    g.debug.place('droid', panel.x + 20, panel.y + 30);
+    for (let i = 0; i < 3; i++) g.key('KeyE');
+    expect(expo(g).power).toBe(true);
+
+    // 3. the cable
+    expect(walkTo(g, 'voxxy', { x: rack.x + 10, y: rack.y - 14 })).toBe(true);
+    g.key('KeyE');
+    expect(walkTo(g, 'voxxy', { x: printer.x - 4, y: printer.y + 18 })).toBe(true);
+    g.key('KeyE');
+    expect(expo(g).printerOnline).toBe(true);
+
+    // 4. the roller door, Voxxy shoving Biggy down the top lane
+    g.debug.select('voxxy');
+    g.debug.place('biggy', 400, 160);
+    g.debug.place('voxxy', 372, 160);
+    g.setStick(1, 0);
+    for (let i = 0; i < 400; i++) {
+      if (g.snapshot().chapter !== 2) break;
+      g.update(DT_MAX);
+    }
+    g.setStick(0, 0);
+    steps_(g, 4);
+    expect(g.snapshot().chapter).toBe(3);
   });
 });
 

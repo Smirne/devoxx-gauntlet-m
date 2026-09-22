@@ -333,6 +333,130 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   cableLine.visible = false;
   dressing.add(cableLine);
 
+  /* ------------------------------------------------- the chapter-2 cam-lock wheel
+   *
+   * The one prop in the game whose *orientation* is live game state, so it cannot be
+   * a box out of `PROPS` like everything else. There is exactly one of it, so it is
+   * built once rather than pooled, in the pattern the cable already uses.
+   *
+   * The wheel stands in the world x-y plane on the cabinet's +z face — the face the
+   * diorama camera looks at — so it is never seen edge-on, and `rotation.z` reads
+   * straight off `Prop.v`, the sim's own angle. Sim angle 0 points along +x, which
+   * is screen right, and increases anticlockwise; nothing here converts it, which is
+   * what makes the HUD's "wheel 47°" and the picture agree.
+   *
+   * The BEZEL does not turn: the eight index marks are scribed on the cabinet, and
+   * the one the cam has to be stopped on lights up only while Voxxy's cone is on it
+   * (`GameSnapshot.props`, kind 'cam-mark', state 'active').
+   */
+  const WHEEL_SPOKES = 5;
+  const WHEEL_MARK_COUNT = 8;
+  /** Hub height off the floor, metres — about Biggy's shoulder, which is what hits it. */
+  const WHEEL_HUB_Y = 1.15;
+  /** Tick radius as a fraction of the rim: the bezel ring sits just outside the wheel. */
+  const BEZEL_R = 1.3;
+
+  const wheelSteel = new THREE.MeshStandardMaterial({ color: 0x9aa4b0, roughness: 0.35, metalness: 0.8 });
+  /** Biggy-blue: the handle he catches, and the pointer that has to line up with the mark. */
+  const wheelGrip = new THREE.MeshStandardMaterial({ color: 0x5f8fd0, roughness: 0.45, metalness: 0.3 });
+  const bezelMat = new THREE.MeshStandardMaterial({ color: 0x2a2f36, roughness: 0.8, metalness: 0.2 });
+  const tickMat = new THREE.MeshStandardMaterial({ color: 0x6c757f, roughness: 0.7, metalness: 0.3 });
+  /** The target mark. Voxxy-orange and self-lit the moment her cone finds it. */
+  const markMat = new THREE.MeshStandardMaterial({
+    color: 0x3a2a1c,
+    roughness: 0.6,
+    emissive: 0x000000,
+    emissiveIntensity: 1,
+    toneMapped: false,
+  });
+
+  /** The turning part: rim, spokes, hub and the grip-and-pointer that shows the angle. */
+  const camWheel = new THREE.Group();
+  camWheel.name = 'cam-wheel';
+  camWheel.visible = false;
+  {
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(1, 0.12, 8, 28), wheelSteel);
+    rim.castShadow = true;
+    camWheel.add(rim);
+    for (let i = 0; i < WHEEL_SPOKES; i++) {
+      const a = (i * Math.PI * 2) / WHEEL_SPOKES;
+      const spoke = new THREE.Mesh(new THREE.BoxGeometry(2, 0.11, 0.1), wheelSteel);
+      spoke.rotation.z = a;
+      spoke.castShadow = true;
+      camWheel.add(spoke);
+    }
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.34, 12), wheelSteel);
+    hub.rotation.x = Math.PI / 2;
+    camWheel.add(hub);
+    // The handle and its pointer. Without one asymmetric feature a five-spoke wheel
+    // looks identical every 72°, and this beat is entirely about reading where it has
+    // got to: the pointer sits at the wheel's own angle 0, so "pointer on the lit
+    // mark" IS the sim's success condition, drawn.
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.42, 8), wheelGrip);
+    grip.rotation.x = Math.PI / 2;
+    grip.position.set(1, 0, 0.16);
+    camWheel.add(grip);
+    const pointer = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.16, 0.12), wheelGrip);
+    pointer.position.set(0.72, 0, 0.2);
+    camWheel.add(pointer);
+  }
+  dressing.add(camWheel);
+
+  /** The fixed bezel: a ring, eight ticks, and the target mark among them. */
+  const camBezel = new THREE.Group();
+  camBezel.name = 'cam-bezel';
+  camBezel.visible = false;
+  const camMark = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.2, 0.14), markMat);
+  {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(BEZEL_R, 0.07, 6, 30), bezelMat);
+    camBezel.add(ring);
+    for (let i = 0; i < WHEEL_MARK_COUNT; i++) {
+      const a = (i * Math.PI * 2) / WHEEL_MARK_COUNT;
+      const tick = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.09, 0.1), tickMat);
+      tick.position.set(Math.cos(a) * BEZEL_R, Math.sin(a) * BEZEL_R, 0);
+      tick.rotation.z = a;
+      camBezel.add(tick);
+    }
+    camBezel.add(camMark);
+  }
+  dressing.add(camBezel);
+
+  /**
+   * What "the cabinet opens" looks like: the door leaf swings off its hinge and the
+   * switch gear behind it is suddenly the brightest thing in the technical room.
+   *
+   * The closed carcass is venue geometry and never changes; this group is the only
+   * part that is state, so it lives here and is hidden until the sim says 'open'.
+   */
+  const cabinetOpen = new THREE.Group();
+  cabinetOpen.name = 'cabinet-open';
+  cabinetOpen.visible = false;
+  const cabinetLeaf = new THREE.Group();
+  {
+    const inner = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 1, 0.12),
+      new THREE.MeshStandardMaterial({
+        color: 0x101820,
+        roughness: 0.6,
+        emissive: 0x2f9d5f,
+        emissiveIntensity: 1.6,
+        toneMapped: false,
+      }),
+    );
+    inner.name = 'cabinet-interior';
+    cabinetOpen.add(inner);
+    // Lighter than the carcass on purpose: a dark leaf swung into a dark room is
+    // invisible, and "the cabinet is open" has to read from the diorama, not only
+    // from the card.
+    const leafMat = new THREE.MeshStandardMaterial({ color: 0x5c6470, roughness: 0.5, metalness: 0.5 });
+    const leaf = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 0.06), leafMat);
+    leaf.name = 'cabinet-leaf';
+    leaf.castShadow = true;
+    cabinetLeaf.add(leaf);
+    cabinetOpen.add(cabinetLeaf);
+  }
+  dressing.add(cabinetOpen);
+
   /**
    * The ground ring under the robot being driven. Nothing else in the frame says
    * which of the three the stick is moving — the HUD chip does, but the player is
@@ -844,6 +968,59 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     cableLine.visible = true;
   }
 
+  /** The cam-lock wheel: one live angle out of the sim, straight onto `rotation.z`. */
+  function drawCamWheel(p: Prop, floorY: number): void {
+    const rM = m((p.w ?? 16) / 2);
+    camWheel.visible = true;
+    camWheel.scale.setScalar(rM);
+    camWheel.position.set(m(p.x), floorY + WHEEL_HUB_Y, m(p.y));
+    camWheel.rotation.z = p.v ?? 0;
+    wheelSteel.color.setHex(p.state === 'done' ? 0x7fd9a6 : 0x9aa4b0);
+    wheelSteel.emissive.setHex(p.state === 'done' ? 0x1f5c38 : p.state === 'active' ? 0x243c55 : 0x000000);
+  }
+
+  /** The bezel it has to be stopped against, and the one mark that matters. */
+  function drawCamMark(p: Prop, floorY: number): void {
+    const rM = m((p.w ?? 16) / 2);
+    camBezel.visible = true;
+    camBezel.scale.setScalar(rM);
+    camBezel.position.set(m(p.x), floorY + WHEEL_HUB_Y, m(p.y) + 0.02);
+    const a = p.v ?? 0;
+    camMark.position.set(Math.cos(a) * BEZEL_R, Math.sin(a) * BEZEL_R, 0.05);
+    camMark.rotation.z = a;
+    // Unlit it is a scratch in dark paint; under Voxxy's 0.38 rad cone it is the
+    // only orange thing in the room. Nothing else in the frame tells the player
+    // where to stop the wheel, which is the point of giving her the narrow beam.
+    const lit = p.state === 'active' || p.state === 'done';
+    markMat.color.setHex(lit ? 0xff9a3c : 0x3a2a1c);
+    markMat.emissive.setHex(lit ? (p.state === 'done' ? 0x2f7d4f : 0xff7a1a) : 0x000000);
+  }
+
+  /** The swung door leaf and the lit interior, once the cam has let go. */
+  function drawCabinet(p: Prop, floorY: number): void {
+    if (p.state !== 'open') {
+      cabinetOpen.visible = false;
+      return;
+    }
+    const wM = m(p.w ?? 64);
+    const dM = m(p.h ?? 20);
+    const leafW = wM - 0.8;
+    const leafH = 1.75;
+    const faceZ = m(p.y) + dM;
+    cabinetOpen.visible = true;
+    const inner = cabinetOpen.children[0] as THREE.Mesh;
+    inner.scale.set(leafW, leafH, 1);
+    inner.position.set(m(p.x) + wM / 2, floorY + 0.15 + leafH / 2, faceZ - 0.06);
+    // Hinged on the left stile and swung 58° into the room. Not 90: a door left
+    // square to the wall is edge-on to a camera that looks at that wall, and reads
+    // as a sliver rather than as an open door.
+    cabinetLeaf.position.set(m(p.x) + 0.4, floorY + 0.15 + leafH / 2, faceZ);
+    cabinetLeaf.rotation.y = -(58 * Math.PI) / 180;
+    const leaf = cabinetLeaf.children[0] as THREE.Mesh;
+    leaf.scale.set(leafW, leafH, 1);
+    leaf.position.set(leafW / 2, 0, 0);
+  }
+
   function drawPerson(p: Person, floorY: number): void {
     const g = peoplePool.get();
     const rM = Math.max(m(p.r), 0.16);
@@ -871,8 +1048,14 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     propPool.begin();
     peoplePool.begin();
     cableLine.visible = false;
+    camWheel.visible = false;
+    camBezel.visible = false;
+    cabinetOpen.visible = false;
     for (const p of snap.props) {
       if (p.kind === 'cable') drawCable(p, floorY);
+      else if (p.kind === 'cam-wheel') drawCamWheel(p, floorY);
+      else if (p.kind === 'cam-mark') drawCamMark(p, floorY);
+      else if (p.kind === 'cabinet') drawCabinet(p, floorY);
       else drawProp(p, floorY);
     }
     for (const person of snap.people) drawPerson(person, floorY);
