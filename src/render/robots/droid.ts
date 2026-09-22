@@ -1,0 +1,382 @@
+/**
+ * droid.ts — Model 02, "a tall mechanical silhouette with weathered graphite
+ * panels and exposed joints".
+ *
+ * Built from `robots/droid-robot.png`. What makes it read as Droid and not as a
+ * generic humanoid:
+ *   - 2.1 m tall and lanky: narrow everywhere, the smallest width/height ratio
+ *     of the three, with a forward-hunched posture;
+ *   - EXPOSED CYLINDRICAL JOINTS at shoulder, elbow, hip, knee and ankle — bare
+ *     metal barrels with the panels stopping short of them;
+ *   - a domed helmet with a brow ridge over a narrow dark recessed face holding
+ *     two small amber eyes;
+ *   - round shoulder pauldrons, each with a circular emblem;
+ *   - copper/rust weathering streaked down from the shoulders and hips;
+ *   - long forearms, articulated four-finger hands, flat blocky feet.
+ *
+ * "It has been in this building a long time": weathering is high, roughness is
+ * high, nothing on this robot is glossy.
+ */
+
+import * as THREE from 'three';
+import { ROBOT_HEIGHT_M } from '../../sim/units';
+import {
+  assertBones,
+  bolt,
+  ellipsoid,
+  glowMaterial,
+  joint,
+  panelMaterial,
+  part,
+  puck,
+  roundedBox,
+  spherePatch,
+  disposeTree,
+  type RobotRig,
+  type WeatherOpts,
+} from './rig';
+
+/* Vertical layout, metres from the sole, held to ROBOT_HEIGHT_M.droid = 2.1. */
+const ANKLE_Y = 0.09;
+const KNEE_Y = 0.63;
+const HIP_Y = 1.13;
+const TORSO_Y = 1.3;
+const SHOULDER_Y = 1.7;
+const NECK_Y = 1.78;
+const HEAD_Y = 1.86;
+const SHIN = KNEE_Y - ANKLE_Y;
+const THIGH = HIP_Y - KNEE_Y;
+/** Long arms, longer forearms — the sheet's hands hang past the knee. */
+const UPPER_ARM = 0.46;
+const FOREARM = 0.5;
+
+export function buildDroid(): RobotRig {
+  const bones: Record<string, THREE.Object3D> = {};
+  const parts: Record<string, THREE.Object3D> = {};
+  const glow: THREE.MeshStandardMaterial[] = [];
+
+  const root = new THREE.Group();
+  root.name = 'droid';
+  bones.root = root;
+
+  /* --------------------------------------------------------------- palette */
+  const panel = panelMaterial('#3c424c', 0.55, { roughness: 0.72, metalness: 0.42 });
+  const panelDark = panelMaterial('#2a2f37', 0.5, { roughness: 0.75, metalness: 0.45 });
+  const barrel = panelMaterial('#4a5058', 0.45, { roughness: 0.5, metalness: 0.72 });
+  const copper = panelMaterial('#9a5f30', 0.6, { roughness: 0.68, metalness: 0.55 });
+  const grime = panelMaterial('#1b1e23', 0.3, { roughness: 0.9, metalness: 0.2 });
+  const eyeGlow = glowMaterial('#ffc46b', 2.4, '#1a1206');
+  const statusGlow = glowMaterial('#6bd39a', 1.2, '#10160f');
+  glow.push(eyeGlow, statusGlow);
+
+  /** House weathering: copper bloom on graphite, blotchy rather than uniform. */
+  const wear = (amount: number, seed: number, scale = 7): WeatherOpts => ({
+    amount,
+    seed,
+    scale,
+    tint: '#8a5a2b',
+    grime: 0.35,
+  });
+
+  /* ------------------------------------------------------------- skeleton */
+  const pelvis = joint(bones, root, 'pelvis', 0, HIP_Y, 0);
+  const torso = joint(bones, pelvis, 'torso', 0, TORSO_Y - HIP_Y, 0);
+  const neck = joint(bones, torso, 'neck', 0, NECK_Y - TORSO_Y, 0);
+  const head = joint(bones, neck, 'head', 0, HEAD_Y - NECK_Y, 0);
+
+  /* ---------------------------------------------------------------- torso */
+  // Pelvis casing, hung below the waist between the two hip barrels.
+  const pelvisBox = part(roundedBox(0.28, 0.2, 0.22, 0.05, 3), panel, wear(0.6, 11));
+  pelvisBox.position.y = 0.01;
+  pelvis.add(pelvisBox);
+  const crotch = part(roundedBox(0.12, 0.14, 0.14, 0.04, 3), panelDark, wear(0.5, 12));
+  crotch.position.set(0, -0.11, 0.01);
+  pelvis.add(crotch);
+
+  // Segmented abdomen: three plates stepping outward toward the chest, with the
+  // dark spine column visible between them on the sheet's side views.
+  const spine = part(new THREE.CylinderGeometry(0.052, 0.058, 0.26, 12, 3), grime, wear(0.4, 13));
+  spine.position.y = 0.06;
+  torso.add(spine);
+  const abdomen: Array<[number, number, number]> = [
+    [0.0, 0.2, 0.17],
+    [0.075, 0.225, 0.185],
+    [0.15, 0.25, 0.2],
+  ];
+  for (let i = 0; i < abdomen.length; i++) {
+    const [ay, aw, ad] = abdomen[i];
+    const seg = part(roundedBox(aw, 0.07, ad, 0.022, 3), panel, wear(0.55, 20 + i));
+    seg.position.set(0, ay - 0.02, 0.005);
+    torso.add(seg);
+  }
+
+  // Chest: the one broad mass on the whole robot.
+  const chest = part(roundedBox(0.42, 0.29, 0.27, 0.06, 4), panel, wear(0.5, 31, 6));
+  chest.position.set(0, 0.34, 0.0);
+  torso.add(chest);
+  parts.torsoShell = chest;
+  const chestPlate = part(roundedBox(0.26, 0.2, 0.05, 0.03, 3), panelDark, wear(0.6, 32));
+  chestPlate.position.set(0, 0.33, 0.14);
+  torso.add(chestPlate);
+  const accessPanel = part(roundedBox(0.1, 0.07, 0.02, 0.012, 2), barrel, wear(0.5, 33));
+  accessPanel.position.set(0.055, 0.3, 0.165);
+  torso.add(accessPanel);
+  for (let i = 0; i < 3; i++) {
+    const slat = part(roundedBox(0.075, 0.012, 0.016, 0.004, 2), grime);
+    slat.position.set(-0.06, 0.38 - i * 0.022, 0.165);
+    torso.add(slat);
+  }
+  const statusLamp = part(puck(0.011, 0.008, 12).rotateX(Math.PI / 2), statusGlow);
+  statusLamp.position.set(0.055, 0.255, 0.168);
+  torso.add(statusLamp);
+  // Backpack hump — the sheet's back views have a raised panel between the blades.
+  const backPack = part(roundedBox(0.24, 0.22, 0.09, 0.035, 3), panelDark, wear(0.6, 34));
+  backPack.position.set(0, 0.34, -0.155);
+  torso.add(backPack);
+
+  /* ----------------------------------------------------------------- head */
+  // Domed helmet, deeper than it is wide, with a brow ridge over the face.
+  const helmet = part(ellipsoid(0.135, 0.135, 0.152, 32, 22), panel, wear(0.5, 41, 9));
+  helmet.position.set(0, 0.105, -0.012);
+  head.add(helmet);
+  parts.headShell = helmet;
+  const crown = part(spherePatch(0.138, 0.138, 0.155, 1.5, 0.15, 0.55, 24, 10), panelDark, wear(0.5, 42, 9));
+  crown.position.set(0, 0.105, -0.012);
+  head.add(crown);
+  // Brow: a ridge standing proud over the eyes.
+  const brow = part(spherePatch(0.142, 0.142, 0.16, 1.05, 1.0, 0.36, 24, 8), panelDark, wear(0.55, 43));
+  brow.position.set(0, 0.105, -0.012);
+  head.add(brow);
+  const browLip = part(roundedBox(0.2, 0.028, 0.07, 0.01, 2), panel, wear(0.5, 44));
+  browLip.position.set(0, 0.095, 0.105);
+  browLip.rotation.x = 0.42;
+  head.add(browLip);
+  // Narrow dark recessed face: set back under the brow so it reads as a slot.
+  const face = part(roundedBox(0.165, 0.085, 0.05, 0.014, 3), grime);
+  face.position.set(0, 0.042, 0.088);
+  head.add(face);
+  const faceFrame = part(roundedBox(0.185, 0.1, 0.03, 0.012, 3), panelDark, wear(0.5, 48));
+  faceFrame.position.set(0, 0.042, 0.072);
+  head.add(faceFrame);
+  for (const sx of [-1, 1]) {
+    const eye = part(puck(0.017, 0.012, 16).rotateX(Math.PI / 2), eyeGlow);
+    eye.position.set(sx * 0.038, 0.048, 0.117);
+    head.add(eye);
+  }
+  // Jaw/chin block and the cheek vents either side of it.
+  const jaw = part(roundedBox(0.1, 0.05, 0.07, 0.02, 3), panelDark, wear(0.5, 45));
+  jaw.position.set(0, 0.0, 0.075);
+  head.add(jaw);
+  for (const sx of [-1, 1]) {
+    const cheek = part(roundedBox(0.032, 0.1, 0.075, 0.014, 3), panel, wear(0.55, 46));
+    cheek.position.set(sx * 0.103, 0.045, 0.058);
+    cheek.rotation.y = -sx * 0.25;
+    head.add(cheek);
+  }
+  // Neck: a bare barrel with a cable collar, deliberately exposed.
+  const neckMesh = part(new THREE.CylinderGeometry(0.042, 0.048, 0.1, 14, 2), barrel, wear(0.4, 47));
+  neckMesh.position.y = 0.02;
+  neck.add(neckMesh);
+  const collar = part(new THREE.TorusGeometry(0.052, 0.012, 8, 20), grime);
+  collar.rotation.x = Math.PI / 2;
+  collar.position.y = -0.01;
+  neck.add(collar);
+
+  // Droid's lamp is a pool on the floor around it: anchored at chest height,
+  // aimed straight down (+Z of the anchor points at the floor).
+  const lampAnchor = new THREE.Object3D();
+  lampAnchor.name = 'lamp';
+  lampAnchor.position.set(0, 0.46, 0.08);
+  lampAnchor.rotation.x = Math.PI / 2;
+  torso.add(lampAnchor);
+
+  /* ----------------------------------------------------------------- arms */
+  for (const side of [1, -1] as const) {
+    const L = side > 0 ? 'L' : 'R';
+    const shoulder = joint(bones, torso, `shoulder${L}`, side * 0.225, SHOULDER_Y - TORSO_Y, 0.0);
+    const upper = joint(bones, shoulder, `upperArm${L}`, 0, 0, 0);
+    const fore = joint(bones, upper, `forearm${L}`, 0, -UPPER_ARM, 0);
+    const hand = joint(bones, fore, `hand${L}`, 0, -FOREARM, 0);
+
+    // Exposed shoulder barrel.
+    const shoulderBarrel = part(new THREE.CylinderGeometry(0.075, 0.075, 0.17, 18, 2), barrel, wear(0.45, 51));
+    shoulderBarrel.rotation.z = Math.PI / 2;
+    shoulder.add(shoulderBarrel);
+    // Round pauldron with its circular emblem.
+    const pauldron = part(ellipsoid(0.115, 0.098, 0.135, 26, 18), panel, wear(0.5, 52, 6));
+    pauldron.position.set(side * 0.025, 0.02, 0.0);
+    pauldron.rotation.z = -side * 0.22;
+    shoulder.add(pauldron);
+    // The circular emblem sits on the front-outer face of the pauldron, where the
+    // sheet's three-quarter views show it.
+    const emblemAt = new THREE.Object3D();
+    emblemAt.position.set(side * 0.082, 0.025, 0.072);
+    emblemAt.rotation.y = side * 0.95;
+    shoulder.add(emblemAt);
+    const emblemRing = part(new THREE.TorusGeometry(0.046, 0.01, 8, 26), copper, wear(0.6, 53));
+    emblemRing.rotation.y = Math.PI / 2;
+    emblemAt.add(emblemRing);
+    const emblemDisc = part(puck(0.04, 0.012, 22).rotateZ(Math.PI / 2), panelDark, wear(0.5, 54));
+    emblemAt.add(emblemDisc);
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + 0.4;
+      const spoke = part(roundedBox(0.012, 0.028, 0.009, 0.004, 2), copper);
+      spoke.position.set(side * 0.008, Math.cos(a) * 0.024, Math.sin(a) * 0.024);
+      spoke.rotation.x = -a;
+      emblemAt.add(spoke);
+    }
+    // Copper weathering streaks running down off the pauldron.
+    for (let i = 0; i < 3; i++) {
+      const streak = part(roundedBox(0.012, 0.09 + i * 0.03, 0.008, 0.004, 2), copper, wear(0.8, 55 + i));
+      streak.position.set(side * (0.055 + i * 0.012), -0.07 - i * 0.02, 0.09 - i * 0.05);
+      streak.rotation.z = side * 0.1;
+      shoulder.add(streak);
+    }
+
+    const upperMesh = part(new THREE.CylinderGeometry(0.062, 0.05, UPPER_ARM - 0.1, 14, 4), panel, wear(0.55, 58));
+    upperMesh.position.y = -UPPER_ARM / 2;
+    upper.add(upperMesh);
+    const upperPlate = part(roundedBox(0.085, 0.2, 0.06, 0.02, 3), panelDark, wear(0.6, 59));
+    upperPlate.position.set(0, -0.16, 0.035);
+    upper.add(upperPlate);
+
+    // Exposed elbow barrel, then the long forearm.
+    const elbow = part(new THREE.CylinderGeometry(0.06, 0.06, 0.125, 16, 2), barrel, wear(0.45, 60));
+    elbow.rotation.z = Math.PI / 2;
+    fore.add(elbow);
+    const foreMesh = part(new THREE.CylinderGeometry(0.055, 0.042, FOREARM - 0.09, 14, 4), panel, wear(0.55, 61));
+    foreMesh.position.y = -FOREARM / 2 - 0.01;
+    fore.add(foreMesh);
+    const forePlate = part(roundedBox(0.075, 0.3, 0.055, 0.018, 3), panelDark, wear(0.6, 62));
+    forePlate.position.set(0, -0.24, 0.028);
+    fore.add(forePlate);
+    const foreBand = part(new THREE.TorusGeometry(0.05, 0.01, 8, 20), barrel, wear(0.4, 63));
+    foreBand.rotation.x = Math.PI / 2;
+    foreBand.position.y = -0.36;
+    fore.add(foreBand);
+
+    // Wrist barrel and an articulated four-finger hand.
+    const wrist = part(new THREE.CylinderGeometry(0.038, 0.038, 0.06, 14, 1), barrel, wear(0.4, 64));
+    wrist.rotation.z = Math.PI / 2;
+    hand.add(wrist);
+    const palm = part(roundedBox(0.085, 0.105, 0.048, 0.016, 3), panel, wear(0.55, 65));
+    palm.position.y = -0.06;
+    hand.add(palm);
+    for (let i = 0; i < 4; i++) {
+      const fx = (i - 1.5) * 0.024;
+      const finger = new THREE.Object3D();
+      finger.position.set(fx, -0.108, 0.006);
+      finger.rotation.x = -0.12 - i * 0.03;
+      hand.add(finger);
+      bones[`finger${L}${i}`] = finger;
+      const seg1 = part(roundedBox(0.019, 0.05, 0.02, 0.008, 2), panelDark);
+      seg1.position.y = -0.025;
+      finger.add(seg1);
+      const knuckle = new THREE.Object3D();
+      knuckle.position.y = -0.05;
+      knuckle.rotation.x = -0.35;
+      finger.add(knuckle);
+      const seg2 = part(roundedBox(0.016, 0.042, 0.017, 0.007, 2), panelDark);
+      seg2.position.y = -0.021;
+      knuckle.add(seg2);
+    }
+    const thumb = new THREE.Object3D();
+    thumb.position.set(side * 0.045, -0.08, 0.012);
+    thumb.rotation.set(-0.3, 0, side * 0.8);
+    hand.add(thumb);
+    const thumbSeg = part(roundedBox(0.018, 0.045, 0.018, 0.007, 2), panelDark);
+    thumbSeg.position.y = -0.022;
+    thumb.add(thumbSeg);
+
+    // Hunched, arms slightly forward and splayed — the sheet's default stance.
+    shoulder.rotation.x = -0.1;
+    shoulder.rotation.z = side * 0.055;
+    fore.rotation.x = -0.16;
+  }
+
+  /* ----------------------------------------------------------------- legs */
+  for (const side of [1, -1] as const) {
+    const L = side > 0 ? 'L' : 'R';
+    const hip = joint(bones, pelvis, `hip${L}`, side * 0.125, 0, 0);
+    const thigh = joint(bones, hip, `thigh${L}`, 0, 0, 0);
+    const shin = joint(bones, thigh, `shin${L}`, 0, -THIGH, 0);
+    const foot = joint(bones, shin, `foot${L}`, 0, -SHIN, 0);
+
+    // Exposed hip barrel with a copper-bloomed cap: one of Droid's signatures.
+    const hipBarrel = part(new THREE.CylinderGeometry(0.088, 0.088, 0.12, 20, 2), barrel, wear(0.5, 71));
+    hipBarrel.rotation.z = Math.PI / 2;
+    hip.add(hipBarrel);
+    const hipCap = part(puck(0.07, 0.03, 20).rotateZ(Math.PI / 2), copper, wear(0.75, 72));
+    hipCap.position.x = side * 0.07;
+    hip.add(hipCap);
+    for (let i = 0; i < 2; i++) {
+      const streak = part(roundedBox(0.011, 0.1 + i * 0.05, 0.008, 0.004, 2), copper, wear(0.8, 73 + i));
+      streak.position.set(side * (0.07 - i * 0.015), -0.09 - i * 0.03, 0.05 - i * 0.07);
+      hip.add(streak);
+    }
+
+    const thighMesh = part(new THREE.CylinderGeometry(0.082, 0.068, THIGH - 0.1, 14, 4), panel, wear(0.55, 75));
+    thighMesh.position.y = -THIGH / 2;
+    thigh.add(thighMesh);
+    const thighPlate = part(roundedBox(0.11, 0.26, 0.07, 0.025, 3), panelDark, wear(0.6, 76));
+    thighPlate.position.set(0, -0.2, 0.038);
+    thigh.add(thighPlate);
+
+    // Exposed knee barrel.
+    const kneeBarrel = part(new THREE.CylinderGeometry(0.075, 0.075, 0.13, 18, 2), barrel, wear(0.5, 77));
+    kneeBarrel.rotation.z = Math.PI / 2;
+    shin.add(kneeBarrel);
+    const kneeCap = part(puck(0.058, 0.026, 18).rotateZ(Math.PI / 2), panelDark, wear(0.6, 78));
+    kneeCap.position.x = side * 0.066;
+    shin.add(kneeCap);
+
+    const shinMesh = part(new THREE.CylinderGeometry(0.066, 0.05, SHIN - 0.1, 14, 4), panel, wear(0.55, 79));
+    shinMesh.position.y = -SHIN / 2;
+    shin.add(shinMesh);
+    const shinPlate = part(roundedBox(0.095, 0.3, 0.06, 0.022, 3), panelDark, wear(0.6, 80));
+    shinPlate.position.set(0, -0.22, 0.035);
+    shin.add(shinPlate);
+    const calfCable = part(new THREE.CapsuleGeometry(0.014, SHIN - 0.2, 4, 8), grime);
+    calfCable.position.set(side * 0.02, -SHIN / 2, -0.05);
+    shin.add(calfCable);
+
+    // Exposed ankle barrel and a flat blocky foot.
+    const ankle = part(new THREE.CylinderGeometry(0.05, 0.05, 0.095, 14, 1), barrel, wear(0.45, 81));
+    ankle.rotation.z = Math.PI / 2;
+    foot.add(ankle);
+    const boot = part(roundedBox(0.135, 0.085, 0.29, 0.022, 3), panel, wear(0.65, 82, 6));
+    boot.position.set(0, -0.0475, 0.045);
+    foot.add(boot);
+    const toePlate = part(roundedBox(0.125, 0.04, 0.08, 0.012, 2), panelDark, wear(0.7, 83));
+    toePlate.position.set(0, -0.055, 0.16);
+    foot.add(toePlate);
+    const heelBlock = part(roundedBox(0.1, 0.06, 0.06, 0.015, 2), panelDark, wear(0.7, 84));
+    heelBlock.position.set(0, -0.05, -0.085);
+    foot.add(heelBlock);
+    for (const bx of [-1, 1]) {
+      const rivet = bolt(barrel, 0.008, 0.006);
+      rivet.position.set(bx * 0.06, -0.02, 0.05);
+      rivet.rotation.z = (bx * Math.PI) / 2;
+      foot.add(rivet);
+    }
+  }
+
+  // The forward hunch. Applied to the base pose so every gait and idle state
+  // inherits it: Droid never stands up straight.
+  torso.rotation.x = 0.12;
+  neck.rotation.x = -0.06;
+  head.rotation.x = -0.03;
+
+  assertBones('droid', bones);
+
+  return {
+    kind: 'droid',
+    root,
+    bones,
+    parts,
+    height: ROBOT_HEIGHT_M.droid,
+    glow,
+    lampAnchor,
+    dispose: () => disposeTree(root),
+  };
+}

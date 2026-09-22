@@ -1,0 +1,394 @@
+<!doctype html>
+<!--
+  Template for public/progress.html. Rendered by tools/progress/build-progress.mjs,
+  which substitutes every double-brace placeholder below and nothing else. Keep it
+  self-contained:
+  no CDN, no external font, no script — this page is opened from a clone, from a
+  phone on hotel wifi, and from a headless browser in a critic round.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>After Dark — gauntlet progress</title>
+<style>
+  :root{
+    --bg:#0e1014; --panel:#161a21; --panel-2:#1b212a; --line:#272e3a;
+    --ink:#e6e9ef; --ink-dim:#9aa3b2; --ink-faint:#6d7686;
+    --accent:#ffb347;                     /* the prototype's orange */
+    --pass:#4ccf7e; --fail:#ff6b6b; --pending:#e3b341; --na:#5b6473;
+    --voxxy:#ff8a2b; --droid:#6fcf97; --biggy:#5aa9ff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--ink);
+    font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-text-size-adjust:100%;
+  }
+  .wrap{max-width:1100px;margin:0 auto;padding:20px 16px 56px}
+  a{color:var(--accent)}
+  h1{font-size:20px;margin:0;letter-spacing:.2px}
+  h2{font-size:13px;margin:32px 0 12px;text-transform:uppercase;letter-spacing:.12em;color:var(--ink-dim);
+     font-weight:600;border-bottom:1px solid var(--line);padding-bottom:8px}
+  .sub{color:var(--ink-dim);font-size:13px;margin:4px 0 0}
+
+  /* ---- header / countdown ---- */
+  header{display:flex;gap:20px;align-items:center;flex-wrap:wrap;
+         background:linear-gradient(180deg,var(--panel-2),var(--panel));
+         border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  .clock{display:flex;align-items:baseline;gap:10px;margin-left:auto}
+  .clock .n{font-size:44px;font-weight:700;line-height:1;color:var(--accent);
+            font-variant-numeric:tabular-nums}
+  .clock .u{font-size:13px;color:var(--ink-dim);max-width:210px}
+  .clock.late .n{color:var(--fail)}
+
+  /* ---- summary chips ---- */
+  .summary{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 0}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:999px;
+        padding:6px 12px;font-size:12.5px;color:var(--ink-dim)}
+  .stat b{color:var(--ink);font-weight:600}
+
+  /* ---- piece cards ---- */
+  .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+  .piece{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 15px;
+         display:flex;flex-direction:column;gap:10px}
+  .piece.first-class{border-color:#4a3a1c;box-shadow:inset 0 0 0 1px #2a2110}
+  .piece h3{margin:0;font-size:15.5px;font-weight:650;line-height:1.3}
+  .rubric{font-size:12.5px;color:var(--ink-dim)}
+  .rubric .pts{color:var(--accent);font-weight:600}
+  .verdict{background:var(--panel-2);border-left:2px solid var(--line);border-radius:0 6px 6px 0;
+           padding:8px 10px;font-size:13px;color:var(--ink)}
+  .verdict.none{color:var(--ink-faint);font-style:italic}
+  .verdict time{display:block;margin-top:4px;font-size:11.5px;color:var(--ink-faint);font-style:normal}
+  .note{font-size:12.5px;color:var(--ink-dim);margin:0}
+  .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+
+  /* ---- chips ---- */
+  .chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;
+        font-size:11.5px;font-weight:600;border:1px solid;white-space:nowrap}
+  .chip .dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+  .chip.pass{color:var(--pass);border-color:#265c3c;background:#11241a}
+  .chip.fail{color:var(--fail);border-color:#5c2626;background:#241313}
+  .chip.pending{color:var(--pending);border-color:#5c4a1c;background:#241f10}
+  .chip.na{color:var(--na);border-color:#2b323d;background:#141920}
+  .chip.rounds{color:var(--ink-dim);border-color:var(--line);background:var(--panel-2);font-weight:500}
+  .chip.status-done{color:var(--pass);border-color:#265c3c;background:#11241a}
+  .chip.status-building{color:var(--accent);border-color:#5c4a1c;background:#241f10}
+  .chip.status-gauntlet{color:var(--biggy);border-color:#20406a;background:#101c2a}
+  .chip.status-capped{color:var(--fail);border-color:#5c2626;background:#241313}
+  .chip.status-todo{color:var(--na);border-color:#2b323d;background:#141920}
+
+  /* ---- screenshots ---- */
+  .shots{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .shot{display:block;border:1px solid var(--line);border-radius:8px;overflow:hidden;
+        background:var(--panel-2);text-decoration:none}
+  .shot img{display:block;width:100%;height:96px;object-fit:cover;background:#0a0c10}
+  .shot .cap{display:block;padding:5px 8px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+             color:var(--ink-dim)}
+  .shot.empty{border-style:dashed}
+  .shot.empty .cap{color:var(--ink-faint)}
+  .shot.empty .ph{height:96px;display:flex;align-items:center;justify-content:center;
+                  color:var(--ink-faint);font-size:11.5px;text-align:center;padding:0 8px}
+
+  footer{margin-top:40px;padding-top:14px;border-top:1px solid var(--line);
+         color:var(--ink-faint);font-size:12px}
+
+  @media (max-width:560px){
+    .clock{margin-left:0;width:100%}
+    .clock .n{font-size:38px}
+    .grid{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>After Dark — gauntlet progress</h1>
+      <p class="sub">After Dark — Devoxx Belgium Robot Games — every piece built, then torn apart by a critic on fresh context (GAUNTLET.md).</p>
+    </div>
+    <div class="clock ">
+      <span class="n">8</span>
+      <span class="u">days to the deadline, 30 Sept 2026, 23:59 CEST</span>
+    </div>
+  </header>
+
+  <div class="summary"><span class="stat"><b>13</b> pieces</span>
+    <span class="stat"><b>1</b> done</span>
+    <span class="stat"><b>8</b> in flight</span>
+    <span class="stat"><b>4</b> not started</span>
+    <span class="stat"><b>0</b> critic rounds run</span>
+    <span class="stat">first-class checks <b>0/2</b> passing</span>
+    <span class="stat">rubric points in play <b>100</b>/100</span>
+    <span class="stat">round freeze <b>28 Sept</b></span></div>
+
+    <h2>Stage 0 — scaffold</h2>
+  <div class="grid">
+    <article class="piece" id="scaffold-and-sim-contract">
+      <h3>Scaffold and sim contract</h3>
+      <div class="rubric">Foundation — carries every criterion</div>
+      <div class="row">
+        <span class="chip status-done"><span class="dot"></span>done</span>
+        <span class="chip rounds">round 0 / 3</span>
+      </div>
+      <div class="verdict none">not yet run</div>
+      <div class="row">
+        <span class="chip na"><span class="dot"></span>Floor-plan overlay: n/a</span>
+        <span class="chip na"><span class="dot"></span>Model-sheet match: n/a</span>
+      </div>
+      <p class="note">pnpm + Vite + TS strict + vitest + three. types.ts / constants.ts / units.ts are frozen: every other piece codes against them. No visual surface, so no critic round.</p>
+      <div class="shots">
+        <span class="shot empty"><span class="ph">no before shot yet</span><span class="cap">before</span></span>
+        <span class="shot empty"><span class="ph">no after shot yet</span><span class="cap">after</span></span>
+      </div>
+    </article>
+  </div>
+
+  <h2>Stage 1 — the two first-class pieces</h2>
+  <div class="grid">
+    <article class="piece first-class" id="floor-plan-fidelity">
+      <h3>Floor-plan fidelity <span class="rubric">· first-class</span></h3>
+      <div class="rubric">Sense of place — venue recognisable · <span class="pts">10 pts</span></div>
+      <div class="row">
+        <span class="chip status-building"><span class="dot"></span>building</span>
+        <span class="chip rounds">round 0 · escalates, no cap</span>
+      </div>
+      <div class="verdict none">not yet run</div>
+      <div class="row">
+        <span class="chip pending"><span class="dot"></span>Floor-plan overlay: pending</span>
+        <span class="chip na"><span class="dot"></span>Model-sheet match: n/a</span>
+      </div>
+      <p class="note">Top-down debug screenshot overlaid on plans/devoxx-rooms-stairs-annotated.png and plans/exhibition-floor-stairs-annotated.png. Room count, proportions, door positions and BOTH staircase positions (3|4, 10|9, main between 6 and 7) must match before any aesthetic judgment. Orange Zaal numeral panels and the blue Dutch wayfinding signs must be visible in-scene.</p>
+      <div class="shots">
+        <span class="shot empty"><span class="ph">no before shot yet</span><span class="cap">before</span></span>
+        <span class="shot empty"><span class="ph">no after shot yet</span><span class="cap">after</span></span>
+      </div>
+    </article>
+
+    <article class="piece first-class" id="robot-appearance-fidelity">
+      <h3>Robot appearance fidelity <span class="rubric">· first-class</span></h3>
+      <div class="rubric">All three robots used meaningfully · <span class="pts">10 pts</span></div>
+      <div class="row">
+        <span class="chip status-building"><span class="dot"></span>building</span>
+        <span class="chip rounds">round 0 · escalates, no cap</span>
+      </div>
+      <div class="verdict none">not yet run</div>
+      <div class="row">
+        <span class="chip na"><span class="dot"></span>Floor-plan overlay: n/a</span>
+        <span class="chip pending"><span class="dot"></span>Model-sheet match: pending</span>
+      </div>
+      <p class="note">Each robot posed at an angle showing face and front — never top-down — beside robots/*.png. Silhouette, proportions, palette and the signature details. A robot that reads as a generic humanoid fails however well it animates.</p>
+      <div class="shots">
+        <span class="shot empty"><span class="ph">no before shot yet</span><span class="cap">before</span></span>
+        <span class="shot empty"><span class="ph">no after shot yet</span><span class="cap">after</span></span>
+      </div>
+    </article>
+  </div>
+
+  <h2>Stage 2 — the rubric pieces</h2>
+  <div class="grid">
+    <article class="piece" id="sim-physics-parity">
+      <h3>Sim physics and prototype parity</h3>
+      <div class="rubric">Realism — movement and spatial behaviour · <span class="pts">20 pts</span></div>
+      <div class="row">
+        <span class="chip status-building"><span class="dot"></span>building</span>
+        <span class="chip rounds">round 0 / 3</span>
+      </div>
+      <div class="verdict none">not yet run</div>
+      <div class="row">
+        <span class="chip na"><span class="dot"></span>Floor-plan overlay: n/a</span>
+        <span class="chip na"><span class="dot"></span>Model-sheet match: n/a</span>
+      </div>
+      <p class="note">Frozen constants asserted by tests/frozen-constants.test.ts. Acceptance is the ported prototype choreography: jammed door breaks for Biggy alone at ~103 px/s and never below 70, roller door fails solo and breaks at ~282 when Voxxy pushes, cable 1270–1311 px straight and over 1480 on the lane route.</p>
+      <div class="shots">
+        <span class="shot empty"><span class="ph">no before shot yet</span><span class="cap">before</span></span>
+        <span class="shot empty"><span class="ph">no after shot yet</span><span class="cap">after</span></span>
+      </div>
+    </article>
+
+    <article class="piece" id="robot-animation">
+      <h3>Per-robot animation and idle personality</h3>
+      <div class="rubric">Realism — movement and spatial behaviour · <span class="pts">20 pts</span></div>
+      <div class="row">
+        <span class="chip status-building"><span class="dot"></span>building</span>
+        <span class="chip rounds">round 0 / 3</span>
+      </div>
+      <div class="verdict none">not yet run</div>
+      <div class="row">
+        <span class="chip na"><span class="dot"></span>Floor-plan overlay: n/a</span>
+        <span class="chip pending"><span class="dot"></span>Model-sheet match: pending</span>
+      </div>
+      <p class="note">Walk, run, squeeze, reach, force-fix and the 'nope' bounce, anchored on the organisers' motion numbers in docs/organisers-3d-demo-notes.md. Planted feet and coordinated arm swing; weight readable per robot.</p>
+      <div class="shots">
+        <span class="shot empty"><span class="ph">no before shot yet</span><span class="cap">before</span></span>
+        <span class="shot empty"><span class="ph">no after shot yet</span><span class="cap">after</span></span>
+      </div>
+    </article>
+
+    <article class="piece" id="light-and-shadow">
+      <h3>Light, shadow and fog of war</h3>
+      <div class="rubric">Originality — genre, mechanic, reading of the brief · <span class="pts">40 pts</span></div>
+      <div class="row">
+        <span class="chip status-building"><span class="dot"></span>building</span>
+        <span class="chip rounds">round 0 / 3</span>
+      </div>
+      <div class="verdict none">not yet run</div>
+      <div class="row">
+        <span class="chip pending"><span class="dot"></span>Floor-plan overlay: pending</span>
+        <span class="chip na"><span class="dot"></span>Model-sheet match: n/a</span>
+      </div>
+      <p class="note">Visibility polygons per lamp, additive colour mixing, glass and low obstacles passing light, the cinema screen as a mirror, explored-darkness mask. This is the game's mechanic — it carries most of the 40 originality points.</p>
+      <div class="shots">
+        <span class="shot empty"><span class="ph">no before shot yet</span><span class="cap">before</span></span>
+        <span class="shot empty"><span class="ph">no after shot yet</span><span class="cap">after</span></span>
+      </div>
+    </article>
+
+    <article class="piece" id="cutscenes-and-transitions">
+      <h3>Cutscenes and chapter transitions</h3>
+      <div class="rubric">Originality — genre, mechanic, reading of the brief · <span class="pts">40 pts</span></div>
+      <div class="row">
+        <span class="chip status-todo"><span class="dot"></span>not started</span>
+        <span class="chip rounds">round 0 / 3</span>
+      </div>
+      <div class="verdict none">not yet run</div>
+      <div class="row">
+        <span class="chip pending"><span class="dot"></span>Floor-plan overlay: pending</span>
+        <span class="chip na"><span class="dot"></span>Model-sheet match: n/a</span>
+      </div>
+      <p class="note">gather → walk the waypoints → fade → next chapter, with the staircase walks between floors. Skip must work mid-cutscene.</p>
+      <div class="shots">
+        <span class="shot empty"><span class="ph">no before shot yet</span><span class="cap">before</span></span>
+        <span class="shot empty"><span class="ph">no after shot yet</span><span class="cap">after</span></span>
+      </div>
+    </article>
+
+    <article class="piece" id="hud-and-legibility">
+      <h3>HUD, feedback and 'why am I blocked'</h3>
+      <div class="rubric">Playability — goals, controls, feedback · <span class="pts">15 pts</span></div>
+      <div class="row">
+        <span class="chip status-building"><span class="dot"></span>building</span>
+        <span class="chip rounds">round 0 / 3</span>
+      </div>
+      <div class="verdict none">not yet run</div>
+      <div class="row">
+        <span class="chip na"><span class="dot"></span>Floor-plan overlay: n/a</span>
+        <span class="chip na"><span class="dot"></span>Model-sheet match: n/a</span>
+      </div>
+      <p class="note">Every gate wall explains itself in the blocked robot's own voice, throttled 2.5 s per wall. Objective line, robot switcher, skip button.</p>
+      <div class="shots">
+        <span class="shot empty"><span class="ph">no before shot yet</span><span class="cap">before</span></span>
+        <span class="shot empty"><span class="ph">no after shot yet</span><span class="cap">after</span></span>
+      </div>
+    </article>
+
+    <article class="piece" id="audio-in-code">
+      <h3>Audio synthesised in code</h3>
+      <div class="rubric">Originality — genre, mechanic, reading of the brief · <span class="pts">40 pts</span></div>
+      <div class="row">
+        <span class="chip status-building"><span class="dot"></span>building</span>
+        <span class="chip rounds">round 0 / 3</span>
+      </div>
+      <div class="verdict none">not yet run</div>
+      <div class="row">
+        <span class="chip na"><span class="dot"></span>Floor-plan overlay: n/a</span>
+        <span class="chip na"><span class="dot"></span>Model-sheet match: n/a</span>
+      </div>
+      <p class="note">Per-robot footsteps, fix chime, nope buzz, ambient hum, victory fanfare. WebAudio only — no asset files anywhere in the repo.</p>
+      <div class="shots">
+        <span class="shot empty"><span class="ph">no before shot yet</span><span class="cap">before</span></span>
+        <span class="shot empty"><span class="ph">no after shot yet</span><span class="cap">after</span></span>
+      </div>
+    </article>
+
+    <article class="piece" id="devoxx-flavour">
+      <h3>Devoxx flavour beats</h3>
+      <div class="rubric">Sense of place — venue recognisable · <span class="pts">10 pts</span></div>
+      <div class="row">
+        <span class="chip status-todo"><span class="dot"></span>not started</span>
+        <span class="chip rounds">round 0 / 3</span>
+      </div>
+      <div class="verdict none">not yet run</div>
+      <div class="row">
+        <span class="chip pending"><span class="dot"></span>Floor-plan overlay: pending</span>
+        <span class="chip na"><span class="dot"></span>Model-sheet match: n/a</span>
+      </div>
+      <p class="note">Tomato soup, the queues, the OutOfMemoryError beer joke, Stephan at the gate, the keynote speaker still listed as TBA. Nothing that needs permission.</p>
+      <div class="shots">
+        <span class="shot empty"><span class="ph">no before shot yet</span><span class="cap">before</span></span>
+        <span class="shot empty"><span class="ph">no after shot yet</span><span class="cap">after</span></span>
+      </div>
+    </article>
+
+    <article class="piece" id="stability-full-run">
+      <h3>Full-run stability pass</h3>
+      <div class="rubric">Playability — goals, controls, feedback · <span class="pts">15 pts</span></div>
+      <div class="row">
+        <span class="chip status-todo"><span class="dot"></span>not started</span>
+        <span class="chip rounds">round 0 / 3</span>
+      </div>
+      <div class="verdict none">not yet run</div>
+      <div class="row">
+        <span class="chip na"><span class="dot"></span>Floor-plan overlay: n/a</span>
+        <span class="chip na"><span class="dot"></span>Model-sheet match: n/a</span>
+      </div>
+      <p class="note">Four chapters end to end with zero console errors, at a steady frame rate, including every skip path.</p>
+      <div class="shots">
+        <span class="shot empty"><span class="ph">no before shot yet</span><span class="cap">before</span></span>
+        <span class="shot empty"><span class="ph">no after shot yet</span><span class="cap">after</span></span>
+      </div>
+    </article>
+  </div>
+
+  <h2>Stage 3 — integration</h2>
+  <div class="grid">
+    <article class="piece" id="integration-playthrough">
+      <h3>Integration playthrough</h3>
+      <div class="rubric">Playability — goals, controls, feedback · <span class="pts">15 pts</span></div>
+      <div class="row">
+        <span class="chip status-todo"><span class="dot"></span>not started</span>
+        <span class="chip rounds">round 0 / 3</span>
+      </div>
+      <div class="verdict none">not yet run</div>
+      <div class="row">
+        <span class="chip pending"><span class="dot"></span>Floor-plan overlay: pending</span>
+        <span class="chip pending"><span class="dot"></span>Model-sheet match: pending</span>
+      </div>
+      <p class="note">After each build wave a fresh agent plays all four chapters and smooths the seams the parallel builders left. Nothing ships without at least one clean full run.</p>
+      <div class="shots">
+        <span class="shot empty"><span class="ph">no before shot yet</span><span class="cap">before</span></span>
+        <span class="shot empty"><span class="ph">no after shot yet</span><span class="cap">after</span></span>
+      </div>
+    </article>
+  </div>
+
+  <h2>Stage 4 — submission</h2>
+  <div class="grid">
+    <article class="piece" id="submission-readme-genai">
+      <h3>README, GenAI notes and submission</h3>
+      <div class="rubric">GenAI craft documentation · <span class="pts">5 pts</span></div>
+      <div class="row">
+        <span class="chip status-building"><span class="dot"></span>building</span>
+        <span class="chip rounds">round 0 / 3</span>
+      </div>
+      <div class="verdict none">not yet run</div>
+      <div class="row">
+        <span class="chip na"><span class="dot"></span>Floor-plan overlay: n/a</span>
+        <span class="chip na"><span class="dot"></span>Model-sheet match: n/a</span>
+      </div>
+      <p class="note">README that runs from a fresh clone, an entry in docs/genai-notes.md per session, MIT licence check, submission form. The last ~36 h are reserved for this.</p>
+      <div class="shots">
+        <span class="shot empty"><span class="ph">no before shot yet</span><span class="cap">before</span></span>
+        <span class="shot empty"><span class="ph">no after shot yet</span><span class="cap">after</span></span>
+      </div>
+    </article>
+  </div>
+
+  <footer>Generated 22 Sept 2026, 02:18 CEST by <code>tools/progress/build-progress.mjs</code> from <code>tools/progress/pieces.json</code>. Screenshots live in <code>tools/progress/shots/</code>; the page links them relatively, so keep it inside the repository.</footer>
+
+</div>
+</body>
+</html>
