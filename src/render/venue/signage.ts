@@ -13,6 +13,27 @@
  * goes on a strip *above* it. Room numbers and talk titles both come from
  * `src/sim/geometry.ts` (`rooms`, `TALKS`) — never from a list typed here.
  *
+ * ## Why every corridor sign faces +z
+ *
+ * The diorama camera is **fixed** (`src/render/camera.ts`): it stands on the +z
+ * side of the plan and looks toward -z. A sign is readable only when its face
+ * normal has a positive dot product with `dioramaToCamera()`, and "the player can
+ * turn around" is not available to us.
+ *
+ * For rooms 10, 9, 8 and 7 that is free: their frontage is the corridor's far
+ * wall, which faces the camera anyway. For rooms 3, 4, 5 and 6 the corridor
+ * frontage faces *away*, and four numeral panels hung on it were, quite
+ * literally, never once visible in play. They are therefore mounted on the
+ * camera-facing return of the same panel — the sectional-model convention that
+ * already cuts the near corridor wall down to a parapet (`NEAR_CUT_H`), so the
+ * numeral sits in the band between that parapet and the room's own back row,
+ * where nothing stands in front of it.
+ *
+ * The band each panel may occupy is not a taste judgement: `FAR_Y1` is bounded by
+ * the corridor vault's springing line and `NEAR_Y0` by the rake of the room
+ * behind it, and `tests/venue.smoke.test.ts` raycasts every panel at every
+ * chapter pitch to prove both.
+ *
  * ## Headless safety
  *
  * `tests/venue.smoke.test.ts` runs in node, where there is no `document`. Every
@@ -25,10 +46,10 @@
 
 import * as THREE from 'three';
 
-import { CY0, CY1, F1, GF, R, TALKS, rooms, roomDoor } from '../../sim/geometry';
+import { CY0, CY1, DOOR, F1, GF, R, TALKS, rooms, roomDoor } from '../../sim/geometry';
 import { T, W } from '../../sim/constants';
 import type { RoomDef } from '../../sim/types';
-import { m } from '../../sim/units';
+import { PX_PER_M, m } from '../../sim/units';
 import type { VenuePalette } from './materials';
 import { slab } from './props';
 
@@ -150,19 +171,38 @@ function arrow(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: numb
 
 /* ------------------------------------------------------------ sign painters */
 
+/**
+ * The big white numeral on its orange ground — `image-1790032674926.webp`.
+ *
+ * The numeral is drawn to fill the panel: at Kinepolis this is a colour block
+ * with a figure on it that you read from the far end of the corridor, not a door
+ * plate. The small `zaal` caplet under it is the only other ink.
+ */
 const zaalNumeral =
   (n: number | string): Paint =>
   (ctx, w, h) => {
     ctx.fillStyle = '#e1561c';
     ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = 'rgba(255,255,255,0.14)';
-    ctx.fillRect(0, h - 10, w, 10);
+    // A slightly hotter top edge: these panels are backlit boxes, not paint.
+    const wash = ctx.createLinearGradient(0, 0, 0, h);
+    wash.addColorStop(0, 'rgba(255,255,255,0.10)');
+    wash.addColorStop(0.55, 'rgba(255,255,255,0)');
+    wash.addColorStop(1, 'rgba(0,0,0,0.12)');
+    ctx.fillStyle = wash;
+    ctx.fillRect(0, 0, w, h);
+
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const label = String(n);
-    fitFont(ctx, label, w * 0.8, Math.round(h * 0.72), 800);
-    ctx.fillText(label, w / 2, h * 0.52);
+    // 78% of the panel height, centred a touch high so the `zaal` caplet fits
+    // under it without crowding the figure.
+    fitFont(ctx, label, w * 0.84, Math.round(h * 0.78), 800);
+    ctx.fillText(label, w / 2, h * 0.46);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.88)';
+    ctx.font = `600 ${Math.round(h * 0.075)}px ${FONT}`;
+    ctx.fillText('zaal', w / 2, h * 0.925);
   };
 
 const talkStrip =
@@ -183,24 +223,45 @@ const talkStrip =
     lines.forEach((line, i) => ctx.fillText(line, 34, h * 0.4 + i * h * 0.3));
   };
 
-/** `uitgang zaal 6/7` + `info`: white on Kinepolis blue, with arrows. */
+/**
+ * `uitgang zaal 6/7` + `info`: white on Kinepolis blue, with arrows —
+ * `image-1790032663823.webp`, and `uitgang zaal 6/7` is the string CAPTIONS.md
+ * names, so it is the one that must survive to the screen.
+ *
+ * Both rows are sized off the *row* height rather than the panel height, and the
+ * long row is shrunk to fit its column: the sign used to be laid out as if only
+ * the short row existed.
+ */
 const wayfinding: Paint = (ctx, w, h) => {
   ctx.fillStyle = '#1c4a96';
   ctx.fillRect(0, 0, w, h);
   ctx.strokeStyle = 'rgba(255,255,255,0.35)';
   ctx.lineWidth = 4;
-  ctx.strokeRect(6, 6, w - 12, h - 12);
-  ctx.fillStyle = '#ffffff';
-  arrow(ctx, w * 0.16, h * 0.32, h * 0.32, true);
-  arrow(ctx, w * 0.16, h * 0.72, h * 0.32, true);
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  ctx.font = `500 ${Math.round(h * 0.22)}px ${FONT}`;
-  ctx.fillText('uitgang zaal 6/7', w * 0.3, h * 0.32);
-  ctx.fillText('info', w * 0.3, h * 0.72);
-  ctx.font = `700 ${Math.round(h * 0.3)}px ${FONT}`;
+  ctx.strokeRect(5, 5, w - 10, h - 10);
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(14, h * 0.5);
+  ctx.lineTo(w - 14, h * 0.5);
+  ctx.stroke();
+
+  const rows: Array<[string, number]> = [
+    ['uitgang zaal 6/7', h * 0.28],
+    ['info', h * 0.76],
+  ];
+  const textX = w * 0.27;
+  const textW = w * 0.62;
+  for (const [text, cy] of rows) {
+    ctx.fillStyle = '#ffffff';
+    arrow(ctx, w * 0.145, cy, h * 0.3, true);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitFont(ctx, text, textW, Math.round(h * 0.26), 500);
+    ctx.fillText(text, textX, cy);
+  }
+  ctx.font = `700 ${Math.round(h * 0.28)}px ${FONT}`;
   ctx.textAlign = 'right';
-  ctx.fillText('i', w * 0.94, h * 0.72);
+  ctx.fillText('i', w * 0.93, h * 0.76);
 };
 
 const cinemaPlate: Paint = (ctx, w, h) => {
@@ -319,14 +380,96 @@ export interface SignageBuild {
   dispose(): void;
 }
 
+/* --------------------------------------------------- where a panel may stand */
+
+/** Sim px from the doorway centre to the numeral panel's centre. */
+const SIGN_OFFSET_PX = 42;
+/** Numeral panel width, metres. Wider than the poster box beside it, on purpose. */
+const ZAAL_W_M = 2.1;
 /**
- * Corridor-facing geometry for one auditorium's wall: where a flat sign face sits,
- * where the flush-mounted numeral panel's slab sits, and which way both look.
+ * The far wall's panel band.
+ *
+ * The top is set by the corridor vault: `floor1.ts` springs it just above the
+ * wall head and rakes it up steeply, so a sight line leaving the panel's top edge
+ * toward the camera passes under it at every chapter pitch. Anything taller than
+ * `FAR_Y1` gets its head sliced off, which is exactly what used to happen — the
+ * numerals on 8, 9 and 10 lost their top third to the soffit.
  */
-function corridorFace(r: RoomDef): { faceY: number; panelY: number; panelH: number; yaw: number } {
+const FAR_Y0 = 0.3;
+const FAR_Y1 = 2.6;
+/**
+ * The near wall's panel band.
+ *
+ * The bottom is set by the rake of the room the panel stands in: the back row is
+ * the highest seating in the house and it sits right behind the entrance. Above
+ * `NEAR_Y0` the panel is in clear air all the way to the camera.
+ */
+const NEAR_Y0 = 1.3;
+const NEAR_Y1 = 3.5;
+/** How far the panel body is let into the wall / stands proud of it, sim px. */
+const BODY_BACK_PX = 7;
+const BODY_PROUD_PX = 0.5;
+
+/**
+ * Corridor-facing geometry for one auditorium's frontage.
+ *
+ * Every field is in sim px except the two panel heights, and every face this
+ * returns looks toward +z — see the module header for why that is not optional.
+ */
+interface Frontage {
+  /** Sim y of the readable face plane. */
+  faceY: number;
+  /** The numeral panel's body slab, as a sim-y span. */
+  bodyY: number;
+  bodyH: number;
+  /** The band the numeral face occupies, world metres. */
+  y0: number;
+  y1: number;
+  /** Centre height of the talk strip. */
+  stripY: number;
+}
+
+function corridorFace(r: RoomDef): Frontage {
   return r.side < 0
-    ? { faceY: CY0 + 0.4, panelY: CY0 - 4, panelH: 4.2, yaw: 0 }
-    : { faceY: CY1 - 0.4, panelY: CY1 - 0.2, panelH: 4.2, yaw: Math.PI };
+    ? {
+        faceY: CY0 + BODY_PROUD_PX + 0.4,
+        bodyY: CY0 - BODY_BACK_PX,
+        bodyH: BODY_BACK_PX + BODY_PROUD_PX,
+        y0: FAR_Y0,
+        y1: FAR_Y1,
+        stripY: 2.14,
+      }
+    : {
+        // The camera-facing return of the panel, one wall thickness past the
+        // corridor's near face — see the module header.
+        faceY: CY1 + BODY_BACK_PX + 0.4,
+        bodyY: CY1 - BODY_PROUD_PX,
+        bodyH: BODY_BACK_PX + BODY_PROUD_PX,
+        y0: NEAR_Y0,
+        y1: NEAR_Y1,
+        stripY: 1.6,
+      };
+}
+
+/**
+ * Which side of its doorway a room's numeral panel hangs on: +1 is further along
+ * the corridor, -1 is back toward the fire door.
+ *
+ * Room 7's door opens straight onto the main staircase head, and a panel 42 px
+ * further along sat *inside* the stair opening with the tensile canopy cones in
+ * front of it — roughly 95% hidden. Which is a joke, because room 7's numeral
+ * beside that staircase is the single most recognisable image the venue has.
+ */
+function zaalSignSide(r: RoomDef): 1 | -1 {
+  const s = F1.mainStair;
+  const ahead = roomDoor(r).cx + SIGN_OFFSET_PX + (ZAAL_W_M * PX_PER_M) / 2;
+  return ahead > s.x - 12 ? -1 : 1;
+}
+
+/** Where the backlit poster box goes: always the other side of the door. */
+export function zaalPosterX(n: number): number {
+  const r = R(n);
+  return roomDoor(r).cx - zaalSignSide(r) * (DOOR / 2 + 20);
 }
 
 /**
@@ -345,74 +488,90 @@ export function buildSignage(p: VenuePalette, roomAnchors: Map<number | string, 
 
   for (const r of rooms) {
     const d = roomDoor(r);
-    const { faceY, panelY, panelH, yaw } = corridorFace(r);
+    const f = corridorFace(r);
     const anchor = roomAnchors.get(r.n);
     const host = anchor ?? floor1;
 
     if (r.closed) {
-      const plate = signFace(d.cx + 36, faceY, 1.2, 0.8, 1.5, yaw, painter.material('cinema-plate', 256, 160, '#262a33', cinemaPlate), `cinema-sign-${r.n}`);
+      const plate = signFace(d.cx + 36, f.faceY, 1.2, 0.8, Math.max(1.5, f.y0 + 0.4), 0, painter.material('cinema-plate', 256, 160, '#262a33', cinemaPlate), `cinema-sign-${r.n}`);
       host.attach(plate);
       continue;
     }
 
     // The large orange numeral panel, beside the entrance: a colour block first,
     // a numeral second, exactly as the corridor reads at Kinepolis.
-    const panelX = d.cx + 40;
+    const panelX = d.cx + zaalSignSide(r) * SIGN_OFFSET_PX;
+    const panelH = f.y1 - f.y0;
     const panel = new THREE.Group();
     panel.name = `zaal-sign-${r.n}`;
-    // Bigger than the backlit poster box beside it, as at Kinepolis: the numeral
-    // panel is the thing that reads as a colour block from down the corridor, and
-    // it used to render SMALLER than a plain poster — the reverse of the photo.
-    panel.add(slab({ x: panelX - 12, y: panelY, w: 24, h: panelH }, 0.3, 2.7, p.signOrange));
+    // The body is a solid orange block, wider and taller than the backlit poster
+    // box across the door from it. At Kinepolis the numeral panel is the dominant
+    // colour mass on the wall; ours used to lose that contest to a blank poster.
+    const bodyPx = ZAAL_W_M * PX_PER_M + 4;
+    panel.add(
+      slab({ x: panelX - bodyPx / 2, y: f.bodyY, w: bodyPx, h: f.bodyH }, 0, f.y1 + 0.12, p.signOrange),
+    );
     panel.add(
       signFace(
         panelX,
-        faceY,
-        1.9,
-        2.55,
-        1.6,
-        yaw,
-        painter.material(`zaal-${r.n}`, 256, 352, '#e1561c', zaalNumeral(r.n)),
+        f.faceY,
+        ZAAL_W_M,
+        panelH,
+        (f.y0 + f.y1) / 2,
+        0,
+        painter.material(
+          `zaal-${r.n}`,
+          320,
+          Math.round((320 * panelH) / ZAAL_W_M),
+          '#e1561c',
+          zaalNumeral(r.n),
+        ),
         `zaal-face-${r.n}`,
       ),
     );
     // Re-origin the group onto the sign point itself, so another piece can read
     // `zaal-sign-7`'s world position and aim a spotlight at it.
-    const origin = new THREE.Vector3(m(panelX), 0, m(faceY));
+    const origin = new THREE.Vector3(m(panelX), 0, m(f.faceY));
     for (const child of panel.children) child.position.sub(origin);
     panel.position.copy(origin);
     host.attach(panel);
 
-    // The talk strip above the door. Room 8 is the keynote; the speaker is TBA
+    // The talk strip beside the door. Room 8 is the keynote; the speaker is TBA
     // until Devoxx announces one, which is also the joke.
     const title = typeof r.n === 'number' && r.n in TALKS ? TALKS[r.n] : 'KEYNOTE — speaker TBA';
     const strip = signFace(
       d.cx,
-      faceY,
+      f.faceY,
       3.2,
       0.55,
-      2.14,
-      yaw,
+      f.stripY,
+      0,
       painter.material(`talk-${r.n}`, 768, 132, '#1b1e24', talkStrip(Number(r.n), title)),
       `talk-sign-${r.n}`,
     );
     host.attach(strip);
   }
 
-  // Blue Dutch wayfinding, on both corridor walls just before rooms 6 and 7 —
-  // the sign the drone footage actually shows.
+  // Blue Dutch wayfinding on the corridor's approach to rooms 6 and 7 — the sign
+  // the drone footage actually shows, and the one CAPTIONS.md names by its text.
+  //
+  // One on each side of the corridor, both on the camera-facing plane their side
+  // offers: the copy of it hung on the near wall's corridor face was turned away
+  // from the only camera the game has, so `uitgang zaal 6/7` was never on screen.
   for (const side of [-1, 1] as const) {
-    const y = side < 0 ? CY0 + 0.4 : CY1 - 0.4;
+    const near = side > 0;
     floor1.add(
       signFace(
-        1560,
-        y,
-        2.3,
-        1.25,
-        1.72,
-        side < 0 ? 0 : Math.PI,
-        painter.material('wayfinding', 640, 348, '#1c4a96', wayfinding),
-        `wayfinding-${side < 0 ? 'top' : 'bottom'}`,
+        // Clear of the corridor columns, which stand on the room party walls: the
+        // far copy used to sit right behind the 5|6 column.
+        1500,
+        near ? CY1 + BODY_BACK_PX + 0.4 : CY0 + BODY_PROUD_PX + 0.4,
+        2.4,
+        1.45,
+        near ? 2.55 : 1.9,
+        0,
+        painter.material('wayfinding', 640, 387, '#1c4a96', wayfinding),
+        `wayfinding-${near ? 'bottom' : 'top'}`,
       ),
     );
   }
@@ -501,5 +660,6 @@ export function buildSignage(p: VenuePalette, roomAnchors: Map<number | string, 
  * re-deriving where signage chose to hang it.
  */
 export function zaalSignX(n: number): number {
-  return roomDoor(R(n)).cx + 40;
+  const r = R(n);
+  return roomDoor(r).cx + zaalSignSide(r) * SIGN_OFFSET_PX;
 }

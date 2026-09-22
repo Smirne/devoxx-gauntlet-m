@@ -48,13 +48,50 @@ import { STOREY_H_M, m } from '../sim/units';
 export const DIORAMA_AZIMUTH_RAD = (14 * Math.PI) / 180;
 
 /** Pitch above the floor plane, degrees, per chapter. Chapter 4 sits lower to see the stage. */
-const CHAPTER_ELEVATION_DEG: Readonly<Record<number, number>> = Object.freeze({
+export const CHAPTER_ELEVATION_DEG: Readonly<Record<number, number>> = Object.freeze({
   1: 30,
   2: 31,
   3: 33,
   4: 24,
 });
-const BASE_ELEVATION_DEG = 30;
+export const BASE_ELEVATION_DEG = 30;
+
+/**
+ * The unit vector from anything in the scene **toward** the camera, for one
+ * chapter's pitch (`undefined` gives the base pitch).
+ *
+ * This is the one number the set builder has to agree with the camera on. A flat
+ * sign is readable exactly when its face normal has a positive dot product with
+ * this vector, and it is un-occluded exactly when a ray cast along this vector
+ * from its face reaches infinity without hitting the venue — which is what
+ * `tests/venue.smoke.test.ts` asserts for all eight Zaal numeral panels, and why
+ * this lives here rather than being re-derived in `src/render/venue`.
+ */
+export function dioramaToCameraAtDeg(deg: number, out: THREE.Vector3 = new THREE.Vector3()): THREE.Vector3 {
+  const e = (deg * Math.PI) / 180;
+  const ce = Math.cos(e);
+  return out
+    .set(Math.sin(DIORAMA_AZIMUTH_RAD) * ce, Math.sin(e), Math.cos(DIORAMA_AZIMUTH_RAD) * ce)
+    .normalize();
+}
+
+/** The same vector, for a chapter rather than a raw pitch. */
+export function dioramaToCamera(chapter?: number, out: THREE.Vector3 = new THREE.Vector3()): THREE.Vector3 {
+  const deg = chapter === undefined ? BASE_ELEVATION_DEG : CHAPTER_ELEVATION_DEG[chapter] ?? BASE_ELEVATION_DEG;
+  return dioramaToCameraAtDeg(deg, out);
+}
+
+/**
+ * Every pitch the diorama camera is ever set to, shallowest first.
+ *
+ * A shallow pitch is the worst case for a sign clipped by the ceiling in front of
+ * it; a steep one is the worst case for a sign clipped by the ceiling *above* it.
+ * Signage has to survive both, so the check iterates this list rather than
+ * picking one.
+ */
+export const DIORAMA_ELEVATIONS_DEG: readonly number[] = Object.freeze(
+  [...new Set([BASE_ELEVATION_DEG, ...Object.values(CHAPTER_ELEVATION_DEG)])].sort((a, b) => a - b),
+);
 
 /**
  * The vertical band the framing must keep on screen, metres relative to the

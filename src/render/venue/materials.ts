@@ -53,6 +53,12 @@ const SPECS = {
   corridorVault: { color: '#9aa0a8', roughness: 0.9 },
   /** The square dark columns those vaults spring from. */
   corridorColumn: { color: '#1b1e24', roughness: 0.88 },
+  /**
+   * The pale cap on the corridor's cut-away near wall. An architectural sectional
+   * model paints its cut faces; without it the lowered parapet reads as a wall
+   * somebody forgot to finish.
+   */
+  sectionCut: { color: '#6f757e', roughness: 0.85 },
   /** Orange backlit poster boxes: the corridor's only warm accent. */
   posterGlow: { color: '#6a3212', roughness: 0.6, emissive: '#e2661c', emissiveIntensity: 0.9 },
 

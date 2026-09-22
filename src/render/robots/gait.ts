@@ -442,8 +442,18 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
   // How far this robot's leg can actually put a foot in front of its hip, given
   // how high the hip rides. Voxxy's 21 cm legs cannot take Droid's stride, so the
   // nominal +-0.16 m is a ceiling, never a promise.
-  const standH = Math.max(0.02, st.hipRestY - p.crouch - st.footRest[0].y);
   const legLen = (st.thighLen + st.shinLen) * 0.98;
+  /*
+   * A robot can only sink as far as its own legs can fold.
+   *
+   * The profile's crouch is in metres, and Voxxy's hip-to-ankle is 0.13 m: the
+   * nominal 0.045 m is a third of his whole leg, and folding a two-bone leg that
+   * far drives the knee past pi — a robot sitting on its own shins, not a crouch.
+   * Capping it at a fraction of the leg keeps every robot's stance proportional
+   * to its build instead of to the tallest one's.
+   */
+  const crouch = Math.min(p.crouch, legLen * 0.15);
+  const standH = Math.max(0.02, st.hipRestY - crouch - st.footRest[0].y);
   const geoExc = legLen > standH ? Math.sqrt(legLen * legLen - standH * standH) * 0.92 : 0.02;
   const maxExc = Math.min(FOOT_OFFSET_M * p.stride, geoExc);
 
@@ -484,7 +494,7 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
   // absorb it and leave the feet where they were planted.
   const bob = -BOB_M * p.bob * (0.5 - 0.5 * Math.cos(st.phase * TAU * 2)) * moving;
   const lean = LEAN_RAD_PER_MPS * p.lean * v + clamp(st.accel * p.accelLean, -0.32, 0.32);
-  pelvis.position.y += bob - p.crouch;
+  pelvis.position.y += bob - crouch;
   pelvis.rotation.x += clamp(lean, -0.45, 0.45);
   pelvis.rotation.z += Math.sin(st.phase * TAU) * p.sway * moving;
   pelvis.rotation.y += -Math.sin(st.phase * TAU) * p.twist * moving;

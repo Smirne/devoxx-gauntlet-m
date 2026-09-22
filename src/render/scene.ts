@@ -33,7 +33,7 @@ import { PX_PER_M, ROBOT_HEIGHT_M, STOREY_H_M, m } from '../sim/units';
 
 import { createCamera, type DioramaCamera } from './camera';
 import { createLightLayer, type LightLayer } from './lighting';
-import { createRobot, measureBounds, updateRobot, type RobotRig } from './robots';
+import { createRobot, measureBounds, updateRobot, EXCLUDE_FROM_BOUNDS, type RobotRig } from './robots';
 import { buildVenue, type Venue } from './venue';
 
 const KINDS: readonly RobotKind[] = ['voxxy', 'droid', 'biggy'];
@@ -480,7 +480,18 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   const diorama: DioramaCamera = createCamera(viewW / viewH);
   const planCam = new THREE.OrthographicCamera(-MAP_W_M / 2, MAP_W_M / 2, MAP_H_M / 2, -MAP_H_M / 2, 0.1, 400);
   planCam.name = 'plan-camera';
-  const portraitCam = new THREE.PerspectiveCamera(30, viewW / viewH, 0.1, 100);
+  /*
+   * A LONG LENS, not a wide one.
+   *
+   * At 30 degrees the camera stood 2.9 m from Biggy and the projection stretched
+   * him: his belly measured 0.82 of his height off the screenshot where the model
+   * is 0.93, because the near parts of a 1.4 m-deep robot are a fifth closer to
+   * the lens than the far ones. The model-sheet check is a measurement, and the
+   * sheet's own panels are near-orthographic, so the portrait uses a 16-degree
+   * lens from twice the distance: what the critic measures is then the model's
+   * real proportions rather than the lens's opinion of them.
+   */
+  const portraitCam = new THREE.PerspectiveCamera(16, viewW / viewH, 0.1, 100);
   portraitCam.name = 'portrait-camera';
 
   /** Look straight down with -z as screen up: sim y = 0 at the top, exactly like the plan. */
@@ -500,12 +511,68 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   }
 
   /**
-   * Front three-quarter, pulled back far enough that the whole robot fills the
-   * frame. The fit is measured off the rig's actual bounds rather than its height,
-   * because Biggy is three times as wide as he is unusual — a height-only fit
-   * walks his boots and his shoulders straight out of the frame.
+   * Front three-quarter, with the camera's own eye at the robot's face height and
+   * the whole figure filling the same fraction of the frame for all three.
+   *
+   * A closed-form fit from the bounding box is not enough: the camera is a
+   * PERSPECTIVE one looking slightly down, so how much of the frame a figure
+   * actually covers depends on how tall and how deep it is. Tall Droid came out
+   * at 84% of the frame height where squat Voxxy came out at 89% — small on
+   * paper, but a critic judging the three side by side against the model sheets
+   * sees one robot noticeably smaller than the others and reads it as the
+   * framing, not the model. So the fit projects the box's eight corners and
+   * relaxes the distance until the binding axis lands on the target fill, which
+   * is exact for any shape.
    */
   const portraitBox = new THREE.Box3();
+  const _corner = new THREE.Vector3();
+  /** World-space corners of every mesh in the rig, flattened — the fit's samples. */
+  const portraitPts: number[] = [];
+
+  /**
+   * Sample the rig with each MESH's own box rather than one box round the whole
+   * robot: a single AABB's corners stick far out past a rounded figure, and
+   * fitting to them leaves a fifth of the frame empty.
+   */
+  function collectPortraitPoints(rig: RobotRig): void {
+    portraitPts.length = 0;
+    rig.root.updateWorldMatrix(true, true);
+    const walk = (node: THREE.Object3D): void => {
+      if (node.userData[EXCLUDE_FROM_BOUNDS] === true) return;
+      if (node instanceof THREE.Mesh && node.visible) {
+        if (!node.geometry.boundingBox) node.geometry.computeBoundingBox();
+        const bb = node.geometry.boundingBox;
+        if (bb) {
+          for (let c = 0; c < 8; c++) {
+            _corner
+              .set(c & 1 ? bb.max.x : bb.min.x, c & 2 ? bb.max.y : bb.min.y, c & 4 ? bb.max.z : bb.min.z)
+              .applyMatrix4(node.matrixWorld);
+            portraitPts.push(_corner.x, _corner.y, _corner.z);
+          }
+        }
+      }
+      for (const child of node.children) walk(child);
+    };
+    walk(rig.root);
+  }
+  /** Fraction of the half-frame the figure's binding axis fills. */
+  const PORTRAIT_FILL = 0.93;
+  /** How far up the figure its face sits — where the camera's eye goes. */
+  const PORTRAIT_FACE = 0.84;
+
+  function placePortraitCamera(dist: number, ty: number, faceY: number): void {
+    // 34 degrees off the robot's own facing (+Z).
+    const az = (34 * Math.PI) / 180;
+    // Level with the face: the camera's eye rides at the robot's own face height
+    // whatever its size, so none of the three is looked down on more than another.
+    const rise = faceY - ty;
+    const horiz = Math.sqrt(Math.max(dist * dist - rise * rise, dist * dist * 0.25));
+    portraitCam.position.set(Math.sin(az) * horiz, ty + rise, Math.cos(az) * horiz);
+    portraitCam.up.set(0, 1, 0);
+    portraitCam.lookAt(0, ty, 0);
+    portraitCam.updateProjectionMatrix();
+    portraitCam.updateMatrixWorld();
+  }
 
   function aimPortraitCamera(rig: RobotRig): void {
     const aspect = viewW / viewH;
@@ -513,37 +580,25 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     measureBounds(rig.root, portraitBox);
     const size = portraitBox.getSize(new THREE.Vector3());
     const height = Math.max(size.y, rig.height, 0.2);
-    const width = Math.max(size.x, size.z, 0.2);
-
-    /*
-     * Frame the MEASURED BOX, centred, with the same margin on all four sides.
-     *
-     * Aiming a sixth of the way up the figure (the old 0.6 bias) left 20% of the
-     * frame empty above the head and 5% below the feet, and Biggy's whip antenna —
-     * which used to be excluded from the measured bounds — ran straight off the
-     * top edge. The model-sheet check is a measurement, so the shot has to be a
-     * plain, evenly-margined elevation of the whole robot.
-     */
     const ty = (portraitBox.min.y + portraitBox.max.y) / 2;
-    const halfV = Math.max((portraitBox.max.y - portraitBox.min.y) / 2, height / 2, 0.1);
+    const faceY = portraitBox.min.y + height * PORTRAIT_FACE;
 
-    const MARGIN = 1.14;
+    collectPortraitPoints(rig);
     const fovY = (portraitCam.fov * Math.PI) / 180;
-    let dist = (halfV * MARGIN) / Math.tan(fovY / 2);
-    dist = Math.max(dist, ((width / 2) * MARGIN) / Math.tan(fovY / 2) / Math.max(aspect, 0.2));
-    // 34 degrees off the robot's own facing (+Z), barely above its own eye line.
-    const az = (34 * Math.PI) / 180;
-    const el = (7 * Math.PI) / 180;
-    const target = new THREE.Vector3(0, ty, 0);
-    portraitCam.position.set(
-      target.x + Math.sin(az) * Math.cos(el) * dist,
-      target.y + Math.sin(el) * dist,
-      target.z + Math.cos(az) * Math.cos(el) * dist,
-    );
-    portraitCam.up.set(0, 1, 0);
-    portraitCam.lookAt(target);
-    portraitCam.updateProjectionMatrix();
-    portraitCam.updateMatrixWorld();
+    let dist = Math.max(height, size.x, size.z) / Math.tan(fovY / 2);
+    for (let i = 0; i < 12; i++) {
+      placePortraitCamera(dist, ty, faceY);
+      let fill = 0;
+      for (let p = 0; p < portraitPts.length; p += 3) {
+        _corner.set(portraitPts[p], portraitPts[p + 1], portraitPts[p + 2]).project(portraitCam);
+        fill = Math.max(fill, Math.abs(_corner.x), Math.abs(_corner.y));
+      }
+      if (fill <= 1e-4) break;
+      const k = fill / PORTRAIT_FILL;
+      dist *= k;
+      if (Math.abs(k - 1) < 0.002) break;
+    }
+    placePortraitCamera(dist, ty, faceY);
   }
 
   /* -------------------------------------------------------------- framing */

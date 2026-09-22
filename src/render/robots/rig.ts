@@ -371,12 +371,156 @@ export function puck(radius: number, thickness: number, segments = 24): THREE.Bu
   return new THREE.CylinderGeometry(radius, radius, thickness, segments);
 }
 
+/** Our own spherical parametrisation: theta down from +Y, phi around Y from +Z. */
+function onEllipsoid(
+  rx: number,
+  ry: number,
+  rz: number,
+  theta: number,
+  phi: number,
+  out: THREE.Vector3,
+): THREE.Vector3 {
+  return out.set(rx * Math.sin(theta) * Math.sin(phi), ry * Math.cos(theta), rz * Math.sin(theta) * Math.cos(phi));
+}
+
+const _op = new THREE.Vector3();
+const _on = new THREE.Vector3();
+
+/**
+ * A **rounded-oval patch** of an ellipsoid's surface — Voxxy's inset visor, and
+ * any other panel that has to read as a shape set into a curved face rather than
+ * as a band wrapped all the way round it.
+ *
+ * `spherePatch` cuts a rectangle in angle space, so its corners run to the edges
+ * of the head and it always reads as a wrap-around visor. This maps the unit disc
+ * into angle space instead: the outline is an ellipse in (phi, theta), which on
+ * the surface is the sheet's rounded-oval glass panel with shell visible on all
+ * four sides of it.
+ *
+ * `phiMid` aims the patch left or right of the front (+Z); `thetaMid` is measured
+ * down from the +Y pole, as in `SphereGeometry`.
+ */
+export function ovalPatch(
+  rx: number,
+  ry: number,
+  rz: number,
+  phiMid: number,
+  phiHalf: number,
+  thetaMid: number,
+  thetaHalf: number,
+  rings = 6,
+  segs = 36,
+): THREE.BufferGeometry {
+  const pos: number[] = [];
+  const nrm: number[] = [];
+  const idx: number[] = [];
+  const push = (theta: number, phi: number): void => {
+    onEllipsoid(rx, ry, rz, theta, phi, _op);
+    pos.push(_op.x, _op.y, _op.z);
+    _on.set(_op.x / (rx * rx), _op.y / (ry * ry), _op.z / (rz * rz)).normalize();
+    nrm.push(_on.x, _on.y, _on.z);
+  };
+  // Ring 0 is the patch centre, repeated `segs` times so every ring has the same
+  // stride and the index maths below stays one loop.
+  for (let i = 0; i <= rings; i++) {
+    const a = i / rings;
+    for (let j = 0; j < segs; j++) {
+      const b = (j / segs) * Math.PI * 2;
+      push(thetaMid + thetaHalf * a * Math.sin(b), phiMid + phiHalf * a * Math.cos(b));
+    }
+  }
+  for (let i = 0; i < rings; i++) {
+    for (let j = 0; j < segs; j++) {
+      const j2 = (j + 1) % segs;
+      const a = i * segs + j;
+      const b = i * segs + j2;
+      const c = (i + 1) * segs + j;
+      const d = (i + 1) * segs + j2;
+      // Wound so the patch faces out of the ellipsoid: j runs clockwise as seen
+      // from in front of the patch, so the outward triangle is a -> b -> c.
+      if (i > 0) idx.push(a, b, c);
+      idx.push(b, d, c);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  g.setIndex(idx);
+  return g;
+}
+
+/**
+ * A grid of small square dots lying on an ellipsoid's surface, as ONE geometry —
+ * the dot-matrix screen behind Voxxy's visor glass.
+ *
+ * One mesh per dot would be two hundred draw calls for a decoration; this is a
+ * few hundred triangles in a single buffer, and the dots curve with the head
+ * because they are placed in the same angle space the visor is.
+ */
+export function dotGrid(
+  rx: number,
+  ry: number,
+  rz: number,
+  phiMid: number,
+  phiHalf: number,
+  thetaMid: number,
+  thetaHalf: number,
+  cols: number,
+  rows: number,
+  fill = 0.42,
+): THREE.BufferGeometry {
+  const pos: number[] = [];
+  const nrm: number[] = [];
+  const idx: number[] = [];
+  const dPhi = ((phiHalf * 2) / cols) * fill;
+  const dTheta = ((thetaHalf * 2) / rows) * fill;
+  for (let r = 0; r < rows; r++) {
+    const tv = rows === 1 ? 0 : (r / (rows - 1)) * 2 - 1;
+    const theta = thetaMid + thetaHalf * tv;
+    for (let c = 0; c < cols; c++) {
+      const pv = cols === 1 ? 0 : (c / (cols - 1)) * 2 - 1;
+      // Elliptical mask, so the dot field ends where the oval visor does.
+      if (pv * pv + tv * tv > 1) continue;
+      const phi = phiMid + phiHalf * pv;
+      const base = pos.length / 3;
+      for (const [st, sp] of [
+        [-1, -1],
+        [1, -1],
+        [1, 1],
+        [-1, 1],
+      ] as const) {
+        onEllipsoid(rx, ry, rz, theta + st * dTheta, phi + sp * dPhi, _op);
+        pos.push(_op.x, _op.y, _op.z);
+        _on.set(_op.x / (rx * rx), _op.y / (ry * ry), _op.z / (rz * rz)).normalize();
+        nrm.push(_on.x, _on.y, _on.z);
+      }
+      idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  g.setIndex(idx);
+  return g;
+}
+
 /**
  * A lathe profile through control points `[radius, y]`, smoothed with a spline —
  * this is what gives Voxxy its pear body and Biggy his bellows.
  */
 export function latheProfile(points: Array<[number, number]>, samples = 28, segments = 32): THREE.BufferGeometry {
-  const curve = new THREE.SplineCurve(points.map(([x, y]) => new THREE.Vector2(Math.max(x, 0), y)));
+  /*
+   * A profile written from the top down is the same shape as one written from
+   * the bottom up — but not to `LatheGeometry`, which winds its triangles in the
+   * order the points arrive. Given a descending profile it produces a shell that
+   * is inside out: back-face culling then throws the surface away and what the
+   * camera sees is the inside of the far wall. A convex shape still *looks*
+   * roughly right that way, which is how Voxxy's arms shipped with their white
+   * bands buried inside them for a whole round. Normalise the order instead of
+   * making every caller remember.
+   */
+  const ordered = points.length > 1 && points[points.length - 1][1] < points[0][1] ? [...points].reverse() : points;
+  const curve = new THREE.SplineCurve(ordered.map(([x, y]) => new THREE.Vector2(Math.max(x, 0), y)));
   const pts = curve.getPoints(samples).map((p) => new THREE.Vector2(Math.max(p.x, 0), p.y));
   return new THREE.LatheGeometry(pts, segments);
 }
