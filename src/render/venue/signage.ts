@@ -251,12 +251,17 @@ const wayfinding: Paint = (ctx, w, h) => {
   ];
   const textX = w * 0.27;
   const textW = w * 0.62;
+  // One size for both rows, taken from the longest: on the real sign `info` is
+  // not twice the size of `uitgang zaal 6/7`, and it looked it when each row was
+  // fitted on its own.
+  const longest = rows.reduce((a, b) => (a[0].length >= b[0].length ? a : b))[0];
+  const size = fitFont(ctx, longest, textW, Math.round(h * 0.26), 500);
   for (const [text, cy] of rows) {
     ctx.fillStyle = '#ffffff';
     arrow(ctx, w * 0.145, cy, h * 0.3, true);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    fitFont(ctx, text, textW, Math.round(h * 0.26), 500);
+    ctx.font = `500 ${size}px ${FONT}`;
     ctx.fillText(text, textX, cy);
   }
   ctx.font = `700 ${Math.round(h * 0.28)}px ${FONT}`;

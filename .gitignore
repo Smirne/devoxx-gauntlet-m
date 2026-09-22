@@ -4,3 +4,6 @@ dist/
 *.local
 .vite/
 tools/progress/shots/*.tmp.png
+
+# agent worktrees (isolated subagent checkouts, never part of the project)
+.claude/worktrees/
