@@ -18,15 +18,38 @@ big black **oval** covering most of the face, filled with a **dot-matrix texture
 neither the sheet nor the demo. The dot matrix should go: it is reading as noise at play scale and
 it flattens the glass.
 
-**Eyes.** Two small **rounded-rectangle lamps** with a lattice of dark bars across them (a lit
-grille, not a solid fill), each ringed by a darker amber bezel, sitting **low in the visor** —
-centres around 60-65% of the way down, not vertically centred. Measured off the demo front shot:
-one eye is about **25% of visor width**, **26% of visor height**, aspect about **1.5**, and the gap
-between them is about **1.6 eye-widths**. One eye covers roughly **6% of the visor's area**.
+**Eyes.** The demo draws them as two small **rounded-rectangle lamps** with a lattice of dark bars
+across them — a lit grille, not a solid fill — each ringed by a darker amber bezel, sitting low in
+the visor at about 60-65% of the way down.
 
-That last number matters: the sheet independently gives 4.4-7.1%, so **the sheet and the demo
-agree**, and our 29-30% with the eyes touching in the middle is the outlier. Two references
-agreeing is the strongest evidence we have.
+**The sheet disagrees on that last point and the sheet wins: on the sheet the eyes are vertically
+centred** (centre 0.498 of the way down the visor). Take the demo's *craft* — a lamp with structure
+in it rather than a flat fill — and the sheet's *placement*.
+
+The sheet's robust numbers, from the threshold sweep in the measurement pass:
+
+| quantity | target | stable across |
+| --- | --- | --- |
+| eye centre-to-centre / visor width | **0.417** | 0.398-0.426 |
+| one eye centre, x from visor centre / visor width | 0.207 | 0.186-0.226 |
+| eye centre, y from visor top / visor height | 0.498 | 0.488-0.504 |
+| eye aspect (w/h) | 1.44 | 1.38-1.65 |
+| eye width / visor width, at half peak | 0.138 | level-dependent, state the level |
+| eye height / visor height, at half peak | 0.181 | level-dependent, state the level |
+
+**Eye *area* is not a measurable quantity on this sheet** and must never be used as a target again:
+it sweeps 0.004 to 0.081 depending only on where the threshold is put. An earlier round's
+"4.4-7.1% of visor area" was an artefact of that, and it was quoted in this document's first draft
+as though it were solid. It is not. The centre-to-centre distance is the number to check.
+
+**Why this matters more than any single figure:** the sheet's eyes are a **soft radial glow with no
+hard edge** — the 10%-to-90% falloff takes 0.56 x FWHM per side, where the silhouette's own edge
+falls from 255 to 70 in two pixels. A hard-edged game shape compared against a thresholded glow
+gives a different answer every time the threshold moves, which is exactly what happened for four
+rounds. **Author the eyes as a glow, not as a lit rectangle**, and the comparison becomes stable.
+
+What is not in doubt either way: ours currently touch in the middle of the face, against a sheet
+that puts two eye-widths of black between them.
 
 **Ears.** Pointed teardrops angled outward about 25 degrees, overlapping the crown, each carrying a
 small **white inner-ear decal**. Ours are rounded blobs with white caps sitting at the wrong angle
@@ -103,9 +126,15 @@ Ours has a plain blue band and block boots on a flat tray.
 **Finish.** Matte to satin painted metal, no gloss anywhere. Biggy is the one robot where gloss
 would be wrong.
 
-**Note on the eyes.** The demo shows no lit face at all — the dome ports are dark lenses. Our Biggy
-keeps the two amber eyes, which is **Michele's standing decision** from an earlier round and is not
-up for revision here.
+**Note on the eyes.** The demo shows no lit face at all — the dome ports are dark lenses. The sheet
+is now confirmed to agree: a bright-and-saturated search across the whole front elevation returns
+only belly highlights and the white "ii" decal, and what reads as eyes are two **dark metal lens
+bezels** on the dome (diameter 0.106 of dome width, spacing 0.373). There is no visor slot either —
+the apparent slot is a shading seam, and its measured height swings 6.7x across a threshold sweep.
+
+Our Biggy keeps the two amber eyes regardless: that is **Michele's standing decision** from an
+earlier round, made in full knowledge that the sheet does not have them, and it is not up for
+revision here. The sheet is simply now confirmed silent rather than merely unclear.
 
 ---
 
