@@ -815,3 +815,75 @@ does not exist in the reference art. Fixed by re-deriving every sheet target fro
 agent forbidden to read the code, the game, or any prior round's numbers, and required to report
 each ratio as a range across a threshold sweep and to mark anything that swings too much
 UNUSABLE rather than quote it.
+
+---
+
+## Round 5 continued — three craft passes, and what the human's eye caught that no check did
+
+**What the agent did.** One agent per robot, one file each, briefed from Michele's own defect list
+first and the measured targets second. Then two follow-up passes when he looked at the results:
+Droid's face rebuilt from our sheet, Voxxy's surface detail, Biggy's helmet/arms/legs.
+
+**What a human decided.**
+
+1. *"I vote funny, robots must be recognizable."* Recorded in `CLAUDE.md` as a standing call,
+   because it settles which way to lean every time a measured ratio and a character read pull
+   apart, and an agent that does not know it optimises the wrong one.
+2. The organisers' demo is **the bar for quality**; the model sheets remain **the authority on
+   appearance**. Where they disagree the sheet wins.
+3. Droid keeps the hoop shoulders — invented for the demo, absent from the sheet, and Michele likes
+   them — while his face goes back to the sheet's skull. Fun in the silhouette, recognisable in the
+   face.
+
+**What was rejected, and why.**
+
+1. *A whip antenna and a flared cone brim on Biggy.* Both came from the demo via a brief of mine
+   that described the demo instead of our sheet. Removing 0.17 m of cone-and-gasket is what let the
+   dome read correctly — it had been the right width all along.
+2. *Pauldron caps, ring joints and lens discs on Biggy's arms.* Same origin. The sheet has one
+   smooth slab and a cuff; the correction was to make the arm **simpler**, not busier.
+3. *Voxxy's visor dot-matrix.* It **is** on the sheet — an earlier note in this file claiming we
+   invented it was wrong — but at play scale it read as orange speckle and flattened the glass.
+4. *Eye area as a fidelity target.* Formally unusable: a soft glow's measured area sweeps 0.004 to
+   0.081 on threshold alone. Replaced by centre-to-centre distance, stable to ±0.003.
+
+**Four of my own briefs were corrected by measurement, which is the honest headline.**
+
+| I asserted | the measurement said |
+| --- | --- |
+| Droid's sheet eyes sit high, in the upper third | 0.535 of head height below the crown — the hero panel only looks higher because the head is pitched forward |
+| Voxxy's ears are too small | 0.188 of head width against the sheet's 0.185, already inside the band |
+| Biggy's dome is too narrow | already the right width and aspect; the problem was the brim hanging beneath it |
+| Biggy's legs are a quarter of his height | 13% — I had measured to the drop shadow rather than the sole |
+
+Each was caught because the brief said *"if a measurement disagrees with your edit, believe the
+measurement"* and each agent was told to report disagreements rather than split the difference. The
+pattern in all four is the same: asserting from a glance at a sheet instead of measuring it. The
+method that fixed it is cheap and worth stating — **the person writing the brief is not exempt from
+the rule the brief imposes.**
+
+**What the human caught that no automated check did.** Michele's list named Voxxy's *hands* first.
+Four rounds of numeric checking had never flagged them, because nobody had written a measurement
+for hands. A checker verifies what it was told to verify; the gap between that and "does this look
+right" is exactly the gap a human eye fills. The same is true of his reading of Droid — *"more
+similar to the 3d view than to the Model Sheet"* — which no ratio in the table would ever have
+expressed.
+
+**Bugs found by looking, that no test could catch.**
+
+- Voxxy's **left head pod tapered the wrong way**: geometry built with a hard-coded rotation inside
+  a mirrored loop. Both bounding boxes mirror while the shapes differ, so the mirror-symmetry test
+  passes. This class is invisible to every test we have.
+- Biggy's **knee sawtooth** had two causes, and the second — a knee ball whose radius exactly
+  equalled the shin cone's radius there, so two tessellations of one surface z-fought — would have
+  survived the reshape that fixed the first.
+- `rig.ts`'s **`weather()` brightens dark materials**: it writes vertex colour as a ratio against
+  the material's own colour, so a rust tint on a near-black part divides a light colour by a dark
+  base and "wear" comes out as white flakes.
+
+**What is known to be weak.** Voxxy's detail pass is honest that at 25-60 px in the chapters almost
+none of it resolves — roughly 4,100 triangles buy a better portrait and close to nothing in play.
+Biggy's lower body is a standing workaround for a belly that is a true sphere where the sheet's
+tucks in below the equator. And Droid's own green floor lamp blows his face out completely in
+chapter 1, so the features of a whole round are invisible in the chapter where he is the
+protagonist — which is a lighting problem, not a model one, and is being handled separately.
