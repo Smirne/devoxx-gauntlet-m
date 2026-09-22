@@ -27,10 +27,21 @@ reference images only, the same way the model sheets are.
 
 ## Files
 
-- `voxxy-front.webp` — front elevation, near-level camera.
-- `voxxy-three-quarter.webp` — roughly 60 degrees off front, showing the side port and the ear profile.
+All six are the demo's own default studio setup: dark ground plane, single key light, soft contact
+shadow. Two of them carry a sliver of the page's overlay text at the left edge — left in rather than
+cropped, so it stays obvious these are screenshots of someone else's page and not our renders.
 
-Droid and Biggy screenshots are still to be added.
+| file | robot | camera |
+| --- | --- | --- |
+| `voxxy-front.webp` | Voxxy | front elevation, near-level |
+| `voxxy-three-quarter.webp` | Voxxy | ~60 degrees off front — side port and ear profile |
+| `droid-front.png` | Droid | front elevation, slight high angle |
+| `droid-three-quarter.webp` | Droid | near-profile — shoulder hoop and the joint stacks down the leg |
+| `biggy-front.webp` | Biggy | front elevation — belly stencil, dome ports, boots |
+| `biggy-three-quarter.webp` | Biggy | ~70 degrees off front — the hoop-and-hose assembly under the belly |
+
+The two three-quarter views are the more useful of each pair: they show the joint construction and
+how each robot's masses stack, which a front elevation flattens away.
 
 ## Why the screenshots and not the live page
 
