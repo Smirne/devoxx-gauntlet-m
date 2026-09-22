@@ -455,6 +455,65 @@ describe('Droid reads as Droid', () => {
     expect(droid.w / droid.h).toBeLessThan(0.5);
     for (const r of rigs) r.dispose();
   });
+
+  /**
+   * Droid's head is what makes him recognisable, and until now nothing asserted
+   * anything about it — the block above only checked that he is tall and thin.
+   * Michele's playtest found the head had drifted toward the organisers' demo
+   * while every existing assertion stayed green, so these pin the two ratios
+   * that carry his identity. Bands are `docs/model-sheet-targets.md` §8's own
+   * tolerances, derived from the sheets by a pass that read no game code.
+   */
+  it("has the sheet's head: 0.162 of total height, 0.29 of the span", () => {
+    const rig = createRobot('droid');
+    rig.root.updateMatrixWorld(true);
+    const total = measureBounds(rig.root).getSize(new THREE.Vector3());
+    const head = measureBounds(rig.bones.head).getSize(new THREE.Vector3());
+
+    const h = head.y / total.y;
+    expect(h, `head ${h.toFixed(3)} of total height`).toBeGreaterThan(0.142);
+    expect(h, `head ${h.toFixed(3)} of total height`).toBeLessThan(0.182);
+
+    // Our shoulder span IS our total width, because our hands hang inboard of
+    // the pauldrons where the sheet's hang outboard. So head_w/total_w (0.283)
+    // and head_w/span (0.305) are the same number here; the band covers both.
+    const w = head.x / total.x;
+    expect(w, `head ${w.toFixed(3)} of total width`).toBeGreaterThan(0.263);
+    expect(w, `head ${w.toFixed(3)} of total width`).toBeLessThan(0.325);
+
+    rig.dispose();
+  });
+
+  /**
+   * The spacing, not the size, is what went wrong last time: the eyes had crept
+   * to 2.03 eye-widths apart against the sheet's 3.33, which reads as a face
+   * squinting rather than the sheet's wide-set lamps.
+   */
+  it('has small round eyes set WIDE — 0.40 of head width apart', () => {
+    const rig = createRobot('droid');
+    rig.root.updateMatrixWorld(true);
+
+    const glowMats = new Set(rig.glow);
+    const eyes: THREE.Box3[] = [];
+    rig.bones.head.traverse((o) => {
+      if (o instanceof THREE.Mesh && glowMats.has(o.material as THREE.MeshStandardMaterial)) {
+        eyes.push(measureBounds(o));
+      }
+    });
+    expect(eyes.length, 'droid has no glowing eye geometry').toBe(2);
+
+    const headW = measureBounds(rig.bones.head).getSize(new THREE.Vector3()).x;
+    const cx = eyes.map((b) => (b.max.x + b.min.x) / 2);
+    const sep = Math.abs(cx[0] - cx[1]) / headW;
+    const dia = eyes[0].getSize(new THREE.Vector3()).x / headW;
+
+    expect(sep, `eye spacing ${sep.toFixed(3)} of head width`).toBeGreaterThan(0.37);
+    expect(sep, `eye spacing ${sep.toFixed(3)} of head width`).toBeLessThan(0.43);
+    expect(dia, `eye diameter ${dia.toFixed(3)} of head width`).toBeGreaterThan(0.08);
+    expect(dia, `eye diameter ${dia.toFixed(3)} of head width`).toBeLessThan(0.16);
+
+    rig.dispose();
+  });
 });
 
 describe('Biggy reads as Biggy', () => {
