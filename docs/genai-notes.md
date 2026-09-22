@@ -650,3 +650,129 @@ chapter-local tuning values that describe one prop in one room.
 **What is known to be weak.** One clean brace window per heave for a passive player, and a ~19 s
 coast to get there. Tap-braking (E on, E off) is the answer and the game currently only hints at
 it in a toast. See the builder's report.
+
+---
+
+## 2026-09-22 — the ground-floor lobby, rebuilt from Michele's plot (+ the swallowed keypress)
+
+**What a human decided.** Michele playtested round 3, said reception, the coatroom, the BOF rooms
+and the toilets did not match the floor plan, and then plotted every block himself on a calibrated
+tool rather than letting another agent re-read the plan. Those numbers
+(`docs/ground-floor-lobby-fix.md`) are the input to this session; three of his findings could not
+have come out of a measurement at all:
+
+1. **The hall's right edge is not a "scalloped wall with four openings".** That was the
+   prototype's invention and it had survived into the build unquestioned — including one round
+   that "improved" it into six regular door bays. The real edge is a concrete wall across the
+   upper stretch and the small staircase across the lower one, and that staircase is the ONLY way
+   between hall and lobby.
+2. **There is a level change**: about 0.5 m, 5-7 shallow risers. Nothing in the game modelled
+   ground-floor height before.
+3. **Only the left-hand doors are open for Devoxx**, so the crowd enters on a 136 px front next
+   to reception — not along the whole glazed wall, and not off the canvas edge.
+
+**What the agent did.** Moved every lobby rect in `src/sim/geometry.ts` onto the plotted numbers
+(coatroom, reception desk below it, main staircase, the left-hand doors, the small stairs, the
+concrete wall, BOF, toilets); replaced `GF.openings`' four fictional gaps with the one stepped
+threshold; built each lobby block's walls INSIDE its own measured footprint so nothing spills over
+the plot; added `LOBBY_RISE_M` and `groundRiseM()` and built the exhibition level as two levels
+with the flight between them (`src/render/venue/ground.ts`); moved Stephan, the soup drop and the
+chapter-3 crowd to the new entrance, and rewrote their tests to assert the new route. Also fixed a
+deterministic input bug an independent verifier root-caused: `game.key()` dismissed a chapter card
+and returned, so the first real keypress of chapters 2, 3 and 4 was silently swallowed (pressing
+`2` for Droid did nothing, every time, on every seed) and the end card's own "R to play again"
+needed two presses.
+
+**What was rejected, and why.**
+
+1. **Keeping the six-bay door bank as dressing over the new solid wall** — it looked good and it
+   was a lie. Michele's plot and `plans/exhibition-floor.jpg` both draw a run of long steps there
+   and a thick wall above it; the door bank went, and with it a whole rendering function.
+2. **Modelling the 0.5 m as a height field the sim reads.** The sim is 2D and parity with its own
+   tests is the acceptance criterion, so the threshold stays an *opening* in the hall's right edge
+   and the rise is venue data the renderer reads (`groundRiseM`). This is a diorama, not a
+   platformer.
+3. **The wheelchair ramp** the plan labels beside the steps. Michele's concrete wall occupies the
+   stretch it was drawn in, and his plot wins over our reading of the plan, so the invented ramp
+   rect was deleted rather than nudged somewhere plausible.
+4. **Loosening the chapter-2 cable bounds.** The run to the printer got shorter (~1208 px against
+   the frozen 1480 reel, where ours measured 1345) purely because reception moved 280 px down the
+   lobby. The lower bound stayed at 1200 and the upper bound was *tightened* from 93% of the reel
+   to 85%, with the reason written into the test: the reel is frozen, the venue is not.
+5. **One shared route for the crowd.** The first version walked all 36 visitors through the same
+   waypoints, and "do not walk into the back of the person in front" turned the single threshold
+   into a stationary conga line — 26 of 36 still in the lobby after 45 s. Each arrival now takes
+   its own lane across the 22 m flight.
+
+**What is known to be weak.** `src/render/scene.ts` still draws robots, people and chapter props
+on one flat floor plane per storey, so anything standing in the LOBBY is drawn half a metre low.
+The data it needs is exported and documented (`groundRiseM`); applying it is a one-line change in
+a file this session was not allowed to touch.
+
+---
+
+## Session — robot appearance fidelity, round 4 (first-class check #2)
+
+**Brief.** Check #2 (robot appearance) was the last red gate. An independent verifier had
+flood-filled both the model sheets and the in-game portraits and listed six measured failures —
+two on Biggy, four on Voxxy — and reported that part of what the previous round claimed to have
+fixed was measured as still broken. The instruction for this round was therefore to verify by
+measuring, not by believing an edit landed.
+
+**What the agent did.** Rebuilt the verifier's measurement rather than trusting the eye: a
+flood-fill of the flat page background, largest-blob selection, per-row min/max x, and colour
+segmentation of the visor and the eyes. Run against `robots/*.png` first, so every target below is
+a number off the sheet and not a taste.
+
+1. **Biggy's ankle bellows** — the previous round moved them to the ankle pivot and they were
+   still detached. The real cause was two files away: `gait.ts` capped the standing crouch as a
+   fraction of leg length, and 15% of a 0.30 m leg folds a two-bone knee **63 degrees**. Biggy
+   stood permanently in a deep crouch, and rings on a shin swung that far out of the leg's line
+   photograph as a crescent hanging off nothing. Replaced with `standBend`, a maximum knee ANGLE
+   converted back to a sag by the law of cosines — exact at any proportions — blended back to the
+   full crouch as the robot starts walking, because a straight leg cannot stride.
+2. **Biggy's far arm** — the gut was 0.93 of his height. Measured off the sheet it is **0.82**;
+   0.97 is the figure's TOTAL width, where the ARMS are outside the gut. A belly of revolution
+   1.35 m across swallows anything hanging inside its radius, so the far arm vanished into it. Gut
+   narrowed to the sheet's ratio, arms moved out and forward, dome narrowed with it to hold the
+   sheet's dome/belly of 0.80.
+3. **Voxxy's ears** — one was white shell, the other plain orange. The right ear's cap was yawed
+   by `PI + 0.45` instead of `+0.45`, swinging it to the back of the head. Rebuilt as a cap of
+   revolution tilted outward, which has no azimuth left to get wrong.
+4. **Voxxy's visor, eyes and neck** — visor 0.583/0.579 of the head box against the sheet's
+   0.683/0.655, eyes at aspect 2.4 against 1.5, neck 6.3% of the head width against 4.6%.
+
+**Measured after, the same way (portrait at warm=120):** visor **0.693 / 0.689** (sheet
+0.683/0.655), eye aspect **1.5-1.9** (sheet 1.5-1.6), neck **4.3%** (sheet 4.6%), ears **17.4% vs
+19.9%** near-white (was 1.3% vs 81.8%). Biggy: both arms complete limbs and both bellows sleeves
+joined to shin and boot at warm 0, 60 and 120.
+
+**Tests.** 186 -> 211, none deleted or loosened. New: every bone's shell must touch the shell of
+the bone it hangs from (catches detached geometry); each side's subtree must be the other's mirror
+in mesh count, materials AND world position (catches the ear — same meshes, same materials, wrong
+transform); each arm must clear the gut *as the 34-degree portrait camera projects it*, which is
+the projection that hid the far arm; Voxxy's visor and neck as fractions of the head box.
+
+**What a human decided.** Michele's standing calls were kept: Biggy keeps the two amber eyes the
+sheet does not have, and the frozen physics constants were not touched.
+
+**What was rejected, and why.**
+
+1. **Pushing Biggy's arms out far enough to clear a 1.35 m gut.** It needs 1.65 m of shoulder
+   span — grotesque, and it would have made the arms the silhouette. The sheet says the gut is
+   narrower than we had it; the sheet won.
+2. **Leaving the smoke test's `belly / height > 0.9`.** It was written from a misreading of the
+   sheet (total width taken for the gut's) and it was actively holding the bug in place. Rewritten
+   to the flood-filled numbers and made **two-sided** — 0.78-0.88 for the gut, 0.93-1.04 for the
+   whole figure — so neither the old 0.70 build nor the 0.93 one would pass now.
+3. **Restructuring Droid**, which passes. Only the craft note was taken: the copper at hips and
+   elbows was a bright saturated pad, so the cap went back to graphite and the copper is the thin
+   ring round its edge, darker and rougher.
+4. **Zeroing Voxxy's idle head sweep for the portrait.** Rejected as special-casing the judge's
+   camera; the amplitude was halved instead (0.6 rad had his face 34 degrees off camera for most
+   of the idle, costing a third of the visor's apparent width), which is a real improvement in
+   play as well.
+
+**What is known to be weak.** Biggy's boots still read as a block on a flat tray rather than the
+sheet's moulded sole, and the eye glow is stepped geometry — four ovals and a lit-dot halo — not a
+bloom pass, so at very close range the steps are findable.

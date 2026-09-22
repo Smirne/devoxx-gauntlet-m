@@ -20,8 +20,8 @@ import * as THREE from 'three';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { H, W } from '../src/sim/constants';
-import { CY0, CY1, F1, R, rooms } from '../src/sim/geometry';
-import { PX_PER_M, STOREY_H_M } from '../src/sim/units';
+import { CY0, CY1, F1, GF, LOBBY_RISE_M, R, rooms } from '../src/sim/geometry';
+import { PX_PER_M, STOREY_H_M, m } from '../src/sim/units';
 import { DIORAMA_ELEVATIONS_DEG, dioramaToCameraAtDeg } from '../src/render/camera';
 import { buildVenue, simToWorld, type Venue } from '../src/render/venue/index';
 
@@ -381,7 +381,7 @@ describe('signage', () => {
 
 describe('the exhibition level', () => {
   it('has the hall, the catering court, the store, reception and the BOF rooms', () => {
-    for (const key of ['hall', 'catering', 'tech', 'store', 'reception', 'bof', 'toilets', 'entrance']) {
+    for (const key of ['hall', 'catering', 'tech', 'store', 'reception', 'coatroom', 'bof', 'toilets', 'entrance']) {
       expect(venue.roomAnchors.get(key), `missing anchor "${key}"`).toBeDefined();
     }
     for (const name of ['roller-door', 'breaker-panel', 'network-rack', 'badge-printer', 'main-stair-gate']) {
@@ -413,5 +413,86 @@ describe('teardown', () => {
     expect(f1Overhead?.visible).toBe(false);
     venue.showOverhead(true);
     expect(f1Overhead?.visible).toBe(true);
+  });
+});
+
+/**
+ * THE LEVEL CHANGE (`docs/ground-floor-lobby-fix.md`).
+ *
+ * The lobby stands half a metre above the exhibition hall and the two are joined
+ * by one wide, shallow flight — the small staircase. The sim carries that as a
+ * single opening in the hall's right edge; this is the diorama's half of it, and
+ * it is asserted by RAY, not by name, because "is there a wall here" is the thing
+ * the four fictional openings passed for three rounds.
+ */
+describe('the exhibition level is built on two levels', () => {
+  const hallY = -STOREY_H_M;
+  const lobbyY = -STOREY_H_M + LOBBY_RISE_M;
+
+  const anchorY = (key: string): number =>
+    (venue.roomAnchors.get(key) as THREE.Object3D).getWorldPosition(new THREE.Vector3()).y;
+
+  it('stands every lobby block half a metre above every hall block', () => {
+    for (const key of ['hall', 'catering', 'tech', 'store']) {
+      expect(anchorY(key), `${key} should be on the hall floor`).toBeCloseTo(hallY, 5);
+    }
+    for (const key of ['reception', 'coatroom', 'bof', 'toilets', 'entrance']) {
+      expect(anchorY(key), `${key} should be on the raised lobby plate`).toBeCloseTo(lobbyY, 5);
+    }
+    expect(anchorY('reception') - anchorY('hall')).toBeCloseTo(LOBBY_RISE_M, 5);
+  });
+
+  it('bridges them with the stepped threshold, on the plot\'s own footprint', () => {
+    const steps = venue.group.getObjectByName('threshold-steps');
+    expect(steps, 'no threshold flight').toBeDefined();
+    const box = new THREE.Box3().setFromObject(steps as THREE.Object3D);
+    const st = GF.smallStairs;
+    expect(box.min.x).toBeCloseTo(m(st.x), 1);
+    expect(box.max.x).toBeCloseTo(m(st.x + st.w), 1);
+    expect(box.min.z).toBeCloseTo(m(st.y), 1);
+    expect(box.max.z).toBeCloseTo(m(st.y + st.h), 1);
+    // It starts at the lobby's walking surface and its mass reaches the hall floor.
+    expect(box.max.y).toBeGreaterThan(lobbyY - 0.02);
+    expect(box.max.y).toBeLessThan(lobbyY + 0.1);
+    expect(box.min.y).toBeLessThanOrEqual(hallY);
+  });
+
+  it('closes the hall\'s right edge everywhere except across those steps', () => {
+    const ray = new THREE.Raycaster();
+    ray.far = 2;
+    const st = GF.smallStairs;
+    const at = (simY: number): THREE.Intersection[] => {
+      ray.set(
+        new THREE.Vector3(m(GF.hall.x + GF.hall.w) - 0.6, hallY + 1.0, m(simY)),
+        new THREE.Vector3(1, 0, 0),
+      );
+      return ray.intersectObject(venue.ground, true);
+    };
+    // Solid above the threshold and below it...
+    for (const simY of [130, 200, 260, 600, 650]) {
+      expect(at(simY).length, `the hall's right edge is open at y=${simY}`).toBeGreaterThan(0);
+    }
+    // ...and open across it, at every quarter of its width.
+    for (const k of [0.25, 0.5, 0.75]) {
+      const simY = st.y + st.h * k;
+      expect(at(simY).length, `the threshold is blocked at y=${Math.round(simY)}`).toBe(0);
+    }
+  });
+
+  it('starts the main staircase from the lobby floor, with its gate at the foot', () => {
+    const main = venue.group.getObjectByName('ground-stair-main') as THREE.Object3D;
+    const gate = venue.group.getObjectByName('main-stair-gate') as THREE.Object3D;
+    expect(main).toBeDefined();
+    expect(gate).toBeDefined();
+    const flight = new THREE.Box3().setFromObject(main);
+    // Its foot is on the raised plate, not on the hall floor — the flight's own
+    // 0.1 m skirt is all that hangs below the lobby's walking surface.
+    expect(flight.min.y).toBeGreaterThan(lobbyY - 0.15);
+    expect(flight.min.y).toBeLessThan(lobbyY + 0.05);
+    expect(flight.min.y - hallY).toBeGreaterThan(0.3);
+    // ...and it climbs north, so the gate sits at its southern, downhill end.
+    const g = gate.getWorldPosition(new THREE.Vector3());
+    expect(g.z).toBeGreaterThan(m(GF.mainStair.y + GF.mainStair.h) - 0.1);
+    expect(g.y).toBeGreaterThan(lobbyY);
   });
 });

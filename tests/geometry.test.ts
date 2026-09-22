@@ -14,9 +14,25 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { T, W } from '../src/sim/constants';
-import { CY0, CY1, DOOR, F1, GF, R, ROOM_D, SPONSORS, floor1Walls, groundWalls, rooms, roomDoor } from '../src/sim/geometry';
-import type { RoomDef, Wall } from '../src/sim/types';
+import { DEFS, H, T, W } from '../src/sim/constants';
+import {
+  CY0,
+  CY1,
+  DOOR,
+  F1,
+  GF,
+  LOBBY_RISE_M,
+  R,
+  ROOM_D,
+  SPONSORS,
+  floor1Walls,
+  groundRiseM,
+  groundWalls,
+  rooms,
+  roomDoor,
+} from '../src/sim/geometry';
+import type { Rect, RoomDef, Vec2, Wall } from '../src/sim/types';
+import { ROBOT_HEIGHT_M } from '../src/sim/units';
 
 const DEVOXX = [3, 4, 5, 6, 7, 8, 9, 10];
 const CLOSED = ['A', 'B', 'C', 'D', 'E'];
@@ -36,6 +52,54 @@ function corridorGaps(side: -1 | 1): Array<[number, number]> {
     if (segs[i].x > end) gaps.push([end, segs[i].x]);
   }
   return gaps;
+}
+
+/**
+ * Can a robot of radius `r` actually walk from `a` to `b` across the exhibition
+ * level? A flood fill on a 5 px lattice, which is the only way to assert "this is
+ * the ONLY route" rather than "this route exists".
+ */
+function canWalk(a: Vec2, b: Vec2, r: number, extra: Wall[] = []): boolean {
+  const STEP = 5;
+  const walls = [...groundWalls(), ...extra].filter((w) => !w.hidden);
+  const nx = Math.ceil(W / STEP);
+  const ny = Math.ceil(H / STEP);
+  const seen = new Uint8Array(nx * ny);
+  const free = (ix: number, iy: number): boolean => {
+    const x = ix * STEP;
+    const y = iy * STEP;
+    for (const w of walls) {
+      const cx = Math.max(w.x, Math.min(x, w.x + w.w));
+      const cy = Math.max(w.y, Math.min(y, w.y + w.h));
+      if ((x - cx) ** 2 + (y - cy) ** 2 < r * r) return false;
+    }
+    return true;
+  };
+  const idx = (ix: number, iy: number): number => iy * nx + ix;
+  const start = [Math.round(a.x / STEP), Math.round(a.y / STEP)] as const;
+  const goal = [Math.round(b.x / STEP), Math.round(b.y / STEP)] as const;
+  expect(free(start[0], start[1]), 'start is inside a wall').toBe(true);
+  expect(free(goal[0], goal[1]), 'goal is inside a wall').toBe(true);
+  const queue: Array<[number, number]> = [[start[0], start[1]]];
+  seen[idx(start[0], start[1])] = 1;
+  while (queue.length) {
+    const [ix, iy] = queue.pop() as [number, number];
+    if (ix === goal[0] && iy === goal[1]) return true;
+    for (const [dx, dy] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as Array<[number, number]>) {
+      const jx = ix + dx;
+      const jy = iy + dy;
+      if (jx < 0 || jy < 0 || jx >= nx || jy >= ny) continue;
+      if (seen[idx(jx, jy)]) continue;
+      seen[idx(jx, jy)] = 1;
+      if (free(jx, jy)) queue.push([jx, jy]);
+    }
+  }
+  return false;
 }
 
 describe('the rooms', () => {
@@ -300,71 +364,191 @@ describe('the ground floor', () => {
 });
 
 /**
- * The lobby band — round 3 of the floor-plan gauntlet.
+ * THE LOBBY, AGAINST MICHELE'S OWN PLOT (`docs/ground-floor-lobby-fix.md`).
  *
- * `plans/exhibition-floor-stairs-annotated.png` draws the BOF block at plan
- * c 625-890, r 890-1090 and the toilets just west of it, which under this module's
- * rotation is the ground floor's far-right, TOP quadrant. The prototype had the BOF
- * rooms bottom-right and left everything east of x 1560 as bare deck; the critic
- * measured that quarter of the map as empty of every wall, door and fitting. These
- * assertions are what stops it going back.
+ * Round 3 checked this quadrant for *presence* — "is there a wall east of 1560" —
+ * and it passed while reception, the coatroom, the BOF rooms and the toilets were
+ * all somewhere else. Every assertion below is a POSITION, taken from the plot
+ * Michele made on a calibrated tool against `plans/exhibition-floor.jpg`, so the
+ * only way to pass is to be right.
  */
-describe('ground floor — the lobby band', () => {
-  const eastOf = (x: number): Wall[] => groundWalls().filter((w) => w.x + w.w > x);
-
-  it('puts the BOF rooms in the far-right TOP quadrant, as the plan does', () => {
-    expect(GF.bof.x).toBeGreaterThan(1450);
-    expect(GF.bof.x + GF.bof.w).toBeLessThanOrEqual(W - T);
-    // Top half of the floor, and clear of the chapter-3 visitor route along y 420-445.
-    expect(GF.bof.y + GF.bof.h).toBeLessThan(350);
+describe('ground floor — the lobby, where Michele plotted it', () => {
+  const PLOT: Record<string, Rect> = {
+    coatroom: { x: 1172, y: 262, w: 126, h: 122 },
+    reception: { x: 1174, y: 388, w: 126, h: 75 },
+    mainStair: { x: 1305, y: 263, w: 112, h: 197 },
+    entrance: { x: 1472, y: 422, w: 33, h: 136 },
+    smallStairs: { x: 952, y: 285, w: 93, h: 283 },
+    concreteWall: { x: 1039, y: 90, w: 43, h: 199 },
+    bof: { x: 1195, y: 6, w: 275, h: 151 },
+    toilets: { x: 1085, y: 6, w: 105, h: 150 },
+  };
+  const built = (): Record<string, Rect> => ({
+    coatroom: GF.coatroom,
+    reception: GF.reception,
+    mainStair: GF.mainStair,
+    entrance: GF.entrance,
+    smallStairs: GF.smallStairs,
+    concreteWall: GF.concreteWall,
+    bof: GF.bof,
+    toilets: GF.toilets,
   });
 
-  it('subdivides the BOF block into rooms, each with its own doorway', () => {
-    expect(GF.bofSplits.length).toBeGreaterThanOrEqual(2);
-    const south = groundWalls()
-      .filter((w) => w.y === GF.bof.y + GF.bof.h && w.h === T)
-      .sort((a, b) => a.x - b.x);
-    // One doorway per room means one gap per split, plus one.
-    let gaps = 0;
-    for (let i = 1; i < south.length; i++) {
-      if (south[i].x > south[i - 1].x + south[i - 1].w) gaps++;
+  it('puts every block of the lobby on its measured rect, to the pixel', () => {
+    const got = built();
+    for (const [name, want] of Object.entries(PLOT)) {
+      expect({ name, ...got[name] }).toEqual({ name, ...want });
     }
-    expect(gaps).toBe(GF.bofSplits.length + 1);
   });
 
-  it('walls the toilets as a block with one doorway, off the lobby', () => {
-    const tl = GF.toilets;
-    expect(tl.x).toBeGreaterThanOrEqual(GF.hall.x + GF.hall.w);
+  it('stacks the reception desk BELOW the wardrobe, not beside it', () => {
+    const co = GF.coatroom;
+    const r = GF.reception;
+    expect(r.y).toBeGreaterThanOrEqual(co.y + co.h);
+    // Same run of furniture: they share a west face within a couple of pixels...
+    expect(Math.abs(r.x - co.x)).toBeLessThan(6);
+    // ...the wardrobe is the larger, northern part...
+    expect(co.h).toBeGreaterThan(r.h);
+    // ...and the slot between them is too narrow for even Voxxy to slip through.
+    expect(r.y - (co.y + co.h)).toBeLessThan(2 * DEFS.voxxy.r);
+  });
+
+  it('leaves the hall\'s right edge exactly ONE opening, and it is the stepped threshold', () => {
+    const line = GF.hall.x + GF.hall.w + T / 2;
+    const segs = groundWalls()
+      .filter((w) => w.x <= line && w.x + w.w >= line)
+      .filter((w) => w.y < GF.hall.y + GF.hall.h && w.y + w.h > GF.hall.y)
+      .sort((a, b) => a.y - b.y);
+    const gaps: Array<[number, number]> = [];
+    let y: number = GF.hall.y;
+    for (const s of segs) {
+      if (s.y > y) gaps.push([y, s.y]);
+      y = Math.max(y, s.y + s.h);
+    }
+    if (y < GF.hall.y + GF.hall.h) gaps.push([y, GF.hall.y + GF.hall.h]);
+
+    // Not four gaps, not six door bays: one threshold.
+    expect(gaps).toHaveLength(1);
+    expect(GF.openings).toHaveLength(1);
+    const st = GF.smallStairs;
+    const [a, b] = gaps[0];
+    expect(a).toBeGreaterThanOrEqual(st.y);
+    expect(a).toBeLessThanOrEqual(st.y + 8);
+    expect(b).toBe(st.y + st.h);
+    expect(b - a).toBeGreaterThan(260);
+    // Concrete above it, concrete below it.
+    expect(segs.some((s) => s.kind === 'concrete' && s.y === GF.concreteWall.y)).toBe(true);
+    expect(segs.some((s) => s.y === st.y + st.h)).toBe(true);
+  });
+
+  it('makes the small staircase the ONLY way between the hall and the lobby', () => {
+    const hall = { x: 620, y: 645 };
+    const lobby = { x: 1440, y: 500 };
+    expect(canWalk(hall, lobby, DEFS.biggy.r)).toBe(true);
+    // Plug the threshold and the lobby is unreachable: there is no second route.
+    const plug: Wall = { x: GF.smallStairs.x, y: GF.smallStairs.y, w: GF.smallStairs.w + 20, h: GF.smallStairs.h };
+    expect(canWalk(hall, lobby, DEFS.voxxy.r, [plug])).toBe(false);
+  });
+
+  it('raises the lobby half a metre above the hall — a threshold, not a ramp', () => {
+    expect(LOBBY_RISE_M).toBe(0.5);
+    expect(groundRiseM(GF.hall.x + 100)).toBe(0);
+    expect(groundRiseM(GF.smallStairs.x)).toBe(0);
+    expect(groundRiseM(GF.entrance.x)).toBe(LOBBY_RISE_M);
+    expect(groundRiseM(GF.reception.x)).toBe(LOBBY_RISE_M);
+    // It climbs across the flight's own footprint, and only there.
+    expect(groundRiseM(GF.smallStairs.x + GF.smallStairs.w / 2)).toBeCloseTo(LOBBY_RISE_M / 2, 6);
+    // 43% of Voxxy: high enough to read as a step up, low enough not to be a wall.
+    expect(LOBBY_RISE_M / ROBOT_HEIGHT_M.voxxy).toBeGreaterThan(0.4);
+    expect(LOBBY_RISE_M).toBeLessThan(ROBOT_HEIGHT_M.voxxy * 0.6);
+  });
+
+  it('opens only the LEFT-HAND doors and glazes the rest of that wall', () => {
+    const e = GF.entrance;
+    const panes = groundWalls().filter((w) => w.kind === 'facade');
+    expect(panes).toHaveLength(2);
+    for (const p of panes) {
+      expect(p.glass).toBe(true); // fixed glazing: blocks robots, passes daylight
+      expect(p.x).toBe(e.x);
+    }
+    const north = panes.find((p) => p.y < e.y);
+    const south = panes.find((p) => p.y > e.y);
+    expect(north).toBeDefined();
+    expect(south).toBeDefined();
+    // The two runs meet the doorway exactly: nothing else in the wall is open.
+    expect((north as Wall).y + (north as Wall).h).toBe(e.y);
+    expect((south as Wall).y).toBe(e.y + e.h);
+    // The open doors are at the far end of the run, next to reception — not in the
+    // middle of the wall, and not off the canvas edge where the prototype put them.
+    expect(e.y).toBeGreaterThan(GF.bof.y + GF.bof.h);
+    expect(e.x + e.w).toBeLessThan(W - T);
+    expect((north as Wall).h).toBeGreaterThan(e.h * 2);
+  });
+
+  it('builds the toilets and the three BOF rooms inside their own footprints, one doorway each', () => {
     const walls = groundWalls();
-    for (const side of [
-      { x: tl.x - T, y: tl.y, w: T, h: tl.h },
-      { x: tl.x + tl.w, y: tl.y, w: T, h: tl.h },
-    ]) {
-      expect(walls.some((w) => w.x === side.x && w.y === side.y && w.w === side.w && w.h === side.h)).toBe(true);
+    for (const [kind, rect, rooms] of [
+      ['toilets', GF.toilets, 1],
+      ['bof', GF.bof, GF.bofSplits.length + 1],
+    ] as Array<[string, Rect, number]>) {
+      const mine = walls.filter((w) => w.kind === kind);
+      expect(mine.length, `${kind} walls`).toBeGreaterThan(3);
+      for (const w of mine) {
+        expect(w.x).toBeGreaterThanOrEqual(rect.x);
+        expect(w.x + w.w).toBeLessThanOrEqual(rect.x + rect.w);
+        expect(w.y).toBeGreaterThanOrEqual(rect.y);
+        expect(w.y + w.h).toBeLessThanOrEqual(rect.y + rect.h);
+      }
+      const south = mine.filter((w) => w.y === rect.y + rect.h - T && w.h === T).sort((a, b) => a.x - b.x);
+      let gaps = 0;
+      for (let i = 1; i < south.length; i++) {
+        if (south[i].x > south[i - 1].x + south[i - 1].w) gaps++;
+      }
+      expect(gaps, `${kind} doorways`).toBe(rooms);
     }
-    const south = walls.filter((w) => w.y === tl.y + tl.h && w.h === T);
-    expect(south).toHaveLength(2);
+    // Both blocks face the lobby, in the TOP band, clear of the arrivals route.
+    expect(GF.bof.y + GF.bof.h).toBeLessThan(GF.coatroom.y);
+    expect(GF.toilets.x + GF.toilets.w).toBeLessThanOrEqual(GF.bof.x);
   });
 
-  it('leaves no quarter of the ground floor empty of built fabric', () => {
-    // The critic measured sim x 1560..1900 as bare deck. Every 85-px column of the
-    // lobby band must now carry at least one wall.
-    for (let x = 1050; x < W - T; x += 85) {
-      const band = eastOf(x).filter((w) => w.x < x + 85 && w.w < 400);
+  it('keeps the gate at the foot of the main staircase — its only reachable side', () => {
+    const ms = GF.mainStair;
+    expect(GF.gate.x).toBe(ms.x);
+    expect(GF.gate.w).toBe(ms.w);
+    expect(GF.gate.y).toBe(ms.y + ms.h);
+    // The wardrobe and the desk close the flight's whole west flank, which is why
+    // the south is the only way at it — and why Stephan stands exactly there.
+    const west = [GF.coatroom, GF.reception];
+    expect(Math.min(...west.map((r) => r.y))).toBeLessThanOrEqual(ms.y);
+    expect(Math.max(...west.map((r) => r.y + r.h))).toBeGreaterThanOrEqual(ms.y + ms.h);
+    for (const r of west) expect(r.x + r.w).toBeLessThanOrEqual(ms.x);
+  });
+
+  it('never overlaps two blocks of the lobby', () => {
+    const named = Object.entries({ ...built(), gate: GF.gate });
+    for (let i = 0; i < named.length; i++) {
+      for (let j = i + 1; j < named.length; j++) {
+        const [an, a] = named[i];
+        const [bn, b] = named[j];
+        const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+        const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+        // The concrete wall butts into the head of the steps by 4 px, which is the
+        // plot's own overlap; nothing else may touch at all.
+        const allowed = (an === 'smallStairs' && bn === 'concreteWall') || (an === 'concreteWall' && bn === 'smallStairs');
+        expect(Math.min(ox, oy) <= 0 || (allowed && Math.min(ox, oy) <= 6), `${an} overlaps ${bn}`).toBe(true);
+      }
+    }
+  });
+
+  it('builds fabric across the whole lobby, and leaves the forecourt outside it', () => {
+    const walls = groundWalls();
+    // Every 85-px column of the lobby proper carries something built.
+    for (let x = GF.hall.x + GF.hall.w; x < GF.entrance.x; x += 85) {
+      const band = walls.filter((w) => w.x + w.w > x && w.x < x + 85 && w.w < 400);
       expect(band.length, `nothing built in the column starting at x=${x}`).toBeGreaterThan(0);
     }
-  });
-
-  it('keeps the hall\'s right wall a bank of real, regular door openings', () => {
-    const x = GF.hall.x + GF.hall.w;
-    const segs = groundWalls()
-      .filter((w) => w.x === x && w.w === T)
-      .sort((a, b) => a.y - b.y);
-    let gaps = 0;
-    for (let i = 1; i < segs.length; i++) {
-      if (segs[i].y > segs[i - 1].y + segs[i - 1].h) gaps++;
-    }
-    expect(gaps).toBe(GF.openings.length);
-    for (const [a, b] of GF.openings) expect(b - a).toBeGreaterThanOrEqual(46);
+    // East of the glazing is the street: only the building's own shell is there.
+    const outside = walls.filter((w) => w.x > GF.entrance.x + GF.entrance.w && w.x < W - T);
+    expect(outside).toHaveLength(0);
   });
 });

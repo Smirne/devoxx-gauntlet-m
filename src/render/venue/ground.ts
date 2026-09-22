@@ -1,17 +1,27 @@
 /**
- * ground.ts — the exhibition level: the hall with its column grid and scalloped
- * right wall, the walled catering court, the technical room, the polo/badge store
- * with its roller door, twelve sponsor booths, reception, the main staircase with
- * its gate, the BOF rooms, the toilets and the main entrance.
+ * ground.ts — the exhibition level, on its TWO levels: the hall with its column
+ * grid, the walled catering court, the technical room, the polo/badge store with
+ * its roller door, twelve sponsor booths — and, half a metre higher, the lobby:
+ * reception, the wardrobe, the main staircase and its gate, the BOF rooms, the
+ * toilets and the main entrance.
  *
  * Every rectangle comes from `GF` in `src/sim/geometry.ts`; the only numbers typed
  * here are heights, which the plan does not carry, and dressing offsets inside a
  * rectangle the plan does give.
  *
+ * ## The level change
+ *
+ * `LOBBY_RISE_M` — half a metre. The hall floor is the datum (local y = 0) and the
+ * lobby stands on a raised plate above it, joined by the **small staircase**: five
+ * long, shallow steps across the hall's right edge, which is the only way between
+ * the two. Concrete closes that edge either side of it. The prototype's "scalloped
+ * wall with four openings" was invented and is gone; see
+ * `docs/ground-floor-lobby-fix.md`.
+ *
  * Materials follow `media/other-images/CAPTIONS.md`: mid-gray hall carpet under a
- * pale square-column grid, red accent panels on the side walls, a warm reception
- * with a wood-slat back wall and a big white pendant disc, and a catering counter
- * with a blue LED rope and rows of yellow-orange soup cups.
+ * pale square-column grid, red accent panels on the side walls, and a warm
+ * reception — wood-slat back wall, long white counter, cream-shaded table lamps, a
+ * large white pendant disc and an orange ceiling soffit strip.
  *
  * Nothing in this file is a collider: the sim owns collision, and anything drawn
  * here that the sim does not know about is kept flat against a real wall or low
@@ -22,7 +32,7 @@
 import * as THREE from 'three';
 
 import { H, T, W } from '../../sim/constants';
-import { GF, groundWalls } from '../../sim/geometry';
+import { GF, LOBBY_RISE_M, groundWalls } from '../../sim/geometry';
 import type { Rect, Wall } from '../../sim/types';
 import { m } from '../../sim/units';
 import type { VenuePalette } from './materials';
@@ -47,6 +57,10 @@ import {
 const BOOTH_H = 2.4;
 /** How far the visible part of a staircase climbs before the ceiling swallows it. */
 const STAIR_RISE = 5;
+/** The lobby's walking surface, above the hall's. */
+const RISE = LOBBY_RISE_M;
+/** East of this the floor is the raised lobby plate; west of it, the hall. */
+const LOBBY_X = GF.smallStairs.x + GF.smallStairs.w;
 
 export interface GroundBuild {
   group: THREE.Group;
@@ -60,17 +74,31 @@ function overlaps(a: Rect, b: Rect, pad = 0): boolean {
   return a.x < b.x + b.w + pad && a.x + a.w + pad > b.x && a.y < b.y + b.h + pad && a.y + a.h + pad > b.y;
 }
 
+/** The walking surface a thing at this sim x stands on. */
+function baseAt(x: number): number {
+  return x >= LOBBY_X ? RISE : 0;
+}
+
 /* ------------------------------------------------------------------- walls */
 
-/** Palette entry and height for a sim wall slab; `null` means "drawn elsewhere". */
-function wallStyle(w: Wall, p: VenuePalette): { mat: THREE.MeshStandardMaterial; height: number } | null {
+/** Palette entry, height and base for a sim wall slab; `null` means "drawn elsewhere". */
+function wallStyle(
+  w: Wall,
+  p: VenuePalette,
+): { mat: THREE.MeshStandardMaterial; height: number; base: number } | null {
   // Half tables are drawn as cloth-draped tables, not as slabs.
-  if (w.booth) return w.booth.table ? null : { mat: p.boothWall, height: BOOTH_H };
-  if (w.low) return { mat: p.counterTop, height: LOW_H };
+  if (w.booth) return w.booth.table ? null : { mat: p.boothWall, height: BOOTH_H, base: 0 };
   const isShell =
     (w.w === W && (w.y === 0 || w.y === H - T)) || (w.h === H && (w.x === 0 || w.x === W - T));
-  if (isShell) return { mat: p.shell, height: SHELL_H };
-  return { mat: p.hallWall, height: WALL_H };
+  if (isShell) return { mat: p.shell, height: SHELL_H + RISE, base: 0 };
+  // The hall's right edge stands on the hall floor and reaches above the lobby's.
+  if (w.kind === 'concrete') return { mat: p.concrete, height: WALL_H + RISE, base: 0 };
+  if (w.kind === 'hall-edge') return { mat: p.hallWall, height: WALL_H + RISE, base: 0 };
+  if (w.kind === 'facade') return { mat: p.glazing, height: SHELL_H, base: RISE };
+  // Reception's long white counter and the wardrobe's hand-in top.
+  if (w.kind === 'desk' || w.kind === 'coat-counter') return { mat: p.counterWhite, height: LOW_H, base: RISE };
+  if (w.low) return { mat: p.counterTop, height: LOW_H, base: baseAt(w.x) };
+  return { mat: p.hallWall, height: WALL_H, base: baseAt(w.x) };
 }
 
 /* -------------------------------------------------------------- the hall */
@@ -89,7 +117,9 @@ function columnGrid(p: VenuePalette): THREE.Group {
     GF.food.court,
     GF.tech,
     GF.store,
-    GF.toilets,
+    // Nothing stands in the threshold or against the concrete that frames it.
+    GF.smallStairs,
+    GF.concreteWall,
     ...GF.stairs.map((s) => ({ x: s.x, y: s.y, w: s.w, h: s.h })),
     ...GF.booths.map((b) => ({ x: b.x, y: b.y, w: b.w, h: b.h })),
   ];
@@ -103,81 +133,66 @@ function columnGrid(p: VenuePalette): THREE.Group {
   return g;
 }
 
-/**
- * The hall's right wall: a **bank of glazed doors**, which is what "scalloped"
- * means on the plan.
- *
- * `plans/exhibition-floor-stairs-annotated.png` draws that wall as a continuous
- * row of about twelve door-swing arcs — it is scalloped because it is a dozen door
- * leaves, not because it has bumps. This used to be drawn as a flat slab modulated
- * by six sim units (five screen pixels), which survived neither the diorama camera
- * nor a plan overlay, and the four openings the sim leaves in it were invisible.
- *
- * So each solid run of wall becomes alternating door bays: a glazed leaf set back
- * `BAY_RECESS` into the hall between aluminium mullions, with reveals either side.
- * The four openings the sim leaves are drawn as bays whose leaves stand open, so
- * the way through to the lobby is visible as well as walkable.
- */
 /** The router cabinet's height, metres. A full-height 19-inch floor cabinet. */
 const CABINET_H = 2.05;
 
-const BAY_PITCH = 50;
-const BAY_LEAF = 40;
-const BAY_RECESS = 25;
-
-function doorBank(p: VenuePalette): THREE.Group {
+/**
+ * THE THRESHOLD — the hall's right edge, and the only way across it.
+ *
+ * Michele's plot, and the plan under it, draw a run of long shallow steps across
+ * world y 285..568 and solid wall above and below. The sim's slabs carry the
+ * concrete (`wallStyle`); this builds the flight itself, the nosings, and the
+ * lip of the raised lobby plate either side of it so the level change reads from
+ * the hall as a step up rather than as a seam in the floor.
+ */
+function threshold(p: VenuePalette, anchors: Map<number | string, THREE.Object3D>): THREE.Group {
   const g = new THREE.Group();
-  g.name = 'scalloped-wall';
-  const h = GF.hall;
-  const x = h.x + h.w;
+  g.name = 'threshold';
+  const s = GF.smallStairs;
 
-  /** A recessed glazed bay between two mullions, running y0..y1. */
-  const bay = (y0: number, y1: number, open: boolean): void => {
-    const leaf: Rect = { x: x - BAY_RECESS, y: y0, w: T, h: y1 - y0 };
-    if (open) {
-      // Both leaves swung back into the hall, flat against the reveals.
-      for (const at of [y0 + 2, y1 - 8]) {
-        const d = slab({ x: x - BAY_RECESS, y: at, w: BAY_RECESS - 2, h: 6 }, 0, DOOR_H, p.doorLeaf);
-        g.add(d);
-      }
-      g.add(slab({ x: x - BAY_RECESS, y: y0, w: BAY_RECESS, h: y1 - y0 }, 0, 0.04, p.concrete));
-    } else {
-      g.add(slab(leaf, 0, DOOR_H, p.doorLeaf));
-      g.add(slab({ x: leaf.x, y: y0, w: T, h: y1 - y0 }, DOOR_H, WALL_H - DOOR_H, p.mullion));
-      // Reveals: the short returns from the recessed leaf back to the wall line.
-      for (const ry of [y0 - 1, y1 - 5]) {
-        g.add(slab({ x: x - BAY_RECESS, y: ry, w: BAY_RECESS, h: 6 }, 0, WALL_H, p.hallWall));
-      }
-    }
-    // The mullion that closes the bay on its far side.
-    g.add(slab({ x: x - 2, y: y1, w: T + 4, h: BAY_PITCH - BAY_LEAF }, 0, WALL_H, p.mullion));
-  };
+  const flight = stairFlight({
+    rect: { x: s.x, y: s.y, w: s.w, h: s.h },
+    topY: RISE,
+    bottomY: 0,
+    // The lobby is on the +x side, so the flight descends westward into the hall.
+    dir: '-x',
+    steps: 6,
+    tread: p.concrete,
+    nosing: p.stairNosing,
+  });
+  flight.name = 'threshold-steps';
+  g.add(flight);
 
-  // Walk the wall top to bottom, cutting it into runs at the sim's own openings.
-  const stops: Array<[number, number, boolean]> = [];
-  let y: number = h.y;
-  for (const [a, b] of GF.openings) {
-    if (a > y) stops.push([y, a, false]);
-    stops.push([a, b, true]);
-    y = b;
+  // The cut edge of the raised plate, above and below the flight: a 0.5 m riser
+  // faced in the same concrete, which is what you actually see from the hall.
+  for (const [y0, y1] of [
+    [GF.hall.y, s.y],
+    [s.y + s.h, GF.hall.y + GF.hall.h],
+  ] as Array<[number, number]>) {
+    if (y1 <= y0) continue;
+    g.add(slab({ x: LOBBY_X - 6, y: y0, w: 6, h: y1 - y0 }, 0, RISE, p.concrete));
   }
-  if (y < h.y + h.h) stops.push([y, h.y + h.h, false]);
 
-  for (const [y0, y1, open] of stops) {
-    if (open) {
-      bay(y0 + 2, y1 - 2, true);
-      continue;
+  /*
+   * A stepped cheek wall down each flank.
+   *
+   * Twenty-two metres of open steps needs its edges marked, and a handrail is the
+   * wrong object here: it would have to be a slope, and a flat one on posts of one
+   * length ends up floating at the top of the flight. A low stringer wall that
+   * climbs with the treads is what the plan draws, and it reads as a stair from
+   * every angle the diorama camera takes.
+   */
+  const STEPS = 6;
+  for (const ry of [s.y, s.y + s.h - 5]) {
+    for (let i = 0; i < STEPS; i++) {
+      const tread = (RISE * (i + 1)) / STEPS;
+      g.add(slab({ x: s.x + (s.w * i) / STEPS, y: ry, w: s.w / STEPS + 0.5, h: 5 }, 0, tread + 0.34, p.concrete));
     }
-    // Pier at the very start of the run, then as many full bays as fit.
-    let yy = y0;
-    g.add(slab({ x: x - 2, y: yy, w: T + 4, h: Math.min(10, y1 - yy) }, 0, WALL_H, p.mullion));
-    yy += 10;
-    while (yy + BAY_LEAF <= y1) {
-      bay(yy, yy + BAY_LEAF, false);
-      yy += BAY_PITCH;
-    }
-    if (yy < y1) g.add(slab({ x: x - 2, y: yy, w: T + 4, h: y1 - yy }, 0, WALL_H, p.mullion));
   }
+
+  const a = anchorAt('anchor-threshold', s.x + s.w / 2, s.y + s.h / 2, RISE / 2);
+  anchors.set('threshold', a);
+  g.add(a);
   return g;
 }
 
@@ -252,42 +267,68 @@ function booths(p: VenuePalette): THREE.Group {
   return g;
 }
 
-/* --------------------------------------------------------------- reception */
+/* --------------------------------------------------- reception and wardrobe */
 
+/**
+ * The reception block: the wardrobe above, the desk below.
+ *
+ * `media/other-images/image-1790032544510.webp` is the brief for it, and
+ * CAPTIONS.md spells the correction out — reception is the one WARM thing on this
+ * floor: a wood-slat back wall, a long white counter, cream-shaded table lamps, a
+ * big white pendant disc and an orange soffit strip overhead. The counter itself
+ * and the wardrobe's hand-in top are sim walls (`wallStyle` gives them the white);
+ * everything here is what stands on, behind and above them.
+ */
 function reception(p: VenuePalette, overhead: THREE.Group): THREE.Group {
   const g = new THREE.Group();
   g.name = 'reception';
   const r = GF.reception;
+  const co = GF.coatroom;
 
-  // Wood-slat back wall behind the counter — image-1790032544510.webp.
-  const back: Rect = { x: r.x - 10, y: r.y - 26, w: r.w + 20, h: 8 };
-  g.add(slab(back, 0, 2.7, p.wood));
-  for (let x = back.x + 6; x < back.x + back.w; x += 14) {
-    g.add(slab({ x, y: back.y - 2, w: 4, h: 2 }, 0.1, 2.5, p.blackMetal));
+  // The wood-slat back wall: the wardrobe's own north face, seen over the counter
+  // and over the desk from the diorama camera.
+  g.add(slab({ x: co.x + T, y: co.y + T, w: co.w - 2 * T, h: 5 }, RISE, 2.6, p.wood));
+  for (let x = co.x + T + 5; x < co.x + co.w - T; x += 13) {
+    g.add(slab({ x, y: co.y + T - 2, w: 4, h: 2 }, RISE + 0.1, 2.4, p.blackMetal));
   }
 
-  const printer = slab(GF.printer, LOW_H, 0.28, p.printerWhite);
+  // Coat rails and a thin crowd of hangers, inside the wardrobe.
+  for (const ry of [co.y + 34, co.y + 74]) {
+    g.add(slab({ x: co.x + 14, y: ry, w: co.w - 28, h: 3 }, RISE + 1.5, 0.05, p.steelRail));
+    for (let x = co.x + 18; x < co.x + co.w - 18; x += 7) {
+      g.add(slab({ x, y: ry - 4, w: 5, h: 10 }, RISE + 0.72, 0.76, p.coatFabric));
+    }
+  }
+
+  const printer = slab(GF.printer, RISE + LOW_H, 0.28, p.printerWhite);
   printer.name = 'badge-printer';
   g.add(printer);
-  for (let k = 0; k < 3; k++) g.add(boxAt(r.x + 60 + k * 60, r.y + 14, 8, 8, LOW_H, 0.3, p.lampWarm));
+  // Cream-shaded table lamps along the counter.
+  for (let k = 0; k < 3; k++) {
+    const lx = r.x + 22 + k * 42;
+    g.add(postAt(lx, r.y + 22, 0.03, 0.26, RISE + LOW_H, p.brass, 8));
+    g.add(boxAt(lx, r.y + 22, 9, 9, RISE + LOW_H + 0.26, 0.2, p.lampWarm));
+  }
 
   // The big white pendant disc and the orange ceiling soffit strip.
-  const disc = pendant(r.x + r.w / 2, r.y + 30, 1.5, 3.1, p.pendantWhite);
+  const disc = pendant(r.x + r.w / 2, r.y + 30, 1.5, RISE + 2.6, p.pendantWhite);
   disc.name = 'reception-pendant';
   overhead.add(disc);
-  overhead.add(slab({ x: r.x - 20, y: r.y - 40, w: r.w + 40, h: 10 }, 3.0, 0.22, p.devoxxOrange));
+  overhead.add(slab({ x: r.x - 26, y: r.y + r.h + 18, w: r.w + 52, h: 10 }, RISE + 3.0, 0.22, p.devoxxOrange));
   return g;
 }
 
 /* ------------------------------------------------------------------ stairs */
 
 /**
- * The three staircases up to the cinema level: the two secondary flights inside
- * the hall (`GF.stairs`, which land in the corridor niches between 3|4 and 10|9)
- * and the main staircase by reception, which is gated until Stephan opens it.
+ * The staircases up to the cinema level: the two secondary flights inside the hall
+ * (`GF.stairs`, which land in the corridor niches between 3|4 and 10|9) and the
+ * main staircase beside reception, which is gated until Stephan opens it.
  *
- * All three stop short of the cinema floor plate: the flights disappear into the
- * soffit rather than punching through a level the diorama draws separately.
+ * The main flight climbs NORTH out of the lobby, so its gate — the only side of it
+ * anybody can reach — is at the foot, on the south. All of them stop short of the
+ * cinema floor plate: they disappear into the soffit rather than punching through a
+ * level the diorama draws separately.
  */
 function staircases(p: VenuePalette, anchors: Map<number | string, THREE.Object3D>): THREE.Group {
   const g = new THREE.Group();
@@ -317,8 +358,9 @@ function staircases(p: VenuePalette, anchors: Map<number | string, THREE.Object3
   const main = stairFlight({
     rect: { x: ms.x, y: ms.y, w: ms.w, h: ms.h },
     topY: STAIR_RISE,
-    bottomY: 0,
-    dir: '-x',
+    bottomY: RISE,
+    // Top of the flight at its north edge, descending south to the lobby floor.
+    dir: '+z',
     steps: 16,
     tread: p.stairCarpetBlue,
     nosing: p.stairNosing,
@@ -328,126 +370,123 @@ function staircases(p: VenuePalette, anchors: Map<number | string, THREE.Object3
   main.name = 'ground-stair-main';
   g.add(main);
 
-  // The gate on the hall side. Chapter 3 decides when it opens; this is its look.
-  const gate = slab(GF.gate, 0, 1.55, p.steelBlue);
+  // The gate across the foot. Chapter 3 decides when it opens; this is its look.
+  const gate = slab(GF.gate, RISE, 1.55, p.steelBlue);
   gate.name = 'main-stair-gate';
   g.add(gate);
   for (let k = 0; k <= 4; k++) {
-    g.add(postAt(GF.gate.x + T / 2, GF.gate.y + (GF.gate.h * k) / 4, 0.09, 1.6, 0, p.steelBlue, 10));
+    g.add(postAt(GF.gate.x + (GF.gate.w * k) / 4, GF.gate.y + T / 2, 0.09, 1.6, RISE, p.steelBlue, 10));
   }
 
-  const a = anchorAt('anchor-stair-main', ms.x + ms.w / 2, ms.y + ms.h / 2);
+  const a = anchorAt('anchor-stair-main', ms.x + ms.w / 2, ms.y + ms.h / 2, RISE);
   anchors.set('stair-main', a);
   g.add(a);
   return g;
 }
 
-
 /* ----------------------------------------------------------------- the lobby */
 
 /**
- * The lobby band — the east quarter of the ground floor, between the hall's door
- * bank and the main entrance.
+ * The lobby — the raised quarter of the ground floor, between the hall's concrete
+ * edge and the glazed entrance wall.
  *
- * This is the half of `plans/exhibition-floor-stairs-annotated.png` that reads
- * "Reception / Toilets / BOF Rooms / Main Entrance", and it used to be bare grey
- * deck: from sim x 1560 to the east wall there was not one wall, door, pane of
- * glass or stanchion, only three cylinder people standing on a floor plate. The
- * rectangles are all `GF`'s; what is added here is the architecture the plan draws
- * on top of them and the dressing `media/other-images/CAPTIONS.md` specifies —
- * the entrance door row and its Devoxx posters, the rope-line stanchions, the
- * dark blue columns, the wheelchair ramp, the toilet block and the BOF rooms.
+ * This is the half of `plans/exhibition-floor.jpg` that reads "Reception / Toilets
+ * / BOF Rooms / Main Entrance". The rectangles are all `GF`'s, from Michele's plot;
+ * what is added here is the architecture the plan draws on top of them and the
+ * dressing `media/other-images/CAPTIONS.md` specifies — the entrance doors and
+ * their Devoxx posters, the fixed panes either side of them, the rope-line
+ * stanchions, the dark blue columns, the toilet block and the BOF rooms.
  */
 function lobby(p: VenuePalette, overhead: THREE.Group): THREE.Group {
   const g = new THREE.Group();
   g.name = 'lobby';
 
-  /* -------- main entrance: a glazed facade with a row of doors in the middle */
+  /* ---------------- main entrance: the left-hand doors, and fixed panes beyond */
 
   const e = GF.entrance;
-  const FACADE_Y0 = 150;
-  const FACADE_Y1 = 620;
-  // Full-height glazing either side of the door row — image-1790032684113.webp.
+  // Mullions up the fixed glazing, which the sim carries as two `glass` runs.
   for (const [y0, y1] of [
-    [FACADE_Y0, e.y],
-    [e.y + e.h, FACADE_Y1],
+    [T, e.y],
+    [e.y + e.h, H - T],
   ] as Array<[number, number]>) {
-    g.add(slab({ x: e.x - 4, y: y0, w: T + 4, h: y1 - y0 }, 0, SHELL_H, p.glazing));
-    for (let y = y0 + 20; y < y1 - 10; y += 46) {
-      g.add(slab({ x: e.x - 5, y, w: T + 6, h: 5 }, 0, SHELL_H, p.mullion));
+    for (let y = y0 + 24; y < y1 - 10; y += 46) {
+      g.add(slab({ x: e.x - 1, y, w: e.w + 2, h: 5 }, RISE, SHELL_H, p.mullion));
     }
   }
-  // The door row itself: four bays of paired leaves, scalloped like the plan's
-  // entrance arcs, with a Devoxx poster on each leaf.
-  const bays = 4;
+  // The open doors: three bays of paired leaves, swung back into the lobby, with a
+  // Devoxx poster on each leaf.
+  const bays = 3;
   const bayH = e.h / bays;
   for (let k = 0; k < bays; k++) {
     const y0 = e.y + k * bayH;
-    g.add(slab({ x: e.x - 5, y: y0, w: T + 6, h: 6 }, 0, SHELL_H, p.mullion));
-    g.add(slab({ x: e.x - 18, y: y0 + 7, w: 16, h: bayH - 14 }, 0, DOOR_H, p.doorLeaf));
-    g.add(slab({ x: e.x - 19, y: y0 + 7, w: 18, h: bayH - 14 }, DOOR_H, SHELL_H - DOOR_H, p.glazing));
-    // Devoxx door poster, on the inside face of each leaf.
-    g.add(slab({ x: e.x - 20, y: y0 + bayH / 2 - 9, w: 2, h: 18 }, 0.5, 1.1, p.devoxxOrange));
+    g.add(slab({ x: e.x - 1, y: y0, w: e.w + 2, h: 6 }, RISE, SHELL_H, p.mullion));
+    // The transom over the opening, so the doorway reads as a doorway.
+    g.add(slab({ x: e.x, y: y0 + 6, w: e.w, h: bayH - 6 }, RISE + DOOR_H, SHELL_H - DOOR_H, p.glazing));
+    // A leaf standing open against the reveal, on the lobby side.
+    g.add(slab({ x: e.x - 17, y: y0 + 8, w: 16, h: 5 }, RISE, DOOR_H, p.doorLeaf));
+    g.add(slab({ x: e.x - 18, y: y0 + bayH / 2 - 9, w: 2, h: 18 }, RISE + 0.5, 1.1, p.devoxxOrange));
   }
-  g.add(slab({ x: e.x - 5, y: e.y + e.h - 6, w: T + 6, h: 6 }, 0, SHELL_H, p.mullion));
-  // Bollards outside, and the bright autumn beyond the glass.
-  for (let k = 0; k < 5; k++) g.add(postAt(e.x + 4, e.y - 30 + k * 60, 0.22, 0.9, 0, p.blackMetal, 10));
+  g.add(slab({ x: e.x - 1, y: e.y + e.h - 6, w: e.w + 2, h: 6 }, RISE, SHELL_H, p.mullion));
 
-  /* ------------------------------- the concourse in front of the door row */
+  /* -------------------------------------------- the forecourt beyond the glass */
+
+  // Everything east of the facade is outside: paving, bollards and the dark.
+  g.add(floorSlab({ x: e.x + e.w, y: 0, w: W - (e.x + e.w), h: H }, RISE, p.paving, 0.3));
+  for (let k = 0; k < 7; k++) g.add(postAt(e.x + e.w + 26, 120 + k * 78, 0.22, 0.9, RISE, p.blackMetal, 10));
+  for (const [sx, sy] of [
+    [e.x + e.w + 70, 300],
+    [e.x + e.w + 70, 600],
+  ] as Array<[number, number]>) {
+    g.add(boxAt(sx, sy, 26, 70, RISE, 0.5, p.concrete));
+    g.add(boxAt(sx, sy, 20, 62, RISE + 0.5, 0.35, p.boothCloth));
+  }
+
+  /* ------------------------------------- the concourse in front of the doors */
 
   // Dark blue lobby columns — image-1790032582765.webp.
-  for (const cx of [1620, 1760]) {
-    for (const cy of [330, 470, 610]) g.add(boxAt(cx, cy, 22, 22, 0, SHELL_H, p.lobbyColumn));
-  }
-  // Rope-line stanchions funnelling arrivals from the doors toward reception.
-  for (const [sx, sy] of [
-    [1800, 320],
-    [1720, 340],
-    [1640, 360],
-    [1560, 380],
-    [1800, 570],
-    [1720, 560],
-    [1640, 545],
-    [1560, 530],
+  for (const [cx, cy] of [
+    [1078, 200],
+    [1078, 655],
+    [1240, 655],
+    [1400, 655],
   ] as Array<[number, number]>) {
-    g.add(postAt(sx, sy, 0.13, 1.0, 0, p.stanchion, 10));
-    g.add(postAt(sx, sy, 0.17, 0.05, 0.98, p.stanchion, 12));
-    g.add(slab({ x: sx - 38, y: sy - 1, w: 38, h: 2 }, 0.78, 0.05, p.stanchionBelt));
+    g.add(boxAt(cx, cy, 22, 22, RISE, SHELL_H, p.lobbyColumn));
+  }
+  // Rope-line stanchions funnelling arrivals from the doors past reception.
+  for (const [sx, sy] of [
+    [1440, 604],
+    [1370, 596],
+    [1300, 588],
+    [1230, 580],
+  ] as Array<[number, number]>) {
+    g.add(postAt(sx, sy, 0.13, 1.0, RISE, p.stanchion, 10));
+    g.add(postAt(sx, sy, 0.17, 0.05, RISE + 0.98, p.stanchion, 12));
+    g.add(slab({ x: sx - 38, y: sy - 1, w: 38, h: 2 }, RISE + 0.78, 0.05, p.stanchionBelt));
   }
   // Planters along the concourse.
   for (const [sx, sy] of [
-    [1690, 250],
-    [1690, 660],
+    [1110, 350],
+    [1430, 250],
   ] as Array<[number, number]>) {
-    g.add(boxAt(sx, sy, 60, 24, 0, 0.5, p.wood));
-    g.add(boxAt(sx, sy, 52, 18, 0.5, 0.35, p.boothCloth));
-  }
-
-  /* ---------------------------------------------- the wheelchair access ramp */
-
-  // The plan labels it between the hall's door bank and the main staircase.
-  const ramp: Rect = { x: 1180, y: 250, w: 86, h: 74 };
-  for (let k = 0; k < 6; k++) {
-    g.add(slab({ x: ramp.x + (k * ramp.w) / 6, y: ramp.y, w: ramp.w / 6 + 1, h: ramp.h }, 0, 0.06 + k * 0.03, p.concrete));
-  }
-  for (const ry of [ramp.y - 3, ramp.y + ramp.h - 3]) {
-    g.add(slab({ x: ramp.x, y: ry, w: ramp.w, h: 4 }, 0.2, 0.9, p.steelRail));
+    g.add(boxAt(sx, sy, 56, 24, RISE, 0.5, p.wood));
+    g.add(boxAt(sx, sy, 48, 18, RISE + 0.5, 0.35, p.boothCloth));
   }
 
   /* --------------------------------------------------------------- toilets */
 
   const tl = GF.toilets;
   for (let k = 1; k < 3; k++) {
-    g.add(slab({ x: tl.x + (k * tl.w) / 3, y: tl.y + 8, w: 3, h: tl.h - 40 }, 0, 1.9, p.tiling));
+    g.add(slab({ x: tl.x + (k * tl.w) / 3, y: tl.y + T, w: 3, h: tl.h - 34 }, RISE, 1.9, p.tiling));
   }
-  g.add(slab({ x: tl.x + 8, y: tl.y + 6, w: tl.w - 16, h: 4 }, 0, WALL_H, p.tiling));
-  // The blue pictogram panel over the doorway, on the lobby side.
-  g.add(slab({ x: tl.x + tl.w / 2 - 22, y: tl.y + tl.h + T, w: 44, h: 2 }, 1.5, 0.5, p.signBlue));
+  g.add(slab({ x: tl.x + T, y: tl.y + T, w: tl.w - 2 * T, h: 4 }, RISE, WALL_H, p.tiling));
+  // The blue pictogram panel beside the doorway, on the lobby side.
+  g.add(slab({ x: tl.x + tl.w / 2 - 34, y: tl.y + tl.h - 2, w: 22, h: 2 }, RISE + 1.5, 0.5, p.signBlue));
 
   /* ------------------------------------------------------------- BOF rooms */
 
   // Dressed per image-1790032615122.webp: suspended ceiling tiles, a wood-slat
-  // wall panel, cloth-draped tables and a projector screen in each room.
+  // wall panel, cloth-draped tables and a projector screen in each room. Michele
+  // offers these as usable game space, so they are furnished, not blocked out.
   const b = GF.bof;
   const edges = [0, ...GF.bofSplits, b.w];
   for (let i = 0; i < edges.length - 1; i++) {
@@ -455,17 +494,17 @@ function lobby(p: VenuePalette, overhead: THREE.Group): THREE.Group {
     const x1 = b.x + edges[i + 1];
     const roomW = x1 - x0;
     if (roomW < 20) continue;
-    g.add(slab({ x: x0 + 6, y: b.y + 5, w: roomW - 12, h: 3 }, 0.75, 1.4, p.audScreen));
-    g.add(slab({ x: x0 + 2, y: b.y + 12, w: 4, h: b.h - 30 }, 0, WALL_H, p.wood));
+    g.add(slab({ x: x0 + 6, y: b.y + T + 2, w: roomW - 12, h: 3 }, RISE + 0.75, 1.4, p.audScreen));
+    g.add(slab({ x: x0 + 2, y: b.y + 18, w: 4, h: b.h - 40 }, RISE, WALL_H, p.wood));
     for (let r = 0; r < 2; r++) {
-      const t: Rect = { x: x0 + 12, y: b.y + 70 + r * 56, w: roomW - 24, h: 22 };
-      g.add(slab(t, LOW_H - 0.06, 0.06, p.boothCloth));
-      g.add(slab({ x: t.x, y: t.y + 2, w: t.w, h: 4 }, 0.02, LOW_H - 0.08, p.boothCloth));
+      const t: Rect = { x: x0 + 10, y: b.y + 54 + r * 42, w: roomW - 20, h: 20 };
+      g.add(slab(t, RISE + LOW_H - 0.06, 0.06, p.boothCloth));
+      g.add(slab({ x: t.x, y: t.y + 2, w: t.w, h: 4 }, RISE + 0.02, LOW_H - 0.08, p.boothCloth));
     }
-    overhead.add(slab({ x: x0 + 4, y: b.y + 4, w: roomW - 8, h: b.h - 8 }, 2.9, 0.1, p.ceilingTile));
+    overhead.add(slab({ x: x0 + 4, y: b.y + 4, w: roomW - 8, h: b.h - 8 }, RISE + 2.9, 0.1, p.ceilingTile));
   }
   // The orange Devoxx sign over the BOF block, readable from the concourse.
-  g.add(slab({ x: b.x + 20, y: b.y + b.h + T, w: 120, h: 2 }, 1.7, 0.55, p.devoxxOrange));
+  g.add(slab({ x: b.x + 20, y: b.y + b.h - 2, w: 120, h: 2 }, RISE + 1.7, 0.55, p.devoxxOrange));
   return g;
 }
 
@@ -478,28 +517,31 @@ export function buildGround(p: VenuePalette): GroundBuild {
   overhead.name = 'overhead';
   const anchors = new Map<number | string, THREE.Object3D>();
 
-  // Lobby floor over the whole level, then the hall's own carpet on top of it.
-  group.add(floorSlab({ x: 0, y: 0, w: W, h: H }, 0, p.lobbyFloor, 0.4));
+  // The hall plate at the datum, the lobby plate half a metre above it. The raised
+  // plate is thick enough to carry its own riser, so the level change is a solid
+  // mass from the hall side rather than a floating sheet.
+  group.add(floorSlab({ x: 0, y: 0, w: LOBBY_X, h: H }, 0, p.lobbyFloor, 0.4));
+  group.add(floorSlab({ x: LOBBY_X - 6, y: 0, w: W - LOBBY_X + 6, h: H }, RISE, p.lobbyFloor, RISE + 0.3));
   const hallFloor = floorSlab(GF.hall, 0.005, p.hallFloor, 0.1);
   hallFloor.name = 'hall-floor';
   group.add(hallFloor);
   group.add(floorSlab(GF.food.court, 0.01, p.counterTop, 0.08));
-  group.add(floorSlab(GF.bof, 0.01, p.wood, 0.08));
-  group.add(floorSlab(GF.toilets, 0.01, p.whitePanel, 0.08));
+  group.add(floorSlab(GF.bof, RISE + 0.005, p.wood, 0.08));
+  group.add(floorSlab(GF.toilets, RISE + 0.005, p.whitePanel, 0.08));
+  group.add(floorSlab(GF.mainStair, RISE + 0.005, p.stairCarpetBlue, 0.08));
 
-  const hallRightX = GF.hall.x + GF.hall.w;
   for (const w of groundWalls()) {
     if (w.hidden) continue;
-    // The hall's right wall is drawn as a door bank, leaf by leaf; its sim slabs
-    // are colliders only.
-    if (w.x === hallRightX && w.w === T) continue;
     const style = wallStyle(w, p);
     if (!style) continue;
-    group.add(slab(w, 0, style.height, style.mat));
+    // `GF.entrance` is 33 px of door-bank DEPTH, which is what the sim needs to
+    // stop a robot on the building line. Glass is a pane: draw it thin, on that
+    // line, rather than as a two-and-a-half metre block of translucent nothing.
+    group.add(slab(w.kind === 'facade' ? { ...w, w: 6 } : w, style.base, style.height, style.mat));
   }
 
   group.add(columnGrid(p));
-  group.add(doorBank(p));
+  group.add(threshold(p, anchors));
   group.add(catering(p));
   group.add(booths(p));
   group.add(reception(p, overhead));
@@ -556,7 +598,6 @@ export function buildGround(p: VenuePalette): GroundBuild {
   group.add(roller);
   group.add(slab({ x: GF.store.x + 10, y: GF.store.y + 6, w: GF.store.w - 20, h: 8 }, 0, 1.9, p.wood));
 
-
   group.add(lobby(p, overhead));
 
   // Ceiling ribs around the hall, suggesting the white coffered ceiling without
@@ -577,11 +618,12 @@ export function buildGround(p: VenuePalette): GroundBuild {
     ['tech', GF.tech],
     ['store', GF.store],
     ['reception', GF.reception],
+    ['coatroom', GF.coatroom],
     ['bof', GF.bof],
     ['toilets', GF.toilets],
     ['entrance', GF.entrance],
   ] as Array<[string, Rect]>) {
-    const a = anchorAt(`anchor-${key}`, rect.x + rect.w / 2, rect.y + rect.h / 2);
+    const a = anchorAt(`anchor-${key}`, rect.x + rect.w / 2, rect.y + rect.h / 2, baseAt(rect.x));
     anchors.set(key, a);
     group.add(a);
   }

@@ -121,6 +121,188 @@ describe('robot rigs build', () => {
   }
 });
 
+/**
+ * The meshes hanging directly off one bone, as one world-space box.
+ *
+ * "Directly" means not through another bone: a bone's own shell is what has to
+ * meet its parent's, and folding a child limb's meshes in would make every
+ * chain trivially connected and the check worthless.
+ */
+function boneShell(rig: RobotRig, bone: THREE.Object3D): THREE.Box3 | null {
+  const bones = new Set(Object.values(rig.bones));
+  const box = new THREE.Box3();
+  const v = new THREE.Vector3();
+  let found = false;
+  const walk = (node: THREE.Object3D): void => {
+    if (node instanceof THREE.Mesh) {
+      const pos = node.geometry.getAttribute('position') as THREE.BufferAttribute | undefined;
+      if (pos) {
+        found = true;
+        for (let i = 0; i < pos.count; i++) {
+          box.expandByPoint(v.fromBufferAttribute(pos, i).applyMatrix4(node.matrixWorld));
+        }
+      }
+    }
+    for (const child of node.children) if (!bones.has(child)) walk(child);
+  };
+  walk(bone);
+  return found ? box : null;
+}
+
+/** Every mesh under `bone`, keyed by geometry and material, with its world box. */
+function subtreeMeshes(bone: THREE.Object3D): Array<{ key: string; box: THREE.Box3 }> {
+  const out: Array<{ key: string; box: THREE.Box3 }> = [];
+  const v = new THREE.Vector3();
+  bone.traverse((node) => {
+    if (!(node instanceof THREE.Mesh)) return;
+    const pos = node.geometry.getAttribute('position') as THREE.BufferAttribute | undefined;
+    if (!pos) return;
+    const box = new THREE.Box3();
+    for (let i = 0; i < pos.count; i++) {
+      box.expandByPoint(v.fromBufferAttribute(pos, i).applyMatrix4(node.matrixWorld));
+    }
+    /*
+     * `part()` builds a fresh geometry per call, so two mirrored parts never
+     * share a geometry uuid. The material is shared, and the vertex and index
+     * counts identify the shape: together they say "the same kind of part".
+     */
+    const mat = node.material as THREE.Material;
+    out.push({ key: `${mat.uuid}|${pos.count}|${node.geometry.getIndex()?.count ?? 0}`, box });
+  });
+  return out;
+}
+
+describe('every robot is assembled, not scattered', () => {
+  /*
+   * NO FLOATING GEOMETRY.
+   *
+   * Biggy shipped a round with his ribbed ankle bellows hanging off the leg
+   * entirely — a stack of rings beside the boot with no shin joining them to
+   * anything — and the round after that reported it fixed while a verifier
+   * measured it still broken. A picture cannot be asserted, but this can: each
+   * bone's own shell has to actually touch the shell of the bone it hangs from.
+   */
+
+  for (const kind of KINDS) {
+    it(`${kind} has a mesh on every limb segment`, () => {
+      const rig = createRobot(kind);
+      rig.root.updateMatrixWorld(true);
+      for (const name of [
+        'upperArmL',
+        'upperArmR',
+        'forearmL',
+        'forearmR',
+        'handL',
+        'handR',
+        'thighL',
+        'thighR',
+        'shinL',
+        'shinR',
+        'footL',
+        'footR',
+      ]) {
+        // Meshes may sit on the segment or on the joint it hangs off, but the
+        // pair may not BOTH be empty: that is a limb with a hole in it.
+        const own = boneShell(rig, rig.bones[name]);
+        const parent = rig.bones[name].parent;
+        const viaJoint = own ?? (parent ? boneShell(rig, parent) : null);
+        expect(viaJoint, `${kind} ${name} has no geometry anywhere on it`).not.toBeNull();
+      }
+      rig.dispose();
+    });
+
+    it(`${kind} joins every bone's shell to the one it hangs from`, () => {
+      const rig = createRobot(kind);
+      rig.root.updateMatrixWorld(true);
+      // A rounded shell's box overshoots its surface a little, and two touching
+      // parts can still leave a hair of daylight; a centimetre is the slack.
+      const eps = 0.01;
+      const bones = new Set(Object.values(rig.bones));
+      for (const name of BONE_NAMES) {
+        if (name === 'root') continue;
+        const a = boneShell(rig, rig.bones[name]);
+        if (!a) continue;
+        // The nearest ancestor BONE that carries geometry of its own — a bare
+        // pivot in between (`upperArm` on a rig that dresses the shoulder) is
+        // not a break in the chain.
+        let up: THREE.Object3D | null = rig.bones[name].parent;
+        let b: THREE.Box3 | null = null;
+        let upName = '?';
+        while (up) {
+          if (bones.has(up)) {
+            b = boneShell(rig, up);
+            upName = up.name || '?';
+            if (b) break;
+          }
+          up = up.parent;
+        }
+        if (!b) continue;
+        a.expandByScalar(eps);
+        expect(a.intersectsBox(b), `${kind}: ${name} floats clear of ${upName}`).toBe(true);
+      }
+      rig.dispose();
+    });
+
+    /*
+     * MIRROR SYMMETRY.
+     *
+     * Voxxy's two ears were built in one loop and still came out different: the
+     * right ear's white shell cap was yawed by `PI + 0.45` instead of `+0.45`,
+     * which swung it round to the back of the head. A flood fill of the portrait
+     * measured 83.6% near-white on one ear and 1.1% on the other. Same mesh
+     * count, same materials, same geometries — only the transform differed, so
+     * counting meshes was never going to catch it. Mirroring the left side's
+     * world boxes onto the right's does.
+     */
+    it(`${kind} builds its two sides as mirror images`, () => {
+      const rig = createRobot(kind);
+      rig.root.updateMatrixWorld(true);
+      for (const [l, r] of [
+        ['shoulderL', 'shoulderR'],
+        ['hipL', 'hipR'],
+        ['earL', 'earR'],
+      ] as const) {
+        if (!rig.bones[l] || !rig.bones[r]) continue;
+        const left = subtreeMeshes(rig.bones[l]);
+        const right = subtreeMeshes(rig.bones[r]);
+        expect(right.length, `${kind}: ${l} has ${left.length} meshes, ${r} has ${right.length}`).toBe(
+          left.length,
+        );
+        const bag = new Map<string, number>();
+        for (const m of left) bag.set(m.key, (bag.get(m.key) ?? 0) + 1);
+        for (const m of right) {
+          const n = bag.get(m.key) ?? 0;
+          expect(n, `${kind}: ${r} has a mesh ${l} does not (different geometry or material)`).toBeGreaterThan(0);
+          bag.set(m.key, n - 1);
+        }
+        /*
+         * ...and each of those meshes sits where its twin's mirror does.
+         *
+         * Rings of rivets are exempt: `boltRing` spaces its bolts by angle from
+         * a phase, so the same ring on both hips is a ROTATION of its twin, not
+         * a reflection, and that is fine — nobody counts a rivet. Anything with
+         * a box bigger than 5 cm across is a part, and parts mirror.
+         */
+        for (const m of left) {
+          if (m.box.min.distanceTo(m.box.max) < 0.05) continue;
+          const want = new THREE.Box3(
+            new THREE.Vector3(-m.box.max.x, m.box.min.y, m.box.min.z),
+            new THREE.Vector3(-m.box.min.x, m.box.max.y, m.box.max.z),
+          );
+          const twin = right.find(
+            (o) => o.key === m.key && o.box.min.distanceTo(want.min) < 0.01 && o.box.max.distanceTo(want.max) < 0.01,
+          );
+          expect(
+            twin,
+            `${kind}: a mesh of ${l} at ${m.box.min.toArray().map((n) => n.toFixed(2))} has no mirror in ${r}`,
+          ).toBeDefined();
+        }
+      }
+      rig.dispose();
+    });
+  }
+});
+
 describe('Voxxy reads as Voxxy', () => {
   /*
    * THE HEADLINE PROPORTION: Voxxy is squat, wide and chunky.
@@ -145,14 +327,72 @@ describe('Voxxy reads as Voxxy', () => {
    * stub against a 395 px head, 4.6% of the head's width. A build at 21% was the
    * second-biggest reason he read as lanky.
    */
-  it('has a neck stub, not a stalk — under 8% of the head width', () => {
+  it('has a neck stub, not a stalk — under 4% of the head width', () => {
     const rig = createRobot('voxxy');
     const head = measureBounds(rig.parts.headShell);
     const torso = measureBounds(rig.parts.torsoShell);
     const neck = head.min.y - torso.max.y;
     const headW = head.max.x - head.min.x;
-    expect(neck).toBeGreaterThan(0);
-    expect(neck / headW, `neck ${(neck / headW).toFixed(3)} of head width`).toBeLessThan(0.08);
+    /*
+     * The bound was 8% and a build at 5.7% passed it while a verifier
+     * flood-filling the portrait measured 7.4% against the sheet's 4.1% and
+     * failed the round: this gap understates what the camera sees, because the
+     * head's chin curves away above the shoulders. Sized so the sheet's own
+     * proportion passes and the build that shipped as "fixed" does not.
+     */
+    expect(neck, `neck ${neck.toFixed(4)} m`).toBeGreaterThan(0.008);
+    expect(neck / headW, `neck ${(neck / headW).toFixed(3)} of head width`).toBeLessThan(0.04);
+    rig.dispose();
+  });
+
+  /*
+   * THE VISOR IS A SCREEN FILLING THE FACE, NOT A MASK OVAL ON IT.
+   *
+   * Flood-fill the sheet's front panel and the visor's glass is 0.68-0.71 of the
+   * head box across and 0.65 of it down. A build measuring 0.59 and 0.51 failed
+   * the round: 17% and 21% short is the difference between the sheet's big
+   * dot-matrix screen and a domino mask with fat orange cheeks either side.
+   * Measured here against the head BONE's box — ears, ports and all — because
+   * that is the box a flood fill of the portrait finds.
+   */
+  it('wears the sheet’s big screen: visor about 0.7 of the head box', () => {
+    const rig = createRobot('voxxy');
+    rig.root.updateMatrixWorld(true);
+    const headBox = measureBounds(rig.bones.head).getSize(new THREE.Vector3());
+    const visor = measureBounds(rig.parts.visor).getSize(new THREE.Vector3());
+    const w = visor.x / headBox.x;
+    const h = visor.y / headBox.y;
+    expect(w, `visor ${w.toFixed(3)} of head width`).toBeGreaterThan(0.66);
+    expect(w, `visor ${w.toFixed(3)} of head width`).toBeLessThan(0.8);
+    expect(h, `visor ${h.toFixed(3)} of head height`).toBeGreaterThan(0.6);
+    expect(h, `visor ${h.toFixed(3)} of head height`).toBeLessThan(0.74);
+    rig.dispose();
+  });
+
+  /*
+   * ...AND THE EYES ON IT ARE BARS, NOT DASHES.
+   *
+   * The sheet's eyes measure an aspect of 1.5-1.6 off the front panel. A build
+   * with 2.7 and 2.2 read as two painted-on dashes. The widths are unchanged
+   * from that build; it is the height that was missing.
+   */
+  it('has rounded bar-eyes, not flat dashes', () => {
+    const rig = createRobot('voxxy');
+    rig.root.updateMatrixWorld(true);
+    const glowMats = new Set(rig.glow);
+    let found = 0;
+    for (const child of rig.bones.head.children) {
+      if (!(child instanceof THREE.Mesh)) continue;
+      if (!glowMats.has(child.material as THREE.MeshStandardMaterial)) continue;
+      const size = measureBounds(child).getSize(new THREE.Vector3());
+      // The eye patches curve round the head, so their own x/y is the read.
+      if (size.x < 0.04) continue;
+      const aspect = size.x / size.y;
+      expect(aspect, `eye layer aspect ${aspect.toFixed(2)}`).toBeLessThan(2.0);
+      expect(aspect, `eye layer aspect ${aspect.toFixed(2)}`).toBeGreaterThan(1.0);
+      found++;
+    }
+    expect(found, 'no glowing eye geometry found on the head').toBeGreaterThan(1);
     rig.dispose();
   });
 
@@ -241,19 +481,92 @@ describe('Biggy reads as Biggy', () => {
   });
 
   /*
-   * THE BELLY IS THE SILHOUETTE.
+   * THE BELLY IS THE SILHOUETTE — AND THE ARMS HANG OUTSIDE IT.
    *
-   * On the sheet's front view the widest thing about Biggy is 0.98 of his own
-   * height, and it is his gut. A build whose belly was 0.70 of its height had
-   * given that bulk away to the arms and the helmet, and stopped being Biggy.
+   * Both halves of that are measurements off the sheet's front view, taken by
+   * flood-filling it against the page: 390 px from the crown to the sole, a gut
+   * 320 px across (0.82 of the height) whose own edge is the silhouette at its
+   * widest row, and a widest row of all of 378 px (0.97 of the height) lower
+   * down, where the ARMS are outside the gut.
+   *
+   * Both bounds have cost a round. A belly at 0.70 of the height had given the
+   * bulk away to the arms and the helmet and stopped being Biggy; the fix
+   * over-corrected to 0.93 by reading the figure's total width as the gut's,
+   * and a gut that wide swallows anything hanging inside its radius — which is
+   * exactly what happened to the far arm in the portrait. Hence two-sided.
    */
-  it('carries its bulk in the belly — belly width over 0.9 of total height', () => {
+  it('carries its bulk in the belly, at the width the sheet measures', () => {
     const rig = createRobot('biggy');
     const s = silhouette(rig);
     const belly = widthOf(rig.parts.bellyShell);
-    expect(belly / s.h, `belly ${(belly / s.h).toFixed(3)} of height`).toBeGreaterThan(0.9);
-    // Nothing else may be wider: the arms hang inside the gut's own width.
-    expect(s.w, `silhouette ${s.w.toFixed(3)} vs belly ${belly.toFixed(3)}`).toBeLessThan(belly * 1.06);
+    expect(belly / s.h, `belly ${(belly / s.h).toFixed(3)} of height`).toBeGreaterThan(0.78);
+    expect(belly / s.h, `belly ${(belly / s.h).toFixed(3)} of height`).toBeLessThan(0.88);
+    expect(s.w / s.h, `silhouette ${(s.w / s.h).toFixed(3)} of height`).toBeGreaterThan(0.93);
+    expect(s.w / s.h, `silhouette ${(s.w / s.h).toFixed(3)} of height`).toBeLessThan(1.04);
+    // And the gut is still the single widest part of him by a long way.
+    expect(belly, `belly ${belly.toFixed(3)} vs silhouette ${s.w.toFixed(3)}`).toBeGreaterThan(s.w * 0.8);
+    rig.dispose();
+  });
+
+  /*
+   * THE FAR ARM MUST CLEAR THE GUT IN THE PORTRAIT, NOT JUST IN PLAN.
+   *
+   * The appearance check is shot from `posePortrait`, 34 degrees off the front.
+   * That foreshortens an arm's sideways offset by cos 34 = 0.829 and leaves a
+   * body of revolution exactly as wide as it ever was, so an arm that clears the
+   * belly in a front elevation can still be swallowed by it in the portrait —
+   * and was: the far arm photographed as a shard above the gut's edge with its
+   * claw reappearing 140 px lower, nothing joining them. This projects both the
+   * way that camera does and demands real daylight along the whole limb.
+   */
+  it('hangs its arms outside the gut from the portrait camera, not just head-on', () => {
+    const rig = createRobot('biggy');
+    rig.root.updateMatrixWorld(true);
+    const az = (34 * Math.PI) / 180;
+    const belly = rig.parts.bellyShell as THREE.Mesh;
+    const bpos = belly.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const v = new THREE.Vector3();
+    /** The gut's radius in 0.05 m height bands — it is a solid of revolution. */
+    const band = (y: number): number => Math.round(y / 0.05);
+    const bellyR = new Map<number, number>();
+    for (let i = 0; i < bpos.count; i++) {
+      v.fromBufferAttribute(bpos, i).applyMatrix4(belly.matrixWorld);
+      const k = band(v.y);
+      bellyR.set(k, Math.max(bellyR.get(k) ?? 0, Math.hypot(v.x, v.z)));
+    }
+    // Each arm measured as if it were the FAR one — the rig is mirror-symmetric
+    // and the portrait can be shot from either side, so both have to clear.
+    for (const side of ['L', 'R'] as const) {
+      let worst = Infinity;
+      let worstY = 0;
+      for (const boneName of [`upperArm${side}`, `forearm${side}`, `hand${side}`]) {
+        rig.bones[boneName].traverse((o) => {
+          if (!(o instanceof THREE.Mesh)) return;
+          const pos = o.geometry.getAttribute('position') as THREE.BufferAttribute;
+          // The outermost point of each mesh is what has to clear; an inner face
+          // buried in the gut is fine and is how the sheet draws it too.
+          let best = -Infinity;
+          let bestY = 0;
+          for (let i = 0; i < pos.count; i++) {
+            v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+            // Screen-sideways offset from the axis for a camera `az` off the
+            // front, standing on the far arm's opposite side.
+            const off = Math.abs(v.x) * Math.cos(az) + v.z * Math.sin(az);
+            const clear = off - (bellyR.get(band(v.y)) ?? 0);
+            if (clear > best) {
+              best = clear;
+              bestY = v.y;
+            }
+          }
+          if (best < worst) {
+            worst = best;
+            worstY = bestY;
+          }
+        });
+      }
+      expect(worst, `${side} arm clears the gut by ${worst.toFixed(3)} m at y=${worstY.toFixed(2)}`)
+        .toBeGreaterThan(0.015);
+    }
     rig.dispose();
   });
 

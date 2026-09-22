@@ -162,8 +162,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       line: 'The keynote speaker? Hiding from the queues at a sponsor booth. One of the built ones, with walls.',
     },
     {
-      x: 1200,
-      y: 470,
+      x: 1150,
+      y: 500,
       r: 8,
       name: 'JUG leader',
       line: 'Stephan is at the main staircase, arms crossed. He is not opening it before his soup.',
@@ -177,9 +177,18 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const hideBooth = built[Math.floor(ctx.rng() * built.length)];
   const speaker = { x: hideBooth.x + hideBooth.w / 2, y: hideBooth.y + hideBooth.h + 14, r: 7, following: false, onStage: false };
 
+  /*
+   * Stephan, and the spot the soup has to reach him.
+   *
+   * Both sit SOUTH of the main staircase, because that is the only side of it
+   * anyone can reach: the wardrobe and the reception desk close its west flank
+   * (`src/sim/geometry.ts`), and `GF.gate` — the gate he is standing at — closes
+   * the foot of the flight. Arrivals come in through the left-hand doors and walk
+   * straight past reception into him, which is the queue Devoxx actually has.
+   */
   const stair = GF.mainStair;
-  const stephan = { x: stair.x - 36, y: stair.y + stair.h / 2, r: 8 };
-  const stage = { x: stair.x - 120, y: stair.y + 40, w: 100, h: 120 };
+  const stephan = { x: stair.x + stair.w / 2, y: stair.y + stair.h + 26, r: 8 };
+  const stage = { x: stair.x + 6, y: stair.y + stair.h + 40, w: 100, h: 110 };
 
   /* --------------------------------------------------------------- the crowd */
 
@@ -195,18 +204,35 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     y: laneY.reduce((a, b) => (Math.abs(b - y) < Math.abs(a - y) ? b : a)),
   });
 
+  /**
+   * One arrival, through the LEFT-HAND DOORS.
+   *
+   * Only that one set of doors is open for Devoxx (`GF.entrance`, Michele's plot),
+   * so the whole crowd enters on a 136 px front next to the reception desk rather
+   * than along the entire glazed wall — and certainly not off the canvas edge,
+   * where the prototype spawned them. From there they walk the front of reception,
+   * turn at the wardrobe and go DOWN THE STEPS into the hall: the small staircase
+   * is the only way through the hall's right edge, so the crowd has to use it too.
+   */
   function spawnVisitor(): void {
-    const v = mkBody('attendee', GF.entrance.x - 10, 430 + ctx.rng() * 30, { r: 5, mass: 0.5 }) as Visitor;
+    const e = GF.entrance;
+    const st = GF.smallStairs;
+    // Which door leaf, and which part of the 22 m wide steps, this one takes. One
+    // shared route would put three thousand people in single file: they all aim at
+    // the same waypoint, and "do not walk into the back of the person in front"
+    // then turns the only threshold into a stationary conga line.
+    const lane = ctx.rng();
+    const step = st.y + 34 + lane * (st.h - 68);
+    const v = mkBody('attendee', e.x, e.y + 8 + lane * (e.h - 16), { r: 5, mass: 0.5 }) as Visitor;
     v.walk = 60 + ctx.rng() * 40;
     v.colour = VISITOR_COLOURS[Math.floor(ctx.rng() * 4)];
     v.dwell = 0;
     v.hitCd = 0;
-    // In through the lobby, past reception, into the hall — then the lane grid.
     v.route = [
-      { x: 1700, y: 445 },
-      { x: 1250, y: 445 },
-      { x: 1060, y: 420 },
-      { x: 1010, y: 420 },
+      { x: e.x - 40, y: e.y + 16 + lane * (e.h - 32) },
+      { x: 1240, y: 520 + (lane - 0.5) * 90 },
+      { x: st.x + st.w + 20, y: step },
+      { x: GF.hall.x + GF.hall.w - 40, y: step },
     ];
     crowd.push(v);
   }
@@ -390,16 +416,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     ctx.score.complaints = complaints;
     ctx.score.lunchT = Math.round(ctx.t);
     ctx.flash('Stephan: "Soup. Speaker. Fine — open the stairs." Up the main staircase', 4000);
-    const route = (dy: number): Vec2[] => [
-      { x: stair.x - 40, y: stair.y + stair.h / 2 + dy },
-      { x: stair.x + 40, y: stair.y + stair.h / 2 + dy },
-      { x: stair.x + stair.w - 40, y: stair.y + stair.h / 2 + dy },
+    // Up the flight, which climbs NORTH from the gate Stephan has just opened.
+    const route = (dx: number): Vec2[] => [
+      { x: stair.x + stair.w / 2 + dx, y: stair.y + stair.h + 34 },
+      { x: stair.x + stair.w / 2 + dx, y: stair.y + stair.h - 40 },
+      { x: stair.x + stair.w / 2 + dx, y: stair.y + 24 },
     ];
     ctx.startCut(
       [
-        { kind: 'voxxy', pts: route(-30) },
+        { kind: 'voxxy', pts: route(-34) },
         { kind: 'droid', pts: route(0) },
-        { kind: 'biggy', pts: route(30) },
+        { kind: 'biggy', pts: route(34) },
       ],
       () => ctx.startChapter(4),
       VIEW_GROUND,

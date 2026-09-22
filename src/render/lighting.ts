@@ -642,13 +642,14 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
 
   /**
    * Chapter 2: the emergency exits. Positions come from the plan geometry — the
-   * main entrance, two of the hall's scalloped openings and the technical-room
+   * main entrance, both ends of the stepped threshold onto the small staircase
+   * (the hall's ONE way out to the lobby, `GF.openings`) and the technical-room
    * door — so they land on real doorways rather than on typed-in coordinates.
    */
   const exitPoints: Array<{ x: number; y: number }> = [
     { x: GF.entrance.x - 10, y: GF.entrance.y + GF.entrance.h / 2 },
-    { x: GF.hall.x + GF.hall.w, y: (GF.openings[0][0] + GF.openings[0][1]) / 2 },
-    { x: GF.hall.x + GF.hall.w, y: (GF.openings[2][0] + GF.openings[2][1]) / 2 },
+    { x: GF.hall.x + GF.hall.w, y: GF.smallStairs.y + 40 },
+    { x: GF.hall.x + GF.hall.w, y: GF.smallStairs.y + GF.smallStairs.h - 40 },
     { x: GF.tech.x + GF.tech.w, y: GF.tech.y + 65 },
   ];
   const exits = exitPoints.map((p, i) => {

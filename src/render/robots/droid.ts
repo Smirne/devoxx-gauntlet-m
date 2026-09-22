@@ -63,7 +63,16 @@ export function buildDroid(): RobotRig {
   const panel = panelMaterial('#3c424c', 0.55, { roughness: 0.72, metalness: 0.42 });
   const panelDark = panelMaterial('#2a2f37', 0.5, { roughness: 0.75, metalness: 0.45 });
   const barrel = panelMaterial('#4a5058', 0.45, { roughness: 0.5, metalness: 0.72 });
-  const copper = panelMaterial('#9a5f30', 0.6, { roughness: 0.68, metalness: 0.55 });
+  /*
+   * Copper PATINA, not copper paint.
+   *
+   * At #9a5f30 with metalness 0.55 the hip caps and the shoulder rings caught
+   * the key light and photographed as bright saturated orange pads — the most
+   * saturated thing on a robot whose whole palette is weathered graphite. The
+   * sheet's copper is a dull bloom on a panel edge. Darker, duller, and rougher
+   * puts it back behind the silhouette where it belongs.
+   */
+  const copper = panelMaterial('#7d5334', 0.6, { roughness: 0.82, metalness: 0.32 });
   const grime = panelMaterial('#1b1e23', 0.3, { roughness: 0.9, metalness: 0.2 });
   // Amber. At intensity 2.4 the green channel clipped to 255 and Droid's eyes
   // photographed as lemon yellow — the one colour both the bio and GAUNTLET Stage 1
@@ -337,9 +346,16 @@ export function buildDroid(): RobotRig {
     const hipBarrel = part(new THREE.CylinderGeometry(0.088, 0.088, 0.12, 20, 2), barrel, wear(0.5, 71));
     hipBarrel.rotation.z = Math.PI / 2;
     hip.add(hipBarrel);
-    const hipCap = part(puck(0.07, 0.03, 20).rotateZ(Math.PI / 2), copper, wear(0.75, 72));
+    // The cap itself is graphite; the copper is the RING round its edge, which
+    // is where a patina actually blooms. A solid copper disc 0.14 m across read
+    // as a painted orange pad on the widest part of the hip.
+    const hipCap = part(puck(0.07, 0.03, 20).rotateZ(Math.PI / 2), barrel, wear(0.6, 72));
     hipCap.position.x = side * 0.07;
     hip.add(hipCap);
+    const hipPatina = part(new THREE.TorusGeometry(0.063, 0.008, 8, 22), copper, wear(0.9, 74));
+    hipPatina.rotation.y = Math.PI / 2;
+    hipPatina.position.x = side * 0.083;
+    hip.add(hipPatina);
     /*
      * Rust at the hip is the cap and one short bleed off its edge.
      *

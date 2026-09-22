@@ -398,21 +398,29 @@ describe('chapter 2 — expo', () => {
     g.key('KeyE');
     expect((g.debug.chapter() as ExpoState).cable.carrying).toBe(true);
 
-    // The printer sits in the 24 px slot between the reception desk and the top of
-    // the main staircase — close enough to plug in, without standing on the desk.
-    expect(walkTo(g, 'voxxy', { x: printer.x - 4, y: printer.y + 18 })).toBe(true);
+    // The printer sits on the reception counter, and reception now faces SOUTH onto
+    // the arrivals concourse (Michele's plot), so Voxxy plugs in from in front of
+    // the desk rather than from on top of it.
+    expect(walkTo(g, 'voxxy', { x: printer.x, y: printer.y + 34 })).toBe(true);
     g.key('KeyE');
     const cable = (g.debug.chapter() as ExpoState).cable;
     expect(cable.connected).toBe(true);
     expect(cable.len).toBeLessThan(CABLE_MAX);
-    // The prototype's verified run measured 1270-1311 px on this route; the reel is
-    // 1480, so a straight run must not read as a near miss.
-    expect(cable.len).toBeLessThan(CABLE_MAX * 0.95);
-    // A walked route is never the ideal diagonal — the prototype's own run measured
-    // 1270-1311 px and this one lands around 1345 — but it has to stay clear of the
-    // HUD's 93% warning band, or the intended solution would read as a near miss.
+    /*
+     * The run is still long — out of the technical room, along the bottom lane, up
+     * through the stepped threshold and along the front of reception — but it is
+     * no longer a near miss: it measures ~1208 px against the frozen 1480 reel,
+     * where the prototype's own route measured 1270-1311 and ours read 1345.
+     *
+     * It got shorter because reception MOVED: Michele's plot puts the desk 280 px
+     * further down the lobby than the prototype's guess did, and the plans win over
+     * the prototype (CLAUDE.md). The reel is a frozen constant and stays 1480, so
+     * the slack is asserted at both ends rather than silently widened: still over
+     * 1200 px of cable for the intended solution, and now held well clear of the
+     * HUD's 93% warning band instead of hugging it.
+     */
     expect(cable.len).toBeGreaterThan(1200);
-    expect(cable.len).toBeLessThan(CABLE_MAX * 0.93);
+    expect(cable.len).toBeLessThan(CABLE_MAX * 0.85);
 
     // The long way round: out of the technical room, down the bottom lane and back.
     const long = mk(2);
@@ -570,7 +578,7 @@ describe('chapter 2 — expo', () => {
 
     expect(walkTo(g, 'voxxy', { x: rack.x + 10, y: rack.y - 14 })).toBe(true);
     g.key('KeyE');
-    expect(walkTo(g, 'voxxy', { x: printer.x - 4, y: printer.y + 18 })).toBe(true);
+    expect(walkTo(g, 'voxxy', { x: printer.x, y: printer.y + 34 })).toBe(true);
     g.key('KeyE');
     expect(expo(g).cable.connected).toBe(true);
 
@@ -615,7 +623,7 @@ describe('chapter 2 — expo', () => {
     // 3. the cable
     expect(walkTo(g, 'voxxy', { x: rack.x + 10, y: rack.y - 14 })).toBe(true);
     g.key('KeyE');
-    expect(walkTo(g, 'voxxy', { x: printer.x - 4, y: printer.y + 18 })).toBe(true);
+    expect(walkTo(g, 'voxxy', { x: printer.x, y: printer.y + 34 })).toBe(true);
     g.key('KeyE');
     expect(expo(g).printerOnline).toBe(true);
 
@@ -672,8 +680,15 @@ describe('chapter 3 — lunch', () => {
     expect(lunch().soup).toBeLessThan(100);
     expect(lunch().soup).toBeGreaterThan(0);
 
-    // Soup alone is not enough.
-    g.debug.place('biggy', 1210, 300);
+    // Soup alone is not enough. The drop is where Stephan stands: SOUTH of the main
+    // staircase, past the reception desk — the only side of the flight anyone can
+    // reach now that the lobby follows the plan.
+    const drop = g.snapshot().props.find((p) => p.kind === 'dropzone');
+    expect(drop).toBeDefined();
+    const dropAt = { x: drop!.x + (drop!.w ?? 0) / 2, y: drop!.y + (drop!.h ?? 0) / 2 };
+    expect(dropAt.y).toBeGreaterThan(GF.mainStair.y + GF.mainStair.h);
+    expect(dropAt.x).toBeGreaterThan(GF.reception.x + GF.reception.w);
+    g.debug.place('biggy', dropAt.x, dropAt.y);
     g.key('KeyE');
     expect(lunch().delivered).toBe(true);
     expect(gateWall()).toBeDefined();
@@ -700,7 +715,7 @@ describe('chapter 3 — lunch', () => {
     g.key('KeyE');
     expect(lunch().speaker.following).toBe(true);
 
-    expect(walkTo(g, 'voxxy', { x: 1210, y: 300 })).toBe(true);
+    expect(walkTo(g, 'voxxy', dropAt)).toBe(true);
     expect(until(g, () => lunch().speaker.onStage, 900)).toBe(true);
 
     // Both delivered: the gate goes up and the cutscene runs.
@@ -711,13 +726,63 @@ describe('chapter 3 — lunch', () => {
     expect(g.snapshot().floor).toBe('up');
   });
 
-  it('puts thirty-six visitors on the lane grid', () => {
+  it('puts thirty-six visitors on the lane grid, with Stephan at the foot of the stairs', () => {
     const g = mk(3);
     steps(g, 1400);
     const lunch = g.debug.chapter() as LunchState;
     expect(lunch.crowd).toBe(36);
     expect(g.snapshot().people.filter((p) => p.role === 'visitor')).toHaveLength(36);
-    expect(g.snapshot().people.some((p) => p.role === 'stephan')).toBe(true);
+    const stephan = g.snapshot().people.find((p) => p.role === 'stephan');
+    expect(stephan).toBeDefined();
+    // He stands where the gate is: south of the flight, past the reception desk.
+    expect((stephan as { y: number }).y).toBeGreaterThan(GF.mainStair.y + GF.mainStair.h);
+    expect((stephan as { x: number }).x).toBeGreaterThan(GF.reception.x + GF.reception.w);
+  });
+
+  /**
+   * THE CROWD'S ROUTE, WHICH MOVED WITH THE ENTRANCE.
+   *
+   * Only the left-hand doors are open for Devoxx (`GF.entrance`, Michele's plot),
+   * and the small staircase is the only way through the hall's right edge — so the
+   * whole crowd comes in on a 136 px front next to reception and goes down the
+   * steps. The prototype spawned them along the entire wall at the canvas edge and
+   * walked them through a wall that is not there any more.
+   */
+  it('brings the crowd in through the left-hand doors and down the steps, nowhere else', () => {
+    const g = mk(3);
+    const e = GF.entrance;
+    const st = GF.smallStairs;
+    const edge = GF.hall.x + GF.hall.w;
+
+    expect(until(g, () => g.snapshot().people.some((p) => p.role === 'visitor'), 120)).toBe(true);
+    const arrivals = g.snapshot().people.filter((p) => p.role === 'visitor');
+    expect(arrivals.length).toBeGreaterThan(0);
+    for (const p of arrivals) {
+      expect(p.x).toBeGreaterThan(e.x - 40);
+      expect(p.x).toBeLessThanOrEqual(e.x + e.w);
+      expect(p.y).toBeGreaterThanOrEqual(e.y - 8);
+      expect(p.y).toBeLessThanOrEqual(e.y + e.h + 8);
+    }
+
+    // Every crossing of the hall's right edge is on the steps, all run long.
+    let crossings = 0;
+    for (let i = 0; i < 1400; i++) {
+      g.update(DT_MAX);
+      for (const p of g.snapshot().people) {
+        if (p.role !== 'visitor' || Math.abs(p.x - edge) > 8) continue;
+        crossings++;
+        expect(p.y, `a visitor crossed the hall wall at y=${Math.round(p.y)}`).toBeGreaterThanOrEqual(st.y - 6);
+        expect(p.y, `a visitor crossed the hall wall at y=${Math.round(p.y)}`).toBeLessThanOrEqual(st.y + st.h + 6);
+      }
+    }
+    expect(crossings).toBeGreaterThan(20);
+
+    // And they get all the way in: a crowd stuck in single file at the threshold
+    // leaves the hall empty, which is the whole chapter's stage.
+    const crowd = g.snapshot().people.filter((p) => p.role === 'visitor');
+    expect(crowd).toHaveLength(36);
+    for (const p of crowd) expect(p.x).toBeLessThan(edge);
+    expect(new Set(crowd.map((p) => Math.round(p.y / 70))).size).toBeGreaterThan(3);
   });
 });
 
@@ -820,6 +885,53 @@ describe('the game rig', () => {
     steps(g, 2);
     expect(g.snapshot().progress).toContain('breakers 0/3');
     expect(g.snapshot().progress).toContain('roller door');
+  });
+
+  /**
+   * THE SWALLOWED KEYPRESS.
+   *
+   * Chapters 2, 3 and 4 open on a "press any key" card that pauses the sim, and
+   * `game.key()` used to clear the card and RETURN — so the first real keypress
+   * after every chapter start was eaten. Pressing 2 to take Droid did nothing the
+   * first time, deterministically, and the player was never told why. Dismissing a
+   * card now costs the key nothing.
+   */
+  it('never eats the first real keypress after a chapter card', () => {
+    for (const seed of [7, 11]) {
+      for (const chapter of [2, 3, 4]) {
+        const g = createGame({ seed, chapter });
+        const where = `chapter ${chapter}, seed ${seed}`;
+        expect(g.snapshot().card, `${where} should open on a card`).not.toBeNull();
+        expect(g.snapshot().active, where).toBe(0);
+        g.key('Digit2');
+        // One press: the card is gone AND Droid has the controls.
+        expect(g.snapshot().card, `${where} card survived`).toBeNull();
+        expect(g.snapshot().active, `${where} ate the 2`).toBe(1);
+      }
+    }
+  });
+
+  it('dismisses a card with a key that means nothing else, and plays on', () => {
+    const g = createGame({ seed: SEED, chapter: 2 });
+    expect(g.snapshot().card).not.toBeNull();
+    g.update(DT_MAX);
+    expect(g.snapshot().t).toBe(0); // the card really did pause the sim
+    g.key('Space');
+    expect(g.snapshot().card).toBeNull();
+    expect(g.snapshot().active).toBe(0);
+    steps(g, 5);
+    expect(g.snapshot().t).toBeGreaterThan(0);
+  });
+
+  it('honours the end card\'s own "R to play again" on the first press', () => {
+    const g = createGame({ seed: SEED });
+    g.key('Space');
+    for (let i = 0; i < 4; i++) g.skipChapter();
+    expect(g.snapshot().phase).toBe('done');
+    expect(g.snapshot().card).toContain('R to play again');
+    g.key('KeyR');
+    expect(g.snapshot().chapter).toBe(0);
+    expect(g.snapshot().phase).toBe('intro');
   });
 
   it('starts on a card, dismisses it with any key, and restarts on R', () => {
