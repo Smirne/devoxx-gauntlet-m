@@ -19,7 +19,7 @@ README, GenAI notes, MIT licence check, submission form, buffer.
 | `docs/brief-and-references.md` | competition brief, 100-point rubric, robot bios, venue facts |
 | `docs/organisers-3d-demo-notes.md` | the organisers' procedural-robot technique and motion numbers |
 | `docs/scale-and-units.md` | pixel/metre conversion for the 3D port |
-| `reference/poc/10-after-dark-kinepolis.html` | **gameplay parity** — mechanics and numbers |
+| `reference/poc/10-after-dark-kinepolis.html` | the gameplay **ideas** and the mechanics' numbers — a proof of concept, not law |
 | `plans/*.png` | **room layout** — adjacency, proportions, stair positions |
 | `robots/*.png` | **appearance** — silhouette, proportions, palette, signature details |
 | `media/venue-photos/*.jpg` | material, lighting and mood reference, captioned by chapter |
@@ -187,7 +187,10 @@ the link.**
 
 ## 4. Tests are the acceptance criteria
 
-Port the prototype's choreographies rather than inventing new expectations. The prototype's own
+The prototype's own verified choreographies are the starting set, not a ceiling — the prototype
+is a proof of concept and anything that can be improved should be. What a test must never do is
+get weaker: when a mechanic is improved, the choreography is rewritten to assert the *better*
+behaviour, never deleted or loosened to let a regression through. The prototype's own
 verified run (Playwright test27) is the bar:
 
 - four clues including the kiosk one;

@@ -5,9 +5,12 @@
   GenAI notes.
 - Build methodology: `GAUNTLET.md` at the repo root. The gauntlet loop is how this game gets
   BUILT, stage by stage, not a polish pass bolted on afterward — read it before writing anything.
-- The gameplay is fixed by the prototype `reference/poc/10-after-dark-kinepolis.html` and
-  `docs/after-dark-full-design.md`. Parity with the prototype beats any "improvement." Ask before
-  deviating.
+- The prototype `reference/poc/10-after-dark-kinepolis.html` and `docs/after-dark-full-design.md`
+  are a **proof of concept, not law** — where the gameplay ideas came from, nothing more. Improve
+  anything that can be improved, and new enigmas, mechanics and Devoxx beats are welcome. Two
+  things are *not* free to drift: the physics constants below, which the tests assert and the
+  realism score rests on, and the venue, which must follow `plans/` rather than the prototype's
+  simplifications of them. When the prototype and the plans disagree, the plans win.
 - Architecture: `src/sim` (2D, headless, tested) is the only source of truth; `src/render`
   (Three.js, fixed isometric/orthographic camera per room) only reads it. No game logic in render
   code, ever.
