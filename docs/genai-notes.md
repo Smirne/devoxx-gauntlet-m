@@ -776,3 +776,42 @@ sheet does not have, and the frozen physics constants were not touched.
 **What is known to be weak.** Biggy's boots still read as a block on a flat tray rather than the
 sheet's moulded sole, and the eye glow is stepped geometry — four ovals and a lit-dot halo — not a
 bloom pass, so at very close range the steps are findable.
+
+---
+
+## Round 5 — the likeness gate went to the human
+
+**Why it was escalated.** `GAUNTLET.md` says the two first-class pieces do not get to cap out
+while still factually failing, so after a fourth failing round the robot-appearance gate went to
+Michele instead of being shipped or quietly passed. He was given the three model sheets beside the
+three in-game portraits, captured headless from the published build, and asked to rule.
+
+**What a human decided.** Not a pass. His words: *"They are all similar to the model, but need much
+polish. I want them more adherent to the model sheet. That might come later, but is important."*
+He also set the quality bar explicitly — the organisers' own reference demo at
+`game.devoxx.be/references/?robot=...` — and accepted that some divergence from the sheet is fine
+there too, so the target is **comparable craft**, not pixel identity.
+
+His defect list, in his priority order, which supersedes the automated findings as the brief for
+this round:
+
+| robot | what he wants fixed, most important first |
+| --- | --- |
+| Voxxy | hands, eyes; then details, legs, general polish |
+| Droid | shoulder, face, torso |
+| Biggy | belly, helmet, arms, trousers |
+
+Worth recording that the automated gate and the human agreed on exactly one item — Voxxy's eyes —
+and that the human's list is otherwise wider and softer than anything the checker was measuring.
+Four rounds of a numeric check never once flagged Voxxy's hands, because nobody had written a
+measurement for them. That is the honest limit of the method: it verifies what it was told to
+verify, and a human eye on the render is what finds the rest.
+
+**A process failure this round exposed.** Round 4's verifier could not reproduce the sheet targets
+it had been handed — round 3 reported Voxxy's sheet eye height as ~43% of the visor, round 4 got
+19-31% at every threshold it tried. Each round had been re-measuring the *render* while inheriting
+the previous round's *sheet* numbers, so at least one fixer spent a round tuning to a figure that
+does not exist in the reference art. Fixed by re-deriving every sheet target from scratch with an
+agent forbidden to read the code, the game, or any prior round's numbers, and required to report
+each ratio as a range across a threshold sweep and to mark anything that swings too much
+UNUSABLE rather than quote it.
