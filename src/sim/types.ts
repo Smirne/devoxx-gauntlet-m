@@ -263,6 +263,13 @@ export interface GameSnapshot {
   objective: string;
   /** HUD line: the controls that matter right now. */
   keys: string;
+  /**
+   * HUD line: the live "what is left to do" readout, one short line, refreshed
+   * every frame — `breakers 2/3 · cable 0/1480 px · roller door: shut`. Every
+   * chapter produces one; the top-bar `objective` is the briefing and never moves,
+   * this is the part that ticks.
+   */
+  progress: string;
   toast: Toast | null;
   /** 0 = clear, 1 = black. Cutscenes and chapter transitions. */
   fade: number;

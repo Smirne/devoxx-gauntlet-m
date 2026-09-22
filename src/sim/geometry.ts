@@ -211,8 +211,25 @@ export const GF = {
   printer: { x: 1284, y: 158, w: 20, h: 12 },
   mainStair: { x: 1280, y: 200, w: 240, h: 200 },
   gate: { x: 1274, y: 200, w: T, h: 200 },
-  bof: { x: 1300, y: 480, w: 260, h: 200 },
-  toilets: { x: 1040, y: 560, w: 120, h: 130 },
+  /**
+   * BOF rooms and toilets, moved to the lobby's far (east) end — the quadrant the
+   * plan puts them in.
+   *
+   * `plans/exhibition-floor-stairs-annotated.png` draws the BOF block at plan
+   * c 625-890, r 890-1090 and the toilets just west of it. Under this module's
+   * rotation (plan top -> world left, plan left -> world bottom) that is world
+   * x 1483-1817, y 14-218: far right, TOP. The prototype had compressed the whole
+   * lobby into x 1274-1560 and dropped the BOF block into the bottom-right, which
+   * left a quarter of the ground floor — x 1560 to the east wall — as bare deck
+   * with the plan's densest band of rooms missing from it.
+   *
+   * Nothing in `src/sim` keys off either rect: they are walls and an anchor, and
+   * the chapter-3 visitor route runs along y 420-445, well clear of both.
+   */
+  bof: { x: 1560, y: 40, w: 320, h: 220 },
+  /** Internal partitions of the BOF block, as offsets from `bof.x`. */
+  bofSplits: [107, 214] as const,
+  toilets: { x: 1060, y: 110, w: 150, h: 130 },
   entrance: { x: W - T, y: 360, w: T, h: 170 },
   /** Visitor lane grid for chapter 3. */
   laneX: [370, 530, 690, 850, 1010],
@@ -266,16 +283,38 @@ export function groundWalls(): Wall[] {
   w.push({ ...GF.reception, low: true, why: (bb) => `${bb.name}: reception. Badges, lanyards, the printer` });
   const m = GF.mainStair;
   w.push({ x: m.x, y: m.y - T, w: m.w + T, h: T }, { x: m.x, y: m.y + m.h, w: m.w + T, h: T }, { x: m.x + m.w, y: m.y, w: T, h: m.h });
+  // The BOF block: three rooms off a shared lobby wall, each with its own doorway
+  // on the south side, exactly as the plan subdivides it.
   const b = GF.bof;
+  const bofDoor = 44;
+  const edges = [0, ...GF.bofSplits, b.w];
   w.push(
     { x: b.x - T, y: b.y - T, w: b.w + 2 * T, h: T },
-    { x: b.x - T, y: b.y, w: T, h: 60 },
-    { x: b.x - T, y: b.y + 120, w: T, h: b.h - 120 },
+    { x: b.x - T, y: b.y, w: T, h: b.h },
     { x: b.x + b.w, y: b.y, w: T, h: b.h },
-    { x: b.x - T, y: b.y + b.h, w: b.w + 2 * T, h: T },
   );
+  for (const sx of GF.bofSplits) w.push({ x: b.x + sx, y: b.y, w: T, h: b.h });
+  for (let i = 0; i < edges.length - 1; i++) {
+    const x0 = b.x + edges[i] + (i === 0 ? -T : T);
+    const x1 = b.x + edges[i + 1] + T;
+    const cx = (x0 + x1) / 2;
+    w.push(
+      { x: x0, y: b.y + b.h, w: cx - bofDoor / 2 - x0, h: T },
+      { x: cx + bofDoor / 2, y: b.y + b.h, w: x1 - (cx + bofDoor / 2), h: T },
+    );
+  }
+
+  // Toilets: a proper walled block off the lobby, with one doorway on its south side.
   const tl = GF.toilets;
-  w.push({ x: tl.x, y: tl.y - T, w: tl.w, h: T }, { x: tl.x + tl.w, y: tl.y - T, w: T, h: tl.h });
+  const tlDoor = 40;
+  const tlCx = tl.x + tl.w / 2;
+  w.push(
+    { x: tl.x - T, y: tl.y - T, w: tl.w + 2 * T, h: T },
+    { x: tl.x - T, y: tl.y, w: T, h: tl.h },
+    { x: tl.x + tl.w, y: tl.y, w: T, h: tl.h },
+    { x: tl.x - T, y: tl.y + tl.h, w: tlCx - tlDoor / 2 - (tl.x - T), h: T },
+    { x: tlCx + tlDoor / 2, y: tl.y + tl.h, w: tl.x + tl.w + T - (tlCx + tlDoor / 2), h: T },
+  );
   return w;
 }
 

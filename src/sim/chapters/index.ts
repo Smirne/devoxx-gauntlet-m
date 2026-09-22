@@ -100,6 +100,13 @@ export interface ChapterRuntime {
   /** Chapter 1's keypad buffer. */
   entered?(): string;
   /**
+   * One short line of live progress for the HUD's bottom-centre readout, rebuilt
+   * every frame (`GameSnapshot.progress`). Every chapter implements it: without
+   * one a chapter shows the player a static briefing and no running score of what
+   * is actually left, which is the difference between a puzzle and a guess.
+   */
+  progress?(): string;
+  /**
    * Move one of this chapter's loose bodies (the cake crate, the shuffleboard duck).
    * Tests and the debug overlay use it to set up a shove without driving halfway
    * across the venue first; nothing in normal play calls it. Returns false when this

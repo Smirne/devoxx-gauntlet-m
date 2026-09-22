@@ -1,0 +1,782 @@
+/**
+ * scene.ts — the diorama, assembled.
+ *
+ * This is the seam between `src/sim` and everything in `src/render`: it owns the
+ * `WebGLRenderer`, the venue built by `buildVenue()`, one `RobotRig` per robot,
+ * the `LightLayer` and the fixed orthographic camera, and once a frame it *reads*
+ * a `GameSnapshot` and draws it.
+ *
+ * It contains no game logic and never mutates the snapshot (CLAUDE.md). Every
+ * number it uses comes out of the snapshot or out of `src/sim/units.ts`; the only
+ * decisions made here are which mesh stands for which `Prop.kind` and where the
+ * camera goes, neither of which the sim cares about.
+ *
+ * Three cameras live in here, and exactly one is used per frame:
+ *
+ *  - the **diorama** camera (`src/render/camera.ts`), the game's real viewpoint:
+ *    orthographic, yawed and pitched, framed on the chapter's `ViewRect`;
+ *  - the **top-down** debug camera (`setTopDown(true)`), a plain orthographic
+ *    plan view covering exactly the sim rect 0,0..1900,700, north up, flat lit,
+ *    no fog. The Stage 1 floor-plan overlay check photographs this one, so the
+ *    frame is letterboxed to the sim rect's own 19:7 aspect rather than stretched;
+ *  - the **portrait** camera (`posePortrait(kind)`), a front three-quarter
+ *    perspective shot of one robot alone on a plinth. The Stage 1 model-sheet
+ *    check photographs this one, which is why it must never be a plan view: the
+ *    critic has to see the robot's face.
+ */
+
+import * as THREE from 'three';
+
+import { W as SIM_W, H as SIM_H } from '../sim/constants';
+import type { GameSnapshot, Person, Prop, RobotKind, ViewRect } from '../sim/types';
+import { PX_PER_M, ROBOT_HEIGHT_M, STOREY_H_M, m } from '../sim/units';
+
+import { createCamera, type DioramaCamera } from './camera';
+import { createLightLayer, type LightLayer } from './lighting';
+import { createRobot, measureBounds, updateRobot, type RobotRig } from './robots';
+import { buildVenue, type Venue } from './venue';
+
+const KINDS: readonly RobotKind[] = ['voxxy', 'droid', 'biggy'];
+
+/** The plan, in metres. The top-down debug frame is exactly this rect. */
+const MAP_W_M = m(SIM_W);
+const MAP_H_M = m(SIM_H);
+
+/** Dark, slightly blue: the venue at night, never flat grey. */
+const BG_PLAY = 0x05070c;
+/** Letterbox and background of the plan view: plain black, so the rect's edge reads. */
+const BG_TOPDOWN = 0x000000;
+/** A neutral studio grey for the portrait, so the robot's own palette is what reads. */
+const BG_PORTRAIT = 0x23262c;
+
+/* ------------------------------------------------------------------ framing */
+
+/**
+ * How much of the venue the diorama holds in frame, per chapter, in sim pixels.
+ *
+ * A chapter's `ViewRect` is the *bounds* of the playable area — chapter 1's is
+ * 900 x 620, which is 72 x 50 metres. Framed whole, a 1.15 m Voxxy renders about
+ * fifteen pixels tall and the judge cannot see the robot they are driving, which
+ * is the one thing a diorama exists to show. So the camera frames a room-sized
+ * window instead and slides it, clamped so it never leaves the chapter's rect.
+ * Angle and zoom never change: it is still one fixed viewpoint per chapter, just
+ * pointed at the room the player is in rather than at the whole storey.
+ */
+const FOCUS: Readonly<Record<number, { w: number; h: number }>> = Object.freeze({
+  1: { w: 390, h: 290 },
+  2: { w: 470, h: 345 },
+  3: { w: 470, h: 345 },
+  4: { w: 430, h: 315 },
+});
+const FOCUS_FALLBACK = { w: 440, h: 320 };
+/** Exponential approach rate of the framing, s^-1. High enough not to read as drift. */
+const FOCUS_EASE = 6;
+/** A jump larger than this (a `place`, a chapter change) cuts instead of panning. */
+const FOCUS_CUT_PX = 260;
+
+/** The ring drawn on the floor under the robot being driven. */
+const RING_INNER = 0.52;
+const RING_OUTER = 0.70;
+
+/* ------------------------------------------------------------------ props */
+
+/**
+ * How each `Prop.kind` the four chapters emit is drawn. Nothing here decides
+ * anything about the game — it is a lookup from a stable sim string to a box.
+ *
+ * `tl` marks the kinds whose `x,y` is a rect's top-left corner (they come from a
+ * `Rect` in `src/sim/geometry.ts`); everything else reports a centre point.
+ */
+interface PropSpec {
+  /** Height in metres. */
+  h: number;
+  /** Base colour, sRGB hex. */
+  color: number;
+  /** `x,y` is the top-left of `w,h` rather than its centre. */
+  tl?: boolean;
+  /** Draw as a floor plate rather than a solid: markers, lanes, drop zones. */
+  flat?: boolean;
+  /** Footprint in metres when the prop carries no `w`/`h`. */
+  fw?: number;
+  fd?: number;
+}
+
+const PROPS: Readonly<Record<string, PropSpec>> = {
+  /* chapter 1 — the closed cinema section */
+  firedoor: { h: 2.1, color: 0x8d3b2a, tl: true },
+  keypad: { h: 1.25, color: 0x2c3340, tl: true },
+  'projector-panel': { h: 0.6, color: 0x39414f, tl: true },
+  screen: { h: 5.2, color: 0xcfd6dd, tl: true },
+  alcove: { h: 0.05, color: 0x2f7d4f, tl: true, flat: true },
+  lock: { h: 2.1, color: 0x4a4038, tl: true },
+  jammed: { h: 2.1, color: 0x6b4630, tl: true },
+  /* chapter 2 — the exhibition hall */
+  breaker: { h: 1.5, color: 0x3a4250, tl: true },
+  rack: { h: 1.95, color: 0x232830, tl: true },
+  printer: { h: 0.95, color: 0xb9bec6, tl: true },
+  roller: { h: 2.6, color: 0x7d8792, tl: true },
+  gate: { h: 1.1, color: 0x2b3542, tl: true },
+  lane: { h: 0.04, color: 0x6a5a2a, tl: true, flat: true },
+  duck: { h: 0.3, color: 0xf0c040 },
+  'duck-target': { h: 0.03, color: 0x3f7fa8, flat: true },
+  sticker: { h: 0.06, color: 0xff7a1a },
+  'race-marker': { h: 0.5, color: 0xff7a1a },
+  /* chapter 3 — lunch */
+  'soup-station': { h: 1.0, color: 0xc0392b },
+  ladle: { h: 0.9, color: 0x9aa3ad, tl: true },
+  dropzone: { h: 0.04, color: 0x2f7d4f, tl: true, flat: true },
+  pot: { h: 0.45, color: 0x8e5a3a },
+  soup: { h: 0.12, color: 0xd9452f },
+  sign: { h: 2.2, color: 0x1f4f8f, fw: 4.8, fd: 0.14 },
+  /* chapter 4 — the keynote */
+  cake: { h: 0.55, color: 0xe6d7b8 },
+  'cake-mark': { h: 0.04, color: 0x2f7d4f, tl: true, flat: true },
+  stage: { h: 0.45, color: 0x2a2430, tl: true },
+  crowd: { h: 0.05, color: 0x3a3550, flat: true, fw: 2, fd: 2 },
+  'banner-hook': { h: 0.25, color: 0xb0b6bd },
+  banner: { h: 1.1, color: 0xff7a1a, tl: true },
+  spotlight: { h: 0.35, color: 0xffd9a0 },
+  seatrow: { h: 0.55, color: 0x3c2f3a, tl: true },
+  seatblock: { h: 0.55, color: 0x3c2f3a, tl: true },
+};
+
+const PROP_FALLBACK: PropSpec = { h: 0.7, color: 0x5a6069 };
+
+/** State tints, on top of the prop's own colour. */
+const STATE_EMISSIVE: Readonly<Record<string, number>> = {
+  done: 0x1f5c38,
+  active: 0x6b4406,
+  broken: 0x5a1712,
+  open: 0x1f5c38,
+};
+
+/** Who is who in a crowd, when the sim does not give a colour. */
+const ROLE_COLOR: Readonly<Record<string, number>> = {
+  visitor: 0x6f7c8d,
+  queue: 0x7b6f8d,
+  staff: 0xc0392b,
+  stephan: 0xe0b050,
+  speaker: 0x4aa3a0,
+};
+
+const PERSON_H = 1.72;
+
+/* ------------------------------------------------------------------- pools */
+
+/**
+ * A reuse pool. Chapter props and NPCs come and go every frame; allocating a mesh
+ * per frame would churn the GPU, so objects are built once, hidden when unused and
+ * handed back out in the next frame's draw order.
+ */
+interface Pool<T extends THREE.Object3D> {
+  begin(): void;
+  get(): T;
+  end(): void;
+  dispose(): void;
+}
+
+function makePool<T extends THREE.Object3D>(parent: THREE.Object3D, make: () => T): Pool<T> {
+  const items: T[] = [];
+  let n = 0;
+  return {
+    begin(): void {
+      n = 0;
+    },
+    get(): T {
+      let o = items[n];
+      if (!o) {
+        o = make();
+        items.push(o);
+        parent.add(o);
+      }
+      o.visible = true;
+      n++;
+      return o;
+    },
+    end(): void {
+      for (let i = n; i < items.length; i++) items[i].visible = false;
+    },
+    dispose(): void {
+      for (const o of items) {
+        o.traverse((child) => {
+          const mesh = child as THREE.Mesh;
+          if (mesh.isMesh) {
+            mesh.geometry.dispose();
+            const mat = mesh.material;
+            if (Array.isArray(mat)) for (const mm of mat) mm.dispose();
+            else mat.dispose();
+          }
+        });
+        o.removeFromParent();
+      }
+      items.length = 0;
+      n = 0;
+    },
+  };
+}
+
+/* ------------------------------------------------------------------ facade */
+
+export interface DioramaScene {
+  /** Draw one frame from the sim's snapshot. Never mutates it. */
+  render(snap: GameSnapshot, dt: number): void;
+  /** The canvas' new CSS size in pixels. */
+  resize(w: number, h: number): void;
+  /** `?topdown=1` — the flat plan-view debug camera. */
+  setTopDown(on: boolean): void;
+  /** `?nofog=1` — drop the fog-of-war mask, leave the rest of the lighting alone. */
+  setFogEnabled(on: boolean): void;
+  /** `?pose=voxxy|droid|biggy` — one robot alone, front three-quarter. Null returns to play. */
+  posePortrait(kind: RobotKind | null): void;
+  dispose(): void;
+}
+
+export function createScene(canvas: HTMLCanvasElement): DioramaScene {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+  renderer.setPixelRatio(Math.min(typeof devicePixelRatio === 'number' ? devicePixelRatio : 1, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  // three's default, and what `lighting.ts` was calibrated against: its ambient,
+  // hemisphere and spotlight intensities are art-direction numbers, and its additive
+  // light pools are `toneMapped: false`. Putting a filmic curve under only half of
+  // that mismatches the two and crushes the night chapters to black.
+  renderer.toneMapping = THREE.NoToneMapping;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.setClearColor(BG_PLAY, 1);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(BG_PLAY);
+
+  const venue: Venue = buildVenue();
+  scene.add(venue.group);
+
+  const lights: LightLayer = createLightLayer(scene);
+
+  /* ------------------------------------------------------------- robots */
+
+  const rigs = new Map<RobotKind, RobotRig>();
+  for (const kind of KINDS) {
+    const rig = createRobot(kind);
+    rigs.set(kind, rig);
+    scene.add(rig.root);
+  }
+
+  /* ---------------------------------------------------- chapter dressing */
+
+  const dressing = new THREE.Group();
+  dressing.name = 'chapter-dressing';
+  scene.add(dressing);
+
+  const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+  const bodyGeo = new THREE.CylinderGeometry(0.5, 0.56, 1, 10);
+  const headGeo = new THREE.SphereGeometry(0.5, 10, 8);
+
+  const propPool = makePool<THREE.Mesh>(dressing, () => {
+    const mesh = new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0.06 }));
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    return mesh;
+  });
+
+  const peoplePool = makePool<THREE.Group>(dressing, () => {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.02 });
+    const body = new THREE.Mesh(bodyGeo, mat);
+    body.name = 'body';
+    body.castShadow = true;
+    const head = new THREE.Mesh(headGeo, mat);
+    head.name = 'head';
+    head.castShadow = true;
+    g.add(body, head);
+    return g;
+  });
+
+  /** The chapter-2 cable, as the sim laid it: a polyline on the floor. */
+  const CABLE_MAX_PTS = 512;
+  const cableGeo = new THREE.BufferGeometry();
+  const cablePos = new THREE.BufferAttribute(new Float32Array(CABLE_MAX_PTS * 3), 3);
+  cablePos.setUsage(THREE.DynamicDrawUsage);
+  cableGeo.setAttribute('position', cablePos);
+  cableGeo.setDrawRange(0, 0);
+  const cableMat = new THREE.LineBasicMaterial({ color: 0xffb347, toneMapped: false });
+  const cableLine = new THREE.Line(cableGeo, cableMat);
+  cableLine.name = 'cable';
+  cableLine.frustumCulled = false;
+  cableLine.visible = false;
+  dressing.add(cableLine);
+
+  /**
+   * The ground ring under the robot being driven. Nothing else in the frame says
+   * which of the three the stick is moving — the HUD chip does, but the player is
+   * looking at the diorama, not at the corner of the screen.
+   */
+  const activeRing = new THREE.Mesh(
+    new THREE.RingGeometry(RING_INNER, RING_OUTER, 40),
+    new THREE.MeshBasicMaterial({
+      color: 0xff7a1a,
+      transparent: true,
+      opacity: 0.85,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      // Drawn over everything. Chapter 1 starts the three robots stacked 26 sim px
+      // apart along the camera's depth axis, so the tallest stands in front of the
+      // smallest and the marker under the robot you are driving would be the first
+      // thing hidden — which is the one thing it exists not to be.
+      depthTest: false,
+      toneMapped: false,
+    }),
+  );
+  activeRing.name = 'active-ring';
+  activeRing.rotation.x = -Math.PI / 2;
+  activeRing.renderOrder = 999;
+  dressing.add(activeRing);
+
+  /* -------------------------------------------------------- debug staging */
+
+  /** Flat, even light for the plan view and the portrait. Off during play. */
+  const debugRig = new THREE.Group();
+  debugRig.name = 'debug-lights';
+  debugRig.visible = false;
+  // The venue's own materials are built for a blacked-out cinema, so a debug rig
+  // that merely "adds some light" photographs as mud. These are deliberately hot:
+  // the overlay and model-sheet checks are measurements, not mood shots.
+  const debugAmbient = new THREE.AmbientLight(0xffffff, 3.2);
+  const debugKey = new THREE.DirectionalLight(0xfff4e6, 2.6);
+  debugKey.position.set(0.35, 1, 0.45);
+  const debugFill = new THREE.DirectionalLight(0xbfd2ff, 1.1);
+  debugFill.position.set(-0.7, 0.4, 0.6);
+  const debugRim = new THREE.DirectionalLight(0xffffff, 1.4);
+  debugRim.position.set(-0.2, 0.5, -1);
+  debugRig.add(debugAmbient, debugKey, debugFill, debugRim);
+  scene.add(debugRig);
+
+  /** The portrait plinth, built once and hidden until a portrait is asked for. */
+  const plinth = new THREE.Group();
+  plinth.name = 'plinth';
+  plinth.visible = false;
+  {
+    // Small enough that the robot, not the furniture, is the subject. No backdrop
+    // plane: the clear colour is already an even neutral, and a plane big enough
+    // to fill a 16:9 frame would only add an edge to misread as geometry.
+    const top = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.72, 0.72, 0.1, 44),
+      new THREE.MeshStandardMaterial({ color: 0x9fa6ae, roughness: 0.5, metalness: 0.1 }),
+    );
+    top.position.y = -0.05;
+    top.receiveShadow = true;
+    const base = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.62, 0.74, 0.42, 44),
+      new THREE.MeshStandardMaterial({ color: 0x5b6169, roughness: 0.7, metalness: 0.05 }),
+    );
+    base.position.y = -0.31;
+    base.receiveShadow = true;
+    plinth.add(top, base);
+  }
+  scene.add(plinth);
+
+  /* ------------------------------------------------------------- cameras */
+
+  let viewW = Math.max(1, canvas.clientWidth || 1600);
+  let viewH = Math.max(1, canvas.clientHeight || 900);
+  renderer.setSize(viewW, viewH, false);
+
+  const diorama: DioramaCamera = createCamera(viewW / viewH);
+  const planCam = new THREE.OrthographicCamera(-MAP_W_M / 2, MAP_W_M / 2, MAP_H_M / 2, -MAP_H_M / 2, 0.1, 400);
+  planCam.name = 'plan-camera';
+  const portraitCam = new THREE.PerspectiveCamera(30, viewW / viewH, 0.1, 100);
+  portraitCam.name = 'portrait-camera';
+
+  /** Look straight down with -z as screen up: sim y = 0 at the top, exactly like the plan. */
+  function aimPlanCamera(floor: 'up' | 'down'): void {
+    const floorY = floor === 'down' ? -STOREY_H_M : 0;
+    planCam.up.set(0, 0, -1);
+    planCam.position.set(MAP_W_M / 2, floorY + 120, MAP_H_M / 2);
+    planCam.lookAt(MAP_W_M / 2, floorY, MAP_H_M / 2);
+    planCam.left = -MAP_W_M / 2;
+    planCam.right = MAP_W_M / 2;
+    planCam.top = MAP_H_M / 2;
+    planCam.bottom = -MAP_H_M / 2;
+    planCam.near = 0.1;
+    planCam.far = 400;
+    planCam.updateProjectionMatrix();
+    planCam.updateMatrixWorld();
+  }
+
+  /**
+   * Front three-quarter, pulled back far enough that the whole robot fills the
+   * frame. The fit is measured off the rig's actual bounds rather than its height,
+   * because Biggy is three times as wide as he is unusual — a height-only fit
+   * walks his boots and his shoulders straight out of the frame.
+   */
+  const portraitBox = new THREE.Box3();
+
+  function aimPortraitCamera(rig: RobotRig): void {
+    const aspect = viewW / viewH;
+    portraitCam.aspect = aspect;
+    measureBounds(rig.root, portraitBox);
+    const size = portraitBox.getSize(new THREE.Vector3());
+    const height = Math.max(size.y, rig.height, 0.2);
+    const width = Math.max(size.x, size.z, 0.2);
+
+    // Aim at the robot's FACE, not at the centre of its bounding box. Biggy's face
+    // is a band under a helmet rim at 73% of his height: a camera lined up on his
+    // middle and lifted 14 degrees looks down over the rim and photographs the
+    // crown — which is exactly the feature the model-sheet check is there to read.
+    const ty = portraitBox.min.y + (portraitBox.max.y - portraitBox.min.y) * 0.6;
+    const halfV = Math.max(portraitBox.max.y - ty, ty - portraitBox.min.y, height / 2, 0.1);
+
+    const MARGIN = 1.1;
+    const fovY = (portraitCam.fov * Math.PI) / 180;
+    let dist = (halfV * MARGIN) / Math.tan(fovY / 2);
+    dist = Math.max(dist, ((width / 2) * MARGIN) / Math.tan(fovY / 2) / Math.max(aspect, 0.2));
+    // 34 degrees off the robot's own facing (+Z), barely above its own eye line.
+    const az = (34 * Math.PI) / 180;
+    const el = (7 * Math.PI) / 180;
+    const target = new THREE.Vector3(0, ty, 0);
+    portraitCam.position.set(
+      target.x + Math.sin(az) * Math.cos(el) * dist,
+      target.y + Math.sin(el) * dist,
+      target.z + Math.cos(az) * Math.cos(el) * dist,
+    );
+    portraitCam.up.set(0, 1, 0);
+    portraitCam.lookAt(target);
+    portraitCam.updateProjectionMatrix();
+    portraitCam.updateMatrixWorld();
+  }
+
+  /* -------------------------------------------------------------- framing */
+
+  /** The framed window, in sim pixels. Eased toward the active robot every frame. */
+  const focus: ViewRect = { x: 0, y: 0, w: SIM_W, h: SIM_H };
+  let focusReady = false;
+
+  const clampTo = (v: number, lo: number, hi: number): number => (lo > hi ? (lo + hi) / 2 : v < lo ? lo : v > hi ? hi : v);
+
+  /**
+   * The rect the camera frames this frame.
+   *
+   * Cutscenes, the title card and the end card get the chapter's whole rect — they
+   * are wide shots and the sim already chose the framing. Play gets a room-sized
+   * window centred on the robot being driven and clamped inside that rect, so the
+   * camera never shows anything the chapter did not mean to show.
+   */
+  function updateFocus(snap: GameSnapshot, dt: number): ViewRect {
+    const view = snap.view;
+    if (snap.phase !== 'play') {
+      focusReady = false;
+      return view;
+    }
+    const want = FOCUS[snap.chapter] ?? FOCUS_FALLBACK;
+    const w = Math.min(want.w, view.w);
+    const h = Math.min(want.h, view.h);
+    const bot = snap.bots[snap.active];
+    const tx = clampTo(bot ? bot.x : view.x + view.w / 2, view.x + w / 2, view.x + view.w - w / 2);
+    const ty = clampTo(bot ? bot.y : view.y + view.h / 2, view.y + h / 2, view.y + view.h - h / 2);
+
+    const cx = focus.x + focus.w / 2;
+    const cy = focus.y + focus.h / 2;
+    const jump = !focusReady || Math.hypot(tx - cx, ty - cy) > FOCUS_CUT_PX || focus.w !== w || focus.h !== h;
+    const k = jump ? 1 : 1 - Math.exp(-FOCUS_EASE * dt);
+    focusReady = true;
+    focus.w = w;
+    focus.h = h;
+    focus.x = cx + (tx - cx) * k - w / 2;
+    focus.y = cy + (ty - cy) * k - h / 2;
+    return focus;
+  }
+
+  /** Put the ring under the driven robot, in that robot's own lamp colour. */
+  function updateActiveRing(snap: GameSnapshot, floorY: number): void {
+    const bot = snap.bots[snap.active];
+    if (!bot || snap.chapter < 1 || snap.phase !== 'play') {
+      activeRing.visible = false;
+      return;
+    }
+    activeRing.visible = true;
+    const r = m(bot.r);
+    activeRing.scale.setScalar(Math.max(r / RING_OUTER, 0.6) * 1.25);
+    activeRing.position.set(m(bot.x), floorY + 0.03, m(bot.y));
+    const c = bot.light.c;
+    (activeRing.material as THREE.MeshBasicMaterial).color.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
+  }
+
+  /* --------------------------------------------------------------- modes */
+
+  let topDown = false;
+  let fogOn = true;
+  let portrait: RobotKind | null = null;
+  let lastChapter = -1;
+
+  /** Put the scene graph into whatever the current mode needs. */
+  function applyMode(): void {
+    const debug = topDown || portrait !== null;
+    lights.setEnabled(!debug);
+    lights.setFogEnabled(fogOn);
+    debugRig.visible = debug;
+    plinth.visible = portrait !== null;
+    venue.group.visible = portrait === null;
+    dressing.visible = portrait === null;
+    venue.showOverhead(!topDown);
+    renderer.shadowMap.enabled = portrait !== null || !debug;
+
+    const bg = portrait !== null ? BG_PORTRAIT : topDown ? BG_TOPDOWN : BG_PLAY;
+    (scene.background as THREE.Color).setHex(bg);
+    renderer.setClearColor(bg, 1);
+
+    if (portrait !== null) {
+      // One robot, on the plinth, facing the camera. `applyGait` owns the yaw, so
+      // the heading is chosen to leave the rig facing its modelled front (+Z).
+      for (const [kind, rig] of rigs) {
+        rig.root.visible = kind === portrait;
+        if (kind === portrait) rig.root.position.set(0, 0, 0);
+      }
+      const rig = rigs.get(portrait);
+      if (rig) aimPortraitCamera(rig);
+    }
+  }
+
+  /* ------------------------------------------------------------- dressing */
+
+  /** One chapter prop. `x,y` is sim pixels; `tl` kinds report a corner, the rest a centre. */
+  function drawProp(p: Prop, floorY: number): void {
+    if (p.kind === 'cable') return;
+    const spec = PROPS[p.kind] ?? PROP_FALLBACK;
+    const wM = p.w !== undefined ? m(p.w) : (spec.fw ?? 0.8);
+    const dM = p.h !== undefined ? m(p.h) : (spec.fd ?? 0.8);
+    const cx = spec.tl ? m(p.x) + wM / 2 : m(p.x);
+    const cz = spec.tl ? m(p.y) + dM / 2 : m(p.y);
+
+    const mesh = propPool.get();
+    const height = spec.flat ? Math.max(spec.h, 0.03) : spec.h;
+    mesh.scale.set(Math.max(wM, 0.06), height, Math.max(dM, 0.06));
+    mesh.position.set(cx, floorY + height / 2 + (spec.flat ? 0.01 : 0), cz);
+    mesh.castShadow = !spec.flat;
+    mesh.receiveShadow = true;
+
+    const mat = mesh.material as THREE.MeshStandardMaterial;
+    mat.color.setHex(spec.color);
+    const tint = p.state ? STATE_EMISSIVE[p.state] : undefined;
+    mat.emissive.setHex(tint ?? 0x000000);
+    mat.emissiveIntensity = tint === undefined ? 0 : 1;
+    mat.transparent = spec.flat === true;
+    mat.opacity = spec.flat ? 0.65 : 1;
+  }
+
+  /** The cable, as a polyline on the floor. */
+  function drawCable(p: Prop, floorY: number): void {
+    const pts = p.pts;
+    if (!pts || pts.length < 2) {
+      cableLine.visible = false;
+      return;
+    }
+    const arr = cablePos.array as Float32Array;
+    const n = Math.min(pts.length, CABLE_MAX_PTS);
+    for (let i = 0; i < n; i++) {
+      const o = i * 3;
+      arr[o] = m(pts[i].x);
+      arr[o + 1] = floorY + 0.08;
+      arr[o + 2] = m(pts[i].y);
+    }
+    cablePos.needsUpdate = true;
+    cableGeo.setDrawRange(0, n);
+    cableLine.visible = true;
+  }
+
+  function drawPerson(p: Person, floorY: number): void {
+    const g = peoplePool.get();
+    const rM = Math.max(m(p.r), 0.16);
+    const bodyH = PERSON_H - rM * 1.1;
+    const body = g.children[0] as THREE.Mesh;
+    const head = g.children[1] as THREE.Mesh;
+    body.scale.set(rM * 2, bodyH, rM * 2);
+    body.position.set(0, bodyH / 2, 0);
+    head.scale.setScalar(rM * 1.5);
+    head.position.set(0, bodyH + rM * 0.6, 0);
+    g.position.set(m(p.x), floorY, m(p.y));
+
+    const mat = body.material as THREE.MeshStandardMaterial;
+    const hex = p.colour ? new THREE.Color(p.colour).getHex() : (ROLE_COLOR[p.role] ?? ROLE_COLOR.visitor);
+    mat.color.setHex(hex);
+  }
+
+  function drawDressing(snap: GameSnapshot, floorY: number): void {
+    propPool.begin();
+    peoplePool.begin();
+    cableLine.visible = false;
+    for (const p of snap.props) {
+      if (p.kind === 'cable') drawCable(p, floorY);
+      else drawProp(p, floorY);
+    }
+    for (const person of snap.people) drawPerson(person, floorY);
+    propPool.end();
+    peoplePool.end();
+  }
+
+  /* ---------------------------------------------------------------- robots */
+
+  function placeRobots(snap: GameSnapshot, dt: number, floorY: number): void {
+    const show = snap.chapter >= 1;
+    for (const b of snap.bots) {
+      const rig = rigs.get(b.kind);
+      if (!rig) continue;
+      rig.root.visible = show;
+      if (!show) continue;
+      // Droid rides on Biggy: the sim keeps both at the same footprint, so the
+      // renderer is the only place that knows how far up "on his shoulders" is.
+      const lift = b.kind === 'droid' && b.mounted ? ROBOT_HEIGHT_M.biggy : 0;
+      rig.root.position.set(m(b.x), floorY + lift, m(b.y));
+      updateRobot(rig, {
+        speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M,
+        heading: b.face,
+        dt,
+        mounted: b.mounted,
+      });
+    }
+  }
+
+  /* ----------------------------------------------------------------- frame */
+
+  function renderPortrait(dt: number): void {
+    const rig = portrait ? rigs.get(portrait) : null;
+    if (!rig) return;
+    // Idle, facing +Z: `yawFromSimHeading(PI/2)` is a yaw of 0.
+    updateRobot(rig, { speedMps: 0, heading: Math.PI / 2, dt });
+    renderer.setScissorTest(false);
+    renderer.setViewport(0, 0, viewW, viewH);
+    renderer.render(scene, portraitCam);
+  }
+
+  function renderTopDown(snap: GameSnapshot, dt: number): void {
+    const floorY = snap.floor === 'down' ? -STOREY_H_M : 0;
+    venue.floor1.visible = snap.floor === 'up';
+    venue.ground.visible = snap.floor === 'down';
+    placeRobots(snap, dt, floorY);
+    drawDressing(snap, floorY);
+    activeRing.visible = false;
+    aimPlanCamera(snap.floor);
+
+    // Letterbox to the sim rect's own aspect, so a pixel in the shot maps to a
+    // fixed number of sim pixels and the plan overlay lines up without scaling.
+    const dpr = renderer.getPixelRatio();
+    const fullW = Math.round(viewW * dpr);
+    const fullH = Math.round(viewH * dpr);
+    const want = MAP_W_M / MAP_H_M;
+    let vw = fullW;
+    let vh = Math.round(fullW / want);
+    if (vh > fullH) {
+      vh = fullH;
+      vw = Math.round(fullH * want);
+    }
+    // Anchored to the TOP-LEFT of the canvas rather than centred. A headless
+    // screenshot is taken at the window size while the page is laid out in a
+    // slightly shorter viewport, so a vertically centred band lands at an offset
+    // nobody can predict from the image alone. Top-left anchoring makes the
+    // mapping exact and stated: image pixel (px, py) is sim (px * 1900/vw,
+    // py * 700/vh), with no offset to guess.
+    const vx = 0;
+    const vy = fullH - vh;
+
+    renderer.setScissorTest(false);
+    renderer.setViewport(0, 0, fullW, fullH);
+    renderer.setScissor(0, 0, fullW, fullH);
+    renderer.clear();
+    renderer.setScissorTest(true);
+    renderer.setViewport(vx, vy, vw, vh);
+    renderer.setScissor(vx, vy, vw, vh);
+    renderer.render(scene, planCam);
+    renderer.setScissorTest(false);
+  }
+
+  function render(snap: GameSnapshot, dt: number): void {
+    if (portrait !== null) {
+      renderPortrait(dt);
+      return;
+    }
+    if (topDown) {
+      renderTopDown(snap, dt);
+      return;
+    }
+
+    const floorY = snap.floor === 'down' ? -STOREY_H_M : 0;
+    venue.floor1.visible = snap.floor === 'up';
+    venue.ground.visible = snap.floor === 'down';
+
+    if (snap.chapter !== lastChapter) {
+      lastChapter = snap.chapter;
+      diorama.setChapter(snap.chapter);
+    }
+
+    placeRobots(snap, dt, floorY);
+    drawDressing(snap, floorY);
+    updateActiveRing(snap, floorY);
+    lights.update(snap, dt);
+
+    diorama.frame(updateFocus(snap, dt), viewW / viewH, snap.floor);
+    diorama.update(dt);
+
+    renderer.setScissorTest(false);
+    renderer.setViewport(0, 0, viewW, viewH);
+    renderer.render(scene, diorama.cam);
+  }
+
+  /* --------------------------------------------------------------- facade */
+
+  applyMode();
+  aimPlanCamera('up');
+
+  return {
+    render,
+    resize(w: number, h: number): void {
+      viewW = Math.max(1, Math.floor(w));
+      viewH = Math.max(1, Math.floor(h));
+      renderer.setSize(viewW, viewH, false);
+      diorama.frame({ x: 0, y: 0, w: SIM_W, h: SIM_H }, viewW / viewH);
+      if (portrait !== null) {
+        const rig = rigs.get(portrait);
+        if (rig) aimPortraitCamera(rig);
+      }
+    },
+    setTopDown(on: boolean): void {
+      if (topDown === on) return;
+      topDown = on;
+      applyMode();
+    },
+    setFogEnabled(on: boolean): void {
+      fogOn = on;
+      lights.setFogEnabled(on);
+    },
+    posePortrait(kind: RobotKind | null): void {
+      if (portrait === kind) return;
+      portrait = kind;
+      if (kind === null) for (const rig of rigs.values()) rig.root.visible = true;
+      applyMode();
+    },
+    dispose(): void {
+      propPool.dispose();
+      peoplePool.dispose();
+      cableGeo.dispose();
+      cableMat.dispose();
+      boxGeo.dispose();
+      bodyGeo.dispose();
+      headGeo.dispose();
+      plinth.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (mesh.isMesh) {
+          mesh.geometry.dispose();
+          const mat = mesh.material;
+          if (Array.isArray(mat)) for (const mm of mat) mm.dispose();
+          else mat.dispose();
+        }
+      });
+      for (const rig of rigs.values()) {
+        rig.root.removeFromParent();
+        rig.dispose();
+      }
+      rigs.clear();
+      lights.dispose();
+      venue.dispose();
+      scene.clear();
+      renderer.dispose();
+    },
+  };
+}

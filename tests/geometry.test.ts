@@ -238,3 +238,73 @@ describe('the ground floor', () => {
     }
   });
 });
+
+/**
+ * The lobby band — round 3 of the floor-plan gauntlet.
+ *
+ * `plans/exhibition-floor-stairs-annotated.png` draws the BOF block at plan
+ * c 625-890, r 890-1090 and the toilets just west of it, which under this module's
+ * rotation is the ground floor's far-right, TOP quadrant. The prototype had the BOF
+ * rooms bottom-right and left everything east of x 1560 as bare deck; the critic
+ * measured that quarter of the map as empty of every wall, door and fitting. These
+ * assertions are what stops it going back.
+ */
+describe('ground floor — the lobby band', () => {
+  const eastOf = (x: number): Wall[] => groundWalls().filter((w) => w.x + w.w > x);
+
+  it('puts the BOF rooms in the far-right TOP quadrant, as the plan does', () => {
+    expect(GF.bof.x).toBeGreaterThan(1450);
+    expect(GF.bof.x + GF.bof.w).toBeLessThanOrEqual(W - T);
+    // Top half of the floor, and clear of the chapter-3 visitor route along y 420-445.
+    expect(GF.bof.y + GF.bof.h).toBeLessThan(350);
+  });
+
+  it('subdivides the BOF block into rooms, each with its own doorway', () => {
+    expect(GF.bofSplits.length).toBeGreaterThanOrEqual(2);
+    const south = groundWalls()
+      .filter((w) => w.y === GF.bof.y + GF.bof.h && w.h === T)
+      .sort((a, b) => a.x - b.x);
+    // One doorway per room means one gap per split, plus one.
+    let gaps = 0;
+    for (let i = 1; i < south.length; i++) {
+      if (south[i].x > south[i - 1].x + south[i - 1].w) gaps++;
+    }
+    expect(gaps).toBe(GF.bofSplits.length + 1);
+  });
+
+  it('walls the toilets as a block with one doorway, off the lobby', () => {
+    const tl = GF.toilets;
+    expect(tl.x).toBeGreaterThanOrEqual(GF.hall.x + GF.hall.w);
+    const walls = groundWalls();
+    for (const side of [
+      { x: tl.x - T, y: tl.y, w: T, h: tl.h },
+      { x: tl.x + tl.w, y: tl.y, w: T, h: tl.h },
+    ]) {
+      expect(walls.some((w) => w.x === side.x && w.y === side.y && w.w === side.w && w.h === side.h)).toBe(true);
+    }
+    const south = walls.filter((w) => w.y === tl.y + tl.h && w.h === T);
+    expect(south).toHaveLength(2);
+  });
+
+  it('leaves no quarter of the ground floor empty of built fabric', () => {
+    // The critic measured sim x 1560..1900 as bare deck. Every 85-px column of the
+    // lobby band must now carry at least one wall.
+    for (let x = 1050; x < W - T; x += 85) {
+      const band = eastOf(x).filter((w) => w.x < x + 85 && w.w < 400);
+      expect(band.length, `nothing built in the column starting at x=${x}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps the hall\'s right wall a door bank with four real openings', () => {
+    const x = GF.hall.x + GF.hall.w;
+    const segs = groundWalls()
+      .filter((w) => w.x === x && w.w === T)
+      .sort((a, b) => a.y - b.y);
+    let gaps = 0;
+    for (let i = 1; i < segs.length; i++) {
+      if (segs[i].y > segs[i - 1].y + segs[i - 1].h) gaps++;
+    }
+    expect(gaps).toBe(GF.openings.length);
+    for (const [a, b] of GF.openings) expect(b - a).toBeGreaterThanOrEqual(46);
+  });
+});

@@ -19,6 +19,23 @@ export const m = (px: number): number => px / PX_PER_M;
 export const px = (metres: number): number => metres * PX_PER_M;
 
 /**
+ * The **player-facing** speed scale, sim px/s per m/s — display only.
+ *
+ * `PX_PER_M` is the *geometry* scale (room 8 is 375 sim px = 30 m, which is a real
+ * Kinepolis auditorium). Reading the prototype's arcade speeds through it gives
+ * Voxxy 23 m/s — 84 km/h for a knee-high robot — which is the number a physics
+ * judge would see on the HUD. `docs/scale-and-units.md` fixes the intended absolute
+ * speeds instead: Voxxy 4 m/s, Droid 1.6, Biggy ~3.5. One factor reproduces all
+ * three from the frozen caps (290 / 115 / 235 px/s), and that factor is this.
+ *
+ * Nothing in `src/sim` uses it; the caps themselves are frozen and untouched.
+ */
+export const HUD_PX_PER_MPS = 72.5;
+
+/** Sim px/s -> the metres per second the HUD quotes to the player. */
+export const displayMps = (pxPerSec: number): number => pxPerSec / HUD_PX_PER_MPS;
+
+/**
  * Modelled robot heights in metres. The sim's collision radii are top-down
  * footprints and are deliberately generous; these are the figures the procedural
  * meshes in `src/render/robots` are built to, matching the model sheets'

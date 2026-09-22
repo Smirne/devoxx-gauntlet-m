@@ -107,7 +107,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     ...GF.gate,
     kind: 'gate',
     why: (b) =>
-      `${b.name}: Stephan, at the gate: "The rooms open when I say so. And I say nothing before my soup."`,
+      b.kind === 'voxxy'
+        ? 'Stephan, to Voxxy: "Fast little thing. Still no. Soup first, then my keynote speaker, then the stairs."'
+        : b.kind === 'droid'
+          ? 'Stephan, to Droid: "You can see over the gate, I know. Nobody goes up until I have soup and a speaker."'
+          : 'Stephan, to Biggy: "Do not. The rooms open when I say so, and I say nothing before my soup."',
   };
   ctx.walls.push(gate);
   let gateOpen = false;
@@ -532,11 +536,30 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     return out;
   }
 
+  /** The live bottom-of-screen line: Stephan's two conditions, plus the pot's state. */
+  function progress(): string {
+    if (gateOpen) return 'Stephan opens the main staircase · up to the Devoxx rooms';
+    const soupLine = delivered
+      ? 'soup ✓'
+      : carrying
+        ? `soup: carrying the pot · ${Math.round(soup)}% left at ${Math.round(temp)}°`
+        : ladle
+          ? 'soup: ladle in hand — fill the pot at the counter'
+          : 'soup: the ladle is on the high shelf (Droid)';
+    const spk = speaker.onStage
+      ? 'speaker ✓'
+      : speaker.following
+        ? 'speaker: following you to Stephan'
+        : 'speaker: hiding behind a built booth (Voxxy, E)';
+    return `${soupLine} · ${spk}`;
+  }
+
   return {
     key,
     update,
     props,
     people,
+    progress,
     placeProp: (kind: string, x: number, y: number): boolean => mg.place(kind, x, y),
     state: (): LunchState => ({
       chapter: 3,

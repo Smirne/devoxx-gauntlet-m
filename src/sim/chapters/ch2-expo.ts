@@ -18,7 +18,8 @@
 import { CABLE_MAX, PUSH_LEAN_MIN, ROLLER_DOOR_SPEED, T } from '../constants';
 import { GF, VIEW_GROUND, groundWalls } from '../geometry';
 import { botsCollide, dist, inRect, mkBot, speed, stepBot } from '../bot';
-import type { Bot, Prop, Vec2, Wall } from '../types';
+import { buildLights } from '../lights';
+import type { Bot, LightSource, Mirror, Prop, Vec2, Wall } from '../types';
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 
 /* ---------------------------------------------------------------- reach distances */
@@ -32,6 +33,10 @@ const ROLLER_MIN_TALK = 40;
 /** Seconds between the roller door's "not fast enough" readouts. */
 const ROLLER_TALK_COOLDOWN = 3;
 const BREAKERS = 3;
+
+/** The exhibition hall has no cinema screen to bounce a lamp off. */
+const NO_MIRRORS: Mirror[] = [];
+const NO_MIRROR_LIGHTS: LightSource[] = [];
 
 /**
  * A pushable body that is not a robot: the shuffleboard duck here, the cake crate in
@@ -255,6 +260,15 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.place([372, 440], [372, 470], [372, 502]);
 
   let power = false;
+  /**
+   * The hall is pitch dark until Droid throws the last breaker, so until then the
+   * robots' own lamps are the only light there is — the prototype punches a hole in
+   * an 80%-black mask around each of them (`expoDraw`). The 3D renderer works from
+   * `LightSource` polygons instead of a 2D mask, so the chapter has to cast them:
+   * without this the exhibition hall renders as a black rectangle. Chapter 2 has no
+   * light-mix enigma, so nothing in here ever *reads* them — they exist to be drawn.
+   */
+  let lights: LightSource[] = [];
   let breakersLeft = BREAKERS;
   let rollerBroken = false;
   let hintedPanel = false;
@@ -271,7 +285,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const gate: Wall = {
     ...GF.gate,
     kind: 'gate',
-    why: (b) => `${b.name}: main staircase — gate down until registration opens`,
+    why: (b) =>
+      b.kind === 'voxxy'
+        ? 'Voxxy: gate! Main staircase, shut until registration opens. Not even I fit through that'
+        : b.kind === 'droid'
+          ? 'Droid: the main staircase gate. It stays down until registration opens. Tomorrow, not tonight'
+          : 'Biggy: gate. Steel. Down. Registration opens it, not me',
   };
   ctx.walls.push(gate);
 
@@ -281,7 +300,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     why: (b) =>
       b.kind === 'biggy'
         ? `Biggy: roller door. I'd need ${ROLLER_DOOR_SPEED} px/s and I top out at ${b.max}. Unless someone pushes me all the way down that lane`
-        : `${b.name}: roller door — the badges and polos are behind it. Biggy at full tilt isn't enough; if I push him along the whole lane…`,
+        : b.kind === 'voxxy'
+          ? "Voxxy: roller door — every badge and polo is behind it. I bounce off. Biggy at full tilt isn't enough either, so I'll shove him down the whole top lane"
+          : 'Droid: a slatted roller door. Mass, not leverage. Biggy needs a longer run than he can give himself',
     // Horizontal door: the speed that counts is the one along the lane.
     onHit: (b) => {
       if (b.kind !== 'biggy') return false;
@@ -401,6 +422,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       ctx.flash('Breakers — way up on the wall. Droid?');
     }
 
+    // Once the house lights are on the prototype stops masking, and so do we: the
+    // renderer lights the hall from its own chapter mood instead.
+    lights = power ? NO_MIRROR_LIGHTS : buildLights(ctx.bots, ctx.walls, NO_MIRRORS);
+
     if (power && cable.connected && rollerBroken) {
       ctx.score.expoT = Math.round(ctx.t);
       ctx.score.cable = Math.trunc(cable.len);
@@ -451,10 +476,30 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     return out.concat(mg.props());
   }
 
+  // Cast once at setup so the very first drawn frame is already lit, rather than
+  // one black frame before `update` runs.
+  lights = buildLights(ctx.bots, ctx.walls, NO_MIRRORS);
+
+  /** The live bottom-of-screen line: the three jobs, each with its own counter. */
+  function progress(): string {
+    const breakers = power ? 'power ✓' : `breakers ${BREAKERS - breakersLeft}/${BREAKERS}`;
+    const net = cable.connected
+      ? 'network ✓'
+      : cable.snapped
+        ? 'cable snapped — start again at the rack'
+        : cable.carrying
+          ? `cable ${Math.round(cable.len)}/${CABLE_MAX} px`
+          : 'cable: still on the reel at the rack';
+    const store = rollerBroken ? 'badge store ✓' : `roller door: shut (needs ${ROLLER_DOOR_SPEED} px/s)`;
+    return `${breakers} · ${net} · ${store}`;
+  }
+
   return {
     key,
     update,
     props,
+    progress,
+    lights: () => lights,
     placeProp: (kind: string, x: number, y: number): boolean => mg.place(kind, x, y),
     state: (): ExpoState => ({
       chapter: 2,
