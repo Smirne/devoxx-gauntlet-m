@@ -14,13 +14,26 @@
  *     orange hoop — the single most recognisable feature on the model, present
  *     on the sheet as a copper band round a panelled drum and on the demo as a
  *     hot orange hoop round a dome;
- *   - a BOXY ROUNDED-CUBOID helmet that tapers in toward the crown, with two
- *     small amber eyes set low and close, a jaw block with a louvre under it,
- *     and a ribbed concertina neck rising out of an orange collar ring;
+ *   - a SMOOTH ROUNDED SKULL — an elongated dome on a superellipse section, so
+ *     the sides read flat — flaring at the temples into two dark cheek plates,
+ *     with two small round amber eyes set WIDE and a dark mesh grille where a
+ *     mouth would be, plugged into a THICK DARK COLLAR RING sunk in the chest;
  *   - a TAPERED KEYSTONE chest carrying real panel work — orange-piped vents, a
  *     recessed central louvre, fine grilles;
  *   - EXPOSED JOINTS at shoulder, elbow, hip, knee and ankle, the hips and knees
- *     built as stacked ribbed discs with an orange ring round the outermost.
+ *     built as stacked ribbed discs with an orange ring round the outermost, and
+ *     BANDED LIMB SEGMENTS — a sleeve of fine rings over the top of each forearm
+ *     and shin, a short ribbed collar where each thigh and upper arm meets its
+ *     joint, which is how the sheet's arms and legs are put together.
+ *
+ * WHAT CAME FROM THE DEMO AND STAYS. The hoop shoulders — a lathed disc-dome
+ * with a hot orange ring on the rim — are not on the sheet. They are the
+ * organisers' demo, Michele likes them, and they are not to be "corrected"
+ * toward the sheet's angular pauldrons. Same for the orange piping, the X
+ * harness and the ribbed joint stacks. The FACE is the opposite case: the round
+ * that took its helmet from the demo lost the character, and the face is what
+ * makes a character recognisable, so the head is the sheet's and only the
+ * sheet's.
  *
  * THE ORANGE RULE. Orange appears as PIPING AND RINGS ONLY, never as a filled
  * area and never as a weathering wash over a big panel. That restraint is most
@@ -57,8 +70,8 @@ const KNEE_Y = 0.63;
 const HIP_Y = 1.13;
 const TORSO_Y = 1.3;
 const SHOULDER_Y = 1.7;
-const NECK_Y = 1.78;
-const HEAD_Y = 1.86;
+const NECK_Y = 1.775;
+const HEAD_Y = 1.845;
 const SHIN = KNEE_Y - ANKLE_Y;
 const THIGH = HIP_Y - KNEE_Y;
 /** Long arms, longer forearms — the sheet's hands hang past the knee. */
@@ -91,6 +104,74 @@ const CHEST_BOT_Z = 0.76;
 const frontZ = (y: number): number => (CHEST_D / 2) * (CHEST_BOT_Z + (1 - CHEST_BOT_Z) * ((y + CHEST_H / 2) / CHEST_H));
 /** How far the front face leans back per metre of drop. */
 const CHEST_SLOPE = Math.atan((((1 - CHEST_BOT_Z) * CHEST_D) / 2 / CHEST_H));
+
+/*
+ * THE HEAD, in numbers, taken off the front elevation panel of
+ * `robots/droid-robot.png` (panel r1c1) and the ratios in
+ * `docs/model-sheet-targets.md` §5. Head-local metres; the head bone sits at
+ * HEAD_Y.
+ *
+ *   head_h / total_h   0.162     head_w / total_w  0.283
+ *   head_w / shoulder span 0.305 eye spacing / head_w 0.400
+ *   eye diameter / head_w  0.12  (4-8 px on the sheet, so a soft target)
+ *
+ * Our shoulder span IS our total width — the hands hang inboard of the
+ * pauldrons where the sheet's hang outboard of them — so head_w/total_w and
+ * head_w/span cannot both be hit. HEAD_W splits them: 0.294 of each, 0.011
+ * from both targets, inside the +/-0.02 band either way.
+ */
+const HEAD_TOP = 0.28;
+const HEAD_BOT = -0.064;
+const HEAD_H = HEAD_TOP - HEAD_BOT;
+/** Widest point of the head — the cheek plates, not the cranium. */
+const HEAD_W = 0.2824;
+/** Crown to the shell's bottom lip: 0.75 of the head, the rest is jaw. */
+const SKULL_H = 0.75 * HEAD_H;
+const SKULL_BOT = HEAD_TOP - SKULL_H;
+/*
+ * The cranium's measured profile. `v` runs 0 at the crown to 1 at the bottom
+ * lip; widths come off the front panel, depths and the fore/aft centre off the
+ * left-profile panel r1c0 scaled to the same figure height. The top three rings
+ * are rounded by hand — at the threshold the measuring pass used, the profile
+ * panel's first row is already 29 px deep while the front panel's is 0 wide,
+ * which taken literally builds a knife edge across the crown.
+ */
+const SKULL_RINGS: readonly SkullRing[] = [
+  [0.0, 0.0, 0.0, -0.024],
+  [0.022, 0.033, 0.04, -0.0215],
+  [0.05, 0.06, 0.074, -0.019],
+  [0.09, 0.0812, 0.0987, -0.0155],
+  [0.15, 0.0969, 0.1165, -0.0097],
+  [0.22, 0.1102, 0.1311, -0.0043],
+  [0.3, 0.1195, 0.1432, -0.0027],
+  [0.39, 0.1271, 0.1508, -0.0027],
+  [0.48, 0.1311, 0.1567, -0.0027],
+  [0.57, 0.1327, 0.1547, 0.0],
+  [0.66, 0.132, 0.154, 0.0002],
+  [0.75, 0.1294, 0.1452, 0.0032],
+  [0.84, 0.1265, 0.1345, 0.0095],
+  // The last three rings TUCK UNDER. Read literally the panels say the shell
+  // is still 0.113 wide where it meets the jaw, but what is that wide down
+  // there is the jaw — the helmet's own lower edge rolls inwards and the dark
+  // jaw comes out from beneath it. Cut square instead, as the round before
+  // this one did, and the head reads as a dome someone sawed the bottom off.
+  [0.91, 0.1225, 0.1195, 0.0205],
+  [0.96, 0.1125, 0.1015, 0.0325],
+  [1.0, 0.082, 0.0735, 0.0435],
+];
+/** Surface point and outward normal on the cranium at height `v`, offset `x`. */
+function onSkull(v: number, x: number): { z: number; yaw: number } {
+  const hw = sampleRing(SKULL_RINGS, v, 1);
+  const hd = sampleRing(SKULL_RINGS, v, 2);
+  const zc = sampleRing(SKULL_RINGS, v, 3);
+  const n = 2.45;
+  const u = Math.min(Math.abs(x) / hw, 1);
+  const w = Math.pow(Math.max(1 - Math.pow(u, n), 0), 1 / n);
+  // Gradient of |x/hw|^n + |z/hd|^n = 1, which is the surface normal.
+  const gx = Math.pow(u, n - 1) / hw;
+  const gz = Math.pow(w, n - 1) / hd;
+  return { z: zc + hd * w, yaw: Math.atan2(gx, gz) };
+}
 
 /**
  * A rounded box with a linear taper in width and depth — the keystone chest, the
@@ -146,6 +227,151 @@ function taperedBox(
  * spends 12. There are about sixty of them on the finished model.
  */
 const slab = (w: number, h: number, d: number): THREE.BufferGeometry => new THREE.BoxGeometry(w, h, d);
+
+/**
+ * Concatenate a pile of small geometries into one buffer.
+ *
+ * The mouth grille is eighteen 4 mm bars. Eighteen meshes is eighteen draw
+ * calls for something 9 cm across; this is one. Position and normal only —
+ * nothing in this file uses UVs, and `part()` adds the colour attribute after.
+ */
+function mergeGeos(list: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  const pos: number[] = [];
+  const nrm: number[] = [];
+  for (const g of list) {
+    const flat = g.getIndex() ? g.toNonIndexed() : g;
+    const p = flat.getAttribute('position') as THREE.BufferAttribute;
+    const n = flat.getAttribute('normal') as THREE.BufferAttribute;
+    for (let i = 0; i < p.count; i++) {
+      pos.push(p.getX(i), p.getY(i), p.getZ(i));
+      nrm.push(n.getX(i), n.getY(i), n.getZ(i));
+    }
+    if (flat !== g) flat.dispose();
+    g.dispose();
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  return out;
+}
+
+/**
+ * A dark mesh field — the recessed grille under Droid's eyes.
+ *
+ * `cols x rows` little bars on a regular pitch, each `fill` of its cell, in one
+ * geometry. At portrait scale it reads as woven mesh; at play scale it reads as
+ * "the dark hole where a mouth would be", which is the whole job.
+ */
+function meshField(w: number, h: number, d: number, cols: number, rows: number, fill = 0.58): THREE.BufferGeometry {
+  const cw = (w / cols) * fill;
+  const ch = (h / rows) * fill;
+  const boxes: THREE.BufferGeometry[] = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const g = new THREE.BoxGeometry(cw, ch, d);
+      g.translate(((c + 0.5) / cols - 0.5) * w, ((r + 0.5) / rows - 0.5) * h, 0);
+      boxes.push(g);
+    }
+  }
+  return mergeGeos(boxes);
+}
+
+/**
+ * THE SKULL — one ring of the profile: `[v, halfWidth, halfDepth, zCentre]`,
+ * with `v` running 0 at the crown to 1 at the shell's bottom lip.
+ */
+type SkullRing = readonly [v: number, halfW: number, halfD: number, zc: number];
+
+/** Non-uniform Catmull-Rom through the control rings, evaluated at `v`. */
+function sampleRing(rings: readonly SkullRing[], v: number, k: 1 | 2 | 3): number {
+  const n = rings.length;
+  let i = 0;
+  while (i < n - 2 && rings[i + 1][0] < v) i++;
+  const v0 = rings[i][0];
+  const v1 = rings[i + 1][0];
+  const h = v1 - v0 || 1e-6;
+  const t = (v - v0) / h;
+  const y0 = rings[i][k];
+  const y1 = rings[i + 1][k];
+  // Central-difference tangents, so the surface is C1 across every knot even
+  // though the knots are not evenly spaced in v.
+  const prev = rings[i > 0 ? i - 1 : i];
+  const next = rings[i + 2 < n ? i + 2 : i + 1];
+  const m0 = (y1 - prev[k]) / (v1 - prev[0] || 1e-6);
+  const m1 = (next[k] - y0) / (next[0] - v0 || 1e-6);
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return (
+    (2 * t3 - 3 * t2 + 1) * y0 + (t3 - 2 * t2 + t) * h * m0 + (-2 * t3 + 3 * t2) * y1 + (t3 - t2) * h * m1
+  );
+}
+
+/**
+ * Droid's cranium: a SMOOTH ELONGATED DOME whose cross-section is a
+ * SUPERELLIPSE, not a circle.
+ *
+ * The sheet's skull is the one shape on this robot that cannot be faked with a
+ * box or a sphere. Seen head-on it is an egg standing on its narrow end —
+ * rounded crown, widest just below the eyes, tapering into a narrow jaw. Seen
+ * from the side it is half again as deep as it is wide, with a nearly flat
+ * vertical face and the whole of the extra volume swept backwards. And seen
+ * from above its section is not round: the sides are visibly FLATTENED, which
+ * is what gives the front elevation its hard left and right edges.
+ *
+ * `power` is the superellipse exponent: 2 is a plain ellipse, and the value
+ * used here pushes the section toward a rounded rectangle just far enough that
+ * the side planes read flat under a raking light without the silhouette
+ * developing corners.
+ */
+function skullShell(
+  rings: readonly SkullRing[],
+  topY: number,
+  height: number,
+  power: number,
+  rows = 22,
+  segs = 26,
+): THREE.BufferGeometry {
+  const e = 2 / power;
+  const sp = (c: number): number => Math.sign(c) * Math.pow(Math.abs(c), e);
+  const pos: number[] = [];
+  const idx: number[] = [];
+  const vs: number[] = [];
+  // Rows bunched toward the crown (v = t^1.3), where the curvature is highest.
+  for (let r = 0; r <= rows; r++) vs.push(Math.pow(r / rows, 1.3));
+  for (const v of vs) {
+    const hw = Math.max(sampleRing(rings, v, 1), 0);
+    const hd = Math.max(sampleRing(rings, v, 2), 0);
+    const zc = sampleRing(rings, v, 3);
+    const y = topY - v * height;
+    for (let s = 0; s < segs; s++) {
+      const a = (s / segs) * Math.PI * 2;
+      pos.push(hw * sp(Math.cos(a)), y, zc + hd * sp(Math.sin(a)));
+    }
+  }
+  for (let r = 0; r < rows; r++) {
+    for (let s = 0; s < segs; s++) {
+      const s2 = (s + 1) % segs;
+      const a = r * segs + s;
+      const b = r * segs + s2;
+      const c = (r + 1) * segs + s;
+      const d = (r + 1) * segs + s2;
+      idx.push(a, c, b, b, c, d);
+    }
+  }
+  // Flat cap on the open bottom: the jaw covers it, but a shell you can see
+  // the inside of from a low camera is worse than sixty spare triangles.
+  const base = pos.length / 3;
+  pos.push(0, topY - height, sampleRing(rings, 1, 3));
+  for (let s = 0; s < segs; s++) {
+    const s2 = (s + 1) % segs;
+    idx.push(rows * segs + s, base, rows * segs + s2);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
 
 export function buildDroid(): RobotRig {
   const bones: Record<string, THREE.Object3D> = {};
@@ -203,6 +429,34 @@ export function buildDroid(): RobotRig {
     tint: '#8a5a2b',
     grime: 0.35,
   });
+
+  /**
+   * A stack of fine rings wrapped round a limb between two heights, the radius
+   * lerped so the stack follows the shaft's own taper.
+   *
+   * The sheet's arms and legs are SEGMENTED, not smooth: fine rings over the
+   * top of the forearm and the shin, a short ribbed collar where the thigh and
+   * the upper arm meet their joints. Centred on x = 0 so the two sides stay
+   * exact mirrors of one another.
+   */
+  const bandStack = (
+    parent: THREE.Object3D,
+    yTop: number,
+    yBot: number,
+    count: number,
+    rTop: number,
+    rBot: number,
+    seed: number,
+  ): void => {
+    for (let i = 0; i < count; i++) {
+      const f = count === 1 ? 0 : i / (count - 1);
+      const r = rTop + (rBot - rTop) * f;
+      const ring = part(new THREE.TorusGeometry(r, 0.0062, 5, 18), barrel, patina(0.45, seed + i));
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = yTop + (yBot - yTop) * f;
+      parent.add(ring);
+    }
+  };
 
   /* ------------------------------------------------------------- skeleton */
   const pelvis = joint(bones, root, 'pelvis', 0, HIP_Y, 0);
@@ -359,103 +613,188 @@ export function buildDroid(): RobotRig {
 
   /* ----------------------------------------------------------------- head */
   /*
-   * A BOXY ROUNDED CUBOID, tapering in toward the crown — not a dome.
+   * THE SKULL. A smooth rounded dome, not a cuboid.
    *
-   * The sheet's cranium is flat-fronted with squared sides and a rounded top
-   * bevel; the demo's is the same idea pushed further. The old ellipsoid was the
-   * single biggest reason the face read as a featureless egg with two dots on
-   * it, and no amount of decal work on a sphere was ever going to fix that.
+   * The round before this one took its helmet from the organisers' demo — a
+   * rounded box with a bevelled crown — and the face stopped being Droid's.
+   * `robots/droid-robot.png` front elevation, and its hero close-up bottom
+   * right, show something quite specific and quite unlike a box: an elongated
+   * dome, widest a little below the eyes, tapering into a narrow jaw, with
+   * FLATTENED SIDES and a nearly flat vertical face. SKULL_RINGS is that shape
+   * measured row by row off both panels; `skullShell` revolves it on a
+   * superellipse section so the sides come out flat and the front and back
+   * stay round.
    */
-  const cranium = part(taperedBox(0.248, 0.238, 0.268, 0.062, 6, 0.8, 0.88), panel, scuff(0.58, 41, 14));
-  cranium.position.set(0, 0.112, -0.012);
+  const cranium = part(skullShell(SKULL_RINGS, HEAD_TOP, SKULL_H, 2.45), panel, scuff(0.5, 41, 15));
   head.add(cranium);
   parts.headShell = cranium;
 
-  // The brow: a shallow dark faceplate the eyes are set into, with the shell
-  // visible all the way round it.
-  const faceWell = part(taperedBox(0.178, 0.132, 0.022, 0.014, 2, 0.92, 1), panelDark, scuff(0.4, 42));
-  faceWell.position.set(0, 0.098, 0.113);
-  head.add(faceWell);
   /*
-   * Eyes LOW and CLOSE: centres 53% of the way down the cranium, 2.0 eye-widths
-   * apart. The sheet measures 2.7 widths and the demo 2.3; the demo sets the
-   * height and the pair split the difference on the gap. Pucks squashed to ovals
-   * rather than circles, which is what both references show.
-   */
-  for (const sx of [-1, 1] as const) {
-    const eye = part(puck(0.021, 0.012, 18).rotateX(Math.PI / 2), eyeGlow);
-    eye.scale.set(1, 0.7, 1);
-    eye.position.set(sx * 0.042, 0.105, 0.125);
-    head.add(eye);
-  }
-  // Side flanges: the stepped ear panels the sheet carries down each temple.
-  for (const sx of [-1, 1] as const) {
-    const flange = part(roundedBox(0.02, 0.125, 0.13, 0.008, 2), panelDark, scuff(0.5, 43));
-    flange.position.set(sx * 0.112, 0.088, -0.012);
-    flange.rotation.y = -sx * 0.08;
-    head.add(flange);
-  }
-  /*
-   * The crown SEAM, not a crown cap.
+   * CHEEK PLATES, flaring at the temples.
    *
-   * A 2.8 cm dark block on top of the helmet read as a hat: a separate mass with
-   * its own silhouette, exactly the thing the boxy cranium was meant to stop.
-   * What the sheet actually has up there is a panel line. This is that line —
-   * a 5 mm slab set just into the shell, which also breaks up the one large
-   * unbroken highlight the tapered top face otherwise carries.
+   * The sheet's head is at its WIDEST not at the cranium but at two plates
+   * standing proud of it at eye level, and their outline is what sets head_w.
+   * They stand 7 mm out from the shell at the equator and 9 mm at the corner —
+   * more than the sheet's two pixels, which is deliberate: at the 90 px the
+   * game actually draws him they have to survive as a silhouette notch, and a
+   * temple flare that only exists in the portrait is a triangle wasted.
    */
-  const crownSeam = part(slab(0.1, 0.005, 0.12), panelDark);
-  crownSeam.position.set(0, 0.214, -0.02);
+  for (const sx of [-1, 1] as const) {
+    /*
+     * Rounded on every edge (radius = half the thickness, so the outer face is
+     * a cylinder section). A plate with square corners parks two grey lugs on
+     * the temples like hearing aids; rounded, it reads as armour lying against
+     * the skull, which is what the sheet has.
+     */
+    const plate = part(roundedBox(0.02, 0.1, 0.098, 0.01, 3), grime, scuff(0.4, 43));
+    // Outer face lands exactly on HEAD_W/2, which is what head_w is measured
+    // on. No z-lean: the lean carried the top corner 3 mm further out again
+    // and quietly widened the head past its target.
+    plate.position.set(sx * (HEAD_W / 2 - 0.0118), HEAD_TOP - 0.5 * HEAD_H, 0.008);
+    plate.rotation.y = -sx * 0.07;
+    head.add(plate);
+  }
+
+  /*
+   * THE EYES: two SMALL ROUND AMBER BEADS, SET WIDE.
+   *
+   * Spacing is the measurement that matters and the one that was wrong. The
+   * sheet has the centres 0.400 of head width apart (range 0.395-0.416) on a
+   * head only 0.283 of total width — wide eyes on a narrow skull. The previous
+   * pass had them 2.0 eye-widths apart on a wider head; the sheet's are 3.3
+   * eye-widths apart, and that single number is most of why he did not read as
+   * himself. Diameter is 0.12 of head width, which on the sheet is 4-8 px and
+   * is therefore soft — get the spacing right and the size follows.
+   *
+   * Height is 0.535 of the way from crown to neck, measured on the front panel
+   * (crown row 16, neck row 71, eye centres row 45.4). They are NOT in the
+   * upper third. Rounded to 0.52 here, which is the top of what the pixels
+   * support.
+   *
+   * Each bead is a sphere sunk into a dark lens socket rather than a disc on
+   * the surface: a flat disc on a shell this curved stands 8 mm proud at its
+   * outer edge, and the sheet's eye is plainly a domed lens.
+   */
+  const EYE_X = 0.2 * HEAD_W;
+  const EYE_R = 0.061 * HEAD_W;
+  const EYE_Y = HEAD_TOP - 0.52 * HEAD_H;
+  const eyeV = (HEAD_TOP - EYE_Y) / SKULL_H;
+  const { z: eyeZ, yaw: eyeYaw } = onSkull(eyeV, EYE_X);
+  for (const sx of [-1, 1] as const) {
+    // Socket and bead share one axis at x = EYE_X, so the spacing the sheet
+    // measures is the spacing the render has. Offsetting the bead along the
+    // surface normal instead put it visibly off-centre in its own rim.
+    const socket = part(new THREE.CylinderGeometry(EYE_R * 1.3, EYE_R * 1.22, 0.014, 18).rotateX(Math.PI / 2), grime);
+    socket.position.set(sx * EYE_X, EYE_Y, eyeZ - 0.003);
+    socket.rotation.y = sx * eyeYaw;
+    head.add(socket);
+    const bead = part(new THREE.SphereGeometry(EYE_R, 14, 10), eyeGlow);
+    bead.position.set(sx * EYE_X, EYE_Y, eyeZ - 0.0085);
+    head.add(bead);
+  }
+
+  /*
+   * The crown SEAM. The sheet carries one fine panel line arcing over the top
+   * of the skull; this is it, a 2 mm ring squeezed to the shell's own oval
+   * section so it hugs the dome instead of floating over it.
+   */
+  const seamV = 0.21;
+  const seamHW = sampleRing(SKULL_RINGS, seamV, 1);
+  const crownSeam = part(new THREE.TorusGeometry(seamHW + 0.0012, 0.0017, 5, 32).rotateX(Math.PI / 2), panelDark);
+  crownSeam.scale.z = sampleRing(SKULL_RINGS, seamV, 2) / seamHW;
+  crownSeam.position.set(0, HEAD_TOP - seamV * SKULL_H, sampleRing(SKULL_RINGS, seamV, 3));
   head.add(crownSeam);
 
-  // Jaw: a narrowing block under the cranium with a louvre in its face.
-  const jaw = part(taperedBox(0.152, 0.076, 0.15, 0.03, 3, 1, 1, 0.7, 0.76), panelDark, scuff(0.5, 45));
-  jaw.position.set(0, -0.037, 0.016);
+  /*
+   * THE JAW AND ITS GRILLE.
+   *
+   * Under the shell's bottom lip the sheet has no chin: it has a dark recess
+   * with a mesh panel in it, bracketed either side by two curved mandible
+   * arms, narrowing into the neck column. It is the darkest thing on the robot
+   * and it is what gives the face its expression — a box with five louvre
+   * slats in it, which is what was here, reads as a radiator.
+   */
+  const JAW_TOP = SKULL_BOT + 0.014;
+  const JAW_H = JAW_TOP - HEAD_BOT;
+  const jaw = part(taperedBox(0.168, JAW_H, 0.152, 0.026, 3, 1, 1, 0.5, 0.52), grime, scuff(0.3, 45));
+  jaw.position.set(0, (JAW_TOP + HEAD_BOT) / 2, 0.012);
   head.add(jaw);
-  const mouth = part(slab(0.062, 0.03, 0.012), grime);
-  mouth.position.set(0, -0.03, 0.082);
-  head.add(mouth);
-  for (let i = 0; i < 5; i++) {
-    const tooth = part(slab(0.005, 0.024, 0.008), barrel);
-    tooth.position.set((i - 2) * 0.012, -0.03, 0.088);
-    head.add(tooth);
-  }
+  // The recessed mesh panel, sunk behind the jaw's front face.
+  const grilleY = SKULL_BOT - 0.024;
+  const grilleWellFace = part(roundedBox(0.088, 0.046, 0.016, 0.006, 2), panelDark, scuff(0.35, 46));
+  grilleWellFace.position.set(0, grilleY, 0.06);
+  head.add(grilleWellFace);
+  const mesh = part(meshField(0.078, 0.038, 0.006, 10, 3), barrel, patina(0.55, 47));
+  mesh.position.set(0, grilleY, 0.069);
+  head.add(mesh);
+  // The two mandible brackets, flanking the grille where the sheet's curved
+  // jaw arms are — kept flush and near-black so they frame the mesh instead of
+  // growing a second silhouette off the chin.
   for (const sx of [-1, 1] as const) {
-    const cheek = part(roundedBox(0.026, 0.086, 0.082, 0.012, 2), panel, scuff(0.5, 46));
-    cheek.position.set(sx * 0.082, -0.022, 0.03);
-    cheek.rotation.y = -sx * 0.3;
-    head.add(cheek);
+    const arm = part(roundedBox(0.014, 0.058, 0.044, 0.006, 2), panelDark, scuff(0.45, 48));
+    arm.position.set(sx * 0.055, grilleY - 0.003, 0.05);
+    arm.rotation.z = sx * 0.16;
+    arm.rotation.y = -sx * 0.3;
+    head.add(arm);
   }
+  // A single bright shim under the grille — the sheet's chin plate.
+  const chinPlate = part(slab(0.038, 0.006, 0.022), barrel, patina(0.5, 49));
+  chinPlate.position.set(0, HEAD_BOT + 0.022, 0.04);
+  head.add(chinPlate);
 
   /*
-   * THE NECK: a ribbed concertina column standing in an orange collar ring.
+   * THE COLLAR RING: a THICK DARK RING sitting in the chest opening like a
+   * socket. With the skull, this is the feature that makes him him.
    *
-   * It was a plain barrel with a black gasket, which from any distance was a gap
-   * between the head and the body. The sheet's collar is a raised cup with a
-   * dark segmented column rising out of it; the demo paints the top of that cup
-   * orange. Five ribs is enough to read as bellows at portrait scale and cheap
-   * enough to survive three robots at 60 fps.
+   * On the sheet it is unmissable — a heavy dark torus in a bright turned rim
+   * sunk into the chest, with the neck column disappearing into the middle of
+   * it. What was here was a thin cup with a hairline orange ring on top, which
+   * at any distance was just the gap between the head and the body. The ring
+   * is now 4.8 cm in section on a 17.8 cm outside diameter: nearly two thirds
+   * the width of the head, which is the proportion the sheet shows.
    */
-  const neckCore = part(new THREE.CylinderGeometry(0.034, 0.04, 0.115, 12, 1), grime);
-  neckCore.position.y = 0.022;
-  neck.add(neckCore);
-  for (let i = 0; i < 5; i++) {
-    const rib = part(new THREE.TorusGeometry(0.039 + i * 0.0015, 0.0095, 6, 18), barrel, patina(0.45, 47 + i));
+  // The turned rim of the opening: a bright annulus the dark ring sits inside.
+  const socketRim = part(
+    latheProfile(
+      [
+        [0.058, -0.034],
+        [0.064, -0.014],
+        [0.078, -0.004],
+        [0.098, 0.008],
+        [0.106, 0.002],
+        [0.106, -0.02],
+      ],
+      18,
+      28,
+    ),
+    barrel,
+    patina(0.45, 52),
+  );
+  neck.add(socketRim);
+  // The ring itself, 0.178 across the outside — as wide as the grille it sits
+  // under and two thirds the width of the whole head.
+  const collar = part(new THREE.TorusGeometry(0.065, 0.024, 10, 28), grime, scuff(0.4, 53));
+  collar.rotation.x = Math.PI / 2;
+  collar.position.y = 0.014;
+  neck.add(collar);
+  // A dark floor inside it, so the socket is a hole and not a doughnut lying
+  // on a flat chest.
+  const socketFloor = part(puck(0.064, 0.01, 24), grime);
+  socketFloor.position.y = -0.012;
+  neck.add(socketFloor);
+  // The orange piping stays, on the rim's outer lip where it outlines the
+  // socket instead of competing with the dark ring inside it.
+  const collarTrim = part(new THREE.TorusGeometry(0.1055, 0.0046, 6, 30), trim);
+  collarTrim.rotation.x = Math.PI / 2;
+  collarTrim.position.y = 0.002;
+  neck.add(collarTrim);
+  // Two concertina bands round the neck column, between the jaw and the ring.
+  for (let i = 0; i < 2; i++) {
+    const rib = part(new THREE.TorusGeometry(0.05 - i * 0.003, 0.008, 6, 20), barrel, patina(0.45, 54 + i));
     rib.rotation.x = Math.PI / 2;
-    rib.position.y = 0.068 - i * 0.023;
+    rib.position.y = 0.036 + i * 0.017;
     neck.add(rib);
   }
-  const collar = part(new THREE.TorusGeometry(0.069, 0.017, 8, 22), panelDark, scuff(0.45, 52));
-  collar.rotation.x = Math.PI / 2;
-  collar.position.y = 0.002;
-  neck.add(collar);
-  // The orange ring rides the TOP of the cup, not its waist. Sunk to the chest
-  // line it was swallowed by the chest's own top face from every camera angle
-  // the game actually uses.
-  const collarTrim = part(new THREE.TorusGeometry(0.0735, 0.0062, 6, 24), trim);
-  collarTrim.rotation.x = Math.PI / 2;
-  collarTrim.position.y = 0.014;
-  neck.add(collarTrim);
 
   // Droid's lamp is a pool on the floor around it: anchored at chest height,
   // aimed straight down (+Z of the anchor points at the floor).
@@ -575,9 +914,18 @@ export function buildDroid(): RobotRig {
     const upperMesh = part(new THREE.CylinderGeometry(0.062, 0.05, UPPER_ARM - 0.1, 14, 4), panel, scuff(0.5, 60));
     upperMesh.position.y = -UPPER_ARM / 2;
     upper.add(upperMesh);
-    const upperPlate = part(roundedBox(0.085, 0.2, 0.06, 0.02, 3), panelDark, scuff(0.55, 61));
-    upperPlate.position.set(0, -0.16, 0.035);
+    /*
+     * The upper arm's SHELL PLATE and its lower CUFF.
+     *
+     * What was here was a 20 cm dark box stuck on the front of a cylinder — a
+     * plank, not armour. The sheet's upper arm is a smooth shell with a hard
+     * lower lip and no banding until the elbow; the plate is now shorter, set
+     * close to the shaft and tapered with it, and the cuff is what ends it.
+     */
+    const upperPlate = part(taperedBox(0.088, 0.16, 0.05, 0.018, 3, 0.94, 0.9, 0.86, 0.86), panelDark, scuff(0.55, 61));
+    upperPlate.position.set(0, -0.15, 0.028);
     upper.add(upperPlate);
+    bandStack(upper, -UPPER_ARM + 0.08, -UPPER_ARM + 0.035, 3, 0.053, 0.05, 61);
     // Exposed elbow barrel, then the long forearm.
     const elbow = part(new THREE.CylinderGeometry(0.06, 0.06, 0.125, 16, 2), barrel, patina(0.45, 62));
     elbow.rotation.z = Math.PI / 2;
@@ -589,10 +937,20 @@ export function buildDroid(): RobotRig {
     const foreMesh = part(new THREE.CylinderGeometry(0.055, 0.042, FOREARM - 0.09, 14, 4), panel, scuff(0.5, 63));
     foreMesh.position.y = -FOREARM / 2 - 0.01;
     fore.add(foreMesh);
-    const forePlate = part(roundedBox(0.075, 0.3, 0.055, 0.018, 3), panelDark, scuff(0.55, 64));
-    forePlate.position.set(0, -0.24, 0.028);
+    /*
+     * THE BANDED FOREARM — the one piece of limb detail the sheet insists on.
+     *
+     * Look at the front elevation: the upper half of the forearm is a stack of
+     * fine rings, a dozen of them, like a sleeve of stacked washers, and it
+     * runs all the way round the limb rather than sitting on the front of it.
+     * Seven bands is where the pitch stops reading as stripes and starts
+     * reading as segments at the scale the game draws.
+     */
+    bandStack(fore, -0.065, -0.235, 7, 0.056, 0.05, 64);
+    const forePlate = part(taperedBox(0.072, 0.2, 0.05, 0.016, 3, 0.94, 0.92, 0.82, 0.84), panelDark, scuff(0.55, 65));
+    forePlate.position.set(0, -0.32, 0.024);
     fore.add(forePlate);
-    const foreBand = part(new THREE.TorusGeometry(0.05, 0.01, 8, 20), barrel, patina(0.4, 65));
+    const foreBand = part(new THREE.TorusGeometry(0.05, 0.01, 8, 20), barrel, patina(0.4, 66));
     foreBand.rotation.x = Math.PI / 2;
     foreBand.position.y = -0.36;
     fore.add(foreBand);
@@ -681,9 +1039,16 @@ export function buildDroid(): RobotRig {
     const thighMesh = part(new THREE.CylinderGeometry(0.082, 0.068, THIGH - 0.1, 14, 4), panel, scuff(0.5, 75));
     thighMesh.position.y = -THIGH / 2;
     thigh.add(thighMesh);
-    const thighPlate = part(roundedBox(0.11, 0.26, 0.07, 0.025, 3), panelDark, scuff(0.55, 76));
-    thighPlate.position.set(0, -0.2, 0.038);
+    /*
+     * The thigh gets the same treatment as the upper arm: a tapered shell that
+     * follows the shaft instead of a dark plank laid against it, and a short
+     * band stack where it meets the knee, which is where the sheet's thigh
+     * ends in a ribbed collar.
+     */
+    const thighPlate = part(taperedBox(0.112, 0.21, 0.058, 0.022, 3, 0.96, 0.9, 0.84, 0.84), panelDark, scuff(0.55, 76));
+    thighPlate.position.set(0, -0.19, 0.032);
     thigh.add(thighPlate);
+    bandStack(thigh, -THIGH + 0.085, -THIGH + 0.03, 3, 0.072, 0.068, 76);
 
     // Exposed knee barrel, same stacked-disc construction one size down.
     const kneeBarrel = part(new THREE.CylinderGeometry(0.073, 0.073, 0.13, 16, 1), barrel, patina(0.5, 77));
@@ -705,8 +1070,9 @@ export function buildDroid(): RobotRig {
     const shinMesh = part(new THREE.CylinderGeometry(0.066, 0.05, SHIN - 0.1, 14, 4), panel, scuff(0.5, 79));
     shinMesh.position.y = -SHIN / 2;
     shin.add(shinMesh);
-    const shinPlate = part(roundedBox(0.095, 0.3, 0.06, 0.022, 3), panelDark, scuff(0.55, 80));
-    shinPlate.position.set(0, -0.22, 0.035);
+    bandStack(shin, -0.075, -0.155, 4, 0.062, 0.058, 80);
+    const shinPlate = part(taperedBox(0.094, 0.24, 0.054, 0.02, 3, 0.95, 0.92, 0.8, 0.84), panelDark, scuff(0.55, 81));
+    shinPlate.position.set(0, -0.3, 0.03);
     shin.add(shinPlate);
     const calfCable = part(new THREE.CapsuleGeometry(0.014, SHIN - 0.2, 4, 8), grime);
     calfCable.position.set(side * 0.02, -SHIN / 2, -0.05);
