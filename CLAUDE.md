@@ -19,6 +19,14 @@
 - Robots: Voxxy small/fast (orange beam), Droid tall/deliberate (green pool, climbs Biggy), Biggy
   heavy/inertial (blue flood). Every gate says *why* a robot is blocked, in that robot's voice.
   Appearance must match `robots/*.png` model sheets — non-negotiable, see GAUNTLET.md Stage 1.
+- **Recognisable beats precise.** Michele's standing call when the two pull apart: *"I vote funny,
+  robots must be recognizable."* A feature that makes a robot instantly *him* outranks a ratio
+  measured to three decimals, and a caricatured read of the sheet is welcome where a faithful one
+  would be bland. This does not license drifting off the sheet — the sheet still decides what the
+  robot *is*, and `docs/model-sheet-targets.md` still decides any number we do check. It settles
+  which way to lean inside that, and it is why Droid keeps the hoop shoulders (Michele likes them)
+  while his face must go back to the sheet's rounded skull, because the face is what makes him
+  recognisable and the shoulders are what make him fun.
 - Venue: the real Devoxx plans in `plans/` (first floor rooms 3–10 + closed cinema section;
   ground-floor exhibition hall). Secondary staircases between rooms 3|4 and 10|9; main staircase
   between 6 and 7. Keep these positions exactly — non-negotiable, see GAUNTLET.md Stage 1.
