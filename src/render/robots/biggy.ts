@@ -28,19 +28,43 @@
  * 1.00 (sheet 0.97 — the arms hang OUTSIDE the gut), and the dome 0.80 of the
  * gut (sheet 0.75), so the gut overhangs the helmet all the way round.
  *
- * The rest, in Michele's own priority order:
- *   - the belly: chipped paint over the orange, meridian panel seams, one low
- *     horizontal seam, a cream stencil emblem and a small decal plate — all
- *     painted into one procedurally generated canvas texture, because a
- *     vertex-colour blotch on a 56-column lathe cannot have an edge;
- *   - the helmet: a low riveted steel-blue dome with a FLARED BRIM and a black
- *     gasket band under it, two recessed port lenses, a whip antenna;
- *   - the arms: an angular pauldron cap, a thick cylindrical upper arm, a ring
- *     joint carrying a lens disc, and a blocky grey work glove with four stubby
- *     segmented fingers — not the thin segmented sticks that came before, which
- *     read far too light for a robot whose whole character is inertia;
- *   - the trousers: a blue-grey yoke under the gut with a ribbed hose wrapped
- *     round it, short tapered legs, wide moulded boots with a splayed sole.
+ * THE HELMET, THE ARMS AND THE LEGS COME OFF THE SHEET, NOT OFF THE DEMO.
+ * ----------------------------------------------------------------------
+ * A previous round dressed all three from `reference/organisers-demo` — a
+ * flared cone brim, big pauldron caps, an elbow lens disc, a whip antenna — and
+ * the owner's note was the obvious one: "the helmet is still quite different,
+ * and so arms and legs". None of those four things is on `biggy-robot.png`.
+ * Everything below is measured off the panel labelled FRONT VIEW (r1c0, source
+ * rect 0,512..917,1024; crown at y=585, sole at y=990, so 405 px = 1.45 m and
+ * one source pixel is 3.58 mm). The first, unlabelled 3/4 panel is a different
+ * camera and has misled this file twice; nothing here is measured from it.
+ *
+ * What the front view actually has, top to bottom:
+ *   - a wide, low, flat-crowned blue dome, 0.891 m across by 0.304 tall on the
+ *     sheet (w/h 2.93) — and it is NOT an ellipse cap: its crown is flat out to
+ *     r = 0.245 and its flanks are far straighter than an ellipse's, which is
+ *     why the old sphere cap read as a beanie. It is a lathe through the
+ *     measured rows now;
+ *   - a shallow recessed band cut into the dome's brow, 36 mm tall on the sheet,
+ *     with a bright steel trim edge overhanging it. There is no brim. The
+ *     overhang is the dome's own step;
+ *   - two rounded blue side lobes hanging at 10 and 2 o'clock over the gut's
+ *     shoulders, each with a small orange rivet dot — the most characterful
+ *     thing on the sheet and the thing this model was missing entirely;
+ *   - two concentric-ring lens ports high on the dome's front slope, 0.106 of
+ *     the dome's width across and 0.373 apart (`docs/model-sheet-targets.md`);
+ *   - two flat-topped ribbed fittings on the crown's shoulders;
+ *   - one smooth slab forearm per side, hanging straight down outside the gut,
+ *     with a narrow cuff and a dark hand of four LONG three-segment fingers —
+ *     0.15 m of finger on a 0.40 m arm. No pauldron, no ring joint, no lens;
+ *   - a wide boxy trouser mass nearly as wide as the gut, squared off at the
+ *     bottom, with a dark vented undercut above it, a diagonal wrap fold either
+ *     side and a belt plate low on the front;
+ *   - two short legs set well apart, each a fat concertina, a smaller two-ring
+ *     bellows and a wide grey moulded boot. The whole leg is 0.19 m of his 1.45.
+ *
+ * The belly and its paint are NOT part of that: they were signed off in the
+ * round before this one and are left exactly as they were found.
  *
  * Finish is matte to satin throughout. Biggy is the one robot where gloss would
  * be wrong, so nothing here goes above 0.55 metalness and the painted panels sit
@@ -55,10 +79,10 @@ import {
   clamp,
   disposeTree,
   ellipsoid,
-  excludeFromBounds,
   glowMaterial,
   joint,
   lerp,
+  ovalPatch,
   panelMaterial,
   part,
   puck,
@@ -81,8 +105,13 @@ const HIP_Y = 0.43;
 const TORSO_Y = 0.5;
 const SHOULDER_Y = 0.88;
 const NECK_Y = 1.06;
-/** The dome's base — the helmet is a lid dropped straight onto the belly. */
-const HEAD_Y = 1.13;
+/**
+ * The dome's rim — the helmet is a lid dropped straight onto the belly.
+ *
+ * 1.148 is where the sheet's helmet is widest (source y = 672), which is also
+ * where it stops: the rim is the widest thing on the hat, not a brim below it.
+ */
+const HEAD_Y = 1.148;
 const SHIN = KNEE_Y - ANKLE_Y;
 const THIGH = HIP_Y - KNEE_Y;
 
@@ -109,14 +138,14 @@ function ballR(y: number): number {
  * The circular section is sampled by ANGLE and forced through theta = 0, so the
  * lathe's widest ring is exactly `BELLY_R` and the asserted gut width cannot
  * drift with the sample count. Above and below the cuts the profile closes with
- * a few steep points: they are inside the helmet and inside the trouser yoke
+ * a few steep points: they are inside the helmet and inside the trousers
  * respectively, and the steepness is deliberate — a shallow closure would meet
  * the leg cones almost tangentially, which is precisely the geometry that used
  * to saw the left knee into a row of notches.
  */
 function bellyProfile(): Array<[number, number]> {
   const pts: Array<[number, number]> = [];
-  // Bottom cap, inside the yoke.
+  // Bottom cap, inside the trousers.
   pts.push([0, 0.2455], [0.18, 0.2465], [0.3, 0.2495], [0.348, 0.2525]);
   const t0 = Math.asin((BELLY_CUT_LO - BELLY_CY) / BELLY_R);
   const t1 = Math.asin((BELLY_CUT_HI - BELLY_CY) / BELLY_R);
@@ -153,38 +182,120 @@ function bellyV(y: number): number {
 
 /* --------------------------------------------------------- the helmet */
 
-/** Dome: 0.956 m across = 0.80 of the belly, so the belly overhangs it all round. */
-const HELM_R = 0.478;
-const HELM_H = 0.32;
-/** The brim's outer lip — it stands 4 cm proud of the gasket it shades. */
-const BRIM_R = 0.518;
 /**
- * The black gasket band between the brim and the orange. It follows the ball's
- * own surface plus a millimetre, so it is a collar clamped onto the sphere
- * rather than a hoop hanging in the air near it.
+ * Dome: 0.884 m across, 0.302 tall — w/h 2.93, the sheet's own number.
+ *
+ * Against the gut that is 0.737, and the sheet's is 0.891/1.21 = 0.736. The
+ * build this replaces had 0.956 m of dome (0.80 of the gut) and then hung a
+ * 1.036 m flared brim under it: the dome's own aspect was right, but the brim
+ * was 17% wider than anything on the sheet and added 0.17 m of black skirt and
+ * gasket under it, so the head read as a hat and a half. Narrower and brimless
+ * is the correction — the sheet's helmet is widest at its own rim.
  */
-const GASKET_Y0 = 1.05;
-const GASKET_Y1 = 1.152;
+const HELM_R = 0.442;
+const HELM_H = 0.302;
+/**
+ * The recessed brow band, in dome-local height. 42 mm against the sheet's 36;
+ * the 6 mm buys a 32 mm eye lens instead of a 26 mm one, and 26 mm stops being
+ * a lamp at play scale. See the eyes, below.
+ */
+const BROW_Y0 = 0.048;
+const BROW_Y1 = 0.09;
+/** The groove's floor, 6-8 mm inside the dome's surface at that height. */
+const BROW_R = 0.4;
+
+/**
+ * The dome's lathe profile, `[radius, dome-local y]`, bottom to top.
+ *
+ * Rows 592..673 of the sheet's front view, divided by 1.21 m of sheet gut and
+ * multiplied by our 1.20, with the brow groove cut into the run between 0.041
+ * and 0.093 and a rolled rim added below zero (that part is inside the gut and
+ * only exists so the hat does not end in a visible open edge).
+ *
+ * The thing worth keeping when this is next touched: the flanks between r = 0.24
+ * and r = 0.40 are far straighter than any ellipse through the same two ends,
+ * and that is what makes it a helmet shell rather than a cap. The crown itself
+ * measures almost flat on the sheet — the half-width does not move over four
+ * sampled rows below the apex — but building it that way gave the dome a hard
+ * lid edge that nothing on the sheet has, so the last 30 mm is rounded off and
+ * the flat is left as a tendency rather than a facet.
+ */
+const DOME_PTS: Array<[number, number]> = [
+  [0.352, -0.052],
+  [0.404, -0.03],
+  [0.432, -0.012],
+  [HELM_R, 0.0],
+  [0.436, 0.022],
+  [0.43, 0.041],
+  [BROW_R, BROW_Y0],
+  [0.398, 0.07],
+  [BROW_R, BROW_Y1],
+  [0.409, 0.096],
+  [0.401, 0.11],
+  [0.389, 0.132],
+  [0.376, 0.154],
+  [0.36, 0.176],
+  [0.34, 0.198],
+  [0.317, 0.219],
+  [0.29, 0.24],
+  [0.268, 0.256],
+  [0.243, 0.27],
+  [0.212, 0.282],
+  [0.168, 0.292],
+  [0.105, 0.299],
+  [0, HELM_H],
+];
 
 /* ----------------------------------------------------------- the arms */
 
 /**
- * Thick arms, hung OUTSIDE the gut.
+ * ONE SLAB PER SIDE, hung OUTSIDE the gut.
  *
- * The widest point of the whole figure is the elbow's lens hub at 0.729 out,
- * and the pair sit 0.075 m forward of the belly's axis. Both numbers are there
- * for the same reason: the portrait camera stands 34 degrees off the front,
- * which foreshortens an arm's sideways offset by cos 34 = 0.83 while leaving a
- * solid of revolution exactly as wide as it ever was, so an arm merely level
- * with the belly's edge is BEHIND it from that camera. A test measures the
- * clearance in exactly that projection.
+ * The sheet's arm is a single flat-faced rounded block 0.247 m across hanging
+ * from under the side lobe to below the trousers, a narrow cuff, and then a
+ * long-fingered hand. There is no pauldron and no elbow. `UPPER_ARM` is
+ * therefore only the dark linkage between the shoulder ball and the top of the
+ * slab, and `FOREARM` is the slab itself plus its cuff.
+ *
+ * The pair sit 0.07 m forward of the belly's axis, and the outermost point of
+ * the figure is the cuff at 0.697. Both numbers are there for the same reason:
+ * the portrait camera stands 34 degrees off the front, which foreshortens an
+ * arm's sideways offset by cos 34 = 0.83 while leaving a solid of revolution
+ * exactly as wide as it ever was, so an arm merely level with the belly's edge
+ * is BEHIND it from that camera. A test measures the clearance in exactly that
+ * projection. The sheet puts the slab's outer face at 0.677 and the sim's
+ * collision radius is 0.68; the silhouette band `carries its bulk in the belly`
+ * asserts needs the figure at least 1.348 m across, which puts the arm's outer
+ * face at 0.674 at the very least, so nothing inside the collision radius is
+ * reachable with a slab arm. 0.6905 is where those three pull to.
  */
-const SHOULDER_X = 0.585;
-const SHOULDER_Z = 0.075;
-const UPPER_ARM = 0.28;
-const FOREARM = 0.2;
-const UPPER_R = 0.101;
-const FORE_R = 0.096;
+const SHOULDER_X = 0.568;
+const SHOULDER_Z = 0.07;
+const UPPER_ARM = 0.2;
+const FOREARM = 0.4;
+/** The slab: 0.245 across, 0.21 deep, 0.34 long, then a 0.036 cuff. */
+const FORE_W = 0.245;
+const FORE_D = 0.21;
+const FORE_LEN = 0.34;
+
+/* ------------------------------------------------------------ the legs */
+
+/**
+ * Hip spacing. The sheet's boot centres are 0.253 m either side of the gut's
+ * axis and its boots are 0.207 m wide, so the stance measures 0.677 outer to
+ * outer — 0.503 of the figure's width, which is what
+ * `docs/model-sheet-targets.md` reports for it. 0.255 rather than 0.253 because
+ * our trousers are 0.15 m wider than the sheet's (see them, below) and the legs
+ * have to stay under them rather than under their overhang.
+ */
+const HIP_X = 0.255;
+/** Where the trousers stop and the concertina starts. */
+const LEG_TOP = 0.212;
+/** Where the trousers' own bottom face sits, just inside `LEG_TOP`. */
+const SHORTS_Y0 = 0.205;
+/** How wide they are: 1.00 m, against 1.20 of gut. */
+const SHORTS_HW = 0.5;
+const SHORTS_HD = 0.5;
 
 /* ------------------------------------------------------- paint texture */
 
@@ -383,33 +494,33 @@ function paintTexture(o: PaintOpts): { tex: THREE.CanvasTexture; ctx: CanvasRend
 
 /* ------------------------------------------------------ small geometry */
 
-const _v = new THREE.Vector3();
-const _ctr = new THREE.Vector3();
-const _rad = new THREE.Vector3();
-
 /**
- * A torus whose tube is corrugated along its length — the ribbed hose wrapped
- * round Biggy's waist. `ribs` must be a whole number or the corrugation does not
- * meet itself where the hose closes, and `tubSeg` wants to be four times `ribs`
- * or more: at two segments a rib the corrugation is a triangle wave and the
- * hose's silhouette comes out looking like a tessellation fault, which on this
- * robot is exactly the thing nobody should have to look at twice.
+ * A concertina: a lathe whose profile alternates between a fat ring radius and a
+ * pinched one, `rings` times, over the height `y1 - y0`.
+ *
+ * Straight tapered cones were what Biggy's legs were before, and they are the
+ * one shape that cannot read as a bellows however they are shaded, because a
+ * bellows is entirely silhouette. The pinch is 16% of the ring radius, which is
+ * what the sheet's own leg measures between its widest and narrowest rows.
  */
-function ribbedTorus(major: number, tube: number, ribs: number, depth: number, radSeg = 7, tubSeg = 84): THREE.BufferGeometry {
-  const g = new THREE.TorusGeometry(major, tube, radSeg, tubSeg);
-  const pos = g.getAttribute('position') as THREE.BufferAttribute;
-  for (let i = 0; i < pos.count; i++) {
-    _v.fromBufferAttribute(pos, i);
-    const a = Math.atan2(_v.y, _v.x);
-    _ctr.set(Math.cos(a) * major, Math.sin(a) * major, 0);
-    _rad.copy(_v).sub(_ctr);
-    _rad.multiplyScalar(1 + depth * Math.sin(ribs * a));
-    _v.copy(_ctr).add(_rad);
-    pos.setXYZ(i, _v.x, _v.y, _v.z);
+function bellows(rTop: number, rBot: number, y0: number, y1: number, rings: number): Array<[number, number]> {
+  const pts: Array<[number, number]> = [];
+  const steps = rings * 3;
+  for (let i = 0; i <= steps; i++) {
+    const f = i / steps;
+    const y = y1 + (y0 - y1) * f;
+    const r = rTop + (rBot - rTop) * f;
+    // 0 at a waist, 1 at a ring's fattest — three samples per ring.
+    const k = i % 3;
+    pts.push([r * (k === 1 ? 1 : k === 2 ? 0.965 : 0.84), y]);
   }
-  pos.needsUpdate = true;
-  g.computeVertexNormals();
-  return g;
+  return pts.reverse();
+}
+
+/** A point on the belly's own sphere, `off` metres proud of it. */
+function onBall(theta: number, phi: number, off: number, out = new THREE.Vector3()): THREE.Vector3 {
+  const r = BELLY_R + off;
+  return out.set(r * Math.sin(theta) * Math.sin(phi), BELLY_CY + r * Math.cos(theta), r * Math.sin(theta) * Math.cos(phi));
 }
 
 /** A closed lathe through `[radius, worldY]` control points, hung off a bone at `originY`. */
@@ -505,18 +616,25 @@ export function buildBiggy(): RobotRig {
    * smears. Every small orange trim piece uses this instead.
    */
   const orangeTrim = panelMaterial('#bd6c37', 0.85, { roughness: 0.88, metalness: 0.08 });
+  /*
+   * The trousers. Darker and rustier than the gut on purpose: on the sheet they
+   * are a duller, more oxidised orange than the belly's paint, and against a
+   * 1.20 m ball of the SAME orange a 1.00 m block simply disappears — which is
+   * how the first cut of this shipped a trouser mass nobody could see.
+   */
+  const trouser = panelMaterial('#a35a2f', 0.85, { roughness: 0.92, metalness: 0.07 });
 
   /** The dome's own paint: steel-blue chipping to orange primer and bare steel. */
   const domePaint = paintTexture({
     w: 640,
     h: 200,
     base: '#64788d',
-    chip: '#8a919a',
-    primer: '#966a4c',
+    chip: '#79818c',
+    primer: '#8a6750',
     turnR: HELM_R,
     spanM: 0.55,
     freq: 12,
-    coverage: 0.33,
+    coverage: 0.17,
     seed: 41,
     grime: 0.06,
     capSpan: Math.PI / 2,
@@ -612,227 +730,304 @@ export function buildBiggy(): RobotRig {
    */
 
   /*
-   * Under the gut: the trouser yoke, the ribbed hose and the orange band.
+   * THE TROUSERS: A WIDE BOXY MASS, NOT A YOKE.
    *
-   * The yoke's top rim is 5 cm INSIDE the ball at the height it reaches, so it
-   * disappears into the sphere rather than ending on a visible lip; its bottom
-   * is a near-flat disc, which is what the leg cones pass through. That matters:
-   * a cone through a horizontal plane crosses it at 90 degrees and tessellates
-   * cleanly, where the old skirt met the shins at a few degrees off tangent and
-   * shredded both into the sawtooth that has been sitting on the left knee.
+   * On the sheet this is the biggest single thing under the gut — a squared-off
+   * block 0.849 m across (0.70 of the gut) and 0.21 m deep in height, with a
+   * dark vented undercut above it, a diagonal wrap fold running in from each hip
+   * and a belt plate low on the front. What was here instead was a 0.09 m
+   * lathed collar with a ribbed hose round it, which is the demo's waist, not
+   * this robot's, and the owner read it as "a narrow yoke, far too small".
+   *
+   * WHY OURS IS WIDER THAN THE SHEET'S. The sheet's gut is not quite a ball: it
+   * tucks in below its equator, so the trousers show from 0.42 m up even though
+   * they are narrower than a sphere would be there. Ours IS a ball, and that is
+   * frozen. A 0.849 m block under a true 1.20 m sphere is swallowed whole until
+   * y = 0.26, which leaves 5 cm of trouser. 1.00 m across clears the sphere at
+   * y = 0.408 — the sheet's own height for the top of the block — and that is
+   * the number the sphere chooses for us. 0.83 of the gut instead of 0.70.
    */
-  const YOKE_PTS: Array<[number, number]> = [
-    [0, 0.2325],
-    [0.21, 0.233],
-    [0.32, 0.2355],
-    [0.378, 0.2455],
-    [0.412, 0.261],
-    [0.4255, 0.2785],
-    [0.4265, 0.295],
-    [0.418, 0.3085],
-    [0.4, 0.3185],
-    [0.375, 0.325],
-  ];
-  const yoke = part(lathe(YOKE_PTS, TORSO_Y, 48), armour, wear(0.7, 8));
-  torso.add(yoke);
-
-  /** The orange band round the yoke, where the sheet puts one. */
-  const band = part(
-    new THREE.CylinderGeometry(0.417, 0.387, 0.017, 48, 1, true),
-    orangeTrim,
-    wear(0.8, 9, 7),
-  );
-  band.position.y = 0.255 - TORSO_Y;
-  torso.add(band);
 
   /*
-   * THE RIBBED HOSE.
+   * THE BUMPER LIP.
    *
-   * The single most recognisable thing under the demo's belly: a corrugated hose
-   * lying in the crease where the ball overhangs the trousers. The big one sits
-   * exactly ON the seam where the sphere gives way to the yoke — its inner wall
-   * inside the ball, its outer wall proud of the skirt — so the join between the
-   * two masses is a tube instead of a hard rim. That was the difference between
-   * "a ball resting on a saucer" and the demo's hoop-and-hose assembly.
+   * On the sheet the gut does not fade into the trousers: it ends on a hard,
+   * near-horizontal dark rim at y = 0.42 — a rubber bumper round its underside —
+   * and the trousers start below that. Ours is a true sphere, so without the
+   * rim its bottom just curves away and the whole lower body reads as one
+   * pear-shaped lump with a band painted on it. The torus stands 25 mm proud of
+   * the ball at the height it crosses, which is enough to draw the line and not
+   * enough to widen anything: 0.527 against a gut of 0.600.
    */
-  for (const [hy, major, tube, ribs, depth, seg] of [
-    [0.305, 0.428, 0.036, 30, 0.11, 120],
-    [0.2645, 0.412, 0.019, 24, 0.11, 96],
-  ] as const) {
-    const hose = part(ribbedTorus(major, tube, ribs, depth, 8, seg), armour, wear(0.62, 40));
-    hose.rotation.x = Math.PI / 2;
-    hose.position.y = hy - TORSO_Y;
-    torso.add(hose);
-  }
-  boltRing(torso, steel, {
-    count: 10,
-    radius: 0.4245,
-    y: 0.2835 - TORSO_Y,
-    boltRadius: 0.012,
-    boltHeight: 0.01,
-    phase: 0.31,
-    aimFrom: new THREE.Vector3(0, 0.1 - TORSO_Y, 0),
-  });
-
-  /* ------------------------------------------ gasket band under the brim */
-  // Fixed to the belly, not to the head: the helmet swivels over it.
-  const gasketGeo = new THREE.CylinderGeometry(
-    ballR(GASKET_Y1) + 0.008,
-    ballR(GASKET_Y0) + 0.008,
-    GASKET_Y1 - GASKET_Y0,
-    56,
-    1,
-    true,
-  );
-  const gasket = part(gasketGeo, gasketMat, wear(0.2, 11));
-  gasket.position.y = (GASKET_Y0 + GASKET_Y1) / 2 - TORSO_Y;
-  torso.add(gasket);
-  // A hard lip closing the bottom of the band, so it reads as a clamped collar
-  // and not as a painted stripe.
-  const gasketLip = part(new THREE.TorusGeometry(ballR(GASKET_Y0) + 0.008, 0.012, 8, 56), gasketMat, wear(0.3, 12));
-  gasketLip.rotation.x = Math.PI / 2;
-  gasketLip.position.y = GASKET_Y0 - TORSO_Y;
-  torso.add(gasketLip);
+  const bumper = part(new THREE.TorusGeometry(0.505, 0.023, 9, 56), rubber, wear(0.4, 70));
+  bumper.rotation.x = Math.PI / 2;
+  bumper.position.y = 0.415 - TORSO_Y;
+  torso.add(bumper);
 
   /*
-   * TWO EYES — A DELIBERATE DEVIATION FROM BOTH REFERENCES.
-   *
-   * The sheet's gasket is blank in all nine views and the demo's dome ports are
-   * dead glass. Michele's standing call is that gameplay legibility wins: the
-   * player has to be able to tell at a glance which way the heaviest robot in
-   * the room is facing, and the band is the only face Biggy has. They are built
-   * as proper lamps now — a steel bezel, a dark socket, a small amber lens set
-   * into it — rather than the two flat amber blobs they were, and they are the
-   * only emissive geometry anywhere near his face.
+   * The dark undercut is a SECOND block 3 mm bigger all round, not a band drawn
+   * on the first one, and its corner radius and height are chosen so that its
+   * straight-sided section — the only part of it that is actually 3 mm bigger —
+   * covers the 5 cm between where the gut stops overhanging (y = 0.408) and
+   * where the trousers proper take over (y = 0.357). The first cut of this had
+   * both blocks rounded the same and the dark band never appeared at all: the
+   * undercut was inside its own bottom fillet exactly where it had to show.
    */
-  const EYE_Y = 1.08;
-  const eyeR = ballR(EYE_Y) + 0.008;
-  const eyeTilt = Math.atan2(
-    ballR(GASKET_Y0) - ballR(GASKET_Y1),
-    GASKET_Y1 - GASKET_Y0,
+  const shortsUnder = part(
+    roundedBox(SHORTS_HW * 2 + 0.006, 0.3, SHORTS_HD * 2 + 0.006, 0.08, 3),
+    armourDark,
+    wear(0.55, 8),
   );
-  for (const sx of [-1, 1]) {
-    const azi = sx * 0.3;
-    const ex = Math.sin(azi) * eyeR;
-    const ez = Math.cos(azi) * eyeR;
-    const socketAt = new THREE.Object3D();
-    socketAt.position.set(ex, EYE_Y - TORSO_Y, ez);
-    socketAt.rotation.y = azi;
-    socketAt.rotation.x = Math.PI / 2 - eyeTilt;
-    torso.add(socketAt);
-    const bezel = part(new THREE.TorusGeometry(0.031, 0.01, 8, 22), steel, wear(0.5, 44));
-    bezel.rotation.x = Math.PI / 2;
-    bezel.position.y = 0.004;
-    socketAt.add(bezel);
-    const socket = part(puck(0.031, 0.014, 22), gasketMat);
-    socketAt.add(socket);
-    const lens = part(puck(0.024, 0.018, 22), eyeGlow);
-    lens.position.y = 0.004;
-    socketAt.add(lens);
+  shortsUnder.position.y = 0.45 - TORSO_Y;
+  torso.add(shortsUnder);
+
+  const shortsMain = part(roundedBox(SHORTS_HW * 2, 0.3, SHORTS_HD * 2, 0.08, 3), trouser, wear(0.8, 61, 6));
+  shortsMain.position.y = SHORTS_Y0 + 0.15 - TORSO_Y;
+  torso.add(shortsMain);
+
+  /*
+   * The dark central panel — on the sheet the middle third of the trousers is a
+   * different, darker material from the rusted orange either side of it, and the
+   * wrap folds cross onto it. It is 2 cm deeper than the block so it shows on
+   * the front without z-fighting the face it sits on.
+   */
+  const crotchPanel = part(roundedBox(0.44, 0.3, SHORTS_HD * 2 + 0.018, 0.06, 2), armourDark, wear(0.5, 62));
+  crotchPanel.position.y = SHORTS_Y0 + 0.15 - TORSO_Y;
+  torso.add(crotchPanel);
+
+  /*
+   * THE DIAGONAL WRAP FOLDS.
+   *
+   * Two raised ridges running in and down from the hips to meet over the belt
+   * plate, like a cloth wrap crossed over itself. They are the one thing that
+   * stops the trousers reading as a plain box, and they are unmistakable on the
+   * sheet — a bright fold line with a dark crease under it on each side.
+   */
+  for (const side of [1, -1] as const) {
+    const fold = part(roundedBox(0.44, 0.03, 0.05, 0.013, 2), trouser, wear(0.6, 63));
+    fold.position.set(side * 0.225, 0.316 - TORSO_Y, SHORTS_HD - 0.004);
+    fold.rotation.z = side * 0.22;
+    torso.add(fold);
+    const crease = part(roundedBox(0.44, 0.016, 0.05, 0.007, 2), armourDark, wear(0.5, 64));
+    crease.position.set(side * 0.225, 0.298 - TORSO_Y, SHORTS_HD - 0.005);
+    crease.rotation.z = side * 0.22;
+    torso.add(crease);
   }
 
-  // Biggy's lamp: the wide blue flood, out of the gasket band.
-  const lampAnchor = new THREE.Object3D();
-  lampAnchor.name = 'lamp';
-  lampAnchor.position.set(0, EYE_Y - TORSO_Y, eyeR);
-  torso.add(lampAnchor);
+  /** The belt plate: a blue rectangle low and dead centre. */
+  const belt = part(roundedBox(0.26, 0.085, 0.06, 0.02, 2), armourDark, wear(0.45, 65));
+  belt.position.set(0, 0.255 - TORSO_Y, SHORTS_HD - 0.006);
+  torso.add(belt);
+
+  /** Vent slots in the undercut, where the sheet has three of them. */
+  for (const vx of [-0.14, 0, 0.14]) {
+    const vent = part(roundedBox(0.1, 0.026, 0.03, 0.008, 1), rubber);
+    vent.position.set(vx, 0.382 - TORSO_Y, SHORTS_HD);
+    torso.add(vent);
+  }
+
+  /* ------------------------------------------ the helmet/belly seam ring */
+  /*
+   * A THIN dark ring in the crease where the hat meets the gut — the black line
+   * the sheet draws there, and nothing more. What this replaces was a 0.10 m
+   * black cylinder wrapped round the ball, which is how Biggy came to be wearing
+   * a tray across his face; the recessed band that the eyes now live in belongs
+   * to the HELMET, up in its brow, and is a third of that tall.
+   */
+  const SEAM_Y0 = 1.116;
+  const SEAM_Y1 = 1.15;
+  const seamRing = part(
+    new THREE.CylinderGeometry(ballR(SEAM_Y1) + 0.006, ballR(SEAM_Y0) + 0.006, SEAM_Y1 - SEAM_Y0, 56, 1, true),
+    gasketMat,
+    wear(0.2, 11),
+  );
+  seamRing.position.y = (SEAM_Y0 + SEAM_Y1) / 2 - TORSO_Y;
+  torso.add(seamRing);
+
+  /*
+   * THE SIDE LOBES.
+   *
+   * Rounded blue flaps at 10 and 2 o'clock, hanging from under the helmet's rim
+   * down over the gut's shoulders, each carrying a small orange rivet dot. They
+   * were missing altogether, and on the sheet they are the single most
+   * characterful thing about him after the gut itself: from the front they read
+   * as ears, from three quarters as shoulder guards.
+   *
+   * Measured off the front view: the blue runs from source y 668 to 748 (world
+   * 1.15 down to 0.86) and the orange dot sits at x = -0.537, y = 0.924, which
+   * on the gut's own sphere is theta 1.25, phi 71 degrees. They are patches of
+   * the gut's OWN sphere rather than slabs bolted near it, so they lie down on
+   * the shoulder the way the sheet's do instead of standing off it — 12 mm
+   * proud, with a darker patch 8 mm below that for the rim. The first cut stood
+   * them 22 mm off and the unbacked patch edge threw a shadow gap: from three
+   * quarters the lobe read as a disc on a spacer.
+   */
+  const LOBE_THETA = 1.08;
+  const LOBE_PHI = 1.24;
+  for (const side of [1, -1] as const) {
+    const back = part(
+      ovalPatch(0.6035, 0.6035, 0.6035, side * LOBE_PHI, 0.4, LOBE_THETA + 0.05, 0.345, 7, 26),
+      armourDark,
+      wear(0.5, 66),
+    );
+    back.position.y = BELLY_CY - TORSO_Y;
+    torso.add(back);
+    const lobe = part(
+      ovalPatch(0.612, 0.612, 0.612, side * LOBE_PHI, 0.36, LOBE_THETA + 0.05, 0.325, 7, 26),
+      armour,
+      wear(0.6, 67),
+    );
+    lobe.position.y = BELLY_CY - TORSO_Y;
+    torso.add(lobe);
+
+    const dotAt = new THREE.Object3D();
+    const outward = onBall(1.225, side * 1.29, 0).sub(new THREE.Vector3(0, BELLY_CY, 0)).normalize();
+    onBall(1.225, side * 1.29, 0.011, dotAt.position);
+    dotAt.position.y -= TORSO_Y;
+    dotAt.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), outward);
+    torso.add(dotAt);
+    const dot = part(puck(0.03, 0.016, 18), orangeTrim, wear(0.7, 68, 7));
+    dotAt.add(dot);
+  }
 
   /* ------------------------------------------------------- helmet (head) */
-  const domeR = (y: number): number => HELM_R * Math.sqrt(Math.max(0, 1 - (y / HELM_H) ** 2));
-  const domeY = (r: number): number => HELM_H * Math.sqrt(Math.max(0, 1 - (r / HELM_R) ** 2));
+  /** The dome's radius at a dome-local height, read off its own lathe profile. */
+  const domeR = (y: number): number => {
+    for (let i = 1; i < DOME_PTS.length; i++) {
+      if (y <= DOME_PTS[i][1]) {
+        const [r0, y0] = DOME_PTS[i - 1];
+        const [r1, y1] = DOME_PTS[i];
+        return y1 === y0 ? r1 : r0 + ((r1 - r0) * (y - y0)) / (y1 - y0);
+      }
+    }
+    return 0;
+  };
 
-  const domeGeo = new THREE.SphereGeometry(1, 48, 22, 0, Math.PI * 2, 0, Math.PI / 2);
-  domeGeo.scale(HELM_R, HELM_H, HELM_R);
-  const dome = part(domeGeo, domeMat, domePaint ? shading(13) : wear(0.55, 13, 4));
+  const dome = part(lathe(DOME_PTS, 0, 56), domeMat, domePaint ? shading(13) : wear(0.55, 13, 4));
   head.add(dome);
   parts.headShell = dome;
 
   /*
-   * THE FLARED BRIM.
+   * THE BROW: a shallow recessed band with a bright steel trim edge over it.
    *
-   * The thing the old helmet most obviously lacked. On both references the dome
-   * does not simply stop: it ends in a skirt that kicks outward and overhangs
-   * the gasket by a good four centimetres, throwing a hard shadow across the
-   * band. A cone plus a lip torus is all it takes, and it changes the whole read
-   * of the head from "sphere cap" to "hat".
+   * On the sheet this is 36 mm of shadow between a light edge line above and the
+   * dome's own lower lip below — a groove, not a visor, and certainly not the
+   * flared cone this file used to carry. The groove is cut into the lathe
+   * profile (`BROW_R`), a dark cylinder fills its floor, and the trim is one
+   * thin steel torus standing 7 mm proud of the dome above it, which is what
+   * throws the shadow.
    */
-  const brim = part(
-    new THREE.CylinderGeometry(domeR(0.1075) + 0.004, BRIM_R, 0.115, 56, 1, true),
-    armourDark,
-    wear(0.5, 14),
+  const browBand = part(
+    new THREE.CylinderGeometry(BROW_R + 0.005, BROW_R + 0.005, BROW_Y1 - BROW_Y0 - 0.004, 56, 1, true),
+    gasketMat,
+    wear(0.25, 12),
   );
-  brim.position.y = 0.05;
-  head.add(brim);
-  const brimLip = part(new THREE.TorusGeometry(BRIM_R, 0.016, 9, 56), rubber, wear(0.45, 15));
-  brimLip.rotation.x = Math.PI / 2;
-  brimLip.position.y = -0.0075;
-  head.add(brimLip);
-  // A riveted seam round the dome just above the brim — the sheet has one and so
-  // does the demo, and it is what makes the dome read as beaten plate.
-  const seam = part(
-    new THREE.CylinderGeometry(domeR(0.152) + 0.004, domeR(0.11) + 0.005, 0.045, 56, 1, true),
-    armour,
-    wear(0.5, 45),
-  );
-  seam.position.y = 0.131;
-  head.add(seam);
+  browBand.position.y = (BROW_Y0 + BROW_Y1) / 2;
+  head.add(browBand);
+  const trim = part(new THREE.TorusGeometry(0.406, 0.007, 8, 56), steel, wear(0.45, 14));
+  trim.rotation.x = Math.PI / 2;
+  trim.position.y = BROW_Y1 + 0.004;
+  head.add(trim);
+  const browLip = part(new THREE.TorusGeometry(0.424, 0.008, 8, 56), armour, wear(0.5, 15));
+  browLip.rotation.x = Math.PI / 2;
+  browLip.position.y = BROW_Y0 - 0.006;
+  head.add(browLip);
+
+  /*
+   * TWO AMBER EYES IN THE BROW — A DELIBERATE DEVIATION FROM THE SHEET.
+   *
+   * `docs/model-sheet-targets.md` §4a is explicit that Biggy's front elevation
+   * has no lit eyes; Michele's standing call from an earlier round is that
+   * gameplay legibility wins, because the player has to be able to tell at a
+   * glance which way the heaviest robot in the room is facing. What the sheet
+   * DOES have, at exactly the place an eye would go, is a pair of small bright
+   * dots in the brow band, directly under the two lens ports and 0.161 m either
+   * side of the axis. The eyes go there, at that spacing.
+   *
+   * They are 32 mm lenses in a 42 mm band rather than the 48 mm lenses in a
+   * 102 mm band they were. That band is 6 mm taller than the sheet's 36 mm, and
+   * the 6 mm is the whole of the compromise: at the sheet's exact height the
+   * lens is 26 mm and stops being a lamp.
+   */
+  const EYE_PHI = Math.asin(0.161 / (BROW_R + 0.005));
+  const EYE_Y = (BROW_Y0 + BROW_Y1) / 2;
+  for (const sx of [-1, 1]) {
+    const azi = sx * EYE_PHI;
+    const socketAt = new THREE.Object3D();
+    socketAt.position.set(Math.sin(azi) * (BROW_R + 0.003), EYE_Y, Math.cos(azi) * (BROW_R + 0.003));
+    socketAt.rotation.y = azi;
+    socketAt.rotation.x = Math.PI / 2;
+    head.add(socketAt);
+    const bezel = part(new THREE.TorusGeometry(0.019, 0.006, 7, 18), steel, wear(0.5, 44));
+    bezel.rotation.x = Math.PI / 2;
+    bezel.position.y = 0.004;
+    socketAt.add(bezel);
+    const lens = part(puck(0.016, 0.014, 18), eyeGlow);
+    lens.position.y = 0.005;
+    socketAt.add(lens);
+  }
+
+  // Biggy's lamp: the wide blue flood, out of the brow band.
+  const lampAnchor = new THREE.Object3D();
+  lampAnchor.name = 'lamp';
+  lampAnchor.position.set(0, EYE_Y, BROW_R + 0.02);
+  head.add(lampAnchor);
+
+  /*
+   * A rivet line round the dome's flank, where the sheet has one, and nothing
+   * else: no brim, no skirt, no second cone. The dome's own step at the brow is
+   * the whole of the overhang.
+   */
   boltRing(head, steel, {
-    count: 16,
-    radius: 0.428,
-    y: domeY(0.428) - 0.004,
-    boltRadius: 0.011,
-    boltHeight: 0.009,
-    phase: 0.196,
-    aimFrom: new THREE.Vector3(0, -0.3, 0),
+    count: 18,
+    radius: 0.412,
+    y: 0.108,
+    boltRadius: 0.008,
+    boltHeight: 0.006,
+    phase: 0.174,
+    aimFrom: new THREE.Vector3(0, -0.25, 0),
   });
-  boltRing(head, steel, {
-    count: 6,
-    radius: 0.3,
-    y: domeY(0.3) - 0.006,
-    boltRadius: 0.018,
-    boltHeight: 0.014,
-    phase: 0.42,
-    aimFrom: new THREE.Vector3(0, 0, 0),
-  });
-  // The crown hatch the demo carries at the top of the dome.
-  const crownHatch = part(roundedBox(0.11, 0.024, 0.155, 0.01, 2), armour, wear(0.5, 46));
-  crownHatch.position.set(0.035, HELM_H - 0.023, -0.075);
-  head.add(crownHatch);
 
   /*
    * THE PAIRED FRONT PORT LENSES.
    *
-   * In all nine views of the sheet and on the demo's dome: two deeply recessed
-   * circular ports side by side on the dome's front-upper face. They are what
-   * makes the helmet read as *Biggy's* helmet. Each sits on the dome's own
-   * surface normal, and each is now a real lens stack — steel collar, bright
-   * inner ring, dark glass, a small boss behind it — rather than the flat dark
-   * plug it used to be.
+   * Two concentric-ring lens fittings high on the dome's front slope. Measured
+   * on the front view they are 0.106 of the dome's width across, centres 0.373
+   * of it apart (`docs/model-sheet-targets.md` §4a, and both numbers hold across
+   * a threshold sweep) — so 94 mm across and 165 mm either side of the axis on
+   * our 884 mm dome. The stack this replaces was drawn to the demo's scale and
+   * came out a fifth too big in every ring.
+   *
+   * Each sits on the dome's own surface normal, taken from the lathe profile
+   * rather than from an ellipse, because the dome is no longer an ellipse.
    */
-  const PORT_Y = 0.195;
-  const PORT_AZI = 0.48;
+  const PORT_Y = 0.168;
   const portUp = new THREE.Vector3(0, 1, 0);
   for (const sx of [-1, 1]) {
     const pr = domeR(PORT_Y);
-    const px = sx * pr * Math.sin(PORT_AZI);
-    const pz = pr * Math.cos(PORT_AZI);
+    const azi = Math.asin(Math.min(1, 0.165 / pr));
+    const px = sx * pr * Math.sin(azi);
+    const pz = pr * Math.cos(azi);
+    // The surface normal: the profile's outward normal, swung round to `azi`.
+    const slope = (domeR(PORT_Y + 0.02) - domeR(PORT_Y - 0.02)) / 0.04;
+    const nr = 1 / Math.hypot(1, slope);
     const port = new THREE.Object3D();
     port.position.set(px, PORT_Y, pz);
     port.quaternion.setFromUnitVectors(
       portUp,
-      new THREE.Vector3(px / (HELM_R * HELM_R), PORT_Y / (HELM_H * HELM_H), pz / (HELM_R * HELM_R)).normalize(),
+      new THREE.Vector3(sx * nr * Math.sin(azi), -slope * nr, nr * Math.cos(azi)).normalize(),
     );
     head.add(port);
-    const collar = part(new THREE.CylinderGeometry(0.081, 0.09, 0.05, 28), armour, wear(0.5, 16));
-    collar.position.y = -0.014;
+    const collar = part(new THREE.CylinderGeometry(0.047, 0.052, 0.034, 24), armour, wear(0.5, 16));
+    collar.position.y = -0.011;
     port.add(collar);
-    const ringMesh = part(new THREE.TorusGeometry(0.073, 0.018, 10, 30), rubber, wear(0.4, 17));
+    const ringMesh = part(new THREE.TorusGeometry(0.04, 0.009, 9, 26), rubber, wear(0.4, 17));
     ringMesh.rotation.x = Math.PI / 2;
-    ringMesh.position.y = 0.014;
+    ringMesh.position.y = 0.01;
     port.add(ringMesh);
-    const inner = part(new THREE.TorusGeometry(0.056, 0.008, 8, 26), steel, wear(0.4, 47));
+    const inner = part(new THREE.TorusGeometry(0.028, 0.006, 8, 22), steel, wear(0.4, 47));
     inner.rotation.x = Math.PI / 2;
-    inner.position.y = 0.01;
+    inner.position.y = 0.009;
     port.add(inner);
     /*
      * The well. An open-ended cylinder would be the honest way to cut one, but
@@ -840,43 +1035,43 @@ export function buildBiggy(): RobotRig {
      * photographed as an empty outline. A dark glass plug set below the ring
      * gives the same read from every angle the diorama camera can reach.
      */
-    const well = part(new THREE.CylinderGeometry(0.058, 0.05, 0.036, 26), glass);
-    well.position.y = -0.002;
+    const well = part(new THREE.CylinderGeometry(0.03, 0.026, 0.024, 22), glass);
+    well.position.y = 0.001;
     port.add(well);
-    const boss = part(new THREE.CylinderGeometry(0.022, 0.026, 0.026, 12), steel, wear(0.5, 19));
-    boss.position.y = -0.014;
+    const boss = part(new THREE.CylinderGeometry(0.011, 0.013, 0.02, 10), steel, wear(0.5, 19));
+    boss.position.y = 0.009;
     port.add(boss);
   }
 
-  // The small nubs at the dome's sides, between the ports and the brim.
-  for (const sx of [-1, 1]) {
-    const ny = 0.115;
-    const nub = part(roundedBox(0.07, 0.065, 0.125, 0.026, 2), armour, wear(0.55, 20));
-    nub.position.set(sx * (domeR(ny) - 0.01), ny, -0.02);
-    nub.rotation.z = -sx * 0.2;
-    head.add(nub);
-    const nubTip = part(roundedBox(0.03, 0.05, 0.11, 0.014, 2), orangeTrim, wear(0.75, 21, 7));
-    nubTip.position.set(sx * (domeR(ny) + 0.021), ny + 0.003, -0.02);
-    nubTip.rotation.z = -sx * 0.2;
-    head.add(nubTip);
-  }
-
   /*
-   * The whip antenna. It stays out of the measured silhouette — it is a wire,
-   * not the top of his head, and `ROBOT_HEIGHT_M.biggy` is asserted against that
-   * silhouette — and it is short enough to stay inside the portrait's margin.
+   * THE CROWN FITTINGS.
+   *
+   * The sheet has two small flat-topped ribbed nubs on the crown's shoulders,
+   * 0.218 m either side of the axis, and a hair-thin wire between them. The
+   * wire is two pixels on a 2752-px sheet and invisible at play scale; what
+   * stood here instead was a 0.17 m whip off the organisers' demo, which is the
+   * silhouette of a different robot. The nubs stay, the whip goes, and the pilot
+   * lamp that used to sit on the whip's tip moves onto the left-hand nub — the
+   * side the sheet's own wire rises from.
    */
-  const antenna = joint(bones, head, 'antenna', 0.115, domeY(0.15) - 0.01, -0.075);
-  antenna.rotation.set(-0.05, 0, -0.04);
-  const whip = part(new THREE.CylinderGeometry(0.0022, 0.0055, 0.17, 5), rubber);
-  whip.position.y = 0.085;
-  antenna.add(excludeFromBounds(whip));
-  const whipTip = part(ellipsoid(0.009, 0.012, 0.009, 8, 6), pilotGlow);
-  whipTip.position.y = 0.172;
-  antenna.add(excludeFromBounds(whipTip));
-  const antennaBase = part(new THREE.CylinderGeometry(0.016, 0.021, 0.03, 10), steel, wear(0.4, 22));
-  antennaBase.position.y = 0.01;
-  antenna.add(antennaBase);
+  for (const sx of [-1, 1]) {
+    const nx = sx * 0.218;
+    const ny = 0.278;
+    const nub = part(new THREE.CylinderGeometry(0.028, 0.031, 0.038, 14), armourDark, wear(0.5, 46));
+    nub.position.set(nx, ny, 0);
+    head.add(nub);
+    for (let i = 0; i < 3; i++) {
+      const rib = part(new THREE.TorusGeometry(0.029, 0.0035, 6, 14), steel, wear(0.4, 69));
+      rib.rotation.x = Math.PI / 2;
+      rib.position.set(nx, ny - 0.011 + i * 0.01, 0);
+      head.add(rib);
+    }
+    if (sx < 0) {
+      const pilot = part(ellipsoid(0.01, 0.007, 0.01, 10, 8), pilotGlow);
+      pilot.position.set(nx, ny + 0.021, 0);
+      head.add(pilot);
+    }
+  }
 
   /*
    * A vestigial neck collar: the helmet is fused to the belly, so this only ever
@@ -898,202 +1093,163 @@ export function buildBiggy(): RobotRig {
     const hand = joint(bones, fore, `hand${L}`, 0, -FOREARM, 0);
 
     /*
-     * THE PAULDRON — an angular cap, not a pad.
+     * THE SHOULDER LINKAGE — a ball and a dark stub, and no pauldron.
      *
-     * The build before this hung a 13 cm slab off each shoulder and called it an
-     * arm. On both references the shoulder is a big bevelled blue cap that rises
-     * nearly to the gasket line and clearly carries the arm's weight; everything
-     * about Biggy is inertia, and an arm that looks light undoes that in one
-     * glance. Three stacked boxes with a small corner radius give the bevelled,
-     * faceted read the demo's fin has without a lathe's cost.
+     * The sheet has nothing on the shoulder at all: under the side lobe there is
+     * a small dark joint, and then the slab. The three-box bevelled cap that
+     * used to sit here is the organisers' demo's, and it is a big enough shape
+     * to change the whole upper silhouette — which is exactly what the owner was
+     * looking at when he said the arms were still wrong.
      */
-    const capMain = part(roundedBox(0.215, 0.23, 0.25, 0.05, 3), armour, wear(0.6, 24));
-    capMain.position.set(0, 0.025, -0.008);
-    shoulder.add(capMain);
-    const capTop = part(roundedBox(0.178, 0.075, 0.205, 0.045, 2), armour, wear(0.55, 48));
-    capTop.position.set(-side * 0.008, 0.145, -0.008);
-    capTop.rotation.z = side * 0.14;
-    shoulder.add(capTop);
-    const capLip = part(roundedBox(0.2, 0.05, 0.225, 0.02, 2), armourDark, wear(0.65, 49));
-    capLip.position.set(0, -0.1, -0.008);
-    shoulder.add(capLip);
-    const capFlash = part(roundedBox(0.032, 0.05, 0.1, 0.014, 2), orangeTrim, wear(0.75, 25, 7));
-    capFlash.position.set(side * 0.1, 0.06, 0.055);
-    shoulder.add(capFlash);
-
-    /* A thick cylindrical upper arm, capped so it does not end in a flat disc. */
-    const upperMesh = part(
-      new THREE.CylinderGeometry(UPPER_R, UPPER_R * 1.035, UPPER_ARM - 0.02, 24, 1),
-      armour,
-      wear(0.6, 26),
-    );
-    upperMesh.position.y = -UPPER_ARM / 2 + 0.03;
-    upper.add(upperMesh);
-    const upperCap = part(ellipsoid(UPPER_R - 0.004, 0.05, UPPER_R - 0.004, 20, 10), armour, wear(0.55, 50));
-    upperCap.position.y = 0.01;
-    upper.add(upperCap);
+    const ball = part(ellipsoid(0.082, 0.092, 0.094, 18, 12), rubber, darkWear(0.4, 24));
+    // Pulled 75 mm INBOARD of its own bone, so the side lobe covers it. On the
+    // sheet the linkage is a glimpse under the lobe, not a shoulder.
+    ball.position.x = -side * 0.075;
+    shoulder.add(ball);
 
     /*
-     * THE RING JOINT, with the lens disc the demo carries on the outside of it.
+     * The stub between the ball and the slab: a dark block a little narrower and
+     * a lot shallower than the slab, mostly hidden behind the side lobe.
      *
-     * The first cut of this was a fat torus round the elbow with a second torus
-     * stood on edge beside it, and from three-quarters the pair read as a
-     * carabiner clipped to a handlebar — two rings and daylight through both.
-     * A short collar with a solid lens cup let into its outer face says
-     * "articulated joint" instead, which is what the demo's says.
+     * The sheet wants it narrower still — above y = 0.70 its arm is entirely
+     * behind the gut — but `hangs its arms outside the gut from the portrait
+     * camera` measures every mesh on the arm chain in a 34-degree projection and
+     * demands 15 mm of daylight, and at shoulder height the gut is 0.582 m
+     * against the 0.568 the arm hangs at. 0.19 clears by 26 mm; anything narrow
+     * enough to hide fails. A tapered eight-sided version of this passed the
+     * test too and read as a lampshade, which is worse than a nick of daylight.
      */
-    const elbowCollar = part(
-      new THREE.CylinderGeometry(UPPER_R + 0.014, UPPER_R + 0.014, 0.062, 26, 1),
-      armourDark,
-      wear(0.5, 27),
-    );
-    fore.add(elbowCollar);
-    const lensAt = new THREE.Object3D();
-    lensAt.position.set(side * (UPPER_R + 0.004), 0, 0);
-    lensAt.rotation.z = -side * (Math.PI / 2);
-    fore.add(lensAt);
-    const lensCup = part(new THREE.CylinderGeometry(0.046, 0.05, 0.022, 24), steel, wear(0.4, 51));
-    lensCup.position.y = 0.011;
-    lensAt.add(lensCup);
-    const lensGlass = part(puck(0.036, 0.02, 24), glass);
-    lensGlass.position.y = 0.015;
-    lensAt.add(lensGlass);
-    const lensHub = part(puck(0.013, 0.016, 12), steel, wear(0.4, 52));
-    lensHub.position.y = 0.013;
-    lensAt.add(lensHub);
+    const stub = part(roundedBox(0.19, 0.215, 0.17, 0.05, 2), armourDark, wear(0.55, 26));
+    stub.position.y = -0.1;
+    upper.add(stub);
 
-    const foreMesh = part(
-      new THREE.CylinderGeometry(FORE_R, FORE_R * 1.04, FOREARM + 0.04, 22, 1),
-      armour,
-      wear(0.62, 28),
-    );
-    foreMesh.position.y = -FOREARM / 2 + 0.025;
-    fore.add(foreMesh);
-    const cuff = part(new THREE.CylinderGeometry(FORE_R * 1.1, FORE_R * 1.06, 0.035, 22), armourDark, wear(0.6, 53));
-    cuff.position.y = -FOREARM + 0.018;
+    /*
+     * ONE SMOOTH SLAB.
+     *
+     * A rounded rectangular block with flat faces, hanging straight down beside
+     * the gut, with a narrow cuff band at the bottom. No ring joint and no lens
+     * disc: both came off the demo, and the lens hub was also the widest point
+     * on the whole robot, which is a poor thing for a detail nobody can name to
+     * be. On the sheet the slab is 0.247 m across and 0.34 long, and the arm's
+     * outer face is the figure's own silhouette for most of its length.
+     */
+    const slab = part(roundedBox(FORE_W, FORE_LEN, FORE_D, 0.07, 3), armour, wear(0.62, 28));
+    slab.position.y = -FORE_LEN / 2;
+    fore.add(slab);
+    const cuff = part(roundedBox(FORE_W + 0.008, 0.036, FORE_D + 0.008, 0.016, 2), armourDark, wear(0.6, 53));
+    cuff.position.y = -FORE_LEN - 0.014;
     fore.add(cuff);
 
     /*
-     * A WORK GLOVE, NOT A CLAW.
+     * FOUR LONG THREE-SEGMENT FINGERS.
      *
-     * A blocky grey hand with four stubby segmented fingers in a row and a
-     * thumb block — the demo's hand, and the one part of Biggy that has to look
-     * like it could pick up a flight case. The old four-pronged claw with cone
-     * tips read as a bird's foot at play scale.
+     * The single biggest difference on the sheet's arm: the hand is a dark grey
+     * claw of four thin multi-segmented fingers hanging open and slightly
+     * curled, and they are LONG — 0.15 m on a 0.40 m arm, a bit over a third of
+     * it. What was here was four stubby two-segment slabs on a blocky glove,
+     * which reads as a mitten, and a thumb, which the sheet does not have.
      */
-    const palm = part(roundedBox(0.15, 0.1, 0.15, 0.028, 3), gloveMat, darkWear(0.35, 29));
-    palm.position.y = -0.045;
+    const palm = part(roundedBox(0.155, 0.058, 0.152, 0.024, 3), gloveMat, darkWear(0.35, 29));
+    palm.position.y = -0.01;
     hand.add(palm);
-    const knuckle = part(roundedBox(0.155, 0.036, 0.158, 0.015, 2), armourDark, darkWear(0.4, 54));
-    knuckle.position.y = -0.092;
+    const knuckle = part(roundedBox(0.163, 0.02, 0.16, 0.008, 2), armourDark, darkWear(0.4, 54));
+    knuckle.position.y = -0.05;
     hand.add(knuckle);
     for (let i = 0; i < 4; i++) {
-      const fz = -0.0495 + i * 0.033;
       const finger = new THREE.Object3D();
-      finger.position.set(0, -0.108, fz);
-      finger.rotation.x = 0.08 * (i - 1.5);
+      finger.position.set(side * (0.05 - 0.033 * i), -0.058, -0.036 + i * 0.024);
+      // Fanned front to back, splayed sideways, and hanging a little open.
+      finger.rotation.x = 0.12 * (i - 1.5);
+      finger.rotation.z = side * (0.26 - 0.15 * i);
       hand.add(finger);
       bones[`finger${L}${i}`] = finger;
-      const seg1 = part(roundedBox(0.105, 0.05, 0.0295, 0.012, 2), gloveMat, darkWear(0.3, 30));
-      seg1.position.y = -0.026;
-      finger.add(seg1);
-      const seg2 = part(roundedBox(0.095, 0.045, 0.028, 0.013, 2), gloveMat, darkWear(0.3, 55));
-      seg2.position.y = -0.07;
-      finger.add(seg2);
+      for (let k = 0; k < 3; k++) {
+        const seg = part(
+          roundedBox(0.034 - k * 0.003, 0.05, 0.034 - k * 0.003, 0.01, 2),
+          gloveMat,
+          darkWear(0.3, 30 + k),
+        );
+        // Each joint curls a touch further, so the hand hangs open, not straight.
+        seg.position.set(0, -0.029 - k * 0.054, k * 0.009);
+        seg.rotation.x = -0.14 * k;
+        finger.add(seg);
+      }
     }
-    const thumb = new THREE.Object3D();
-    thumb.position.set(-side * 0.078, -0.07, 0.03);
-    thumb.rotation.set(0.15, 0, side * 0.85);
-    hand.add(thumb);
-    const thumbSeg = part(roundedBox(0.05, 0.075, 0.05, 0.018, 2), gloveMat, darkWear(0.3, 31));
-    thumbSeg.position.y = -0.036;
-    thumb.add(thumbSeg);
 
     // Hung straight down against the belly, with only the smallest splay.
-    shoulder.rotation.z = side * 0.025;
-    shoulder.rotation.x = -0.035;
+    shoulder.rotation.z = side * 0.012;
+    shoulder.rotation.x = -0.03;
   }
 
   /* ----------------------------------------------------------------- legs */
   for (const side of [1, -1] as const) {
     const L = side > 0 ? 'L' : 'R';
-    const hip = joint(bones, pelvis, `hip${L}`, side * 0.19, 0, 0);
+    const hip = joint(bones, pelvis, `hip${L}`, side * HIP_X, 0, 0);
     const thigh = joint(bones, hip, `thigh${L}`, 0, 0, 0);
     const shin = joint(bones, thigh, `shin${L}`, 0, -THIGH, 0);
     const foot = joint(bones, shin, `foot${L}`, 0, -SHIN, 0);
 
     /*
-     * Everything above the yoke's flat underside at y = 0.233 is hidden inside
-     * it, so the thigh and the knee only have to exist, not to be pretty. What
-     * shows is the short tapered cone below, and the boot.
+     * Everything above the trousers' flat underside at y = 0.205 is hidden
+     * inside them, so the thigh and the knee only have to exist, not to be
+     * pretty. What shows is 0.19 m of leg: a fat concertina, a smaller two-ring
+     * bellows and a boot, which is what the sheet gives him and about an eighth
+     * of his height.
      */
-    const hipBall = part(ellipsoid(0.105, 0.1, 0.105, 16, 12), armourDark, wear(0.55, 32));
+    const hipBall = part(ellipsoid(0.115, 0.108, 0.115, 16, 12), armourDark, wear(0.55, 32));
     hip.add(hipBall);
     const thighMesh = part(new THREE.CylinderGeometry(0.108, 0.118, THIGH, 18, 1), armourDark, wear(0.6, 33));
     thighMesh.position.y = -THIGH / 2;
     thigh.add(thighMesh);
-    const kneeBall = part(ellipsoid(0.1, 0.092, 0.1, 16, 10), armourDark, wear(0.4, 34));
+    const kneeBall = part(ellipsoid(0.104, 0.095, 0.104, 16, 10), armourDark, wear(0.4, 34));
     shin.add(kneeBall);
 
     /*
-     * THE SAWTOOTH, AND WHERE IT CAME FROM.
+     * FAT CONCERTINAS, NOT THIN CONES.
      *
-     * The left knee carried a row of triangular notches, invisible at the
-     * shipped 34-degree portrait angle and obvious in a level front elevation.
-     * It was not shading: it was the 36-segment skirt cone and the 20-segment
-     * shin cylinder crossing each other a couple of degrees off tangent, so the
-     * intersection curve wandered in and out between two coarse tessellations
-     * and z-fighting drew the difference. Nothing about that is fixable by
-     * nudging a radius — the two surfaces have to stop grazing. They do now:
-     * the shin is a cone of revolution that passes through the yoke's FLAT
-     * underside at very nearly a right angle, and no other surface comes near it.
+     * The sheet's leg is a stack of three bellows rings 0.197 m across, widest
+     * at the top, then a narrower two-ring bellows, then the boot. Ours were
+     * 0.21 m tapered cones with three loose tori hung on them — the right
+     * diameter and entirely the wrong shape, because a bellows is all
+     * silhouette and a cone has none. Both stacks are lathes through a pinched
+     * profile now, so the concertina is in the outline rather than drawn on it.
+     *
+     * The short plain cylinder above them is inside the trousers. It is there
+     * because the shin's own shell has to reach up and touch the thigh's, and a
+     * test says so after a round shipped Biggy's bellows floating beside a leg
+     * that was not there.
      */
-    const shinMesh = part(new THREE.CylinderGeometry(0.118, 0.096, SHIN + 0.06, 22, 1), armour, wear(0.6, 35));
-    shinMesh.position.y = -SHIN / 2 + 0.03;
-    shin.add(shinMesh);
-    /*
-     * Ribbed bellows on the ankle, where the sheet has them. Each ring's major
-     * radius is the CONE'S OWN radius at that height plus 4 mm, so the tube
-     * crosses the leg's surface square-on instead of skimming along it.
-     */
-    const coneR = (y: number): number => 0.096 + ((y - 0.13) / 0.2) * 0.022;
-    for (let i = 0; i < 3; i++) {
-      const ry = 0.205 - i * 0.025;
-      const ring = part(new THREE.TorusGeometry(coneR(ry) + 0.004, 0.014, 7, 22), rubber);
-      ring.rotation.x = Math.PI / 2;
-      ring.position.y = ry - KNEE_Y;
-      shin.add(ring);
-    }
+    const shinTop = part(new THREE.CylinderGeometry(0.1, 0.104, KNEE_Y - LEG_TOP + 0.02, 20, 1), armourDark, wear(0.5, 35));
+    shinTop.position.y = -(KNEE_Y - LEG_TOP) / 2 + 0.01;
+    shin.add(shinTop);
+    const bigBellows = part(lathe(bellows(0.106, 0.096, 0.117, LEG_TOP, 2), KNEE_Y, 28), armour, wear(0.62, 36));
+    shin.add(bigBellows);
+
+    const smallBellows = part(lathe(bellows(0.086, 0.08, 0.076, 0.119, 2), ANKLE_Y, 24), rubber, darkWear(0.4, 37));
+    foot.add(smallBellows);
 
     /*
-     * WIDE MOULDED BOOTS WITH A SPLAYED SOLE.
+     * A WIDE MOULDED BOOT WITH A SPLAYED SOLE.
      *
-     * The demo's boots are mid-grey mouldings with a rounded, oversized sole
-     * that spreads past the upper on every side — the visual reason a heavy
-     * robot looks planted. Ours were dark blocks standing on a flat tray. The
-     * sole's underside is exactly y = 0, which the "stands on the floor" test
-     * measures to a centimetre.
+     * Mid-grey, 0.205 m across and 0.077 tall — the sheet's boot, which is
+     * barely wider than the concertina above it and nothing like the 0.30 m
+     * slab on a 0.355 m tray that was here. That tray is also why the stance
+     * measured right while the legs looked wrong: the boots were doing the work
+     * the hip spacing should have been doing. The hips are 0.24 m apart now, so
+     * the stance is still the sheet's 0.68 m with the boots at the sheet's size.
+     *
+     * The sole's underside is exactly y = 0, which the "stands on the floor"
+     * test measures to a centimetre.
      */
-    const ankleCuff = part(new THREE.CylinderGeometry(0.104, 0.118, 0.045, 22), bootMat, wear(0.5, 37));
-    ankleCuff.position.y = 0.012;
-    foot.add(ankleCuff);
-    const bootBody = part(roundedBox(0.255, 0.115, 0.29, 0.055, 4), bootMat, wear(0.55, 38));
-    bootBody.position.set(0, -0.045, 0.022);
+    const bootBody = part(roundedBox(0.218, 0.062, 0.25, 0.034, 3), bootMat, wear(0.55, 38));
+    bootBody.position.set(0, 0.052 - ANKLE_Y, 0.015);
     foot.add(bootBody);
-    const bootToe = part(roundedBox(0.225, 0.075, 0.115, 0.035, 3), bootMat, wear(0.6, 56));
-    bootToe.position.set(0, -0.075, 0.135);
+    const bootToe = part(roundedBox(0.188, 0.046, 0.108, 0.022, 3), bootMat, wear(0.6, 56));
+    bootToe.position.set(0, 0.033 - ANKLE_Y, 0.136);
     foot.add(bootToe);
-    const sole = part(roundedBox(0.3, 0.05, 0.355, 0.024, 3), soleMat, wear(0.5, 39));
-    sole.position.set(0, -0.105, 0.025);
+    const sole = part(roundedBox(0.23, 0.032, 0.275, 0.014, 3), soleMat, wear(0.5, 39));
+    sole.position.set(0, 0.016 - ANKLE_Y, 0.02);
     foot.add(sole);
-    boltRing(foot, steel, {
-      count: 4,
-      radius: 0.1,
-      y: 0.028,
-      boltRadius: 0.011,
-      boltHeight: 0.009,
-      phase: 0.5,
-    });
   }
 
   assertBones('biggy', bones);
@@ -1171,20 +1327,31 @@ function drawBellyDecals(ctx: CanvasRenderingContext2D, w: number, h: number): v
   ctx.beginPath();
   ctx.arc(0, 0, 0.86, 0, Math.PI * 2);
   ctx.stroke();
+  /*
+   * The glyph is "ii", not a face.
+   *
+   * Cropping the sheet's emblem at eight times scale (source 380,680..470,770)
+   * it is two lower-case i's: a short square tittle, a gap, then a longer stem
+   * with a rounded foot — the ring is a good deal wider than they are tall, and
+   * the bar this used to draw underneath them, which turned the whole thing into
+   * a neutral smiley, is not on the sheet at all. Six marks instead of three.
+   */
   ctx.fillStyle = 'rgba(232,225,209,0.9)';
   ctx.lineCap = 'round';
-  ctx.lineWidth = 0.17;
+  ctx.lineWidth = 0.19;
   ctx.strokeStyle = 'rgba(232,225,209,0.9)';
-  for (const sx of [-0.27, 0.27]) {
+  for (const sx of [-0.23, 0.23]) {
+    // The tittle.
     ctx.beginPath();
-    ctx.moveTo(sx, -0.34);
-    ctx.lineTo(sx, -0.06);
+    ctx.moveTo(sx, -0.44);
+    ctx.lineTo(sx, -0.33);
+    ctx.stroke();
+    // The stem.
+    ctx.beginPath();
+    ctx.moveTo(sx, -0.14);
+    ctx.lineTo(sx, 0.4);
     ctx.stroke();
   }
-  ctx.beginPath();
-  ctx.moveTo(-0.33, 0.33);
-  ctx.lineTo(0.33, 0.33);
-  ctx.stroke();
   ctx.restore();
 
   /* the small rectangular decal plate, up and to the viewer's left of it */
