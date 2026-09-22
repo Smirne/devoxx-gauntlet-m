@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { H, W } from '../src/sim/constants';
 import { CY0, CY1, F1, R, rooms } from '../src/sim/geometry';
 import { PX_PER_M, STOREY_H_M } from '../src/sim/units';
+import { DIORAMA_ELEVATIONS_DEG, dioramaToCameraAtDeg } from '../src/render/camera';
 import { buildVenue, simToWorld, type Venue } from '../src/render/venue/index';
 
 const DEVOXX_TOP = [10, 9, 8, 7];
@@ -213,10 +214,152 @@ describe('signage', () => {
       const p = sign.getWorldPosition(new THREE.Vector3());
       expect(p.x).toBeGreaterThan(simToWorld(r.x, 0, 'up').x);
       expect(p.x).toBeLessThan(simToWorld(r.x + r.w, 0, 'up').x);
-      // On the corridor wall, within half a metre of the band edge it belongs to.
+
+      // On its own room's frontage, within the thickness of that wall plus the
+      // depth of the panel let into it. The two rows are NOT symmetric: a far
+      // room's panel reads off the corridor face, a near room's off the
+      // camera-facing return of the same panel, because the fixed camera can
+      // only ever see one of those two surfaces. So the side is asserted as well
+      // as the distance — a near panel that drifted onto the corridor face would
+      // pass a bare distance check while being invisible all game.
       const wall = simToWorld(0, r.side < 0 ? CY0 : CY1, 'up').z;
-      expect(Math.abs(p.z - wall)).toBeLessThan(0.5);
+      expect(Math.abs(p.z - wall)).toBeLessThan(0.7);
+      // ...and on the +z side of that plane either way, which is the side the
+      // fixed camera looks at. A panel that drifted onto the other face would
+      // still pass a bare distance check while being invisible all game.
+      expect(p.z, `zaal ${n} sits on the blind face of its wall`).toBeGreaterThanOrEqual(wall);
     }
+  });
+
+  /*
+   * THE SIGNAGE HALF OF THE STAGE 1 PASS CONDITION, ASSERTED GEOMETRICALLY.
+   *
+   * "Numbered Zaal signage must be visible in-scene" (GAUNTLET.md Stage 1) had
+   * been checked by eye, and by eye it kept passing while the build was failing:
+   * the far wall's numerals lost their top third to the corridor soffit, room 7's
+   * sat behind the tensile canopy, and all four near-wall panels were built
+   * facing away from the only camera the game has. Screenshots are how that gets
+   * noticed; this is how it stops coming back.
+   *
+   * Two properties, per room, per chapter pitch:
+   *   (a) the panel's bounding box is not intersected by anything overhead;
+   *   (b) the numeral faces the camera, and a ray from anywhere on it toward the
+   *       camera leaves the venue without hitting anything.
+   */
+  describe('the numerals are legible from the diorama camera', () => {
+    /** Sample points across a sign's face, in world space. */
+    function facePoints(face: THREE.Mesh, steps = 6): THREE.Vector3[] {
+      const geo = face.geometry as THREE.PlaneGeometry;
+      const { width, height } = geo.parameters;
+      face.updateWorldMatrix(true, false);
+      const out: THREE.Vector3[] = [];
+      for (let i = 0; i <= steps; i++) {
+        for (let j = 0; j <= steps; j++) {
+          out.push(
+            new THREE.Vector3((-0.5 + i / steps) * width * 0.98, (-0.5 + j / steps) * height * 0.98, 0.004)
+              .applyMatrix4(face.matrixWorld),
+          );
+        }
+      }
+      return out;
+    }
+
+    /** The first thing between a sign's face and the camera, if there is one. */
+    function firstBlocker(face: THREE.Mesh, toCam: THREE.Vector3): string | null {
+      const ray = new THREE.Raycaster();
+      ray.far = 400;
+      for (const p of facePoints(face)) {
+        ray.set(p, toCam);
+        const hit = ray
+          .intersectObject(venue.floor1, true)
+          .find((h) => h.object !== face && h.distance > 0.02);
+        if (hit) return `${hit.object.name || hit.object.parent?.name || 'unnamed'} at y=${hit.point.y.toFixed(2)}`;
+      }
+      return null;
+    }
+
+    it('faces every Zaal numeral toward the camera, never away from it', () => {
+      const normal = new THREE.Vector3();
+      for (const deg of DIORAMA_ELEVATIONS_DEG) {
+        const toCam = dioramaToCameraAtDeg(deg);
+        for (const n of DEVOXX) {
+          const face = venue.group.getObjectByName(`zaal-face-${n}`) as THREE.Mesh;
+          expect(face, `no numeral face for room ${n}`).toBeDefined();
+          face.updateWorldMatrix(true, false);
+          normal.set(0, 0, 1).transformDirection(face.matrixWorld).normalize();
+          // Square-on is 1 and edge-on is 0; anything at or below 0 is a sign
+          // painted on the back of a wall.
+          expect(normal.dot(toCam), `zaal ${n} faces away from the camera at ${deg}°`).toBeGreaterThan(0.5);
+        }
+      }
+    });
+
+    it('keeps the soffit and everything else overhead out of every panel\'s box', () => {
+      const overhead = venue.floor1.getObjectByName('overhead') as THREE.Object3D;
+      expect(overhead, 'no overhead group').toBeDefined();
+      const ceiling: Array<{ name: string; box: THREE.Box3 }> = [];
+      overhead.traverse((o) => {
+        if (o instanceof THREE.Mesh) {
+          ceiling.push({ name: o.name || o.parent?.name || 'overhead', box: new THREE.Box3().setFromObject(o) });
+        }
+      });
+      expect(ceiling.length).toBeGreaterThan(0);
+
+      for (const n of DEVOXX) {
+        const panel = venue.group.getObjectByName(`zaal-sign-${n}`) as THREE.Object3D;
+        const box = new THREE.Box3().setFromObject(panel);
+        for (const c of ceiling) {
+          expect(
+            box.intersectsBox(c.box),
+            `zaal ${n}'s panel (y ${box.min.y.toFixed(2)}..${box.max.y.toFixed(2)}) is cut by "${c.name}"`,
+          ).toBe(false);
+        }
+      }
+    });
+
+    it('leaves a clear line from every Zaal numeral to the camera, at every chapter pitch', () => {
+      for (const deg of DIORAMA_ELEVATIONS_DEG) {
+        const toCam = dioramaToCameraAtDeg(deg);
+        for (const n of DEVOXX) {
+          const face = venue.group.getObjectByName(`zaal-face-${n}`) as THREE.Mesh;
+          const blocker = firstBlocker(face, toCam);
+          expect(blocker, `zaal ${n} is hidden behind ${blocker} at ${deg}°`).toBeNull();
+        }
+      }
+    });
+
+    it('does the same for the blue Dutch wayfinding signs, both of them', () => {
+      for (const name of ['wayfinding-top', 'wayfinding-bottom']) {
+        const face = venue.group.getObjectByName(name) as THREE.Mesh;
+        expect(face, `missing ${name}`).toBeDefined();
+        for (const deg of DIORAMA_ELEVATIONS_DEG) {
+          const toCam = dioramaToCameraAtDeg(deg);
+          face.updateWorldMatrix(true, false);
+          const normal = new THREE.Vector3(0, 0, 1).transformDirection(face.matrixWorld).normalize();
+          expect(normal.dot(toCam), `${name} faces away at ${deg}°`).toBeGreaterThan(0.5);
+          const blocker = firstBlocker(face, toCam);
+          expect(blocker, `${name} is hidden behind ${blocker} at ${deg}°`).toBeNull();
+        }
+      }
+    });
+
+    it('makes the numeral panel, not the blank poster box, the dominant colour block', () => {
+      for (const n of DEVOXX) {
+        const panel = new THREE.Box3().setFromObject(
+          venue.group.getObjectByName(`zaal-face-${n}`) as THREE.Object3D,
+        );
+        const poster = new THREE.Box3().setFromObject(
+          venue.group.getObjectByName(`poster-box-${n}`) as THREE.Object3D,
+        );
+        const ps = panel.getSize(new THREE.Vector3());
+        const bs = poster.getSize(new THREE.Vector3());
+        // Frontal area, which is what "reads as a colour block from down the
+        // corridor" means once both are square to the same camera.
+        expect(ps.x * ps.y, `zaal ${n}'s numeral is smaller than its poster box`).toBeGreaterThan(
+          bs.x * bs.y * 1.5,
+        );
+      }
+    });
   });
 
   it('carries the Devoxx-flavour signs the brief asks for', () => {

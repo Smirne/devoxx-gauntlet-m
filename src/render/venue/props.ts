@@ -38,6 +38,19 @@ import type { VenuePalette } from './materials';
 
 /** Interior partitions, cut for the sectional camera. */
 export const WALL_H = 2.45;
+/**
+ * The corridor's **near** wall — the one between the fixed camera and the
+ * corridor — is cut lower still, to a parapet.
+ *
+ * At `WALL_H` it hid the corridor floor, the main staircase (the venue's
+ * signature image, which only ever showed in the top-down debug view) and every
+ * robot walking the near half of the corridor. Cutting the near side lower is the
+ * standard diorama move and it costs nothing: the wall is a sim collider, and the
+ * sim does not care how tall the renderer draws it.
+ */
+export const NEAR_CUT_H = 1.15;
+/** The pale cap laid on that cut, so it reads as a section rather than a stump. */
+export const NEAR_CAP_T = 0.09;
 /** The outer shell stands a little proud of the partitions. */
 export const SHELL_H = 3.3;
 /** Counters, seat rows, desks and sponsor tables — the sim's `low` walls. */

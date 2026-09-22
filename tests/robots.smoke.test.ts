@@ -39,6 +39,50 @@ function widthOf(o: THREE.Object3D): number {
   return measureBounds(o).getSize(new THREE.Vector3()).x;
 }
 
+/**
+ * Where an arm is fattest, as a fraction of its own length from the shoulder,
+ * and how fat it is there.
+ *
+ * Every vertex of every mesh hanging off the upper arm and forearm is projected
+ * onto the shoulder-to-hand axis; the answer is the largest perpendicular radius
+ * and where along the arm it occurs. This is the measurement that tells a
+ * bowling pin (widest low) from a carrot (widest at the shoulder).
+ */
+function armSwell(rig: RobotRig): { radius: number; at: number; slices: number[] } {
+  rig.root.updateMatrixWorld(true);
+  const shoulder = new THREE.Vector3().setFromMatrixPosition(rig.bones.shoulderL.matrixWorld);
+  const hand = new THREE.Vector3().setFromMatrixPosition(rig.bones.handL.matrixWorld);
+  const axis = hand.clone().sub(shoulder);
+  const len = axis.length();
+  axis.normalize();
+  const v = new THREE.Vector3();
+  const foot = new THREE.Vector3();
+  let radius = 0;
+  let at = 0;
+  /** Max radius in each tenth of the arm, shoulder to hand. */
+  const slices = new Array<number>(10).fill(0);
+  for (const bone of [rig.bones.upperArmL, rig.bones.forearmL]) {
+    for (const child of bone.children) {
+      if (!(child instanceof THREE.Mesh)) continue;
+      const pos = child.geometry.getAttribute('position') as THREE.BufferAttribute;
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(child.matrixWorld).sub(shoulder);
+        const t = v.dot(axis);
+        if (t < 0 || t > len) continue;
+        const r = foot.copy(axis).multiplyScalar(t).sub(v).length();
+        const f = t / len;
+        if (r > radius) {
+          radius = r;
+          at = f;
+        }
+        const sl = Math.min(9, Math.floor(f * 10));
+        if (r > slices[sl]) slices[sl] = r;
+      }
+    }
+  }
+  return { radius, at, slices };
+}
+
 describe('robot rigs build', () => {
   for (const kind of KINDS) {
     it(`${kind} builds and disposes without throwing`, () => {
@@ -78,6 +122,59 @@ describe('robot rigs build', () => {
 });
 
 describe('Voxxy reads as Voxxy', () => {
+  /*
+   * THE HEADLINE PROPORTION: Voxxy is squat, wide and chunky.
+   *
+   * The model sheet's front view is 642 px tall against 418 wide — an aspect of
+   * 1.54. A build measured at 2.01 read as a lanky generic robot, and every other
+   * fidelity problem on him was easier to see once that was fixed. His height is
+   * frozen by ROBOT_HEIGHT_M, so the only way to hold this ratio is to keep him
+   * as wide as the sheet is.
+   */
+  it('is as squat as the model sheet — aspect near 1.54, nowhere near 2', () => {
+    const rig = createRobot('voxxy');
+    const s = silhouette(rig);
+    const aspect = s.h / s.w;
+    expect(aspect, `voxxy aspect ${aspect.toFixed(3)}`).toBeGreaterThan(1.35);
+    expect(aspect, `voxxy aspect ${aspect.toFixed(3)}`).toBeLessThan(1.75);
+    rig.dispose();
+  });
+
+  /*
+   * The head sits ALMOST DIRECTLY on the shoulders: the sheet's neck is an 18 px
+   * stub against a 395 px head, 4.6% of the head's width. A build at 21% was the
+   * second-biggest reason he read as lanky.
+   */
+  it('has a neck stub, not a stalk — under 8% of the head width', () => {
+    const rig = createRobot('voxxy');
+    const head = measureBounds(rig.parts.headShell);
+    const torso = measureBounds(rig.parts.torsoShell);
+    const neck = head.min.y - torso.max.y;
+    const headW = head.max.x - head.min.x;
+    expect(neck).toBeGreaterThan(0);
+    expect(neck / headW, `neck ${(neck / headW).toFixed(3)} of head width`).toBeLessThan(0.08);
+    rig.dispose();
+  });
+
+  /*
+   * The arms are BOWLING PINS: thin at the shoulder, swelling to their widest at
+   * about three-quarters of the way down, where the white bands wrap them. A
+   * build that tapered the other way — widest under the shoulder — was the
+   * clearest single error on the model.
+   */
+  it('has arms that swell downward, widest well below mid-length', () => {
+    const rig = createRobot('voxxy');
+    const swell = armSwell(rig);
+    expect(swell.at, `arm widest at ${(swell.at * 100).toFixed(0)}% down`).toBeGreaterThan(0.6);
+    expect(swell.at).toBeLessThan(0.95);
+    // And the taper runs the right way the whole length: the arm is thicker in
+    // its last third than in its first, by a margin no sculpt tweak can blur.
+    const upper = Math.max(swell.slices[1], swell.slices[2]);
+    const lower = Math.max(swell.slices[6], swell.slices[7]);
+    expect(lower, `upper arm ${upper.toFixed(3)} vs club ${lower.toFixed(3)}`).toBeGreaterThan(upper * 1.5);
+    rig.dispose();
+  });
+
   it('has a head clearly wider than its body', () => {
     const rig = createRobot('voxxy');
     const head = widthOf(rig.bones.head);
@@ -140,6 +237,39 @@ describe('Biggy reads as Biggy', () => {
     expect(bellyR).toBeGreaterThan(headR);
     // And the belly is most of the robot.
     expect(bellyR * 2).toBeGreaterThan(silhouette(rig).h * 0.6);
+    rig.dispose();
+  });
+
+  /*
+   * THE BELLY IS THE SILHOUETTE.
+   *
+   * On the sheet's front view the widest thing about Biggy is 0.98 of his own
+   * height, and it is his gut. A build whose belly was 0.70 of its height had
+   * given that bulk away to the arms and the helmet, and stopped being Biggy.
+   */
+  it('carries its bulk in the belly — belly width over 0.9 of total height', () => {
+    const rig = createRobot('biggy');
+    const s = silhouette(rig);
+    const belly = widthOf(rig.parts.bellyShell);
+    expect(belly / s.h, `belly ${(belly / s.h).toFixed(3)} of height`).toBeGreaterThan(0.9);
+    // Nothing else may be wider: the arms hang inside the gut's own width.
+    expect(s.w, `silhouette ${s.w.toFixed(3)} vs belly ${belly.toFixed(3)}`).toBeLessThan(belly * 1.06);
+    rig.dispose();
+  });
+
+  /*
+   * A HUGE GUT UNDER A SMALLER TIN HAT.
+   *
+   * Dome width over belly width is 283/375 = 0.75 on the sheet. Both are circles
+   * in plan, so neither foreshortens and this is a direct comparison — which is
+   * what made a build at 0.96 so plainly wrong: the belly no longer overhung the
+   * helmet at all.
+   */
+  it('wears a helmet three quarters the width of its belly', () => {
+    const rig = createRobot('biggy');
+    const ratio = widthOf(rig.parts.headShell) / widthOf(rig.parts.bellyShell);
+    expect(ratio, `dome/belly ${ratio.toFixed(3)}`).toBeGreaterThan(0.68);
+    expect(ratio, `dome/belly ${ratio.toFixed(3)}`).toBeLessThan(0.84);
     rig.dispose();
   });
 });

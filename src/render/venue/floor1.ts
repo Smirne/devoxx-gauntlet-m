@@ -27,6 +27,8 @@ import {
   DOOR_H,
   GLASS_H,
   LOW_H,
+  NEAR_CAP_T,
+  NEAR_CUT_H,
   SHELL_H,
   WALL_H,
   anchorAt,
@@ -39,6 +41,7 @@ import {
   stairFlight,
   tensileTree,
 } from './props';
+import { zaalPosterX } from './signage';
 
 /* ------------------------------------------------------- auditorium layout */
 
@@ -54,6 +57,16 @@ const AISLES: ReadonlyArray<readonly [number, number]> = [
 /** Seat block extent, measured from the screen wall — design doc: "seat blocks y 140–270". */
 const SEAT_FRONT_PX = 70;
 const SEAT_BACK_PX = 200;
+/**
+ * Clear standing room between the back row and the corridor wall, sim px.
+ *
+ * The plan's shallow houses — 3, 7 and 10 at 179–184 px deep — are shallower than
+ * `SEAT_BACK_PX`, so the back rows were laid out *through* the corridor wall and
+ * out into the corridor. From the diorama camera that put a raked step and a row
+ * of seat backs in front of the Zaal 7 and Zaal 10 numeral panels, which is how
+ * a seating constant ends up failing a signage check.
+ */
+const SEAT_CONCOURSE_PX = 52;
 const ROW_PITCH_PX = 18;
 const SEAT_PITCH_PX = 14;
 /** How far the back row sits above the front row. Cinema rake, cut for the diorama. */
@@ -80,7 +93,10 @@ function screenEdge(r: RoomDef): { y: number; inward: 1 | -1 } {
 /* ------------------------------------------------------------------- walls */
 
 /** Which palette entry and height a sim wall slab is drawn with. */
-function wallStyle(w: Wall, p: VenuePalette): { mat: THREE.MeshStandardMaterial; height: number } {
+function wallStyle(
+  w: Wall,
+  p: VenuePalette,
+): { mat: THREE.MeshStandardMaterial; height: number; cap?: boolean } {
   if (w.glass) return { mat: p.glassPane, height: GLASS_H };
   if (w.low) return { mat: p.counterTop, height: LOW_H };
 
@@ -89,8 +105,12 @@ function wallStyle(w: Wall, p: VenuePalette): { mat: THREE.MeshStandardMaterial;
   if (isShell) return { mat: p.shell, height: SHELL_H };
 
   // The two long corridor walls are the only T-thin slabs sitting on the band edges.
-  const isCorridor = w.h === T && (w.y === CY0 - T || w.y === CY1);
-  if (isCorridor) return { mat: p.corridorWall, height: WALL_H };
+  if (w.h === T && w.y === CY0 - T) return { mat: p.corridorWall, height: WALL_H };
+  // The NEAR one is cut to a parapet: it stands between the fixed camera and the
+  // corridor, and at full height it hid the corridor floor, both robots walking
+  // it and the main staircase — the venue's signature image, which until now only
+  // ever appeared in the top-down debug view. See `NEAR_CUT_H`.
+  if (w.h === T && w.y === CY1) return { mat: p.corridorWall, height: NEAR_CUT_H, cap: true };
 
   const f = F1.foyer;
   const touchesFoyer =
@@ -109,7 +129,8 @@ function wallStyle(w: Wall, p: VenuePalette): { mat: THREE.MeshStandardMaterial;
  */
 function seating(r: RoomDef, p: VenuePalette): THREE.Object3D[] {
   const { y: far, inward } = screenEdge(r);
-  const rowCount = Math.floor((SEAT_BACK_PX - SEAT_FRONT_PX) / ROW_PITCH_PX) + 1;
+  const back = Math.min(SEAT_BACK_PX, r.h - SEAT_CONCOURSE_PX);
+  const rowCount = Math.floor((back - SEAT_FRONT_PX) / ROW_PITCH_PX) + 1;
 
   // Seat blocks, in sim x, with the two aisles cut out.
   const blocks: Array<[number, number]> = [];
@@ -184,11 +205,18 @@ function seating(r: RoomDef, p: VenuePalette): THREE.Object3D[] {
 function doorway(r: RoomDef, p: VenuePalette, overhead: THREE.Group): THREE.Group {
   const g = new THREE.Group();
   const d = roomDoor(r);
-  const wallY = r.side < 0 ? CY0 - T : CY1;
+  const far = r.side < 0;
+  const wallY = far ? CY0 - T : CY1;
   const jamb = 5;
-  g.add(slab({ x: d.cx - DOOR / 2 - jamb, y: wallY, w: jamb, h: T }, 0, DOOR_H + 0.12, p.doorFrame));
-  g.add(slab({ x: d.cx + DOOR / 2, y: wallY, w: jamb, h: T }, 0, DOOR_H + 0.12, p.doorFrame));
-  overhead.add(slab({ x: d.cx - DOOR / 2, y: wallY, w: DOOR, h: T }, DOOR_H, WALL_H - DOOR_H, p.corridorWall));
+  // Near-side jambs follow the parapet the near wall is cut to: a full-height
+  // frame standing on a 1.15 m wall would be the tallest thing between the camera
+  // and the corridor, which is the one thing the cutaway exists to avoid.
+  const jambH = far ? DOOR_H + 0.12 : NEAR_CUT_H + NEAR_CAP_T + 0.1;
+  g.add(slab({ x: d.cx - DOOR / 2 - jamb, y: wallY, w: jamb, h: T }, 0, jambH, p.doorFrame));
+  g.add(slab({ x: d.cx + DOOR / 2, y: wallY, w: jamb, h: T }, 0, jambH, p.doorFrame));
+  if (far) {
+    overhead.add(slab({ x: d.cx - DOOR / 2, y: wallY, w: DOOR, h: T }, DOOR_H, WALL_H - DOOR_H, p.corridorWall));
+  }
   return g;
 }
 
@@ -376,23 +404,73 @@ function corridorDressing(p: VenuePalette, overhead: THREE.Group): THREE.Group {
     g.add(boxAt(x, CY1 - 11, 16, 16, 0, 0.52, p.corridorColumn));
   }
 
-  // Vaults: pale bands tilted up off the columns, springing toward the centre.
-  for (const side of [-1, 1] as const) {
-    const y = side < 0 ? CY0 + 16 : CY1 - 16;
-    const vault = slab({ x: 0, y: y - 6, w: W, h: 12 }, 2.5, 0.9, p.corridorVault);
-    vault.rotation.x = side < 0 ? -0.7 : 0.7;
-    overhead.add(vault);
-  }
+  // The vault: one pale plate springing off the far wall head and raking up over
+  // the corridor — image-1790032669312.webp.
+  //
+  // It used to be a 0.9 x 0.96 m bar floating a metre and a half *out* in the
+  // corridor at 2.3 m, which is head height for this camera: it sliced the top
+  // off every numeral panel on the far wall and took the whole top line of the
+  // blue wayfinding sign with it. Springing it from the wall head instead, and
+  // raking it up faster than any chapter's sight line climbs, means a ray leaving
+  // the top of a panel can never catch it again. `VAULT_RAKE` > the steepest
+  // `tan(elevation)` in `src/render/camera.ts` is the whole trick.
+  overhead.add(corridorVault(p));
+
+  // The near half of the corridor ceiling is cut away with the near wall: on this
+  // side of the corridor anything above the parapet is, by construction, between
+  // the camera and the thing it is meant to be looking at.
 
   // Backlit poster boxes, on the far side of each Devoxx door from the Zaal sign.
   for (const r of rooms) {
     if (r.closed) continue;
-    const d = roomDoor(r);
     // Hung on the corridor *face* of the wall, so it reads from down the corridor.
     const y = r.side < 0 ? CY0 + 1 : CY1 - 3;
-    g.add(slab({ x: d.cx - DOOR / 2 - 42, y, w: 22, h: 2 }, 0.6, 1.55, p.posterGlow));
+    // Deliberately smaller than it used to be. A blank orange poster box that
+    // rendered complete while the numeral panel beside it was clipped made the
+    // poster the dominant colour block on the wall — the reverse of the Kinepolis
+    // photograph, where the numeral panel is what you read from 60 m away.
+    const box = slab({ x: zaalPosterX(Number(r.n)) - 9, y, w: 18, h: 2 }, 0.55, 1.2, p.posterGlow);
+    box.name = `poster-box-${r.n}`;
+    g.add(box);
   }
   return g;
+}
+
+/** How steeply the vault rakes up off the wall head. See `corridorVault`. */
+const VAULT_RAKE_RAD = 0.75;
+/** Where its underside springs from, metres: clear of the tallest panel band. */
+const VAULT_SPRING_Y = 2.95;
+/** Sim px out from the far wall's corridor face. */
+const VAULT_SPRING_PX = 2;
+const VAULT_DEPTH_M = 2;
+const VAULT_T_M = 0.16;
+
+/**
+ * The corridor's pale plaster vault, as one raked plate over the far side.
+ *
+ * Built in a local frame and placed by its **underside springing edge**, because
+ * that edge is the only part of it any sight line ever has to clear: everything
+ * else is further from the camera and higher up.
+ */
+function corridorVault(p: VenuePalette): THREE.Mesh {
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(m(W), VAULT_T_M, VAULT_DEPTH_M),
+    p.corridorVault,
+  );
+  mesh.name = 'corridor-vault';
+  // Negative: a positive rotation about +x tips the plate's far edge DOWN, and
+  // this one has to climb away from the wall faster than any sight line does.
+  mesh.rotation.x = -VAULT_RAKE_RAD;
+  const c = Math.cos(VAULT_RAKE_RAD);
+  const s = -Math.sin(VAULT_RAKE_RAD);
+  // Undo the rotation of the plate's near-bottom edge, so that edge lands exactly
+  // on (VAULT_SPRING_Y, the springing plane).
+  mesh.position.set(
+    m(W) / 2,
+    VAULT_SPRING_Y + (VAULT_T_M / 2) * c - (VAULT_DEPTH_M / 2) * s,
+    m(CY0 + VAULT_SPRING_PX) + (VAULT_T_M / 2) * s + (VAULT_DEPTH_M / 2) * c,
+  );
+  return mesh;
 }
 
 /* --------------------------------------------------------------------- build */
@@ -442,8 +520,11 @@ export function buildFloor1(p: VenuePalette): Floor1Build {
 
   for (const w of floor1Walls()) {
     if (w.hidden) continue;
-    const { mat, height } = wallStyle(w, p);
+    const { mat, height, cap } = wallStyle(w, p);
     group.add(slab(w, 0, height, mat));
+    // A painted cut face, so the lowered near wall reads as a deliberate section
+    // through the building rather than as a wall that stops for no reason.
+    if (cap === true) group.add(slab(w, height, NEAR_CAP_T, p.sectionCut));
   }
 
   group.add(foyer(p, overhead));

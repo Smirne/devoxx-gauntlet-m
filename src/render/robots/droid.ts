@@ -8,8 +8,8 @@
  *     of the three, with a forward-hunched posture;
  *   - EXPOSED CYLINDRICAL JOINTS at shoulder, elbow, hip, knee and ankle — bare
  *     metal barrels with the panels stopping short of them;
- *   - a domed helmet with a brow ridge over a narrow dark recessed face holding
- *     two small amber eyes;
+ *   - a single smooth domed helmet with a dark oval faceplate and two small
+ *     amber eyes set straight into it;
  *   - round shoulder pauldrons, each with a circular emblem;
  *   - copper/rust weathering streaked down from the shoulders and hips;
  *   - long forearms, articulated four-finger hands, flat blocky feet.
@@ -30,7 +30,7 @@ import {
   part,
   puck,
   roundedBox,
-  spherePatch,
+  ovalPatch,
   disposeTree,
   type RobotRig,
   type WeatherOpts,
@@ -140,32 +140,27 @@ export function buildDroid(): RobotRig {
   torso.add(backPack);
 
   /* ----------------------------------------------------------------- head */
-  // Domed helmet, deeper than it is wide, with a brow ridge over the face.
+  // Domed helmet, deeper than it is wide, unbroken from the crown to the jaw.
   const helmet = part(ellipsoid(0.135, 0.135, 0.152, 32, 22), panel, wear(0.5, 41, 9));
   helmet.position.set(0, 0.105, -0.012);
   head.add(helmet);
   parts.headShell = helmet;
-  const crown = part(spherePatch(0.138, 0.138, 0.155, 1.5, 0.15, 0.55, 24, 10), panelDark, wear(0.5, 42, 9));
-  crown.position.set(0, 0.105, -0.012);
-  head.add(crown);
-  // Brow: a ridge standing proud over the eyes.
-  const brow = part(spherePatch(0.142, 0.142, 0.16, 1.05, 1.0, 0.36, 24, 8), panelDark, wear(0.55, 43));
-  brow.position.set(0, 0.105, -0.012);
-  head.add(brow);
-  const browLip = part(roundedBox(0.2, 0.028, 0.07, 0.01, 2), panel, wear(0.5, 44));
-  browLip.position.set(0, 0.095, 0.105);
-  browLip.rotation.x = 0.42;
-  head.add(browLip);
-  // Narrow dark recessed face: set back under the brow so it reads as a slot.
-  const face = part(roundedBox(0.165, 0.085, 0.05, 0.014, 3), grime);
-  face.position.set(0, 0.042, 0.088);
+  /*
+   * ONE SMOOTH HELMET, AND A SMOOTH DARK FACEPLATE IN IT.
+   *
+   * There used to be two dark bands wrapped right round the helmet — a crown
+   * patch and a brow patch — plus a rectangular brow shelf over a boxy faceplate
+   * frame. None of that is on the model sheet, where the helmet is a single
+   * smooth shell and the eyes are set straight into a dark oval face; together
+   * the bands read as bandaging and the shelf as a welded-on visor. What is left
+   * is one oval faceplate lying on the helmet's own surface.
+   */
+  const face = part(ovalPatch(0.137, 0.137, 0.154, 0, 0.78, 1.72, 0.44, 6, 32), grime);
+  face.position.set(0, 0.105, -0.012);
   head.add(face);
-  const faceFrame = part(roundedBox(0.185, 0.1, 0.03, 0.012, 3), panelDark, wear(0.5, 48));
-  faceFrame.position.set(0, 0.042, 0.072);
-  head.add(faceFrame);
   for (const sx of [-1, 1]) {
     const eye = part(puck(0.017, 0.012, 16).rotateX(Math.PI / 2), eyeGlow);
-    eye.position.set(sx * 0.038, 0.048, 0.117);
+    eye.position.set(sx * 0.038, 0.048, 0.133);
     head.add(eye);
   }
   // Jaw/chin block and the cheek vents either side of it.
