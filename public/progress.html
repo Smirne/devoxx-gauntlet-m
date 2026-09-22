@@ -118,9 +118,9 @@
 
   <div class="summary"><span class="stat"><b>13</b> pieces</span>
     <span class="stat"><b>1</b> done</span>
-    <span class="stat"><b>8</b> in flight</span>
-    <span class="stat"><b>4</b> not started</span>
-    <span class="stat"><b>0</b> critic rounds run</span>
+    <span class="stat"><b>9</b> in flight</span>
+    <span class="stat"><b>3</b> not started</span>
+    <span class="stat"><b>9</b> critic rounds run</span>
     <span class="stat">first-class checks <b>0/2</b> passing</span>
     <span class="stat">rubric points in play <b>100</b>/100</span>
     <span class="stat">round freeze <b>28 Sept</b></span></div>
@@ -153,18 +153,18 @@
       <h3>Floor-plan fidelity <span class="rubric">· first-class</span></h3>
       <div class="rubric">Sense of place — venue recognisable · <span class="pts">10 pts</span></div>
       <div class="row">
-        <span class="chip status-building"><span class="dot"></span>building</span>
-        <span class="chip rounds">round 0 · escalates, no cap</span>
+        <span class="chip status-gauntlet"><span class="dot"></span>in gauntlet</span>
+        <span class="chip rounds">round 3 · escalates, no cap</span>
       </div>
-      <div class="verdict none">not yet run</div>
+      <div class="verdict">Round 3 — FAIL on the factual overlay. Five of six checks passed (room count and identity, relative proportions, door positions, BOTH staircases, Zaal numeral signage); the ground floor failed. Blockers: the hall's scalloped right wall was a flat slab modulated by 6 sim units with no visible opening to the lobby, and the east quarter of the ground floor (sim x 1560-1900) was featureless deck — no entrance, no toilets, no lobby walls, no glazing. Majors: the BOF rooms were one empty box in the wrong quadrant, and the first-floor main staircase rendered as a 6-unit blue line. &quot;A judge holding the plan next to the shot will match the hall and then find the half of the drawing that says Reception / Toilets / BOF Rooms / Main Entrance simply is not there.&quot;<time>2026-09-22</time></div>
       <div class="row">
-        <span class="chip pending"><span class="dot"></span>Floor-plan overlay: pending</span>
+        <span class="chip fail"><span class="dot"></span>Floor-plan overlay: fail</span>
         <span class="chip na"><span class="dot"></span>Model-sheet match: n/a</span>
       </div>
-      <p class="note">Top-down debug screenshot overlaid on plans/devoxx-rooms-stairs-annotated.png and plans/exhibition-floor-stairs-annotated.png. Room count, proportions, door positions and BOTH staircase positions (3|4, 10|9, main between 6 and 7) must match before any aesthetic judgment. Orange Zaal numeral panels and the blue Dutch wayfinding signs must be visible in-scene.</p>
+      <p class="note">FIXED after the round, awaiting re-judgment in round 4: the hall's right wall is now a bank of recessed glazed door leaves between mullions with the sim's four openings drawn as open bays; GF.bof and GF.toilets moved to the far-right/top quadrant the plan puts them in, with the BOF block subdivided into three rooms each with its own doorway; the renderer builds the lobby band (entrance door row, glazed facade, rope-line stanchions, dark blue columns, wheelchair ramp, toilet block); the floor-1 main staircase has a blue-carpet head, three runs, tubular handrails and its tensile canopy. The ?topdown letterbox is now anchored top-left so a plan overlay needs no offset. NOT taken: re-proportioning the four auditorium pairs to the plan's width ratios — geometry.ts is the ported prototype and chapter 4 is written against room 8's exact rect (see docs/genai-notes.md).</p>
       <div class="shots">
-        <span class="shot empty"><span class="ph">no before shot yet</span><span class="cap">before</span></span>
-        <span class="shot empty"><span class="ph">no after shot yet</span><span class="cap">after</span></span>
+        <a class="shot" href="../tools/progress/shots/critic-topdown-ch2.png" target="_blank" rel="noopener"><img src="../tools/progress/shots/critic-topdown-ch2.png" alt="Floor-plan fidelity — before" loading="lazy"><span class="cap">before</span></a>
+        <a class="shot" href="../tools/progress/shots/r3fix-topdown-gf.png" target="_blank" rel="noopener"><img src="../tools/progress/shots/r3fix-topdown-gf.png" alt="Floor-plan fidelity — after" loading="lazy"><span class="cap">after</span></a>
       </div>
     </article>
 
@@ -172,18 +172,18 @@
       <h3>Robot appearance fidelity <span class="rubric">· first-class</span></h3>
       <div class="rubric">All three robots used meaningfully · <span class="pts">10 pts</span></div>
       <div class="row">
-        <span class="chip status-building"><span class="dot"></span>building</span>
-        <span class="chip rounds">round 0 · escalates, no cap</span>
+        <span class="chip status-gauntlet"><span class="dot"></span>in gauntlet</span>
+        <span class="chip rounds">round 3 · escalates, no cap</span>
       </div>
-      <div class="verdict none">not yet run</div>
+      <div class="verdict">Round 3 — FAIL on the model-sheet check. Voxxy passes. Biggy fails on silhouette (measured: render helmet/belly 0.83, sheet 1.22 — a 45% inversion of the one relationship the character rests on), on the missing dark visor band (the band under the rim sampled bright orange, so Biggy had no face), and on vertical proportions. Droid fails on the missing circular pauldron emblem, a detail GAUNTLET Stage 1 names and the sheet shows in six of ten views. All three robots' eyes measured lemon yellow (R=G=255) rather than amber. &quot;Two of three robots do not read as THIS robot.&quot; Compounding it: at the gameplay camera the robots were ~15 px unlit black silhouettes, so none of the work reached the player.<time>2026-09-22</time></div>
       <div class="row">
         <span class="chip na"><span class="dot"></span>Floor-plan overlay: n/a</span>
-        <span class="chip pending"><span class="dot"></span>Model-sheet match: pending</span>
+        <span class="chip fail"><span class="dot"></span>Model-sheet match: fail</span>
       </div>
-      <p class="note">Each robot posed at an angle showing face and front — never top-down — beside robots/*.png. Silhouette, proportions, palette and the signature details. A robot that reads as a generic humanoid fails however well it animates.</p>
+      <p class="note">FIXED after the round, awaiting re-judgment in round 4. Both Biggy's band and Droid's emblem were the same class of bug — geometry placed INSIDE other geometry, invisible in a diff and uncatchable by a test. Biggy was rebuilt to numbers measured off the sheet's front view at 265 px/m (belly 1.15 m across x 1.10 m tall, helmet 0.94 m, boots 0.13 m); the visor band is now a near-black collar standing proud of the belly with amber eyes seated in it; the arms are dark and inside the belly's silhouette; the belly emblem has its own cream material. Droid's emblem is parented to the pauldron at 1.06x its surface along its own normal. Eye emissives retuned so R &gt; G &gt; B survives the clip. Still open: Voxxy's torso is two lobes with a seam rather than one teardrop, and his chest emblem is not yet the sheet's cat-face glyph.</p>
       <div class="shots">
-        <span class="shot empty"><span class="ph">no before shot yet</span><span class="cap">before</span></span>
-        <span class="shot empty"><span class="ph">no after shot yet</span><span class="cap">after</span></span>
+        <a class="shot" href="../tools/progress/shots/critic-r2-pose-biggy.png" target="_blank" rel="noopener"><img src="../tools/progress/shots/critic-r2-pose-biggy.png" alt="Robot appearance fidelity — before" loading="lazy"><span class="cap">before</span></a>
+        <a class="shot" href="../tools/progress/shots/r3fix-pose-biggy.png" target="_blank" rel="noopener"><img src="../tools/progress/shots/r3fix-pose-biggy.png" alt="Robot appearance fidelity — after" loading="lazy"><span class="cap">after</span></a>
       </div>
     </article>
   </div>
@@ -232,18 +232,18 @@
       <h3>Light, shadow and fog of war</h3>
       <div class="rubric">Originality — genre, mechanic, reading of the brief · <span class="pts">40 pts</span></div>
       <div class="row">
-        <span class="chip status-building"><span class="dot"></span>building</span>
-        <span class="chip rounds">round 0 / 3</span>
+        <span class="chip status-gauntlet"><span class="dot"></span>in gauntlet</span>
+        <span class="chip rounds">round 1 / 3</span>
       </div>
-      <div class="verdict none">not yet run</div>
+      <div class="verdict">Round 1 (judged inside the stability round) — the mechanic reads, but the frames did not: 95-99% of every dark chapter was pure black and the robots inside their own pools were unlit silhouettes. A robot's lamp points away from it, which nothing had accounted for.<time>2026-09-22</time></div>
       <div class="row">
         <span class="chip pending"><span class="dot"></span>Floor-plan overlay: pending</span>
         <span class="chip na"><span class="dot"></span>Model-sheet match: n/a</span>
       </div>
-      <p class="note">Visibility polygons per lamp, additive colour mixing, glass and low obstacles passing light, the cinema screen as a mirror, explored-darkness mask. This is the game's mechanic — it carries most of the 40 originality points.</p>
+      <p class="note">Added a per-robot key light, and lifted the chapter ambients and the fog-of-war base (night 0.05-&gt;0.11 / fog 0.95-&gt;0.86, hall 0.07-&gt;0.16 / fog 0.80-&gt;0.68, keynote 0.30-&gt;0.36) plus two house lights at the corridor's east end where chapter 4 opens. This REVERSES an earlier session's explicit rejection of re-tuning MOODS: a critic measuring 98.8% black moves it from a look call to a legibility failure. Clue detection lives in src/sim/lights.ts and never reads a render brightness, so the light-mix mechanic is untouched. Michele should still confirm this is dark enough.</p>
       <div class="shots">
-        <span class="shot empty"><span class="ph">no before shot yet</span><span class="cap">before</span></span>
-        <span class="shot empty"><span class="ph">no after shot yet</span><span class="cap">after</span></span>
+        <a class="shot" href="../tools/progress/shots/stability-ch2.png" target="_blank" rel="noopener"><img src="../tools/progress/shots/stability-ch2.png" alt="Light, shadow and fog of war — before" loading="lazy"><span class="cap">before</span></a>
+        <a class="shot" href="../tools/progress/shots/r3fix-ch2.png" target="_blank" rel="noopener"><img src="../tools/progress/shots/r3fix-ch2.png" alt="Light, shadow and fog of war — after" loading="lazy"><span class="cap">after</span></a>
       </div>
     </article>
 
@@ -270,18 +270,18 @@
       <h3>HUD, feedback and 'why am I blocked'</h3>
       <div class="rubric">Playability — goals, controls, feedback · <span class="pts">15 pts</span></div>
       <div class="row">
-        <span class="chip status-building"><span class="dot"></span>building</span>
-        <span class="chip rounds">round 0 / 3</span>
+        <span class="chip status-gauntlet"><span class="dot"></span>in gauntlet</span>
+        <span class="chip rounds">round 1 / 3</span>
       </div>
-      <div class="verdict none">not yet run</div>
+      <div class="verdict">Round 1 (judged inside the stability round) — the chrome is well made but only chapter 1 had a running objective, the blocked messages were one script with a name swapped, duplicates stacked, and the speed gauge mixed units while quoting 23.2 m/s for a knee-high robot. All four fixed; see the stability piece.<time>2026-09-22</time></div>
       <div class="row">
         <span class="chip na"><span class="dot"></span>Floor-plan overlay: n/a</span>
         <span class="chip na"><span class="dot"></span>Model-sheet match: n/a</span>
       </div>
-      <p class="note">Every gate wall explains itself in the blocked robot's own voice, throttled 2.5 s per wall. Objective line, robot switcher, skip button.</p>
+      <p class="note">Every gate wall explains itself in the blocked robot's own voice, throttled 2.5 s per wall and de-duplicated in the HUD. GameSnapshot.progress is the live objective line: the sim owns the text, the HUD only formats it.</p>
       <div class="shots">
-        <span class="shot empty"><span class="ph">no before shot yet</span><span class="cap">before</span></span>
-        <span class="shot empty"><span class="ph">no after shot yet</span><span class="cap">after</span></span>
+        <a class="shot" href="../tools/progress/shots/stability-zoom-toast.png" target="_blank" rel="noopener"><img src="../tools/progress/shots/stability-zoom-toast.png" alt="HUD, feedback and 'why am I blocked' — before" loading="lazy"><span class="cap">before</span></a>
+        <a class="shot" href="../tools/progress/shots/r3fix-ch1-hud.png" target="_blank" rel="noopener"><img src="../tools/progress/shots/r3fix-ch1-hud.png" alt="HUD, feedback and 'why am I blocked' — after" loading="lazy"><span class="cap">after</span></a>
       </div>
     </article>
 
@@ -327,18 +327,18 @@
       <h3>Full-run stability pass</h3>
       <div class="rubric">Playability — goals, controls, feedback · <span class="pts">15 pts</span></div>
       <div class="row">
-        <span class="chip status-todo"><span class="dot"></span>not started</span>
-        <span class="chip rounds">round 0 / 3</span>
+        <span class="chip status-gauntlet"><span class="dot"></span>in gauntlet</span>
+        <span class="chip rounds">round 1 / 3</span>
       </div>
-      <div class="verdict none">not yet run</div>
+      <div class="verdict">Round 1 — FAIL, scored 5-7/15 on playability. The factual half PASSED: the README runs from a fresh clone, 160/160 tests, clean build, all four chapters load with ERRORS:0 and an empty console log, all four screenshots distinct, and the chapters are actually driveable with a real end card. The verdict turned on the camera: &quot;the diorama camera is not framing the game&quot; — measured non-black coverage of the play band was 5.4% (ch1), 1.2% (ch2), 4.5% (ch4), robots ~15-20 px, nothing in the world marking which robot you drive. Plus: the fire-door keypad never accepted a digit, chapters 2-4 had no live objective line, and the blocked message was one sentence with the robot's name swapped in, stacking up to six identical copies.<time>2026-09-22</time></div>
       <div class="row">
         <span class="chip na"><span class="dot"></span>Floor-plan overlay: n/a</span>
         <span class="chip na"><span class="dot"></span>Model-sheet match: n/a</span>
       </div>
-      <p class="note">Four chapters end to end with zero console errors, at a steady frame rate, including every skip path.</p>
+      <p class="note">FIXED after the round: the camera frames a room-sized window on the driven robot clamped inside the chapter rect (robots now 50-95 px) with a ground ring in that robot's lamp colour; each robot carries a short-range key light so it reads inside its own pool; the keypad measures reach from the robot's edge and says why an out-of-range digit did nothing; every chapter publishes a live progress line; identical toasts refresh instead of stacking; the fire door, the lock, both gates and the roller door speak one line per robot; Skip on the end card no longer records a fifth chapter; the speed gauge quotes one unit on the display scale from docs/scale-and-units.md. 'Tab does nothing' was a harness artifact (synthetic events carrying only `key`, not `code`) — main.ts now derives a code from `key`; the README's unimplemented Shift and Space were removed from the controls table instead.</p>
       <div class="shots">
-        <span class="shot empty"><span class="ph">no before shot yet</span><span class="cap">before</span></span>
-        <span class="shot empty"><span class="ph">no after shot yet</span><span class="cap">after</span></span>
+        <a class="shot" href="../tools/progress/shots/stability-ch1.png" target="_blank" rel="noopener"><img src="../tools/progress/shots/stability-ch1.png" alt="Full-run stability pass — before" loading="lazy"><span class="cap">before</span></a>
+        <a class="shot" href="../tools/progress/shots/r3fix-ch1.png" target="_blank" rel="noopener"><img src="../tools/progress/shots/r3fix-ch1.png" alt="Full-run stability pass — after" loading="lazy"><span class="cap">after</span></a>
       </div>
     </article>
   </div>
@@ -387,7 +387,7 @@
     </article>
   </div>
 
-  <footer>Generated 22 Sept 2026, 02:18 CEST by <code>tools/progress/build-progress.mjs</code> from <code>tools/progress/pieces.json</code>. Screenshots live in <code>tools/progress/shots/</code>; the page links them relatively, so keep it inside the repository.</footer>
+  <footer>Generated 22 Sept 2026, 09:57 CEST by <code>tools/progress/build-progress.mjs</code> from <code>tools/progress/pieces.json</code>. Screenshots live in <code>tools/progress/shots/</code>; the page links them relatively, so keep it inside the repository.</footer>
 
 </div>
 </body>

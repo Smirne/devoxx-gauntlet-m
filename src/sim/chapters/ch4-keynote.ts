@@ -419,11 +419,25 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     return out;
   }
 
+  /** The live bottom-of-screen line: the three stage jobs, then the clock. */
+  function progress(): string {
+    if (ready) {
+      const on = ctx.bots.filter((b) => inRect(b, stage)).length;
+      return `stage ready · all three on the stage: ${on}/3`;
+    }
+    const clock = t < HEAD ? `doors in ${Math.round(HEAD - t)}s` : `seated ${seated}/${N}`;
+    return (
+      `cake ${cakeOnMark() ? '✓' : '✗'} · banner ${hooks.filter((h) => h.done).length}/2 · ` +
+      `spotlights ${spots.filter((s) => s.on).length}/4 (next: ${nextSpot}) · ${clock}`
+    );
+  }
+
   return {
     key,
     update,
     props,
     people,
+    progress,
     placeProp(kind: string, x: number, y: number): boolean {
       if (kind !== 'cake') return false;
       crate.x = x;

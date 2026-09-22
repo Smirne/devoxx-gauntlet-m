@@ -70,8 +70,11 @@ export function buildVoxxy(): RobotRig {
   const white = panelMaterial('#f4f6f8', 0, { roughness: 0.26, metalness: 0.05 });
   const dark = panelMaterial('#24272c', 0, { roughness: 0.42, metalness: 0.3 });
   const visorGlass = panelMaterial('#0a0b0d', 0, { roughness: 0.06, metalness: 0.45 });
-  const eyeGlow = glowMaterial('#ffb24a', 2.6, '#1d1208');
-  const portGlow = glowMaterial('#ff9c33', 1.5, '#1d1208');
+  // Amber bar-eyes. At intensity 2.6 the green channel clipped to 255 and both
+  // bars photographed as lemon yellow; the model sheet's eye glow samples strongly
+  // orange. Lower intensity, more saturated base: R > G > B survives the clip.
+  const eyeGlow = glowMaterial('#ff9a2e', 1.35, '#1d1208');
+  const portGlow = glowMaterial('#ff8c22', 1.0, '#1d1208');
   glow.push(eyeGlow, portGlow);
 
   /* ------------------------------------------------------------- skeleton */

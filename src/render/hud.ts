@@ -17,7 +17,7 @@
 
 import { CABLE_MAX, TOAST_MS } from '../sim/constants';
 import type { Bot, GameSnapshot, Prop, RobotKind } from '../sim/types';
-import { PX_PER_M } from '../sim/units';
+import { displayMps } from '../sim/units';
 
 export interface HudOptions {
   /**
@@ -123,7 +123,8 @@ const CSS = `
   font:600 20px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;transition:color .18s,border-color .18s}
 .ad-cell.ad-found{color:#c9a227;border-color:#59491c}
 .ad-cell.ad-typed{color:#ffd27a;border-color:${ACCENT};box-shadow:0 0 14px -2px rgba(255,179,71,.45)}
-.ad-pad .ad-cap{font-size:11px;color:${MUTED}}
+.ad-pad .ad-cap{font-size:13px;color:#d7d3cc;letter-spacing:.01em;padding:4px 12px;border-radius:7px;
+  background:rgba(10,11,14,.82);border:1px solid #2a2e36;text-align:center;max-width:min(860px,88vw)}
 
 .ad-toasts{position:absolute;left:50%;bottom:96px;transform:translateX(-50%);width:min(680px,74vw);
   display:flex;flex-direction:column;align-items:center;gap:6px}
@@ -368,6 +369,8 @@ function toastLifeMs(until: number, snapT: number): number {
 
 interface LiveToast {
   node: HTMLElement;
+  /** The line's text, so a repeat of the same sentence refreshes instead of stacking. */
+  text: string;
   dieAt: number;
   removeAt: number;
   out: boolean;
@@ -504,39 +507,48 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     const bot = snap.bots[snap.active];
     if (!bot) return;
     const speedPx = Math.hypot(bot.vx, bot.vy);
-    const mps = speedPx / PX_PER_M;
-    const capMps = bot.max / PX_PER_M;
+    const mps = displayMps(speedPx);
+    const capMps = displayMps(bot.max);
     // A push can take Biggy past his own top speed — that is the whole roller-door
     // puzzle, so the gauge shows it rather than clamping it away.
     const boosted = speedPx > bot.max * 1.005;
-    setText(speedVal, `${mps.toFixed(1)} m/s`, textCache);
+    setText(speedVal, `${mps.toFixed(1)} / ${capMps.toFixed(1)} m/s`, textCache);
     setText(speedStateEl, speedState(speedPx, bot.max, boosted), textCache);
-    setText(speedCap, `${bot.name} · cap ${capMps.toFixed(1)} m/s · ${Math.round(speedPx)} px/s`, textCache);
+    // One unit in the player-facing line. The raw sim pixels stay available for a
+    // physics judge, but as a parenthetical rather than as a second contradictory
+    // number next to a cap quoted in metres.
+    setText(speedCap, `${bot.name} · ${Math.round(speedPx)} of ${bot.max} px/s (sim)`, textCache);
     speedBox.classList.toggle('ad-boost', boosted);
     setStyle(speedFill, 'speed', 'width', `${(clamp01(speedPx / bot.max) * 100).toFixed(1)}%`, styleCache);
     setStyle(speedFill, 'speed', 'background', boosted ? rgb(ALARM) : rgb(bot.light.c), styleCache);
   }
 
   function updateKeypad(snap: GameSnapshot): void {
+    // The bottom-centre strip is every chapter's live progress readout; only
+    // chapter 1 also carries the four keypad cells above it.
+    const line = snap.progress;
+    const showPad = snap.chapter >= 1 && snap.phase !== 'done' && (line !== '' || snap.chapter === 1);
+    pad.classList.toggle('ad-hide', !showPad);
     const show = snap.chapter === 1 && snap.phase !== 'done';
-    pad.classList.toggle('ad-hide', !show);
-    if (!show) return;
+    cellsWrap.classList.toggle('ad-hide', !show);
+    if (!showPad) return;
+    if (!show) {
+      setText(padCap, line, textCache);
+      return;
+    }
     // `Clue.slot` may be 0- or 1-based depending on the chapter; ordering by slot
     // makes both work.
     const ordered = snap.clues.slice().sort((a, b) => a.slot - b.slot);
-    let found = 0;
     for (let i = 0; i < cells.length; i++) {
       const cell = cells[i];
       const clue = ordered[i];
-      if (clue?.found) found++;
       const typed = i < snap.entered.length ? snap.entered[i] : '';
       const glyph = typed !== '' ? typed : clue?.found ? String(clue.digit) : '·';
       setText(cell, glyph, textCache);
       cell.classList.toggle('ad-typed', typed !== '');
       cell.classList.toggle('ad-found', typed === '' && !!clue?.found);
     }
-    const total = Math.max(4, ordered.length);
-    setText(padCap, `keypad · ${found}/${total} digits found · type them at the fire door`, textCache);
+    setText(padCap, line, textCache);
   }
 
   function updateMeters(snap: GameSnapshot): void {
@@ -579,23 +591,33 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
       if (key !== lastToastKey) {
         lastToastKey = key;
         const life = toastLifeMs(t.until, snap.t);
-        const node = el('div', 'ad-toast');
-        const colour = toastColour(t.t, snap);
-        node.style.color = rgb(colour);
-        node.style.background = `linear-gradient(90deg, ${rgba(colour, 0.2)}, rgba(10,11,14,.93) 58%)`;
-        const line = el('span', 'ad-line', node);
-        line.textContent = t.t;
-        toasts.appendChild(node);
-        live.push({ node, dieAt: now + life, removeAt: now + life + 340, out: false });
-        // Three lines is already a wall of text over the diorama: as a fourth
-        // arrives, the oldest starts its exit animation immediately.
-        for (let i = 0; i < live.length - 3; i++) {
-          const old = live[i];
-          if (old.out) continue;
-          old.out = true;
-          old.dieAt = now;
-          old.removeAt = now + 340;
-          old.node.classList.add('ad-out');
+        // The same sentence twice is one message that is still true, not two
+        // messages: leaning on a door re-fires its `why` every throttle window, and
+        // stacking those produced six identical toasts down the middle of the
+        // screen. Refresh the existing line's timer instead.
+        const repeat = live.find((lt) => !lt.out && lt.text === t.t);
+        if (repeat) {
+          repeat.dieAt = now + life;
+          repeat.removeAt = now + life + 340;
+        } else {
+          const node = el('div', 'ad-toast');
+          const colour = toastColour(t.t, snap);
+          node.style.color = rgb(colour);
+          node.style.background = `linear-gradient(90deg, ${rgba(colour, 0.2)}, rgba(10,11,14,.93) 58%)`;
+          const line = el('span', 'ad-line', node);
+          line.textContent = t.t;
+          toasts.appendChild(node);
+          live.push({ node, text: t.t, dieAt: now + life, removeAt: now + life + 340, out: false });
+          // Three lines is already a wall of text over the diorama: as a fourth
+          // arrives, the oldest starts its exit animation immediately.
+          for (let i = 0; i < live.length - 3; i++) {
+            const old = live[i];
+            if (old.out) continue;
+            old.out = true;
+            old.dieAt = now;
+            old.removeAt = now + 340;
+            old.node.classList.add('ad-out');
+          }
         }
       }
     } else {

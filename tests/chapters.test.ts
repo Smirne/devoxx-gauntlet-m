@@ -572,6 +572,26 @@ describe('the game rig', () => {
     g.skipChapter();
     expect(g.snapshot().phase).toBe('done');
     expect(g.snapshot().card).toContain('skipped: 1, 2, 3, 4');
+
+    // Skipping the END CARD skips nothing: it used to push chapter 4 a second
+    // time, so the card read "skipped: 1, 2, 3, 4, 4".
+    g.skipChapter();
+    expect(g.snapshot().card).toContain('skipped: 1, 2, 3, 4<');
+  });
+
+  it('gives every chapter a live progress line that actually moves', () => {
+    for (const n of [1, 2, 3, 4]) {
+      const g = mk(n);
+      steps(g, 4);
+      const line = g.snapshot().progress;
+      expect(line, `chapter ${n} has no progress line`).not.toBe('');
+      expect(line.length).toBeLessThan(180);
+    }
+    // Chapter 2's line counts the three jobs down as they are done.
+    const g = mk(2);
+    steps(g, 2);
+    expect(g.snapshot().progress).toContain('breakers 0/3');
+    expect(g.snapshot().progress).toContain('roller door');
   });
 
   it('starts on a card, dismisses it with any key, and restarts on R', () => {
@@ -610,6 +630,54 @@ describe('the game rig', () => {
     steps(g, 2);
     expect(g.snapshot().toast?.until).toBe(at);
     g.setStick(0, 0);
+  });
+
+  it('routes digits to the keypad at the fire door, and to the switcher away from it', () => {
+    const g = mk(1);
+    const code = (g.debug.chapter() as NightState).code;
+
+    // Away from the door, 1/2/3 are the robot switcher, as the controls line says.
+    g.debug.select('voxxy');
+    g.debug.place('voxxy', 300, 350);
+    steps(g, 1);
+    g.key('Digit3');
+    expect(g.snapshot().active).toBe(2);
+    expect(g.snapshot().entered).toBe('');
+    // A digit with no other meaning says why it did nothing rather than vanishing.
+    g.key('Digit7');
+    expect(g.snapshot().toast?.t ?? '').toContain('keypad');
+
+    // At the pad, every digit types — including for Biggy, whose 17 px of radius
+    // used to keep his centre outside the old flat 40 px reach.
+    for (const kind of ['voxxy', 'droid', 'biggy'] as const) {
+      const h = mk(1);
+      const c = (h.debug.chapter() as NightState).code;
+      h.debug.select(kind);
+      h.debug.place(kind, 600 - 18 - bot(h, kind).r, 320);
+      steps(h, 1);
+      h.key(`Digit${c[0]}`);
+      expect(h.snapshot().entered, `${kind} could not reach the keypad`).toBe(c[0]);
+      // And the driven robot did not change underneath the player.
+      expect(h.snapshot().bots[h.snapshot().active].kind).toBe(kind);
+    }
+
+    const g2 = mk(1);
+    g2.debug.select('voxxy');
+    g2.debug.place('voxxy', 585, 330);
+    steps(g2, 1);
+    for (const d of code) g2.key(`Digit${d}`);
+    expect((g2.debug.chapter() as NightState).fireOpen).toBe(true);
+  });
+
+  it('speaks the blocked message in each robot\'s own voice, not one script with a name swapped', () => {
+    const g = mk(1);
+    const fire = g.debug.walls().find((w) => w.kind === 'firedoor');
+    expect(fire?.why).toBeDefined();
+    const lines = (['voxxy', 'droid', 'biggy'] as const).map((k) => fire?.why?.(bot(g, k)) ?? '');
+    expect(new Set(lines).size).toBe(3);
+    // Not the same sentence with the name swapped: strip the names and compare.
+    const bodies = lines.map((l) => l.replace(/^(Voxxy|Droid|Biggy):\s*/, ''));
+    expect(new Set(bodies).size).toBe(3);
   });
 
   it('switches robot with 1/2/3 and Tab, and never to a mounted Droid', () => {

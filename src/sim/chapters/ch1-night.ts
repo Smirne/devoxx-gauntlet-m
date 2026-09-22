@@ -28,7 +28,15 @@ import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
  * chapter-local: reach distances for "use", not physics. The prototype spelled these
  * out inline; they are here so the two "can Droid get at it" checks agree. */
 
-/** How close a robot must be to the keypad to type on it. */
+/**
+ * How close a robot must be to the keypad to type on it.
+ *
+ * The prototype compared centre-to-centre against a flat 40, which meant Biggy —
+ * 17 px of radius — had to bury himself in the fire door before a digit was taken,
+ * and pressing one anywhere else silently switched robot instead. The reach is now
+ * measured from the robot's *edge*, so all three can stand at the pad, and
+ * `nearPad` is reported to the HUD so the player is told when typing is live.
+ */
 const PAD_REACH = 40;
 /** How close Biggy must park for Droid, on his shoulders, to reach the panel. */
 const PANEL_REACH = 50;
@@ -88,11 +96,24 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     w: 14,
     h: CY1 - CY0,
     kind: 'firedoor',
-    why: (b) => `${b.name}: fire door, sealed for the night. There's a keypad — we need the 4-digit code`,
+    // One line per robot, in that robot's voice (CLAUDE.md): Voxxy chirpy, Droid
+    // dry and deliberate, Biggy blunt. The old single sentence with the name
+    // swapped in read as three robots sharing one script.
+    why: (b) =>
+      b.kind === 'voxxy'
+        ? 'Voxxy: fire door! Sealed, bolted, no gap — but look, a keypad. Four digits and it is ours'
+        : b.kind === 'droid'
+          ? 'Droid: fire door, night-sealed. Magnetic lock, keypad override. Four digits. We do not have them yet'
+          : 'Biggy: fire door. I could hit it. I would lose. Find the four digits',
   };
   ctx.walls.push(fire);
   const keypad: Rect = { x: F1.fireX - 18, y: CY0 + 8, w: 16, h: 24 };
   const padAt = { x: keypad.x + 8, y: keypad.y + 12 };
+  /** Is the driven robot close enough to type? Measured from its edge, not its centre. */
+  const atPad = (): boolean => {
+    const b = ctx.bots[ctx.cur];
+    return !fireOpen && dist(b, padAt) < PAD_REACH + b.r;
+  };
   // Nothing beyond the fire door exists tonight: one invisible slab seals the whole
   // Devoxx half, so a robot squeezing past the door frame still cannot wander off.
   const beyond: Wall = { x: F1.fireX + 14, y: CY0, w: W, h: CY1 - CY0, hidden: true };
@@ -134,7 +155,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     w: dB.w,
     h: dB.h,
     kind: 'lock',
-    why: (b) => `${b.name}: locked. The release is up by the projector window — too high even for Droid`,
+    why: (b) =>
+      b.kind === 'voxxy'
+        ? 'Voxxy: locked! The release is way up by the projector window. I can barely see it, never mind reach it'
+        : b.kind === 'droid'
+          ? 'Droid: locked. The release is by the projector window, about a metre above my reach. I need height'
+          : 'Biggy: locked. Release is up there. I am not up there. Droid could be, if he stood on me',
   };
   ctx.walls.push(lock);
   const panel: Rect = { x: dB.x + dB.w + 14, y: CY0 + 10, w: 20, h: 24 };
@@ -256,9 +282,14 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     const b = ctx.bots[ctx.cur];
     const d = ctx.byKind('droid');
     const bg = ctx.byKind('biggy');
-    const nearPad = dist(b, padAt) < PAD_REACH;
+    const nearPad = atPad();
     // At the keypad the digit keys type; everywhere else they switch robot.
     if (!nearPad) ctx.switchKey(input);
+    // 4-9 mean nothing but "keypad" in this chapter, so a press that lands nowhere
+    // says why instead of vanishing. 1/2/3 keep their documented switch meaning.
+    if (!nearPad && !fireOpen && /^Digit[4-9]$/.test(input)) {
+      ctx.flash(`${b.name}: too far from the keypad — it is on the fire door, drive right up to it`);
+    }
 
     if (input === 'KeyE') {
       const canMount =
@@ -330,10 +361,25 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     return out;
   }
 
+  /** The live bottom-of-screen line: clues found, then what the keypad is waiting for. */
+  function progress(): string {
+    if (fireOpen) return 'fire door open · down the secondary stairs between 3 and 4';
+    const found = clues.filter((c) => c.found).length;
+    const left = clues
+      .filter((c) => !c.found)
+      .map((c) => c.label)
+      .join(', ');
+    const pad = atPad()
+      ? `keypad live — type ${4 - entered.length} more digit${4 - entered.length === 1 ? '' : 's'}`
+      : 'keypad: drive up to the fire door to type';
+    return `digits ${found}/4${found < 4 ? ` · still dark: ${left}` : ''} · ${pad}`;
+  }
+
   return {
     key,
     update,
     props,
+    progress,
     clues: () => clues,
     mirrors: () => mirrors,
     lights: () => lights,

@@ -360,14 +360,17 @@ export function buildSignage(p: VenuePalette, roomAnchors: Map<number | string, 
     const panelX = d.cx + 40;
     const panel = new THREE.Group();
     panel.name = `zaal-sign-${r.n}`;
-    panel.add(slab({ x: panelX - 9, y: panelY, w: 18, h: panelH }, 0.35, 2.0, p.signOrange));
+    // Bigger than the backlit poster box beside it, as at Kinepolis: the numeral
+    // panel is the thing that reads as a colour block from down the corridor, and
+    // it used to render SMALLER than a plain poster — the reverse of the photo.
+    panel.add(slab({ x: panelX - 12, y: panelY, w: 24, h: panelH }, 0.3, 2.7, p.signOrange));
     panel.add(
       signFace(
         panelX,
         faceY,
-        1.4,
         1.9,
-        1.35,
+        2.55,
+        1.6,
         yaw,
         painter.material(`zaal-${r.n}`, 256, 352, '#e1561c', zaalNumeral(r.n)),
         `zaal-face-${r.n}`,

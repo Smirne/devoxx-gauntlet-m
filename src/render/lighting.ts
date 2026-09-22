@@ -89,6 +89,25 @@ const LAMP_INTENSITY: Readonly<Record<RobotKind, number>> = Object.freeze({
   biggy: 34,
 });
 const LAMP_DECAY = 1.15;
+
+/**
+ * The per-robot key light (see `Lamp.key`).
+ *
+ * Deliberately short-range and low: it has to make the robot's own shell, panels
+ * and visor legible from the diorama camera without lifting the blackout the two
+ * dark chapters are built on. At `KEY_RANGE_M` with square-ish decay it is spent
+ * about a metre past the robot's own feet.
+ */
+const KEY_COLOR = 0xbccadd;
+// three's lights are physically based since r155: a PointLight's intensity is in
+// candela, which is why this is not the 2-3 that "a dim fill" suggests. Calibrated
+// against LAMP_INTENSITY (30 / 22 / 34 for the robots' own lamps) at a quarter of
+// their range.
+const KEY_INTENSITY = 7.5;
+const KEY_RANGE_M = 2.0;
+const KEY_DECAY = 1.5;
+/** How far in front of the robot the key hangs, metres, on the camera's side. */
+const KEY_OFF_M = 0.7;
 /** Droid's lamp is a pool: a wide spot pointing straight down. */
 const POOL_SPOT_ANGLE = 1.35;
 
@@ -145,11 +164,20 @@ interface Mood {
 const MOODS: Readonly<Record<number, Mood>> = Object.freeze({
   /** 1 · Night. The power is out: the robots' lamps are the only light there is. */
   1: {
-    ambient: 0.05,
-    hemi: 0.07,
+    // Lifted from 0.05/0.07: at the old level the closed section photographed as
+    // 95% pure black and a judge could not tell a corridor from a cinema. This is
+    // still a blackout — it is the level at which the walls, the seat rows and the
+    // fire door read as SHAPES, with the lamps doing all the actual lighting.
+    ambient: 0.11,
+    hemi: 0.14,
     lampGain: 1,
     poolGain: 1,
-    fogBase: 0.95,
+    // Softened from 0.95. The mask MULTIPLIES, so at 0.95 it was taking an already
+    // near-black ambient down another twentyfold and the venue behind the lamps was
+    // not dark, it was absent. At 0.86 the unlit parts of the closed section read as
+    // silhouettes — which is what the reference photographs of the dark venue show —
+    // while the lamps still do every bit of the actual revealing.
+    fogBase: 0.86,
     sun: 0,
     exits: 0,
     stage: 0,
@@ -161,11 +189,14 @@ const MOODS: Readonly<Record<number, Mood>> = Object.freeze({
   },
   /** 2 · Expo. The dark empty hall of image-1790032600128: near-black, cold, exit greens. */
   2: {
-    ambient: 0.07,
-    hemi: 0.09,
+    // Same lift, and the hall needs it more: image-1790032600128.webp is dark but
+    // its square column grid, red wall panels and lit screen are all readable, and
+    // at 0.07 none of them were.
+    ambient: 0.16,
+    hemi: 0.2,
     lampGain: 1,
     poolGain: 0.95,
-    fogBase: 0.8,
+    fogBase: 0.68,
     sun: 0,
     exits: 1,
     stage: 0,
@@ -193,8 +224,8 @@ const MOODS: Readonly<Record<number, Mood>> = Object.freeze({
   },
   /** 4 · Keynote. Warm auditorium wash, the stage lit, the corridor still dim. */
   4: {
-    ambient: 0.3,
-    hemi: 0.28,
+    ambient: 0.36,
+    hemi: 0.32,
     lampGain: 0.7,
     poolGain: 0.55,
     fogBase: 0.25,
@@ -419,6 +450,17 @@ function makeFanGeometry(): {
 export interface LightLayer {
   /** Read one frame of sim state and light it. `dt` is seconds. */
   update(snap: GameSnapshot, dt: number): void;
+  /**
+   * Turn the fog-of-war mask off without touching anything else — the `?nofog=1`
+   * debug switch, and the overlay check, which has to see the whole floor.
+   */
+  setFogEnabled(on: boolean): void;
+  /**
+   * Take the whole layer out of the scene graph: every lamp, the ambient and
+   * hemisphere fills, the additive pools and the mask. The debug top-down and
+   * portrait cameras light their subject flat and own the frame while they are on.
+   */
+  setEnabled(on: boolean): void;
   dispose(): void;
 }
 
@@ -483,6 +525,17 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
   interface Lamp {
     spot: THREE.SpotLight;
     target: THREE.Object3D;
+    /**
+     * A robot's own key light.
+     *
+     * Its lamp points *away* from it, so in chapters 1 and 2 every robot stood in
+     * the middle of its own pool as an unlit black silhouette — the model-sheet
+     * work never reached the player at all. This is a short-range practical hung
+     * just in front of the robot, on the camera's side: it picks the shell,
+     * the panel detail and the visor out of the dark and reaches barely a metre
+     * past them, so the blackout is still a blackout.
+     */
+    key: THREE.PointLight;
   }
   const lamps = new Map<RobotKind, Lamp>();
   for (const kind of KINDS) {
@@ -504,8 +557,11 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
     const target = new THREE.Object3D();
     target.name = `lamp/${kind}/target`;
     spot.target = target;
-    group.add(spot, target);
-    lamps.set(kind, { spot, target });
+    const key = new THREE.PointLight(KEY_COLOR, 0, KEY_RANGE_M, KEY_DECAY);
+    key.name = `key/${kind}`;
+    key.castShadow = false;
+    group.add(spot, target, key);
+    lamps.set(kind, { spot, target, key });
   }
 
   /* -------------------------------------------------------- chapter fixtures */
@@ -560,15 +616,46 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
   stage.target = stageTarget;
   group.add(stage, stageTarget);
 
+  // Chapter 4 opens at the TOP OF THE MAIN STAIRCASE, x ~1830, and the corridor's
+  // last house light used to be at 1540 — three hundred sim pixels short, so the
+  // chapter's own first frame was unlit.
   const housePoints: Array<{ x: number; y: number }> = [
     { x: 760, y: (CY0 + CY1) / 2 },
     { x: 1150, y: (CY0 + CY1) / 2 },
-    { x: 1540, y: (CY0 + CY1) / 2 },
+    { x: 1460, y: (CY0 + CY1) / 2 },
+    { x: 1700, y: (CY0 + CY1) / 2 },
+    { x: 1850, y: (CY0 + CY1) / 2 },
     { x: room8.x + room8.w / 2, y: room8.y + room8.h - 60 },
   ];
   const house = housePoints.map((p, i) => {
     const light = new THREE.PointLight(0xffc98a, 0, m(340), 1.15);
     light.name = `house/${i}`;
+    light.position.set(m(p.x), 0, m(p.y));
+    group.add(light);
+    return light;
+  });
+
+  /**
+   * Chapter 2: the track spots on the exhibition hall's ceiling beams.
+   *
+   * `media/other-images/CAPTIONS.md`, image-1790032600128.webp: the hall dark and
+   * empty "goes near-black with red accent panels on the side walls and track spots
+   * on the beams". Raising the chapter ambient cannot produce that picture — a
+   * #33363c wall under 10% ambient is black, correctly — because what makes the
+   * photograph readable is fixtures, not ambience. These are those fixtures: a
+   * sparse grid of cold pools that pick out the column grid and the red panels and
+   * leave everything between them dark, which is the look and also keeps the
+   * robots' own lamps the only thing that actually reveals anything.
+   */
+  const trackPoints: Array<{ x: number; y: number }> = [];
+  for (let tx = GF.hall.x + 150; tx < GF.hall.x + GF.hall.w; tx += 250) {
+    for (let ty = GF.hall.y + 130; ty < GF.hall.y + GF.hall.h; ty += 210) {
+      trackPoints.push({ x: tx, y: ty });
+    }
+  }
+  const track = trackPoints.map((p, i) => {
+    const light = new THREE.PointLight(0xa8c4e6, 0, m(190), 1.5);
+    light.name = `track/${i}`;
     light.position.set(m(p.x), 0, m(p.y));
     group.add(light);
     return light;
@@ -582,6 +669,10 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
     map: grids.up.tex,
     transparent: true,
     blending: THREE.MultiplyBlending,
+    // three only implements MultiplyBlending for premultiplied source colour; without
+    // this it logs "MultiplyBlending requires material.premultipliedAlpha = true"
+    // once per draw call. The mask texture is fully opaque, so the two agree.
+    premultipliedAlpha: true,
     depthWrite: false,
     side: THREE.DoubleSide,
     toneMapped: false,
@@ -601,6 +692,8 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
 
   let fogClock = 0;
   let composedBase = -1;
+  /** `?nofog=1`. The mask keeps accumulating; it just stops being drawn. */
+  let fogEnabled = true;
 
   function composeFog(grid: FogGrid, base: number): void {
     const { explored, heat, data } = grid;
@@ -747,6 +840,14 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
       lamp.target.updateMatrixWorld();
       lamp.spot.intensity = LAMP_INTENSITY[kind] * cur.lampGain;
       lamp.spot.visible = lamp.spot.intensity > 0.05;
+
+      // The robot's own key: in front of it on the camera's side, at head height.
+      // Strongest in the dark chapters and damped right down once the house lights
+      // or the daylight are doing the job.
+      const lift = ROBOT_HEIGHT_M[kind] * (kind === 'droid' && mounted ? 1.9 : 1) * 0.72;
+      lamp.key.position.set(m(src.x) + KEY_OFF_M * 0.35, floorY + lift + 0.35, m(src.y) + KEY_OFF_M);
+      lamp.key.intensity = KEY_INTENSITY * Math.max(0.22, 1 - cur.ambient * 1.7);
+      lamp.key.visible = lamp.key.intensity > 0.02;
     }
 
     /* ------------------------------------------------- chapter fixtures */
@@ -763,6 +864,13 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
       hl.position.y = floorY + 3.1;
       hl.intensity = onGround ? 0 : 9 * cur.house;
       hl.visible = hl.intensity > 0.02;
+    }
+    // The hall's track spots ride the same switch as the exit greens: they are the
+    // dark-hall chapter's fixtures and nothing else's.
+    for (const tl of track) {
+      tl.position.y = floorY + 3.2;
+      tl.intensity = onGround ? 5.5 * cur.exits : 0;
+      tl.visible = tl.intensity > 0.02;
     }
     stage.position.set(m(stageSim.x), floorY + 6.2, m(stageSim.y) + 2.2);
     stageTarget.position.set(m(stageSim.x), floorY + 0.6, m(stageSim.y));
@@ -826,7 +934,7 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
       fogClock = 0;
     }
     fogPlane.position.y = floorY + FOG_Y;
-    fogPlane.visible = showFog;
+    fogPlane.visible = showFog && fogEnabled;
   }
 
   /** Where a lamp sits above its storey's floor, mounting included. */
@@ -946,5 +1054,15 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
   clearFog();
   applyChapter(0, false);
 
-  return { update, dispose };
+  return {
+    update,
+    setFogEnabled(on: boolean): void {
+      fogEnabled = on;
+      if (!on) fogPlane.visible = false;
+    },
+    setEnabled(on: boolean): void {
+      group.visible = on;
+    },
+    dispose,
+  };
 }

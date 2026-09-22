@@ -65,8 +65,11 @@ export function buildDroid(): RobotRig {
   const barrel = panelMaterial('#4a5058', 0.45, { roughness: 0.5, metalness: 0.72 });
   const copper = panelMaterial('#9a5f30', 0.6, { roughness: 0.68, metalness: 0.55 });
   const grime = panelMaterial('#1b1e23', 0.3, { roughness: 0.9, metalness: 0.2 });
-  const eyeGlow = glowMaterial('#ffc46b', 2.4, '#1a1206');
-  const statusGlow = glowMaterial('#6bd39a', 1.2, '#10160f');
+  // Amber. At intensity 2.4 the green channel clipped to 255 and Droid's eyes
+  // photographed as lemon yellow — the one colour both the bio and GAUNTLET Stage 1
+  // name for him. `#ffa63a` x 1.5 keeps R > G > B after the sRGB round trip.
+  const eyeGlow = glowMaterial('#ffa63a', 1.5, '#1a1206');
+  const statusGlow = glowMaterial('#d98a3a', 1.0, '#10160f');
   glow.push(eyeGlow, statusGlow);
 
   /** House weathering: copper bloom on graphite, blotchy rather than uniform. */
@@ -126,7 +129,9 @@ export function buildDroid(): RobotRig {
     slat.position.set(-0.06, 0.38 - i * 0.022, 0.165);
     torso.add(slat);
   }
-  const statusLamp = part(puck(0.011, 0.008, 12).rotateX(Math.PI / 2), statusGlow);
+  // A single warm status pip, low on the chest plate. It used to be bright green,
+  // which appears nowhere on the model sheet and read as a stray LED.
+  const statusLamp = part(puck(0.009, 0.008, 12).rotateX(Math.PI / 2), statusGlow);
   statusLamp.position.set(0.055, 0.255, 0.168);
   torso.add(statusLamp);
   // Backpack hump — the sheet's back views have a raised panel between the blades.
@@ -207,30 +212,44 @@ export function buildDroid(): RobotRig {
     pauldron.position.set(side * 0.025, 0.02, 0.0);
     pauldron.rotation.z = -side * 0.22;
     shoulder.add(pauldron);
-    // The circular emblem sits on the front-outer face of the pauldron, where the
-    // sheet's three-quarter views show it.
+
+    // The circular emblem sits on the front-OUTER face of the pauldron, where the
+    // sheet shows it in six of its ten views.
+    //
+    // It is parented to the pauldron, not to the shoulder, so the pauldron's own
+    // tilt carries it, and it is placed at 1.13x the ellipsoid's surface along its
+    // own normal. Placed as a sibling at (0.082, ., 0.072) it sat 4 cm INSIDE the
+    // shell and both shoulders rendered as bare smooth domes.
     const emblemAt = new THREE.Object3D();
-    emblemAt.position.set(side * 0.082, 0.025, 0.072);
-    emblemAt.rotation.y = side * 0.95;
-    shoulder.add(emblemAt);
-    const emblemRing = part(new THREE.TorusGeometry(0.046, 0.01, 8, 26), copper, wear(0.6, 53));
-    emblemRing.rotation.y = Math.PI / 2;
+    const en = new THREE.Vector3(side * 0.76, 0.14, 0.64).normalize();
+    const et = 1 / Math.hypot(en.x / 0.115, en.y / 0.098, en.z / 0.135);
+    emblemAt.position.copy(en).multiplyScalar(et * 1.06);
+    emblemAt.lookAt(en.clone().multiplyScalar(2));
+    pauldron.add(emblemAt);
+    const emblemRing = part(new THREE.TorusGeometry(0.044, 0.011, 8, 26), copper, wear(0.4, 53));
     emblemAt.add(emblemRing);
-    const emblemDisc = part(puck(0.04, 0.012, 22).rotateZ(Math.PI / 2), panelDark, wear(0.5, 54));
+    const emblemDisc = part(puck(0.04, 0.016, 22).rotateX(Math.PI / 2), panelDark, wear(0.5, 54));
+    emblemDisc.position.z = -0.004;
     emblemAt.add(emblemDisc);
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * Math.PI * 2 + 0.4;
-      const spoke = part(roundedBox(0.012, 0.028, 0.009, 0.004, 2), copper);
-      spoke.position.set(side * 0.008, Math.cos(a) * 0.024, Math.sin(a) * 0.024);
-      spoke.rotation.x = -a;
+      const spoke = part(roundedBox(0.011, 0.03, 0.012, 0.004, 2), copper);
+      spoke.position.set(Math.cos(a) * 0.022, Math.sin(a) * 0.022, 0.006);
+      spoke.rotation.z = -a;
       emblemAt.add(spoke);
     }
-    // Copper weathering streaks running down off the pauldron.
-    for (let i = 0; i < 3; i++) {
-      const streak = part(roundedBox(0.012, 0.09 + i * 0.03, 0.008, 0.004, 2), copper, wear(0.8, 55 + i));
-      streak.position.set(side * (0.055 + i * 0.012), -0.07 - i * 0.02, 0.09 - i * 0.05);
-      streak.rotation.z = side * 0.1;
-      shoulder.add(streak);
+
+    // Copper weathering at the shoulder joint ring and a couple of soft rust
+    // patches — a worn metal band, not the five saturated orange noodles that used
+    // to hang off each shoulder like spaghetti.
+    const wornRing = part(new THREE.TorusGeometry(0.079, 0.009, 8, 22), copper, wear(0.9, 55));
+    wornRing.rotation.y = Math.PI / 2;
+    wornRing.position.set(side * 0.086, 0, 0);
+    shoulder.add(wornRing);
+    for (let i = 0; i < 2; i++) {
+      const patch = part(roundedBox(0.016, 0.05 + i * 0.02, 0.05, 0.006, 2), copper, wear(0.95, 56 + i));
+      patch.position.set(side * (0.066 - i * 0.006), -0.075 - i * 0.03, 0.03 - i * 0.055);
+      shoulder.add(patch);
     }
 
     const upperMesh = part(new THREE.CylinderGeometry(0.062, 0.05, UPPER_ARM - 0.1, 14, 4), panel, wear(0.55, 58));
@@ -309,10 +328,11 @@ export function buildDroid(): RobotRig {
     const hipCap = part(puck(0.07, 0.03, 20).rotateZ(Math.PI / 2), copper, wear(0.75, 72));
     hipCap.position.x = side * 0.07;
     hip.add(hipCap);
+    // Rust bleeding off the hip edge: two soft patches, not painted drips.
     for (let i = 0; i < 2; i++) {
-      const streak = part(roundedBox(0.011, 0.1 + i * 0.05, 0.008, 0.004, 2), copper, wear(0.8, 73 + i));
-      streak.position.set(side * (0.07 - i * 0.015), -0.09 - i * 0.03, 0.05 - i * 0.07);
-      hip.add(streak);
+      const patch = part(roundedBox(0.014, 0.055 + i * 0.02, 0.045, 0.006, 2), copper, wear(0.95, 73 + i));
+      patch.position.set(side * (0.068 - i * 0.008), -0.075 - i * 0.025, 0.035 - i * 0.06);
+      hip.add(patch);
     }
 
     const thighMesh = part(new THREE.CylinderGeometry(0.082, 0.068, THIGH - 0.1, 14, 4), panel, wear(0.55, 75));

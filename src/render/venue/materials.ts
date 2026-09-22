@@ -130,6 +130,19 @@ const SPECS = {
   pendantWhite: { color: '#efefeb', roughness: 0.5, emissive: '#fff0d0', emissiveIntensity: 0.85 },
   /** Entrance and facade glazing, with the autumn dark behind it. */
   glazing: { color: '#2c4258', roughness: 0.06, metalness: 0.2, opacity: 0.4 },
+  /** A glazed door LEAF in a door bank: lighter than the facade so a bay reads. */
+  doorLeaf: { color: '#3d5c79', roughness: 0.08, metalness: 0.25, opacity: 0.55 },
+  /** The aluminium mullions between door leaves, and the door frames. */
+  mullion: { color: '#8d939b', roughness: 0.4, metalness: 0.7 },
+  /** Dark blue lobby columns — image-1790032582765.webp. */
+  lobbyColumn: { color: '#1d2a44', roughness: 0.85 },
+  /** Rope-line stanchion posts and their belts. */
+  stanchion: { color: '#b3b8bf', roughness: 0.32, metalness: 0.8 },
+  stanchionBelt: { color: '#1c4a96', roughness: 0.9 },
+  /** Suspended ceiling tiles in the BOF rooms — image-1790032615122.webp. */
+  ceilingTile: { color: '#d8d6d0', roughness: 0.9 },
+  /** Toilet pictogram panels: Kinepolis blue on white. */
+  tiling: { color: '#cfd4d8', roughness: 0.45 },
 
   /* ---------------------------------------------------------------- accent */
   /** Devoxx orange, the same hue as Voxxy's shell. */

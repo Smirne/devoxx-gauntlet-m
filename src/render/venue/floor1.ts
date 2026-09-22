@@ -297,12 +297,27 @@ function mainStaircase(p: VenuePalette, overhead: THREE.Group): THREE.Group {
   const g = new THREE.Group();
   g.name = 'stair-main';
   const s = F1.mainStair;
+
+  // A blue-carpet HEAD at corridor level, then the flight dropping away from it.
+  //
+  // Drawn as a bare 10-step flight over the whole 64-px rect this read, from the
+  // diorama camera and from straight above, as a single six-unit blue line and an
+  // amorphous grey wedge — the venue's most recognisable image, missing from the
+  // chapter that needs it. The head gives the carpet an area at floor level, the
+  // flight is shallower so more of its treads sit near the top, and the handrails
+  // and balustrades stand at corridor height where both cameras can see them.
+  const HEAD = 18;
+  const head: Rect = { x: s.x, y: s.y, w: HEAD, h: s.h };
+  const landing = floorSlab(head, 0.01, p.stairCarpetBlue, 0.1);
+  landing.name = 'stair-main-head';
+  g.add(landing);
+
   const flight = stairFlight({
-    rect: s,
+    rect: { x: s.x + HEAD, y: s.y, w: s.w - HEAD, h: s.h },
     topY: 0,
-    bottomY: -2.9,
+    bottomY: -2.2,
     dir: '+x',
-    steps: 10,
+    steps: 8,
     tread: p.stairCarpetBlue,
     nosing: p.stairNosing,
     runs: 3,
@@ -310,8 +325,23 @@ function mainStaircase(p: VenuePalette, overhead: THREE.Group): THREE.Group {
   });
   flight.name = 'stair-main-flight';
   g.add(flight);
-  overhead.add(tensileTree(s.x + 16, s.y + 22, 2.0, 1.5, 2.6, p.canopyFabric));
-  overhead.add(tensileTree(s.x + 48, s.y + 66, 2.0, 1.5, 2.6, p.canopyFabric));
+
+  // Slim tubular steel handrails splitting the stair into its three runs, plus a
+  // balustrade down each side — image-1790032674926.webp.
+  for (let k = 0; k <= 3; k++) {
+    const y = s.y + (s.h * k) / 3;
+    const rail = slab({ x: s.x - 2, y: y - 1.5, w: s.w + 4, h: 3 }, 0.92, 0.07, p.steelRail);
+    g.add(rail);
+    for (let j = 0; j <= 3; j++) {
+      g.add(postAt(s.x + 2 + (j * (s.w - 4)) / 3, y, 0.05, 0.95, 0, p.steelRail, 8));
+    }
+  }
+  // The dark well edge, so the opening reads as a hole in the floor from above.
+  for (const y of [s.y - T, s.y + s.h]) g.add(slab({ x: s.x, y, w: s.w, h: T }, -0.02, 0.9, p.corridorColumn));
+
+  // The white tensile "tree" canopy over the stair head, uplit blue.
+  overhead.add(tensileTree(s.x + 14, s.y + 24, 2.2, 1.6, 2.5, p.canopyFabric));
+  overhead.add(tensileTree(s.x + 46, s.y + 66, 2.2, 1.6, 2.5, p.canopyFabric));
   return g;
 }
 
@@ -335,7 +365,15 @@ function corridorDressing(p: VenuePalette, overhead: THREE.Group): THREE.Group {
   const busy: Rect[] = [F1.nicheTop, F1.nicheBot, F1.mainStair];
   for (const x of xs) {
     if (busy.some((b) => x > b.x - 24 && x < b.x + b.w + 24)) continue;
-    for (const y of [CY0 + 11, CY1 - 11]) g.add(boxAt(x, y, 16, 16, 0, SHELL_H, p.corridorColumn));
+    // FAR side (small sim y) gets the full 3.3 m shaft: the diorama camera sits on
+    // the +z side, so those columns stand BEHIND the corridor and give it depth.
+    g.add(boxAt(x, CY0 + 11, 16, 16, 0, SHELL_H, p.corridorColumn));
+    // NEAR side gets a knee-high plinth instead. A full shaft here stands between
+    // the camera and the corridor floor, and since these columns are render-only
+    // dressing rather than sim colliders, a robot walks straight behind one and
+    // vanishes — which is exactly what happened to Voxxy and Droid on chapter 1's
+    // opening frame, ring and all.
+    g.add(boxAt(x, CY1 - 11, 16, 16, 0, 0.52, p.corridorColumn));
   }
 
   // Vaults: pale bands tilted up off the columns, springing toward the centre.
@@ -352,7 +390,7 @@ function corridorDressing(p: VenuePalette, overhead: THREE.Group): THREE.Group {
     const d = roomDoor(r);
     // Hung on the corridor *face* of the wall, so it reads from down the corridor.
     const y = r.side < 0 ? CY0 + 1 : CY1 - 3;
-    g.add(slab({ x: d.cx - DOOR / 2 - 44, y, w: 30, h: 2 }, 0.55, 1.9, p.posterGlow));
+    g.add(slab({ x: d.cx - DOOR / 2 - 42, y, w: 22, h: 2 }, 0.6, 1.55, p.posterGlow));
   }
   return g;
 }

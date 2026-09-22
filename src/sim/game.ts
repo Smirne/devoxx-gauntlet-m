@@ -421,6 +421,10 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   }
 
   function skipChapter(): void {
+    // Once the run is over there is nothing left to skip: skipping the end card
+    // used to push chapter 4 onto `skipped` a second time, so the final card read
+    // "skipped: 1, 2, 3, 4, 4".
+    if (phase === 'done') return;
     card = null;
     if (chapter === 0) {
       startChapter(1);
@@ -585,6 +589,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       people: r?.people?.() ?? NO_PEOPLE,
       objective,
       keys: keysLine,
+      progress: r?.progress?.() ?? '',
       toast,
       fade,
       card,
