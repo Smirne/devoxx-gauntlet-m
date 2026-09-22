@@ -12,13 +12,22 @@
  *   2. a rounded-corner visor filling that face (0.78 of the head box across,
  *      0.655 down) behind a thin light bezel, near-black glass with two broad
  *      specular streaks, and TWO SOFT AMBER GLOWS on it — see `EYE` below;
- *   3. one smooth pear body with a clean equatorial seam, a small high cub
- *      emblem, a chest button and a belly slot with one green LED beside it;
+ *   3. one pear body broken up the way an assembled shell is: a shoulder yoke
+ *      seam, a tall rounded-corner front plate, a meridian split down each
+ *      side, the equatorial line and a row of bolt heads along the hem, with a
+ *      small high cub emblem, a chest button and a belly slot with one green
+ *      LED beside it;
  *   4. BOWLING-PIN arms — thin at the shoulder, widest at ~78% down where ONE
- *      white cuff band wraps them — ending in a black ball wrist and a three-
- *      digit black gripper, which is what the sheet actually puts there;
- *   5. thin orange legs, a white ankle ring, and little rounded orange boots
- *      with four black toe pads each.
+ *      white cuff band wraps them, dark-edged and banded rather than painted on
+ *      — with a lengthwise panel line and a bolted hatch on the lower bulb,
+ *      ending in a black ball wrist and a three-digit black gripper;
+ *   5. thin orange legs with a ribbed hip gaiter, a dark knee ring and a white
+ *      ankle collar, and little rounded orange boots with four black toe pads.
+ *
+ * Everything in item 3, most of item 4 and the ear plate seams, the crown vent,
+ * the visor crosshairs and the port's spokes and bolts are PORTRAIT-SCALE work.
+ * At the diorama camera Voxxy is about 55 px tall and none of it resolves; see
+ * the `surface kit` block for what that constrained.
  *
  * ## EYE — why this file authors the eyes as a glow and not as a shape
  *
@@ -47,6 +56,7 @@ import * as THREE from 'three';
 import { ROBOT_HEIGHT_M } from '../../sim/units';
 import {
   assertBones,
+  bolt,
   ellipsoid,
   glowMaterial,
   joint,
@@ -400,6 +410,220 @@ function overlay(mesh: THREE.Mesh, order: number): THREE.Mesh {
   return mesh;
 }
 
+/* -------------------------------------------------------------- surface kit */
+
+/*
+ * SEAMS, FASTENERS AND JOINT RINGS — why they are geometry and not a map.
+ *
+ * The sheet's Voxxy is an *assembled* object: the pear carries a shoulder yoke
+ * seam, a tall front plate with rounded corners, a meridian split down each
+ * side and a row of small bolt heads along the hem; the arms carry a lengthwise
+ * seam, a banded cuff with dark edges and a bolted hatch; the ears, the head
+ * back and the boots all carry their own plate outlines. Our shell was one
+ * smooth moulding with a single equatorial line.
+ *
+ * Two constraints decided the technique:
+ *
+ *   1. A previous round printed a dot-matrix TEXTURE across the visor and it
+ *      read as speckle at play scale. Anything that lives in a map and is not
+ *      mip-correct does the same, so the seams here are geometry: a thin tube
+ *      sunk into the shell so only a 1-2 mm ridge shows. Sub-pixel geometry
+ *      resolves into the MSAA average instead of crawling.
+ *   2. The seam colour is `seamMat` (#8a3c07), a deep burnt orange, NOT black.
+ *      When a 2 mm line collapses below a pixel at the diorama camera it has to
+ *      average into the shell without darkening it; a black line would leave
+ *      grey smudges on an orange robot at 70 px tall, which is exactly what the
+ *      play-scale camera gives us.
+ *
+ * All of it is portrait-scale detail and the file says so honestly. What it
+ * buys at play scale is only that the shell is no longer perfectly uniform.
+ */
+
+/** Linear sampler over a lathe profile, matching what `latheProfile` splines. */
+function profileSampler(points: Array<[number, number]>, n = 160): (y: number) => number {
+  const curve = new THREE.SplineCurve(points.map(([x, y]) => new THREE.Vector2(x, y)));
+  const pts = curve.getPoints(n);
+  return (y: number): number => {
+    if (y <= pts[0].y) return pts[0].x;
+    for (let i = 1; i < pts.length; i++) {
+      if (y <= pts[i].y) {
+        const a = pts[i - 1];
+        const b = pts[i];
+        const t = b.y === a.y ? 0 : (y - a.y) / (b.y - a.y);
+        return a.x + (b.x - a.x) * t;
+      }
+    }
+    return pts[pts.length - 1].x;
+  };
+}
+
+/** `sign(v) * |v|^(2/power)` — the squircle warp `squirclePatch` uses. */
+function signPow(v: number, power: number): number {
+  return Math.sign(v) * Math.pow(Math.abs(v), 2 / power);
+}
+
+/** A point on a body of revolution about +Y, pulled `sink` metres inward. */
+function onRevolve(radiusAt: (y: number) => number, az: number, y: number, sink: number, zScale = 1): THREE.Vector3 {
+  const r = Math.max(0.0005, radiusAt(y) - sink);
+  return new THREE.Vector3(r * Math.sin(az), y, r * Math.cos(az) * zScale);
+}
+
+/**
+ * A closed rounded-rectangle panel outline drawn on a body of revolution: the
+ * loop is a superellipse in (azimuth, height) and every sample is then dropped
+ * onto the surface, so it hugs a pear or a teardrop instead of floating off it.
+ */
+function revolveLoop(
+  radiusAt: (y: number) => number,
+  azMid: number,
+  azHalf: number,
+  yMid: number,
+  yHalf: number,
+  power: number,
+  samples: number,
+  sink: number,
+  zScale = 1,
+): THREE.Vector3[] {
+  const out: THREE.Vector3[] = [];
+  for (let i = 0; i < samples; i++) {
+    const t = (i / samples) * Math.PI * 2;
+    const az = azMid + azHalf * signPow(Math.cos(t), power);
+    const y = yMid + yHalf * signPow(Math.sin(t), power);
+    out.push(onRevolve(radiusAt, az, y, sink, zScale));
+  }
+  return out;
+}
+
+/** An open run of seam: `steps + 1` samples between two (azimuth, height) ends. */
+function revolveArc(
+  radiusAt: (y: number) => number,
+  a: [number, number],
+  b: [number, number],
+  steps: number,
+  sink: number,
+  zScale = 1,
+): THREE.Vector3[] {
+  const out: THREE.Vector3[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    out.push(onRevolve(radiusAt, a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, sink, zScale));
+  }
+  return out;
+}
+
+/** A closed loop on an ellipsoid, in the same (theta, phi) space as the visor. */
+function ellipsoidLoop(
+  rx: number,
+  ry: number,
+  rz: number,
+  phiMid: number,
+  phiHalf: number,
+  thetaMid: number,
+  thetaHalf: number,
+  power: number,
+  samples: number,
+): THREE.Vector3[] {
+  const out: THREE.Vector3[] = [];
+  for (let i = 0; i < samples; i++) {
+    const t = (i / samples) * Math.PI * 2;
+    const v = new THREE.Vector3();
+    onEllipsoid(
+      rx,
+      ry,
+      rz,
+      thetaMid + thetaHalf * signPow(Math.sin(t), power),
+      phiMid + phiHalf * signPow(Math.cos(t), power),
+      v,
+    );
+    out.push(v);
+  }
+  return out;
+}
+
+/**
+ * The seam itself: a thin tube through the samples. Four radial sides is enough
+ * for a 2 mm ridge and keeps a closed panel outline under 500 triangles.
+ */
+function seam(points: THREE.Vector3[], radius: number, closed: boolean, radial = 4): THREE.BufferGeometry {
+  const curve = new THREE.CatmullRomCurve3(points, closed, 'centripetal', 0.5);
+  return new THREE.TubeGeometry(curve, points.length, radius, radial, closed);
+}
+
+const _upAxis = new THREE.Vector3(0, 1, 0);
+
+/**
+ * A bolt head standing on a body of revolution, aimed along the local surface
+ * normal — which on a lathe is `(1, -dr/dy)` in the profile plane, swung round
+ * to the given azimuth. Rivets left pointing at +Y on a sloping belly are the
+ * single most obvious way to make added hardware look pasted on.
+ */
+function revolveStud(
+  parent: THREE.Object3D,
+  mat: THREE.MeshStandardMaterial,
+  radiusAt: (y: number) => number,
+  az: number,
+  y: number,
+  radius: number,
+  height: number,
+): void {
+  const r = radiusAt(y);
+  const slope = (radiusAt(y + 0.004) - radiusAt(y - 0.004)) / 0.008;
+  const len = Math.hypot(1, slope);
+  const m = bolt(mat, radius, height);
+  m.position.set((r - height * 0.6) * Math.sin(az), y, (r - height * 0.6) * Math.cos(az));
+  m.quaternion.setFromUnitVectors(
+    _upAxis,
+    new THREE.Vector3(Math.sin(az) / len, -slope / len, Math.cos(az) / len).normalize(),
+  );
+  parent.add(m);
+}
+
+/** The same, on an ellipsoid: heads and the crown vents that sit on them. */
+function ellipsoidMount(
+  rx: number,
+  ry: number,
+  rz: number,
+  theta: number,
+  phi: number,
+  lift: number,
+): THREE.Object3D {
+  const o = new THREE.Object3D();
+  const p = new THREE.Vector3();
+  onEllipsoid(rx, ry, rz, theta, phi, p);
+  const n = new THREE.Vector3(p.x / (rx * rx), p.y / (ry * ry), p.z / (rz * rz)).normalize();
+  o.position.copy(p).addScaledVector(n, lift);
+  o.quaternion.setFromUnitVectors(_upAxis, n);
+  return o;
+}
+
+/**
+ * A joint ring: an open-ended cylinder, 40 triangles, which is how every band
+ * on this model that wraps a round part is now edged. A torus of the same read
+ * costs ten times as much and the difference is invisible at 3 mm.
+ *
+ * THE ONE TRAP. A ring is a polygon and so is the lathe under it, and an n-gon
+ * at radius r dips to `r cos(PI/n)` between its vertices. The first cut of the
+ * arm cuffs put a 20-sided ring 0.6% outside a 28-sided shell: the shell's flats
+ * poked through the ring's dips and all six rings rendered as dashed lines. Give
+ * a ring at least `r (1/cos(PI/n) - 1)` of clearance — about 1.5 mm here — and
+ * where it matters, the same segment count as the thing it wraps.
+ */
+function bandRing(rTop: number, rBottom: number, height: number, segments = 20): THREE.BufferGeometry {
+  return new THREE.CylinderGeometry(rTop, rBottom, height, segments, 1, true);
+}
+
+/** A tangent frame on a body of revolution: +Y is the outward surface normal. */
+function revolveMount(radiusAt: (y: number) => number, az: number, y: number, lift: number): THREE.Object3D {
+  const slope = (radiusAt(y + 0.004) - radiusAt(y - 0.004)) / 0.008;
+  const len = Math.hypot(1, slope);
+  const n = new THREE.Vector3(Math.sin(az) / len, -slope / len, Math.cos(az) / len).normalize();
+  const o = new THREE.Object3D();
+  const r = radiusAt(y);
+  o.position.set(r * Math.sin(az), y, r * Math.cos(az)).addScaledVector(n, lift);
+  o.quaternion.setFromUnitVectors(_upAxis, n);
+  return o;
+}
+
 /* ---------------------------------------------------------------- arm shape */
 
 /**
@@ -436,6 +660,52 @@ function armRadius(d: number): number {
   }
   return pts[pts.length - 1][1];
 }
+
+/* ---------------------------------------------------------------- body shape */
+
+/**
+ * The pear, as `[radius, y]` in the torso bone's own space. Hoisted out of
+ * `buildVoxxy` so the panel seams can be dropped onto exactly the surface the
+ * lathe builds rather than onto a guess at it — `bodySurface` splines the same
+ * points `latheProfile` does.
+ */
+const BODY_PROFILE: Array<[number, number]> = [
+  [0.0, -0.168],
+  [0.091, -0.158],
+  [0.142, -0.135],
+  [0.172, -0.095],
+  [0.187, -0.04],
+  [0.19, 0.02],
+  [0.184, 0.088],
+  [0.174, 0.155],
+  [0.159, 0.221],
+  [0.142, 0.274],
+  [0.118, 0.315],
+  [0.068, 0.344],
+  [0.0, TORSO_TOP - TORSO_Y],
+];
+const bodySurface = profileSampler(BODY_PROFILE);
+
+/**
+ * The torso's panel breaks, read off the sheet's front and back elevations
+ * (`robots/voxxy-robot.png`, panels r0c0 and r1c1):
+ *
+ *   * a shoulder YOKE seam right round the chest, lowest front and back and
+ *     rising over each shoulder — hence the `cos(2 * az)` term;
+ *   * a tall rounded-corner FRONT PLATE from under the yoke down to the hem,
+ *     which is the single biggest "this thing was bolted together" cue;
+ *   * a MERIDIAN split down each side at the silhouette edge, so the seam work
+ *     still reads from the profile and three-quarter cameras;
+ *   * bolt heads at the plate's corners and along the hem.
+ *
+ * The sheet has the same plate on the back. It is not built: the diorama camera
+ * never shows Voxxy's back at a size where a 2 mm line resolves, and the loop
+ * costs 450 triangles.
+ */
+const YOKE_Y = 0.318;
+const PLATE_TOP = 0.292;
+const PLATE_BOTTOM = -0.088;
+const PLATE_AZ = 0.72;
 
 /** A lathe of the arm between two depths, as a profile in the bone's own space. */
 function armShell(from: number, to: number, y0: number, swell = 1): THREE.BufferGeometry {
@@ -529,25 +799,7 @@ export function buildVoxxy(): RobotRig {
    * The profile is monotone from the neck down to its widest at y = 0.02, so
    * the silhouette cannot break into two stacked lobes.
    */
-  const bodyGeo = latheProfile(
-    [
-      [0.0, -0.168],
-      [0.091, -0.158],
-      [0.142, -0.135],
-      [0.172, -0.095],
-      [0.187, -0.04],
-      [0.19, 0.02],
-      [0.184, 0.088],
-      [0.174, 0.155],
-      [0.159, 0.221],
-      [0.142, 0.274],
-      [0.118, 0.315],
-      [0.068, 0.344],
-      [0.0, TORSO_TOP - TORSO_Y],
-    ],
-    36,
-    40,
-  );
+  const bodyGeo = latheProfile(BODY_PROFILE, 36, 40);
   const body = part(bodyGeo, shell);
   torso.add(body);
   parts.torsoShell = body;
@@ -558,10 +810,74 @@ export function buildVoxxy(): RobotRig {
    * A torus just inside the shell's own radius reads as a moulding split from
    * every angle and costs 512 triangles.
    */
-  const seam = part(new THREE.TorusGeometry(0.1875, 0.0035, 8, 64), seamMat);
-  seam.rotation.x = Math.PI / 2;
-  seam.position.y = 0.02;
-  torso.add(seam);
+  const equator = part(new THREE.TorusGeometry(0.1875, 0.0035, 8, 64), seamMat);
+  equator.rotation.x = Math.PI / 2;
+  equator.position.y = 0.02;
+  torso.add(equator);
+
+  /*
+   * ...and the rest of the panel break-up the sheet has and this model did not.
+   * See the `BODY_PROFILE` block above for what each line is and why the back
+   * plate is not among them.
+   */
+  const yokePts: THREE.Vector3[] = [];
+  for (let i = 0; i < 40; i++) {
+    const az = (i / 40) * Math.PI * 2;
+    yokePts.push(onRevolve(bodySurface, az, YOKE_Y - 0.013 * Math.cos(2 * az), 0.0016));
+  }
+  torso.add(part(seam(yokePts, 0.0032, true), seamMat));
+
+  torso.add(
+    part(
+      seam(
+        revolveLoop(
+          bodySurface,
+          0,
+          PLATE_AZ,
+          (PLATE_TOP + PLATE_BOTTOM) / 2,
+          (PLATE_TOP - PLATE_BOTTOM) / 2,
+          3.0,
+          52,
+          0.0016,
+        ),
+        0.0032,
+        true,
+      ),
+      seamMat,
+    ),
+  );
+
+  for (const sx of [-1, 1]) {
+    const side = (sx * Math.PI) / 2;
+    const meridian = revolveArc(bodySurface, [side, 0.292], [side, -0.105], 14, 0.0016);
+    torso.add(part(seam(meridian, 0.0032, false), seamMat));
+  }
+
+  /*
+   * FASTENERS. Eight 11 mm bolt heads — the plate's four corners and four along
+   * the hem — each aimed down its own surface normal. On the sheet they are the
+   * detail that stops the shell reading as one moulded blob, and at 32 triangles
+   * apiece (an 8-sided `rig.bolt`, never a sphere) they are the cheapest fidelity
+   * on the whole model.
+   */
+  for (const sx of [-1, 1]) {
+    revolveStud(torso, seamMat, bodySurface, sx * 0.6, PLATE_TOP - 0.014, 0.0055, 0.0032);
+    revolveStud(torso, seamMat, bodySurface, sx * 0.735, 0.055, 0.0055, 0.0032);
+  }
+  for (const az of [-0.56, -0.2, 0.2, 0.56]) {
+    revolveStud(torso, seamMat, bodySurface, az, PLATE_BOTTOM + 0.014, 0.0055, 0.0032);
+  }
+
+  /*
+   * Two small recessed hatches flanking the top of the chest plate — the little
+   * dark rectangles the sheet prints either side of the yoke. A plain box, 12
+   * triangles, laid flat on the shell.
+   */
+  for (const sx of [-1, 1]) {
+    const mount = revolveMount(bodySurface, sx * 1.02, 0.212, -0.0012);
+    mount.add(part(new THREE.BoxGeometry(0.02, 0.005, 0.011), dark));
+    torso.add(mount);
+  }
 
   /*
    * Shoulder pods: the two orange bumps the sheet grows the arm struts out of.
@@ -628,11 +944,67 @@ export function buildVoxxy(): RobotRig {
    */
   const neckMesh = part(new THREE.CylinderGeometry(0.05, 0.062, 0.05, 20), dark);
   neck.add(neckMesh);
+  // Ribbed, like the hip gaiters: on the sheet the neck is a concertina boot,
+  // and a smooth black cylinder is the one place the model still read as a prop.
+  for (const [y, r] of [
+    [0.014, 0.0546],
+    [-0.004, 0.0589],
+  ] as const) {
+    const rib = part(bandRing(r, r, 0.005, 20), dark);
+    rib.position.y = y;
+    neck.add(rib);
+  }
 
   /* ----------------------------------------------------------------- head */
   const headShell = part(ellipsoid(HEAD_RX, HEAD_RY, HEAD_RZ, 52, 34), shell);
   head.add(headShell);
   parts.headShell = headShell;
+
+  /*
+   * HEAD PANELS. The sheet's back elevation shows one big rounded-rect access
+   * plate filling the back of the skull with a bolt at each top corner, and the
+   * front elevation shows a jaw seam running under the visor plus a small vent
+   * dash on the crown and an alignment cross either side of the glass.
+   *
+   * Nothing here may grow the head's bounding box: `tests/robots.smoke.test.ts`
+   * measures the visor against that box and we sit at 0.786 of a 0.80 cap, so
+   * every one of these is built inside HEAD_R* and checked by the measurement
+   * script rather than by eye.
+   */
+  const backPlate = ellipsoidLoop(
+    HEAD_RX * 0.998,
+    HEAD_RY * 0.998,
+    HEAD_RZ * 0.998,
+    Math.PI,
+    0.95,
+    Math.PI / 2,
+    0.6,
+    3.0,
+    44,
+  );
+  head.add(part(seam(backPlate, 0.003, true), seamMat));
+  {
+    const jaw: THREE.Vector3[] = [];
+    for (let i = 0; i <= 18; i++) {
+      const v = new THREE.Vector3();
+      onEllipsoid(HEAD_RX, HEAD_RY, HEAD_RZ, Math.PI / 2 + 0.875, -0.95 + (i / 18) * 1.9, v);
+      jaw.push(v);
+    }
+    head.add(part(seam(jaw, 0.0028, false), seamMat));
+  }
+  for (const sx of [-1, 1]) {
+    const cross = ellipsoidMount(HEAD_RX, HEAD_RY, HEAD_RZ, Math.PI / 2, sx * 1.1, 0.0012);
+    cross.add(part(new THREE.BoxGeometry(0.016, 0.0022, 0.0022), seamMat));
+    cross.add(part(new THREE.BoxGeometry(0.0022, 0.0022, 0.016), seamMat));
+    head.add(cross);
+    const r = 0.999;
+    const corner = ellipsoidMount(HEAD_RX * r, HEAD_RY * r, HEAD_RZ * r, Math.PI / 2 - 0.52, Math.PI - sx * 0.78, 0);
+    corner.add(bolt(seamMat, 0.0055, 0.0032));
+    head.add(corner);
+  }
+  const crownVent = ellipsoidMount(HEAD_RX, HEAD_RY, HEAD_RZ, 0.62, 0, -0.0008);
+  crownVent.add(part(new THREE.BoxGeometry(0.03, 0.005, 0.009), dark));
+  head.add(crownVent);
 
   /*
    * THE VISOR: a rounded-corner rectangle of near-black glass inside a thin
@@ -757,8 +1129,52 @@ export function buildVoxxy(): RobotRig {
     const portRoot = new THREE.Object3D();
     portRoot.position.set(sx * (PORT_X - 0.039), 0.004, 0.012);
     head.add(portRoot);
-    const cup = part(new THREE.CylinderGeometry(0.08, 0.088, 0.078, 30).rotateZ(Math.PI / 2), white);
+    /*
+     * The pod cone's WIDE end faces outward on both sides. Built with a fixed
+     * `rotateZ(PI/2)` it did not: the left pod tapered the wrong way and the two
+     * sides of the head carried visibly different white discs. The mirror test
+     * cannot see it — both boxes mirror — so it survived every round until the
+     * sheet's profile panel was put beside our own.
+     */
+    const cup = part(new THREE.CylinderGeometry(0.08, 0.088, 0.078, 30).rotateZ((sx * Math.PI) / 2), white);
     portRoot.add(cup);
+
+    /*
+     * THE PORT IS A LENS ASSEMBLY, NOT A TARGET PAINTED ON A DISC.
+     *
+     * `robots/voxxy-robot.png` panel r1c2 shows it at half the head's width and
+     * it carries, outward to inward: a plated white disc split by radial seams
+     * and dotted with bolts, a stepped white barrel, a near-black bezel, the
+     * bright orange annulus, a dark pupil, and a tiny lit die dead centre. The
+     * organisers' three-quarter shot leans on the same stack. What we had was
+     * four flat concentric rings, which photographed as a decal.
+     */
+    for (let k = 0; k < 4; k++) {
+      const spokeHub = new THREE.Object3D();
+      spokeHub.rotation.x = -(k * Math.PI) / 2 - Math.PI / 4;
+      const spoke = part(new THREE.BoxGeometry(0.005, 0.011, 0.0026), seamMat);
+      spoke.position.y = 0.0825;
+      spokeHub.add(spoke);
+      spokeHub.position.x = sx * 0.0385;
+      portRoot.add(spokeHub);
+    }
+    for (const a of [0.85, 2.45, 4.35]) {
+      const stud = bolt(dark, 0.0042, 0.0026);
+      stud.position.set(sx * 0.0385, 0.0825 * Math.cos(a), 0.0825 * Math.sin(a));
+      stud.rotation.z = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
+      portRoot.add(stud);
+    }
+    /*
+     * The lens BARREL: a white cone standing proud of the disc and narrowing
+     * outward, which is the step the sheet's port has and a stack of coplanar
+     * rings can never fake. Its outer lip stops at local x 0.049 — one
+     * millimetre inside the orange annulus, which is the head's widest hardware
+     * and therefore the denominator of the visor test.
+     */
+    const barrel = part(bandRing(0.064, 0.078, 0.012, 28).rotateZ((-sx * Math.PI) / 2), white);
+    barrel.position.x = sx * 0.043;
+    portRoot.add(barrel);
+
     const rim = part(new THREE.TorusGeometry(0.06, 0.011, 10, 30), dark);
     rim.rotation.y = Math.PI / 2;
     rim.position.x = sx * 0.036;
@@ -773,9 +1189,14 @@ export function buildVoxxy(): RobotRig {
     const socket = part(puck(0.023, 0.012, 20).rotateZ(Math.PI / 2), dark);
     socket.position.x = sx * 0.04;
     portRoot.add(socket);
-    const pupil = part(roundedBox(0.01, 0.015, 0.015, 0.004, 2), white);
+    const pupil = part(roundedBox(0.009, 0.013, 0.013, 0.004, 1), white);
     pupil.position.x = sx * 0.0435;
     portRoot.add(pupil);
+    // The lit die at the centre of the pupil — 12 triangles, and it is the one
+    // thing that makes the port read as looking at you.
+    const die = part(new THREE.BoxGeometry(0.003, 0.0055, 0.0055), portGlow);
+    die.position.x = sx * 0.0455;
+    portRoot.add(die);
   }
 
   /*
@@ -799,6 +1220,7 @@ export function buildVoxxy(): RobotRig {
     [0.0115, 0.098],
     [0.0, 0.106],
   ];
+  const earSurface = profileSampler(earGeoPts);
   for (const sx of [-1, 1]) {
     const ear = new THREE.Object3D();
     ear.position.set(sx * EAR_X, EAR_Y, -0.014);
@@ -824,10 +1246,32 @@ export function buildVoxxy(): RobotRig {
       22,
     );
     innerGeo.scale(1, 1, 0.8);
-    const inner = part(innerGeo, white);
-    inner.position.set(0, -0.004, 0.027);
-    inner.rotation.x = -0.36;
-    ear.add(inner);
+    /*
+     * The decal sits IN the ear, not on it. At z = 0.027 its nose stood 12 mm
+     * clear of a shell whose own surface is at 47 mm — a white bulb glued to an
+     * orange cone, which is what the sheet's recessed inner ear is not. Pushed
+     * back to 0.0205 it breaks the surface as a shallow cap, and the dark lip
+     * below rings the opening it comes out of.
+     */
+    const decal = new THREE.Object3D();
+    decal.position.set(0, -0.004, 0.0205);
+    decal.rotation.x = -0.36;
+    ear.add(decal);
+    decal.add(part(innerGeo, white));
+    const lip = part(bandRing(0.0388, 0.0388, 0.007, 18), seamMat);
+    lip.position.y = -0.0155;
+    lip.scale.z = 0.8;
+    decal.add(lip);
+
+    /*
+     * ...and the two things the sheet's ear has that a smooth cone does not:
+     * a panel seam arcing over its front face, and a dark lip round the white
+     * decal so it sits IN the shell rather than on it. The ear is the top of
+     * the silhouette, so it is the one place this detail earns its triangles
+     * from more than one camera.
+     */
+    const earPlate = revolveLoop(earSurface, 0, 0.98, 0.012, 0.062, 2.6, 20, 0.0012, 0.78);
+    ear.add(part(seam(earPlate, 0.0022, true), seamMat));
   }
 
   /*
@@ -879,13 +1323,53 @@ export function buildVoxxy(): RobotRig {
     fore.add(foreShell);
 
     /*
+     * ARM CONSTRUCTION. Both bones are bodies of revolution about their own -Y,
+     * so `armRadius` re-expressed as a height sampler lets the same seam kit
+     * that dressed the pear dress the teardrop.
+     */
+    const upperSurface = (y: number): number => armRadius(-y);
+    const foreSurface = (y: number): number => armRadius(UPPER_ARM - y);
+
+    // The dark collar where the strut disappears into the teardrop — on the
+    // sheet the rod does not just vanish into orange, it lands in a socket.
+    const collarRing = part(bandRing(armRadius(0.088) * 1.1, armRadius(0.116) * 1.06, 0.028, 16), dark);
+    collarRing.position.y = -0.102;
+    upper.add(collarRing);
+
+    // The lengthwise panel line down the teardrop's outer face.
+    const armLine = revolveArc(upperSurface, [side * 0.82, -0.12], [side * 0.82, -0.29], 12, 0.0012);
+    upper.add(part(seam(armLine, 0.0026, false), seamMat));
+
+    /*
      * ONE white cuff band, wrapping the swell — not the stack of white-and-orange
      * stripes this replaces, which is the first thing the project owner named.
      * Both references have exactly one: the sheet wraps the teardrop's widest
      * part, the demo puts a clean single band lower down the same mass.
+     *
+     * The sheet's band is not painted on: it has a thin dark line at each edge
+     * and one across its middle, and two bolt heads in it. Three open-ended
+     * cylinders, 56 triangles each, carry all three lines — segmented to match
+     * the cuff lathe's own 28 sides so neither can poke through the other.
      */
     const cuff = part(armShell(0.385, 0.495, -(0.385 - UPPER_ARM), 1.042), white);
     fore.add(cuff);
+
+    for (const d of [0.386, 0.441, 0.494]) {
+      const ring = part(
+        bandRing(armRadius(d - 0.0045) * 1.075, armRadius(d + 0.0045) * 1.075, 0.009, 28),
+        seamMat,
+      );
+      ring.position.y = UPPER_ARM - d;
+      fore.add(ring);
+    }
+    for (const az of [-0.5, 0.75]) {
+      revolveStud(fore, seamMat, (y) => foreSurface(y) * 1.046, side * az, -0.115, 0.005, 0.003);
+    }
+
+    // The bolted hatch on the lower bulb, below the band.
+    const hatch = revolveLoop(foreSurface, side * 0.06, 0.42, -0.2235, 0.0235, 2.8, 22, 0.0012);
+    fore.add(part(seam(hatch, 0.0026, true), seamMat));
+    revolveStud(fore, seamMat, foreSurface, side * 0.06, -0.212, 0.0045, 0.0028);
 
     /*
      * THE HAND. Four rounds of automated checking never flagged it because
@@ -959,10 +1443,23 @@ export function buildVoxxy(): RobotRig {
      * Feet are what sell a robot as standing rather than floating, and the nubs
      * this replaces — two dark blobs and a toe cap — did not. Cheap geometry,
      * large gain.
+     *
+     * The collar is RIBBED, because on the sheet it is a concertina gaiter and
+     * not a smooth black sleeve. Two open-ended rings standing 1.5 mm proud give
+     * that read for 64 triangles; a ribbed lathe of the same silhouette costs
+     * 512 and `latheProfile`'s spline rounds the ribs back off again.
      */
     const collar = part(new THREE.CylinderGeometry(0.036, 0.032, 0.022, 16), dark);
     collar.position.y = -0.006;
     hip.add(collar);
+    for (const [y, r] of [
+      [-0.001, 0.0364],
+      [-0.011, 0.0346],
+    ] as const) {
+      const rib = part(bandRing(r, r, 0.005, 16), dark);
+      rib.position.y = y;
+      hip.add(rib);
+    }
 
     const thighMesh = part(new THREE.CylinderGeometry(0.03, 0.025, THIGH, 16), shell);
     thighMesh.position.y = -THIGH / 2;
@@ -971,11 +1468,28 @@ export function buildVoxxy(): RobotRig {
     shinMesh.position.y = -SHIN / 2;
     shin.add(shinMesh);
 
-    // The white ankle ring — the demo's, and the clearest small landmark on the
-    // bottom third of the figure at play scale.
+    // A KNEE. The sheet breaks the leg at the thigh/shin joint with a dark ring;
+    // without it the leg is one unarticulated orange cone and `gait.ts` bends a
+    // limb that has no visible place to bend.
+    const knee = part(bandRing(0.0262, 0.0262, 0.009, 16), dark);
+    shin.add(knee);
+
+    /*
+     * The white ankle ring — the demo's, and the clearest small landmark on the
+     * bottom third of the figure at play scale — now edged top and bottom, so it
+     * reads as a fitted collar and not as a painted stripe.
+     */
     const ring = part(new THREE.CylinderGeometry(0.024, 0.025, 0.017, 18), white);
     ring.position.y = 0.012;
     foot.add(ring);
+    for (const [y, r] of [
+      [0.0195, 0.0254],
+      [0.0045, 0.0264],
+    ] as const) {
+      const edge = part(bandRing(r, r, 0.003, 18), seamMat);
+      edge.position.y = y;
+      foot.add(edge);
+    }
     const ankle = part(ellipsoid(0.018, 0.016, 0.018, 14, 10), dark);
     ankle.position.y = -0.003;
     foot.add(ankle);
@@ -998,6 +1512,10 @@ export function buildVoxxy(): RobotRig {
     instep.position.set(0, -0.0165, 0.042);
     instep.rotation.x = 0.28;
     foot.add(instep);
+    // ...and the shell seam that runs across the boot behind it.
+    const bootSeam = part(new THREE.BoxGeometry(0.058, 0.003, 0.0035), seamMat);
+    bootSeam.position.set(0, -0.0205, 0.0125);
+    foot.add(bootSeam);
   }
 
   assertBones('voxxy', bones);
