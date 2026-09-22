@@ -198,18 +198,27 @@ export function buildDroid(): RobotRig {
   /* ----------------------------------------------------------------- arms */
   for (const side of [1, -1] as const) {
     const L = side > 0 ? 'L' : 'R';
-    const shoulder = joint(bones, torso, `shoulder${L}`, side * 0.225, SHOULDER_Y - TORSO_Y, 0.0);
+    /*
+     * SHOULDER SPAN. 0.30 out, not 0.225.
+     *
+     * The sheet's front view puts the pauldron span at 0.44-0.47 of total height;
+     * the build measured 0.334, which reads spindly rather than "broad-shouldered
+     * and lanky" — and a three-quarter view foreshortens a shoulder mass, so the
+     * angle could only widen that gap, never explain it. With the pauldron below
+     * the outer edge now lands at 0.475 m either side: 0.45 of 2.1 m.
+     */
+    const shoulder = joint(bones, torso, `shoulder${L}`, side * 0.3, SHOULDER_Y - TORSO_Y, 0.0);
     const upper = joint(bones, shoulder, `upperArm${L}`, 0, 0, 0);
     const fore = joint(bones, upper, `forearm${L}`, 0, -UPPER_ARM, 0);
     const hand = joint(bones, fore, `hand${L}`, 0, -FOREARM, 0);
 
     // Exposed shoulder barrel.
-    const shoulderBarrel = part(new THREE.CylinderGeometry(0.075, 0.075, 0.17, 18, 2), barrel, wear(0.45, 51));
+    const shoulderBarrel = part(new THREE.CylinderGeometry(0.078, 0.078, 0.2, 18, 2), barrel, wear(0.45, 51));
     shoulderBarrel.rotation.z = Math.PI / 2;
     shoulder.add(shoulderBarrel);
     // Round pauldron with its circular emblem.
-    const pauldron = part(ellipsoid(0.115, 0.098, 0.135, 26, 18), panel, wear(0.5, 52, 6));
-    pauldron.position.set(side * 0.025, 0.02, 0.0);
+    const pauldron = part(ellipsoid(0.145, 0.118, 0.155, 28, 18), panel, wear(0.5, 52, 6));
+    pauldron.position.set(side * 0.03, 0.02, 0.0);
     pauldron.rotation.z = -side * 0.22;
     shoulder.add(pauldron);
 
@@ -221,36 +230,44 @@ export function buildDroid(): RobotRig {
     // own normal. Placed as a sibling at (0.082, ., 0.072) it sat 4 cm INSIDE the
     // shell and both shoulders rendered as bare smooth domes.
     const emblemAt = new THREE.Object3D();
-    const en = new THREE.Vector3(side * 0.76, 0.14, 0.64).normalize();
-    const et = 1 / Math.hypot(en.x / 0.115, en.y / 0.098, en.z / 0.135);
-    emblemAt.position.copy(en).multiplyScalar(et * 1.06);
+    // More frontal than before (0.76 out / 0.64 forward): at the diorama's and the
+    // portrait's three-quarter angle the far shoulder's badge used to face away
+    // entirely, so only one of the two "round shoulder pauldrons EACH with a
+    // circular emblem" could be seen at once.
+    const en = new THREE.Vector3(side * 0.56, 0.16, 0.81).normalize();
+    const et = 1 / Math.hypot(en.x / 0.145, en.y / 0.118, en.z / 0.155);
+    // Flush on the shell, not standing off it on a ring: at 1.06 the badge floated
+    // proud with daylight under its rim and read as stray geometry.
+    emblemAt.position.copy(en).multiplyScalar(et * 1.005);
     emblemAt.lookAt(en.clone().multiplyScalar(2));
     pauldron.add(emblemAt);
-    const emblemRing = part(new THREE.TorusGeometry(0.044, 0.011, 8, 26), copper, wear(0.4, 53));
+    const emblemRing = part(new THREE.TorusGeometry(0.046, 0.006, 8, 28), copper, wear(0.4, 53));
+    emblemRing.position.z = -0.004;
     emblemAt.add(emblemRing);
-    const emblemDisc = part(puck(0.04, 0.016, 22).rotateX(Math.PI / 2), panelDark, wear(0.5, 54));
-    emblemDisc.position.z = -0.004;
+    const emblemDisc = part(puck(0.046, 0.01, 24).rotateX(Math.PI / 2), panelDark, wear(0.5, 54));
+    emblemDisc.position.z = -0.008;
     emblemAt.add(emblemDisc);
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * Math.PI * 2 + 0.4;
-      const spoke = part(roundedBox(0.011, 0.03, 0.012, 0.004, 2), copper);
-      spoke.position.set(Math.cos(a) * 0.022, Math.sin(a) * 0.022, 0.006);
+      const spoke = part(roundedBox(0.01, 0.026, 0.008, 0.003, 2), copper);
+      spoke.position.set(Math.cos(a) * 0.021, Math.sin(a) * 0.021, -0.001);
       spoke.rotation.z = -a;
       emblemAt.add(spoke);
     }
 
-    // Copper weathering at the shoulder joint ring and a couple of soft rust
-    // patches — a worn metal band, not the five saturated orange noodles that used
-    // to hang off each shoulder like spaghetti.
-    const wornRing = part(new THREE.TorusGeometry(0.079, 0.009, 8, 22), copper, wear(0.9, 55));
+    /*
+     * Copper at the shoulder is the JOINT RING and nothing else.
+     *
+     * Two free-standing copper slabs used to hang below it; from the portrait
+     * angle they read as a bent wire dangling off the badge, and together with the
+     * hip slabs and the thigh streaks they put copper on 3.6% of Droid's body
+     * pixels against the sheet's 1.1%. Rust on this robot concentrates at joint
+     * rings and panel edges, which is where the ring is.
+     */
+    const wornRing = part(new THREE.TorusGeometry(0.083, 0.009, 8, 22), copper, wear(0.9, 55));
     wornRing.rotation.y = Math.PI / 2;
-    wornRing.position.set(side * 0.086, 0, 0);
+    wornRing.position.set(side * 0.1, 0, 0);
     shoulder.add(wornRing);
-    for (let i = 0; i < 2; i++) {
-      const patch = part(roundedBox(0.016, 0.05 + i * 0.02, 0.05, 0.006, 2), copper, wear(0.95, 56 + i));
-      patch.position.set(side * (0.066 - i * 0.006), -0.075 - i * 0.03, 0.03 - i * 0.055);
-      shoulder.add(patch);
-    }
 
     const upperMesh = part(new THREE.CylinderGeometry(0.062, 0.05, UPPER_ARM - 0.1, 14, 4), panel, wear(0.55, 58));
     upperMesh.position.y = -UPPER_ARM / 2;
@@ -328,12 +345,16 @@ export function buildDroid(): RobotRig {
     const hipCap = part(puck(0.07, 0.03, 20).rotateZ(Math.PI / 2), copper, wear(0.75, 72));
     hipCap.position.x = side * 0.07;
     hip.add(hipCap);
-    // Rust bleeding off the hip edge: two soft patches, not painted drips.
-    for (let i = 0; i < 2; i++) {
-      const patch = part(roundedBox(0.014, 0.055 + i * 0.02, 0.045, 0.006, 2), copper, wear(0.95, 73 + i));
-      patch.position.set(side * (0.068 - i * 0.008), -0.075 - i * 0.025, 0.035 - i * 0.06);
-      hip.add(patch);
-    }
+    /*
+     * Rust at the hip is the cap and one short bleed off its edge.
+     *
+     * The second, longer patch ran down the outside of the thigh and read as a
+     * smooth flame-shaped paint stroke rather than as rust concentrated at a panel
+     * edge — see the shoulder-ring comment for the pixel counts.
+     */
+    const hipBleed = part(roundedBox(0.013, 0.05, 0.04, 0.006, 2), copper, wear(0.95, 73));
+    hipBleed.position.set(side * 0.068, -0.07, 0.032);
+    hip.add(hipBleed);
 
     const thighMesh = part(new THREE.CylinderGeometry(0.082, 0.068, THIGH - 0.1, 14, 4), panel, wear(0.55, 75));
     thighMesh.position.y = -THIGH / 2;

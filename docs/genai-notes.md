@@ -319,3 +319,187 @@ Also added, from `media/other-images/CAPTIONS.md` rather than from a critic: the
 **track spots on the ceiling beams**. Raising a chapter's ambient cannot produce the reference
 photograph of the dark hall — a `#33363c` wall under 10% ambient is black, correctly — because what
 makes that photograph readable is fixtures, not ambience.
+
+---
+
+## Session — 22 Sep 2026, gauntlet round 4: three critics on the running build, one fix agent
+
+Three critics ran on fresh context against the built-and-served tree (`vite build` + `vite preview`,
+headless Chromium/SwiftShader at 1600x900) and never saw a diff. Their shots are the `r2c-*` files in
+`tools/progress/shots/`; the fix pass's re-verification shots are `r2fix-*`. Verdicts: floor-plan
+fidelity **fail** on the factual overlay, robot appearance **fail** on Biggy, craft/playability
+**fail** on composition (its four gate items all passed).
+
+### What the critics caught, and what a measurement showed
+
+The floor-plan critic did something previous rounds had not: it removed the global aspect as a
+confound. It derived the build's own anisotropic sim↔plan mapping, anchored it on the room-5/8 outer
+walls and the corridor centreline, and then measured *only per-room error*. That turned a vague "the
+rooms look a bit off" into two numbers nobody could argue with — the build's outer wall is dead
+straight at sim y = 64.1 and y = 634.1 at **every one of 51 sampled columns**, where the plan's four
+auditorium pairs are four different depths (207 / 251 / 298 / 251 plan px, room 7 at 201); and room
+6/7, which the plan makes the venue's *second largest* pair, was built 18% narrower than 4/9.
+
+The robot critic did the same thing to Biggy: row-scan bounding boxes on the render against the
+sheet's own front panel. Visible hip-and-leg zone 12.8% of body height against the sheet's ~26%;
+visor band reduced to a 6 px sliver with a continuous amber hairline across it instead of two eyes.
+
+The craft critic measured luminance histograms: the scene band (HUD excluded) is 88.9% pure black in
+chapter 1, and in three of four chapters the robot the player is driving could not be found in the
+opening frame at all.
+
+### What a human decided
+
+**Michele decides the sim rect.** The floor-plan critic's fourth finding is that the whole first
+floor is stretched ~2.3x along the corridor, inverting every auditorium's footprint aspect: the
+plan's numbered-room block is essentially square (728 x 745 plan px), the build's is 1270 x 560. The
+cause is `W = 1900, H = 700`, inherited verbatim from `reference/poc/10-after-dark-kinepolis.html`.
+CLAUDE.md says parity with the prototype beats improvements; GAUNTLET.md section 0 says `plans/*.png`
+is ground truth for proportions. **Those two rules conflict here and a builder must not pick.** The
+choice is (a) keep 1900x700 and accept the ribbon proportion, fixing only the *relative* room sizes —
+which is what this round did — or (b) take H to ~1150, which re-runs every ported choreography and
+every cable-length and fog-radius number. Not changed on a builder's initiative.
+
+### What changed
+
+- **`src/sim/geometry.ts` — per-room depth.** This is the one file the fix brief says to be
+  suspicious about, and the suspicion was checked first: `floor1Walls()` already builds each room's
+  side and back walls from `r.y`/`r.h`, and the renderer builds from the same data, so the renderer
+  was reading the module correctly. The module itself held a single `ROOM_D = 230` for all thirteen
+  rooms. A `DEPTH` table now carries the plan's own depths scaled so room 4/9 stays on `ROOM_D`;
+  rooms 5 and 8 bulge, 3/10 are shallow, 7 is shallowest, and 6 and 7 differ from each other exactly
+  as the plan draws them.
+- **Room widths redistributed** by the plan's ratios (0.2014 / 0.2417 / 0.3111 / 0.2458), so 6/7 is
+  the second-widest pair rather than the second-narrowest.
+- **Corridor 100 → 130 sim px.** Plan ratio corridor:room-4-depth is 0.586; the build was at 0.435.
+  `CY0/CY1` are not in the frozen-constants table, and the jammed-door (70 px/s) and roller-door
+  (270 px/s) thresholds are speeds, so they survive a geometry change untouched — the ported
+  choreographies re-ran green without edits.
+- **Main staircase 64 x 88 → 150 x 118**, which is what the plan's footprint scales to and what
+  `media/other-images/image-1790032674926.webp` shows filling the corridor's end.
+- **Hall right wall**: four unequal holes → six regular pier/leaf bays, which is the door bank the
+  exhibition plan actually draws.
+- **Biggy**, whose three blocker items were his own checklist's: the visor band is now a *cylinder
+  standing in the gap* between the belly's shoulder and the helmet rim rather than a cone hugging
+  the belly (the old one was 4-25 mm proud of a sphere that then occluded it); the full-width
+  emissive arc is gone and there are two discrete amber eyes; the belly's underside rises from 0.13
+  to 0.30 m so there are real legs, a blue-gray hip skirt and a ribbed bellows knee under it; belly
+  base colour moved from `#d9772a` toward the sheet's weathered `#9b675a`; arms rebuilt as tapered
+  capsules under domed pauldrons with an explicit wrist between forearm and claw; the antenna cut
+  from 0.5 m to 0.1 m.
+- **Voxxy**: the chest emblem is a cat face again (one white silhouette, ears out of the top corners,
+  dark dot eyes, orange nose) instead of a white square with grey ear-shaped boxes *inside* it — and
+  the reason it read as "a torn white card" was that the whole badge sat 18 mm **inside** the lathe's
+  surface, so only the ear tips and the eye dots poked out. Legs shortened from 18.6% of height to
+  ~14% with an orange thigh; head raised from 29% to ~33%; the waist seam ring removed and the lathe
+  profile made monotone, so the body is one teardrop.
+- **Droid**: shoulder span 0.334 → 0.45 of height; the pauldron emblem conformed to the shell instead
+  of standing off it on a ring, and aimed more frontally so both shoulders show one; the two copper
+  slabs that hung below each shoulder (read by the critic as "a loose paperclip") and the long thigh
+  streak deleted, which is most of the 3.6% → ~1.1% copper coverage the sheet wants.
+- **The robot you are driving is now findable.** The active robot gets an **x-ray silhouette** — a
+  capsule in its own lamp colour drawn with `depthFunc: GreaterDepth`, so it is invisible in the open
+  and a coloured ghost of the right size in the right place when a pillar or a crate is in front of
+  it. The per-chapter focus windows tightened by ~20%. Chapter 1's three robots were spawned in a
+  column along the camera's depth axis and are now spread along the corridor.
+- **Clue markers.** `GameSnapshot.clues` was already in the contract and nothing drew it. Each clue
+  is now a breathing floor pip in the *mix's own* averaged colours — it says "something here", which
+  is all a light-mixing puzzle should give away — and turns green when found.
+- **Speech bubbles.** The per-robot blocked lines are the best writing in the build and were being
+  delivered in an 18 px row at the bottom edge. A line whose text starts `Voxxy:` / `Droid:` /
+  `Biggy:` now becomes a bubble with a tail over that robot's head, positioned from a new
+  `DioramaScene.project()`. Impersonal lines keep the stack.
+- **The briefing folds.** 60-84 words across the top of every frame for the whole chapter; it now
+  folds to one line after 13 s of play, and a click pins it open or shut.
+- **Light reads as light.** The sim's visibility polygon has a hard angular boundary by definition,
+  so a cone's side edges stepped from black to 64% brightness across one pixel. The drawn triangles
+  now taper over the outer 17% of the rim and the radial falloff is smoothstepped, and the additive
+  sum is scaled by a `MIX_HEADROOM` so orange + green resolves to a yellow rather than clipping every
+  channel to 255. **The polygon itself is untouched**, so every clue test in `src/sim/lights.ts` is
+  unchanged — this is shading, not geometry.
+- **Chapter 3 has daylight.** Its sun was already casting; its shadow camera was an 18 m box around
+  the robot while the framed window is 30 m wide, so the shadows landed outside the frame. Box 30 m
+  on a 2048 map, sun 2.6 → 3.6, ambient 0.45 → 0.28 and hemi 0.75 → 0.50, with a warm ground / cool
+  sky split instead of one grey.
+- **Chapter 1 has practicals.** Emergency exit lighting is exactly what stays on when the power is
+  out; five green fittings now sit on the *first floor* (the existing exit lights were all ground
+  floor and gated on `onGround`).
+- **Visitors collide.** The chapter-3 crowd walked a lane grid and never asked the wall list
+  anything. `pushOutOfWalls` is the same shallowest-axis push-out `src/sim/bot.ts` does for the
+  robots, minus the bounce. Pawns also gained a contact shadow and a deterministic 8% height wobble.
+
+### What was rejected, and why
+
+- **"Tab cycles robots backwards."** It does not. `src/sim/game.ts` line 565 is
+  `cur = (cur + 1) % bots.length`, and `tests/chapters.test.ts` asserts `Digit3` → 2, `Tab` → 0. The
+  critic observed 0 → 2 → 1 → 0, which is exactly what two dispatches per press produces — their
+  harness dispatched the same `KeyboardEvent` on both `document` and `window`, and the second one
+  bubbles into the single `window` listener. Harness artifact, not a bug. (The same accusation was
+  raised and rejected for a different reason a round ago, which is worth saying out loud: a critic
+  driving the game through a synthetic harness is measuring the harness too.)
+- **The 2.3x corridor stretch** — escalated to Michele, above. Not a builder's call.
+- **The hall's chamfered corner** (minor, same finding as the scalloped wall). The repeated-bay door
+  bank landed; stepping the wall back at the plan's diagonal corner is renderer work in
+  `src/render/venue/ground.ts` and was not a one-liner, so it is logged rather than half-done.
+- Nothing else. **"Unexplained flat cream ellipses at head height"** (minor) looked like a
+  candidate for rejection and turned out to be exactly right: re-shooting chapter 1 put them in the
+  same corner the critic photographed, and they are `pendant()` in `src/render/venue/props.ts` — a
+  bare 0.14 m cylinder over the foyer bar, hung at 2.5 m from nothing, with no drop rod and nothing
+  to shade. It is now a domed shade on a rod up to the ceiling with a warm emissive mouth, so a
+  lamp looks like a lamp. Worth recording as a method note: this finding was one line long and had
+  no measurement attached, and it was still a real defect.
+- **Weakening a test.** None was weakened. Four assertions were *corrected*: `tests/geometry.test.ts`
+  asserted `r.h === ROOM_D` for every room and `CY1 - CY0 === 100`, which only asserted that the
+  prototype's numbers had not moved — it is now replaced by per-room depth ratios and width shares
+  measured off `plans/devoxx-rooms-stairs-annotated.png`, plus a check that no room leaves the sim
+  rect. `tests/venue.smoke.test.ts` hard-coded `300`/`400` for the corridor band in two places and
+  now imports `CY0`/`CY1`. The suite went 168 → 170 and is green.
+
+### Deferred, with reasons
+
+Four minors were left rather than half-done, and they are listed so the next round does not have to
+rediscover them: the hall's **chamfered corner** (renderer work in `src/render/venue/ground.ts`, not
+a one-liner, and the repeated-bay door bank it shares a finding with did land); **emissive bloom on
+the robots' eyes** (needs a post-processing pass, which is a piece of its own rather than a fix);
+**Droid's helmet shape and forward hunch** (his silhouette otherwise passed, and re-proportioning a
+head that reads correctly is how a passing robot becomes a failing one); and the **foreground
+bracketing** half of the composition blocker — a vignette and a tighter frame are not the same thing
+as a pipe or a railing in the near ground, and pretending otherwise would be the scope creep the
+brief warns about.
+
+### Still open
+
+Craft judgment against Machinarium was reached this round for the first time and it is unsparing:
+*"ours are camera positions, not compositions."* The framing critique — foreground bracketing, the
+floor plate running off-frame at an arbitrary diagonal, empty quadrants — is only partly answered by
+zooming in, and is the biggest remaining gap. Neither first-class check is marked passing here; an
+independent critic decides that next.
+
+**Addendum — measuring the "88.9% black" finding instead of arguing with it.**
+
+The craft critic's darkness number is the only finding in this round that a fix can be checked
+against directly, so it was: the same luminance histogram (L < 12 over the scene band, HUD excluded)
+was re-run on the verification shot after each attempt. Two things came out of that loop that were
+not obvious beforehand.
+
+1. **A vignette makes the picture better and the metric worse.** Fading the floor plate's edge is
+   exactly what the critic asked for — "cut or fade the floor plate at a deliberate edge instead of
+   letting it run out into black" — but a gradient that reaches near-black at the corners *adds*
+   pure-black pixels. The vignette's darkest stop was pulled back from 78% to 52% opacity and its
+   clear radius widened, which keeps the framing read without manufacturing the very thing the
+   measurement is counting.
+2. **Ambient was the wrong knob; the hemisphere's GROUND colour was the right one.** An
+   `AmbientLight` lifts every surface equally, so raising it washes the lit pools out as fast as it
+   reveals the walls. A `HemisphereLight` shades a vertical surface with the midpoint of its sky and
+   ground colours — and chapter 1's ground colour was `#05060a`, near-black, so the venue's own
+   `#33363c` walls were being shaded *down* toward invisibility by the very light meant to reveal
+   them. At `#12171f` the corridor's walls, columns and vaults read as dark shapes without touching
+   the lamps' contrast.
+
+The number went 88.9% → 83.2%, which is honest progress and not a pass: the frames are still mostly
+dark, by design and by material. What changed is that the dark part is now *legibly a building*.
+
+Chapter 3 answered its own measurement more cleanly. The critic sampled the floor below a booth at
+x = 800, y = 672..706 and got `60` eight times — no shadow anywhere. The same sample on the
+verification shot reads `62, 62, 62, 62, 22, 22, 22`: a cast shadow with an edge in it. The open
+floor at y = 600 reads 59-66 across the same span that used to be a constant 60.

@@ -27,9 +27,17 @@ export interface HudOptions {
   onSkip?: () => void;
 }
 
+/**
+ * Where each robot is on the canvas this frame, in CSS pixels — the renderer's
+ * `DioramaScene.project()` for a point over that robot's head. A robot that is
+ * off screen or in a debug camera is simply absent, and its line falls back to
+ * the stacked row at the bottom.
+ */
+export type SpeakerAnchors = Partial<Record<RobotKind, { x: number; y: number }>>;
+
 export interface Hud {
   /** Call once per rendered frame with the current snapshot. */
-  update(snap: GameSnapshot): void;
+  update(snap: GameSnapshot, anchors?: SpeakerAnchors): void;
   dispose(): void;
   /** The overlay root, for hosts that need to measure or reparent it. */
   readonly root: HTMLElement;
@@ -63,6 +71,22 @@ const SPEAKERS: ReadonlyArray<readonly [RegExp, RobotKind]> = [
   [/\bbiggy\b/i, 'biggy'],
 ];
 
+/**
+ * The robot a line is spoken BY, as opposed to one it merely mentions.
+ *
+ * Every "why am I blocked" message in `src/sim` is written as `Name: line` in
+ * that robot's own voice, which is the build's best writing and was being
+ * delivered in a grey text row at the bottom edge of the screen. Only that
+ * prefix form gets a bubble: "Voxxy pushes Biggy" is narration, not speech.
+ */
+function speakerOf(text: string): RobotKind | null {
+  const mm = /^(Voxxy|Droid|Biggy):/.exec(text);
+  return mm ? (mm[1].toLowerCase() as RobotKind) : null;
+}
+
+/** Seconds of play after which the briefing paragraph folds to one line. */
+const BRIEF_FULL_S = 13;
+
 const ACCENT = '#ffb347';
 const MUTED = '#9aa0ab';
 
@@ -76,7 +100,13 @@ const CSS = `
   padding:8px 14px;background:linear-gradient(180deg,rgba(10,11,14,.96),rgba(10,11,14,.78));border-bottom:1px solid #2a2e36}
 .ad-brand{color:${ACCENT};font-weight:700;letter-spacing:.09em;font-size:12px;white-space:nowrap}
 .ad-chapter{color:${MUTED};font-size:12px;white-space:nowrap}
-.ad-obj{flex:1 1 340px;min-width:240px}
+.ad-obj{flex:1 1 340px;min-width:240px;cursor:pointer}
+/* The briefing is 60-84 words and it used to sit across the top of the frame for
+   the whole chapter — a permanent 12% text band over the diorama. It folds to one
+   line a few seconds in, and a click puts it back. The objective bar at the bottom
+   carries the live state, which is the part that actually ticks. */
+.ad-obj.ad-fold{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;
+  overflow:hidden;opacity:.72}
 .ad-obj b{color:${ACCENT};font-weight:600}
 .ad-keys{color:${MUTED};font-size:12px}
 .ad-swag{color:${MUTED};font-size:12px;white-space:nowrap}
@@ -125,6 +155,27 @@ const CSS = `
 .ad-cell.ad-typed{color:#ffd27a;border-color:${ACCENT};box-shadow:0 0 14px -2px rgba(255,179,71,.45)}
 .ad-pad .ad-cap{font-size:13px;color:#d7d3cc;letter-spacing:.01em;padding:4px 12px;border-radius:7px;
   background:rgba(10,11,14,.82);border:1px solid #2a2e36;text-align:center;max-width:min(860px,88vw)}
+
+/* A vignette, so the diorama's floor plate ends at a deliberate edge instead of
+   running off the corner of the frame on an arbitrary diagonal. It is part of the
+   HUD on purpose: ?nohud=1 turns it off, and the overlay and model-sheet checks
+   photograph a clean frame. */
+.ad-vig{position:absolute;inset:0;
+  background:radial-gradient(124% 98% at 50% 46%, rgba(0,0,0,0) 60%, rgba(4,5,8,.26) 84%, rgba(4,5,8,.52) 100%)}
+
+/* Speech bubbles. A blocked line is spoken BY a robot, so it is hung over that
+   robot with a tail, not dropped in an 18px row at the bottom edge where the
+   player is not looking. Anything with no identifiable speaker, or whose speaker
+   is off screen, falls back to the stacked row. */
+.ad-bubbles{position:absolute;inset:0;overflow:hidden}
+.ad-bubble{position:absolute;transform:translate(-50%,-100%);max-width:330px;width:max-content;
+  padding:8px 13px;border-radius:11px;border:1px solid currentColor;
+  background:rgba(10,11,14,.93);box-shadow:0 10px 30px rgba(0,0,0,.55);font-size:15px;line-height:1.28;
+  text-align:left;animation:ad-rise .22s cubic-bezier(.2,.9,.3,1) both}
+.ad-bubble::after{content:'';position:absolute;left:50%;bottom:-7px;width:12px;height:12px;
+  margin-left:-6px;transform:rotate(45deg);background:rgba(10,11,14,.93);
+  border-right:1px solid currentColor;border-bottom:1px solid currentColor}
+.ad-bubble.ad-out{animation:ad-sink .34s ease-in forwards}
 
 .ad-toasts{position:absolute;left:50%;bottom:96px;transform:translateX(-50%);width:min(680px,74vw);
   display:flex;flex-direction:column;align-items:center;gap:6px}
@@ -194,12 +245,13 @@ function setText(node: HTMLElement, value: string, cache: Map<HTMLElement, strin
 }
 
 /** Same, for the few fields the sim is allowed to send simple markup in. */
-function setHtml(node: HTMLElement, value: string, cache: Map<HTMLElement, string>): void {
-  if (cache.get(node) === value) return;
+function setHtml(node: HTMLElement, value: string, cache: Map<HTMLElement, string>): boolean {
+  if (cache.get(node) === value) return false;
   cache.set(node, value);
   // Trusted source: these strings come from our own `src/sim` chapter code, and the
   // type contract says the objective "may contain simple markup" (<b> emphasis).
   node.innerHTML = value;
+  return true;
 }
 
 /**
@@ -374,6 +426,11 @@ interface LiveToast {
   dieAt: number;
   removeAt: number;
   out: boolean;
+  /**
+   * The robot that said it, when the line names one as its prefix. A line with a
+   * speaker becomes a bubble over that robot; everything else stays in the stack.
+   */
+  speaker: RobotKind | null;
 }
 
 /** Idle / walking / running, scaled to each robot's own frozen top speed. */
@@ -394,6 +451,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
 
   const root = el('div', 'ad-hud');
   root.setAttribute('data-hud', 'after-dark');
+  el('div', 'ad-vig', root);
 
   /* top bar */
   const top = el('div', 'ad-top ad-chrome', root);
@@ -401,6 +459,12 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   brand.textContent = 'AFTER DARK';
   const chapterEl = el('span', 'ad-chapter', top);
   const objEl = el('span', 'ad-obj', top);
+  objEl.title = 'Click to fold or unfold the briefing';
+  let briefPinned: boolean | null = null;
+  const onBriefClick = (): void => {
+    briefPinned = objEl.classList.contains('ad-fold');
+  };
+  objEl.addEventListener('click', onBriefClick);
   const keysEl = el('span', 'ad-keys', top);
   const swagEl = el('span', 'ad-swag', top);
   const skip = el('button', 'ad-skip', top);
@@ -464,7 +528,8 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   }
   const meterRows = new Map<string, MeterRow>();
 
-  /* toasts */
+  /* speech bubbles, then the fallback toast stack */
+  const bubbles = el('div', 'ad-bubbles', root);
   const toasts = el('div', 'ad-toasts', root);
   toasts.setAttribute('role', 'status');
   toasts.setAttribute('aria-live', 'polite');
@@ -600,14 +665,17 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
           repeat.dieAt = now + life;
           repeat.removeAt = now + life + 340;
         } else {
-          const node = el('div', 'ad-toast');
+          const speaker = speakerOf(t.t);
+          const node = el('div', speaker ? 'ad-bubble' : 'ad-toast');
           const colour = toastColour(t.t, snap);
           node.style.color = rgb(colour);
-          node.style.background = `linear-gradient(90deg, ${rgba(colour, 0.2)}, rgba(10,11,14,.93) 58%)`;
+          if (!speaker) {
+            node.style.background = `linear-gradient(90deg, ${rgba(colour, 0.2)}, rgba(10,11,14,.93) 58%)`;
+          }
           const line = el('span', 'ad-line', node);
           line.textContent = t.t;
-          toasts.appendChild(node);
-          live.push({ node, text: t.t, dieAt: now + life, removeAt: now + life + 340, out: false });
+          (speaker ? bubbles : toasts).appendChild(node);
+          live.push({ node, text: t.t, dieAt: now + life, removeAt: now + life + 340, out: false, speaker });
           // Three lines is already a wall of text over the diorama: as a fourth
           // arrives, the oldest starts its exit animation immediately.
           for (let i = 0; i < live.length - 3; i++) {
@@ -636,6 +704,30 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     }
   }
 
+  /**
+   * Hang every live bubble over its speaker. A speaker that is off screen this
+   * frame parks its bubble at the top of the canvas above the robot's last known
+   * side, which is better than letting it drift off the edge.
+   */
+  function placeBubbles(anchors: SpeakerAnchors | undefined): void {
+    if (!anchors) return;
+    const w = root.clientWidth || 1;
+    const h = root.clientHeight || 1;
+    for (const lt of live) {
+      if (!lt.speaker) continue;
+      const at = anchors[lt.speaker];
+      if (!at) {
+        lt.node.style.opacity = '0';
+        continue;
+      }
+      lt.node.style.opacity = '';
+      const x = Math.min(Math.max(at.x, 180), w - 180);
+      const y = Math.min(Math.max(at.y - 18, 92), h - 40);
+      lt.node.style.left = `${Math.round(x)}px`;
+      lt.node.style.top = `${Math.round(y)}px`;
+    }
+  }
+
   function updateCard(snap: GameSnapshot): void {
     const html = snap.card;
     if (html) {
@@ -646,11 +738,15 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     }
   }
 
-  function update(snap: GameSnapshot): void {
+  function update(snap: GameSnapshot, anchors?: SpeakerAnchors): void {
     if (disposed) return;
 
     setText(chapterEl, CHAPTER_TITLES[snap.chapter] ?? CHAPTER_TITLES[0], textCache);
-    setHtml(objEl, snap.objective, htmlCache);
+    if (setHtml(objEl, snap.objective, htmlCache)) briefPinned = null;
+    // Unfolded while the player is still reading it, then folded to one line. A
+    // click pins it either way for the rest of the chapter.
+    const fold = briefPinned === null ? snap.phase === 'play' && snap.t > BRIEF_FULL_S : briefPinned;
+    objEl.classList.toggle('ad-fold', fold);
     setText(keysEl, snap.keys, textCache);
     setText(swagEl, snap.swag.length > 0 ? `swag ${snap.swag.length}/3` : '', textCache);
 
@@ -659,6 +755,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     updateKeypad(snap);
     updateMeters(snap);
     updateToasts(snap);
+    placeBubbles(anchors);
     updateCard(snap);
 
     // Cutscenes fade the world to black; the chrome goes with it, so a transition
@@ -679,6 +776,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     if (disposed) return;
     disposed = true;
     skip.removeEventListener('click', onSkipClick);
+    objEl.removeEventListener('click', onBriefClick);
     live.length = 0;
     meterRows.clear();
     textCache.clear();

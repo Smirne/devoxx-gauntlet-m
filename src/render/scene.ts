@@ -63,12 +63,19 @@ const BG_PORTRAIT = 0x23262c;
  * pointed at the room the player is in rather than at the whole storey.
  */
 const FOCUS: Readonly<Record<number, { w: number; h: number }>> = Object.freeze({
-  1: { w: 390, h: 290 },
-  2: { w: 470, h: 345 },
-  3: { w: 470, h: 345 },
-  4: { w: 430, h: 315 },
+  1: { w: 320, h: 235 },
+  2: { w: 380, h: 280 },
+  3: { w: 380, h: 280 },
+  4: { w: 345, h: 255 },
 });
-const FOCUS_FALLBACK = { w: 440, h: 320 };
+const FOCUS_FALLBACK = { w: 360, h: 265 };
+/**
+ * Cutscenes and the title card get their chapter's whole rect, but the chapter
+ * rects are 50-100 m wide and at that zoom a robot is four pixels tall. A cut is
+ * a wide shot on purpose, so it keeps the rect — but it is capped, or the first
+ * frame of chapter 4 (a 105 m rect) reads as an empty ribbon.
+ */
+const WIDE_MAX = { w: 900, h: 660 };
 /** Exponential approach rate of the framing, s^-1. High enough not to read as drift. */
 const FOCUS_EASE = 6;
 /** A jump larger than this (a `place`, a chapter change) cuts instead of panning. */
@@ -228,6 +235,12 @@ export interface DioramaScene {
   setFogEnabled(on: boolean): void;
   /** `?pose=voxxy|droid|biggy` — one robot alone, front three-quarter. Null returns to play. */
   posePortrait(kind: RobotKind | null): void;
+  /**
+   * Where a sim point lands on the canvas, in CSS pixels, or null if it is behind
+   * the camera or the scene is in a debug mode. The HUD uses it to hang a robot's
+   * speech bubble over that robot instead of in a text row at the bottom edge.
+   */
+  project(simX: number, simY: number, heightM?: number): { x: number; y: number } | null;
   dispose(): void;
 }
 
@@ -278,6 +291,15 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     return mesh;
   });
 
+  /** The contact shadow under a visitor — a soft dark disc, not a cast shadow. */
+  const contactGeo = new THREE.CircleGeometry(1, 18);
+  const contactMat = new THREE.MeshBasicMaterial({
+    color: 0x05070c,
+    transparent: true,
+    opacity: 0.3,
+    depthWrite: false,
+  });
+
   const peoplePool = makePool<THREE.Group>(dressing, () => {
     const g = new THREE.Group();
     const mat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.02 });
@@ -287,7 +309,13 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const head = new THREE.Mesh(headGeo, mat);
     head.name = 'head';
     head.castShadow = true;
-    g.add(body, head);
+    // A crowd of unshaded pawns standing on a flat floor reads as pawns floating
+    // over it; one disc each is what pins them down.
+    const contact = new THREE.Mesh(contactGeo, contactMat);
+    contact.name = 'contact';
+    contact.rotation.x = -Math.PI / 2;
+    contact.position.y = 0.02;
+    g.add(body, head, contact);
     return g;
   });
 
@@ -330,6 +358,75 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   activeRing.rotation.x = -Math.PI / 2;
   activeRing.renderOrder = 999;
   dressing.add(activeRing);
+
+  /**
+   * THE OCCLUDED SILHOUETTE.
+   *
+   * A ring drawn over the top of whatever is hiding the robot marks a spot; it
+   * does not show a robot. In chapters 2, 3 and 4 the round-2 craft critic could
+   * not find the robot they were driving in the opening frame at all — behind a
+   * booth pillar, sunk into a crate, a twelve-pixel smudge — and read the ring
+   * floating on the pillar as a rendering bug rather than as a marker.
+   *
+   * So the active robot also gets an x-ray: a capsule roughly its own size, in its
+   * own lamp colour, drawn ONLY where something is in front of it
+   * (`depthFunc: GreaterDepth`). In the open it is invisible, because the robot
+   * itself passes the depth test first; behind a pillar it is a coloured ghost of
+   * the right size in the right place.
+   */
+  const xrayMat = new THREE.MeshBasicMaterial({
+    color: 0xff7a1a,
+    transparent: true,
+    opacity: 0.55,
+    depthTest: true,
+    depthWrite: false,
+    depthFunc: THREE.GreaterDepth,
+    toneMapped: false,
+  });
+  const xray = new THREE.Group();
+  xray.name = 'active-xray';
+  xray.renderOrder = 998;
+  {
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.5, 4, 14), xrayMat);
+    body.name = 'body';
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 14, 10), xrayMat);
+    head.name = 'head';
+    xray.add(body, head);
+  }
+  dressing.add(xray);
+
+  /**
+   * CLUE MARKERS. `GameSnapshot.clues` carries the four light-mix spots; nothing
+   * in the world used to mark them, so the only way to know where to go was to
+   * read the briefing paragraph. Each is a small floor plate with a slowly
+   * breathing glyph pip, in the mix's own colours — it says "something here",
+   * which is all a light-mixing puzzle should give away, and it goes green once
+   * the clue is found.
+   */
+  const CLUE_MAX = 8;
+  const clueGroup = new THREE.Group();
+  clueGroup.name = 'clue-markers';
+  dressing.add(clueGroup);
+  const clueGeo = new THREE.RingGeometry(0.42, 0.62, 28);
+  const pipGeo = new THREE.SphereGeometry(0.16, 12, 8);
+  const clueMarks: Array<{ root: THREE.Group; ring: THREE.Mesh; pip: THREE.Mesh }> = [];
+  for (let i = 0; i < CLUE_MAX; i++) {
+    const root = new THREE.Group();
+    const ring = new THREE.Mesh(
+      clueGeo,
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    const pip = new THREE.Mesh(
+      pipGeo,
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.75, depthWrite: false, toneMapped: false }),
+    );
+    pip.position.y = 0.5;
+    root.add(ring, pip);
+    root.visible = false;
+    clueGroup.add(root);
+    clueMarks.push({ root, ring, pip });
+  }
 
   /* -------------------------------------------------------- debug staging */
 
@@ -418,14 +515,19 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const height = Math.max(size.y, rig.height, 0.2);
     const width = Math.max(size.x, size.z, 0.2);
 
-    // Aim at the robot's FACE, not at the centre of its bounding box. Biggy's face
-    // is a band under a helmet rim at 73% of his height: a camera lined up on his
-    // middle and lifted 14 degrees looks down over the rim and photographs the
-    // crown — which is exactly the feature the model-sheet check is there to read.
-    const ty = portraitBox.min.y + (portraitBox.max.y - portraitBox.min.y) * 0.6;
-    const halfV = Math.max(portraitBox.max.y - ty, ty - portraitBox.min.y, height / 2, 0.1);
+    /*
+     * Frame the MEASURED BOX, centred, with the same margin on all four sides.
+     *
+     * Aiming a sixth of the way up the figure (the old 0.6 bias) left 20% of the
+     * frame empty above the head and 5% below the feet, and Biggy's whip antenna —
+     * which used to be excluded from the measured bounds — ran straight off the
+     * top edge. The model-sheet check is a measurement, so the shot has to be a
+     * plain, evenly-margined elevation of the whole robot.
+     */
+    const ty = (portraitBox.min.y + portraitBox.max.y) / 2;
+    const halfV = Math.max((portraitBox.max.y - portraitBox.min.y) / 2, height / 2, 0.1);
 
-    const MARGIN = 1.1;
+    const MARGIN = 1.14;
     const fovY = (portraitCam.fov * Math.PI) / 180;
     let dist = (halfV * MARGIN) / Math.tan(fovY / 2);
     dist = Math.max(dist, ((width / 2) * MARGIN) / Math.tan(fovY / 2) / Math.max(aspect, 0.2));
@@ -462,16 +564,24 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    */
   function updateFocus(snap: GameSnapshot, dt: number): ViewRect {
     const view = snap.view;
+    const want = snap.phase === 'play' ? (FOCUS[snap.chapter] ?? FOCUS_FALLBACK) : WIDE_MAX;
     if (snap.phase !== 'play') {
+      // A wide shot, still centred on the robots rather than on the whole storey.
       focusReady = false;
-      return view;
+      if (view.w <= WIDE_MAX.w && view.h <= WIDE_MAX.h) return view;
     }
-    const want = FOCUS[snap.chapter] ?? FOCUS_FALLBACK;
     const w = Math.min(want.w, view.w);
     const h = Math.min(want.h, view.h);
     const bot = snap.bots[snap.active];
     const tx = clampTo(bot ? bot.x : view.x + view.w / 2, view.x + w / 2, view.x + view.w - w / 2);
     const ty = clampTo(bot ? bot.y : view.y + view.h / 2, view.y + h / 2, view.y + view.h - h / 2);
+    if (snap.phase !== 'play') {
+      focus.w = w;
+      focus.h = h;
+      focus.x = tx - w / 2;
+      focus.y = ty - h / 2;
+      return focus;
+    }
 
     const cx = focus.x + focus.w / 2;
     const cy = focus.y + focus.h / 2;
@@ -483,6 +593,62 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     focus.x = cx + (tx - cx) * k - w / 2;
     focus.y = cy + (ty - cy) * k - h / 2;
     return focus;
+  }
+
+  /** The x-ray ghost of the driven robot, wherever geometry is in front of it. */
+  function updateXray(snap: GameSnapshot, floorY: number): void {
+    const bot = snap.bots[snap.active];
+    if (!bot || snap.chapter < 1 || snap.phase !== 'play') {
+      xray.visible = false;
+      return;
+    }
+    xray.visible = true;
+    const h = ROBOT_HEIGHT_M[bot.kind];
+    const rM = Math.max(m(bot.r), 0.3);
+    const body = xray.children[0] as THREE.Mesh;
+    const head = xray.children[1] as THREE.Mesh;
+    body.scale.set(rM / 0.34, (h * 0.62) / 1.18, rM / 0.34);
+    body.position.set(0, h * 0.37, 0);
+    head.scale.setScalar((rM * 0.8) / 0.3);
+    head.position.set(0, h * 0.82, 0);
+    xray.position.set(m(bot.x), floorY, m(bot.y));
+    const c = bot.light.c;
+    xrayMat.color.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
+  }
+
+  /** Floor markers on the chapter's clue spots. */
+  function updateClues(snap: GameSnapshot, floorY: number): void {
+    const list = snap.phase === 'play' ? snap.clues : [];
+    for (let i = 0; i < clueMarks.length; i++) {
+      const mark = clueMarks[i];
+      const clue = list[i];
+      if (!clue) {
+        mark.root.visible = false;
+        continue;
+      }
+      mark.root.visible = true;
+      mark.root.position.set(m(clue.x), floorY + 0.02, m(clue.y));
+      // The mix's own colours, averaged: orange+green reads yellow, all three white.
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      for (const kind of clue.need) {
+        const src = snap.bots.find((x) => x.kind === kind);
+        const c = src ? src.light.c : [200, 200, 200];
+        r += c[0];
+        g += c[1];
+        b += c[2];
+      }
+      const n = Math.max(clue.need.length, 1);
+      const found = clue.found;
+      const pulse = 0.55 + 0.45 * Math.sin(snap.t * 2.1 + i * 1.7);
+      const col = found ? [90, 210, 120] : [r / n, g / n, b / n];
+      (mark.ring.material as THREE.MeshBasicMaterial).color.setRGB(col[0] / 255, col[1] / 255, col[2] / 255);
+      (mark.pip.material as THREE.MeshBasicMaterial).color.setRGB(col[0] / 255, col[1] / 255, col[2] / 255);
+      (mark.ring.material as THREE.MeshBasicMaterial).opacity = found ? 0.75 : 0.28 + 0.24 * pulse;
+      (mark.pip.material as THREE.MeshBasicMaterial).opacity = found ? 0.9 : 0.4 + 0.35 * pulse;
+      mark.pip.position.y = 0.5 + 0.09 * pulse;
+    }
   }
 
   /** Put the ring under the driven robot, in that robot's own lamp colour. */
@@ -585,13 +751,19 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   function drawPerson(p: Person, floorY: number): void {
     const g = peoplePool.get();
     const rM = Math.max(m(p.r), 0.16);
-    const bodyH = PERSON_H - rM * 1.1;
+    // A line of identical pawns reads as a stack of cylinders, so each one gets a
+    // deterministic 8% height wobble off its own position — the same person is
+    // the same height every frame, and a queue reads as people.
+    const jitter = 0.92 + 0.16 * (((Math.abs(Math.round(p.x * 7 + p.y * 13)) % 97) / 97) || 0);
+    const bodyH = PERSON_H * jitter - rM * 1.1;
     const body = g.children[0] as THREE.Mesh;
     const head = g.children[1] as THREE.Mesh;
+    const contact = g.children[2] as THREE.Mesh;
     body.scale.set(rM * 2, bodyH, rM * 2);
     body.position.set(0, bodyH / 2, 0);
     head.scale.setScalar(rM * 1.5);
     head.position.set(0, bodyH + rM * 0.6, 0);
+    contact.scale.setScalar(rM * 1.7);
     g.position.set(m(p.x), floorY, m(p.y));
 
     const mat = body.material as THREE.MeshStandardMaterial;
@@ -653,6 +825,8 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     placeRobots(snap, dt, floorY);
     drawDressing(snap, floorY);
     activeRing.visible = false;
+    xray.visible = false;
+    for (const mark of clueMarks) mark.root.visible = false;
     aimPlanCamera(snap.floor);
 
     // Letterbox to the sim rect's own aspect, so a pixel in the shot maps to a
@@ -698,6 +872,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     }
 
     const floorY = snap.floor === 'down' ? -STOREY_H_M : 0;
+    lastFloorY = floorY;
     venue.floor1.visible = snap.floor === 'up';
     venue.ground.visible = snap.floor === 'down';
 
@@ -709,6 +884,8 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     placeRobots(snap, dt, floorY);
     drawDressing(snap, floorY);
     updateActiveRing(snap, floorY);
+    updateXray(snap, floorY);
+    updateClues(snap, floorY);
     lights.update(snap, dt);
 
     diorama.frame(updateFocus(snap, dt), viewW / viewH, snap.floor);
@@ -724,8 +901,18 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   applyMode();
   aimPlanCamera('up');
 
+  const projV = new THREE.Vector3();
+  let lastFloorY = 0;
+
   return {
     render,
+    project(simX: number, simY: number, heightM = 0): { x: number; y: number } | null {
+      if (portrait !== null || topDown) return null;
+      projV.set(m(simX), lastFloorY + heightM, m(simY));
+      projV.project(diorama.cam);
+      if (!Number.isFinite(projV.x) || !Number.isFinite(projV.y) || projV.z > 1) return null;
+      return { x: (projV.x * 0.5 + 0.5) * viewW, y: (1 - (projV.y * 0.5 + 0.5)) * viewH };
+    },
     resize(w: number, h: number): void {
       viewW = Math.max(1, Math.floor(w));
       viewH = Math.max(1, Math.floor(h));
@@ -752,10 +939,23 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       applyMode();
     },
     dispose(): void {
+      xrayMat.dispose();
+      xray.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (mesh.isMesh) mesh.geometry.dispose();
+      });
+      clueGeo.dispose();
+      pipGeo.dispose();
+      for (const mark of clueMarks) {
+        (mark.ring.material as THREE.Material).dispose();
+        (mark.pip.material as THREE.Material).dispose();
+      }
       propPool.dispose();
       peoplePool.dispose();
       cableGeo.dispose();
       cableMat.dispose();
+      contactGeo.dispose();
+      contactMat.dispose();
       boxGeo.dispose();
       bodyGeo.dispose();
       headGeo.dispose();

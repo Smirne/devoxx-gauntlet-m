@@ -35,7 +35,7 @@
 import * as THREE from 'three';
 
 import { DEFS, H, RAYS_CONE, RAYS_MIRROR, RAYS_POOL, W } from '../sim/constants';
-import { CY0, CY1, GF, R } from '../sim/geometry';
+import { CY0, CY1, F1, GF, R } from '../sim/geometry';
 import type { GameSnapshot, LightSource, RobotKind } from '../sim/types';
 import { ROBOT_HEIGHT_M, STOREY_H_M, m } from '../sim/units';
 
@@ -60,6 +60,26 @@ const RIM_PULL = 0.94;
  */
 const FAN_PRIMARY = 0.5;
 const FAN_BOUNCE = 0.35;
+/**
+ * PENUMBRA. The fraction of the polygon's rim, at each angular end of a cone,
+ * over which the pool fades out instead of stopping dead.
+ *
+ * The sim's visibility polygon has a hard angular boundary — that is what a
+ * visibility polygon is — so without this the cone's two side edges stepped from
+ * black to 64% brightness across ONE pixel and the light read as a gel cut out
+ * with scissors rather than as light. A pool (360 degrees) has no angular end and
+ * is left alone. The polygon itself, and therefore every clue test in
+ * `src/sim/lights.ts`, is untouched: this only shades the drawn triangles.
+ */
+const CONE_PENUMBRA = 0.17;
+/**
+ * The additive pools are summed in the frame buffer with no tone curve, so three
+ * lamps at full strength clip every channel to 255 and the game's own headline
+ * mechanic — orange plus green shows you a digit — produces a white hole instead
+ * of a readable new hue. Scaling the sum so a two-lamp overlap lands near 0.8 and
+ * a three-lamp overlap near 1.0 keeps the mixed colour a colour.
+ */
+const MIX_HEADROOM = 0.72;
 /** The volumetric wedge is a haze, not a second lamp. */
 const VOL_CONE = 0.17;
 const VOL_POOL = 0.1;
@@ -168,48 +188,70 @@ const MOODS: Readonly<Record<number, Mood>> = Object.freeze({
     // 95% pure black and a judge could not tell a corridor from a cinema. This is
     // still a blackout — it is the level at which the walls, the seat rows and the
     // fire door read as SHAPES, with the lamps doing all the actual lighting.
-    ambient: 0.11,
-    hemi: 0.14,
+    // Lifted again in round 2: the craft critic measured chapter 1's scene band at
+    // 88.9% pure black, i.e. the unlit venue was not dark, it was not there. At
+    // 0.17/0.22 the corridor's walls, columns, vaults and seat rows are readable
+    // SHAPES a couple of values above black, which is what the venue's own
+    // dark-hall photographs look like, and the lamps still do all the revealing.
+    ambient: 0.21,
+    hemi: 0.27,
     lampGain: 1,
-    poolGain: 1,
+    poolGain: 0.82,
     // Softened from 0.95. The mask MULTIPLIES, so at 0.95 it was taking an already
     // near-black ambient down another twentyfold and the venue behind the lamps was
     // not dark, it was absent. At 0.86 the unlit parts of the closed section read as
     // silhouettes — which is what the reference photographs of the dark venue show —
     // while the lamps still do every bit of the actual revealing.
-    fogBase: 0.86,
+    fogBase: 0.72,
     sun: 0,
-    exits: 0,
+    // The emergency exits are on battery even with the power out — that is what
+    // emergency lighting is. They are the only practicals in the closed section,
+    // and they stop the unlit two-thirds of the frame reading as nothing rendered.
+    exits: 0.55,
     stage: 0,
     house: 0,
     robotShadows: true,
-    ambientColor: 0x0a0e1a,
-    skyColor: 0x1a2438,
-    groundColor: 0x05060a,
+    ambientColor: 0x0c1220,
+    skyColor: 0x222f48,
+    // Lifted from 0x05060a. A HemisphereLight shades a vertical wall with the
+    // midpoint of its two colours, so a near-black ground half meant the venue's
+    // own #33363c walls rendered below the threshold at which anything is visible
+    // at all — which is what the craft critic's 88.9%-pure-black measurement was.
+    groundColor: 0x12171f,
   },
   /** 2 · Expo. The dark empty hall of image-1790032600128: near-black, cold, exit greens. */
   2: {
     // Same lift, and the hall needs it more: image-1790032600128.webp is dark but
     // its square column grid, red wall panels and lit screen are all readable, and
     // at 0.07 none of them were.
-    ambient: 0.16,
-    hemi: 0.2,
+    ambient: 0.27,
+    hemi: 0.34,
     lampGain: 1,
-    poolGain: 0.95,
-    fogBase: 0.68,
+    poolGain: 0.8,
+    fogBase: 0.6,
     sun: 0,
     exits: 1,
     stage: 0,
     house: 0,
     robotShadows: true,
     ambientColor: 0x0b1018,
-    skyColor: 0x16202e,
-    groundColor: 0x07080c,
+    skyColor: 0x1e2a3c,
+    groundColor: 0x13181f,
   },
   /** 3 · Lunch. Daylight floods in through the entrance glazing; the lamps barely read. */
   3: {
-    ambient: 0.45,
-    hemi: 0.75,
+    /*
+     * Daylight, not flat fill.
+     *
+     * The round-2 critic measured this chapter's floor at a constant L = 60 with
+     * no gradient and not one shadow cast by a booth or a pillar: an ambient of
+     * 0.45 plus a hemisphere of 0.75 simply drowned the sun. The fill comes down,
+     * the sun goes up, and its shadow camera (below) is widened to cover the whole
+     * framed window rather than an 18 m box around the robot — which is why the
+     * shadows it was already casting never landed anywhere the camera was looking.
+     */
+    ambient: 0.28,
+    hemi: 0.5,
     lampGain: 0.35,
     poolGain: 0.3,
     fogBase: 0,
@@ -218,16 +260,18 @@ const MOODS: Readonly<Record<number, Mood>> = Object.freeze({
     stage: 0,
     house: 0,
     robotShadows: false,
-    ambientColor: 0xb9c6d6,
-    skyColor: 0xd9e7f6,
-    groundColor: 0x6c6a66,
+    ambientColor: 0xa8bacd,
+    // Cool skylight from the glazing, warm bounce off the carpet: one grey for
+    // both ends of the hemisphere is what made the chapter read as a greybox.
+    skyColor: 0xdceaf8,
+    groundColor: 0x8a7256,
   },
   /** 4 · Keynote. Warm auditorium wash, the stage lit, the corridor still dim. */
   4: {
-    ambient: 0.36,
-    hemi: 0.32,
+    ambient: 0.4,
+    hemi: 0.36,
     lampGain: 0.7,
-    poolGain: 0.55,
+    poolGain: 0.5,
     fogBase: 0.25,
     sun: 0,
     exits: 0,
@@ -574,11 +618,19 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
   const sun = new THREE.DirectionalLight(0xfff0dc, 0);
   const sunTarget = new THREE.Object3D();
   sun.target = sunTarget;
-  sun.shadow.mapSize.set(1024, 1024);
-  sun.shadow.camera.left = -18;
-  sun.shadow.camera.right = 18;
-  sun.shadow.camera.top = 18;
-  sun.shadow.camera.bottom = -18;
+  /*
+   * 2048 over a 30 m box, not 1024 over 18 m.
+   *
+   * The diorama's chapter-3 window is 380 x 280 sim px = 30 x 22 m, so an 18 m
+   * shadow box centred on the active robot covered barely a third of the frame's
+   * area and every booth and pillar outside it cast nothing at all. 30 m on a
+   * 2048 map is a 1.5 cm texel, finer than the 3.5 cm the old box gave.
+   */
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = -30;
+  sun.shadow.camera.right = 30;
+  sun.shadow.camera.top = 30;
+  sun.shadow.camera.bottom = -30;
   sun.shadow.camera.near = 1;
   sun.shadow.camera.far = 90;
   sun.shadow.bias = -0.0009;
@@ -602,6 +654,30 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
   const exits = exitPoints.map((p, i) => {
     const light = new THREE.PointLight(0x35d17a, 0, m(150), 1.2);
     light.name = `exit-green/${i}`;
+    light.position.set(m(p.x), 0, m(p.y));
+    group.add(light);
+    return light;
+  });
+
+  /**
+   * Chapter 1: the cinema level's own emergency lighting.
+   *
+   * With the power out these are the only fixtures still running — that is what
+   * emergency lighting is for — and they are what stops the unlit two-thirds of
+   * the frame reading as nothing rendered rather than as a dark building. They
+   * sit over the two secondary-staircase niches, over the fire door and at the
+   * foyer mouth, all positions taken from the plan geometry.
+   */
+  const f1ExitPoints: Array<{ x: number; y: number }> = [
+    { x: F1.nicheTop.x + F1.nicheTop.w / 2, y: CY0 + 8 },
+    { x: F1.nicheBot.x + F1.nicheBot.w / 2, y: CY1 - 8 },
+    { x: F1.fireX - 26, y: (CY0 + CY1) / 2 },
+    { x: F1.foyer.x + F1.foyer.w / 2, y: CY1 + 12 },
+    { x: F1.mainStair.x + F1.mainStair.w / 2, y: (CY0 + CY1) / 2 },
+  ];
+  const f1Exits = f1ExitPoints.map((p, i) => {
+    const light = new THREE.PointLight(0x35d17a, 0, m(170), 1.25);
+    light.name = `exit-green-f1/${i}`;
     light.position.set(m(p.x), 0, m(p.y));
     group.add(light);
     return light;
@@ -860,6 +936,11 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
       e.intensity = onGround ? 2.6 * cur.exits : 0;
       e.visible = e.intensity > 0.01;
     }
+    for (const e of f1Exits) {
+      e.position.y = floorY + 2.3;
+      e.intensity = onGround ? 0 : 2.2 * cur.exits;
+      e.visible = e.intensity > 0.01;
+    }
     for (const hl of house) {
       hl.position.y = floorY + 3.1;
       hl.intensity = onGround ? 0 : 9 * cur.house;
@@ -879,15 +960,15 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
     stage.visible = stage.intensity > 0.05;
 
     if (cur.sun > 0.01) {
-      // Keep the sun's shadow camera over the robots: an 18 m box on a 1024 map
-      // is a 3.5 cm texel, which is what makes a robot's shadow read as its own.
+      // Keep the sun's shadow camera over the robots; the box is now wide enough
+      // to cover the whole framed window, so static geometry casts too.
       const lead = snap.bots[snap.active] ?? snap.bots[0];
       if (lead) scratch.set(m(lead.x), floorY, m(lead.y));
       else scratch.set(m(W / 2), floorY, m(H / 2));
       sunTarget.position.copy(scratch);
       sunTarget.updateMatrixWorld();
       sun.position.copy(scratch).add(SUN_OFFSET);
-      sun.intensity = 2.6 * cur.sun;
+      sun.intensity = 3.6 * cur.sun;
       sun.visible = true;
     } else {
       sun.visible = false;
@@ -966,7 +1047,7 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
     }
 
     const [cr, cg, cb] = linearColor(light.c);
-    const peak = (light.primary ? FAN_PRIMARY : FAN_BOUNCE) * gain;
+    const peak = (light.primary ? FAN_PRIMARY : FAN_BOUNCE) * gain * MIX_HEADROOM;
     const volPeak = (light.type === 'cone' ? VOL_CONE : VOL_POOL) * (light.primary ? 1 : 0.6) * gain;
     const apexY = floorY + (light.primary ? lampHeight(light.owner, mountedDroid) : MIRROR_APEX_H);
     const range = Math.max(1, light.range);
@@ -992,6 +1073,8 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
     vc[1] = cg * volPeak;
     vc[2] = cb * volPeak;
 
+    const rimN = Math.max(1, n - 2);
+    const cone = light.type === 'cone';
     for (let i = 1; i < n; i++) {
       const p = poly[i];
       const o = i * 3;
@@ -1000,9 +1083,17 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
       fp[o] = px;
       fp[o + 1] = floorY + FAN_Y;
       fp[o + 2] = pz;
-      // Linear falloff to the lamp's range — the prototype's radial gradient.
       const d = Math.hypot(p.x - light.x, p.y - light.y);
-      const s = peak * Math.max(0, 1 - d / range);
+      // Radial falloff, smoothstepped rather than linear: zero slope at the rim,
+      // so a pool that reaches its range dissolves instead of ending on a line.
+      const q = Math.max(0, 1 - d / range);
+      let s = peak * q * q * (3 - 2 * q);
+      if (cone) {
+        // Angular penumbra at the cone's two side edges.
+        const u = (i - 1) / rimN;
+        const e = Math.min(u, 1 - u) / CONE_PENUMBRA;
+        if (e < 1) s *= e * e * (3 - 2 * e);
+      }
       fc[o] = cr * s;
       fc[o + 1] = cg * s;
       fc[o + 2] = cb * s;
@@ -1011,7 +1102,12 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
       vp[o] = sx + (px - sx) * RIM_PULL;
       vp[o + 1] = floorY + VOL_RIM_Y;
       vp[o + 2] = sz + (pz - sz) * RIM_PULL;
-      const vs = volPeak * VOL_RIM * Math.max(0, 1 - d / range);
+      let vs = volPeak * VOL_RIM * Math.max(0, 1 - d / range);
+      if (cone) {
+        const u = (i - 1) / rimN;
+        const e = Math.min(u, 1 - u) / CONE_PENUMBRA;
+        if (e < 1) vs *= e * e * (3 - 2 * e);
+      }
       vc[o] = cr * vs;
       vc[o + 1] = cg * vs;
       vc[o + 2] = cb * vs;
