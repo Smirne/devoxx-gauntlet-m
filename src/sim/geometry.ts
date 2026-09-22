@@ -20,18 +20,67 @@ import type { Booth, RoomDef, ViewRect, Wall } from './types';
 
 /* ---------------------------------------------------------------- first floor */
 
-/** Corridor band: the cinema corridor runs between these two y values. */
-export const CY0 = 300;
-export const CY1 = 400;
-/** Auditorium depth. */
-export const ROOM_D = 230;
+/**
+ * Corridor band: the cinema corridor runs between these two y values.
+ *
+ * 130 sim px, not the prototype's 100. Measured on
+ * `plans/devoxx-rooms-stairs-annotated.png` the corridor is 147 plan px against
+ * room 4's 251 of depth — a ratio of 0.586, where the prototype's 100 against 230
+ * gives 0.435. The round-2 floor-plan critic measured the built corridor as 26%
+ * too narrow for the rooms it serves, which is the one proportion a judge walking
+ * chapters 1 and 4 spends the whole chapter looking at. 130 against the 224 base
+ * depth below is 0.580.
+ */
+export const CY0 = 285;
+export const CY1 = 415;
+/**
+ * Base auditorium depth — room 4/9's, the plan's middle size and the anchor the
+ * other depths are scaled from. Individual rooms do **not** all use it: see
+ * `DEPTH` below.
+ */
+export const ROOM_D = 224;
 /** Auditorium door width. */
 export const DOOR = 46;
+
+/**
+ * Per-room depth, sim px.
+ *
+ * The plan's outer envelope is **stepped**, and that silhouette is what makes the
+ * map read as the Kinepolis first floor: rooms 5 and 8 bulge past their neighbours
+ * on both sides, 3/10 are shallow, room 7 shallower still. Depths measured off
+ * `plans/devoxx-rooms-stairs-annotated.png` (plan px): 3 = 207, 10 = 206, 4 = 251,
+ * 9 = 252, 5 = 298, 8 = 298, 6 = 251, 7 = 201. Scaled by 224/251.5 so room 4/9
+ * lands on `ROOM_D`, they become the numbers below. Room 6 and room 7 genuinely
+ * differ on the plan — they are the one pair that is not symmetric.
+ *
+ * The closed cinema section is not numbered on the plan; its three top houses and
+ * two bottom houses are given their own step so the envelope is not flat there
+ * either.
+ */
+const DEPTH: Readonly<Record<string, number>> = Object.freeze({
+  A: 196,
+  B: 216,
+  C: 196,
+  D: 224,
+  E: 224,
+  '10': 184,
+  '9': 224,
+  '8': 265,
+  '7': 179,
+  '3': 184,
+  '4': 224,
+  '5': 265,
+  '6': 224,
+});
+
+/** The deepest room on the floor, used to check the band fits inside `H`. */
+export const ROOM_D_MAX = 265;
 
 export const rooms: RoomDef[] = [];
 {
   const add = (n: number | string, x: number, w: number, side: -1 | 1, closed = false): void => {
-    rooms.push({ n, x, w, y: side < 0 ? CY0 - ROOM_D : CY1, h: ROOM_D, side, closed });
+    const d = DEPTH[String(n)] ?? ROOM_D;
+    rooms.push({ n, x, w, y: side < 0 ? CY0 - d : CY1, h: d, side, closed });
   };
   // Closed cinema section — three unnumbered rooms on top, two below.
   add('A', 70, 160, -1, true);
@@ -39,15 +88,25 @@ export const rooms: RoomDef[] = [];
   add('C', 410, 160, -1, true);
   add('D', 180, 190, 1, true);
   add('E', 380, 190, 1, true);
-  // Devoxx rooms, widths in the plan's proportions.
-  add(10, 610, 256, -1);
-  add(9, 906, 320, -1);
-  add(8, 1234, 375, -1);
-  add(7, 1617, 263, -1);
-  add(3, 610, 256, 1);
-  add(4, 906, 320, 1);
-  add(5, 1234, 375, 1);
-  add(6, 1617, 263, 1);
+  /*
+   * Devoxx rooms, widths in the plan's proportions.
+   *
+   * Measured along the corridor on the plan (plan y extents): 3/10 = 145,
+   * 4/9 = 174, 5/8 = 224, 6/7 = 177 — so 6/7 is the plan's SECOND BIGGEST pair,
+   * effectively equal to 4/9. The prototype had it at 263 against 4/9's 320, which
+   * made the venue's second-largest auditorium read as its second-smallest. The
+   * 1230 px between the fire door and the corridor's end (1270 less the 40 px
+   * secondary-staircase niche) are redistributed by the plan's own ratios
+   * 0.2014 / 0.2417 / 0.3111 / 0.2458.
+   */
+  add(10, 610, 248, -1);
+  add(9, 898, 297, -1);
+  add(8, 1195, 383, -1);
+  add(7, 1578, 302, -1);
+  add(3, 610, 248, 1);
+  add(4, 898, 297, 1);
+  add(5, 1195, 383, 1);
+  add(6, 1578, 302, 1);
 }
 
 /** Look a room up by its plan number or letter. */
@@ -85,11 +144,20 @@ export const F1 = {
   /** Glass kiosk in the foyer, with a Voxxy-sized hatch. */
   kiosk: { x: 110, y: 412, w: 56, h: 56 },
   /** Secondary-staircase niche in the top corridor wall, between rooms 10 and 9. */
-  nicheTop: { x: 866, y: CY0 - 60, w: 40, h: 60 },
+  nicheTop: { x: 858, y: CY0 - 60, w: 40, h: 60 },
   /** Secondary-staircase niche in the bottom corridor wall, between rooms 3 and 4. */
-  nicheBot: { x: 866, y: CY1, w: 40, h: 60 },
-  /** Main staircase, corridor's end between rooms 6 and 7. */
-  mainStair: { x: 1830, y: CY0 + 6, w: 64, h: CY1 - CY0 - 12 },
+  nicheBot: { x: 858, y: CY1, w: 40, h: 60 },
+  /**
+   * Main staircase, corridor's end between rooms 6 and 7.
+   *
+   * 150 x 118, not the prototype's 64 x 88. On the plan the main stair's footprint
+   * is roughly 140 x 90 plan px, which at this module's along-corridor scale is
+   * about 158 sim deep; `media/other-images/image-1790032674926.webp` shows it
+   * filling the end of the corridor with three full-width runs under the tensile
+   * canopy, and at 64 px it rendered as a blue inset under a canopy three times
+   * its size.
+   */
+  mainStair: { x: 1744, y: CY0 + 6, w: 150, h: CY1 - CY0 - 12 },
 } as const;
 
 /** Walls of the cinema level. Room doorways, the two niches and the foyer are gaps. */
@@ -175,12 +243,22 @@ const booths: Booth[] = [];
 
 export const GF = {
   hall: { x: 30, y: 90, w: 1010, h: 600 },
-  /** Openings in the hall's right wall — the scalloped wall on the plan. */
+  /**
+   * Openings in the hall's right wall — the door bank on the plan.
+   *
+   * `plans/exhibition-floor-stairs-annotated.png` draws a continuous bank of
+   * roughly a dozen door leaves along this wall, not four holes: six regular bays
+   * of pier / glazed leaf / pier read as that bank from the hall floor, where four
+   * unequal gaps read as four holes punched in a blank wall. The bay at 396..466 is
+   * the one the chapter-3 visitor route (y 420-445) goes through.
+   */
   openings: [
-    [120, 180],
-    [240, 310],
-    [380, 460],
-    [540, 610],
+    [120, 190],
+    [212, 282],
+    [304, 374],
+    [396, 466],
+    [488, 558],
+    [580, 650],
   ] as Array<[number, number]>,
   food: {
     court: { x: 30, y: 90, w: 300, h: 160 },
@@ -320,12 +398,18 @@ export function groundWalls(): Wall[] {
 
 /* ---------------------------------------------------------------- cameras */
 
+/*
+ * The chapter view rects reach y 14..686 rather than the prototype's 40..660: the
+ * plan's stepped envelope puts rooms 5 and 8 at y 20 and y 680, and a rect that
+ * stopped at 40 would have cropped the venue's biggest auditorium — the keynote
+ * room — off the top of chapter 4's own frame.
+ */
 /** Chapter 1: the closed section plus the sealed rooms 10 and 3 beyond the fire door. */
-export const VIEW_CLOSED: ViewRect = { x: 0, y: 40, w: 900, h: 620 };
+export const VIEW_CLOSED: ViewRect = { x: 0, y: 14, w: 900, h: 672 };
 /** Chapter 4: the Devoxx section with the fire door shut behind. */
-export const VIEW_DEVOXX: ViewRect = { x: 590, y: 40, w: 1310, h: 620 };
+export const VIEW_DEVOXX: ViewRect = { x: 590, y: 14, w: 1310, h: 672 };
 /** The whole cinema level — only during the first cutscene. */
-export const VIEW_F1: ViewRect = { x: 0, y: 40, w: 1900, h: 620 };
+export const VIEW_F1: ViewRect = { x: 0, y: 14, w: 1900, h: 672 };
 /** Chapters 2 and 3: the whole hall plus the lobby. */
 export const VIEW_GROUND: ViewRect = { x: 0, y: 0, w: W, h: H };
 

@@ -77,13 +77,73 @@ describe('the rooms', () => {
     expect(r8.n).toBe(8);
   });
 
-  it('every room backs onto the corridor at the right depth', () => {
+  it('every room backs onto the corridor, and none of them leaves the sim rect', () => {
     for (const r of rooms) {
-      expect(r.h).toBe(ROOM_D);
       if (r.side < 0) expect(r.y + r.h).toBe(CY0);
       else expect(r.y).toBe(CY1);
+      expect(r.y).toBeGreaterThanOrEqual(T);
+      expect(r.y + r.h).toBeLessThanOrEqual(700 - T);
     }
-    expect(CY1 - CY0).toBe(100); // the corridor band itself
+    // The corridor band. 130, not the prototype's 100: on the plan the corridor
+    // measures 147 px against room 4's 251 of depth (0.586), and 130 against this
+    // module's 224 base depth is 0.580. See the CY0 comment in src/sim/geometry.ts.
+    expect(CY1 - CY0).toBe(130);
+    expect((CY1 - CY0) / ROOM_D).toBeGreaterThan(0.54);
+  });
+
+  /**
+   * THE STEPPED OUTER ENVELOPE.
+   *
+   * The plan's four auditorium pairs are four different depths, and rooms 5 and 8
+   * bulge past their neighbours on both sides — that silhouette is what a judge's
+   * overlay recognises as the Kinepolis first floor. The prototype gave all eight
+   * one constant depth, so the biggest room in the venue was the same box as the
+   * smallest. These ratios are measured off
+   * `plans/devoxx-rooms-stairs-annotated.png` and normalised to room 4/9.
+   */
+  it('steps the outer envelope exactly as the plan does, per room', () => {
+    const rel = (n: number): number => R(n).h / R(4).h;
+    for (const [n, want] of [
+      [3, 207 / 251],
+      [10, 206 / 251],
+      [9, 252 / 251],
+      [5, 298 / 251],
+      [8, 298 / 251],
+      [6, 251 / 251],
+      [7, 201 / 251],
+    ] as const) {
+      expect(rel(n), `room ${n} depth relative to room 4`).toBeCloseTo(want, 1);
+    }
+    // 5/8 is the deepest pair and it really does stand proud of its neighbours.
+    for (const n of [3, 4, 6, 7, 9, 10]) expect(R(8).h).toBeGreaterThan(R(n).h);
+    expect(R(5).h).toBe(R(8).h);
+    // 3/10 are shallower than 4/9, and 7 is the shallowest of the lot.
+    expect(R(3).h).toBeLessThan(R(4).h);
+    expect(R(10).h).toBeLessThan(R(9).h);
+    for (const n of [3, 4, 5, 6, 8, 9, 10]) expect(R(7).h).toBeLessThanOrEqual(R(n).h);
+    // Room 4/9 is the anchor the rest are scaled from.
+    expect(R(4).h).toBe(ROOM_D);
+    expect(R(9).h).toBe(ROOM_D);
+  });
+
+  /**
+   * WIDTH ALONG THE CORRIDOR. On the plan 6/7 is effectively the same size as 4/9
+   * (177 vs 174 plan px) and clearly the second-widest pair; the prototype made it
+   * 18% narrower than 4/9 and barely wider than 3/10.
+   */
+  it('gives the four pairs the plan\'s widths along the corridor', () => {
+    const total = [10, 9, 8, 7].reduce((s, n) => s + R(n).w, 0);
+    for (const [n, want] of [
+      [10, 145 / 720],
+      [9, 174 / 720],
+      [8, 224 / 720],
+      [7, 177 / 720],
+    ] as const) {
+      expect(R(n).w / total, `room ${n} share of the corridor`).toBeCloseTo(want, 2);
+    }
+    // 6/7 is the second-widest pair, not the second-narrowest.
+    expect(R(7).w).toBeGreaterThan(R(9).w);
+    expect(R(7).w).toBeLessThan(R(8).w);
   });
 
   it('the closed cinema section is behind the fire door, the Devoxx rooms beyond it', () => {
@@ -295,7 +355,7 @@ describe('ground floor — the lobby band', () => {
     }
   });
 
-  it('keeps the hall\'s right wall a door bank with four real openings', () => {
+  it('keeps the hall\'s right wall a bank of real, regular door openings', () => {
     const x = GF.hall.x + GF.hall.w;
     const segs = groundWalls()
       .filter((w) => w.x === x && w.w === T)

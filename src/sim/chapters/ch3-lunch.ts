@@ -211,6 +211,45 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     crowd.push(v);
   }
 
+  /**
+   * Keep a visitor out of the built fabric.
+   *
+   * The crowd walks a lane grid and never asked the wall list anything, so a
+   * visitor whose node hop clipped a booth corner, a stair wall or a counter
+   * simply walked through it — the round-2 craft critic photographed several of
+   * them half inside the stair wall and a queue apparently lying down inside a
+   * booth table. This is the same shallowest-axis push-out `src/sim/bot.ts` does
+   * for the robots, minus the bounce: a visitor has no velocity response, it just
+   * cannot be inside a slab.
+   */
+  function pushOutOfWalls(a: { x: number; y: number; r: number }): void {
+    for (const w of ctx.walls) {
+      if (w.hidden) continue;
+      const cx = a.x < w.x ? w.x : a.x > w.x + w.w ? w.x + w.w : a.x;
+      const cy = a.y < w.y ? w.y : a.y > w.y + w.h ? w.y + w.h : a.y;
+      const dx = a.x - cx;
+      const dy = a.y - cy;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > a.r * a.r) continue;
+      if (d2 > 1e-6) {
+        const d = Math.sqrt(d2);
+        a.x = cx + (dx / d) * a.r;
+        a.y = cy + (dy / d) * a.r;
+        continue;
+      }
+      // Dead centre inside the slab: leave by the nearest face.
+      const left = a.x - w.x;
+      const right = w.x + w.w - a.x;
+      const up = a.y - w.y;
+      const down = w.y + w.h - a.y;
+      const min = Math.min(left, right, up, down);
+      if (min === left) a.x = w.x - a.r;
+      else if (min === right) a.x = w.x + w.w + a.r;
+      else if (min === up) a.y = w.y - a.r;
+      else a.y = w.y + w.h + a.r;
+    }
+  }
+
   function stepVisitor(a: Visitor, dt: number): void {
     if (a.dwell > 0) {
       a.dwell -= dt;
@@ -259,6 +298,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     a.vy += ((dy / d) * spd - a.vy) * k;
     a.x += a.vx * dt;
     a.y += a.vy * dt;
+    pushOutOfWalls(a);
   }
 
   /* ----------------------------------------------------------------- the soup */

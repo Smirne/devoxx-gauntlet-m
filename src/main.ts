@@ -40,10 +40,10 @@ import './style.css';
 import { DT_MAX } from './sim/constants';
 import { createGame, type DebugGame } from './sim/game';
 import type { GameSnapshot, RobotKind } from './sim/types';
-import { PX_PER_M } from './sim/units';
+import { PX_PER_M, ROBOT_HEIGHT_M } from './sim/units';
 
 import { createAudio, type Audio } from './render/audio';
-import { createHud, type Hud } from './render/hud';
+import { createHud, type Hud, type SpeakerAnchors } from './render/hud';
 import { STEP_FREQ_BASE, STEP_FREQ_PER_MPS, gaitSpeed } from './render/robots';
 import { createScene, type DioramaScene } from './render/scene';
 
@@ -190,6 +190,9 @@ function pushStick(): void {
 
 let muted = false;
 
+/** Reused every frame: the three robots' screen positions for the HUD's bubbles. */
+const anchors: SpeakerAnchors = {};
+
 /**
  * `KeyboardEvent.code` is what the sim speaks, but a synthetic event dispatched by
  * a test harness often carries only `key`. Falling back to a `key`-derived code
@@ -312,7 +315,16 @@ function frame(now: number): void {
   const snap = game.snapshot();
 
   scene.render(snap, dt);
-  if (!hideHud) hud.update(snap);
+  if (!hideHud) {
+    // Where each robot is on the canvas, so the HUD can hang that robot's spoken
+    // line over its head instead of in a text row at the bottom of the screen.
+    for (const key of Object.keys(anchors) as RobotKind[]) delete anchors[key];
+    for (const b of snap.bots) {
+      const at = scene.project(b.x, b.y, ROBOT_HEIGHT_M[b.kind] + 0.25);
+      if (at) anchors[b.kind] = at;
+    }
+    hud.update(snap, anchors);
+  }
   updateAudio(snap, dt);
 
   if (Math.abs(snap.fade - lastFade) > 0.004) {

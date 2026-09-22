@@ -310,17 +310,65 @@ export function tensileTree(
   return mesh;
 }
 
-/** A hanging disc lamp: the big white pendant over reception, the foyer globes. */
+/**
+ * A hanging disc lamp: the big white pendant over reception, the foyer globes.
+ *
+ * A SHADE, a DROP and a LIT UNDERSIDE, not a disc. As a bare 0.14 m cylinder with
+ * no drop rod and no shading this read, in the round-2 craft critic's words, as
+ * "unexplained flat cream ellipses at head height with no shading" — the one thing
+ * in the frame that said placeholder. It now hangs from the ceiling on a rod, has
+ * a domed top that takes the room's light, and carries a small emissive disc in
+ * its mouth so a lamp looks like a lamp even in a chapter with no lamps on.
+ */
 export function pendant(
   simX: number,
   simY: number,
   radiusM: number,
   y: number,
   mat: THREE.MeshStandardMaterial,
-): THREE.Mesh {
-  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radiusM, radiusM * 0.85, 0.14, 18), mat);
-  mesh.position.set(m(simX), y, m(simY));
-  return mesh;
+): THREE.Group {
+  const g = new THREE.Group();
+  g.name = 'pendant';
+  g.position.set(m(simX), y, m(simY));
+
+  const shade = new THREE.Mesh(
+    new THREE.SphereGeometry(radiusM, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.55),
+    mat,
+  );
+  shade.scale.y = 0.72;
+  shade.castShadow = true;
+  shade.receiveShadow = true;
+  g.add(shade);
+
+  const lip = new THREE.Mesh(new THREE.TorusGeometry(radiusM * 0.92, radiusM * 0.06, 6, 22), mat);
+  lip.rotation.x = Math.PI / 2;
+  lip.position.y = -radiusM * 0.08;
+  lip.castShadow = true;
+  g.add(lip);
+
+  // The mouth: warm, emissive, and toneMapped like everything else in the venue.
+  const mouth = new THREE.Mesh(
+    new THREE.CircleGeometry(radiusM * 0.86, 20),
+    new THREE.MeshStandardMaterial({
+      color: 0x1a1712,
+      emissive: new THREE.Color(0xffcf92),
+      emissiveIntensity: 0.9,
+      roughness: 0.6,
+      side: THREE.DoubleSide,
+    }),
+  );
+  mouth.rotation.x = Math.PI / 2;
+  mouth.position.y = -radiusM * 0.1;
+  g.add(mouth);
+
+  // The drop rod up to the ceiling, so the shade is hung rather than floating.
+  const drop = Math.max(0.2, 4.4 - y);
+  const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, drop, 6), mat);
+  rod.position.y = drop / 2;
+  rod.castShadow = true;
+  g.add(rod);
+
+  return g;
 }
 
 /**

@@ -20,7 +20,7 @@ import * as THREE from 'three';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { H, W } from '../src/sim/constants';
-import { F1, R, rooms } from '../src/sim/geometry';
+import { CY0, CY1, F1, R, rooms } from '../src/sim/geometry';
 import { PX_PER_M, STOREY_H_M } from '../src/sim/units';
 import { buildVenue, simToWorld, type Venue } from '../src/render/venue/index';
 
@@ -131,9 +131,11 @@ describe('the eight Devoxx rooms', () => {
       const door = room.getObjectByName('door');
       expect(door, `room ${n} has no door anchor`).toBeDefined();
       const z = (door as THREE.Object3D).getWorldPosition(new THREE.Vector3()).z;
-      // The corridor band is sim y 300..400.
-      expect(z).toBeGreaterThanOrEqual(300 / PX_PER_M - 1e-6);
-      expect(z).toBeLessThanOrEqual(400 / PX_PER_M + 1e-6);
+      // The corridor band, wherever `src/sim/geometry` puts it. Hard-coding
+      // 300..400 here only asserted that the prototype's numbers had not moved,
+      // which is not what this test is for.
+      expect(z).toBeGreaterThanOrEqual(CY0 / PX_PER_M - 1e-6);
+      expect(z).toBeLessThanOrEqual(CY1 / PX_PER_M + 1e-6);
     }
   });
 
@@ -212,7 +214,7 @@ describe('signage', () => {
       expect(p.x).toBeGreaterThan(simToWorld(r.x, 0, 'up').x);
       expect(p.x).toBeLessThan(simToWorld(r.x + r.w, 0, 'up').x);
       // On the corridor wall, within half a metre of the band edge it belongs to.
-      const wall = simToWorld(0, r.side < 0 ? 300 : 400, 'up').z;
+      const wall = simToWorld(0, r.side < 0 ? CY0 : CY1, 'up').z;
       expect(Math.abs(p.z - wall)).toBeLessThan(0.5);
     }
   });

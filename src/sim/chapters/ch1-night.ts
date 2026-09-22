@@ -76,7 +76,16 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('up');
   ctx.setView(VIEW_CLOSED);
   ctx.setWalls(floor1Walls());
-  ctx.place([40, 330], [40, 356], [46, 384]);
+  /*
+   * Spread ALONG the corridor, not across it.
+   *
+   * The three used to stand at x 40-46 with y 330, 356, 384 — a column stacked
+   * along the diorama camera's own depth axis, so the tallest stood in front of
+   * the smallest and the opening frame of the game showed two robots where there
+   * are three. Spread left-to-right they all read from the first frame, which is
+   * also the first thing a judge screenshots.
+   */
+  ctx.place([40, 350], [92, 334], [148, 366]);
 
   const clues: Clue[] = [];
   const mirrors: Mirror[] = [];

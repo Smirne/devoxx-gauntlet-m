@@ -3,8 +3,8 @@
  *
  * The Devoxx floor plans are drawn at roughly 10 px/m; the prototype stretches the
  * corridor axis x1.25 and compresses room depth, so the sim runs at about 12.5 px/m
- * along the corridor (see docs/scale-and-units.md). Room 8 is 375 sim px wide
- * -> 30 m, which matches a real Kinepolis auditorium.
+ * along the corridor (see docs/scale-and-units.md). Room 8 is 383 sim px wide
+ * -> 30.6 m, which matches a real Kinepolis auditorium.
  *
  * The sim itself never uses these: parity with the prototype is the acceptance test,
  * so `src/sim` stays in pixels. Only `src/render` converts.
@@ -21,7 +21,7 @@ export const px = (metres: number): number => metres * PX_PER_M;
 /**
  * The **player-facing** speed scale, sim px/s per m/s — display only.
  *
- * `PX_PER_M` is the *geometry* scale (room 8 is 375 sim px = 30 m, which is a real
+ * `PX_PER_M` is the *geometry* scale (room 8 is 383 sim px = 30.6 m, which is a real
  * Kinepolis auditorium). Reading the prototype's arcade speeds through it gives
  * Voxxy 23 m/s — 84 km/h for a knee-high robot — which is the number a physics
  * judge would see on the HUD. `docs/scale-and-units.md` fixes the intended absolute

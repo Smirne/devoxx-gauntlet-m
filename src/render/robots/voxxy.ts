@@ -34,21 +34,32 @@ import {
 
 /* Vertical layout, metres from the sole. Every number below is read off the
  * model sheet's front view and then held to ROBOT_HEIGHT_M.voxxy = 1.15. */
-const HIP_Y = 0.275;
-const TORSO_Y = 0.365;
-const SHOULDER_Y = 0.625;
-const NECK_Y = 0.745;
-const HEAD_Y = 0.955;
+/*
+ * Re-measured off the sheet's front view in round 2. The figure reads
+ * legs 11-14% / body 44% / neck 6% / head 39% of total height; the build had
+ * legs at 18.6% and the head at 29%, which made Voxxy leggier and less toy-like
+ * than the model sheet and cost him the "short stubby legs" checklist item.
+ */
+const HIP_Y = 0.215;
+const TORSO_Y = 0.305;
+const SHOULDER_Y = 0.615;
+const NECK_Y = 0.73;
+const HEAD_Y = 0.95;
 /**
  * Head half-extents. The sheet's head is a WIDE ellipsoid: half again as wide as
  * it is tall, and wider than the body is anywhere. Getting this ratio wrong is
  * the single fastest way to turn Voxxy into a generic round-headed robot.
  */
 const HEAD_RX = 0.25;
-const HEAD_RY = 0.155;
+// 0.178, not 0.155: the sheet's head is 39% of total height including the ears
+// and this build had it at 29%. Only the vertical half-extent moves, so every
+// x/z-placed feature on the head — visor patch, bar-eyes, side ports, ears —
+// keeps the position it was measured into.
+const HEAD_RY = 0.178;
 const HEAD_RZ = 0.2;
-const THIGH = 0.105;
-const SHIN = 0.105;
+/** Short and stubby: 0.14 m of leg under a body whose underside sits at 0.175. */
+const THIGH = 0.068;
+const SHIN = 0.082;
 /** Arm segments. Shoulder-to-wrist is 0.54 m = 0.47 x height: "very long". */
 const UPPER_ARM = 0.28;
 const FOREARM = 0.26;
@@ -88,33 +99,39 @@ export function buildVoxxy(): RobotRig {
   // the neck. Lathed from a spline so the shoulder line stays soft.
   const bodyGeo = latheProfile(
     [
-      [0.0, -0.128],
-      [0.062, -0.122],
-      [0.112, -0.104],
-      [0.152, -0.066],
-      [0.172, 0.012],
-      [0.166, 0.09],
-      [0.145, 0.18],
-      [0.118, 0.265],
-      [0.09, 0.325],
-      [0.055, 0.362],
+      [0.0, -0.13],
+      [0.07, -0.122],
+      [0.125, -0.098],
+      [0.16, -0.052],
+      [0.175, 0.004],
+      [0.178, 0.05],
+      [0.17, 0.118],
+      [0.152, 0.186],
+      [0.125, 0.256],
+      [0.092, 0.318],
+      [0.052, 0.36],
       [0.0, 0.372],
     ],
-    30,
-    36,
+    34,
+    40,
   );
   const body = part(bodyGeo, shell);
   torso.add(body);
   parts.torsoShell = body;
 
-  // Panel seams: two barely-there dark rings, as on the sheet's body panels.
-  for (const [ringY, ringR] of [
-    [0.09, 0.166],
-    [-0.055, 0.153],
-  ] as Array<[number, number]>) {
-    const seam = part(new THREE.TorusGeometry(ringR, 0.0032, 6, 40), shellDeep);
+  /*
+   * ONE faint panel line low on the body, as the sheet has.
+   *
+   * There used to be a second ring at the waist. Between it and a profile whose
+   * widest point sat under it, the silhouette broke into an upper egg and a lower
+   * sphere and the round-2 critic read the join as construction geometry. The
+   * profile above is now monotone from the neck to its widest point at y = 0.05,
+   * and this is the only ring left.
+   */
+  {
+    const seam = part(new THREE.TorusGeometry(0.1585, 0.0028, 6, 44), shellDeep);
     seam.rotation.x = Math.PI / 2;
-    seam.position.y = ringY;
+    seam.position.y = -0.055;
     torso.add(seam);
   }
   // The little dark vent slot low on the belly.
@@ -122,25 +139,50 @@ export function buildVoxxy(): RobotRig {
   vent.position.set(0, -0.03, 0.148);
   torso.add(vent);
 
-  // Chest emblem: the small white badge with the cat-face mark.
-  const badge = part(roundedBox(0.074, 0.074, 0.014, 0.018, 3), white);
-  badge.position.set(0, 0.235, 0.123);
-  badge.rotation.x = -0.12;
-  torso.add(badge);
-  const markMat = panelMaterial('#9aa3ad', 0, { roughness: 0.4, metalness: 0.1 });
+  /*
+   * Chest emblem: the sheet's CAT FACE.
+   *
+   * White on orange, with the ears rising OUT of the top corners as part of the
+   * one silhouette, two dark dots for eyes and a small orange nose. The previous
+   * version put grey ear-shaped boxes INSIDE a white square and gave the square a
+   * corner-radius big enough to notch its bottom edge; the round-2 critic read it
+   * as a torn white card or a broken UI icon, which is the opposite of a glyph.
+   */
+  const emblem = new THREE.Object3D();
+  // Proud of the lathe's surface, which is 0.134 across at this height: at 0.121
+  // the whole badge sat inside the body and only the ear tips and the eye dots
+  // poked out, which is why the glyph read as a torn card.
+  emblem.position.set(0, 0.232, 0.139);
+  emblem.rotation.x = -0.12;
+  torso.add(emblem);
+  const markDark = panelMaterial('#2a2d33', 0, { roughness: 0.4, metalness: 0.06 });
+  // The head: wider than tall, with a flat bottom edge and only a small radius.
+  const catHead = part(roundedBox(0.072, 0.058, 0.012, 0.008, 3), white);
+  emblem.add(catHead);
+  // A cheek lobe each side, so the outline is a cat head and not a rounded box.
   for (const sx of [-1, 1]) {
-    const ear = part(roundedBox(0.016, 0.018, 0.006, 0.004, 2), markMat);
-    ear.position.set(sx * 0.017, 0.263, 0.131);
-    ear.rotation.x = -0.12;
-    torso.add(ear);
-    const eye = part(puck(0.005, 0.004, 10).rotateX(Math.PI / 2), markMat);
-    eye.position.set(sx * 0.014, 0.238, 0.132);
-    torso.add(eye);
+    const cheek = part(ellipsoid(0.021, 0.018, 0.007, 16, 10), white);
+    cheek.position.set(sx * 0.026, -0.01, 0.004);
+    emblem.add(cheek);
+    // Ear: a triangle standing out of the top corner, same white as the head.
+    const ear = part(new THREE.ConeGeometry(0.0155, 0.024, 3), white);
+    ear.position.set(sx * 0.024, 0.036, 0.001);
+    ear.rotation.set(Math.PI / 2, 0, sx * 0.26);
+    emblem.add(ear);
+    // Eye: a dark dot, on the white.
+    const eye = part(puck(0.0072, 0.005, 12).rotateX(Math.PI / 2), markDark);
+    eye.position.set(sx * 0.0165, 0.006, 0.008);
+    emblem.add(eye);
   }
+  // Nose: a small orange triangle, point down.
+  const nose = part(new THREE.ConeGeometry(0.009, 0.013, 3), shell);
+  nose.position.set(0, -0.014, 0.008);
+  nose.rotation.set(Math.PI / 2, 0, Math.PI);
+  emblem.add(nose);
 
   // Neck: a short dark post, visible between body and head on every view.
-  const neckMesh = part(new THREE.CylinderGeometry(0.034, 0.038, 0.07, 16), dark);
-  neckMesh.position.y = 0.01;
+  const neckMesh = part(new THREE.CylinderGeometry(0.034, 0.038, 0.118, 16), dark);
+  neckMesh.position.y = -0.005;
   neck.add(neckMesh);
 
   /* ----------------------------------------------------------------- head */
@@ -311,7 +353,9 @@ export function buildVoxxy(): RobotRig {
 
     const hipBall = part(ellipsoid(0.033, 0.033, 0.033, 14, 10), dark);
     hip.add(hipBall);
-    const thighMesh = part(new THREE.CylinderGeometry(0.029, 0.027, THIGH, 12), dark);
+    // Orange thigh, dark ankle: on the sheet only the ankle piston is dark, and a
+    // pair of matte-black struts under an orange body read as stilts.
+    const thighMesh = part(new THREE.CylinderGeometry(0.036, 0.031, THIGH, 14), shell);
     thighMesh.position.y = -THIGH / 2;
     thigh.add(thighMesh);
     const knee = part(ellipsoid(0.03, 0.03, 0.03, 14, 10), dark);

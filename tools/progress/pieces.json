@@ -1,298 +1,298 @@
 {
-  "$comment": "The gauntlet ledger. Seeded from GAUNTLET.md; every critic round appends here (bump rounds, replace verdict/verdictAt, set the factual checks, add shot filenames under tools/progress/shots/). Nothing in here is generated - build-progress.mjs only reads it. Pieces that feed the same rubric row MUST spell \"criterion\" identically: the summary counts each distinct criterion string once, so a typo turns the 100-point rubric into a 140-point one. status: todo | building | gauntlet | capped | done. checks: pass | fail | pending | n/a. roundCap null means the piece escalates instead of capping (the two first-class pieces).",
-  "project": "After Dark — Devoxx Belgium Robot Games",
-  "deadline": "2026-09-30T23:59:00+02:00",
-  "roundFreeze": "2026-09-28T20:00:00+02:00",
-  "checkLabels": {
-    "floorPlan": "Floor-plan overlay",
-    "robotSheet": "Model-sheet match"
+ "$comment": "The gauntlet ledger. Seeded from GAUNTLET.md; every critic round appends here (bump rounds, replace verdict/verdictAt, set the factual checks, add shot filenames under tools/progress/shots/). Nothing in here is generated - build-progress.mjs only reads it. Pieces that feed the same rubric row MUST spell \"criterion\" identically: the summary counts each distinct criterion string once, so a typo turns the 100-point rubric into a 140-point one. status: todo | building | gauntlet | capped | done. checks: pass | fail | pending | n/a. roundCap null means the piece escalates instead of capping (the two first-class pieces).",
+ "project": "After Dark — Devoxx Belgium Robot Games",
+ "deadline": "2026-09-30T23:59:00+02:00",
+ "roundFreeze": "2026-09-28T20:00:00+02:00",
+ "checkLabels": {
+  "floorPlan": "Floor-plan overlay",
+  "robotSheet": "Model-sheet match"
+ },
+ "pieces": [
+  {
+   "id": "scaffold-and-sim-contract",
+   "title": "Scaffold and sim contract",
+   "stage": 0,
+   "firstClass": false,
+   "criterion": "Foundation — carries every criterion",
+   "points": 0,
+   "status": "done",
+   "rounds": 0,
+   "roundCap": 3,
+   "verdict": "not yet run",
+   "verdictAt": null,
+   "checks": {
+    "floorPlan": "n/a",
+    "robotSheet": "n/a"
+   },
+   "shots": {
+    "before": null,
+    "after": null
+   },
+   "note": "pnpm + Vite + TS strict + vitest + three. types.ts / constants.ts / units.ts are frozen: every other piece codes against them. No visual surface, so no critic round."
   },
-  "pieces": [
-    {
-      "id": "scaffold-and-sim-contract",
-      "title": "Scaffold and sim contract",
-      "stage": 0,
-      "firstClass": false,
-      "criterion": "Foundation — carries every criterion",
-      "points": 0,
-      "status": "done",
-      "rounds": 0,
-      "roundCap": 3,
-      "verdict": "not yet run",
-      "verdictAt": null,
-      "checks": {
-        "floorPlan": "n/a",
-        "robotSheet": "n/a"
-      },
-      "shots": {
-        "before": null,
-        "after": null
-      },
-      "note": "pnpm + Vite + TS strict + vitest + three. types.ts / constants.ts / units.ts are frozen: every other piece codes against them. No visual surface, so no critic round."
-    },
-    {
-      "id": "floor-plan-fidelity",
-      "title": "Floor-plan fidelity",
-      "stage": 1,
-      "firstClass": true,
-      "criterion": "Sense of place — venue recognisable",
-      "points": 10,
-      "status": "gauntlet",
-      "rounds": 3,
-      "roundCap": null,
-      "verdict": "Round 3 — FAIL on the factual overlay. Five of six checks passed (room count and identity, relative proportions, door positions, BOTH staircases, Zaal numeral signage); the ground floor failed. Blockers: the hall's scalloped right wall was a flat slab modulated by 6 sim units with no visible opening to the lobby, and the east quarter of the ground floor (sim x 1560-1900) was featureless deck — no entrance, no toilets, no lobby walls, no glazing. Majors: the BOF rooms were one empty box in the wrong quadrant, and the first-floor main staircase rendered as a 6-unit blue line. \"A judge holding the plan next to the shot will match the hall and then find the half of the drawing that says Reception / Toilets / BOF Rooms / Main Entrance simply is not there.\"",
-      "verdictAt": "2026-09-22",
-      "checks": {
-        "floorPlan": "fail",
-        "robotSheet": "n/a"
-      },
-      "shots": {
-        "before": "critic-topdown-ch2.png",
-        "after": "r3fix-topdown-gf.png"
-      },
-      "note": "FIXED after the round, awaiting re-judgment in round 4: the hall's right wall is now a bank of recessed glazed door leaves between mullions with the sim's four openings drawn as open bays; GF.bof and GF.toilets moved to the far-right/top quadrant the plan puts them in, with the BOF block subdivided into three rooms each with its own doorway; the renderer builds the lobby band (entrance door row, glazed facade, rope-line stanchions, dark blue columns, wheelchair ramp, toilet block); the floor-1 main staircase has a blue-carpet head, three runs, tubular handrails and its tensile canopy. The ?topdown letterbox is now anchored top-left so a plan overlay needs no offset. NOT taken: re-proportioning the four auditorium pairs to the plan's width ratios — geometry.ts is the ported prototype and chapter 4 is written against room 8's exact rect (see docs/genai-notes.md)."
-    },
-    {
-      "id": "robot-appearance-fidelity",
-      "title": "Robot appearance fidelity",
-      "stage": 1,
-      "firstClass": true,
-      "criterion": "All three robots used meaningfully",
-      "points": 10,
-      "status": "gauntlet",
-      "rounds": 3,
-      "roundCap": null,
-      "verdict": "Round 3 — FAIL on the model-sheet check. Voxxy passes. Biggy fails on silhouette (measured: render helmet/belly 0.83, sheet 1.22 — a 45% inversion of the one relationship the character rests on), on the missing dark visor band (the band under the rim sampled bright orange, so Biggy had no face), and on vertical proportions. Droid fails on the missing circular pauldron emblem, a detail GAUNTLET Stage 1 names and the sheet shows in six of ten views. All three robots' eyes measured lemon yellow (R=G=255) rather than amber. \"Two of three robots do not read as THIS robot.\" Compounding it: at the gameplay camera the robots were ~15 px unlit black silhouettes, so none of the work reached the player.",
-      "verdictAt": "2026-09-22",
-      "checks": {
-        "floorPlan": "n/a",
-        "robotSheet": "fail"
-      },
-      "shots": {
-        "before": "critic-r2-pose-biggy.png",
-        "after": "r3fix-pose-biggy.png"
-      },
-      "note": "FIXED after the round, awaiting re-judgment in round 4. Both Biggy's band and Droid's emblem were the same class of bug — geometry placed INSIDE other geometry, invisible in a diff and uncatchable by a test. Biggy was rebuilt to numbers measured off the sheet's front view at 265 px/m (belly 1.15 m across x 1.10 m tall, helmet 0.94 m, boots 0.13 m); the visor band is now a near-black collar standing proud of the belly with amber eyes seated in it; the arms are dark and inside the belly's silhouette; the belly emblem has its own cream material. Droid's emblem is parented to the pauldron at 1.06x its surface along its own normal. Eye emissives retuned so R > G > B survives the clip. Still open: Voxxy's torso is two lobes with a seam rather than one teardrop, and his chest emblem is not yet the sheet's cat-face glyph."
-    },
-    {
-      "id": "sim-physics-parity",
-      "title": "Sim physics and prototype parity",
-      "stage": 2,
-      "firstClass": false,
-      "criterion": "Realism — movement and spatial behaviour",
-      "points": 20,
-      "status": "building",
-      "rounds": 0,
-      "roundCap": 3,
-      "verdict": "not yet run",
-      "verdictAt": null,
-      "checks": {
-        "floorPlan": "n/a",
-        "robotSheet": "n/a"
-      },
-      "shots": {
-        "before": null,
-        "after": null
-      },
-      "note": "Frozen constants asserted by tests/frozen-constants.test.ts. Acceptance is the ported prototype choreography: jammed door breaks for Biggy alone at ~103 px/s and never below 70, roller door fails solo and breaks at ~282 when Voxxy pushes, cable 1270–1311 px straight and over 1480 on the lane route."
-    },
-    {
-      "id": "robot-animation",
-      "title": "Per-robot animation and idle personality",
-      "stage": 2,
-      "firstClass": false,
-      "criterion": "Realism — movement and spatial behaviour",
-      "points": 20,
-      "status": "building",
-      "rounds": 0,
-      "roundCap": 3,
-      "verdict": "not yet run",
-      "verdictAt": null,
-      "checks": {
-        "floorPlan": "n/a",
-        "robotSheet": "pending"
-      },
-      "shots": {
-        "before": null,
-        "after": null
-      },
-      "note": "Walk, run, squeeze, reach, force-fix and the 'nope' bounce, anchored on the organisers' motion numbers in docs/organisers-3d-demo-notes.md. Planted feet and coordinated arm swing; weight readable per robot."
-    },
-    {
-      "id": "light-and-shadow",
-      "title": "Light, shadow and fog of war",
-      "stage": 2,
-      "firstClass": false,
-      "criterion": "Originality — genre, mechanic, reading of the brief",
-      "points": 40,
-      "status": "gauntlet",
-      "rounds": 1,
-      "roundCap": 3,
-      "verdict": "Round 1 (judged inside the stability round) — the mechanic reads, but the frames did not: 95-99% of every dark chapter was pure black and the robots inside their own pools were unlit silhouettes. A robot's lamp points away from it, which nothing had accounted for.",
-      "verdictAt": "2026-09-22",
-      "checks": {
-        "floorPlan": "pending",
-        "robotSheet": "n/a"
-      },
-      "shots": {
-        "before": "stability-ch2.png",
-        "after": "r3fix-ch2.png"
-      },
-      "note": "Added a per-robot key light, and lifted the chapter ambients and the fog-of-war base (night 0.05->0.11 / fog 0.95->0.86, hall 0.07->0.16 / fog 0.80->0.68, keynote 0.30->0.36) plus two house lights at the corridor's east end where chapter 4 opens. This REVERSES an earlier session's explicit rejection of re-tuning MOODS: a critic measuring 98.8% black moves it from a look call to a legibility failure. Clue detection lives in src/sim/lights.ts and never reads a render brightness, so the light-mix mechanic is untouched. Michele should still confirm this is dark enough."
-    },
-    {
-      "id": "cutscenes-and-transitions",
-      "title": "Cutscenes and chapter transitions",
-      "stage": 2,
-      "firstClass": false,
-      "criterion": "Originality — genre, mechanic, reading of the brief",
-      "points": 40,
-      "status": "todo",
-      "rounds": 0,
-      "roundCap": 3,
-      "verdict": "not yet run",
-      "verdictAt": null,
-      "checks": {
-        "floorPlan": "pending",
-        "robotSheet": "n/a"
-      },
-      "shots": {
-        "before": null,
-        "after": null
-      },
-      "note": "gather → walk the waypoints → fade → next chapter, with the staircase walks between floors. Skip must work mid-cutscene."
-    },
-    {
-      "id": "hud-and-legibility",
-      "title": "HUD, feedback and 'why am I blocked'",
-      "stage": 2,
-      "firstClass": false,
-      "criterion": "Playability — goals, controls, feedback",
-      "points": 15,
-      "status": "gauntlet",
-      "rounds": 1,
-      "roundCap": 3,
-      "verdict": "Round 1 (judged inside the stability round) — the chrome is well made but only chapter 1 had a running objective, the blocked messages were one script with a name swapped, duplicates stacked, and the speed gauge mixed units while quoting 23.2 m/s for a knee-high robot. All four fixed; see the stability piece.",
-      "verdictAt": "2026-09-22",
-      "checks": {
-        "floorPlan": "n/a",
-        "robotSheet": "n/a"
-      },
-      "shots": {
-        "before": "stability-zoom-toast.png",
-        "after": "r3fix-ch1-hud.png"
-      },
-      "note": "Every gate wall explains itself in the blocked robot's own voice, throttled 2.5 s per wall and de-duplicated in the HUD. GameSnapshot.progress is the live objective line: the sim owns the text, the HUD only formats it."
-    },
-    {
-      "id": "audio-in-code",
-      "title": "Audio synthesised in code",
-      "stage": 2,
-      "firstClass": false,
-      "criterion": "Originality — genre, mechanic, reading of the brief",
-      "points": 40,
-      "status": "building",
-      "rounds": 0,
-      "roundCap": 3,
-      "verdict": "not yet run",
-      "verdictAt": null,
-      "checks": {
-        "floorPlan": "n/a",
-        "robotSheet": "n/a"
-      },
-      "shots": {
-        "before": null,
-        "after": null
-      },
-      "note": "Per-robot footsteps, fix chime, nope buzz, ambient hum, victory fanfare. WebAudio only — no asset files anywhere in the repo."
-    },
-    {
-      "id": "devoxx-flavour",
-      "title": "Devoxx flavour beats",
-      "stage": 2,
-      "firstClass": false,
-      "criterion": "Sense of place — venue recognisable",
-      "points": 10,
-      "status": "todo",
-      "rounds": 0,
-      "roundCap": 3,
-      "verdict": "not yet run",
-      "verdictAt": null,
-      "checks": {
-        "floorPlan": "pending",
-        "robotSheet": "n/a"
-      },
-      "shots": {
-        "before": null,
-        "after": null
-      },
-      "note": "Tomato soup, the queues, the OutOfMemoryError beer joke, Stephan at the gate, the keynote speaker still listed as TBA. Nothing that needs permission."
-    },
-    {
-      "id": "stability-full-run",
-      "title": "Full-run stability pass",
-      "stage": 2,
-      "firstClass": false,
-      "criterion": "Playability — goals, controls, feedback",
-      "points": 15,
-      "status": "gauntlet",
-      "rounds": 1,
-      "roundCap": 3,
-      "verdict": "Round 1 — FAIL, scored 5-7/15 on playability. The factual half PASSED: the README runs from a fresh clone, 160/160 tests, clean build, all four chapters load with ERRORS:0 and an empty console log, all four screenshots distinct, and the chapters are actually driveable with a real end card. The verdict turned on the camera: \"the diorama camera is not framing the game\" — measured non-black coverage of the play band was 5.4% (ch1), 1.2% (ch2), 4.5% (ch4), robots ~15-20 px, nothing in the world marking which robot you drive. Plus: the fire-door keypad never accepted a digit, chapters 2-4 had no live objective line, and the blocked message was one sentence with the robot's name swapped in, stacking up to six identical copies.",
-      "verdictAt": "2026-09-22",
-      "checks": {
-        "floorPlan": "n/a",
-        "robotSheet": "n/a"
-      },
-      "shots": {
-        "before": "stability-ch1.png",
-        "after": "r3fix-ch1.png"
-      },
-      "note": "FIXED after the round: the camera frames a room-sized window on the driven robot clamped inside the chapter rect (robots now 50-95 px) with a ground ring in that robot's lamp colour; each robot carries a short-range key light so it reads inside its own pool; the keypad measures reach from the robot's edge and says why an out-of-range digit did nothing; every chapter publishes a live progress line; identical toasts refresh instead of stacking; the fire door, the lock, both gates and the roller door speak one line per robot; Skip on the end card no longer records a fifth chapter; the speed gauge quotes one unit on the display scale from docs/scale-and-units.md. 'Tab does nothing' was a harness artifact (synthetic events carrying only `key`, not `code`) — main.ts now derives a code from `key`; the README's unimplemented Shift and Space were removed from the controls table instead."
-    },
-    {
-      "id": "integration-playthrough",
-      "title": "Integration playthrough",
-      "stage": 3,
-      "firstClass": false,
-      "criterion": "Playability — goals, controls, feedback",
-      "points": 15,
-      "status": "todo",
-      "rounds": 0,
-      "roundCap": 3,
-      "verdict": "not yet run",
-      "verdictAt": null,
-      "checks": {
-        "floorPlan": "pending",
-        "robotSheet": "pending"
-      },
-      "shots": {
-        "before": null,
-        "after": null
-      },
-      "note": "After each build wave a fresh agent plays all four chapters and smooths the seams the parallel builders left. Nothing ships without at least one clean full run."
-    },
-    {
-      "id": "submission-readme-genai",
-      "title": "README, GenAI notes and submission",
-      "stage": 4,
-      "firstClass": false,
-      "criterion": "GenAI craft documentation",
-      "points": 5,
-      "status": "building",
-      "rounds": 0,
-      "roundCap": 3,
-      "verdict": "not yet run",
-      "verdictAt": null,
-      "checks": {
-        "floorPlan": "n/a",
-        "robotSheet": "n/a"
-      },
-      "shots": {
-        "before": null,
-        "after": null
-      },
-      "note": "README that runs from a fresh clone, an entry in docs/genai-notes.md per session, MIT licence check, submission form. The last ~36 h are reserved for this."
-    }
-  ]
+  {
+   "id": "floor-plan-fidelity",
+   "title": "Floor-plan fidelity",
+   "stage": 1,
+   "firstClass": true,
+   "criterion": "Sense of place — venue recognisable",
+   "points": 10,
+   "status": "gauntlet",
+   "rounds": 4,
+   "roundCap": null,
+   "verdict": "Round 4 — FAIL on the factual overlay, for a reason no earlier round had measured. Five of six items passed (room count and identity, door positions, BOTH staircases as built volumes, exhibition hall and lobby, numbered Zaal signage in-scene). Item 2, relative proportions, failed: the critic removed global aspect as a confound by deriving the build's own anisotropic sim-to-plan mapping and measuring per-room error, and found the outer wall dead straight at sim y=64.1 and y=634.1 at every one of 51 sampled columns — the plan's stepped envelope (207/251/298/251 plan px, room 7 at 201) flattened into one box, so the venue's biggest auditorium was the same size as its smallest. Room 6/7, the plan's second-widest pair, was built 18% narrower than 4/9. FIXED THIS ROUND: per-room DEPTH table in src/sim/geometry.ts taken from the plan and scaled so room 4/9 stays on ROOM_D; widths redistributed by the plan's ratios; corridor 100 -> 130 sim px (plan ratio 0.586 against 0.435); main staircase 64x88 -> 150x118; hall right wall from four unequal holes to six pier/leaf bays. ESCALATED TO MICHELE, not fixed: the whole first floor is stretched ~2.3x along the corridor because W=1900,H=700 comes verbatim from the prototype — CLAUDE.md's \"parity beats improvements\" and GAUNTLET.md's \"plans are ground truth for proportions\" conflict there and a builder must not pick. Open minor: the hall's chamfered corner. Independent critic decides the pass.",
+   "verdictAt": "2026-09-22",
+   "checks": {
+    "floorPlan": "fail",
+    "robotSheet": "n/a"
+   },
+   "shots": {
+    "before": "r2c-overlay-f1.png",
+    "after": "r2fix-topdown-f1.png"
+   },
+   "note": "FIXED after the round, awaiting re-judgment in round 4: the hall's right wall is now a bank of recessed glazed door leaves between mullions with the sim's four openings drawn as open bays; GF.bof and GF.toilets moved to the far-right/top quadrant the plan puts them in, with the BOF block subdivided into three rooms each with its own doorway; the renderer builds the lobby band (entrance door row, glazed facade, rope-line stanchions, dark blue columns, wheelchair ramp, toilet block); the floor-1 main staircase has a blue-carpet head, three runs, tubular handrails and its tensile canopy. The ?topdown letterbox is now anchored top-left so a plan overlay needs no offset. NOT taken: re-proportioning the four auditorium pairs to the plan's width ratios — geometry.ts is the ported prototype and chapter 4 is written against room 8's exact rect (see docs/genai-notes.md)."
+  },
+  {
+   "id": "robot-appearance-fidelity",
+   "title": "Robot appearance fidelity",
+   "stage": 1,
+   "firstClass": true,
+   "criterion": "All three robots used meaningfully",
+   "points": 10,
+   "status": "gauntlet",
+   "rounds": 4,
+   "roundCap": null,
+   "verdict": "Round 4 — FAIL on Biggy; Voxxy and Droid read as themselves. Biggy failed three of his own checklist items, measured on row-scan bounding boxes against the sheet's front panel: no readable eyes (the visor band reduced to a 6 px sliver with a continuous amber hairline across it instead of two eyes), no visible legs or ribbed knees (hip-and-leg zone 12.8% of body height against the sheet's ~26%), and a belly at #c46b29 against the sheet's weathered #9b675a. FIXED THIS ROUND: the band is now a cylinder standing in the GAP between the belly's shoulder and the helmet rim rather than a cone hugging the belly, with two discrete amber eyes and no other emissive geometry near the face; the belly's underside rises 0.13 -> 0.30 m, opening a blue-gray hip skirt and a bellows knee; belly base colour and mottle moved toward the sheet; arms rebuilt as tapered capsules under domed pauldrons with an explicit wrist so the claws are attached; antenna 0.5 -> 0.1 m and the portrait camera now frames the measured box with an even margin. Voxxy: cat-face emblem rebuilt (the old one sat 18 mm INSIDE the lathe, which is why it read as a torn card), legs 18.6% -> ~14%, head 29% -> ~33%, waist seam removed and the body profile made monotone. Droid: shoulder span 0.334 -> 0.45 of height, pauldron emblem conformed to the shell and aimed frontally, the copper 'hook' slabs and thigh streaks deleted. Also flagged and now addressed elsewhere: none of this was visible in the shipped game.",
+   "verdictAt": "2026-09-22",
+   "checks": {
+    "floorPlan": "n/a",
+    "robotSheet": "fail"
+   },
+   "shots": {
+    "before": "r2c-pose-biggy.png",
+    "after": "r2fix-pose-biggy.png"
+   },
+   "note": "FIXED after the round, awaiting re-judgment in round 4. Both Biggy's band and Droid's emblem were the same class of bug — geometry placed INSIDE other geometry, invisible in a diff and uncatchable by a test. Biggy was rebuilt to numbers measured off the sheet's front view at 265 px/m (belly 1.15 m across x 1.10 m tall, helmet 0.94 m, boots 0.13 m); the visor band is now a near-black collar standing proud of the belly with amber eyes seated in it; the arms are dark and inside the belly's silhouette; the belly emblem has its own cream material. Droid's emblem is parented to the pauldron at 1.06x its surface along its own normal. Eye emissives retuned so R > G > B survives the clip. Still open: Voxxy's torso is two lobes with a seam rather than one teardrop, and his chest emblem is not yet the sheet's cat-face glyph."
+  },
+  {
+   "id": "sim-physics-parity",
+   "title": "Sim physics and prototype parity",
+   "stage": 2,
+   "firstClass": false,
+   "criterion": "Realism — movement and spatial behaviour",
+   "points": 20,
+   "status": "building",
+   "rounds": 0,
+   "roundCap": 3,
+   "verdict": "not yet run",
+   "verdictAt": null,
+   "checks": {
+    "floorPlan": "n/a",
+    "robotSheet": "n/a"
+   },
+   "shots": {
+    "before": null,
+    "after": null
+   },
+   "note": "Frozen constants asserted by tests/frozen-constants.test.ts. Acceptance is the ported prototype choreography: jammed door breaks for Biggy alone at ~103 px/s and never below 70, roller door fails solo and breaks at ~282 when Voxxy pushes, cable 1270–1311 px straight and over 1480 on the lane route."
+  },
+  {
+   "id": "robot-animation",
+   "title": "Per-robot animation and idle personality",
+   "stage": 2,
+   "firstClass": false,
+   "criterion": "Realism — movement and spatial behaviour",
+   "points": 20,
+   "status": "building",
+   "rounds": 0,
+   "roundCap": 3,
+   "verdict": "not yet run",
+   "verdictAt": null,
+   "checks": {
+    "floorPlan": "n/a",
+    "robotSheet": "pending"
+   },
+   "shots": {
+    "before": null,
+    "after": null
+   },
+   "note": "Walk, run, squeeze, reach, force-fix and the 'nope' bounce, anchored on the organisers' motion numbers in docs/organisers-3d-demo-notes.md. Planted feet and coordinated arm swing; weight readable per robot."
+  },
+  {
+   "id": "light-and-shadow",
+   "title": "Light, shadow and fog of war",
+   "stage": 2,
+   "firstClass": false,
+   "criterion": "Originality — genre, mechanic, reading of the brief",
+   "points": 40,
+   "status": "gauntlet",
+   "rounds": 2,
+   "roundCap": 3,
+   "verdict": "Round 2 — FAIL, from the craft critic's raw pixel profiles. The pools were channel-clipped flat polygons: a one-pixel step from (0,0,0) to (54,162,95) at the green pool's rim, Voxxy's beam pinned at R=255 for over 90 px and then a 6 px cliff to black, and overlaps reaching exactly (255,255,255) so the game's headline mechanic produced a white hole instead of a new hue. Chapter 3, the daylight chapter, measured a constant L=60 floor with no gradient and not one shadow cast by a booth or a pillar. FIXED: the drawn triangles taper over the outer 17% of a cone's rim and the radial falloff is smoothstepped (the sim's visibility POLYGON is untouched, so every clue test is unchanged); the additive sum is scaled by MIX_HEADROOM so orange+green resolves to yellow; chapter 3's sun shadow camera went from an 18 m box to 30 m on a 2048 map (the framed window is 30 m wide, which is why its shadows were landing outside the frame), sun 2.6 -> 3.6 against ambient 0.45 -> 0.28; chapter 1 gained first-floor emergency-exit practicals.",
+   "verdictAt": "2026-09-22",
+   "checks": {
+    "floorPlan": "pending",
+    "robotSheet": "n/a"
+   },
+   "shots": {
+    "before": "r2c-craft-ch1.png",
+    "after": "r2fix-ch1.png"
+   },
+   "note": "Added a per-robot key light, and lifted the chapter ambients and the fog-of-war base (night 0.05->0.11 / fog 0.95->0.86, hall 0.07->0.16 / fog 0.80->0.68, keynote 0.30->0.36) plus two house lights at the corridor's east end where chapter 4 opens. This REVERSES an earlier session's explicit rejection of re-tuning MOODS: a critic measuring 98.8% black moves it from a look call to a legibility failure. Clue detection lives in src/sim/lights.ts and never reads a render brightness, so the light-mix mechanic is untouched. Michele should still confirm this is dark enough."
+  },
+  {
+   "id": "cutscenes-and-transitions",
+   "title": "Cutscenes and chapter transitions",
+   "stage": 2,
+   "firstClass": false,
+   "criterion": "Originality — genre, mechanic, reading of the brief",
+   "points": 40,
+   "status": "todo",
+   "rounds": 0,
+   "roundCap": 3,
+   "verdict": "not yet run",
+   "verdictAt": null,
+   "checks": {
+    "floorPlan": "pending",
+    "robotSheet": "n/a"
+   },
+   "shots": {
+    "before": null,
+    "after": null
+   },
+   "note": "gather → walk the waypoints → fade → next chapter, with the staircase walks between floors. Skip must work mid-cutscene."
+  },
+  {
+   "id": "hud-and-legibility",
+   "title": "HUD, feedback and 'why am I blocked'",
+   "stage": 2,
+   "firstClass": false,
+   "criterion": "Playability — goals, controls, feedback",
+   "points": 15,
+   "status": "gauntlet",
+   "rounds": 2,
+   "roundCap": 3,
+   "verdict": "Round 2 — FAIL. \"The game cannot be read without text\": a 60-84 word briefing paragraph across the top of every frame for the whole chapter, no in-world marker for the goal or the clue positions, and the per-robot blocked lines — the build's best writing, in three genuinely distinct voices — delivered as an 18 px grey row near the bottom edge, far from where the player is looking. FIXED: a line prefixed 'Voxxy:' / 'Droid:' / 'Biggy:' now becomes a speech bubble with a tail over that robot's head, positioned from a new DioramaScene.project(); the briefing folds to one line after 13 s of play and a click pins it open or shut; GameSnapshot.clues (already in the contract, never drawn) now renders as breathing floor pips in the mix's own averaged colours, green when found. REJECTED: 'Tab cycles robots backwards' — src/sim/game.ts is (cur+1)%3 and a test asserts it; the observed 0->2->1->0 is one press dispatched twice by the critic's own harness.",
+   "verdictAt": "2026-09-22",
+   "checks": {
+    "floorPlan": "n/a",
+    "robotSheet": "n/a"
+   },
+   "shots": {
+    "before": "r2c-craft-zoom-ch4-ring.png",
+    "after": "r2fix-ch4.png"
+   },
+   "note": "Every gate wall explains itself in the blocked robot's own voice, throttled 2.5 s per wall and de-duplicated in the HUD. GameSnapshot.progress is the live objective line: the sim owns the text, the HUD only formats it."
+  },
+  {
+   "id": "audio-in-code",
+   "title": "Audio synthesised in code",
+   "stage": 2,
+   "firstClass": false,
+   "criterion": "Originality — genre, mechanic, reading of the brief",
+   "points": 40,
+   "status": "building",
+   "rounds": 0,
+   "roundCap": 3,
+   "verdict": "not yet run",
+   "verdictAt": null,
+   "checks": {
+    "floorPlan": "n/a",
+    "robotSheet": "n/a"
+   },
+   "shots": {
+    "before": null,
+    "after": null
+   },
+   "note": "Per-robot footsteps, fix chime, nope buzz, ambient hum, victory fanfare. WebAudio only — no asset files anywhere in the repo."
+  },
+  {
+   "id": "devoxx-flavour",
+   "title": "Devoxx flavour beats",
+   "stage": 2,
+   "firstClass": false,
+   "criterion": "Sense of place — venue recognisable",
+   "points": 10,
+   "status": "todo",
+   "rounds": 0,
+   "roundCap": 3,
+   "verdict": "not yet run",
+   "verdictAt": null,
+   "checks": {
+    "floorPlan": "pending",
+    "robotSheet": "n/a"
+   },
+   "shots": {
+    "before": null,
+    "after": null
+   },
+   "note": "Tomato soup, the queues, the OutOfMemoryError beer joke, Stephan at the gate, the keynote speaker still listed as TBA. Nothing that needs permission."
+  },
+  {
+   "id": "stability-full-run",
+   "title": "Full-run stability pass",
+   "stage": 2,
+   "firstClass": false,
+   "criterion": "Playability — goals, controls, feedback",
+   "points": 15,
+   "status": "gauntlet",
+   "rounds": 2,
+   "roundCap": 3,
+   "verdict": "Round 2 — GATE PASSED, all four items. The critic ran the README from a fresh-clone perspective (install / test / build / preview / dev / progress, Node 22.22.2, pnpm 10.33.0, MIT declared both places), got ERRORS:0 and an empty console-log on every chapter at warm=240 and again at warm=1800, confirmed four visually distinct scenes, and drove the game for real through a same-origin harness: WASD and arrows, per-robot speeds, 1/2/3 and Tab switching, the keypad typing one digit per press with the right code opening the fire door and a wrong one clearing the pad, Skip chapter walking 1->2->3->4->done, R resetting, and ten distinct blocked messages in chapter 2 alone. The critic also withdrew one finding before reporting it, having traced it to its own harness outrunning the renderer. The round's FAIL is on composition, logged against the pieces above.",
+   "verdictAt": "2026-09-22",
+   "checks": {
+    "floorPlan": "n/a",
+    "robotSheet": "n/a"
+   },
+   "shots": {
+    "before": "r2c-craft-ch2.png",
+    "after": "r2fix-ch2.png"
+   },
+   "note": "FIXED after the round: the camera frames a room-sized window on the driven robot clamped inside the chapter rect (robots now 50-95 px) with a ground ring in that robot's lamp colour; each robot carries a short-range key light so it reads inside its own pool; the keypad measures reach from the robot's edge and says why an out-of-range digit did nothing; every chapter publishes a live progress line; identical toasts refresh instead of stacking; the fire door, the lock, both gates and the roller door speak one line per robot; Skip on the end card no longer records a fifth chapter; the speed gauge quotes one unit on the display scale from docs/scale-and-units.md. 'Tab does nothing' was a harness artifact (synthetic events carrying only `key`, not `code`) — main.ts now derives a code from `key`; the README's unimplemented Shift and Space were removed from the controls table instead."
+  },
+  {
+   "id": "integration-playthrough",
+   "title": "Integration playthrough",
+   "stage": 3,
+   "firstClass": false,
+   "criterion": "Playability — goals, controls, feedback",
+   "points": 15,
+   "status": "todo",
+   "rounds": 0,
+   "roundCap": 3,
+   "verdict": "not yet run",
+   "verdictAt": null,
+   "checks": {
+    "floorPlan": "pending",
+    "robotSheet": "pending"
+   },
+   "shots": {
+    "before": null,
+    "after": null
+   },
+   "note": "After each build wave a fresh agent plays all four chapters and smooths the seams the parallel builders left. Nothing ships without at least one clean full run."
+  },
+  {
+   "id": "submission-readme-genai",
+   "title": "README, GenAI notes and submission",
+   "stage": 4,
+   "firstClass": false,
+   "criterion": "GenAI craft documentation",
+   "points": 5,
+   "status": "building",
+   "rounds": 0,
+   "roundCap": 3,
+   "verdict": "not yet run",
+   "verdictAt": null,
+   "checks": {
+    "floorPlan": "n/a",
+    "robotSheet": "n/a"
+   },
+   "shots": {
+    "before": null,
+    "after": null
+   },
+   "note": "README that runs from a fresh clone, an entry in docs/genai-notes.md per session, MIT licence check, submission form. The last ~36 h are reserved for this."
+  }
+ ]
 }

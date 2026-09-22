@@ -39,6 +39,7 @@ audio — is generated in code at startup.
 | `M` | Mute |
 | `R` | Restart the run |
 | **Skip chapter ▸** (button, top right) | Jump to the next chapter if you are stuck, or to see the later ones |
+| **the briefing** (top of the screen) | Folds itself to one line a few seconds in, so it is not sitting over the diorama all chapter. Click it to unfold or refold |
 
 A ring on the floor, in that robot's lamp colour, marks the one you are driving. The line across the
 bottom of the screen is the live objective — what is done and what is left, refreshed every frame.
