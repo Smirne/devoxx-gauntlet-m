@@ -1908,3 +1908,147 @@ came 6 px off the wall and grew to two metres deep — counter plus back bar —
 of it lands clear of the frame edge, and the taps and the glassware moved to the counter's front
 lip, which is the face the camera is on. The back face still leaves only 6 px to the wall, which is
 deliberate: any wider and there is a pocket behind the bar for a robot to get stuck in.
+
+---
+
+## 2026-09-24 — three lighting notes, and the one bug behind two of them (agent)
+
+**What the agent was asked to do.** Three complaints from Michele's chapter-1 playthrough, all
+about what the player can SEE, all in `src/render`, none allowed to touch the sim: *"Droid now has
+no flashlight but a bigger halo… The other two lost the halo"*, *"Sometime a small light ray seems
+to be active?"*, and *"I don't know if it's me, but green and blue on the hints are too similar."*
+The brief said to measure first and named the light skirt's annulus as a suspect. It was right, and
+it was right about more than it knew: notes one and two are the same bug.
+
+### The annulus was a profile with no geometry to carry it
+
+`SKIRT_RANGE` is a 24 px pool of a robot's own colour at its own feet, reshaped last round into an
+annulus so it would stop washing out a solved clue's numeral. The reshape was written as a radial
+profile evaluated **at the vertices an ordinary pool already has** — the fan's apex and the sim
+polygon's rim. A triangle fan interpolates linearly between those two rings, the annulus profile is
+zero at the apex (the hole) and zero at the rim (the falloff's end), and zero to zero is zero
+across every pixel in between. On open floor every skirt ray runs its full 24 px, so every rim
+vertex sat at the profile's far zero and **the skirt drew nothing at all**. Droid kept a halo
+because his LAMP is a pool — a real fan with a bright apex. Voxxy and Biggy carry cones, so the
+skirt was the only thing they had at their feet, and they lost it. That is note one, exactly as he
+reported it.
+
+Note two falls out of the same arithmetic. A ray stopped early by a wall lands at an interior value
+of the profile, where it is NOT zero — so the only part of the skirt that ever drew was the handful
+of rays that hit something. Swept over chapter 1's free floor on a 10 px grid, 4349 positions per
+robot, counting how many of the skirt's eighteen rays carry any light:
+
+| | 0 rays (no halo at all) | 1–6 rays (an isolated wedge) | more than 6 |
+|---|---|---|---|
+| Voxxy, as shipped | 2806 (64.5%) | **1229 (28.3%)** | 314 |
+| Droid, as shipped | 2795 (64.3%) | **1239 (28.5%)** | 315 |
+| Biggy, as shipped | 2741 (63.0%) | **1279 (29.4%)** | 329 |
+| any robot, now | 50–120 (1–3%) | **0** | 4229–4299 |
+
+Two thirds of the time nothing; a bit under a third of the time a narrow wedge of the robot's own
+colour pointing at whatever clipped it. *"Sometime a small light ray seems to be active?"* is that
+wedge, and it needed no separate fix: it is note one seen from the other side.
+
+**The fix is vertices, not numbers.** A profile with a peak in the middle needs a ring of vertices
+in the middle. Each floor mesh now carries three concentric rings of the sim's polygon — hole, peak,
+rim — and a second index block joining them, and a skirt draws that block instead of the fan. Radii
+are pulled in to each ray's own occluder and the peak fades with how far the ray got, so a wall
+still cuts the skirt exactly where it cuts the sim's polygon. Nothing about the sim's polygon, or
+`clueLit`, moved.
+
+Measured on staged frames, the annulus band (sim radius 10–22 px, sampled away from the cone) with
+the bare floor just outside it as a control:
+
+| | mean L | p90 L | the lamp's own colour | band RGB |
+|---|---|---|---|---|
+| Voxxy | 16.1 → **59.9** | 28.6 → 89.8 | 22.7 → **112.9** | (13,16,24) → (97,52,32) |
+| Biggy | 16.8 → **53.3** | 32.6 → 79.7 | 32.8 → **127.6** | (13,17,26) → (32,54,111) |
+| Droid | 151.5 → 189.7 | 180.4 → 221.4 | 222.4 → 287.7 | (61,182,112) → (89,223,160) |
+
+The RGB column is the point. What Voxxy and Biggy had at their feet before was not a dim halo, it
+was the white key light and the spotlight's floor wash — **neutral**, and in Biggy's case slightly
+blue only because his own spot is blue. Now it is their lamp colour. The bare floor at 34–46 px is
+unchanged to two decimals (4.84 / 4.88), so the skirt kept its reach.
+
+**And it did not go back on the robots or on the numeral.** A fixed box over each robot's body,
+sized in metres so it is the same box at any capture resolution: p90 luminance 162.91 → 162.91
+(Voxxy), 115.27 → 115.27 (Biggy), 159.15 → 159.61 (Droid) — at most 0.3%. For the numeral, the
+worst case is a robot standing exactly at the annulus's brightest radius, 1.12 m from a solved
+clue, beside it rather than on it: the floor inside the clue's ring rises 71.2 → 84.8 of 255 and
+the numeral's contrast falls 112.7 → **104.1, a 7.7% cost**. The un-holed disc this replaced cost
+that contrast 65 → 16, a 75% cost. At the skirt's rim (1.92 m) the numeral is *better* than before
+(128.0 → 136.5), and at 4.4 m it is much better (68.5 → 105.5) — for a reason that belongs to the
+third note.
+
+**Measuring a robot standing ON a clue turned out to be meaningless**, and the screenshot says why:
+from an isometric camera Biggy's body covers the marker completely. That case was quietly dropped
+rather than reported as a number about a numeral nobody can see.
+
+### Green and blue: the perceptual metric says hue was never the problem
+
+The brief asked for the two arcs' distance in a perceptual space. Measured over three frames of the
+marker's own pulse, at the zoom the game is played at, **CIEDE2000 between the two rendered colours
+was already 32.65** — an enormous distance; anything over about 5 is "obviously different". The fix
+moves it to 33.31, which is nothing. Reporting that honestly is the point: hue distance is not what
+failed.
+
+What failed is size and adjacency. At the diorama's zoom a metre is 34 px across and half that down
+the screen, so the old ring's 0.2 m thickness is **three pixels**, and the two arcs shared one
+circle — mean sample radii 6.77 and 6.19 sim px, a radial separation of **0.79 screen px**. Two
+three-pixel slivers of a small ellipse, touching, at 60–90% opacity, over a floor that can be
+anything from black to a green wash.
+
+So each robot now owns a **slot at its own radius**, drawn as a whole ring rather than an arc of a
+shared one: Voxxy inner (0.38–0.56 m), Droid middle (0.64–0.82), Biggy outer (0.90–1.08) — smallest
+robot, smallest ring. A slot a clue does not need is simply not drawn, so the recipe still reads.
+Under the slots is a near-opaque dark backing ring, because the marker is drawn over the additive
+floor pools and a 0.6-opacity colour composited over a three-lamp wash is no longer the colour it
+is trying to name.
+
+| | before | after |
+|---|---|---|
+| ΔE00 (green, blue) | 32.65 | 33.31 |
+| green rendered RGB | (101,151,124) | (117,175,144) |
+| blue rendered RGB | (78,99,138) | (95,122,167) |
+| radial separation, screen px at 1280x720 | **1.6** | **8.9** |
+| sampled area, green / blue | 9610 / 14225 | 19748 / 25547 |
+
+Five and a half times the separation, twice the area, and the colours land closer to their own lamp
+values because the backing stopped the floor eating them. The dark backing is also why the numeral
+got easier to read at distance: it darkens the floor inside the marker by 15–46 of 255.
+
+### What was rejected, and why
+
+- **Changing the lamp colours.** `DEFS` is frozen, the colours are the robots' identity in
+  CLAUDE.md, and the whole light-mixing puzzle is built on them.
+- **Suppressing Droid's mirror bounce.** A sweep of the whole first floor on a 12 px grid found
+  exactly one directional light the sim ever gives Droid — the cinema-E screen's reflection, 119
+  grid positions, all inside room E, all `primary: false`, range 90. That is the designed mirror
+  mechanic and it is what lets a robot light the alcove clue at all. It is not the stray ray, and
+  the stray ray was not suppressed either: it was the skirt, and it is gone because the skirt now
+  draws properly rather than only where a wall clipped it.
+- **Raising `SKIRT_PEAK` to compensate.** It went 0.30 → 0.34 and no further; the annulus was never
+  dim, it was absent, and the numeral's 7.7% is the budget.
+- **Touching `src/sim`.** Nothing in this round did. `tests/lights.test.ts` and the chapter
+  choreographies pass unchanged — 260 of 260.
+
+### Two things about measuring this build that cost most of the round
+
+**The camera eases in SIM time, and the sim was running at a tenth of a frame a second.** Ten other
+headless chromiums were on the box; swiftshader gave this page one rendered frame every eight to
+twelve seconds. `updateFocus` eases at 6 s⁻¹ of game time, so a three-second wall-clock hold bought
+a tenth of a sim second and every "settled" frame was mid-pan — one of them was framed 94 sim px
+away from where the harness thought it was, which is how the first round of numbers came out
+nonsense. The fix is not to wait longer: `updateFocus` **cuts** instead of panning when the target
+jumps more than `FOCUS_CUT_PX`, so every pose is now staged by parking the robot in a far corner
+first. Two cuts, both instant, framed correctly within two rendered frames however slowly they
+arrive.
+
+**A debug `place()` is not a placement.** The sim resolves collisions afterwards, and a robot parked
+inside geometry gets shoved a little further every tick — Biggy, mass 7 and drag 0.35, ended up 500
+px off the map and a "halo" frame was a photograph of an empty corridor. Every staged pose now
+records where the robot actually IS and retries until it is within 2 px of where it was asked to be,
+and the projection is computed from the recorded position rather than the requested one. The
+projection itself is derived from `camera.ts` — azimuth, elevation, the focus rect clamped to the
+view, the reserved HUD band — and checked on every frame against the clue marker's own pixel
+centroid: **1.0 to 1.2 px** of error.
