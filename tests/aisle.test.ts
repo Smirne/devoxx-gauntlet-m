@@ -223,17 +223,32 @@ describe("cinema E's aisle", () => {
     const STEP = 6;
     for (const kind of ['voxxy', 'droid', 'biggy'] as const) {
       const b = bot(g, kind);
-      const cells = reachable(walls, b, { x: b.x, y: b.y });
-      let spots = 0;
-      for (const k of cells) {
-        if (spots >= WANT) break;
+      /*
+       * NEAREST FIRST, which is the difference between a test and a timeout.
+       *
+       * `reachable` hands back a flood fill from where the chapter starts the
+       * robot, so its natural order is furthest-from-the-clue first — it spent
+       * most of its budget rebuilding the light set for poses out in the corridor
+       * before it reached the room at all, and on a busy machine it ran out of
+       * clock and went red for a reason that had nothing to do with cinema E.
+       * Sorted toward the clue it clears WANT in a few dozen poses.
+       */
+      const cells: Array<[number, number, number]> = [];
+      for (const k of reachable(walls, b, { x: b.x, y: b.y })) {
         const ix = k % 1000;
         const x = ix * G;
         const y = ((k - ix) / 1000) * G;
         // A coarser lattice than the flood fill's, and only the clue's own
         // neighbourhood: a robot 26 m away is not the question.
         if (x % STEP !== 0 || y % STEP !== 0) continue;
-        if (Math.hypot(x - clue.x, y - clue.y) > 280) continue;
+        const d = Math.hypot(x - clue.x, y - clue.y);
+        if (d > 280) continue;
+        cells.push([x, y, d]);
+      }
+      cells.sort((p, q) => p[2] - q[2]);
+      let spots = 0;
+      for (const [x, y] of cells) {
+        if (spots >= WANT) break;
         for (let f = 0; f < 8; f++) {
           g.debug.place(kind, x, y, (f / 8) * Math.PI * 2);
           g.update(DT_MAX);
@@ -245,7 +260,7 @@ describe("cinema E's aisle", () => {
       }
       expect(spots, `${kind} has nowhere reachable to light the alcove`).toBeGreaterThanOrEqual(WANT);
     }
-  }, 150000);
+  }, 120000);
 
   /**
    * THE GATE, stated where it actually lives now.
