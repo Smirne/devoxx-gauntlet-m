@@ -298,6 +298,43 @@ export function roomScreen(r: RoomDef): Rect {
   return { x: r.x + r.w * 0.2, y: far + inward * 5 - 1, w: r.w * 0.6, h: 3 };
 }
 
+/**
+ * Cinema E's exit alcove — the pocket beside the screen that hides chapter 1's
+ * hardest clue.
+ *
+ * ## Why it is venue geometry and not chapter dressing
+ *
+ * It used to be two walls that `ch1-night.ts` pushed at runtime, and **nothing in
+ * `src/render` reads `snapshot().walls`** — the renderer builds its set from
+ * `floor1Walls()`. So the alcove was two invisible slabs: a robot stopped dead
+ * against thin air, which is exactly the bug the seat rows had
+ * (`docs/playtest-notes.md`, "Biggy is blocked but it's not clear by what"). Here
+ * it is drawn, lit and collided like every other wall in the building, from one
+ * source, and `tests/colliders.test.ts` measures it.
+ *
+ * It is also honestly architecture rather than dressing: every auditorium in the
+ * building has a fire exit beside the screen, and this one is the only one the
+ * game ever asks you to walk into.
+ *
+ * ## Where it is, and why there
+ *
+ * Against the room's RIGHT wall, at the foot of the aisle, and — the part that
+ * matters — far enough back from the screen wall to be **in shot**. The diorama
+ * camera sits on the +y side and looks back over cinema E's own front wall, so
+ * everything within about 50 px of that wall is behind it; at the old position
+ * (`rE.y + rE.h - 78`) the clue sat in a 15 px keyhole of visibility and the
+ * approach to it was hidden outright. Measured, not guessed: see the ray cast in
+ * `tests/aisle.test.ts`, which fails if this ever slides back down the room.
+ *
+ * The mouth faces the screen (+y), because that is where the light comes from:
+ * cinema E's screen is the chapter's mirror and the bounce has to be able to
+ * enter.
+ */
+export function cinemaEExit(): Rect {
+  const r = R('E');
+  return { x: r.x + r.w - 44, y: r.y + 120, w: 40, h: 40 };
+}
+
 /** Square corridor column, sim px. */
 export const CORRIDOR_COLUMN = 16;
 /** How far a corridor column stands off the wall it belongs to. */
@@ -407,6 +444,25 @@ export function floor1Walls(): Wall[] {
       kind: 'screen',
       why: (b) => `${b.name}: that is the screen. Fifteen metres of it, and it does not move`,
     });
+  }
+
+  /*
+   * Cinema E's exit alcove: a top wall and a side wall, open toward the screen.
+   *
+   * Solid, not `low` — the pocket has to be light-tight everywhere but its mouth,
+   * or Biggy's flood reaches the clue straight over the seat backs and the mirror
+   * beat dies. See `cinemaEExit`.
+   */
+  {
+    const a = cinemaEExit();
+    const why = (b: Bot): string =>
+      b.kind === 'biggy'
+        ? 'Biggy: the exit alcove. I can see into it and I will never fit down that aisle — the screen can carry my light in for me'
+        : `${b.name}: the exit alcove. It only opens toward the screen`;
+    w.push(
+      { x: a.x - T, y: a.y - T, w: a.w + 2 * T, h: T, kind: 'alcove', why },
+      { x: a.x - T, y: a.y, w: T, h: a.h, kind: 'alcove', why },
+    );
   }
 
   /* -------------------------------------------- what stands in the corridor */
