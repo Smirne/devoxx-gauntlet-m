@@ -20,6 +20,8 @@ import {
   BRACED_MASS,
   DEFS,
   FACE_MIN_SPEED,
+  JUMP_AIR,
+  JUMP_COOLDOWN,
   MOUNT_BIGGY_MAX_SPEED,
   MOUNT_OFFSET_Y,
   MOUNT_REACH,
@@ -256,6 +258,16 @@ export function stepBot(b: Bot, dt: number, walls: Wall[], onBlocked?: (b: Bot, 
     b.vy = 0;
     return;
   }
+  /*
+   * Read the hop BEFORE it is spent, so the frame she comes down on is still a
+   * frame in the air. She lands past the seat row rather than on top of it, which
+   * is what a player who timed the jump right expects, and it costs the alternative
+   * nothing: a hop that ends short leaves her overlapping the slab and the usual
+   * push-out puts her back on the side she jumped from.
+   */
+  const airborne = (b.air ?? 0) > 0;
+  if (b.air) b.air = Math.max(0, b.air - dt);
+  if (b.hopRest) b.hopRest = Math.max(0, b.hopRest - dt);
   const il = Math.hypot(b.ix, b.iy);
   if (il > 0) {
     // Exponential approach to the stick's target velocity: frame-rate independent.
@@ -287,6 +299,9 @@ export function stepBot(b: Bot, dt: number, walls: Wall[], onBlocked?: (b: Bot, 
   stepAim(b, dt, il, sp);
   for (const w of walls) {
     if (w.skipFor && w.skipFor(b)) continue;
+    // Over the seat rows, the sponsor tables and the counters — the same `low` that
+    // already lets light across. Everything else is still a wall in the air.
+    if (airborne && w.low) continue;
     const hit = circleRect(b, w);
     if (!hit) continue;
     // Breakable doors consume the hit themselves (no push-out, no bounce).
@@ -385,6 +400,52 @@ export function pushBiggy(bots: Bot[], dt: number, t: number, flash: (s: string)
       }
     }
   }
+}
+
+/* ---------------------------------------------------------------- Voxxy hops */
+
+/** True while this body is off the floor. */
+export const airborne = (b: Bot): boolean => (b.air ?? 0) > 0;
+
+/**
+ * Where a hop is in its arc, 0 on take-off to 1 on landing. 0 on the ground.
+ *
+ * The renderer's only input for drawing the jump: height is `JUMP_RISE_M * 4u(1-u)`,
+ * which is the exact parabola of a body under constant gravity, so the arc on screen
+ * is the arc the sim used and nothing about the hop is drawn twice.
+ */
+export const hopPhase = (b: Bot): number => (b.air ? 1 - b.air / JUMP_AIR : 0);
+
+/**
+ * Voxxy leaves the ground.
+ *
+ * Her verb, next to Droid's climb and Biggy's charge, and the one Michele asked for
+ * on its own terms: *"just for one quiz. And for jumping around for fun."* Both
+ * halves are here — over a seat row at a run, or on the spot because it is funny.
+ *
+ * The other two say why not, in their own voices, because a gate that just does
+ * nothing is the worst kind (CLAUDE.md, and the mount's own history). Their reasons
+ * are also true: Droid is the one with the reach and the one thing he is no good at
+ * is leaving the floor, and Biggy at 7 relative mass coming back down is an event.
+ *
+ * Returns true if she actually left the ground.
+ */
+export function jump(b: Bot, flash: (s: string) => void): boolean {
+  if (b.kind === 'droid') {
+    flash('Droid: "I go up by climbing, not by leaping. Ask the small one."');
+    return false;
+  }
+  if (b.kind === 'biggy') {
+    flash('Biggy: "I could. The floor would rather I did not."');
+    return false;
+  }
+  if (b.mounted || b.braced) return false;
+  if (airborne(b)) return false;
+  if ((b.hopRest ?? 0) > 0) return false;
+  b.air = JUMP_AIR;
+  // Counted from take-off, so the gap on the ground is one airtime, not two.
+  b.hopRest = JUMP_AIR + JUMP_COOLDOWN;
+  return true;
 }
 
 /* ---------------------------------------------------------------- Droid rides Biggy */

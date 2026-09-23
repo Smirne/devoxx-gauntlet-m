@@ -343,6 +343,28 @@ function frame(now: number): void {
   const dt = Math.min(Math.max((now - last) / 1000, 0), DT_MAX);
   last = now;
 
+  /*
+   * A KEY THAT IS STILL DOWN WHEN THE SIM TAKES THE KEYBOARD.
+   *
+   * Michele, chapter 2: *"Password not matching: I don't know what was happening,
+   * but i kept typing and it never took it right."* The matching was never the
+   * problem — measured on the built page, `DevoxxForever` goes in under caps lock,
+   * held shift, overlapping keydowns and auto-repeat. The stick was.
+   *
+   * `onKeyDown` suppresses a movement keydown while `typing`, so `held[axis]` is
+   * never set, so nothing ever balances it and `pushStick()` is never called: the
+   * stick keeps whatever value it had when the prompt opened, for as long as the
+   * key is physically down. Traced in the built page, Voxxy accelerated from 11 to
+   * 41 px/s over 2.5 s with the router prompt open and walked out of the terminal's
+   * reach — which closes the prompt, silently, and from there every letter of the
+   * password is a control again. The two `R`s in `DevoxxForever` restart the run.
+   *
+   * The chapter now pins the robot at an open prompt, so the run no longer depends
+   * on this. This is the other half: the stale stick is dropped rather than paid
+   * out the instant the prompt closes, exactly as `blur` already does it.
+   */
+  if (game.snapshot().typing && (held.up || held.down || held.left || held.right)) releaseAll();
+
   game.update(dt);
   const snap = game.snapshot();
 

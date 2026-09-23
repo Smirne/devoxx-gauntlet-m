@@ -85,7 +85,24 @@ export interface ChapterCtx {
 
 /** One chapter, once it has been set up. Everything but `update`/`key` is snapshot data. */
 export interface ChapterRuntime {
-  key(code: string): void;
+  /**
+   * A keypress this chapter may claim.
+   *
+   * **Return `false` to say "I looked at `E` and it means nothing here."** That is
+   * the only return value `game.ts` acts on: it is what lets the generic verbs —
+   * Voxxy's hop, taking hold of Biggy — live on the same key as the chapter's own
+   * use/climb/brace/lift without either one stealing from the other. Michele asked
+   * for exactly one key (*"Why space and not e for catching? I'd keep it to one
+   * key"*, and *"I'd keep E, when no other action is available"*), and one key with
+   * two meanings only works if the chapter gets first refusal and says so.
+   *
+   * `void` — what a chapter that has not been taught this returns — means "no
+   * answer", and the fall-through does NOT fire. Silence is not consent: a chapter
+   * whose `E` branch ends in `ctx.flash('nothing to reach here')` has very much
+   * used the key, and reading its silence as permission would have the robot hop
+   * and complain in the same frame. So each chapter opts in as it is taught to.
+   */
+  key(code: string): boolean | void;
   update(dt: number): void;
   props?(): Prop[];
   people?(): Person[];

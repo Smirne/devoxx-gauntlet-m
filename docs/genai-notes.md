@@ -1708,3 +1708,58 @@ the patch is in the report rather than in the tree. Also rejected: fixing chapte
 walk-through props, found by the new sweep (a duck and a crate are things you PUSH, a spotlight may
 well be meant to be stepped over — those are design calls in other people's files). They are frozen
 as a list that may not grow.
+
+## Voxxy's jump, and one key doing two jobs — 24 Sep 2026
+
+**What the human decided.** Twice, and the second time settled the design. First the scope:
+*"just for one quiz. And for jumping around for fun."* Then, after a playthrough where he went
+looking for it: *"Voxxy jump: let's make it. I'd keep E, when no other action is available."* That
+second sentence is not about the jump at all — it is the answer to a different note of his from
+the same round, *"Why space and not e for catching? I'd keep it to one key"* — and it is what
+made the feature cheap: one rule, `E` falls through, and both the hop and taking hold of Biggy
+arrive on the key he wanted them on.
+
+**What the agent did.** The arc is derived, not tuned. `JUMP_RISE_M = 0.3` is the only number
+anybody picked; the airtime is `2*sqrt(2H/g) = 0.49 s` and the height through the hop is the
+parabola `4H·u(1−u)`, which is what `src/render/scene.ts` draws. There is no easing curve and no
+second set of numbers for the renderer to keep in step with the sim — the rule in CLAUDE.md is
+that render reads and does not decide, and a hand-drawn arc beside a sim clock is exactly the kind
+of drift that breaks it. Being airborne means precisely one thing in the sim: `low` walls — the
+seat rows, the sponsor tables, the counters, the walls light already crosses — are not there for
+that body. Everything else is still a wall in the air, and `tests/jump.test.ts` holds that.
+
+Measured, at her frozen top speed: **2.9 m of ground per hop**. Chapter 1's seat rows are 0.72 m
+deep at 1.9 m spacing, so a hop timed at the row clears it and lands in the gap. Chapter 4's seat
+BLOCKS are 7.2 m deep, so the same hop lands her in the seats and the usual push-out returns her
+to the side she came from — with the block's own `why` line, *"seats. Use the aisles"*. That is
+not a failure case that needed designing around; it is the room telling her the truth.
+
+The cooldown is one airtime counted from take-off, so mashing `E` gives a 50% duty cycle: a run of
+hops with a footfall between each, never a hover. Droid and Biggy refuse in their own voices, per
+CLAUDE.md, and the refusals are true rather than decorative — Droid's one weakness is leaving the
+floor, and he is the one who goes up by climbing.
+
+**The part that took the thought.** `E` already means use / climb / brace / lift / play inside the
+chapters, so folding two more verbs onto it is an ordering problem, not a rename. `ChapterRuntime.key`
+now returns `boolean | void`, and `game.ts` spends the key on the hop or the grab **only on a flat
+`false`** — the chapter saying "I looked at `E` and it means nothing where you are standing".
+A chapter that has not been taught to answer returns `void`, which means "no answer", and the
+fall-through does not fire. Silence is deliberately not consent: every chapter's `E` branch ends
+in a `ctx.flash('nothing to reach here')`, which is very much using the key, and reading that as
+permission would have the robot hop and complain in the same frame. So this arrives one chapter at
+a time. **Chapter 4 is taught; chapters 1, 2 and 3 are not yet**, because all three of those files
+were held by other agents this round — the jump is live in the keynote room and lands in the other
+three as the files come free.
+
+**Rejected.** Detecting "the chapter did nothing" by watching whether it raised a toast. It would
+have worked today, with no chapter edits at all, and it couples the key routing to a chapter's
+choice of whether to say something — the first silent branch anybody writes breaks it, and it
+would break by making a robot hop, which is the hardest kind of bug to attribute. Also rejected:
+gating the jump behind a puzzle before it exists as a verb. He asked for both halves and the
+for-fun half is the one that gets found.
+
+**Also recorded, not built.** *"ah Another thing to handle later. Biggy should really roll, at
+least when he's pushed!"* — he flagged it as later himself. It is in `docs/playtest-notes.md` with
+the split that matters: wheel spin keyed off his own speed is a render change and cheap; rolling
+resistance instead of the flat drag he shares with the other two is a frozen constant, and
+therefore his call a second time.
