@@ -153,8 +153,14 @@ const SPECS = {
    * hall in which you can still see exactly where the fittings are.
    */
   boothStandby: { color: '#111a26', roughness: 0.5, emissive: '#2f6ea8', emissiveIntensity: 0.55 },
-  /** Cloth-draped half tables. Voxxy is the only one who fits under one. */
-  boothCloth: { color: '#3b3550', roughness: 1 },
+  /**
+   * Cloth-draped half tables. Voxxy is the only one who fits under one.
+   *
+   * Neutral, not the purple it used to be: the sponsor's colour arrives on the
+   * printed cloth laid over the top (`sponsorCloth` in `signage.ts`), and a purple
+   * skirt under twelve different brand colours fought every one of them.
+   */
+  boothCloth: { color: '#2b2e35', roughness: 1 },
   /** Sponsor LED walls and booth screens. */
   boothScreen: { color: '#1a2230', roughness: 0.4, emissive: '#2f6ea8', emissiveIntensity: 0.8 },
   counterTop: { color: '#2a2d33', roughness: 0.5 },
