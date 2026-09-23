@@ -1367,10 +1367,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         state: beerDone ? 'done' : 'active',
         label: `${BAR_NAME} — the bar for tonight`,
       },
-      // The stack zone reads exactly like the soup's drop mark, because it is the
-      // same promise: put the thing you are carrying down HERE.
-      // The plate stays idle/done exactly as the soup's always has: the HALO round
-      // it is what says "you can use this", and one signal is worth more than two.
+      // The mark reads exactly like the soup's, because it is the same promise:
+      // put the thing you are carrying down HERE. The plate stays idle until it is
+      // done, and the HALO round it is what says "you can use this" — one signal
+      // for that job is worth more than two.
       { kind: 'dropzone', ...BEER_STACK, state: beerDone ? 'done' : 'idle', label: 'hand the beer crates over the bar here' },
       // The bar's own sign, on the hall wall behind the taps.
       {
