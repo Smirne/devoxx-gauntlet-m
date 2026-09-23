@@ -193,12 +193,31 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const alcove: Rect = { x: rE.x + rE.w - 46, y: rE.y + rE.h - 78, w: 40, h: 40 };
   const whySeats = (b: { kind: string }): string | null =>
     b.kind === 'biggy' ? 'Biggy: too wide for that aisle — but my light goes over the seats' : null;
+  /**
+   * The seat rows, kept as rects as well as walls.
+   *
+   * They were only ever walls, and `buildVenue()` draws the STATIC geometry from
+   * `floor1Walls()` — it never sees a wall a chapter pushes at runtime. Room E is
+   * also the one auditorium the venue deliberately leaves undressed, precisely
+   * because "room E dresses itself in chapter 1". So nothing drew them: the room
+   * rendered empty and Biggy stopped dead against thin air. Michele, in play:
+   * "seats are missing in the room. Biggy is blocked but it's not clear by what."
+   *
+   * The renderer has had a `seatrow` prop spec the whole time. `props()` now
+   * publishes one per row, which is how every other piece of chapter furniture
+   * already reaches the screen.
+   */
+  const seatRects: Rect[] = [];
   for (let y = rE.y + 58; y <= rE.y + 180; y += 24) {
     // The last rows stop short of the alcove instead of running into its wall.
     const rightEnd = y >= alcove.y - T - 9 ? alcove.x - T : rE.x + rE.w;
-    ctx.walls.push({ x: rE.x, y, w: aisle[0] - rE.x, h: 9, low: true, kind: 'seatrow', why: whySeats });
+    const left: Rect = { x: rE.x, y, w: aisle[0] - rE.x, h: 9 };
+    ctx.walls.push({ ...left, low: true, kind: 'seatrow', why: whySeats });
+    seatRects.push(left);
     if (rightEnd - aisle[1] > 4) {
-      ctx.walls.push({ x: aisle[1], y, w: rightEnd - aisle[1], h: 9, low: true, kind: 'seatrow', why: whySeats });
+      const right: Rect = { x: aisle[1], y, w: rightEnd - aisle[1], h: 9 };
+      ctx.walls.push({ ...right, low: true, kind: 'seatrow', why: whySeats });
+      seatRects.push(right);
     }
   }
   ctx.walls.push(
@@ -386,6 +405,13 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       { kind: 'screen', x: mirrors[0].x0, y: mirrors[0].y - 5, w: mirrors[0].x1 - mirrors[0].x0, h: 5 },
       { kind: 'alcove', ...alcove, state: 'idle', label: 'exit alcove' },
     ];
+    for (const r of seatRects) out.push({ kind: 'seatrow', ...r, state: 'idle' });
+    // The scenery cinemas' doors, so the wall behind each joke is something you
+    // can see rather than something you bump into.
+    for (const n of Object.keys(SHUT_VOICES)) {
+      const d = roomDoor(R(n));
+      out.push({ kind: 'lock', x: d.x, y: d.y, w: d.w, h: d.h, state: 'shut' });
+    }
     if (!panelOn) out.push({ kind: 'lock', x: lock.x, y: lock.y, w: lock.w, h: lock.h, state: 'shut' });
     if (!jamBroken) out.push({ kind: 'jammed', x: jam.x, y: jam.y, w: jam.w, h: jam.h, state: 'shut' });
     // The doors of the cinemas Devoxx never uses, each with its own excuse.

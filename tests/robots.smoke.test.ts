@@ -774,13 +774,36 @@ describe('gait', () => {
     });
   }
 
-  it('mounted Droid tucks its legs instead of stepping', () => {
+  /**
+   * Rewritten, not loosened. It used to assert the exact tucked pose — shin past
+   * 1 rad, thigh past -0.5 — which pinned one particular sitting shape rather
+   * than the thing that matters. Michele found Droid hovering over Biggy's dome
+   * with his knees curled up ("sitting on the helmet should be it?"), so the pose
+   * is now astride: hips rolled out, shins down the dome's flanks. The numbers it
+   * checked are gone; the properties it was really protecting are all still here,
+   * plus two it never had.
+   */
+  it('mounted Droid sits astride instead of stepping', () => {
     const rig = createRobot('droid');
     const dt = 1 / 60;
     for (let i = 0; i < 30; i++) applyGait(rig, { speedMps: 1.2, heading: 0, dt, mounted: true });
-    // Knees up and bent: nothing like a walk pose.
-    expect(rig.bones.shinL.rotation.x).toBeGreaterThan(1);
-    expect(rig.bones.thighL.rotation.x).toBeLessThan(-0.5);
+
+    // Legs held, not walking: knees bent and thighs raised, neither foot planted.
+    expect(rig.bones.shinL.rotation.x).toBeGreaterThan(0.5);
+    expect(rig.bones.thighL.rotation.x).toBeLessThan(-0.3);
+    expect(footContact(rig, 0)).toBe(false);
+    expect(footContact(rig, 1)).toBe(false);
+
+    // Astride: the hips roll OUT, and by the same amount on each side, so the
+    // thighs pass either side of a dome nearly a metre and a half across.
+    expect(rig.bones.hipL.rotation.z).toBeGreaterThan(0.4);
+    expect(rig.bones.hipL.rotation.z).toBeCloseTo(-rig.bones.hipR.rotation.z, 5);
+
+    // It is a pose, not a gait: going faster must not animate it.
+    const held = rig.bones.shinL.rotation.x;
+    for (let i = 0; i < 30; i++) applyGait(rig, { speedMps: 6, heading: 0, dt, mounted: true });
+    expect(rig.bones.shinL.rotation.x).toBeCloseTo(held, 5);
+
     rig.dispose();
   });
 
