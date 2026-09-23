@@ -13,6 +13,7 @@
  */
 
 import {
+  AIM_SETTLE,
   ANIM_DIV,
   BOOST_CAP_FACTOR,
   BOOST_DECAY,
@@ -132,6 +133,113 @@ export function circleRect(c: { x: number; y: number; r: number }, r: Rect): Hit
   return { nx: dx / d, ny: dy / d, pen: c.r - d };
 }
 
+/* ------------------------------------------------------------- where it looks */
+
+/**
+ * Aim bookkeeping, one record per body.
+ *
+ * Kept in a `WeakMap` rather than on `Bot` because it is not game state: nothing
+ * outside this file reads it, no snapshot carries it, and a body that falls out of
+ * scope takes its record with it. It exists because "where the player aimed" is a
+ * fact about the last few frames of input, and a single `face` number cannot hold
+ * it.
+ */
+interface AimState {
+  /** True once a stick has ever driven this body — crates and the crowd never are. */
+  driven: boolean;
+  /** The previous frame's raw stick, so a ragged release can be told from a turn. */
+  sx: number;
+  sy: number;
+  /** Seconds a reduced stick has been held; -1 when nothing is being waited out. */
+  settling: number;
+  /** Since the stick let go: the slowest this body has been. */
+  coast: number;
+}
+
+const AIMS = new WeakMap<Bot, AimState>();
+
+function aimOf(b: Bot): AimState {
+  let a = AIMS.get(b);
+  if (!a) {
+    a = { driven: false, sx: 0, sy: 0, settling: -1, coast: Infinity };
+    AIMS.set(b, a);
+  }
+  return a;
+}
+
+/**
+ * Did the stick only *drop* an axis — same signs on whatever is left, nothing new
+ * pressed? That is the shape of a fumbled release (up-right becoming up), and the
+ * only stick change this game does not believe immediately. See `AIM_SETTLE`.
+ */
+function isReduction(px: number, py: number, nx: number, ny: number): boolean {
+  if ((px === 0 && py === 0) || (nx === 0 && ny === 0)) return false;
+  const dropped = (px !== 0 && nx === 0) || (py !== 0 && ny === 0);
+  const sameSigns =
+    (nx === 0 || Math.sign(nx) === Math.sign(px)) && (ny === 0 || Math.sign(ny) === Math.sign(py));
+  return dropped && sameSigns;
+}
+
+/**
+ * Point the robot where the player pointed it, and leave it there.
+ *
+ * **Under the stick the heading IS the stick.** It used to be the velocity, which
+ * is the same thing only when the robot is already up to speed: a tap from rest, or
+ * a new direction taken at a run, spent its first frames pointing somewhere between
+ * the old heading and the new one. Measured on the frozen constants, a one-frame
+ * press of "down" while running east left Voxxy facing 64 deg off her stick and
+ * Droid 82 deg off his — which is what "short press down" in Michele's chapter-1
+ * notes describes. Deriving the heading from the stick instead of from the velocity
+ * changes *what* the aim is read from; it retunes nothing, and `FACE_MIN_SPEED` is
+ * frozen and still does the job it names below.
+ *
+ * **Off the stick the heading does not move.** The aim is what the lamp follows, so
+ * a robot that has been let go has to hold the line the player left it on — and it
+ * did not: a wall bounce reverses the normal component of the velocity, and every
+ * one of the eight directions ended a chapter-1 run facing *exactly backwards* from
+ * the stick that had been held, because the last few frames of the coast were the
+ * rebound. Drive at the seat rows and let go, and the robot turned round to face up
+ * the room. That is the other half of the complaint.
+ *
+ * **Unless the world is moving it.** Coasting only ever loses speed, so a body that
+ * speeds up while nobody is steering it is being towed, shoved or knocked — and
+ * then the old rule is the right one, and the heading follows the velocity again
+ * until the next stick. That keeps a towed Biggy and a kicked crate pointing the
+ * way they are actually travelling, which is what the renderer draws.
+ */
+function stepAim(b: Bot, dt: number, il: number, sp: number): void {
+  const a = aimOf(b);
+  if (il > 0) {
+    if (b.ix !== a.sx || b.iy !== a.sy) {
+      a.settling = isReduction(a.sx, a.sy, b.ix, b.iy) ? 0 : -1;
+      a.sx = b.ix;
+      a.sy = b.iy;
+    }
+    if (a.settling >= 0) {
+      a.settling += dt;
+      if (a.settling >= AIM_SETTLE) a.settling = -1;
+    }
+    if (a.settling < 0) b.face = Math.atan2(b.iy, b.ix);
+    a.driven = true;
+    a.coast = Infinity;
+    return;
+  }
+  if (a.sx !== 0 || a.sy !== 0) {
+    // The frame the stick let go: from here the coast can only slow down.
+    a.sx = 0;
+    a.sy = 0;
+    a.settling = -1;
+    a.coast = sp;
+  }
+  if (a.driven) {
+    if (sp > a.coast + 1e-9) a.driven = false;
+    else a.coast = Math.min(a.coast, sp);
+  }
+  if (!a.driven && sp > FACE_MIN_SPEED && (b.vx !== 0 || b.vy !== 0)) {
+    b.face = Math.atan2(b.vy, b.vx);
+  }
+}
+
 /* ---------------------------------------------------------------- integration */
 
 /**
@@ -175,10 +283,8 @@ export function stepBot(b: Bot, dt: number, walls: Wall[], onBlocked?: (b: Bot, 
   }
   b.x += b.vx * dt;
   b.y += b.vy * dt;
-  if (sp > FACE_MIN_SPEED && (b.vx !== 0 || b.vy !== 0)) {
-    b.face = Math.atan2(b.vy, b.vx);
-    b.anim += (sp * dt) / ANIM_DIV;
-  }
+  if (sp > FACE_MIN_SPEED) b.anim += (sp * dt) / ANIM_DIV;
+  stepAim(b, dt, il, sp);
   for (const w of walls) {
     if (w.skipFor && w.skipFor(b)) continue;
     const hit = circleRect(b, w);
