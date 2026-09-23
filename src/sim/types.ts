@@ -239,6 +239,16 @@ export interface Prop {
   pts?: Vec2[];
   /** Free-form extras a specific prop needs (fill level, spin, digit). */
   v?: number;
+  /**
+   * How far through its own transition this prop is, 0 = not started, 1 = finished.
+   *
+   * A `state` says WHICH of a prop's states it is in; this says how far it has got
+   * through the change into it, so the renderer can animate the change instead of
+   * cutting between two stills. The sim owns the clock — the number is advanced by
+   * the chapter that owns the prop and only read by `src/render` (CLAUDE.md) — and
+   * any prop whose change is worth watching may carry it, not just doors.
+   */
+  progress?: number;
 }
 
 /** Everything the renderer reads for one frame. */

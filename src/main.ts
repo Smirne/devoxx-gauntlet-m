@@ -262,8 +262,16 @@ window.addEventListener('blur', releaseAll);
 const stepPhase: Record<RobotKind, number> = { voxxy: 0, droid: 0, biggy: 0 };
 let ambientChapter = -1;
 let lastPhase = '';
+/** Last frame's fall progress on chapter 1's jammed door, so the crash plays once. */
+let lastBreak = 0;
 
 function updateAudio(snap: GameSnapshot, dt: number): void {
+  // The only thing in the game a robot destroys. `Prop.progress` leaving zero is
+  // the sim saying it has just been hit, and `crash` has been written and unplayed
+  // in `audio.ts` since it was added.
+  const breaking = snap.props.find((p) => p.kind === 'jammed')?.progress ?? 0;
+  if (breaking > 0 && lastBreak <= 0) audio.play('crash', { intensity: 1 });
+  lastBreak = breaking;
   if (snap.chapter !== ambientChapter) {
     ambientChapter = snap.chapter;
     audio.setAmbient(snap.chapter);
