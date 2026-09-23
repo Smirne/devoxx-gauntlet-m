@@ -28,6 +28,7 @@
 import * as THREE from 'three';
 
 import { MOUNT_OFFSET_Y, W as SIM_W, H as SIM_H } from '../sim/constants';
+import { groundRiseM } from '../sim/geometry';
 import type { GameSnapshot, Person, Prop, RobotKind, ViewRect } from '../sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M, STOREY_H_M, m } from '../sim/units';
 
@@ -99,6 +100,44 @@ const WIDE_MAX = { w: 900, h: 660 };
 const CUT_FRAME: Readonly<Record<number, { w: number; h: number }>> = Object.freeze({
   1: { w: 430, h: 315 },
 });
+/**
+ * The world Y of the walking surface at a sim x.
+ *
+ * ## The bug this closes
+ *
+ * The ground floor is not flat. Kinepolis' lobby stands half a metre above the
+ * exhibition hall and the two are joined by six long steps 22 m wide — that is
+ * what the plan draws, it is why `LOBBY_RISE_M` exists, and `src/render/venue`
+ * has built both levels correctly from the start.
+ *
+ * Everything that MOVES was drawn at the hall's datum regardless. `groundRiseM`
+ * has been in `src/sim/geometry.ts` the whole time, exported for exactly this,
+ * with a doc comment saying the renderer is the thing that reads it — and nothing
+ * read it. So a robot standing in the lobby stood half a metre inside the floor,
+ * as did the ring under it, its clue markers, the props it was pushing and the
+ * visitors walking past it.
+ *
+ * ## Why the storey is read off `floorY` rather than passed down
+ *
+ * `floorY` is computed in exactly two places, both as
+ * `snap.floor === 'down' ? -STOREY_H_M : 0`, so the comparison below is exact and
+ * needs no second parameter threaded through fifteen drawing functions. The
+ * alternative — a frame-scoped `let` — is hidden state, and this file has enough.
+ *
+ * ## What this does NOT fix
+ *
+ * The main staircase to the first floor, whose treads climb to 5 m.
+ * `groundRiseM` models the lobby threshold only, and a robot walking chapter 3's
+ * transition up the main flight is still drawn at the storey datum. That needs an
+ * elevation for the flight itself and is a piece of work of its own; see the note
+ * on `CUT_FRAME`, which is why chapter 3's transition is the one that does not
+ * zoom in.
+ */
+const GROUND_DATUM = -STOREY_H_M;
+function surfaceY(floorY: number, x: number): number {
+  return floorY === GROUND_DATUM ? floorY + groundRiseM(x) : floorY;
+}
+
 /** Exponential approach rate of the framing, s^-1. High enough not to read as drift. */
 const FOCUS_EASE = 6;
 /** A jump larger than this (a `place`, a chapter change) cuts instead of panning. */
@@ -1236,7 +1275,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
         continue;
       }
       mark.root.visible = true;
-      mark.root.position.set(m(clue.x), floorY + 0.02, m(clue.y));
+      mark.root.position.set(m(clue.x), surfaceY(floorY, clue.x) + 0.02, m(clue.y));
 
       const found = clue.found;
       const pulse = 0.55 + 0.45 * Math.sin(snap.t * 2.1 + i * 1.7);
@@ -1325,7 +1364,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     activeRingGhost.visible = true;
     const r = m(bot.r);
     activeRing.scale.setScalar(Math.max(r / RING_OUTER, 0.6) * 1.25);
-    activeRing.position.set(m(bot.x), floorY + 0.03, m(bot.y));
+    activeRing.position.set(m(bot.x), surfaceY(floorY, bot.x) + 0.03, m(bot.y));
     activeRingGhost.scale.copy(activeRing.scale);
     activeRingGhost.position.copy(activeRing.position);
     const c = bot.light.c;
@@ -1360,7 +1399,8 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const hz = m(holder.y);
     const bx = m(big.x);
     const bz = m(big.y);
-    towBar.position.set((hx + bx) / 2, floorY + TOW_BAR_H, (hz + bz) / 2);
+    const barY = (surfaceY(floorY, holder.x) + surfaceY(floorY, big.x)) / 2;
+    towBar.position.set((hx + bx) / 2, barY + TOW_BAR_H, (hz + bz) / 2);
     towBar.rotation.y = -Math.atan2(bz - hz, bx - hx);
     towBar.scale.x = Math.max(Math.hypot(bx - hx, bz - hz), 0.2);
 
@@ -1370,7 +1410,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const az = Math.sin(tow.aim);
     const start = m(big.r);
     const mid = start + TOW_LANE_LEN / 2;
-    towLane.position.set(bx + ax * mid, floorY + 0.02, bz + az * mid);
+    towLane.position.set(bx + ax * mid, surfaceY(floorY, big.x) + 0.02, bz + az * mid);
     // Euler XYZ applies Z first, so `rotation.z` turns the plane inside its own
     // XY before `rotation.x` lays it flat: local +X lands on (cos z, 0, -sin z),
     // which is the sim axis for z = -aim. Feeding it `atan2(az, ax)` mirrors the
@@ -1433,7 +1473,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const mesh = propPool.get();
     const height = spec.flat ? Math.max(spec.h, 0.03) : spec.h;
     mesh.scale.set(Math.max(wM, 0.06), height, Math.max(dM, 0.06));
-    mesh.position.set(cx, floorY + (spec.lift ?? 0) + height / 2 + (spec.flat ? 0.01 : 0), cz);
+    mesh.position.set(cx, surfaceY(floorY, p.x) + (spec.lift ?? 0) + height / 2 + (spec.flat ? 0.01 : 0), cz);
     mesh.castShadow = !spec.flat;
     mesh.receiveShadow = true;
 
@@ -1466,7 +1506,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
 
     const mesh = propPool.get();
     mesh.scale.set(wM, CRATE_H_M, dM * 0.8);
-    mesh.position.set(m(p.x), floorY + base + layer * (CRATE_H_M + CRATE_GAP_M) + CRATE_H_M / 2, m(p.y));
+    mesh.position.set(m(p.x), surfaceY(floorY, p.x) + base + layer * (CRATE_H_M + CRATE_GAP_M) + CRATE_H_M / 2, m(p.y));
     mesh.castShadow = true;
     mesh.receiveShadow = true;
 
@@ -1493,7 +1533,9 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     for (let i = 0; i < n; i++) {
       const o = i * 3;
       arr[o] = m(pts[i].x);
-      arr[o + 1] = floorY + 0.08;
+      // Per point, not per cable: the run crosses the lobby threshold, so a
+      // single height would bury half of it or float the other half.
+      arr[o + 1] = surfaceY(floorY, pts[i].x) + 0.08;
       arr[o + 2] = m(pts[i].y);
     }
     cablePos.needsUpdate = true;
@@ -1517,7 +1559,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const dM = m(p.h ?? 16);
     const thrown = p.v ?? 0;
     breakerPanel.visible = true;
-    breakerPanel.position.set(m(p.x), floorY + BREAKER_Y, m(p.y) + dM);
+    breakerPanel.position.set(m(p.x), surfaceY(floorY, p.x) + BREAKER_Y, m(p.y) + dM);
     for (let i = 0; i < BREAKER_COUNT; i++) {
       const x = (wM * (i + 0.5)) / BREAKER_COUNT;
       const y = BREAKER_H * 0.42;
@@ -1553,7 +1595,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const dM = m(p.h ?? 4);
     const mesh = propPool.get();
     mesh.scale.set(Math.max(wM, 0.06), spec.h, Math.max(dM, 0.06));
-    mesh.position.set(m(p.x) + wM / 2, floorY + (spec.lift ?? 1.25) + spec.h / 2, m(p.y) + dM / 2);
+    mesh.position.set(m(p.x) + wM / 2, surfaceY(floorY, p.x) + (spec.lift ?? 1.25) + spec.h / 2, m(p.y) + dM / 2);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
 
@@ -1596,7 +1638,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     // Pivot on the bottom edge nearest the camera: sim +y is world +z and the
     // camera is on the +z side, so the leaf goes down between the doorway and the
     // lens and stays in shot.
-    jammedLeaf.position.set(m(p.x) + wM / 2, floorY, m(p.y) + dM + JAM_SKID * swing);
+    jammedLeaf.position.set(m(p.x) + wM / 2, surfaceY(floorY, p.x), m(p.y) + dM + JAM_SKID * swing);
     jammedLeaf.rotation.set(tip, -JAM_SKEW * swing, 0);
     jammedSlab.position.set(0, spec.h / 2, -dM / 2);
 
@@ -1629,11 +1671,11 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     cabinetOpen.visible = true;
     const inner = cabinetOpen.children[0] as THREE.Mesh;
     inner.scale.set(leafW, leafH, 1);
-    inner.position.set(m(p.x) + wM / 2, floorY + 0.15 + leafH / 2, faceZ - 0.06);
+    inner.position.set(m(p.x) + wM / 2, surfaceY(floorY, p.x) + 0.15 + leafH / 2, faceZ - 0.06);
     // Hinged on the left stile and swung 58° into the room. Not 90: a door left
     // square to the wall is edge-on to a camera that looks at that wall, and reads
     // as a sliver rather than as an open door.
-    cabinetLeaf.position.set(m(p.x) + 0.4, floorY + 0.15 + leafH / 2, faceZ);
+    cabinetLeaf.position.set(m(p.x) + 0.4, surfaceY(floorY, p.x) + 0.15 + leafH / 2, faceZ);
     cabinetLeaf.rotation.y = -(58 * Math.PI) / 180;
     const leaf = cabinetLeaf.children[0] as THREE.Mesh;
     leaf.scale.set(leafW, leafH, 1);
@@ -1656,7 +1698,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     head.scale.setScalar(rM * 1.5);
     head.position.set(0, bodyH + rM * 0.6, 0);
     contact.scale.setScalar(rM * 1.7);
-    g.position.set(m(p.x), floorY, m(p.y));
+    g.position.set(m(p.x), surfaceY(floorY, p.x), m(p.y));
 
     const mat = body.material as THREE.MeshStandardMaterial;
     const hex = p.colour ? new THREE.Color(p.colour).getHex() : (ROLE_COLOR[p.role] ?? ROLE_COLOR.visitor);
@@ -1762,7 +1804,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
        * ~30 screen pixels of a pool that is meant to be centred on him.
        */
       const ry = rider ? b.y + MOUNT_OFFSET_Y : b.y;
-      rig.root.position.set(m(b.x), floorY + lift, m(ry));
+      rig.root.position.set(m(b.x), surfaceY(floorY, b.x) + lift, m(ry));
       updateRobot(rig, {
         speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M,
         heading: b.face,
