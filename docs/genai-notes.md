@@ -1661,9 +1661,10 @@ anything. That instruction is the reason this session found the cause instead of
 **The frames.** With Droid parked at the foot of the aisle, cinema E rendered as a black floor, a
 dark slab and nothing else: the exit alcove read as a 12-pixel green sliver and the clue marker as
 a four-pixel grey dot. Ray-cast against the fixed diorama camera, the numbers behind the picture:
-**58% of the reachable floor of cinema E was not in shot**, the entire front of house — every
-square metre of the walk from the aisle to the alcove — was hidden, and the clue itself sat in a
-**15 px keyhole**, one robot-width either side of which it disappeared.
+of the ground within 90 px of the alcove clue — the aisle's foot, the walk across, the alcove
+itself — **only 35% was in shot**; the entire front of house was hidden outright; and the clue
+itself sat in a **15 px keyhole**, one robot-width either side of which it disappeared. It is 68%
+now, with the alcove and the bay in front of it at 100%, and the room as a whole 67% -> 75%.
 
 **The cause, and it was ours.** Three separate things stood between the camera and that room, and
 the biggest was a duplicate: `ch1-night.ts` emitted a `screen` prop on top of the screen
