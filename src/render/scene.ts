@@ -106,13 +106,38 @@ interface PropSpec {
   /** Footprint in metres when the prop carries no `w`/`h`. */
   fw?: number;
   fd?: number;
+  /**
+   * Metres off the floor. For things bolted to a wall rather than standing on the
+   * ground — without it, a panel a robot has to be lifted up to reach is drawn at
+   * ankle height, which tells the player the opposite of the truth.
+   */
+  lift?: number;
+  /**
+   * A standby glow the prop carries whatever its state, sRGB hex.
+   *
+   * `STATE_EMISSIVE` only lights a prop once something has happened to it, which
+   * is no help in a blackout: the thing you are looking FOR is by definition still
+   * idle. A panel with power to its own indicator is findable before you have
+   * solved it, and still changes colour when you do.
+   */
+  glow?: number;
 }
 
 const PROPS: Readonly<Record<string, PropSpec>> = {
   /* chapter 1 — the closed cinema section */
   firedoor: { h: 2.1, color: 0x8d3b2a, tl: true },
   keypad: { h: 1.25, color: 0x2c3340, tl: true },
-  'projector-panel': { h: 0.6, color: 0x39414f, tl: true },
+  /*
+   * Chapter 1's door override, up on the wall beside cinema B's door.
+   *
+   * Michele: "I had trouble finding the projector / open the room with biggy and
+   * droid. There should be something visible." It was a 0.6 m grey box sitting on
+   * the floor in a blacked-out corridor — unlit, at ankle height, for a control
+   * the fiction says is a metre above Droid's reach. Now it is a lit panel at
+   * 2.5 m: tall, standing proud of the wall, with its own amber standby lamp so
+   * it reads as powered equipment long before you work out what it does.
+   */
+  'projector-panel': { h: 0.9, color: 0x39414f, tl: true, lift: 2.5, glow: 0x6b4406 },
   screen: { h: 5.2, color: 0xcfd6dd, tl: true },
   alcove: { h: 0.05, color: 0x2f7d4f, tl: true, flat: true },
   lock: { h: 2.1, color: 0x4a4038, tl: true },
@@ -972,13 +997,13 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const mesh = propPool.get();
     const height = spec.flat ? Math.max(spec.h, 0.03) : spec.h;
     mesh.scale.set(Math.max(wM, 0.06), height, Math.max(dM, 0.06));
-    mesh.position.set(cx, floorY + height / 2 + (spec.flat ? 0.01 : 0), cz);
+    mesh.position.set(cx, floorY + (spec.lift ?? 0) + height / 2 + (spec.flat ? 0.01 : 0), cz);
     mesh.castShadow = !spec.flat;
     mesh.receiveShadow = true;
 
     const mat = mesh.material as THREE.MeshStandardMaterial;
     mat.color.setHex(spec.color);
-    const tint = p.state ? STATE_EMISSIVE[p.state] : undefined;
+    const tint = (p.state ? STATE_EMISSIVE[p.state] : undefined) ?? spec.glow;
     mat.emissive.setHex(tint ?? 0x000000);
     mat.emissiveIntensity = tint === undefined ? 0 : 1;
     mat.transparent = spec.flat === true;

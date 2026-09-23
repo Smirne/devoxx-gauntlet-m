@@ -791,8 +791,8 @@ describe('gait', () => {
     // Legs held, not walking: knees bent and thighs raised, neither foot planted.
     expect(rig.bones.shinL.rotation.x).toBeGreaterThan(0.5);
     expect(rig.bones.thighL.rotation.x).toBeLessThan(-0.3);
-    expect(footContact(rig, 0)).toBe(false);
-    expect(footContact(rig, 1)).toBe(false);
+    expect(footContact(rig, 'L')).toBe(false);
+    expect(footContact(rig, 'R')).toBe(false);
 
     // Astride: the hips roll OUT, and by the same amount on each side, so the
     // thighs pass either side of a dome nearly a metre and a half across.
