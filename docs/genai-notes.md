@@ -1764,3 +1764,30 @@ least when he's pushed!"* — he flagged it as later himself. It is in `docs/pla
 the split that matters: wheel spin keyed off his own speed is a render change and cheap; rolling
 resistance instead of the flat drag he shares with the other two is a frozen constant, and
 therefore his call a second time.
+
+### …and chapters 1 and 2 were taught it the same night
+
+The commit above shipped the `E` fall-through with only chapter 4 opting in, because the other
+three files were held by other agents mid-round. Two of them came free an hour later, so:
+
+**Chapter 1** — the room Michele was actually thinking of. Its seat rows are `low` walls 0.72 m
+deep at 1.9 m spacing, which is exactly what one hop crosses, and Voxxy's `E` in that chapter had
+never meant anything: everything in it is typed at a keypad, and the climb belongs to Droid. The
+climb, the projector panel and the panel's own "too high, even for me" refusal all still claim the
+key; nothing else does.
+
+**Chapter 2** — only **Voxxy's** dead end hands the key back, and that is the whole point.
+`'Voxxy: nothing to plug in here'` is gone, replaced by a hop in open floor and by taking hold of
+Biggy when she is against him — which is Michele's *"Why space and not e for catching? I'd keep it
+to one key"*, answered by ordering rather than by a rename. Droid and Biggy keep their own last
+words (`'nothing to reach here'`, `"I don't do buttons. I do doors."`), because in that room those
+say more than a refusal to jump would, and neither of them can jump anyway.
+
+Chapter 3 is still owed; its file was in another agent's hands both times.
+
+**The tests were driven against the old code before they were kept.** Three of the six new
+fall-through cases fail against the untaught chapters and three pass either way — the three that
+assert the chapter KEEPS the key, which it always did. That split is the point: a test that cannot
+fail is not describing the change.
+
+102 of 102 green across `chapters`, `aisle`, `tow`, `keypad`, `ch2-chain` and `jump`.
