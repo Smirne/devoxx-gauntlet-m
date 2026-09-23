@@ -1286,3 +1286,115 @@ grab when the holder is pushed into a wall. The bar is a straight line and the v
 corridor run clips the holder into a door reveal for a frame or two and the tow would fail exactly
 where a player most needs it — the holder is pushed out instead, and only a wall that genuinely
 separates the pair ends the grab.
+
+---
+
+## 2026-09-23 — chapter 2: the cam-lock wheel comes out, the WiFi password goes in
+
+**Michele's call, in one line: *"Remove the wheel, too complicated."*** A builder session followed
+it. This is a reversal of `docs/gameplay-additions.md` §2 — that section *was* the wheel — and §2
+has been rewritten in place to say so rather than left standing as a second source of truth.
+
+**What the human decided, and what was left to the agent.** He decided the wheel goes and that the
+`DevoxxForever` beat replaces it, with three ways in: typed from memory, read off a poster by
+Voxxy's narrow cone, or read off the router's own label by Droid standing on Biggy. He kept his
+three standing constraints from the earlier conversation: **not** thirteen letters scattered round
+the venue, **not** a second helping of chapter 1's light mix, and now **not** the wheel. The agent
+decided everything below the line: where the poster hangs, how forgiving the typing is, who owns
+the keyboard while a prompt is open, and what the refusals say.
+
+**Deleted:** the wheel's entire state machine — `WHEEL_*`, `PAWL_*`, the detent pawl, the angular
+integrator, `cabinet.onHit`, the 'cam-wheel' and 'cam-mark' props, and their two builders and two
+draw functions in `src/render/scene.ts`. None of it was in `tests/frozen-constants.test.ts`; it was
+all chapter-local tuning, which is where it belonged and why it could go cleanly.
+
+**The one structural change.** A chapter can now say it has the keyboard —
+`ChapterRuntime.typing()`, surfaced as `GameSnapshot.typing`. `game.ts` asks before it reads `R` as
+restart; `src/main.ts` asks before it reads `WASD` as a stick. This is not decoration:
+`DevoxxForever` has a `D` in it and two `R`s, so without it the first letter of the password drives
+the robot out of reach of the terminal it is being typed into, and the seventh restarts the chapter.
+Found by reasoning about the string, then confirmed in the browser — the headless run asserts that
+Voxxy moves 0.00 px while the password is typed on real key events.
+
+**What "simpler" was taken to mean.** A wrong key does not go in *and does not throw away what is
+already there*; Backspace takes one back; case never enters into it, because `KeyboardEvent.code`
+is `KeyD` whether or not shift was down; the field and its count are in the HUD's live line the
+whole time. Thirteen presses is about four seconds, and routes 2 and 3 turn the whole thing into a
+single `E`.
+
+**Rejected.** (a) Making the terminal a minigame — a dial, a scramble, a sequence: every one of them
+is the wheel again under another name. (b) Accepting a prefix of the password to save keystrokes:
+it saves two seconds and costs the joke, which is the entire point of the beat. (c) Leaving the
+cam-wheel draw code in `src/render/scene.ts` as dead code for props that no longer exist — a critic
+reading the file would find it, and it was deleted instead. (d) Having the password auto-enter the
+moment a robot reads it: knowing it and entering it are two different acts, and the walk back to
+the technical room is what makes reading it feel like finding something.
+
+**Known weak, and said plainly.** The wheel was the one object in chapter 2 where all three robots
+were needed *at once*. Three alternative routes cannot be that by construction: Biggy is on every
+route (he is the only one who can swing the cabinet door, and the terminal is inside it) and route 3
+needs Droid on Biggy, but a player who reads the chapter card uses Biggy and then types. Chapter 2
+as a whole still needs all three — breakers, cable, roller door — so the 10-point "all three robots"
+criterion is carried by the chapter rather than by this one object. That is a real loss against the
+wheel and it is the price of the instruction.
+
+---
+
+## 23 Sep 2026 — "OutOfMemory, yes build it": the beer delivery in chapter 3
+
+**The human decision.** Michele had held approval on `docs/gameplay-additions.md` §3 until he could
+play something. Today he gave it in one word: *"OutOfMemory, yes build it."* The design was already
+written — Biggy stacks beer crates, each one costs mass and acceleration, the crate past the limit
+throws a `java.lang.OutOfMemoryError` and he drops the lot — together with its own kill condition,
+which became the acceptance criterion: *"if the restart reads as punishment rather than comedy, it
+is a bad beat regardless of how good the joke is."*
+
+**What the agent decided, and what it had to re-decide.** The design doc predates the story rewrite:
+it says chapter 3 is lunch and leans on Wednesday-evening beers, and chapter 3 is breakfast now.
+Rather than drop the signage joke, the framing moved: the crates are a **delivery**, dropped off at
+eight in the morning for tonight. That is when a brewery actually turns up, nobody is drinking at
+breakfast, and the pallet standing in the arrivals aisle gives Stephan a third condition to be
+unreasonable about — soup, keynote speaker, and *"that beer off my floor"*. The shrink-wrap label
+still reads "Belgian beers may cause hangovers and OutOfMemoryErrors", which is Devoxx's own line.
+The tone Michele set for the tomato soup (*"it's odder in the morning but i found it fun"*) is the
+tone this matches.
+
+**Frozen constants, and the one structural fix the beat forced.** The beat changes Biggy's `mass`
+and `accel` at run time, which is exactly what the frozen table exists to prevent. The distinction
+is now written down in `src/sim/crates.ts`: `DEFS` is the robots' frozen IDENTITY and is never
+written; what a robot is carrying is a MODIFIER on the mutable copy `mkBot` makes, recomputed from
+`DEFS` every time rather than accumulated, so putting the crates down restores the frozen numbers
+exactly and not approximately. `tests/frozen-constants.test.ts` passes untouched.
+
+That left one real hole: a load applied in chapter 3 outlived chapter 3. Skip the chapter mid-carry
+and chapter 4 got a Biggy still carrying four crates that no longer existed; press `R` and chapter 1
+did. `game.ts` now restores every robot's frozen identity at the head of `startChapter`, which is the
+one door every chapter comes through, and a test drives both escapes.
+
+**The numbers, measured rather than asserted.** Each crate is +1.5 mass and x0.82 acceleration,
+compounding; four — the safe stack — take Biggy from mass 7 to 13 and from `accel` 0.6 s^-1 to
+0.271. Over a 200 px (16 m) straight from a standing start that is 4.98 s empty against 6.44 s
+loaded, +29%. Six crates are delivered and the fifth pickup throws, so four-then-two is the honest
+line and one crate under the limit is the optimum, which is the design's whole point: greed is
+punished by physics rather than by a rule.
+
+**What is honestly weaker than the design claims.** The design says a heavier Biggy is harder to
+shift and that *"the push and the new tow bar already express"* it. They do not: `pushBiggy` adds
+`force * dt` straight to his velocity and `stepTow` drives him with the holder's own force, and
+neither divides by mass. Only `botsCollide` reads it. So the felt half of the trade is the
+acceleration, and the mass shows up in contacts, not in being pushed or towed. Making the push and
+the tow mass-aware is a change to frozen physics that would retune chapter 2's roller door, so it is
+a human decision and not a builder's — flagged rather than done.
+
+**Rejected.** A HUD heap meter: `collectMeters` in `src/render/hud.ts` would take a new `case`
+happily, but the brief put the crate count, the penalty and the distance to the limit on the
+objective and progress lines, and one more agent in one more shared render file this week is not
+worth a second bar. Rejected too: a full-screen crash dump on *every* heap error. The first one gets
+the card, because a stack trace is worth reading; every one after it is a toast, because a modal
+that interrupts the fourth attempt is how a joke turns into a penalty — which is the design's own
+kill condition, read literally.
+
+**Found while verifying, not caused by this work.** `chapter 3 — breakfast > brings the crowd in
+through the left-hand doors` times out at clean `HEAD` in this container: it simulates 5,600 frames
+of a 36-body crowd and vitest's default budget is 5 s. It now carries an explicit 30 s timeout,
+because a wall-clock budget on a headless sim is a property of the machine and not of the game.

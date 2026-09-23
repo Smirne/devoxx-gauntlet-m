@@ -26,8 +26,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   CABLE_MAX,
+  CRATE_DELIVERY,
+  CRATE_STACK_LIMIT,
+  DEFS,
   DT_MAX,
   TRAVEL_TIME_SCALE,
+  crateLoadAccel,
+  crateLoadMass,
   GF,
   JAMMED_DOOR_SPEED,
   R,
@@ -217,60 +222,42 @@ function walkTo(g: DebugGame, kind: RobotKind, target: Vec2, tol = 7): boolean {
   return driveTo(g, kind, pts, tol);
 }
 
-/* ------------------------------------------------- the chapter-2 cam-lock wheel
+/* --------------------------------------------- the chapter-2 network closet
  *
- * The router cabinet in the technical room (`docs/gameplay-additions.md` §2). These
- * three helpers are the choreography a player performs: Biggy runs at the wheel from
- * the back of the room, Droid waits beside it, and Droid brakes when the wheel's
- * stopping distance lands on the mark. Everything they read comes out of the public
- * snapshot and `ExpoState`, never out of the chapter's internals.
+ * The router cabinet in the technical room. Biggy shoulders the door open; the
+ * terminal inside wants `DevoxxForever`, and there are three ways to answer it —
+ * type it, have Voxxy read it off the poster in the hall, or have Droid read the
+ * label inside the lid from Biggy's shoulders. These helpers are the choreography
+ * a player performs, and everything they read comes out of the public snapshot and
+ * `ExpoState`, never out of the chapter's internals.
  */
 
+/** The cabinet's south face, from `GF` — the same point `ch2-expo.ts` measures from. */
 const HUB: Vec2 = { x: GF.cabinet.x + GF.cabinet.w / 2, y: GF.cabinet.y + GF.cabinet.h + 2 };
-/** Where Droid stands to get a hand on the hub, clear of Biggy's run-up line. */
-const BRACE_SPOT: Vec2 = { x: 118, y: 602 };
-/** `WHEEL_BRAKE` in `ch2-expo.ts`: a braced Droid kills the coast in `vel / 7` radians. */
-const BRAKE_RATE = 7;
-/** `WHEEL_TOL`: the cam seats within this of the mark. */
-const WHEEL_TOL = 0.16;
-
-const TAU = Math.PI * 2;
-const wrap = (a: number): number => ((a % TAU) + TAU) % TAU;
-const angDiff = (a: number, b: number): number => {
-  const d = wrap(a - b);
-  return d > Math.PI ? d - TAU : d;
-};
+/** The Cloudy Bank booth's south face, where the sponsor banner hangs. */
+const POSTER: Vec2 = (() => {
+  const bo = GF.booths.find((o) => o.name === 'Cloudy Bank');
+  if (!bo) throw new Error('no Cloudy Bank booth');
+  return { x: bo.x + bo.w / 2, y: bo.y + bo.h + 2 };
+})();
 
 const expo = (g: DebugGame): ExpoState => g.debug.chapter() as ExpoState;
-
-/**
- * Biggy charges the cabinet face from the back wall of the technical room. `x`
- * decides the lever arm: the wheel turns the way he comes in on.
- */
-function heaveWheel(g: DebugGame, x = 178, steps = 50 * TRAVEL_TIME_SCALE): void {
-  g.debug.select('biggy');
-  g.debug.place('biggy', x, 671);
-  g.setStick(0, -1);
-  steps_(g, steps);
-  g.setStick(0, 0);
-}
 
 function steps_(g: DebugGame, n: number): void {
   for (let i = 0; i < n; i++) g.update(DT_MAX);
 }
 
-/** Droid, braced at the right instant, catches the wheel on the mark. */
-function braceOntoMark(g: DebugGame, budget = 2400): boolean {
-  g.debug.select('droid');
-  for (let i = 0; i < budget; i++) {
-    const w = expo(g).wheel;
-    if (w.open) return true;
-    if (!w.held && Math.abs(w.vel) > 0.02 && Math.abs(angDiff(w.ang + w.vel / BRAKE_RATE, w.mark)) < 0.05) {
-      g.key('KeyE');
-    }
-    g.update(DT_MAX);
-  }
-  return expo(g).wheel.open;
+/** Biggy walks up to the cabinet and puts his shoulder into it. */
+function openCabinet(g: DebugGame): boolean {
+  g.debug.select('biggy');
+  g.debug.place('biggy', HUB.x, HUB.y + 30);
+  g.key('KeyE');
+  return expo(g).router.cabinetOpen;
+}
+
+/** Type a string at the terminal, one `KeyX` at a time, exactly as the shell does. */
+function typeAt(g: DebugGame, text: string): void {
+  for (const ch of text.toUpperCase()) g.key(`Key${ch}`);
 }
 
 /* ================================================================ chapter 1 */
@@ -334,11 +321,23 @@ describe('chapter 1 — night', () => {
     steps(g, 2);
     expect(night().clues[2].found).toBe(true);
 
-    // 4 · the exit alcove in cinema E: all three at once.
+    /*
+     * 4 · the exit alcove in cinema E: all three at once — and Biggy is NOT in
+     * the room with the other two.
+     *
+     * He used to be teleported to `c4.x - 24, c4.y + 42`, a spot beside the
+     * alcove. That was a position no player could ever have walked to once the
+     * aisle went back to 1.2 m, and the test never noticed because it teleports.
+     * So it now places him where he can actually stand — the front of the house,
+     * north of the seat rows — pointing his flood at the SCREEN rather than at
+     * the clue. Cinema E's screen is the chapter's mirror, and the bounce is how
+     * orange and green and blue all reach an alcove Biggy cannot walk to. That is
+     * the beat the room was designed around, and until now no test described it.
+     */
     const c4 = night().clues[3];
     g.debug.place('voxxy', c4.x, c4.y + 8, -Math.PI / 2);
     g.debug.place('droid', c4.x + 11, c4.y + 30);
-    g.debug.place('biggy', c4.x - 24, c4.y + 42, Math.atan2(-42, 24));
+    g.debug.place('biggy', 462, 417, 0.393);
     steps(g, 2);
     expect(night().clues[3].found).toBe(true);
 
@@ -546,17 +545,18 @@ describe('chapter 2 — expo', () => {
 
   /* ---------------------------------------------------- the network closet */
 
-  it('lets nobody but Biggy break the cam-lock free, and says why in each voice', () => {
+  it('keeps the router cabinet shut for everybody but Biggy, and says why in each voice', () => {
+    // Voxxy and Droid, right up against the door, pressing E: it does not move.
     for (const kind of ['voxxy', 'droid'] as const) {
       const g = mk(2);
       g.debug.select(kind);
-      g.debug.place(kind, 172, 640);
-      g.setStick(0, -1);
-      steps_(g, 200);
-      g.setStick(0, 0);
-      const w = expo(g).wheel;
-      expect(w.vel, `${kind} turned the wheel`).toBe(0);
-      expect(w.open).toBe(false);
+      g.debug.place(kind, HUB.x, HUB.y + 20);
+      g.key('KeyE');
+      expect(expo(g).router.cabinetOpen, `${kind} opened the cabinet`).toBe(false);
+      // ...and the terminal inside is unreachable until it is open.
+      expect(expo(g).router.prompting).toBe(false);
+      g.key('KeyD');
+      expect(expo(g).router.typed).toBe('');
     }
 
     // Each one is told why in its own words, through the wall's own `why`.
@@ -570,83 +570,214 @@ describe('chapter 2 — expo', () => {
     expect(voxxy).not.toBe(droid);
     // Not one script with the name swapped.
     expect(voxxy.replace(/^Voxxy:\s*/, '')).not.toBe(droid.replace(/^Droid:\s*/, ''));
-    // Biggy has no blocked line here: his answer is the wheel moving.
+    // Biggy has no blocked line here: his answer is the door opening.
     expect(cab?.why?.(bot(g, 'biggy'))).toBeNull();
+
+    // And once he has opened it, the wall stops explaining itself — the carcass is
+    // still a collider, because a 19-inch floor cabinet is not a doorway.
+    expect(openCabinet(g)).toBe(true);
+    expect(cab?.why?.(bot(g, 'voxxy'))).toBeNull();
+    expect(g.debug.walls().some((w) => w.kind === 'cabinet')).toBe(true);
+    expect(g.snapshot().props.find((p) => p.kind === 'cabinet')?.state).toBe('open');
   });
 
-  // Ten full coast-downs with the hall's light polygons cast every frame: slow, and
-  // the point of it is the breadth of the sweep, so it gets its own budget.
   /*
-   * TIMEOUTS IN THIS BLOCK. `buildLights` is ~95% of a chapter-2 sim step and its
-   * cost is (lights x rays x walls). Two changes landed on 23 Sep 2026 that both
-   * push on it: the hall's drawn furniture became colliders (63 walls -> 100, from
-   * Michele's "robots can go through staircase and objects"), and every robot
-   * gained a skirt pool (3 lights -> 6, from "spread a bit of light around the
-   * character"). Measured here: 0.9 -> 1.83 -> 2.63 ms per cast. These pilots drive
-   * thousands of sim steps, so their wall-clock budgets grew with it. The
-   * assertions are all unchanged.
+   * ROUTE 1 — TYPED FROM MEMORY. The password is on the chapter card, so a player
+   * who read it can walk to the terminal and type it without finding anything.
+   *
+   * What is asserted here is the *forgiveness*, because that is the whole of
+   * Michele's "simpler": a wrong key does not go in and does not throw away what is
+   * already there, Backspace takes one back, and while the prompt is open the
+   * keyboard belongs to the terminal — `R` is the two Rs in DevoxxForever, not
+   * restart. Case never enters into it: `KeyboardEvent.code` is `KeyD` whether or
+   * not shift was down, which is what `typeAt` reproduces.
    */
-  it('turns the wheel for Biggy and strands it on a detent — he never lands the mark alone', { timeout: 90000 }, () => {
+  it('takes the WiFi password typed at the terminal, and forgives a wrong key and a slip', () => {
     const g = mk(2);
-    const mark = expo(g).wheel.mark;
-    heaveWheel(g);
-    const spun = expo(g).wheel;
-    expect(spun.vel, 'Biggy did not break the cam free').not.toBe(0);
-    // He overshoots: the coast carries the wheel more than a whole turn.
-    const swept = Math.abs(spun.vel) / 0.11;
-    expect(swept).toBeGreaterThan(Math.PI * 2);
+    expect(openCabinet(g)).toBe(true);
 
-    // Ten different run-up lines, i.e. ten different impact speeds and lever arms.
-    for (let k = 0; k < 10; k++) {
-      const solo = mk(2);
-      heaveWheel(solo, 164 + 2 * k);
-      for (let i = 0; i < 900; i++) {
-        solo.update(DT_MAX);
-        const w = expo(solo).wheel;
-        if (w.open || Math.abs(w.vel) < 5e-4) break;
-      }
-      const w = expo(solo).wheel;
-      expect(w.open, `solo Biggy opened the cabinet from x=${164 + 2 * k}`).toBe(false);
-      // The sprung pawl always walks it back between two marks, a long way off one.
-      expect(Math.abs(angDiff(w.ang, mark)), `run-up x=${164 + 2 * k} rested on the mark`).toBeGreaterThan(WHEEL_TOL * 2);
-    }
+    // Biggy is standing right at it and cannot type a word of it.
+    g.key('KeyE');
+    expect(expo(g).router.prompting).toBe(false);
+    expect(g.snapshot().typing).toBe(false);
+
+    g.debug.select('voxxy');
+    g.debug.place('voxxy', HUB.x, HUB.y + 20);
+    g.key('KeyE');
+    expect(expo(g).router.prompting).toBe(true);
+    expect(g.snapshot().typing, 'the terminal never took the keyboard').toBe(true);
+
+    typeAt(g, 'DEV');
+    expect(expo(g).router.typed).toBe('DEV');
+
+    // A wrong key is refused, not punished: nothing already typed is lost.
+    g.key('KeyZ');
+    g.key('KeyQ');
+    expect(expo(g).router.typed).toBe('DEV');
+    expect(expo(g).router.online).toBe(false);
+
+    // R is a letter in here. It is NOT the next one, so it does nothing at all —
+    // and above all it does not restart the chapter out from under the player.
+    g.key('KeyR');
+    expect(expo(g).router.typed).toBe('DEV');
+    expect(g.snapshot().chapter, 'R restarted the run while the player was typing').toBe(2);
+    expect(expo(g).router.cabinetOpen).toBe(true);
+
+    // Backspace takes one back.
+    g.key('Backspace');
+    expect(expo(g).router.typed).toBe('DE');
+
+    // The live readout shows what is in and what is left, so it is never a guess.
+    expect(g.snapshot().progress).toContain('WIFI PASSWORD');
+    expect(g.snapshot().progress).toContain('(2/13)');
+
+    typeAt(g, 'VOXXFOREVER');
+    const r = expo(g).router;
+    expect(r.typed).toBe('DEVOXXFOREVER');
+    expect(r.online).toBe(true);
+    expect(r.prompting).toBe(false);
+    expect(g.snapshot().typing).toBe(false);
+    expect(g.snapshot().progress).toContain('router ✓');
+    expect(g.snapshot().props.find((p) => p.kind === 'terminal')?.state).toBe('done');
   });
 
-  it('opens the cabinet when a braced Droid catches the wheel on the mark', () => {
+  /*
+   * THE KEYBOARD IS ONLY EVER BORROWED. Outside the prompt every key means what it
+   * always meant — this is the half that a "letters type" feature breaks silently.
+   */
+  it('gives the keyboard to the terminal only while its prompt is open', () => {
     const g = mk(2);
-    g.debug.place('droid', BRACE_SPOT.x, BRACE_SPOT.y);
-    heaveWheel(g);
-    expect(braceOntoMark(g)).toBe(true);
+    expect(g.snapshot().typing).toBe(false);
+    expect(openCabinet(g)).toBe(true);
 
-    const w = expo(g).wheel;
-    expect(w.open).toBe(true);
-    expect(Math.abs(angDiff(w.ang, w.mark))).toBeLessThan(WHEEL_TOL);
-    expect(bot(g, 'droid').braced).toBe(true);
-    // The cabinet stops being a wall once it is open.
-    expect(g.debug.walls().some((x) => x.kind === 'cabinet')).toBe(false);
+    // No prompt: R is restart, and a restart drops the whole run back to chapter 1.
+    g.key('KeyR');
+    expect(g.snapshot().chapter).toBe(1);
 
-    // Bracing out of reach of the hub brakes nothing.
+    g.startChapter(2);
+    expect(openCabinet(g)).toBe(true);
+    g.debug.select('voxxy');
+    g.debug.place('voxxy', HUB.x, HUB.y + 20);
+    g.key('KeyE');
+    typeAt(g, 'DEVO');
+    expect(g.snapshot().typing).toBe(true);
+
+    // Esc hands it back, and what was typed survives for when she comes back.
+    g.key('Escape');
+    expect(g.snapshot().typing).toBe(false);
+    expect(expo(g).router.prompting).toBe(false);
+    expect(expo(g).router.typed).toBe('DEVO');
+    // Now a letter is a letter to nobody: it must not reach the terminal.
+    g.key('KeyX');
+    expect(expo(g).router.typed).toBe('DEVO');
+
+    // Walking off closes the prompt by itself — including switching robot.
+    g.key('KeyE');
+    expect(g.snapshot().typing).toBe(true);
+    g.debug.place('voxxy', 600, 400);
+    steps_(g, 1);
+    expect(g.snapshot().typing, 'the prompt followed her across the hall').toBe(false);
+  });
+
+  /*
+   * ROUTE 2 — VOXXY READS THE POSTER. Her cone is 0.38 rad against Biggy's 1.0, and
+   * the test that matters is the negative one: the same robot in the same place
+   * facing the other way, and the other two robots square on to it, read nothing.
+   * The skirt each robot throws round its own feet is excluded on purpose, or
+   * standing next to the banner in the dark would BE reading it.
+   */
+  it("reads the poster under Voxxy's narrow beam, and not by standing near it", () => {
+    const park = (g: DebugGame, kinds: RobotKind[]): void => {
+      kinds.forEach((k, i) => g.debug.place(k, 560 + 30 * i, 660));
+    };
+
+    // Square on, at 34 px, beam north onto the banner: she reads it. (34 and not
+    // 40: a sponsor's crate stands at 761,367 and a hand-placed robot must not be
+    // teleported inside a collider.)
+    const g = mk(2);
+    park(g, ['droid', 'biggy']);
+    g.debug.place('voxxy', POSTER.x, POSTER.y + 34, -Math.PI / 2);
+    steps_(g, 4);
+    expect(expo(g).router.posterLit).toBe(true);
+    expect(expo(g).router.known).toBe(true);
+    expect(g.snapshot().props.find((p) => p.kind === 'poster')?.state).toBe('done');
+
+    // Close enough to touch it, but facing away: her skirt lights the floor there
+    // and it is still not reading.
+    const away = mk(2);
+    park(away, ['droid', 'biggy']);
+    away.debug.place('voxxy', POSTER.x, POSTER.y + 18, Math.PI / 2);
+    steps_(away, 4);
+    expect(expo(away).router.posterLit, 'the skirt read the small print').toBe(false);
+    expect(expo(away).router.known).toBe(false);
+
+    // Beam on it from across the hall: lit is not read.
     const far = mk(2);
-    far.debug.place('droid', 60, 660);
-    far.debug.select('droid');
-    far.key('KeyE');
-    heaveWheel(far);
-    expect(expo(far).wheel.held).toBe(false);
+    park(far, ['droid', 'biggy']);
+    far.debug.place('voxxy', POSTER.x, POSTER.y + 140, -Math.PI / 2);
+    steps_(far, 4);
+    expect(expo(far).router.known, 'she read 8-point type from 11 m').toBe(false);
+
+    // Droid's pool and Biggy's 1.0 rad flood, square on at the same 40 px: nothing.
+    for (const kind of ['droid', 'biggy'] as const) {
+      const other = mk(2);
+      other.debug.place('voxxy', 560, 660);
+      other.debug.place(kind === 'droid' ? 'biggy' : 'droid', 600, 660);
+      other.debug.place(kind, POSTER.x, POSTER.y + 34, -Math.PI / 2);
+      steps_(other, 4);
+      expect(expo(other).router.known, `${kind} read the small print`).toBe(false);
+    }
   });
 
-  it('resolves the index mark under Voxxy\'s narrow cone and nobody else\'s', () => {
-    for (const kind of ['voxxy', 'droid', 'biggy'] as const) {
-      const g = mk(2);
-      // Everyone else parked far away, so only this robot's lamp is in the room.
-      for (const other of ['voxxy', 'droid', 'biggy'] as const) {
-        if (other !== kind) g.debug.place(other, 620 + 30 * ['voxxy', 'droid', 'biggy'].indexOf(other), 400);
-      }
-      g.debug.place(kind, HUB.x, HUB.y + 56, -Math.PI / 2);
-      steps_(g, 4);
-      expect(expo(g).wheel.markLit, `${kind} read the mark`).toBe(kind === 'voxxy');
-      const line = g.snapshot().progress;
-      expect(line).toContain(kind === 'voxxy' ? 'mark ' : 'mark unlit');
-    }
+  /*
+   * ROUTE 3 — DROID READS THE LABEL, FROM BIGGY'S SHOULDERS. The tape is inside the
+   * lid, up at the top, which is where every conference's WiFi password really
+   * lives; `toggleMount` is the mechanic, and outside chapter 1's projector panel
+   * almost nothing in the game uses it.
+   */
+  it('lets Droid read the label inside the lid only from Biggy\'s shoulders', () => {
+    const g = mk(2);
+    expect(openCabinet(g)).toBe(true);
+
+    // Droid on his own feet at the cabinet gets the terminal, never the label.
+    g.debug.select('droid');
+    g.debug.place('droid', HUB.x, HUB.y + 20);
+    g.key('KeyE');
+    expect(expo(g).router.known, 'Droid read the lid with his feet on the floor').toBe(false);
+    expect(expo(g).router.prompting).toBe(true);
+    g.key('Escape');
+
+    // Climb on wherever Biggy is standing — the tower walks over afterwards.
+    g.debug.place('biggy', 300, 640);
+    g.debug.place('droid', 284, 640);
+    g.debug.select('droid');
+    g.key('KeyE');
+    expect(bot(g, 'droid').mounted).toBe(true);
+
+    // Too far from the cabinet, up there, is still too far.
+    g.debug.place('biggy', HUB.x, HUB.y + 70);
+    steps_(g, 1);
+    g.key('KeyE');
+    expect(expo(g).router.known).toBe(false);
+    expect(bot(g, 'droid').mounted, 'the near-miss climbed him down instead').toBe(true);
+
+    // Right up against it: he gets his head inside the lid.
+    g.debug.place('biggy', HUB.x, HUB.y + 20);
+    steps_(g, 1);
+    g.key('KeyE');
+    expect(expo(g).router.known).toBe(true);
+    expect(g.snapshot().progress).toContain('password known');
+
+    // Knowing it is not entering it: somebody still has to work the terminal, and
+    // it is not going to be Biggy.
+    expect(expo(g).router.online).toBe(false);
+    g.key('KeyE');
+    expect(bot(g, 'droid').mounted, 'E at the open lid did not climb him down again').toBe(false);
+    g.debug.select('droid');
+    g.debug.place('droid', HUB.x, HUB.y + 20);
+    g.key('KeyE');
+    expect(expo(g).router.online).toBe(true);
+    expect(expo(g).router.typed).toBe('DEVOXXFOREVER');
   });
 
   /*
@@ -744,10 +875,14 @@ describe('chapter 2 — expo', () => {
     steps_(noRouter, 2);
     expect(noRouter.snapshot().chapter).toBe(2);
 
-    // Now the router.
-    g.debug.place('droid', BRACE_SPOT.x, BRACE_SPOT.y);
-    heaveWheel(g);
-    expect(braceOntoMark(g)).toBe(true);
+    // Now the router: Biggy opens the cabinet, Voxxy types the password.
+    expect(openCabinet(g)).toBe(true);
+    expect(expo(g).printerOnline, 'an open cabinet alone brought the printer up').toBe(false);
+    g.debug.select('voxxy');
+    g.debug.place('voxxy', HUB.x, HUB.y + 20);
+    g.key('KeyE');
+    typeAt(g, 'DEVOXXFOREVER');
+    expect(expo(g).router.online).toBe(true);
     expect(expo(g).printerOnline).toBe(true);
     expect(g.snapshot().props.find((p) => p.kind === 'printer')?.state).toBe('done');
     expect(g.snapshot().progress).toContain('router ✓');
@@ -759,13 +894,27 @@ describe('chapter 2 — expo', () => {
     const rack = { x: GF.rack.x + 10, y: GF.rack.y + 12 };
     const printer = { x: GF.printer.x + 10, y: GF.printer.y + 6 };
 
-    // 1. the router cabinet, while everyone is still in the technical room
-    g.debug.place('droid', BRACE_SPOT.x, BRACE_SPOT.y);
-    heaveWheel(g);
-    expect(braceOntoMark(g)).toBe(true);
-    // Droid gets off the wheel again before he is needed anywhere else.
+    // 1. the router cabinet and its terminal, everyone still in the technical room.
+    //    Played the long way round on purpose — Biggy's shoulder, then Droid up on
+    //    Biggy for the label, then Droid typing it in — so the end-to-end run
+    //    exercises the route with the most moving parts rather than the shortest.
+    expect(openCabinet(g)).toBe(true);
+    g.debug.place('biggy', 300, 640);
+    g.debug.place('droid', 284, 640);
+    g.debug.select('droid');
     g.key('KeyE');
-    expect(bot(g, 'droid').braced).toBe(false);
+    expect(bot(g, 'droid').mounted).toBe(true);
+    g.debug.place('biggy', HUB.x, HUB.y + 20);
+    steps_(g, 1);
+    g.key('KeyE');
+    expect(expo(g).router.known).toBe(true);
+    // Down off Biggy, and he works the terminal himself.
+    g.key('KeyE');
+    expect(bot(g, 'droid').mounted).toBe(false);
+    g.debug.select('droid');
+    g.debug.place('droid', HUB.x, HUB.y + 20);
+    g.key('KeyE');
+    expect(expo(g).router.online).toBe(true);
 
     // 2. the breakers
     g.debug.select('droid');
@@ -795,10 +944,73 @@ describe('chapter 2 — expo', () => {
   });
 });
 
+/* --------------------------------------------------- the chapter-3 beer delivery
+ *
+ * `docs/gameplay-additions.md` §3, and Michele's own kill condition for it: the
+ * drop has to be comedy rather than punishment, which in a test means the crates
+ * land where he dropped them and cost a few seconds, not a walk back across the
+ * hall. Everything these helpers read is public — the snapshot and
+ * `BreakfastState` — never the chapter's internals.
+ */
+
+const breakfastOf = (g: DebugGame): BreakfastState => g.debug.chapter() as BreakfastState;
+
+/** Where the sim says the stack goes. Read off the prop, not typed in twice. */
+function beerStack(g: DebugGame): Vec2 {
+  const p = g.snapshot().props.find((o) => o.kind === 'dropzone' && (o.label ?? '').includes('beer'));
+  if (!p) throw new Error('chapter 3 has no beer stack zone');
+  return { x: p.x + (p.w ?? 0) / 2, y: p.y + (p.h ?? 0) / 2 };
+}
+
+/** Biggy walks onto the nearest crate still on the floor and picks it up. */
+function liftCrate(g: DebugGame): void {
+  const c = breakfastOf(g).beer.loose[0];
+  if (!c) throw new Error('no crate left on the floor');
+  g.debug.select('biggy');
+  g.debug.place('biggy', c.x, c.y + 12);
+  g.key('KeyE');
+}
+
+/** ...and puts whatever he is carrying down on the stack. */
+function putCratesDown(g: DebugGame): void {
+  const at = beerStack(g);
+  g.debug.select('biggy');
+  g.debug.place('biggy', at.x, at.y);
+  g.key('KeyE');
+}
+
+/** The whole delivery, the way a player who has learned the limit does it. */
+function clearTheDelivery(g: DebugGame): void {
+  while (breakfastOf(g).beer.stacked < CRATE_DELIVERY) {
+    const room = Math.min(CRATE_STACK_LIMIT - 1, breakfastOf(g).beer.loose.length);
+    for (let i = 0; i < room; i++) liftCrate(g);
+    putCratesDown(g);
+  }
+}
+
+/** Seconds for Biggy to cover `d` px from a standing start, on a clear straight. */
+function biggyRun(g: DebugGame, from: Vec2, d: number): number {
+  g.debug.select('biggy');
+  g.debug.place('biggy', from.x, from.y);
+  g.setStick(1, 0);
+  let t = 0;
+  for (let i = 0; i < 2000; i++) {
+    g.update(DT_MAX);
+    t += DT_MAX;
+    if (bot(g, 'biggy').x - from.x >= d) break;
+  }
+  g.setStick(0, 0);
+  return t;
+}
+
+/** A clear 200 px straight in the north aisle, clear of the pallet and the columns. */
+const RUN_FROM: Vec2 = { x: 430, y: 120 };
+const RUN_LEN = 200;
+
 /* ================================================================ chapter 3 */
 
 describe('chapter 3 — breakfast', () => {
-  it('runs the soup chain and only opens the gate once the soup and the speaker are both there', () => {
+  it('runs the soup chain and only opens the gate once the soup, the speaker AND the beer are done', () => {
     const g = mk(3);
     const breakfast = (): BreakfastState => g.debug.chapter() as BreakfastState;
     const gateWall = (): Wall | undefined => g.debug.walls().find((w) => w.kind === 'gate');
@@ -871,12 +1083,167 @@ describe('chapter 3 — breakfast', () => {
     expect(walkTo(g, 'voxxy', dropAt)).toBe(true);
     expect(until(g, () => breakfast().speaker.onStage, 900)).toBe(true);
 
-    // Both delivered: the gate goes up and the cutscene runs.
+    // Soup and speaker are BOTH in, and the stairs stay shut: the beer delivery
+    // is Stephan's third condition, not decoration (`gameplay-additions.md` §3).
+    expect(breakfast().beer.done).toBe(false);
+    expect(breakfast().gateOpen).toBe(false);
+    expect(gateWall()).toBeDefined();
+
+    // Six crates, four at a time, two trips.
+    clearTheDelivery(g);
+    expect(breakfast().beer.stacked).toBe(CRATE_DELIVERY);
+    expect(breakfast().beer.done).toBe(true);
+    expect(breakfast().beer.oom).toBe(0);
+    steps(g, 2);
+
+    // All three delivered: the gate goes up and the cutscene runs.
     expect(breakfast().gateOpen).toBe(true);
     expect(gateWall()).toBeUndefined();
     expect(g.snapshot().phase).toBe('cut');
     expect(until(g, () => g.snapshot().chapter === 4, 600)).toBe(true);
     expect(g.snapshot().floor).toBe('up');
+  });
+
+  /**
+   * THE TRADE THE BEAT IS BUILT ON: more crates per trip, worse handling.
+   *
+   * Both halves are already in the physics — `accel` is what `stepBot` approaches
+   * the stick with, `mass` is what `botsCollide` splits a contact by — so the beat
+   * adds no model. What it must never do is disturb the frozen identity: `DEFS` is
+   * deep-frozen, the load is a modifier recomputed from it every time, and putting
+   * the crates down has to give the numbers back EXACTLY, not nearly.
+   */
+  it('makes a loaded Biggy measurably worse to drive, and gives back his frozen numbers exactly', () => {
+    const g = mk(3);
+    const bg = bot(g, 'biggy');
+    expect(bg.mass).toBe(DEFS.biggy.mass);
+    expect(bg.accel).toBe(DEFS.biggy.accel);
+    const empty = biggyRun(g, RUN_FROM, RUN_LEN);
+
+    const safe = CRATE_STACK_LIMIT - 1;
+    for (let i = 0; i < safe; i++) liftCrate(g);
+    expect(breakfastOf(g).beer.carried).toBe(safe);
+    expect(breakfastOf(g).beer.oom).toBe(0);
+
+    expect(bg.mass).toBeCloseTo(crateLoadMass(safe), 10);
+    expect(bg.accel).toBeCloseTo(crateLoadAccel(safe), 10);
+    expect(bg.mass).toBeGreaterThan(DEFS.biggy.mass * 1.5);
+    expect(bg.accel).toBeLessThan(DEFS.biggy.accel * 0.5);
+    // Only mass and acceleration are in the trade. A loaded Biggy still gets to
+    // the same top speed and still coasts the same way — the relationships those
+    // two numbers hold up elsewhere (the roller door sandwich) are untouched.
+    expect(bg.max).toBe(DEFS.biggy.max);
+    expect(bg.drag).toBe(DEFS.biggy.drag);
+    expect(bg.r).toBe(DEFS.biggy.r);
+
+    const loaded = biggyRun(g, RUN_FROM, RUN_LEN);
+    expect(loaded, `${RUN_LEN} px empty ${empty.toFixed(2)}s vs loaded ${loaded.toFixed(2)}s`).toBeGreaterThan(
+      empty * 1.15,
+    );
+
+    // The HUD has been saying so the whole time: the count, the limit and the
+    // penalty are on the progress line, or the punchline arrives unannounced.
+    const line = g.snapshot().progress;
+    expect(line).toContain(`heap ${safe}/${CRATE_STACK_LIMIT}`);
+    expect(line).toMatch(/mass/);
+    expect(line).toMatch(/accel/);
+
+    putCratesDown(g);
+    expect(breakfastOf(g).beer.carried).toBe(0);
+    expect(breakfastOf(g).beer.stacked).toBe(safe);
+    expect(bg.mass).toBe(DEFS.biggy.mass);
+    expect(bg.accel).toBe(DEFS.biggy.accel);
+  });
+
+  /**
+   * THE JOKE, AND WHAT IT COSTS.
+   *
+   * The crate past the limit throws, he drops everything, and the load becomes
+   * bodies again — at his feet, not across the hall. The design's kill condition
+   * is that the restart reads as comedy rather than punishment, so the distances
+   * here are the test of it: every dropped crate is still within a couple of
+   * body-widths of him and can be picked straight back up.
+   */
+  it('throws an OutOfMemoryError on the crate past the limit and drops the lot as real bodies', () => {
+    const g = mk(3);
+    const bg = bot(g, 'biggy');
+    for (let i = 0; i < CRATE_STACK_LIMIT; i++) liftCrate(g);
+
+    const st = breakfastOf(g).beer;
+    expect(st.oom).toBe(1);
+    expect(st.carried).toBe(0);
+    expect(st.loose).toHaveLength(CRATE_DELIVERY);
+    expect(st.stacked).toBe(0);
+    // He is himself again the instant he lets go.
+    expect(bg.mass).toBe(DEFS.biggy.mass);
+    expect(bg.accel).toBe(DEFS.biggy.accel);
+    // And it goes on the record, for the final card.
+    expect(g.snapshot().score.oom).toBe(1);
+
+    // Let the scatter settle, then check where it landed: his own mess, at his
+    // own feet. Anything further than this is a walk, and a walk is a penalty.
+    steps(g, 90);
+    const after = breakfastOf(g).beer.loose;
+    const dropped = after.filter((c) => Math.hypot(c.x - bg.x, c.y - bg.y) < 60);
+    expect(dropped.length).toBeGreaterThanOrEqual(CRATE_STACK_LIMIT);
+
+    // They are bodies, not decals: he can shove one out of his way.
+    const near = after
+      .map((c) => ({ c, d: Math.hypot(c.x - bg.x, c.y - bg.y) }))
+      .sort((a, b) => a.d - b.d)[0].c;
+    const before = { x: near.x, y: near.y };
+    g.debug.select('biggy');
+    g.debug.place('biggy', before.x - 20, before.y);
+    g.setStick(1, 0);
+    steps(g, 30);
+    g.setStick(0, 0);
+    const moved = breakfastOf(g).beer.loose.find((c) => c.i === near.i);
+    expect(moved).toBeDefined();
+    expect(Math.hypot(moved!.x - before.x, moved!.y - before.y)).toBeGreaterThan(5);
+
+    // And picking them back up is the whole recovery: four more presses of E.
+    for (let i = 0; i < CRATE_STACK_LIMIT - 1; i++) liftCrate(g);
+    expect(breakfastOf(g).beer.carried).toBe(CRATE_STACK_LIMIT - 1);
+    expect(breakfastOf(g).beer.oom).toBe(1);
+  });
+
+  it('lets only Biggy lift a crate, and the other two say why in their own voice', () => {
+    const g = mk(3);
+    const c = breakfastOf(g).beer.loose[0];
+    for (const kind of ['voxxy', 'droid'] as const) {
+      g.debug.select(kind);
+      g.debug.place(kind, c.x, c.y + 10);
+      steps(g, 1);
+      g.key('KeyE');
+      expect(breakfastOf(g).beer.carried).toBe(0);
+      expect(breakfastOf(g).beer.loose).toHaveLength(CRATE_DELIVERY);
+      const said = g.snapshot().toast?.t ?? '';
+      expect(said, `${kind} said "${said}"`).toMatch(kind === 'voxxy' ? /^Voxxy:/ : /^Droid:/);
+    }
+    // ...and Biggy, from the same spot, simply picks it up.
+    g.debug.select('biggy');
+    g.debug.place('biggy', c.x, c.y + 10);
+    g.key('KeyE');
+    expect(breakfastOf(g).beer.carried).toBe(1);
+  });
+
+  /**
+   * A load is not an identity, and it must not be able to leave the chapter that
+   * granted it: `startChapter` restores every robot from `DEFS` (`game.ts`). Skip
+   * out mid-carry, or press `R`, and chapter 4 gets the frozen Biggy.
+   */
+  it('never lets the crate load leak out of the chapter', () => {
+    for (const escape of ['skip', 'restart'] as const) {
+      const g = mk(3);
+      const bg = bot(g, 'biggy');
+      for (let i = 0; i < CRATE_STACK_LIMIT - 1; i++) liftCrate(g);
+      expect(bg.mass).toBeGreaterThan(DEFS.biggy.mass);
+      if (escape === 'skip') g.skipChapter();
+      else g.key('KeyR');
+      expect(g.snapshot().chapter).toBe(escape === 'skip' ? 4 : 1);
+      expect(bg.mass, escape).toBe(DEFS.biggy.mass);
+      expect(bg.accel, escape).toBe(DEFS.biggy.accel);
+    }
   });
 
   it('puts thirty-six visitors on the lane grid, with Stephan at the foot of the stairs', () => {
@@ -936,7 +1303,11 @@ describe('chapter 3 — breakfast', () => {
     expect(crowd).toHaveLength(36);
     for (const p of crowd) expect(p.x).toBeLessThan(edge);
     expect(new Set(crowd.map((p) => Math.round(p.y / 70))).size).toBeGreaterThan(3);
-  });
+    // 5,600 simulated frames of a 36-body crowd is a wall-clock budget, not a
+    // behaviour: it runs in a couple of seconds on a laptop and takes six in a
+    // container, and vitest's default 5 s cut it off there long before anything
+    // in this file was about beer crates.
+  }, 30000);
 });
 
 /* ================================================================ chapter 4 */

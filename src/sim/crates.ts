@@ -1,0 +1,138 @@
+/**
+ * THE BEER DELIVERY — `OutOfMemoryError`, and the numbers behind the joke.
+ *
+ * `docs/gameplay-additions.md` §3, approved by Michele on 23 Sep 2026 in one word:
+ * *"OutOfMemory, yes build it."* Biggy picks beer crates up and stacks them; each
+ * crate adds to his mass and eats into his acceleration; the crate past the limit
+ * throws a `java.lang.OutOfMemoryError`, he drops the lot, and the crates become
+ * physical bodies he then has to shove out of his own way.
+ *
+ * ## Why this file exists at all
+ *
+ * The beat CHANGES BIGGY'S MASS AND ACCELERATION AT RUN TIME, which is exactly the
+ * kind of thing the frozen table exists to stop. So the distinction is made here,
+ * in one place, rather than left implicit in the chapter:
+ *
+ *   - `DEFS` in `constants.ts` is the robots' frozen IDENTITY. Nothing here writes
+ *     to it; it is deep-frozen and `tests/frozen-constants.test.ts` pins every
+ *     number in it, unchanged.
+ *   - What a robot is carrying is not its identity. `mkBot` spreads `DEFS` into a
+ *     fresh mutable `Bot`, and `loadBiggy` writes a MODIFIER on that copy, computed
+ *     from `DEFS` and the crate count every time — never accumulated. At zero
+ *     crates it therefore restores the frozen numbers *exactly*, not approximately,
+ *     which is asserted in `tests/chapters.test.ts`.
+ *
+ * `game.ts` restores every robot's frozen identity at the head of `startChapter`,
+ * so a load can never outlive the chapter that granted it.
+ *
+ * Units: sim pixels and seconds, like the rest of `src/sim`. Every px/s quantity
+ * carries `SPEED_SCALE` for the same reason everything else does (the 2026-09-23
+ * rescale, `constants.ts`).
+ */
+
+import { DEFS, SPEED_SCALE } from './constants';
+import type { Bot } from './types';
+
+/**
+ * A crate's collision radius, sim px. 4 px = 0.32 m.
+ *
+ * A Belgian crate of 24 33 cl bottles is about 0.42 x 0.32 m on the floor, whose
+ * half-diagonal is 0.26 m. Rounded up to 0.32 so a crate lying in the aisle is
+ * something Biggy (0.72 m) has to go round or shove, rather than something that
+ * vanishes under his belly — the scatter after a heap error is the payoff, and it
+ * only works if the crates are in the way.
+ */
+export const CRATE_R = 4;
+
+/**
+ * What one crate adds to Biggy's mass, in the same ratio units as `DEFS.*.mass`.
+ *
+ * Life says less: a full crate is about 20 kg against Biggy's ~150, which would be
+ * 0.9 of his 7. The number is deliberately heavier than life because mass is only
+ * visible where `botsCollide` splits a contact, and at 0.9 the full safe stack
+ * changes his share of a shove by a fifth — which a player reads as noise. At 1.5,
+ * four crates take him from 7 to 13, so a Voxxy shove moves him a little over half
+ * as far as it did, and the trade the beat is built on is something you feel.
+ *
+ * The same number is the crate body's own mass on the floor, because it is the
+ * same crate.
+ */
+export const CRATE_MASS = 1.5;
+
+/**
+ * Biggy's acceleration is multiplied by this ONCE PER CRATE, compounding.
+ *
+ * `accel` is an exponential-approach rate in s^-1, so this is the handling half of
+ * the trade: at the safe maximum of four crates 0.6 becomes 0.6 x 0.82^4 = 0.271,
+ * and a 200 px (16 m) haul from a standing start goes from 5.0 s to 6.4 s — a
+ * quarter longer, which is felt, against a stack that halves the number of trips.
+ * Top speed and drag are untouched: a loaded Biggy still gets there, he just takes
+ * his time getting going, which is what "heavier" looks like in this model.
+ *
+ * Compounding rather than subtracting so that no crate count can drive the rate to
+ * zero or below. The stack limit stops the stack; it should not have to stop the
+ * arithmetic as well.
+ */
+export const CRATE_ACCEL_FACTOR = 0.82;
+
+/**
+ * The crate whose pickup throws. Four is the heap; the fifth is the error.
+ *
+ * With `CRATE_DELIVERY = 6` on the pallet, four-then-two is the honest line and
+ * five-then-one is the greedy one that does not exist — which is the design's own
+ * summary: *"the optimal line is one crate under the limit. Greed is punished by
+ * physics rather than by a rule."*
+ */
+export const CRATE_STACK_LIMIT = 5;
+
+/** Crates in the delivery. Six, so the job is two trips and greed is tempting. */
+export const CRATE_DELIVERY = 6;
+
+/**
+ * How close Biggy's centre has to be to a crate's to get his arms round it, px.
+ *
+ * Twice the 13 px at which the two bodies are actually touching (9 + 4), so walking
+ * up to a crate is enough and nobody has to nudge one into exactly the right spot
+ * before `E` will take it.
+ */
+export const CRATE_REACH = 26;
+
+/** Biggy shoving a loose crate, px/s^2 — the shuffleboard duck's number, ch2. */
+export const CRATE_SHOVE_BIGGY = 900 * SPEED_SCALE;
+/** Voxxy or Droid shoving one. They cannot lift a crate; they can still move it. */
+export const CRATE_SHOVE_OTHER = 350 * SPEED_SCALE;
+/** A crate's top speed once shoved, px/s. */
+export const CRATE_MAX_SPEED = 200 * SPEED_SCALE;
+/**
+ * A crate's drag, s^-1. A full crate on a hall floor is not a puck: at 2.6 it
+ * coasts its own speed divided by 2.6 — about a crate's length from a hard shove —
+ * and stops.
+ */
+export const CRATE_DRAG = 2.6;
+/**
+ * How fast the crates leave Biggy when the heap error fires, px/s.
+ *
+ * 30 px/s against `CRATE_DRAG` is roughly 12 px of travel, so the load lands in a
+ * ring just outside his own radius: close enough that the scatter is plainly HIS
+ * mess and cheap to collect, far enough that he has to shove his way out of it.
+ * The comedy is the drop, not the walk back.
+ */
+export const CRATE_SCATTER_SPEED = 120 * SPEED_SCALE;
+
+/** Biggy's mass carrying `n` crates. `n = 0` is exactly the frozen number. */
+export const crateLoadMass = (n: number): number => DEFS.biggy.mass + n * CRATE_MASS;
+
+/** Biggy's acceleration carrying `n` crates. `n = 0` is exactly the frozen number. */
+export const crateLoadAccel = (n: number): number => DEFS.biggy.accel * CRATE_ACCEL_FACTOR ** n;
+
+/**
+ * Put `n` crates on Biggy's back.
+ *
+ * Always recomputed from `DEFS`, never accumulated, so the numbers cannot drift
+ * over a long chapter and `loadBiggy(bg, 0)` gives back the frozen identity to the
+ * last bit. This is the only function in the game that writes `mass` or `accel`.
+ */
+export function loadBiggy(bg: Bot, n: number): void {
+  bg.mass = crateLoadMass(n);
+  bg.accel = crateLoadAccel(n);
+}

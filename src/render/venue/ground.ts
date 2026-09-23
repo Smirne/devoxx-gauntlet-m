@@ -653,7 +653,7 @@ export function buildGround(p: VenuePalette): GroundBuild {
    * It is one object now, split the way the architecture asks: the enclosure, the
    * conduit and the busbar are static venue fabric and live here; the three handles
    * and the standby lamp carry a live sim value and are drawn in `scene.ts` from
-   * `GameSnapshot.props`, exactly as the cam-lock wheel is. This follows the
+   * `GameSnapshot.props`, exactly as the router terminal is. This follows the
    * treatment chapter 1's door override got (`PropSpec.lift` / `.glow`): a control
    * a metre above Droid's head is drawn a metre above Droid's head, and it is lit
    * from its own supply so it can be FOUND in a blackout before it is understood.
@@ -689,9 +689,9 @@ export function buildGround(p: VenuePalette): GroundBuild {
   /*
    * The router cabinet, beside the breakers on the same back wall.
    *
-   * The carcass and its louvres are static set dressing and belong here; the
-   * cam-lock wheel bolted to its south face is NOT — it carries a live angle out of
-   * the sim's snapshot, so `src/render/scene.ts` draws that from `GameSnapshot.props`
+   * The carcass and its louvres are static set dressing and belong here; the door
+   * leaf and the terminal behind it are NOT — they carry live state out of the
+   * sim's snapshot, so `src/render/scene.ts` draws those from `GameSnapshot.props`
    * exactly as it draws the cable. The face is the +y one because that is the side
    * the diorama camera stands on (`src/render/camera.ts`).
    */

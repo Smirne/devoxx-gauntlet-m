@@ -100,6 +100,17 @@ export interface ChapterRuntime {
   /** Chapter 1's keypad buffer. */
   entered?(): string;
   /**
+   * True while this chapter has the keyboard: a prompt is open and letters are
+   * letters rather than controls.
+   *
+   * Chapter 2's router terminal is the only thing that returns true. `game.ts` asks
+   * before it reads `R` as restart and the browser shell asks (through
+   * `GameSnapshot.typing`) before it reads `WASD` as driving — `DevoxxForever` has
+   * a `D` in it and two `R`s, and without this the password drives the robot out of
+   * reach of the terminal and then restarts the chapter.
+   */
+  typing?(): boolean;
+  /**
    * Rebuild whatever this chapter derives from where the robots ARE, running none
    * of its rules. The cutscene runner walks the robots itself and never calls
    * `update`, so chapter 1's lamps used to stay behind at the fire door for the

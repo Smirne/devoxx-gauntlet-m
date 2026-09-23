@@ -12,23 +12,55 @@
  * odder in the morning but i found it fun. And we're in belgium, i can't exclude
  * they'd drink it at breakfast."*
  *
- * He wants two things before he opens the rooms: his tomato soup, and the keynote
- * speaker (still "TBA", still hiding from the queues behind a built booth). Both need
- * all three robots:
+ * He wants three things before he opens the rooms: his tomato soup, the keynote
+ * speaker (still "TBA", still hiding from the queues behind a built booth), and the
+ * beer delivery out of his aisle. All three need all three robots:
  *
  *   Droid — the ladle is on the high shelf.
  *   Biggy — carries the pot. He cannot stop quickly, every bump spills, and the soup
- *           goes cold on a timer, so the heavy robot has to be driven gently.
+ *           goes cold on a timer, so the heavy robot has to be driven gently. He is
+ *           also the only one who can lift a beer crate.
  *   Voxxy — clears a catering queue for five seconds, and finds the speaker.
  *
  * The crowd is not decoration: thirty-six visitors walk the hall's lane grid, and
  * shoving them costs complaints on the final card.
+ *
+ * ## The beer delivery, and the OutOfMemoryError
+ *
+ * `docs/gameplay-additions.md` §3, and the last of its three calls to be approved:
+ * Michele held it until he could play it, then said *"OutOfMemory, yes build it."*
+ *
+ * The crates arrive at eight in the morning for tonight — which is when a brewery
+ * actually delivers, and which is funnier at breakfast than at lunch: nobody is
+ * drinking, the pallet is simply standing in the way of three thousand people, and
+ * the shrink-wrap label still carries Devoxx's own line about hangovers and
+ * OutOfMemoryErrors. Biggy stacks them by the catering block. Every crate he picks
+ * up adds mass and takes acceleration (`src/sim/crates.ts`), so a bigger load means
+ * fewer trips and worse handling; the crate past `CRATE_STACK_LIMIT` throws a heap
+ * error, he drops the lot, and the load becomes six bodies he has to shove out of
+ * his own way. The optimal line is one crate under the limit, and greed is punished
+ * by physics rather than by a rule — which is how the rest of this game works.
  */
 
-import { SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
+import { PUSH_LEAN_MIN, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
+import {
+  CRATE_DELIVERY,
+  CRATE_DRAG,
+  CRATE_MASS,
+  CRATE_MAX_SPEED,
+  CRATE_R,
+  CRATE_REACH,
+  CRATE_SCATTER_SPEED,
+  CRATE_SHOVE_BIGGY,
+  CRATE_SHOVE_OTHER,
+  CRATE_STACK_LIMIT,
+  crateLoadAccel,
+  crateLoadMass,
+  loadBiggy,
+} from '../crates';
 import { GF, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
-import { botsCollide, circleRect, dist, inRect, speed } from '../bot';
-import type { Bot, Person, Prop, Vec2, Wall } from '../types';
+import { botsCollide, circleRect, dist, inRect, speed, stepBot } from '../bot';
+import type { Bot, Person, Prop, Rect, Vec2, Wall } from '../types';
 import { mkBody, setupMinigames, type MinigameState, type Minigames } from './ch2-expo';
 import type { ChapterCtx, ChapterDef, ChapterRuntime, PrevVel } from './index';
 
@@ -62,6 +94,88 @@ const SPILL_DV = 90 * SPEED_SCALE;
 const SPILL_MIN_SPEED = 60 * SPEED_SCALE;
 /** The speaker's walking pace once Voxxy has talked them out from behind the booth. px/s. */
 const SPEAKER_WALK = 150 * SPEED_SCALE;
+
+/* --------------------------------------------------------- the beer delivery */
+
+/**
+ * Where the lorry left the pallet: the first aisle, a few metres in front of where
+ * the three robots start the chapter.
+ *
+ * Michele's standing note from two playtests — *"I had trouble finding the
+ * projector / open the room... There should be something visible"* — applies to a
+ * crate as much as to a control panel. Six of them, stacked on a pallet, in the
+ * open, on the spot the camera is already looking at when the chapter opens.
+ */
+const PALLET: Vec2 = { x: 600, y: 158 };
+/**
+ * Where they are supposed to end up: against the catering block's east wall, out of
+ * the walking lanes and next to the counters they will be served from tonight.
+ * Biggy (r 9) stands inside this rect to put a load down.
+ */
+const BEER_STACK: Rect = { x: 346, y: 112, w: 48, h: 64 };
+/** How close a robot has to get to the pallet to read what is printed on the wrap. */
+const LABEL_REACH = 90;
+/** The middle of the stack zone, and how close to it counts as "on the mark". */
+const STACK_AT: Vec2 = { x: BEER_STACK.x + BEER_STACK.w / 2, y: BEER_STACK.y + BEER_STACK.h / 2 };
+/**
+ * 44 px, against the 48x64 zone's own 40 px half-diagonal: the marked square is
+ * the *smallest* place `E` works, not the only one. A player who has walked up to
+ * the mark and is a body-width off one corner still puts the crates down.
+ */
+const STACK_REACH = 44;
+/** Crates per layer on the finished stack, and the footprint they are set out on. */
+const STACK_WIDE = 3;
+const STACK_STEP = 12;
+
+/**
+ * The joke, and it has to survive a room full of Java developers: Devoxx is a Java
+ * conference, so a *plausible* trace is the whole gag. It reads like a real one —
+ * innermost frame first, the key press at the bottom of the visible stack, a
+ * `Caused by` that is the actual problem — and names nothing that needs permission.
+ */
+const OOM_TRACE: readonly string[] = [
+  'Exception in thread "main" java.lang.OutOfMemoryError: Biggy heap space',
+  '\tat be.devoxx.robots.Biggy.lift(Biggy.java:212)',
+  '\tat be.devoxx.robots.Biggy.stack(Biggy.java:188)',
+  '\tat be.devoxx.catering.BeerDelivery.loadAll(BeerDelivery.java:74)',
+  '\tat be.devoxx.afterdark.Chapter3$Breakfast.pickUp(Chapter3.java:411)',
+  '\tat be.devoxx.afterdark.Game.key(Game.java:96)',
+  '\t... 5 more',
+  'Caused by: java.lang.IllegalStateException: 5 crates, 2 arms',
+  '\t... 12 more',
+];
+
+/**
+ * The crash dump, shown ONCE per run.
+ *
+ * The first heap error gets the full-screen card, because a stack trace is worth
+ * reading and the beat only lands if the player gets to read it. Every one after
+ * that is a toast in Biggy's voice: the design's own kill condition is *"whether a
+ * player laughs the first time and then plays around it"*, and a modal that
+ * interrupts the fourth attempt is how a joke turns into a penalty.
+ */
+const oomCardHtml = (n: number): string =>
+  '<b>java.lang.OutOfMemoryError</b><br>' +
+  '<span style="display:block;margin:14px 0 10px;padding:12px 14px;border-radius:8px;' +
+  'background:rgba(0,0,0,.5);text-align:left;color:#ff9b7a;white-space:pre-wrap;' +
+  'font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">' +
+  OOM_TRACE.join('\n') +
+  '</span>' +
+  `<span class="sub">Biggy drops all ${n}. They are still crates, and they are all still here.</span>` +
+  `<small>${CRATE_STACK_LIMIT - 1} fit. ${CRATE_STACK_LIMIT - 1} always fitted. · Press any key</small>`;
+
+/**
+ * A beer crate: a body, not a robot. `mkBody` (ch2) is the same thing the
+ * shuffleboard duck and the cake crate are built from.
+ */
+interface Crate extends Bot {
+  /** Stable index for the whole chapter — the debug seam names crates by it. */
+  i: number;
+  /** On the floor and physical, on Biggy's back, or stacked and finished. */
+  held: 'loose' | 'carried' | 'stacked';
+  /** Which layer of the finished stack it is in, so the renderer can pile them up. */
+  layer: number;
+}
 
 const VISITOR_COLOURS = ['#b9a58c', '#8c9bb9', '#c98c8c', '#9bb98c'] as const;
 const QUEUE_COLOURS = ['#b9a58c', '#8c9bb9', '#b98c8c', '#9bb98c'] as const;
@@ -107,16 +221,30 @@ export interface BreakfastState {
   queues: Array<{ label: string; open: number }>;
   gateOpen: boolean;
   crowd: number;
+  /** The beer delivery (`src/sim/crates.ts`). */
+  beer: {
+    /** Crates on the floor right now, in index order. */
+    loose: Array<{ i: number; x: number; y: number }>;
+    carried: number;
+    stacked: number;
+    total: number;
+    /** The crate whose pickup throws — carrying one fewer is the optimal line. */
+    limit: number;
+    /** Heap errors thrown this run. */
+    oom: number;
+    done: boolean;
+  };
   minigames: MinigameState;
 }
 
 const OBJECTIVE =
   'Chapter 3 · <b>Breakfast</b>. The main entrance is open and 3,000 people walk in. <b>Stephan</b> stands ' +
-  'at the main staircase and wants his <b>tomato soup</b> — at breakfast, yes — and the <b>keynote ' +
-  'speaker</b> before he opens it. Droid: the ladle is on the high shelf. Biggy: carry the pot (bumps ' +
-  'spill it, and it cools). Voxxy: clear a catering queue (E), find the speaker at a built booth. ' +
-  'Booth games still count as swag.';
-const KEYS = '1/2/3/Tab: switch · WASD · E: use / ask / clear a queue · Space: tow Biggy · R: restart';
+  'at the main staircase and wants three things before he opens it: his <b>tomato soup</b> — at breakfast, ' +
+  'yes — the <b>keynote speaker</b>, and <b>tonight\'s beer delivery</b> out of the aisle. Droid: the ladle ' +
+  'is on the high shelf. Biggy: carry the pot (bumps spill it, and it cools), and stack the crates — he is ' +
+  'the only one who can lift one, and only so many at a time. Voxxy: clear a catering queue (E), find the ' +
+  'speaker at a built booth. Booth games still count as swag.';
+const KEYS = '1/2/3/Tab: switch · WASD · E: use / lift a crate / ask / clear a queue · Space: tow Biggy · R: restart';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');
@@ -129,10 +257,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     kind: 'gate',
     why: (b) =>
       b.kind === 'voxxy'
-        ? 'Stephan, to Voxxy: "Fast little thing. Still no. Soup first, then my keynote speaker, then the stairs."'
+        ? 'Stephan, to Voxxy: "Fast little thing. Still no. Soup, my keynote speaker, and that beer off my floor. Then the stairs."'
         : b.kind === 'droid'
-          ? 'Stephan, to Droid: "You can see over the gate, I know. Nobody goes up until I have soup and a speaker."'
-          : 'Stephan, to Biggy: "Do not. The rooms open when I say so, and I say nothing before my soup."',
+          ? 'Stephan, to Droid: "You can see over the gate, I know. Nobody goes up until I have soup, a speaker and a clear aisle."'
+          : 'Stephan, to Biggy: "Do not. The rooms open when I say so, and I say nothing before my soup — and those crates are still where the lorry left them."',
   };
   ctx.walls.push(gate);
   let gateOpen = false;
@@ -358,6 +486,242 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     a.x += a.vx * dt;
     a.y += a.vy * dt;
     pushOutOfWalls(a);
+    pushOutOfCrates(a);
+  }
+
+  /* --------------------------------------------------------- the beer delivery */
+
+  /*
+   * Six crates, shrink-wrapped on a pallet, in two rows of three — which is how a
+   * brewery leaves them and, not by accident, how they end up on the stack.
+   */
+  const crates: Crate[] = [];
+  for (let i = 0; i < CRATE_DELIVERY; i++) {
+    const c = mkBody(`beer crate ${i + 1}`, PALLET.x + ((i % 3) - 1) * 13, PALLET.y + (i < 3 ? -8 : 8), {
+      r: CRATE_R,
+      mass: CRATE_MASS,
+      // `accel` 0: nothing drives a crate, it is only ever shoved.
+      accel: 0,
+      max: CRATE_MAX_SPEED,
+      drag: CRATE_DRAG,
+    }) as Crate;
+    c.i = i;
+    c.held = 'loose';
+    c.layer = 0;
+    crates.push(c);
+  }
+  let beerDone = false;
+  /** Heap errors thrown this run. It goes on the final card. */
+  let oom = 0;
+  let oomCardShown = false;
+  let labelRead = false;
+
+  const held = (which: Crate['held']): Crate[] => crates.filter((c) => c.held === which);
+  const carriedCrates = (): number => held('carried').length;
+
+  /** Biggy's identity is restored from `DEFS` every time, never accumulated. */
+  const reload = (): void => loadBiggy(ctx.byKind('biggy'), carriedCrates());
+  // Defensive: `game.ts` restores the frozen numbers at every chapter start, and
+  // this chapter is the only thing that ever moves them. Both together mean a
+  // replay of chapter 3 can never begin with the last run's load still on him.
+  reload();
+
+  /** Where the k-th crate lands on the finished stack: three wide, then a layer up. */
+  const stackSlot = (k: number): { x: number; y: number; layer: number } => ({
+    x: BEER_STACK.x + 12 + (k % STACK_WIDE) * STACK_STEP,
+    y: BEER_STACK.y + BEER_STACK.h / 2,
+    layer: Math.floor(k / STACK_WIDE),
+  });
+
+  /**
+   * Keep the crowd out of the delivery.
+   *
+   * The premise of the beat is that a pallet dumped in the aisle is in three
+   * thousand people's way, so they have to be seen going round it — `stepVisitor`
+   * already does exactly this against the wall list, and a crate is the same
+   * question with a circle instead of a slab. The visitor has no velocity response
+   * (it has no physics), it simply cannot be inside one.
+   */
+  function pushOutOfCrates(a: { x: number; y: number; r: number }): void {
+    for (const c of crates) {
+      if (c.held === 'carried') continue;
+      const dx = a.x - c.x;
+      const dy = a.y - c.y;
+      const min = a.r + c.r;
+      // Squared, and the square root only on the one crate in a hundred that is
+      // actually touching someone: this runs 36 visitors x 6 crates every frame.
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= min * min) continue;
+      if (d2 < 1e-6) {
+        a.x = c.x + min;
+        continue;
+      }
+      const d = Math.sqrt(d2);
+      a.x = c.x + (dx / d) * min;
+      a.y = c.y + (dy / d) * min;
+    }
+  }
+
+  /** The nearest crate Biggy could get his arms round, or null. */
+  function crateInReach(p: Vec2): Crate | null {
+    let best: Crate | null = null;
+    let bd = CRATE_REACH;
+    for (const c of held('loose')) {
+      const d = dist(c, p);
+      if (d < bd) {
+        bd = d;
+        best = c;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * The heap error: everything he is holding hits the floor and stays there.
+   *
+   * The scatter is a ring just outside his own radius at `CRATE_SCATTER_SPEED`,
+   * which is about a crate's length of travel — his mess, at his feet, and he has
+   * to shove his way out of it. Cheap on purpose: *"the test is whether a player
+   * laughs the first time and then plays around it"*.
+   */
+  function heapError(bg: Bot): void {
+    const load = held('carried');
+    oom++;
+    ctx.score.oom = oom;
+    load.forEach((c, k) => {
+      const a = (k / load.length) * Math.PI * 2 + ctx.rng() * 0.8;
+      const out = bg.r + c.r + 2;
+      const sp = CRATE_SCATTER_SPEED * (0.7 + ctx.rng() * 0.6);
+      c.held = 'loose';
+      c.layer = 0;
+      c.x = bg.x + Math.cos(a) * out;
+      c.y = bg.y + Math.sin(a) * out;
+      c.vx = Math.cos(a) * sp;
+      c.vy = Math.sin(a) * sp;
+    });
+    reload();
+    ctx.flash(`Biggy: "\u2026I had them. I had all ${load.length} of them."`, 4200);
+    if (!oomCardShown) {
+      oomCardShown = true;
+      ctx.card(oomCardHtml(load.length));
+    }
+  }
+
+  /** `E` on a crate. Returns true when the key was spent, whatever the outcome. */
+  function takeCrate(bg: Bot): boolean {
+    const c = crateInReach(bg);
+    if (!c) return false;
+    if (carrying && !delivered) {
+      ctx.flash('Biggy: "The pot needs both hands. The crates need the rest of me. One job at a time."');
+      return true;
+    }
+    c.held = 'carried';
+    c.vx = 0;
+    c.vy = 0;
+    const n = carriedCrates();
+    reload();
+    if (n >= CRATE_STACK_LIMIT) {
+      heapError(bg);
+      return true;
+    }
+    if (n === CRATE_STACK_LIMIT - 1) {
+      // The last safe one says so, in his voice: the punchline is only funny if
+      // the player could see it coming (and the progress line has been counting).
+      ctx.flash(`Biggy: "${n}. That is the stack. I can feel it in the knees."`, 3200);
+    } else {
+      ctx.flash(`Biggy takes a crate \u2014 ${n} up, ${held('loose').length} still on the floor`);
+    }
+    return true;
+  }
+
+  /** `E` inside the stack zone: the whole load goes down, neatly, and he is himself again. */
+  function stackCrates(): void {
+    const load = held('carried');
+    let k = held('stacked').length;
+    for (const c of load) {
+      const slot = stackSlot(k++);
+      c.held = 'stacked';
+      c.layer = slot.layer;
+      c.x = slot.x;
+      c.y = slot.y;
+      c.vx = 0;
+      c.vy = 0;
+    }
+    reload();
+    const done = held('stacked').length;
+    if (done >= CRATE_DELIVERY) {
+      beerDone = true;
+      ctx.flash(
+        `Biggy: "${CRATE_DELIVERY} crates stacked, ${oom} heap error${oom === 1 ? '' : 's'}. The aisle is yours, Stephan."`,
+        4000,
+      );
+    } else {
+      ctx.flash(`Biggy sets ${load.length} down \u2014 ${done}/${CRATE_DELIVERY} stacked`);
+    }
+  }
+
+  /**
+   * Crates on the floor are bodies: they step, they hit walls, robots bump into
+   * them and any robot can shove one. Only Biggy can pick one up.
+   *
+   * This is the shuffleboard duck's loop (ch2) with six bodies instead of one, and
+   * a crate-against-crate pass so a scattered load piles up rather than overlapping.
+   */
+  function stepCrates(dt: number): void {
+    const bg = ctx.byKind('biggy');
+    for (const c of crates) {
+      if (c.held === 'carried') {
+        // Riding on his back: drawn above him by `props()`, and not a body while
+        // he has it. The physics of carrying it is `loadBiggy`, not a collision.
+        c.x = bg.x;
+        c.y = bg.y;
+        c.vx = 0;
+        c.vy = 0;
+        continue;
+      }
+      if (c.held === 'stacked') continue;
+      // A crate at rest has nothing to integrate and no wall to resolve: it got
+      // there by being resolved already. Only a crate somebody has shoved pays
+      // for `stepBot`, which walks the whole ground-floor wall list.
+      if (c.vx !== 0 || c.vy !== 0) stepBot(c, dt, ctx.walls);
+      for (const b of ctx.bots) {
+        if (b.mounted) continue;
+        const dx = c.x - b.x;
+        const dy = c.y - b.y;
+        const dd = Math.hypot(dx, dy);
+        if (dd <= 0 || dd >= b.r + c.r + 4) continue;
+        const nx = dx / dd;
+        const ny = dy / dd;
+        const lean = b.ix * nx + b.iy * ny;
+        // A shove, not a carry: a crate only takes a kick while it is still slow.
+        if (lean > PUSH_LEAN_MIN && speed(c) < 40 * SPEED_SCALE) {
+          const F = b.kind === 'biggy' ? CRATE_SHOVE_BIGGY : CRATE_SHOVE_OTHER;
+          c.vx += nx * lean * F * dt;
+          c.vy += ny * lean * F * dt;
+        }
+        botsCollide(b, c);
+      }
+    }
+    // Crate against crate, so a scattered load piles up instead of overlapping —
+    // and only while something in the pile is still moving.
+    const floor = held('loose');
+    if (floor.some((c) => c.vx !== 0 || c.vy !== 0)) {
+      for (let i = 0; i < floor.length; i++) {
+        for (let j = i + 1; j < floor.length; j++) botsCollide(floor[i], floor[j]);
+      }
+    }
+    if (!labelRead) {
+      for (const b of ctx.bots) {
+        if (dist(b, PALLET) > LABEL_REACH) continue;
+        labelRead = true;
+        ctx.flash(
+          'Printed on the shrink-wrap: "Belgian beers may cause hangovers and OutOfMemoryErrors." Delivered this ' +
+            'morning, for tonight.',
+          5000,
+        );
+        break;
+      }
+    }
   }
 
   /* ----------------------------------------------------------------- the soup */
@@ -392,14 +756,31 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         ctx.flash('Droid reaches the high shelf — ladle secured');
         return;
       }
+      if (crateInReach(d)) {
+        ctx.flash('Droid: "Half my own mass, all of it above the knee. This one is Biggy\'s."');
+        return;
+      }
       ctx.flash('Droid: nothing to reach here');
       return;
     }
 
     if (b.kind === 'biggy') {
+      // The stack comes first: it is the only thing `E` can mean while he is
+      // standing on the mark with a load on his back. The mark is deliberately the
+      // SMALLEST place that works rather than the only one — the zone is 48x64 and
+      // Biggy is 18 px across, and "you were 3 px outside the box, so there is
+      // nothing to pick up here" is the worst kind of feedback: correct, useless.
+      if (carriedCrates() > 0 && (inRect(bg, BEER_STACK) || dist(bg, STACK_AT) < STACK_REACH)) {
+        stackCrates();
+        return;
+      }
       if (!carrying && dist(bg, station) < POT_REACH) {
         if (!ladle) {
           ctx.flash('Biggy: no ladle. Droid, the shelf!');
+          return;
+        }
+        if (carriedCrates() > 0) {
+          ctx.flash(`Biggy: "I am ${carriedCrates()} crates deep. The pot can wait, or the beer can."`);
           return;
         }
         carrying = true;
@@ -413,6 +794,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           `Stephan: "${soup > 70 ? 'Finally! Still hot.' : soup > 35 ? "Half a bowl. It's… something." : 'Is this a bowl or a hint?'}"`,
           4000,
         );
+        return;
+      }
+      if (takeCrate(bg)) return;
+      if (carriedCrates() > 0) {
+        ctx.flash('Biggy: "I am not putting these down in the middle of the floor. They go by the counters."');
         return;
       }
       ctx.flash('Biggy: nothing to pick up here');
@@ -434,6 +820,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     if (!speaker.following && dist(speaker, v) < TALK_REACH) {
       speaker.following = true;
       ctx.flash('Keynote speaker: "Oh! Is it time? Lead the way."');
+      return;
+    }
+    if (crateInReach(v)) {
+      ctx.flash('Voxxy: "It weighs more than I do. Considerably more. BIGGY!"');
       return;
     }
     ctx.flash('Voxxy: nobody to talk to here');
@@ -469,6 +859,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   function update(dt: number): void {
     ctx.pushBiggy(dt);
     mg.update(dt);
+    stepCrates(dt);
     ctx.stepAll(dt, (b: Bot, before: PrevVel) => {
       if (b.kind !== 'biggy' || !carrying || delivered) return;
       // A spill is caused by the *jerk*, not by speed: gliding across the hall at
@@ -569,7 +960,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       }
     }
 
-    if (delivered && speaker.onStage && !gateOpen) done();
+    if (delivered && speaker.onStage && beerDone && !gateOpen) done();
   }
 
   /* --------------------------------------------------------- snapshot payload */
@@ -594,7 +985,48 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       },
       { kind: 'dropzone', ...stage, state: delivered ? 'done' : 'idle', label: 'bring the soup here' },
       { kind: 'gate', ...GF.gate, state: gateOpen ? 'open' : 'shut', label: 'main staircase' },
+      // The stack zone reads exactly like the soup's drop mark, because it is the
+      // same promise: put the thing you are carrying down HERE.
+      { kind: 'dropzone', ...BEER_STACK, state: beerDone ? 'done' : 'idle', label: 'stack the beer crates here' },
+      // Devoxx's own line, on a Devoxx-blue sign, flat against the catering block
+      // above the stack so nobody has to walk through it to read it.
+      {
+        kind: 'sign',
+        x: BEER_STACK.x - 6,
+        y: GF.hall.y + 6,
+        w: 60,
+        h: 8,
+        state: beerDone ? 'done' : 'active',
+        label: 'Belgian beers may cause hangovers and OutOfMemoryErrors',
+      },
     ];
+    // Crates: on the floor where they lie, on the stack in layers, or piled on
+    // Biggy's back in the order he picked them up.
+    for (const c of crates) {
+      if (c.held === 'carried') continue;
+      out.push({
+        kind: 'crate',
+        x: c.x,
+        y: c.y,
+        w: c.r * 2,
+        h: c.r * 2,
+        v: c.layer,
+        state: c.held === 'stacked' ? 'done' : 'idle',
+        label: 'beer crate',
+      });
+    }
+    held('carried').forEach((c, k) => {
+      out.push({
+        kind: 'crate',
+        x: bg.x,
+        y: bg.y,
+        w: c.r * 2,
+        h: c.r * 2,
+        v: k + 1,
+        state: k + 1 >= CRATE_STACK_LIMIT - 1 ? 'broken' : 'active',
+        label: 'beer crate',
+      });
+    });
     if (carrying && !delivered) {
       // The pot rides on Biggy's shoulder; `v` carries what each meter needs.
       out.push({ kind: 'pot', x: bg.x, y: bg.y - bg.r - 8, w: 20, h: 20, v: temp / 100, state: 'active', label: 'tomato soup · temperature' });
@@ -639,6 +1071,19 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /** The live bottom-of-screen line: Stephan's two conditions, plus the pot's state. */
   function progress(): string {
     if (gateOpen) return 'Stephan opens the main staircase · up to the Devoxx rooms';
+    const n = carriedCrates();
+    /*
+     * The heap, spelled out. Michele's note on this beat: the crate count, the
+     * mass penalty and how close he is to the limit belong on the HUD, because
+     * "the punchline is only funny if the player could see it coming".
+     */
+    const load =
+      n > 0
+        ? ` (×${(crateLoadMass(n) / crateLoadMass(0)).toFixed(2)} mass, −${Math.round((1 - crateLoadAccel(n) / crateLoadAccel(0)) * 100)}% accel)`
+        : '';
+    const beer = beerDone
+      ? 'beer ✓'
+      : `beer ${held('stacked').length}/${CRATE_DELIVERY} · heap ${n}/${CRATE_STACK_LIMIT}${load}`;
     const soupLine = delivered
       ? 'soup ✓'
       : carrying
@@ -651,7 +1096,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       : speaker.following
         ? 'speaker: following you to Stephan'
         : 'speaker: hiding behind a built booth (Voxxy, E)';
-    return `${soupLine} · ${spk}`;
+    return `${beer} · ${soupLine} · ${spk}`;
   }
 
   return {
@@ -660,7 +1105,25 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     props,
     people,
     progress,
-    placeProp: (kind: string, x: number, y: number): boolean => mg.place(kind, x, y),
+    /**
+     * `crate` moves the first crate still on the floor; `crate3` moves that one
+     * whatever state it is in, which is how a test takes a load off Biggy without
+     * a heap error. Anything else is the minigames' (the shuffleboard duck).
+     */
+    placeProp: (kind: string, x: number, y: number): boolean => {
+      const mm = /^crate(\d*)$/.exec(kind);
+      if (!mm) return mg.place(kind, x, y);
+      const c = mm[1] ? crates[Number(mm[1])] : held('loose')[0];
+      if (!c) return false;
+      c.held = 'loose';
+      c.layer = 0;
+      c.x = x;
+      c.y = y;
+      c.vx = 0;
+      c.vy = 0;
+      reload();
+      return true;
+    },
     state: (): BreakfastState => ({
       chapter: 3,
       ladle,
@@ -673,6 +1136,15 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       queues: queues.map((q) => ({ label: q.label, open: q.open })),
       gateOpen,
       crowd: crowd.length,
+      beer: {
+        loose: held('loose').map((c) => ({ i: c.i, x: c.x, y: c.y })),
+        carried: carriedCrates(),
+        stacked: held('stacked').length,
+        total: CRATE_DELIVERY,
+        limit: CRATE_STACK_LIMIT,
+        oom,
+        done: beerDone,
+      },
       minigames: mg.state(),
     }),
   };

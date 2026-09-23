@@ -539,15 +539,16 @@ export const GF = {
   rack: { x: 140, y: 640, w: 20, h: 24 },
   /**
    * The router cabinet, against the technical room's back wall beside the breaker
-   * panel and sealed by a cam-lock wheel (chapter 2, `ch2-expo.ts`).
+   * panel, heavy enough that only Biggy can swing its door (chapter 2,
+   * `ch2-expo.ts`).
    *
    * It is venue furniture, not a chapter constant: the rect lives here so that
    * `src/render/venue/ground.ts` can build it without knowing a chapter exists,
    * exactly as it already does for `roller` and `gate`. Its SOUTH face (y + h) is
-   * the one the wheel is bolted to — the face that looks at the diorama camera,
-   * which sits on the +y side (`src/render/camera.ts`), so the wheel is never seen
-   * edge-on. Clear of `panel` (x 50..76) so Droid cannot reach both at once by
-   * accident, and clear of `rack` (y 640..664).
+   * the one the door and the terminal behind it are on — the face that looks at
+   * the diorama camera, which sits on the +y side (`src/render/camera.ts`). Clear
+   * of `panel` (x 50..76) so Droid cannot reach both at once by accident, and
+   * clear of `rack` (y 640..664).
    */
   cabinet: { x: 120, y: 560, w: 64, h: 20 },
   /** Devoxx polo & badge store, roller door on its hall side. */
@@ -1017,7 +1018,7 @@ export function groundWalls(): Wall[] {
   w.push({
     ...GF.cabinet,
     kind: 'cabinet',
-    why: (b) => `${b.name}: the router cabinet, cam-locked shut`,
+    why: (b) => `${b.name}: the router cabinet, shut`,
   });
   w.push({
     ...GF.roller,
@@ -1142,8 +1143,8 @@ export function groundWalls(): Wall[] {
 /**
  * The exhibition level's walls, with the pieces a chapter takes over left out.
  *
- * Chapter 2 owns the roller door (Biggy smashes it) and the router cabinet (the
- * cam-lock wheel opens it), so it pushes its own versions with `onHit` and its
+ * Chapter 2 owns the roller door (Biggy smashes it) and the router cabinet (he
+ * shoulders it open), so it pushes its own versions with `onHit` and its
  * own voices. It asks for the wall list without them rather than ending up with
  * two colliders in each place, one of which nothing can ever remove.
  */
