@@ -105,6 +105,25 @@ const BAND_HIGH = 3.9;
 /** Breathing room around the framed rect. */
 const FIT_MARGIN = 1.06;
 
+/**
+ * Fraction of the frame's height the HUD owns along the bottom edge.
+ *
+ * The robot chips, the speed meter and the progress line are an opaque band
+ * across the bottom of the screen, and until now the camera framed the venue as
+ * though they were not there. In chapter 1 that put the foyer — which holds the
+ * FIRST clue the player is sent to find — underneath them: Michele reported "the
+ * first hint is still not visible" twice, and a shot with the HUD suppressed
+ * showed the marker sitting behind the Droid chip, lit and pulsing, where nobody
+ * could see it. The same band is why the foyer and kiosk clues looked stacked on
+ * top of each other when they are 9.4 m apart.
+ *
+ * So the camera fits its box into the part of the screen the player can actually
+ * see and lifts it clear. This is a small zoom-out — the cost of the fix — and it
+ * applies to every chapter, because any chapter can put something important in
+ * the bottom sixth of its own frame.
+ */
+const HUD_SAFE = 0.15;
+
 /** Orthographic: the pull-back only has to clear the geometry, it changes nothing else. */
 const CAM_DIST = 140;
 const CAM_NEAR = 0.5;
@@ -230,7 +249,8 @@ export function createCamera(aspect: number): DioramaCamera {
       if (u > maxU) maxU = u;
     }
 
-    const halfH = Math.max((maxU - minU) / 2, (maxR - minR) / 2 / lastAspect) * FIT_MARGIN;
+    // Fit into the HUD-free part of the frame, not the whole of it.
+    const halfH = (Math.max((maxU - minU) / 2, (maxR - minR) / 2 / lastAspect) * FIT_MARGIN) / (1 - HUD_SAFE);
     const halfW = halfH * lastAspect;
     cam.left = -halfW;
     cam.right = halfW;
@@ -245,7 +265,9 @@ export function createCamera(aspect: number): DioramaCamera {
       .copy(centre)
       .addScaledVector(dirToCam, CAM_DIST)
       .addScaledVector(right, (minR + maxR) / 2)
-      .addScaledVector(up, (minU + maxU) / 2);
+      // ...and drop the camera by the reserved band, which lifts the venue out
+      // from behind the HUD.
+      .addScaledVector(up, (minU + maxU) / 2 - halfH * HUD_SAFE);
     applyOffset();
   }
 
