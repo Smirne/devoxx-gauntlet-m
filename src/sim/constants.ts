@@ -74,6 +74,42 @@ export const DT_MAX = 0.033;
 export const SPEED_SCALE = 0.25;
 
 /**
+ * ...and two robots that needed a little more of it after he played the result.
+ *
+ * Michele, on the rescaled build: *"Voxxy speed is good now... The other 2 are a
+ * bit too slow now, droid in particular is a bit cumbersome to move around."*
+ *
+ * That is a real consequence of quartering the speeds while the rooms stayed the
+ * same size. The prototype's ratios (290 / 115 / 235) were tuned for an arcade
+ * game where everything was four times faster, and at the new pace Droid's 2.3 m/s
+ * stopped reading as "deliberate" and started reading as "waiting".
+ *
+ * So the single factor is now three, and only Voxxy keeps the plain one. This
+ * costs the property the first rescale was proudest of — one number, no
+ * exceptions — and it is worth it: the ratios were never sacred, the FEEL is what
+ * the realism score rests on, and the person who has to play it says these two
+ * are wrong. Droid 2.3 -> 3.2 m/s.
+ *
+ * BIGGY DID NOT GET ONE, and the reason is worth keeping. His top speed is
+ * deliberately BELOW `ROLLER_DOOR_SPEED` so he cannot break the roller door
+ * alone — that gate is the whole reason chapter 2 needs two robots — and the
+ * door in turn has to stay below VOXXY's top speed, because a push tops out near
+ * the pusher and a door she cannot shove him through is a door nobody opens.
+ * That sandwich leaves him about 7% of headroom, and at 7% the chapter-2
+ * choreography starts failing for real: the push lane is a fixed length, so a
+ * faster Biggy spends fewer frames being pushed down it and gains less from the
+ * boost. Measured, not guessed — 1.15 and 1.10 broke the isolated push test, 1.07
+ * broke the chapter itself.
+ *
+ * So he keeps the base factor. A meaningfully faster Biggy is not a constant, it
+ * is a redesign of the roller door, and that is Michele's call rather than a
+ * tuning decision. His scale stays as a named constant so the intent is visible
+ * if anyone revisits it.
+ */
+export const DROID_SPEED_SCALE = SPEED_SCALE * 1.4;
+export const BIGGY_SPEED_SCALE = SPEED_SCALE;
+
+/**
  * ...and the reciprocal, for the other kind of frozen number.
  *
  * Lengths did not move, so a clock that a robot has to *travel* against — the soup
@@ -109,7 +145,7 @@ export const DEFS: Readonly<Record<RobotKind, RobotDef>> = Object.freeze({
     name: 'Droid',
     r: 6.25,
     accel: 4,
-    max: 115 * SPEED_SCALE,
+    max: 115 * DROID_SPEED_SCALE,
     drag: 7,
     mass: 3,
     color: '#4a4f57',
@@ -121,7 +157,7 @@ export const DEFS: Readonly<Record<RobotKind, RobotDef>> = Object.freeze({
     name: 'Biggy',
     r: 9,
     accel: 0.6,
-    max: 235 * SPEED_SCALE,
+    max: 235 * BIGGY_SPEED_SCALE,
     drag: 0.35,
     mass: 7,
     color: '#5f7387',
@@ -151,8 +187,8 @@ export const ANIM_DIV = 18;
 
 /** A robot leaning on Biggy adds acceleration, taking him past his own top speed. */
 export const PUSH_FORCE: Readonly<Record<RobotKind, number>> = Object.freeze({
-  voxxy: 170 * SPEED_SCALE,
-  droid: 120 * SPEED_SCALE,
+  voxxy: 170 * BIGGY_SPEED_SCALE,
+  droid: 120 * BIGGY_SPEED_SCALE,
   biggy: 0,
 });
 /** Minimum alignment of the pusher's stick with the direction to Biggy. */
@@ -178,7 +214,7 @@ export const PUSH_FLASH_COOLDOWN = 3;
 /* ---------------------------------------------------------------- Droid rides Biggy */
 
 /** Droid may mount only a nearly-stationary Biggy. */
-export const MOUNT_BIGGY_MAX_SPEED = 20 * SPEED_SCALE;
+export const MOUNT_BIGGY_MAX_SPEED = 20 * BIGGY_SPEED_SCALE;
 /**
  * Contact slack for mounting — deliberately longer than `PUSH_REACH`.
  *
@@ -195,9 +231,9 @@ export const MOUNT_OFFSET_Y = 6;
 /* ---------------------------------------------------------------- doors */
 
 /** Chapter 1: room E's jammed door. Speed *into* the door, not total speed. */
-export const JAMMED_DOOR_SPEED = 70 * SPEED_SCALE;
+export const JAMMED_DOOR_SPEED = 70 * BIGGY_SPEED_SCALE;
 /** Chapter 2: the store's roller door — above Biggy's own top speed, so he must be pushed. */
-export const ROLLER_DOOR_SPEED = 270 * SPEED_SCALE;
+export const ROLLER_DOOR_SPEED = 270 * BIGGY_SPEED_SCALE;
 /** Chapter 2: the cable from the network rack to the reception printer. */
 export const CABLE_MAX = 1480;
 
