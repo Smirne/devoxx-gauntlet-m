@@ -462,19 +462,33 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    * which of the three the stick is moving — the HUD chip does, but the player is
    * looking at the diorama, not at the corner of the screen.
    */
+  const ringGeo = new THREE.RingGeometry(RING_INNER, RING_OUTER, 40);
+
+  /*
+   * TWO rings, not one, because the marker has to survive being behind something
+   * without painting over the thing it marks.
+   *
+   * It used to be a single ring with `depthTest: false`, drawn over everything, so
+   * that a robot standing in front of the one you are driving could not hide it —
+   * chapter 1 starts the three of them stacked 26 sim px apart along the camera's
+   * depth axis. That worked, and it also drew the ring straight across the driven
+   * robot's own legs, which is what Michele hit in play: "the circle around the
+   * selected chars shouldn't cover the robot."
+   *
+   * Now the bright ring is depth-tested like any other floor decal, so the robot's
+   * feet occlude it properly, and a dimmer ghost is drawn only where something is
+   * IN FRONT of it (`depthFunc: GreaterDepth`) — the same trick as the occluded
+   * silhouette below. In the open you see one clean ring on the floor; behind a
+   * pillar you still see where you are.
+   */
   const activeRing = new THREE.Mesh(
-    new THREE.RingGeometry(RING_INNER, RING_OUTER, 40),
+    ringGeo,
     new THREE.MeshBasicMaterial({
       color: 0xff7a1a,
       transparent: true,
       opacity: 0.85,
       side: THREE.DoubleSide,
       depthWrite: false,
-      // Drawn over everything. Chapter 1 starts the three robots stacked 26 sim px
-      // apart along the camera's depth axis, so the tallest stands in front of the
-      // smallest and the marker under the robot you are driving would be the first
-      // thing hidden — which is the one thing it exists not to be.
-      depthTest: false,
       toneMapped: false,
     }),
   );
@@ -482,6 +496,24 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   activeRing.rotation.x = -Math.PI / 2;
   activeRing.renderOrder = 999;
   dressing.add(activeRing);
+
+  /** The same ring, seen only through whatever is hiding it. */
+  const activeRingGhost = new THREE.Mesh(
+    ringGeo,
+    new THREE.MeshBasicMaterial({
+      color: 0xff7a1a,
+      transparent: true,
+      opacity: 0.32,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      depthFunc: THREE.GreaterDepth,
+      toneMapped: false,
+    }),
+  );
+  activeRingGhost.name = 'active-ring-ghost';
+  activeRingGhost.rotation.x = -Math.PI / 2;
+  activeRingGhost.renderOrder = 998;
+  dressing.add(activeRingGhost);
 
   /**
    * THE OCCLUDED SILHOUETTE.
@@ -871,14 +903,19 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const bot = snap.bots[snap.active];
     if (!bot || snap.chapter < 1 || snap.phase !== 'play') {
       activeRing.visible = false;
+      activeRingGhost.visible = false;
       return;
     }
     activeRing.visible = true;
+    activeRingGhost.visible = true;
     const r = m(bot.r);
     activeRing.scale.setScalar(Math.max(r / RING_OUTER, 0.6) * 1.25);
     activeRing.position.set(m(bot.x), floorY + 0.03, m(bot.y));
+    activeRingGhost.scale.copy(activeRing.scale);
+    activeRingGhost.position.copy(activeRing.position);
     const c = bot.light.c;
     (activeRing.material as THREE.MeshBasicMaterial).color.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
+    (activeRingGhost.material as THREE.MeshBasicMaterial).color.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
   }
 
   /* --------------------------------------------------------------- modes */
