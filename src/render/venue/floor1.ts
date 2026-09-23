@@ -19,7 +19,20 @@
 import * as THREE from 'three';
 
 import { H, T, W } from '../../sim/constants';
-import { CY0, CY1, DOOR, F1, floor1Walls, roomDoor, rooms } from '../../sim/geometry';
+import {
+  CY0,
+  CY1,
+  DOOR,
+  F1,
+  ROW_PITCH_PX,
+  SEAT_BLOCK_MIN_PX,
+  SEAT_PITCH_PX,
+  floor1Walls,
+  roomDoor,
+  roomScreen,
+  roomSeating,
+  rooms,
+} from '../../sim/geometry';
 import type { Rect, RoomDef, Wall } from '../../sim/types';
 import { m } from '../../sim/units';
 import type { VenuePalette } from './materials';
@@ -46,31 +59,16 @@ import { zaalPosterX } from './signage';
 /* ------------------------------------------------------- auditorium layout */
 
 /**
- * The two aisles, as fractions of a room's width. Taken from the prototype's
- * keynote room (`K.A8 = [[r8.x+90, r8.x+140], [r8.x+235, r8.x+285]]` with room 8
- * 375 px wide), so chapter 4's aisle logic and the modelled aisles line up.
- */
-const AISLES: ReadonlyArray<readonly [number, number]> = [
-  [90 / 375, 140 / 375],
-  [235 / 375, 285 / 375],
-];
-/** Seat block extent, measured from the screen wall — design doc: "seat blocks y 140–270". */
-const SEAT_FRONT_PX = 70;
-const SEAT_BACK_PX = 200;
-/**
- * Clear standing room between the back row and the corridor wall, sim px.
+ * How far the back row sits above the front row. Cinema rake, cut for the diorama.
  *
- * The plan's shallow houses — 3, 7 and 10 at 179–184 px deep — are shallower than
- * `SEAT_BACK_PX`, so the back rows were laid out *through* the corridor wall and
- * out into the corridor. From the diorama camera that put a raked step and a row
- * of seat backs in front of the Zaal 7 and Zaal 10 numeral panels, which is how
- * a seating constant ends up failing a signage check.
+ * The seating PLAN — aisles, row pitch, how deep the block runs — is not here any
+ * more: it is `roomSeating()` in `src/sim/geometry.ts`, because the seat blocks
+ * are colliders and a collider and its picture must be the same object. This
+ * module only says how tall the rake is and what a seat is made of.
  */
-const SEAT_CONCOURSE_PX = 52;
-const ROW_PITCH_PX = 18;
-const SEAT_PITCH_PX = 14;
-/** How far the back row sits above the front row. Cinema rake, cut for the diorama. */
 const RAKE_M = 1.5;
+/** The corridor columns' knee-high plinths on the camera side. See `wallStyle`. */
+const COLUMN_PLINTH_H = 0.52;
 
 export interface Floor1Build {
   group: THREE.Group;
@@ -85,18 +83,24 @@ export interface Floor1Build {
   overhead: THREE.Group;
 }
 
-/** The screen wall's sim y, and the sign of "into the room" from it. */
-function screenEdge(r: RoomDef): { y: number; inward: 1 | -1 } {
-  return r.side < 0 ? { y: r.y, inward: 1 } : { y: r.y + r.h, inward: -1 };
-}
-
 /* ------------------------------------------------------------------- walls */
 
-/** Which palette entry and height a sim wall slab is drawn with. */
+/**
+ * Which palette entry and height a sim wall slab is drawn with, or `null` for a
+ * wall whose own builder draws it further down this file.
+ */
 function wallStyle(
   w: Wall,
   p: VenuePalette,
-): { mat: THREE.MeshStandardMaterial; height: number; cap?: boolean } {
+): { mat: THREE.MeshStandardMaterial; height: number; cap?: boolean } | null {
+  // Drawn by their own builders: the seat blocks become rows of modelled seats on
+  // a raked floor, the screen is lit, the stools are turned, the bar is dressed.
+  if (w.kind === 'seats' || w.kind === 'screen' || w.kind === 'stool' || w.kind === 'bar') return null;
+  // The corridor's square columns. The FAR side gets the full shaft; the NEAR side
+  // a knee-high plinth, because a full shaft there stands between the fixed camera
+  // and the corridor floor (see `corridorDressing`).
+  if (w.kind === 'corridor-column') return { mat: p.corridorColumn, height: SHELL_H };
+  if (w.kind === 'corridor-plinth') return { mat: p.corridorColumn, height: COLUMN_PLINTH_H };
   if (w.glass) return { mat: p.glassPane, height: GLASS_H };
   if (w.low) return { mat: p.counterTop, height: LOW_H };
 
@@ -128,25 +132,18 @@ function wallStyle(
  * rather than hundreds of meshes.
  */
 function seating(r: RoomDef, p: VenuePalette): THREE.Object3D[] {
-  const { y: far, inward } = screenEdge(r);
-  const back = Math.min(SEAT_BACK_PX, r.h - SEAT_CONCOURSE_PX);
-  const rowCount = Math.floor((back - SEAT_FRONT_PX) / ROW_PITCH_PX) + 1;
-
-  // Seat blocks, in sim x, with the two aisles cut out.
-  const blocks: Array<[number, number]> = [];
-  let cut = r.x;
-  for (const [a, b] of AISLES) {
-    blocks.push([cut, r.x + a * r.w]);
-    cut = r.x + b * r.w;
-  }
-  blocks.push([cut, r.x + r.w]);
+  // The plan comes from the sim, which is also what carries the colliders.
+  const plan = roomSeating(r);
+  if (!plan) return [];
+  const { blocks, rows, inward } = plan;
+  const rowCount = rows.length;
 
   const seatsPerRow = blocks.reduce(
-    (n, [x0, x1]) => n + Math.max(0, Math.floor((x1 - x0 - 20) / SEAT_PITCH_PX) + 1),
+    (n, [x0, x1]) => n + Math.max(0, Math.floor((x1 - x0 - SEAT_BLOCK_MIN_PX) / SEAT_PITCH_PX) + 1),
     0,
   );
 
-  if (rowCount < 1 || seatsPerRow < 1) return [];
+  if (seatsPerRow < 1) return [];
 
   const rake = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), p.audRake, rowCount);
   rake.name = `rake-${r.n}`;
@@ -167,10 +164,9 @@ function seating(r: RoomDef, p: VenuePalette): THREE.Object3D[] {
 
   let s = 0;
   for (let row = 0; row < rowCount; row++) {
-    const off = SEAT_FRONT_PX + row * ROW_PITCH_PX;
     const t = rowCount === 1 ? 0 : row / (rowCount - 1);
     const rise = t * RAKE_M;
-    const simY = far + inward * off;
+    const simY = rows[row];
 
     const stepH = Math.max(0.06, rise + 0.06);
     pos.set(m(r.x + r.w / 2), stepH / 2, m(simY));
@@ -179,7 +175,8 @@ function seating(r: RoomDef, p: VenuePalette): THREE.Object3D[] {
 
     scale.set(1, 1, 1);
     for (const [x0, x1] of blocks) {
-      for (let x = x0 + 10; x <= x1 - 10 && s < seats.count; x += SEAT_PITCH_PX) {
+      const inset = SEAT_BLOCK_MIN_PX / 2;
+      for (let x = x0 + inset; x <= x1 - inset && s < seats.count; x += SEAT_PITCH_PX) {
         pos.set(m(x), rise + 0.06, m(simY));
         seats.setMatrixAt(s++, mat.compose(pos, quat, scale));
       }
@@ -251,15 +248,16 @@ function foyer(p: VenuePalette, overhead: THREE.Group): THREE.Group {
   g.name = 'foyer';
   g.add(foyerFloor(p));
 
-  // The bar: the prototype's counter rect, dressed with a brass foot rail,
-  // cream table lamps and a pair of pendants — image-1790032659509.webp.
-  const bar: Rect = { x: F1.foyer.x + 20, y: F1.foyer.y + 150, w: 70, h: 16 };
+  // The bar: the sim's own counter rect (`F1.bar`, a `low` wall like every other
+  // counter in the game), dressed with a brass foot rail, cream table lamps and a
+  // pair of pendants — image-1790032659509.webp. The stools are the sim's too:
+  // they were three cylinders this file invented, and a robot walked through them.
+  const bar = F1.bar;
   g.add(slab(bar, 0, LOW_H, p.barTop));
   g.add(slab({ x: bar.x, y: bar.y + bar.h, w: bar.w, h: 3 }, 0.12, 0.07, p.brass));
-  for (let i = 0; i < 3; i++) {
-    const x = bar.x + 12 + i * 22;
-    g.add(boxAt(x, bar.y + 6, 5, 5, LOW_H, 0.26, p.lampWarm));
-    g.add(postAt(x, bar.y + 30, 0.18, 0.62, 0, p.blackMetal, 8));
+  for (const st of F1.barStools) {
+    g.add(boxAt(st.x + st.w / 2, bar.y + 6, 5, 5, LOW_H, 0.26, p.lampWarm));
+    g.add(postAt(st.x + st.w / 2, st.y + st.h / 2, 0.18, 0.62, 0, p.blackMetal, 8));
   }
   for (let i = 0; i < 2; i++) overhead.add(pendant(bar.x + 22 + i * 30, bar.y + 8, 0.5, 2.5, p.pendantWhite));
 
@@ -270,15 +268,48 @@ function foyer(p: VenuePalette, overhead: THREE.Group): THREE.Group {
  * The glass kiosk. Its glazing, and the Voxxy-sized hatch in its left face, are
  * already sim walls (the hatch is a `hidden` collider with
  * `skipFor: b => b.kind === 'voxxy'`), so this only adds what the sim has no
- * opinion about: the fascia, the counter and a warm frame marking the hatch.
+ * opinion about: the fascia and a warm frame marking the hatch.
+ *
+ * ## The black block
+ *
+ * Michele, twice: *"reduce / remove the black block, make it into a glass wall or
+ * something to show the circle better"*, then *"the black bench(?) has to go, for
+ * a glass wall"*. Chapter 1's clue 2 sits on the kiosk's floor, at its centre.
+ *
+ * The thing on top of it was not a bench. It was this function's own **fascia**:
+ * a 60 x 60 px plate laid flat at `GLASS_H` — a LID over the whole kiosk, 4.8 m
+ * square and two metres up. Unlit, from a camera pitched 30 degrees, that is
+ * exactly what a "black block" looks like.
+ *
+ * Measured rather than assumed, because the first guess was wrong. The lid does
+ * not stand between the camera and the clue — at this pitch its projection falls
+ * NORTH of the ring — it **shades** it. A/B on the same build, mean luminance of
+ * the 100 x 80 px box around the ring: **39.1 with the lid, 43.5 without, and
+ * the brightest arc pixels 128.8 against 174.1**, a quarter of the arcs' punch
+ * spent on a roof nobody asked for. The counter, the bench he guessed at, costs
+ * 43.8 against 43.5 — nothing, inside the noise. It goes anyway: he asked for it
+ * to go, and it was a dark slab in a glass box.
+ *
+ * A kiosk fascia is a BAND round the head of the glazing, not a roof, so it is
+ * four bands now and the top is open: the kiosk is glass, a floor and a clue.
  */
 function kiosk(p: VenuePalette): THREE.Group {
   const g = new THREE.Group();
   g.name = 'kiosk';
   const k = F1.kiosk;
   g.add(floorSlab(k, 0.02, p.barTop));
-  g.add(slab({ x: k.x - 2, y: k.y - 2, w: k.w + 4, h: k.h + 4 }, GLASS_H, 0.14, p.devoxxOrange));
-  g.add(slab({ x: k.x + 8, y: k.y + k.h - 18, w: k.w - 16, h: 10 }, 0.02, LOW_H, p.counterTop));
+  // The fascia band, on all four heads. 3 px deep, so it reads as a rim from the
+  // diorama camera and hides nothing under it.
+  const F = 3;
+  const o = 2;
+  for (const band of [
+    { x: k.x - o, y: k.y - o, w: k.w + 2 * o, h: F },
+    { x: k.x - o, y: k.y + k.h + o - F, w: k.w + 2 * o, h: F },
+    { x: k.x - o, y: k.y - o + F, w: F, h: k.h + 2 * o - 2 * F },
+    { x: k.x + k.w + o - F, y: k.y - o + F, w: F, h: k.h + 2 * o - 2 * F },
+  ] as Rect[]) {
+    g.add(slab(band, GLASS_H, 0.14, p.devoxxOrange));
+  }
   // The hatch: the sim's gap runs y k.y+16 .. k.y+40 in the kiosk's left wall.
   const hatch: Rect = { x: k.x - 1, y: k.y + 16, w: T + 2, h: 24 };
   g.add(slab(hatch, 0, 0.05, p.lampWarm));
@@ -384,25 +415,12 @@ function corridorDressing(p: VenuePalette, overhead: THREE.Group): THREE.Group {
   const g = new THREE.Group();
   g.name = 'corridor-dressing';
 
-  // Columns land on the room party walls, which keeps them clear of every doorway.
-  const xs = new Set<number>();
-  for (const r of rooms) {
-    xs.add(Math.round(r.x - T / 2));
-    xs.add(Math.round(r.x + r.w + T / 2));
-  }
-  const busy: Rect[] = [F1.nicheTop, F1.nicheBot, F1.mainStair];
-  for (const x of xs) {
-    if (busy.some((b) => x > b.x - 24 && x < b.x + b.w + 24)) continue;
-    // FAR side (small sim y) gets the full 3.3 m shaft: the diorama camera sits on
-    // the +z side, so those columns stand BEHIND the corridor and give it depth.
-    g.add(boxAt(x, CY0 + 11, 16, 16, 0, SHELL_H, p.corridorColumn));
-    // NEAR side gets a knee-high plinth instead. A full shaft here stands between
-    // the camera and the corridor floor, and since these columns are render-only
-    // dressing rather than sim colliders, a robot walks straight behind one and
-    // vanishes — which is exactly what happened to Voxxy and Droid on chapter 1's
-    // opening frame, ring and all.
-    g.add(boxAt(x, CY1 - 11, 16, 16, 0, 0.52, p.corridorColumn));
-  }
+  // The corridor's square columns are `corridorColumns()` in the sim now and are
+  // drawn by the wall loop in `buildFloor1` — full 3.3 m shafts on the FAR side,
+  // where they stand behind the corridor and give it depth, and knee-high plinths
+  // on the NEAR side, where a full shaft would stand between the fixed camera and
+  // the corridor floor. They used to be drawn here out of this file's own loop,
+  // which meant eighteen columns a robot walked straight through.
 
   // The vault: one pale plate springing off the far wall head and raking up over
   // the corridor — image-1790032669312.webp.
@@ -495,9 +513,7 @@ export function buildFloor1(p: VenuePalette): Floor1Build {
     room.add(floorSlab(r, 0, p.audFloor));
 
     // The screen at the far end, away from the corridor door.
-    const { y: far, inward } = screenEdge(r);
-    const screen: Rect = { x: r.x + r.w * 0.2, y: far + inward * 5 - 1, w: r.w * 0.6, h: 3 };
-    const screenMesh = slab(screen, 0.35, 2.4, p.audScreen);
+    const screenMesh = slab(roomScreen(r), 0.35, 2.4, p.audScreen);
     screenMesh.name = `screen-${r.n}`;
     room.add(screenMesh);
 
@@ -520,7 +536,9 @@ export function buildFloor1(p: VenuePalette): Floor1Build {
 
   for (const w of floor1Walls()) {
     if (w.hidden) continue;
-    const { mat, height, cap } = wallStyle(w, p);
+    const style = wallStyle(w, p);
+    if (!style) continue;
+    const { mat, height, cap } = style;
     group.add(slab(w, 0, height, mat));
     // A painted cut face, so the lowered near wall reads as a deliberate section
     // through the building rather than as a wall that stops for no reason.

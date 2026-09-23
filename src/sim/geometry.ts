@@ -136,11 +136,26 @@ export function roomDoor(r: RoomDef): DoorRect {
     : { x: cx - DOOR / 2, y: CY1 - T, w: DOOR, h: 12, cx, cy: CY1, side: 1, r };
 }
 
+/** The curved foyer, so the bar inside it can be measured off its own rect. */
+const FOYER: Rect = { x: 14, y: CY1, w: 160, h: 230 };
+/** The long pale bar counter — `media/other-images/image-1790032659509.webp`. */
+const BAR: Rect = { x: FOYER.x + 20, y: FOYER.y + 150, w: 70, h: 16 };
+
 export const F1 = {
   /** The fire door with the keypad, between the closed section and the Devoxx rooms. */
   fireX: 600,
   /** Curved foyer with a bar, open straight onto the corridor. */
-  foyer: { x: 14, y: CY1, w: 160, h: 230 },
+  foyer: FOYER,
+  /** The bar counter in it. A counter, so light crosses it. */
+  bar: BAR,
+  /**
+   * The three stools along the bar, as footprints rather than points.
+   *
+   * 4.5 px is the 0.18 m radius the renderer turns them into; they are listed
+   * here because a stool is a thing you walk into, and until this round they were
+   * three cylinders the renderer invented and the sim had never heard of.
+   */
+  barStools: [0, 1, 2].map((i): Rect => ({ x: BAR.x + 12 + i * 22 - 2.5, y: BAR.y + 30 - 2.5, w: 5, h: 5 })),
   /** Glass kiosk in the foyer, with a Voxxy-sized hatch. */
   kiosk: { x: 110, y: 412, w: 56, h: 56 },
   /** Secondary-staircase niche in the top corridor wall, between rooms 10 and 9. */
@@ -159,6 +174,165 @@ export const F1 = {
    */
   mainStair: { x: 1744, y: CY0 + 6, w: 150, h: CY1 - CY0 - 12 },
 } as const;
+
+/* ------------------------------------------------- what stands on this floor
+ *
+ * Everything from here to `floor1Walls` lived in `src/render/venue/floor1.ts`
+ * until this round. It is the same bug as the ground floor's thirty-seven
+ * missing colliders and as chapter 1's missing seat rows: the renderer drew
+ * auditorium seating, cinema screens, corridor columns and a bar out of its own
+ * loops, and the sim had never been told. A robot walked through all of it.
+ *
+ * The cure is the one CLAUDE.md already writes down: the geometry lives HERE,
+ * `floor1Walls()` emits it, and the renderer draws the sim's own list. There is
+ * no second copy to drift, and `tests/colliders.test.ts` fails if a drawn solid
+ * ever loses its collider again.
+ */
+
+/** The screen wall's sim y, and the sign of "into the room" from it. */
+export function screenEdge(r: RoomDef): { y: number; inward: 1 | -1 } {
+  return r.side < 0 ? { y: r.y, inward: 1 } : { y: r.y + r.h, inward: -1 };
+}
+
+/**
+ * The two aisles, as fractions of a room's width.
+ *
+ * Taken from the prototype's keynote room (`K.A8 = [[r8.x+90, r8.x+140],
+ * [r8.x+235, r8.x+285]]` with room 8 375 px wide), so chapter 4's aisle logic and
+ * the modelled aisles line up.
+ */
+export const AISLES: ReadonlyArray<readonly [number, number]> = Object.freeze([
+  Object.freeze([90 / 375, 140 / 375] as const),
+  Object.freeze([235 / 375, 285 / 375] as const),
+]);
+/** Seat block extent, measured from the screen wall — design doc: "seat blocks y 140–270". */
+export const SEAT_FRONT_PX = 70;
+export const SEAT_BACK_PX = 200;
+/**
+ * Clear standing room between the back row and the corridor wall, sim px.
+ *
+ * The plan's shallow houses — 3, 7 and 10 at 179–184 px deep — are shallower than
+ * `SEAT_BACK_PX`, so the back rows were laid out *through* the corridor wall and
+ * out into the corridor.
+ */
+export const SEAT_CONCOURSE_PX = 52;
+export const ROW_PITCH_PX = 18;
+export const SEAT_PITCH_PX = 14;
+/**
+ * The narrowest block that gets seats — and therefore a collider — at all.
+ *
+ * The two have to agree or the venue grows an invisible wall: the renderer lays
+ * its seats from `x0 + SEAT_BLOCK_MIN_PX / 2` to `x1 - SEAT_BLOCK_MIN_PX / 2`,
+ * so a block narrower than this is drawn empty, and a collider on empty floor is
+ * the mirror image of the bug this whole round is about. No room's blocks come
+ * near it (the narrowest is 38 px, in cinemas A, B and C); it is here so that a
+ * future room's cannot.
+ */
+export const SEAT_BLOCK_MIN_PX = 20;
+
+/** One auditorium's seating: the x span of each block, and the sim y of each row. */
+export interface RoomSeating {
+  /** Seat-block spans in sim x, with the two aisles cut out. */
+  blocks: Array<[number, number]>;
+  /** Centre sim y of every row, front row first. */
+  rows: number[];
+  inward: 1 | -1;
+}
+
+/**
+ * The seating plan of one auditorium, or `null` for a room with no room for any.
+ *
+ * Room **E** is deliberately not special-cased here: chapter 1 dresses it with its
+ * own seat rows and an aisle up one side, which is a different plan from this one.
+ * `floor1Walls` is what leaves it out.
+ */
+export function roomSeating(r: RoomDef): RoomSeating | null {
+  const { y: far, inward } = screenEdge(r);
+  const back = Math.min(SEAT_BACK_PX, r.h - SEAT_CONCOURSE_PX);
+  const rowCount = Math.floor((back - SEAT_FRONT_PX) / ROW_PITCH_PX) + 1;
+  if (rowCount < 1) return null;
+
+  const blocks: Array<[number, number]> = [];
+  let cut = r.x;
+  for (const [a, b] of AISLES) {
+    blocks.push([cut, r.x + a * r.w]);
+    cut = r.x + b * r.w;
+  }
+  blocks.push([cut, r.x + r.w]);
+  if (!blocks.some(([x0, x1]) => x1 - x0 >= SEAT_BLOCK_MIN_PX)) return null;
+
+  const rows: number[] = [];
+  for (let i = 0; i < rowCount; i++) rows.push(far + inward * (SEAT_FRONT_PX + i * ROW_PITCH_PX));
+  return { blocks, rows, inward };
+}
+
+/**
+ * The seat blocks of one auditorium as rects: the rows, the raked floor under
+ * them, and the aisles left open between them.
+ *
+ * `low`, like every other seat row in the game: light crosses them, robots do
+ * not, which is what makes a dark auditorium readable at all.
+ */
+export function seatBlockRects(r: RoomDef): Rect[] {
+  const s = roomSeating(r);
+  if (!s) return [];
+  const half = ROW_PITCH_PX / 2;
+  const ys = s.rows.map((y) => y - s.inward * half).concat(s.rows.map((y) => y + s.inward * half));
+  const y0 = Math.min(...ys);
+  const y1 = Math.max(...ys);
+  return s.blocks
+    .filter(([x0, x1]) => x1 - x0 >= SEAT_BLOCK_MIN_PX)
+    .map(([x0, x1]): Rect => ({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 }));
+}
+
+/**
+ * The screen at the far end of an auditorium, away from the corridor door.
+ *
+ * It is a wall the light goes through (`glass`), not because it is glazed but
+ * because in room E it is a MIRROR: chapter 1 seats a secondary light source
+ * 4 px off its face, and an occluding screen would swallow the bounce that
+ * carries orange and green into the exit alcove.
+ */
+export function roomScreen(r: RoomDef): Rect {
+  const { y: far, inward } = screenEdge(r);
+  return { x: r.x + r.w * 0.2, y: far + inward * 5 - 1, w: r.w * 0.6, h: 3 };
+}
+
+/** Square corridor column, sim px. */
+export const CORRIDOR_COLUMN = 16;
+/** How far a corridor column stands off the wall it belongs to. */
+const COLUMN_INSET = 11;
+
+/**
+ * The corridor's square columns, on the room party walls.
+ *
+ * `far` are the full-height shafts on the small-y side, which is behind the
+ * corridor from the diorama camera; `near` are the knee-high plinths on the
+ * camera side, cut down so a robot does not vanish behind one (the renderer's own
+ * note, from chapter 1's opening frame). Both are things you walk into.
+ */
+export function corridorColumns(): { far: Rect[]; near: Rect[] } {
+  const xs = new Set<number>();
+  for (const r of rooms) {
+    xs.add(Math.round(r.x - T / 2));
+    xs.add(Math.round(r.x + r.w + T / 2));
+  }
+  const busy: Rect[] = [F1.nicheTop, F1.nicheBot, F1.mainStair];
+  const far: Rect[] = [];
+  const near: Rect[] = [];
+  const at = (x: number, y: number): Rect => ({
+    x: x - CORRIDOR_COLUMN / 2,
+    y: y - CORRIDOR_COLUMN / 2,
+    w: CORRIDOR_COLUMN,
+    h: CORRIDOR_COLUMN,
+  });
+  for (const x of [...xs].sort((a, b) => a - b)) {
+    if (busy.some((b) => x > b.x - 24 && x < b.x + b.w + 24)) continue;
+    far.push(at(x, CY0 + COLUMN_INSET));
+    near.push(at(x, CY1 - COLUMN_INSET));
+  }
+  return { far, near };
+}
 
 /** Walls of the cinema level. Room doorways, the two niches and the foyer are gaps. */
 export function floor1Walls(): Wall[] {
@@ -206,6 +380,56 @@ export function floor1Walls(): Wall[] {
   );
   // Top of the main staircase.
   w.push({ x: F1.mainStair.x + F1.mainStair.w, y: CY0, w: T, h: CY1 - CY0, stair: 0 });
+
+  /* ------------------------------------------- what stands in the rooms
+   *
+   * Every auditorium's seating and its screen.
+   */
+  for (const r of rooms) {
+    // Room E gets no seat blocks — chapter 1 dresses it with its own rows and its
+    // own aisle — but it does get a screen, like every other house. It is the one
+    // screen in the building that MATTERS as an object: chapter 1 bounces orange
+    // and green off it into the exit alcove, and it was the one screen with no
+    // collider until the sweep started opening the gates it lives behind.
+    if (r.n !== 'E') {
+      for (const s of seatBlockRects(r)) {
+        w.push({
+          ...s,
+          low: true,
+          kind: 'seats',
+          why: (b) => (b.kind === 'biggy' ? 'Biggy: seat rows. Too wide for me — use an aisle' : `${b.name}: seat rows. The aisles are that way`),
+        });
+      }
+    }
+    w.push({
+      ...roomScreen(r),
+      glass: true,
+      kind: 'screen',
+      why: (b) => `${b.name}: that is the screen. Fifteen metres of it, and it does not move`,
+    });
+  }
+
+  /* -------------------------------------------- what stands in the corridor */
+  const cols = corridorColumns();
+  for (const c of cols.far) {
+    w.push({
+      ...c,
+      kind: 'corridor-column',
+      why: (b) =>
+        b.kind === 'biggy'
+          ? 'Biggy: column. It holds the roof up, I hold nothing up. It wins'
+          : `${b.name}: a corridor column. Go round`,
+    });
+  }
+  for (const c of cols.near) {
+    w.push({ ...c, low: true, kind: 'corridor-plinth', why: (b) => `${b.name}: the foot of a column, knee high and solid` });
+  }
+
+  /* ------------------------------------------------ what stands in the foyer */
+  w.push({ ...F1.bar, low: true, kind: 'bar', why: (b) => `${b.name}: the foyer bar. Shut, dark, and nobody has left a drink on it` });
+  for (const s of F1.barStools) {
+    w.push({ ...s, low: true, kind: 'stool', why: (b) => `${b.name}: a bar stool. Push past it or go round` });
+  }
   return w;
 }
 
@@ -529,6 +753,152 @@ export const LOBBY_PLANTERS: readonly Rect[] = Object.freeze(
   ] as Array<[number, number]>).map(([x, y]): Rect => ({ x: x - 28, y: y - 12, w: 56, h: 24 })),
 );
 
+/* ------------------------------------------------ the second round of the same
+ *
+ * Everything from here to `groundWalls` was, until this round, drawn by
+ * `src/render/venue/ground.ts` out of its own numbers: the sponsor booths'
+ * totems and AV crates, the toilet partitions, the BOF rooms' slat walls, the
+ * hall's red accent panels, the store's back wall, the entrance's door-bay
+ * mullions and open leaves, and the forecourt's bollards and planters. Michele,
+ * playing the build after the first thirty-seven were fixed: *"this cube is
+ * walk-through"*, *"Entrance walls are still walkable"*. Same class, same cure.
+ */
+
+/** The orange totem beside a built booth — a 2.1 m marker standing in the lane. */
+export function boothTotem(b: Booth): Rect | null {
+  return b.table ? null : { x: b.x + b.w - 13, y: b.y + b.h + 7, w: 10, h: 10 };
+}
+/** The AV crate in front of a sponsor half table. */
+export function boothCrate(b: Booth): Rect | null {
+  return b.table ? { x: b.x + b.w / 2 - 9, y: b.y - 23, w: 18, h: 18 } : null;
+}
+
+/** The toilet block's two internal partitions. */
+export function toiletPartitions(): Rect[] {
+  const tl = GF.toilets;
+  return [1, 2].map((k): Rect => ({ x: tl.x + (k * tl.w) / 3, y: tl.y + T, w: 3, h: tl.h - 34 }));
+}
+
+/** The wood-slat wall down one side of each BOF room. */
+export function bofSlatWalls(): Rect[] {
+  const b = GF.bof;
+  const edges = [0, ...GF.bofSplits, b.w];
+  const out: Rect[] = [];
+  for (let i = 0; i < edges.length - 1; i++) {
+    const x0 = b.x + edges[i] + T;
+    if (b.x + edges[i + 1] - x0 < 20) continue;
+    out.push({ x: x0 + 2, y: b.y + 18, w: 4, h: b.h - 40 });
+  }
+  return out;
+}
+
+/** The cloth-draped tables in the BOF rooms, two per room. */
+export function bofTables(): Rect[] {
+  const b = GF.bof;
+  const edges = [0, ...GF.bofSplits, b.w];
+  const out: Rect[] = [];
+  for (let i = 0; i < edges.length - 1; i++) {
+    const x0 = b.x + edges[i] + T;
+    const roomW = b.x + edges[i + 1] - x0;
+    if (roomW < 20) continue;
+    for (let r = 0; r < 2; r++) out.push({ x: x0 + 10, y: b.y + 54 + r * 42, w: roomW - 20, h: 20 });
+  }
+  return out;
+}
+
+/** The red accent panels down the hall's two long walls. */
+export const HALL_PANELS: readonly Rect[] = Object.freeze(
+  [0, 1, 2, 3].flatMap((k): Rect[] => {
+    const h = GF.hall;
+    const x = h.x + 120 + k * 230;
+    return [
+      { x, y: h.y + 1, w: 90, h: 2 },
+      { x, y: h.y + h.h - 3, w: 90, h: 2 },
+    ];
+  }),
+);
+
+/** The store's wood back wall, behind the polo racks. */
+export const STORE_WALL: Rect = { x: GF.store.x + 10, y: GF.store.y + 6, w: GF.store.w - 20, h: 8 };
+
+/**
+ * THE ENTRANCE, AS THREE DOOR BAYS RATHER THAN ONE HOLE.
+ *
+ * `GF.entrance` is the run of the facade whose doors are open for Devoxx. The
+ * renderer has always drawn it as three bays divided by full-height mullions,
+ * with a leaf standing open against each reveal — and the sim carried one clear
+ * 136 px gap, so a robot walked straight through every one of those frames.
+ * Michele: *"Entrance walls are still walkable."* Both are `glass`: they block a
+ * robot and pass light, which is what a curtain wall does.
+ */
+export const ENTRANCE_BAYS = 3;
+export function entranceMullions(): Rect[] {
+  const e = GF.entrance;
+  const bayH = e.h / ENTRANCE_BAYS;
+  const out: Rect[] = [];
+  for (let k = 0; k < ENTRANCE_BAYS; k++) out.push({ x: e.x - 1, y: e.y + k * bayH, w: e.w + 2, h: 6 });
+  out.push({ x: e.x - 1, y: e.y + e.h - 6, w: e.w + 2, h: 6 });
+  return out;
+}
+/** The door leaves standing open against the reveals, on the lobby side. */
+export function entranceLeaves(): Rect[] {
+  const e = GF.entrance;
+  const bayH = e.h / ENTRANCE_BAYS;
+  return [0, 1, 2].map((k): Rect => ({ x: e.x - 17, y: e.y + k * bayH + 8, w: 16, h: 5 }));
+}
+/**
+ * The clear opening of each bay: between two mullions, past the leaf standing
+ * open in it. Chapter 3's crowd walks in through these — it used to aim at any
+ * point across the whole 136 px run, which was fine while the frames in that run
+ * were scenery and is not fine now that they stop people.
+ */
+export function entranceBayGaps(): Array<[number, number]> {
+  const mus = entranceMullions();
+  const leaves = entranceLeaves();
+  const out: Array<[number, number]> = [];
+  for (let k = 0; k + 1 < mus.length; k++) {
+    const lf = leaves[k];
+    out.push([Math.max(mus[k].y + mus[k].h, lf.y + lf.h), mus[k + 1].y]);
+  }
+  return out;
+}
+
+/**
+ * THE ROPE-LINE STANCHIONS — the one thing in the lobby that is drawn and is
+ * deliberately NOT a collider.
+ *
+ * They funnel arrivals from the doors past reception, and they stay walk-through
+ * on purpose: a velvet rope on a 26 cm post is not something a player expects to
+ * be stopped by, and a 4 px collider in the middle of the concourse would be an
+ * invisible snag rather than an obstacle. That decision is from the chapter-2
+ * round (`docs/playtest-notes.md`) and it is recorded HERE, beside the walls,
+ * rather than as a comment in the renderer — `tests/colliders.test.ts` reads
+ * this list as its one furniture exception, so the decision and the exception
+ * are the same four rectangles.
+ */
+export const LOBBY_STANCHIONS: readonly Rect[] = Object.freeze(
+  ([
+    [1440, 604],
+    [1370, 596],
+    [1300, 588],
+    [1230, 580],
+  ] as Array<[number, number]>).map(([x, y]): Rect => ({ x: x - 2.125, y: y - 2.125, w: 4.25, h: 4.25 })),
+);
+
+/** Bollards along the forecourt, outside the glazing. */
+export const FORECOURT_BOLLARDS: readonly Rect[] = Object.freeze(
+  Array.from({ length: 7 }, (_, k): Rect => ({
+    x: GF.entrance.x + GF.entrance.w + 26 - 2.75,
+    y: 120 + k * 78 - 2.75,
+    w: 5.5,
+    h: 5.5,
+  })),
+);
+/** The two planters out on the forecourt. */
+export const FORECOURT_PLANTERS: readonly Rect[] = Object.freeze(
+  ([300, 600] as const).map((y): Rect => ({ x: GF.entrance.x + GF.entrance.w + 70 - 13, y: y - 35, w: 26, h: 70 })),
+);
+
 /** Walls of the exhibition level. */
 export function groundWalls(): Wall[] {
   const w: Wall[] = [];
@@ -599,6 +969,16 @@ export function groundWalls(): Wall[] {
         ? (bb) => (bb.kind === 'voxxy' ? null : `${bb.name}: a sponsor table. Only something Voxxy-sized goes under the tablecloth`)
         : (bb) => `${bb.name}: ${bo.name} — a built booth, solid walls`,
     });
+    // The totem beside a built booth and the AV crate in front of a half table:
+    // both stand in the walking lane, both were drawn and neither was a collider.
+    const totem = boothTotem(bo);
+    if (totem) {
+      w.push({ ...totem, kind: 'totem', why: (bb) => `${bb.name}: ${bo.name}'s totem. Two metres of sponsor, bolted down` });
+    }
+    const crate = boothCrate(bo);
+    if (crate) {
+      w.push({ ...crate, low: true, kind: 'crate', why: (bb) => `${bb.name}: a flight case. Full of somebody's demo, and heavier than it looks` });
+    }
   }
 
   // The two enclosed secondary staircases, and the structural column grid.
@@ -625,6 +1005,29 @@ export function groundWalls(): Wall[] {
     kind: 'rack',
     why: (b) => (b.kind === 'voxxy' ? null : `${b.name}: the patch rack. The cable end on it is Voxxy's job`),
   });
+  /*
+   * The router cabinet and the store's roller door.
+   *
+   * Both are drawn by the venue in every chapter, and until now only CHAPTER 2
+   * carried a collider for either: in chapter 3 a robot walked through the
+   * cabinet, through the shut roller door and on into the store. They are venue
+   * fabric, so they belong here. Chapter 2 swaps them for its own versions,
+   * which can be opened and smashed — see `groundWallsFor`.
+   */
+  w.push({
+    ...GF.cabinet,
+    kind: 'cabinet',
+    why: (b) => `${b.name}: the router cabinet, cam-locked shut`,
+  });
+  w.push({
+    ...GF.roller,
+    kind: 'roller',
+    why: (b) => `${b.name}: the store's roller door, down for the night`,
+  });
+  w.push({ ...STORE_WALL, kind: 'store-wall', why: (b) => `${b.name}: the back wall of the store` });
+  for (const p of HALL_PANELS) {
+    w.push({ ...p, kind: 'accent-panel', why: (b) => `${b.name}: a wall panel. Kinepolis red, and solid` });
+  }
 
   /* ------------------------------------------------------------------ the lobby
    *
@@ -683,10 +1086,19 @@ export function groundWalls(): Wall[] {
       'bof',
     ),
   );
+  for (const s of bofSlatWalls()) {
+    w.push({ ...s, kind: 'bof-slats', why: (bb) => `${bb.name}: the slat wall. It is a wall` });
+  }
+  for (const tb of bofTables()) {
+    w.push({ ...tb, low: true, kind: 'bof-table', why: (bb) => `${bb.name}: a workshop table. Tomorrow there are twenty laptops on it` });
+  }
 
   // The toilets: one block, one doorway onto the lobby.
   const tl = GF.toilets;
   w.push(...shellOf(tl, 'toilets'), ...southDoors(tl, [[tl.x, tl.x + tl.w]], 40, 'toilets'));
+  for (const p of toiletPartitions()) {
+    w.push({ ...p, kind: 'toilet-partition', why: (bb) => `${bb.name}: tiled partition. Whatever is behind it, none of us needs it` });
+  }
 
   /*
    * The entrance wall: a glass facade with one set of doors open in it.
@@ -709,7 +1121,35 @@ export function groundWalls(): Wall[] {
       why: (bb) => `${bb.name}: fixed glazing. Only the left-hand doors are open for Devoxx`,
     });
   }
+  // The frames between the three door bays, and the leaves standing open against
+  // the reveals. Glass: they stop a robot and pass light, like the rest of the wall.
+  for (const mu of entranceMullions()) {
+    w.push({ ...mu, glass: true, kind: 'mullion', why: (bb) => `${bb.name}: that is the frame between two door bays — go through a bay` });
+  }
+  for (const lf of entranceLeaves()) {
+    w.push({ ...lf, glass: true, kind: 'door-leaf', why: (bb) => `${bb.name}: a glass door, standing open. Round it` });
+  }
+  // Out on the forecourt: bollards across the drop-off and two planters.
+  for (const bo of FORECOURT_BOLLARDS) {
+    w.push({ ...bo, low: true, kind: 'bollard', why: (bb) => `${bb.name}: a bollard. It is there so vans do not come in here` });
+  }
+  for (const p of FORECOURT_PLANTERS) {
+    w.push({ ...p, low: true, kind: 'forecourt-planter', why: (bb) => `${bb.name}: a planter, out in the rain with the rest of Antwerp` });
+  }
   return w;
+}
+
+/**
+ * The exhibition level's walls, with the pieces a chapter takes over left out.
+ *
+ * Chapter 2 owns the roller door (Biggy smashes it) and the router cabinet (the
+ * cam-lock wheel opens it), so it pushes its own versions with `onHit` and its
+ * own voices. It asks for the wall list without them rather than ending up with
+ * two colliders in each place, one of which nothing can ever remove.
+ */
+export function groundWallsFor(chapter: number): Wall[] {
+  const taken = chapter === 2 ? new Set(['roller', 'cabinet']) : new Set<string>();
+  return groundWalls().filter((w) => w.kind === undefined || !taken.has(w.kind));
 }
 
 /* ---------------------------------------------------------------- cameras */

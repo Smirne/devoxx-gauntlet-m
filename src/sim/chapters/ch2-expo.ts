@@ -34,7 +34,7 @@
 
 import { CABLE_MAX, PUSH_LEAN_MIN, ROLLER_DOOR_SPEED, SPEED_SCALE, T, TRAVEL_TIME_SCALE } from '../constants';
 import { m } from '../units';
-import { GF, VIEW_GROUND, groundWalls, stairDoor } from '../geometry';
+import { GF, VIEW_GROUND, groundWallsFor, stairDoor } from '../geometry';
 import { botsCollide, dist, inRect, mkBot, speed, stepBot } from '../bot';
 import { buildLights, litBy } from '../lights';
 import type { Bot, Hit, LightSource, Mirror, Prop, Vec2, Wall } from '../types';
@@ -418,7 +418,7 @@ const KEYS = '1/2/3/Tab: switch · WASD · E: use / brace · R: restart';
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');
   ctx.setView(VIEW_GROUND);
-  ctx.setWalls(groundWalls());
+  ctx.setWalls(groundWallsFor(2));
   /*
    * Out of the secondary stairwell's doors, into the hall.
    *

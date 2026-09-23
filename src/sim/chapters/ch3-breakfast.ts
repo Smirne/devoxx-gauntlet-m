@@ -26,7 +26,7 @@
  */
 
 import { SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
-import { GF, VIEW_GROUND, groundWalls } from '../geometry';
+import { GF, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
 import { botsCollide, circleRect, dist, inRect, speed } from '../bot';
 import type { Bot, Person, Prop, Vec2, Wall } from '../types';
 import { mkBody, setupMinigames, type MinigameState, type Minigames } from './ch2-expo';
@@ -244,13 +244,25 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     // then turns the only threshold into a stationary conga line.
     const lane = ctx.rng();
     const step = st.y + 34 + lane * (st.h - 68);
-    const v = mkBody('attendee', e.x, e.y + 8 + lane * (e.h - 16), { r: 5, mass: 0.5 }) as Visitor;
+    /*
+     * ...and which of the three DOOR BAYS. The entrance is one opening in the
+     * plot and three bays on the ground: the mullions between them and the
+     * leaves standing open in them are colliders now, so a visitor aimed at the
+     * middle of a frame stood at the door for the whole chapter instead of
+     * coming in. `entranceBayGaps()` is the clear width of each bay.
+     */
+    const gaps = entranceBayGaps();
+    const gap = gaps[Math.min(gaps.length - 1, Math.floor(lane * gaps.length))];
+    const inY = gap[0] + 6 + ctx.rng() * Math.max(0, gap[1] - gap[0] - 12);
+    const v = mkBody('attendee', e.x, inY, { r: 5, mass: 0.5 }) as Visitor;
     v.walk = (60 + ctx.rng() * 40) * SPEED_SCALE;
     v.colour = VISITOR_COLOURS[Math.floor(ctx.rng() * 4)];
     v.dwell = 0;
     v.hitCd = 0;
     v.route = [
-      { x: e.x - 40, y: e.y + 16 + lane * (e.h - 32) },
+      // Straight through the bay first, then turn: the leaf is standing open in it.
+      { x: e.x - 24, y: inY },
+      { x: e.x - 40, y: inY },
       { x: 1240, y: 520 + (lane - 0.5) * 90 },
       { x: st.x + st.w + 20, y: step },
       { x: GF.hall.x + GF.hall.w - 40, y: step },

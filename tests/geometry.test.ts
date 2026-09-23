@@ -71,17 +71,34 @@ function canWalk(a: Vec2, b: Vec2, r: number, extra: Wall[] = []): boolean {
   const nx = Math.ceil(W / STEP);
   const ny = Math.ceil(H / STEP);
   const seen = new Uint8Array(nx * ny);
-  const free = (ix: number, iy: number): boolean => {
-    const x = ix * STEP;
-    const y = iy * STEP;
-    for (const w of walls) {
-      const cx = Math.max(w.x, Math.min(x, w.x + w.w));
-      const cy = Math.max(w.y, Math.min(y, w.y + w.h));
-      if ((x - cx) ** 2 + (y - cy) ** 2 < r * r) return false;
-    }
-    return true;
-  };
   const idx = (ix: number, iy: number): number => iy * nx + ix;
+  /*
+   * Blocked cells, rasterised once per wall instead of tested per cell.
+   *
+   * Same circle-vs-rect test as before, evaluated only where it can possibly be
+   * true — the cells inside the wall grown by `r`. The old form was cells x
+   * walls (9.6M checks a call once the 2026-09-23 collider sweep roughly doubled
+   * the wall list), and it put this file over vitest's 5 s default on a loaded
+   * machine. Nothing about the answer changes.
+   */
+  const blocked = new Uint8Array(nx * ny);
+  for (const w of walls) {
+    const i0 = Math.max(0, Math.floor((w.x - r) / STEP));
+    const i1 = Math.min(nx - 1, Math.ceil((w.x + w.w + r) / STEP));
+    const j0 = Math.max(0, Math.floor((w.y - r) / STEP));
+    const j1 = Math.min(ny - 1, Math.ceil((w.y + w.h + r) / STEP));
+    for (let ix = i0; ix <= i1; ix++) {
+      for (let iy = j0; iy <= j1; iy++) {
+        if (blocked[idx(ix, iy)]) continue;
+        const x = ix * STEP;
+        const y = iy * STEP;
+        const cx = Math.max(w.x, Math.min(x, w.x + w.w));
+        const cy = Math.max(w.y, Math.min(y, w.y + w.h));
+        if ((x - cx) ** 2 + (y - cy) ** 2 < r * r) blocked[idx(ix, iy)] = 1;
+      }
+    }
+  }
+  const free = (ix: number, iy: number): boolean => blocked[idx(ix, iy)] === 0;
   const start = [Math.round(a.x / STEP), Math.round(a.y / STEP)] as const;
   const goal = [Math.round(b.x / STEP), Math.round(b.y / STEP)] as const;
   expect(free(start[0], start[1]), 'start is inside a wall').toBe(true);
@@ -553,9 +570,18 @@ describe('ground floor — the lobby, where Michele plotted it', () => {
       const band = walls.filter((w) => w.x + w.w > x && w.x < x + 85 && w.w < 400);
       expect(band.length, `nothing built in the column starting at x=${x}`).toBeGreaterThan(0);
     }
-    // East of the glazing is the street: only the building's own shell is there.
+    /*
+     * East of the glazing is the street. Nothing of the BUILDING stands out
+     * there — but the street furniture does, and it has to: the doors are open,
+     * a robot can walk out onto the forecourt, and the venue draws seven
+     * bollards and two planters on it. They were scenery a robot walked through
+     * until the collider sweep of 2026-09-23; now they are `low` walls, and the
+     * rule this test guards is narrower and truer than "nothing is out there".
+     */
     const outside = walls.filter((w) => w.x > GF.entrance.x + GF.entrance.w && w.x < W - T);
-    expect(outside).toHaveLength(0);
+    expect(outside.every((w) => w.kind === 'bollard' || w.kind === 'forecourt-planter')).toBe(true);
+    expect(outside.every((w) => w.low === true)).toBe(true);
+    expect(outside).toHaveLength(9);
   });
 });
 

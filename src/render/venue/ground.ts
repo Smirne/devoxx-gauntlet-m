@@ -40,9 +40,15 @@ import * as THREE from 'three';
 
 import { H, T, W } from '../../sim/constants';
 import {
+  ENTRANCE_BAYS,
+  FORECOURT_BOLLARDS,
+  FORECOURT_PLANTERS,
   GF,
   LOBBY_PLANTERS,
   LOBBY_RISE_M,
+  LOBBY_STANCHIONS,
+  bofTables,
+  entranceLeaves,
   groundWalls,
   stairDoor,
   stairFlightRect,
@@ -114,9 +120,31 @@ function wallStyle(
 ): { mat: THREE.MeshStandardMaterial; height: number; base: number } | null {
   // Half tables are drawn as cloth-draped tables, not as slabs.
   if (w.booth) return w.booth.table ? null : { mat: p.boothWall, height: BOOTH_H, base: 0 };
-  // Drawn by their own builders further down: the 19-inch rack, the flight inside
-  // a stair shaft (the sim carries it as a wall because nothing climbs).
-  if (w.kind === 'rack' || w.kind === 'stair-foot') return null;
+  // Drawn by their own builders further down: the 19-inch rack, the router cabinet
+  // and its louvres, the slatted roller door, the turned forecourt bollards, and
+  // the flight inside a stair shaft (the sim carries it as a wall because nothing
+  // climbs).
+  if (w.kind === 'rack' || w.kind === 'stair-foot' || w.kind === 'cabinet' || w.kind === 'roller' || w.kind === 'bollard') {
+    return null;
+  }
+  /*
+   * The furniture that used to be drawn out of this file's own numbers and was
+   * therefore walk-through: booth totems and flight cases, the hall's red accent
+   * panels, the store's back wall, the BOF slat walls, the toilet partitions, the
+   * entrance's door-bay mullions and the leaves standing open in them, and the
+   * forecourt planters. Michele, on that build: *"this cube is walk-through"*,
+   * *"Entrance walls are still walkable"*.
+   */
+  if (w.kind === 'totem') return { mat: p.devoxxOrange, height: 2.1, base: 0 };
+  if (w.kind === 'crate') return { mat: p.blackMetal, height: 1.05, base: 0 };
+  if (w.kind === 'accent-panel') return { mat: p.redPanel, height: 2, base: 0.4 };
+  if (w.kind === 'store-wall') return { mat: p.wood, height: 1.9, base: 0 };
+  if (w.kind === 'bof-slats') return { mat: p.wood, height: WALL_H, base: RISE };
+  if (w.kind === 'bof-table') return null;
+  if (w.kind === 'toilet-partition') return { mat: p.tiling, height: 1.9, base: RISE };
+  if (w.kind === 'mullion') return { mat: p.mullion, height: SHELL_H, base: RISE };
+  if (w.kind === 'door-leaf') return { mat: p.doorLeaf, height: DOOR_H, base: RISE };
+  if (w.kind === 'forecourt-planter') return { mat: p.concrete, height: 0.5, base: RISE };
   // The hall's structural grid: full shell height, because a roof column carries
   // the roof. The lobby's are the dark blue ones on the raised plate.
   if (w.kind === 'column') return { mat: p.concrete, height: SHELL_H, base: 0 };
@@ -262,18 +290,18 @@ function booths(p: VenuePalette): THREE.Group {
     const rect: Rect = { x: bo.x, y: bo.y, w: bo.w, h: bo.h };
     if (bo.table) {
       // A half table: cloth on three sides, open toward the lane below it. That
-      // open side is the gap the sim gives Voxxy and nobody else.
+      // open side is the gap the sim gives Voxxy and nobody else. The flight case
+      // in front of it is `boothCrate()` in the sim and comes through the wall loop.
       const table = clothTable(rect, '+z', p);
       table.name = `booth-table-${bo.col}-${bo.row}`;
       g.add(table);
-      g.add(boxAt(bo.x + bo.w / 2, bo.y - 14, 18, 18, 0, 1.05, p.blackMetal));
     } else {
       // A built booth: the sim's slab carries the walls, so this is the back-wall
-      // LED and the totem that make it read as a stand rather than a block.
+      // LED that makes it read as a stand rather than a block. The totem beside it
+      // is `boothTotem()` in the sim, for the same reason as the flight case.
       const led = slab({ x: bo.x + 6, y: bo.y - 2, w: bo.w - 12, h: 3 }, 0.9, 1.5, p.boothScreen);
       led.name = `booth-screen-${bo.col}-${bo.row}`;
       g.add(led);
-      g.add(boxAt(bo.x + bo.w - 8, bo.y + bo.h + 12, 10, 10, 0, 2.1, p.devoxxOrange));
     }
   }
   return g;
@@ -461,20 +489,25 @@ function lobby(p: VenuePalette, overhead: THREE.Group): THREE.Group {
       g.add(slab({ x: e.x - 1, y, w: e.w + 2, h: 5 }, RISE, SHELL_H + MULLION_PROUD, p.mullion));
     }
   }
-  // The open doors: three bays of paired leaves, swung back into the lobby, with a
-  // Devoxx poster on each leaf.
-  const bays = 3;
-  const bayH = e.h / bays;
-  for (let k = 0; k < bays; k++) {
+  /*
+   * The open doors: three bays, each with a leaf swung back into the lobby and a
+   * Devoxx poster on it. The mullions between them and the leaves standing open
+   * against the reveals are `entranceMullions()` and `entranceLeaves()` in the sim
+   * and arrive through the wall loop — Michele, on the last build: *"Entrance
+   * walls are still walkable."* They were: this file drew four full-height frames
+   * and three door leaves in the one gap the sim leaves open, and none of them
+   * existed as far as a robot was concerned.
+   */
+  const bayH = e.h / ENTRANCE_BAYS;
+  for (let k = 0; k < ENTRANCE_BAYS; k++) {
     const y0 = e.y + k * bayH;
-    g.add(slab({ x: e.x - 1, y: y0, w: e.w + 2, h: 6 }, RISE, SHELL_H, p.mullion));
     // The transom over the opening, so the doorway reads as a doorway.
     g.add(slab({ x: e.x, y: y0 + 6, w: e.w, h: bayH - 6 }, RISE + DOOR_H, SHELL_H - DOOR_H, p.glazing));
-    // A leaf standing open against the reveal, on the lobby side.
-    g.add(slab({ x: e.x - 17, y: y0 + 8, w: 16, h: 5 }, RISE, DOOR_H, p.doorLeaf));
-    g.add(slab({ x: e.x - 18, y: y0 + bayH / 2 - 9, w: 2, h: 18 }, RISE + 0.5, 1.1, p.devoxxOrange));
+    // The Devoxx poster on the open leaf, at eye height on its hall-facing side.
+    // It used to hang in mid-air beside the leaf, on nothing.
+    const leaf = entranceLeaves()[k];
+    g.add(slab({ x: leaf.x + 2, y: leaf.y + leaf.h - 0.5, w: leaf.w - 4, h: 1.5 }, RISE + 0.7, 1.1, p.devoxxOrange));
   }
-  g.add(slab({ x: e.x - 1, y: e.y + e.h - 6, w: e.w + 2, h: 6 }, RISE, SHELL_H, p.mullion));
 
   /* -------------------------------------------- the forecourt beyond the glass */
 
@@ -491,13 +524,13 @@ function lobby(p: VenuePalette, overhead: THREE.Group): THREE.Group {
    * two are edge to edge with nothing coplanar between them.
    */
   g.add(floorSlab({ x: e.x + e.w, y: 0, w: W - (e.x + e.w), h: H }, RISE, p.paving, RISE + 0.3));
-  for (let k = 0; k < 7; k++) g.add(postAt(e.x + e.w + 26, 120 + k * 78, 0.22, 0.9, RISE, p.blackMetal, 10));
-  for (const [sx, sy] of [
-    [e.x + e.w + 70, 300],
-    [e.x + e.w + 70, 600],
-  ] as Array<[number, number]>) {
-    g.add(boxAt(sx, sy, 26, 70, RISE, 0.5, p.concrete));
-    g.add(boxAt(sx, sy, 20, 62, RISE + 0.5, 0.35, p.boothCloth));
+  // The bollards and the planters out here are sim walls now — a robot can walk
+  // out through the open doors, and it used to walk through all nine of them.
+  for (const b of FORECOURT_BOLLARDS) {
+    g.add(postAt(b.x + b.w / 2, b.y + b.h / 2, 0.22, 0.9, RISE, p.blackMetal, 10));
+  }
+  for (const r of FORECOURT_PLANTERS) {
+    g.add(slab({ x: r.x + 3, y: r.y + 4, w: r.w - 6, h: r.h - 8 }, RISE + 0.5, 0.35, p.boothCloth));
   }
 
   /* ------------------------------------- the concourse in front of the doors */
@@ -510,12 +543,9 @@ function lobby(p: VenuePalette, overhead: THREE.Group): THREE.Group {
   // stay dressing: a velvet rope on a 26 cm post is not something a player expects
   // to be stopped by, and a 4 px collider in the middle of the concourse would be
   // an invisible snag rather than an obstacle.
-  for (const [sx, sy] of [
-    [1440, 604],
-    [1370, 596],
-    [1300, 588],
-    [1230, 580],
-  ] as Array<[number, number]>) {
+  for (const st of LOBBY_STANCHIONS) {
+    const sx = st.x + st.w / 2;
+    const sy = st.y + st.h / 2;
     g.add(postAt(sx, sy, 0.13, 1.0, RISE, p.stanchion, 10));
     g.add(postAt(sx, sy, 0.17, 0.05, RISE + 0.98, p.stanchion, 12));
     g.add(slab({ x: sx - 38, y: sy - 1, w: 38, h: 2 }, RISE + 0.78, 0.05, p.stanchionBelt));
@@ -527,10 +557,9 @@ function lobby(p: VenuePalette, overhead: THREE.Group): THREE.Group {
 
   /* --------------------------------------------------------------- toilets */
 
+  // The two partitions inside are sim walls (`toiletPartitions()`); this is the
+  // tiled back wall and the pictogram.
   const tl = GF.toilets;
-  for (let k = 1; k < 3; k++) {
-    g.add(slab({ x: tl.x + (k * tl.w) / 3, y: tl.y + T, w: 3, h: tl.h - 34 }, RISE, 1.9, p.tiling));
-  }
   g.add(slab({ x: tl.x + T, y: tl.y + T, w: tl.w - 2 * T, h: 4 }, RISE, WALL_H, p.tiling));
   // The blue pictogram panel beside the doorway, on the lobby side.
   g.add(slab({ x: tl.x + tl.w / 2 - 34, y: tl.y + tl.h - 2, w: 22, h: 2 }, RISE + 1.5, 0.5, p.signBlue));
@@ -547,14 +576,17 @@ function lobby(p: VenuePalette, overhead: THREE.Group): THREE.Group {
     const x1 = b.x + edges[i + 1];
     const roomW = x1 - x0;
     if (roomW < 20) continue;
+    // The projector screen. The slat wall beside it is a sim wall now
+    // (`bofSlatWalls()`): it is 2.45 m of wall and it was walk-through.
     g.add(slab({ x: x0 + 6, y: b.y + T + 2, w: roomW - 12, h: 3 }, RISE + 0.75, 1.4, p.audScreen));
-    g.add(slab({ x: x0 + 2, y: b.y + 18, w: 4, h: b.h - 40 }, RISE, WALL_H, p.wood));
-    for (let r = 0; r < 2; r++) {
-      const t: Rect = { x: x0 + 10, y: b.y + 54 + r * 42, w: roomW - 20, h: 20 };
-      g.add(slab(t, RISE + LOW_H - 0.06, 0.06, p.boothCloth));
-      g.add(slab({ x: t.x, y: t.y + 2, w: t.w, h: 4 }, RISE + 0.02, LOW_H - 0.08, p.boothCloth));
-    }
     overhead.add(slab({ x: x0 + 4, y: b.y + 4, w: roomW - 8, h: b.h - 8 }, RISE + 2.9, 0.1, p.ceilingTile));
+  }
+  // The workshop tables. Their rects are `bofTables()` in the sim — they are
+  // `low` walls like every other table in the building — and the cloth is drawn
+  // inside each one so the skirt is never proud of its own collider.
+  for (const t of bofTables()) {
+    g.add(slab(t, RISE + LOW_H - 0.06, 0.06, p.boothCloth));
+    g.add(slab({ x: t.x, y: t.y + 2, w: t.w, h: 4 }, RISE + 0.02, LOW_H - 0.08, p.boothCloth));
   }
   // The orange Devoxx sign over the BOF block, readable from the concourse.
   g.add(slab({ x: b.x + 20, y: b.y + b.h - 2, w: 120, h: 2 }, RISE + 1.7, 0.55, p.devoxxOrange));
@@ -604,14 +636,10 @@ export function buildGround(p: VenuePalette): GroundBuild {
   group.add(reception(p, overhead));
   group.add(staircases(p, anchors));
 
-  // Red accent panels down the hall's long walls — the empty-hall photograph's
-  // only colour once the lights are off.
+  // The red accent panels down the hall's long walls — the empty-hall
+  // photograph's only colour once the lights are off — are `HALL_PANELS` in the
+  // sim and come through the wall loop above.
   const h = GF.hall;
-  for (let k = 0; k < 4; k++) {
-    const x = h.x + 120 + k * 230;
-    group.add(slab({ x, y: h.y + 1, w: 90, h: 2 }, 0.4, 2, p.redPanel));
-    group.add(slab({ x, y: h.y + h.h - 3, w: 90, h: 2 }, 0.4, 2, p.redPanel));
-  }
 
   /*
    * THE BREAKER PANEL — the consumer unit on the technical room's back wall.
@@ -690,7 +718,6 @@ export function buildGround(p: VenuePalette): GroundBuild {
   const roller = rollerDoor(GF.roller, p);
   roller.name = 'roller-door';
   group.add(roller);
-  group.add(slab({ x: GF.store.x + 10, y: GF.store.y + 6, w: GF.store.w - 20, h: 8 }, 0, 1.9, p.wood));
 
   group.add(lobby(p, overhead));
 
