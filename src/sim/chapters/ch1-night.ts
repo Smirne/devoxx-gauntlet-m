@@ -17,7 +17,18 @@
  * memorised between runs and the clues have to be actually solved.
  */
 
-import { CY0, CY1, DOOR, F1, R, VIEW_CLOSED, VIEW_F1, floor1Walls, roomDoor } from '../geometry';
+import {
+  CY0,
+  CY1,
+  F1,
+  R,
+  VIEW_CLOSED,
+  VIEW_F1,
+  cinemaEExit,
+  floor1Walls,
+  roomDoor,
+  roomScreen,
+} from '../geometry';
 import { JAMMED_DOOR_SPEED, MOUNT_BIGGY_MAX_SPEED, MOUNT_REACH, SPEED_SCALE, T, W } from '../constants';
 import { m } from '../units';
 import { buildLights, clueLit, litBy } from '../lights';
@@ -82,6 +93,17 @@ const JAM_MIN_TALK = 20 * SPEED_SCALE;
  */
 const JAM_FALL_TIME = 0.55;
 
+/**
+ * The leaf the renderer draws in a doorway, from the doorway's own collider.
+ *
+ * `roomDoor()` returns a 12 px band because a door has to seal a 6 px wall from
+ * both sides; drawn literally that is a door leaf **0.96 m thick**, which is what
+ * Michele keeps calling "big". The collider stays the full band — nothing about
+ * passing through the door changes — and the picture becomes a 0.48 m leaf
+ * centred in it.
+ */
+const leaf = (d: Rect): Rect => ({ x: d.x, y: d.y + 3, w: d.w, h: 6 });
+
 /** The jokes on the doors of the cinemas Devoxx never uses. */
 const CLOSED_JOKES: Readonly<Record<string, string>> = Object.freeze({
   A: 'Popcorn machine: OFF',
@@ -110,7 +132,8 @@ const OBJECTIVE =
   'Chapter 1 · <b>Night</b>. The Devoxx entrance downstairs is shut; you came in through the ' +
   "cinema's back door, into the closed section — and the power is out. The fire door to the Devoxx " +
   'rooms has a keypad: find the <b>4 digits</b>, each visible only under the right <b>mix of lights</b>. ' +
-  'Droid can climb on Biggy (E). Biggy can smash the jammed door with a straight run across the corridor.';
+  'Droid can climb on Biggy (E). Biggy can smash the jammed door with a straight run across the corridor. ' +
+  'In the last cinema the <b>screen is a mirror</b>: light that hits it comes back into the room.';
 const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb · Space: take hold of Biggy · 4-9 at the keypad (Backspace) · R: restart';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
@@ -137,6 +160,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /** 0..1, the smashed door's own fall. Started by the hit, ticked in `update`. */
   let jamFall = 0;
   let fireOpen = false;
+  /** Biggy says "my light is coming off the screen" once, the first time it does. */
+  let mirrorHinted = false;
 
   const digits = [0, 1, 2, 3].map(() => PAD_LOW + Math.floor(ctx.rng() * (PAD_HIGH - PAD_LOW + 1)));
 
@@ -159,8 +184,27 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           : 'Biggy: fire door. I could hit it. I would lose. Find the four digits',
   };
   ctx.walls.push(fire);
-  const keypad: Rect = { x: F1.fireX - 18, y: CY0 + 8, w: 16, h: 24 };
-  const padAt = { x: keypad.x + 8, y: keypad.y + 12 };
+  /**
+   * The keypad: a panel ON the fire door, and a collider like everything else you
+   * can see.
+   *
+   * It was a 16 x 24 px box standing 18 px clear of the door — 1.3 m wide, 1.9 m
+   * DEEP and 1.25 m tall, a fridge parked in the corridor — and the collider sweep
+   * never looked at it, because `tests/colliders.test.ts` measures what
+   * `buildVenue()` builds and this is a chapter prop. You walked straight through
+   * it. Now it is 8 px of housing against the door's own face, standing 1.9 m
+   * along the wall, with a wall under it.
+   */
+  const keypad: Rect = { x: F1.fireX - 8, y: CY0 + 8, w: 8, h: 24 };
+  ctx.walls.push({
+    ...keypad,
+    kind: 'keypad',
+    why: (b) =>
+      b.kind === 'voxxy'
+        ? 'Voxxy: that is the keypad itself — stand next to it, do not headbutt it'
+        : `${b.name}: keypad housing. Type on it, do not walk into it`,
+  });
+  const padAt = { x: keypad.x + keypad.w / 2, y: keypad.y + keypad.h / 2 };
   /** Is the driven robot close enough to type? Measured from its edge, not its centre. */
   const atPad = (): boolean => {
     const b = ctx.bots[ctx.cur];
@@ -249,8 +293,31 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * (`tall`) is what gates Droid, in the rooms that use it.
    */
   const AISLE_W = 15;
-  const aisle: [number, number] = [rE.x + 50, rE.x + 50 + AISLE_W];
-  const alcove: Rect = { x: rE.x + rE.w - 46, y: rE.y + rE.h - 78, w: 40, h: 40 };
+  /**
+   * The aisle is up the RIGHT of the room, beside the exit alcove.
+   *
+   * Michele, after the playthrough he could not finish: *"I'd try the aisle room
+   * on the opposite way, for better interaction. I no longer see the hint in that
+   * room, i wasn't able to solve it."*
+   *
+   * He is right twice over. The aisle used to run up the LEFT and the alcove sat
+   * against the RIGHT wall, so the two halves of one puzzle were at opposite ends
+   * of a room the camera frames 320 px wide: you walked down the aisle, lost sight
+   * of where you were going, and crossed a black floor to get to it. Mirrored, the
+   * aisle delivers you at the alcove's mouth, and the gate, the route and the prize
+   * are one picture.
+   *
+   * `plans/` fixes where the ROOMS are, not which side a chapter dresses an aisle
+   * on, so this is not a venue change (CLAUDE.md).
+   */
+  const aisle: [number, number] = [rE.x + rE.w - 50 - AISLE_W, rE.x + rE.w - 50];
+  /**
+   * The exit alcove is venue geometry now — `cinemaEExit()` — because its walls
+   * have to be DRAWN, and the renderer only ever draws `floor1Walls()`. It has
+   * also moved up the room, out of the strip the fixed camera cannot see past
+   * cinema E's own front wall. See the comment on `cinemaEExit`.
+   */
+  const alcove: Rect = cinemaEExit();
   const whySeats = (b: { kind: string }): string | null =>
     b.kind === 'biggy' ? 'Biggy: too wide for that aisle — but my light goes over the seats' : null;
   /**
@@ -268,25 +335,38 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * already reaches the screen.
    */
   const seatRects: Rect[] = [];
+  const ROW_H = 9;
   for (let y = rE.y + 58; y <= rE.y + 180; y += 24) {
-    // The last rows stop short of the alcove instead of running into its wall.
-    const rightEnd = y >= alcove.y - T - 9 ? alcove.x - T : rE.x + rE.w;
-    const left: Rect = { x: rE.x, y, w: aisle[0] - rE.x, h: 9 };
+    const left: Rect = { x: rE.x, y, w: aisle[0] - rE.x, h: ROW_H };
     ctx.walls.push({ ...left, low: true, kind: 'seatrow', why: whySeats });
     seatRects.push(left);
-    if (rightEnd - aisle[1] > 4) {
-      const right: Rect = { x: aisle[1], y, w: rightEnd - aisle[1], h: 9 };
+    // Right of the aisle there is only room for seats ABOVE the alcove: below its
+    // top wall the whole strip is the alcove and the bay in front of it, which is
+    // what makes the aisle the only way in.
+    if (y + ROW_H <= alcove.y - T) {
+      const right: Rect = { x: aisle[1], y, w: rE.x + rE.w - aisle[1], h: ROW_H };
       ctx.walls.push({ ...right, low: true, kind: 'seatrow', why: whySeats });
       seatRects.push(right);
     }
   }
-  ctx.walls.push(
-    { x: alcove.x - T, y: alcove.y - T, w: alcove.w + 2 * T, h: T },
-    { x: alcove.x - T, y: alcove.y, w: T, h: alcove.h },
-  );
-  // The cinema screen. A lit point on it re-emits, which is the only way orange and
-  // green reach the alcove at all — the seat rows are low, so light crosses them.
-  mirrors.push({ x0: rE.x + 20, x1: rE.x + rE.w - 20, y: rE.y + rE.h, ny: -1 });
+  /*
+   * The cinema screen is the chapter's MIRROR, and it is now the SAME OBJECT the
+   * venue draws.
+   *
+   * It used to be a mirror segment across the room's outer wall (`rE.y + rE.h`,
+   * 20 px in from each side) plus a `screen` PROP of its own — and the venue
+   * already draws `screen-E` from `roomScreen()`, so the room had two screens in
+   * it. The prop was the worse of the two by a distance: 5.2 m tall against the
+   * real screen's 2.75, wider than it, standing between the fixed camera and the
+   * floor, and with a collider under only the middle two thirds of it. It hid the
+   * entire front of cinema E — every square metre of the route from the aisle to
+   * the alcove — and you could walk through the ends of it.
+   *
+   * So the prop is gone and the mirror sits on the face of the screen that is
+   * actually in the room. Same beat, one object.
+   */
+  const screenE = roomScreen(rE);
+  mirrors.push({ x0: screenE.x, x1: screenE.x + screenE.w, y: screenE.y, ny: -1 });
 
   const dE = roomDoor(rE);
   const jam: Wall = {
@@ -481,6 +561,20 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     ctx.pushBiggy(dt);
     if (jamBroken && jamFall < 1) jamFall = Math.min(1, jamFall + dt / JAM_FALL_TIME);
     lights = buildLights(ctx.bots, ctx.walls, mirrors);
+    /*
+     * The one line that tells the player the mirror exists.
+     *
+     * Michele could not solve cinema E, and the reason a bounce puzzle is hard is
+     * that nothing ever says a bounce is happening: Biggy is shut out of the aisle,
+     * so the only feedback he gets from walking into that room is a refusal. The
+     * moment his flood actually throws a secondary source off the screen — which
+     * only happens when he is in cinema E, in range, pointing at it — he says so,
+     * once.
+     */
+    if (!mirrorHinted && !clues[3].found && lights.some((L) => L.owner === 'biggy' && !L.primary)) {
+      mirrorHinted = true;
+      ctx.flash('Biggy: my light is coming back off the screen — swing it until the bounce lands in the exit alcove', 3500);
+    }
     for (const c of clues) {
       if (!c.found && clueLit(lights, c)) {
         c.found = true;
@@ -496,17 +590,16 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       { kind: 'firedoor', x: fire.x, y: fire.y, w: fire.w, h: fire.h, state: fireOpen ? 'open' : 'shut' },
       { kind: 'keypad', ...keypad, state: fireOpen ? 'done' : 'idle', label: entered.padEnd(4, '_') },
       { kind: 'projector-panel', ...panel, state: panelOn ? 'done' : 'idle', label: 'projector panel' },
-      { kind: 'screen', x: mirrors[0].x0, y: mirrors[0].y - 5, w: mirrors[0].x1 - mirrors[0].x0, h: 5 },
+      // No `screen` prop: `buildVenue()` draws cinema E's screen from
+      // `roomScreen()` like every other house's, and the mirror now sits on that
+      // one. See the comment where `mirrors` is built.
       { kind: 'alcove', ...alcove, state: 'idle', label: 'exit alcove' },
     ];
     for (const r of seatRects) out.push({ kind: 'seatrow', ...r, state: 'idle' });
     // The scenery cinemas' doors, so the wall behind each joke is something you
     // can see rather than something you bump into.
-    for (const n of Object.keys(SHUT_VOICES)) {
-      const d = roomDoor(R(n));
-      out.push({ kind: 'lock', x: d.x, y: d.y, w: d.w, h: d.h, state: 'shut' });
-    }
-    if (!panelOn) out.push({ kind: 'lock', x: lock.x, y: lock.y, w: lock.w, h: lock.h, state: 'shut' });
+    for (const n of Object.keys(SHUT_VOICES)) out.push({ kind: 'lock', ...leaf(roomDoor(R(n))), state: 'shut' });
+    if (!panelOn) out.push({ kind: 'lock', ...leaf(dB), state: 'shut' });
     /*
      * The jammed door is emitted whatever state it is in.
      *
@@ -516,27 +609,27 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      * `progress`; the leaf ends up lying on the cinema floor where Biggy put it,
      * which is the trophy.
      */
-    out.push({
-      kind: 'jammed',
-      x: jam.x,
-      y: jam.y,
-      w: jam.w,
-      h: jam.h,
-      state: jamBroken ? 'broken' : 'shut',
-      progress: jamFall,
-    });
-    // The doors of the cinemas Devoxx never uses, each with its own excuse.
+    out.push({ kind: 'jammed', ...leaf(dE), state: jamBroken ? 'broken' : 'shut', progress: jamFall });
+    /*
+     * The joke on each closed cinema's door — a NOTICE taped to the leaf, not a
+     * hoarding parked in the doorway.
+     *
+     * It used to be `kind: 'sign'`, which `src/render/scene.ts` draws as a
+     * 4.8 m-class box 2.2 m tall standing on the FLOOR, centred on the doorway.
+     * So every closed cinema had a second, featureless slab planted across its
+     * entrance with nothing under it: Michele, twice, *"The room door is still big
+     * and walked on"*, and from the corridor it also blanked out the view into
+     * cinema E — the room he could not solve.
+     *
+     * `poster` is the spec that already means "a printed thing on a wall": 0.62 m
+     * of panel hung at 0.95 m, with its own standby glow so it reads in a
+     * blackout. Hung, so it is not something you walk into in the first place.
+     */
     for (const n of Object.keys(CLOSED_JOKES)) {
-      const r = R(n);
-      const d = roomDoor(r);
-      out.push({
-        kind: 'sign',
-        x: d.cx,
-        y: r.side < 0 ? CY0 + 14 : CY1 - 8,
-        w: DOOR,
-        h: 10,
-        label: CLOSED_JOKES[n],
-      });
+      // Cinema E's notice goes down with the door Biggy puts through the wall.
+      if (n === 'E' && jamBroken) continue;
+      const d = roomDoor(R(n));
+      out.push({ kind: 'poster', x: d.cx - 13, y: d.y, w: 26, h: 4, label: CLOSED_JOKES[n] });
     }
     return out;
   }
