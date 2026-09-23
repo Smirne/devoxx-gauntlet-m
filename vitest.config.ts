@@ -14,6 +14,28 @@ export default defineConfig({
      * material — ignored here, and ignored by git.
      */
     exclude: ['tests/_*.test.ts', 'tests/zz-*.test.ts', 'tests/probe-*.test.ts', 'node_modules/**', 'dist*/**'],
+    /*
+     * 30 s, not vitest's 5.
+     *
+     * This suite is a physics sim, not a set of unit tests: the chapter
+     * choreographies step thousands of frames through a full wall list, chapter
+     * 3 walks a 36-body crowd, and the clue sweeps rebuild a visibility-polygon
+     * set per pose. On an idle machine the slowest of them is about 4 s — under
+     * the default with nothing to spare.
+     *
+     * That margin is not real. Run the suite while a build or another agent is
+     * working beside it and half a dozen tests cross 5 s and go red having
+     * computed exactly the right answer. It has now happened twice, and both
+     * times the first reading was "something regressed" — a timeout is the worst
+     * kind of red, because it is indistinguishable from a broken gate until you
+     * read the message.
+     *
+     * A per-test timeout is the wrong cure: it has to be remembered by whoever
+     * writes the next slow test, and it was not. This is the floor for all of
+     * them. A test that genuinely hangs still fails, 25 s later.
+     */
+    testTimeout: 30000,
+    hookTimeout: 30000,
     reporters: ['default'],
   },
 });
