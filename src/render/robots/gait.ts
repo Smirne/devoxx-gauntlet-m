@@ -601,15 +601,34 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
     //
     // This was knees-up and feet-tucked, which reads as a crouching jump and,
     // together with a lift that assumed his soles touched down, left him hovering
-    // over the helmet. He now straddles it: hips rolled well out so the thighs
-    // pass either side of a dome nearly a metre and a half across, shins hanging
-    // down its flanks, feet level.
+    // over the helmet. He straddles it now.
+    //
+    // ROUND TWO, on Michele's *"Droid sitting on Biggy reads well only from some
+    // angles."* This game has one camera, so "some angles" means the one that
+    // matters, sometimes. Shot from it (chapter 1, the pair about 100 px tall),
+    // the failure is specific: **nothing of his legs appears outside Biggy's
+    // outline**. The hips rolled 0.58 and the thighs 0.52 forward put both knees
+    // inside a dome 0.88 m across, so what the camera got was a torso and a head
+    // standing out of a ball, with two blue flecks where his shins surfaced
+    // through the shell — a bust on a plinth, not a rider.
+    //
+    // A silhouette is the only thing that reads at that size, so the legs are
+    // posed to make one: hips rolled to 0.92 takes each knee past the dome's
+    // 0.44 m flank, the thigh comes further forward so the knee breaks his
+    // outline toward the camera, and the shin folds back hard so the foot tucks
+    // against the helmet instead of hanging into the gut below it. Knees up
+    // round his ears on a beach ball is also the funnier read, which is the
+    // tie-breaker Michele has already given us: *"I vote funny, robots must be
+    // recognizable."*
     for (const L of ['L', 'R'] as const) {
-      bones[`thigh${L}`].rotation.x = -0.52;
-      bones[`shin${L}`].rotation.x = 0.92;
-      bones[`foot${L}`].rotation.x = 0.12;
-      bones[`hip${L}`].rotation.z = L === 'L' ? 0.58 : -0.58;
+      bones[`thigh${L}`].rotation.x = -0.86;
+      bones[`shin${L}`].rotation.x = 1.62;
+      bones[`foot${L}`].rotation.x = -0.15;
+      bones[`hip${L}`].rotation.z = L === 'L' ? 0.92 : -0.92;
     }
+    // Leaning forward over the crown, which is what a rider does and what stops
+    // his own head reading as the top of a totem pole.
+    pelvis.rotation.x += 0.2;
     st.contact[0] = false;
     st.contact[1] = false;
   } else {
@@ -668,11 +687,19 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
     shoulder.rotation.y += clamp(-st.turn * 0.04, -0.2, 0.2);
   }
   if (params.mounted) {
+    /*
+     * Both hands down on the crown. They were held straight out to the sides,
+     * which from the diorama camera is a scarecrow; a rider holding on is the
+     * one arm pose that reads at 100 px, and it clears the knees, which are now
+     * up round his ears.
+     */
     for (const L of ['L', 'R'] as const) {
-      bones[`upperArm${L}`].rotation.x = -0.75;
-      bones[`forearm${L}`].rotation.x = -0.9;
-      bones[`shoulder${L}`].rotation.z = (L === 'L' ? 1 : -1) * 0.25;
+      bones[`shoulder${L}`].rotation.x = -0.45;
+      bones[`shoulder${L}`].rotation.z = (L === 'L' ? 1 : -1) * 0.34;
+      bones[`upperArm${L}`].rotation.x = -0.35;
+      bones[`forearm${L}`].rotation.x = -0.8;
     }
+    bones.torso.rotation.x += 0.1;
   }
 
   /* ------------------------------------------------------ torso + head */

@@ -500,6 +500,94 @@ export function ovalPatch(
   return g;
 }
 
+export interface RevolvePatchOpts {
+  /** How far the patch floats off the surface, metres. Its apparent thickness. */
+  out?: number;
+  /** Extra bulge at the middle of the patch, metres — a plate that is not flat. */
+  dome?: number;
+  /** Corner rounding, 0 = a rectangle, 1 = a lozenge. */
+  corner?: number;
+  /** Fraction of the half-width at the top edge — under 1 gives a trapezoid. */
+  taperTop?: number;
+  /** Fraction of the half-width at the bottom edge. */
+  taperBottom?: number;
+  cols?: number;
+  rows?: number;
+}
+
+/**
+ * A rounded-rectangle patch lying on a **surface of revolution** — `ovalPatch`'s
+ * sibling for a lathe instead of an ellipsoid.
+ *
+ * Biggy's belt plate is what this exists for. It was a `roundedBox` laid against
+ * the trousers, which was fine while the trousers were a box; once they became a
+ * lathe the plate's flat back face stood **70 mm off the shell at the bottom
+ * edge** (the sweep takes the block from 0.42 m of radius at the waist to 0.30 m
+ * at the hem, and a 0.10 m tall flat plate cannot follow that), which is the
+ * "still a flat slab" in Michele's note. A patch generated ON the profile cannot
+ * have that failure: every vertex is `radiusAt(y) + out` by construction.
+ *
+ * `radiusAt` is the lathe's own profile in ITS pre-scale frame, so a caller that
+ * squashes the lathe in Z squashes the patch by the same factor afterwards and
+ * the two still agree exactly. `phiMid` aims the patch around Y measured from
+ * +Z, as everywhere else in this file.
+ */
+export function revolvePatch(
+  radiusAt: (y: number) => number,
+  phiMid: number,
+  phiHalf: number,
+  y0: number,
+  y1: number,
+  o: RevolvePatchOpts = {},
+): THREE.BufferGeometry {
+  const out = o.out ?? 0.006;
+  const dome = o.dome ?? 0;
+  const corner = clamp(o.corner ?? 0.35, 0, 1);
+  const tTop = o.taperTop ?? 1;
+  const tBot = o.taperBottom ?? 1;
+  const cols = Math.max(2, o.cols ?? 16);
+  const rows = Math.max(2, o.rows ?? 10);
+  const pos: number[] = [];
+  const idx: number[] = [];
+  for (let j = 0; j <= rows; j++) {
+    const v = (j / rows) * 2 - 1;
+    const y = lerp(y0, y1, j / rows);
+    // The footprint: a trapezoid, with its four corners rounded off. `k` is how
+    // far into the corner band this row is, and the circular arc is what makes
+    // the corner a radius rather than a chamfer.
+    const taper = lerp(tBot, tTop, j / rows);
+    const k = corner <= 0 ? 0 : clamp((Math.abs(v) - (1 - corner)) / corner, 0, 1);
+    const shrink = 1 - corner * (1 - Math.sqrt(Math.max(0, 1 - k * k)));
+    for (let i = 0; i <= cols; i++) {
+      const u = (i / cols) * 2 - 1;
+      const phi = phiMid + phiHalf * taper * shrink * u;
+      const r = radiusAt(y) + out + dome * (1 - u * u) * (1 - v * v);
+      pos.push(r * Math.sin(phi), y, r * Math.cos(phi));
+    }
+  }
+  const stride = cols + 1;
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < cols; i++) {
+      const a = j * stride + i;
+      const b = a + 1;
+      const c = a + stride;
+      const d = c + 1;
+      // Wound to face OUT of the lathe. `i` runs with phi, which at the front
+      // (phi = 0) is +X, and `j` runs with +Y, so the outward triangle is
+      // a -> b -> c: (b - a) x (c - a) = X x Y = +Z. Getting this backwards is
+      // silent — `computeVertexNormals` flips with it and back-face culling then
+      // throws the patch away, which is exactly how the first cut of Biggy's
+      // belt plate shipped invisible.
+      idx.push(a, b, c, b, d, c);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
 /**
  * A grid of small square dots lying on an ellipsoid's surface, as ONE geometry —
  * the dot-matrix screen behind Voxxy's visor glass.
@@ -595,10 +683,26 @@ export interface BoltRingOpts {
   /** Start angle, radians, measured from +Z. */
   phase?: number;
   /**
-   * If given, each rivet is aimed away from this point instead of straight up —
-   * which is how they sit flush on a domed helmet.
+   * If given, each rivet is aimed away from this point instead of straight up.
+   *
+   * This is only right on a SPHERE centred there. On a lathe it is wrong by
+   * however far the profile's normal differs from the radius, and it is wrong in
+   * a way that shows: Biggy's dome rivet line sits at r = 0.412, y = 0.108, where
+   * the helmet's profile runs at dr/dy = -0.56, so its true normal stands 29
+   * degrees above horizontal — while `aimFrom = (0, -0.25, 0)` pointed the rivets
+   * at **41 degrees**, a 12-degree tilt on every head in a line of eighteen.
+   * Prefer `aimSlope`, which is exact for any surface of revolution.
    */
   aimFrom?: THREE.Vector3;
+  /**
+   * The profile's `dr/dy` at this ring — the exact way to seat rivets on a lathe.
+   *
+   * A surface of revolution `r(y)` has outward normal `(1, -dr/dy)` in the
+   * radius/height plane, so a flank falling away as it rises (a dome: `dr/dy`
+   * negative) tilts its rivets UP by `atan(-dr/dy)`, and a cylinder (`0`) stands
+   * them straight out. Takes precedence over `aimFrom`.
+   */
+  aimSlope?: number;
 }
 
 const _up = new THREE.Vector3(0, 1, 0);
@@ -612,7 +716,10 @@ export function boltRing(parent: THREE.Object3D, mat: THREE.MeshStandardMaterial
     const a = phase + (i / o.count) * Math.PI * 2;
     const b = bolt(mat, o.boltRadius ?? 0.014, o.boltHeight ?? 0.012);
     b.position.set(Math.sin(a) * o.radius, y, Math.cos(a) * o.radius);
-    if (o.aimFrom) {
+    if (o.aimSlope !== undefined) {
+      _dir.set(Math.sin(a), -o.aimSlope, Math.cos(a)).normalize();
+      b.quaternion.setFromUnitVectors(_up, _dir);
+    } else if (o.aimFrom) {
       _dir.copy(b.position).sub(o.aimFrom).normalize();
       b.quaternion.setFromUnitVectors(_up, _dir);
     }
