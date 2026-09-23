@@ -866,6 +866,46 @@ export const sponsorTotem =
   };
 
 /**
+ * The printed cloth on a half table, seen from above.
+ *
+ * A table stand's one big surface is its top, and from a diorama camera pitched
+ * at 31 deg the top is most of what you see of it — the six half tables used to
+ * read as six purple slabs eight metres across, which is the shape of the sim's
+ * booth rect and the look of nothing at all. A branded cloth is what a sponsor
+ * actually puts there, and it is the only surface on a table stand big enough to
+ * carry the name at the size the built stands carry theirs.
+ *
+ * The plane is laid flat with `rotation.x = -PI/2`, which sends the texture's +v
+ * to world -z: away from the fixed camera, which is up the screen, which is the
+ * right way up for the lettering.
+ */
+export const sponsorCloth =
+  (name: string, s: BoothScheme): Paint =>
+  (ctx, w, h) => {
+    ctx.fillStyle = s.brand;
+    ctx.fillRect(0, 0, w, h);
+    // Folds: a cloth off a roll has them, and they stop eight metres of flat
+    // colour from reading as a painted lid.
+    ctx.fillStyle = 'rgba(0,0,0,0.10)';
+    for (let x = 0; x < w; x += w / 9) ctx.fillRect(x, 0, w / 34, h);
+    const wash = ctx.createLinearGradient(0, 0, 0, h);
+    wash.addColorStop(0, 'rgba(0,0,0,0.22)');
+    wash.addColorStop(0.7, 'rgba(255,255,255,0.05)');
+    ctx.fillStyle = wash;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.fillStyle = s.ink;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const size = fitFont(ctx, name, w * 0.7, Math.round(h * 0.2), 800);
+    ctx.fillText(name, w / 2, h * 0.52);
+    ctx.globalAlpha = 0.75;
+    ctx.font = `500 ${Math.round(size * 0.38)}px ${FONT}`;
+    ctx.fillText(s.strap, w / 2, h * 0.68);
+    ctx.globalAlpha = 1;
+  };
+
+/**
  * The printed valance across the front of a draped half table.
  *
  * Small type, read from the lane, and it carries the strapline rather than the

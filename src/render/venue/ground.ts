@@ -61,6 +61,7 @@ import type { VenuePalette } from './materials';
 import {
   BOOTH_SCHEMES,
   type SignPainter,
+  sponsorCloth,
   sponsorPanel,
   sponsorSkirt,
   sponsorTotem,
@@ -506,7 +507,10 @@ function booths(p: VenuePalette, art: SignPainter): THREE.Group {
     const tile: Rect = {
       x: r.x - CARPET_BLEED,
       y: r.y - CARPET_BLEED,
-      w: Math.max(bleedE - (r.x - CARPET_BLEED), r.w),
+      // For column 3 this clamp cuts 28 px OFF THE BOOTH, not just off the bleed,
+      // and it is meant to: the booth is inside the staircase there and the least
+      // this file can do is stop short of the steps rather than carpet them.
+      w: bleedE - (r.x - CARPET_BLEED),
       h: r.h + CARPET_BLEED * 2,
     };
     carpet.push(boxGeo(tile, CARPET_TOP - 0.04, 0.04));
@@ -537,6 +541,22 @@ function booths(p: VenuePalette, art: SignPainter): THREE.Group {
       g.add(table);
 
       /*
+       * The printed cloth over the top. See `sponsorCloth` for why the top is the
+       * surface that has to carry the name on a table stand, and for why
+       * `rotation.x = -PI/2` is the right way up for a camera that only ever
+       * stands on +z.
+       */
+      const cloth = new THREE.Mesh(
+        new THREE.PlaneGeometry(m(r.w) - 0.02, m(r.h) - 0.02),
+        art.material(`booth-cloth-${key}`, 800, 560, s.brand, sponsorCloth(bo.name, s), 0.16),
+      );
+      cloth.rotation.x = -Math.PI / 2;
+      cloth.position.set(m(r.x + r.w / 2), LOW_H + 0.006, m(r.y + r.h / 2));
+      cloth.name = `booth-cloth-${key}`;
+      cloth.receiveShadow = true;
+      g.add(cloth);
+
+      /*
        * The printed valance: a 22 cm band hanging from the table edge across the
        * open side, with half a metre of dark gap still showing under it. A draped
        * table at a trade show always has one, and it is the only surface on a
@@ -559,11 +579,11 @@ function booths(p: VenuePalette, art: SignPainter): THREE.Group {
        * its name on one of these, not on a wall it has not paid for, and standing
        * it ON the table keeps it inside the collider and out of Voxxy's gap.
        */
-      const banner = wallPanel(r.x + 24, r.y + 12, 0.92, 1.4, LOW_H + 0.72, 1,
+      const banner = wallPanel(r.x + 22, r.y + 11, 1.1, 1.75, LOW_H + 0.9, 1,
         art.material(`booth-banner-${key}`, 300, 460, s.brand, sponsorTotem(bo.name, s), 0.22));
       banner.name = `booth-banner-${key}`;
       g.add(banner);
-      dark.push(boxGeo({ x: r.x + 21, y: r.y + 12, w: 6, h: 1.6 }, LOW_H, 0.05));
+      dark.push(boxGeo({ x: r.x + 18, y: r.y + 11, w: 8, h: 1.6 }, LOW_H, 0.05));
 
       // On the table: the giveaway bowl, and a standby strip along the cloth edge.
       bowls.put(r.x + r.w - 26, r.y + 26, LOW_H);
@@ -653,12 +673,12 @@ function booths(p: VenuePalette, art: SignPainter): THREE.Group {
          * Biggy 1.45. That gate was a line of prose with nothing on screen behind
          * it. Three shelves at 0.62 / 1.24 / 1.92 m say it without a word.
          */
-        for (const [sy, sx] of [[0.62, 0], [1.24, 0], [1.92, 0]] as Array<[number, number]>) {
-          pale.push(boxGeo({ x: r.x + 12 + sx, y: r.y + STAND_T, w: r.w - 30, h: 7 }, sy, 0.05));
+        for (const sy of [0.62, 1.24, 1.92]) {
+          pale.push(boxGeo({ x: r.x + 10, y: r.y + STAND_T, w: 40, h: 7 }, sy, 0.05));
         }
         for (let k = 0; k < 9; k++) {
           const sy = [0.67, 1.29, 1.97][k % 3];
-          bowls.put(r.x + 18 + Math.floor(k / 3) * 22, r.y + STAND_T + 3, sy);
+          bowls.put(r.x + 17 + Math.floor(k / 3) * 13, r.y + STAND_T + 3, sy);
         }
         break;
       }
