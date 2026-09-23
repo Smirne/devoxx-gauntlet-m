@@ -134,7 +134,7 @@ const OBJECTIVE =
   'rooms has a keypad: find the <b>4 digits</b>, each visible only under the right <b>mix of lights</b>. ' +
   'Droid can climb on Biggy (E). Biggy can smash the jammed door with a straight run across the corridor. ' +
   'In the last cinema the <b>screen is a mirror</b>: light that hits it comes back into the room.';
-const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb · Space: take hold of Biggy · 4-9 at the keypad (Backspace) · R: restart';
+const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb / hold Biggy / Voxxy jumps · 4-9 at the keypad (Backspace) · R: restart';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('up');
@@ -505,7 +505,21 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   /* --------------------------------------------------------------------- keys */
 
-  function key(input: string): void {
+  /**
+   * This chapter's keys — and what it hands back.
+   *
+   * A `false` return means "`E` means nothing where you are standing", and
+   * `game.ts` then spends the key on Voxxy's hop or on taking hold of Biggy (see
+   * `ChapterRuntime.key`). It matters most here: the cinema seat rows are `low`
+   * walls 0.72 m deep, which is exactly what one hop crosses, and this is the
+   * room Michele was thinking of when he asked for the jump.
+   *
+   * The two robots who CAN use `E` here are Droid and a Biggy carrying him, and
+   * only for the climb and the projector panel. Everything else about this room
+   * is typed at a keypad, so Voxxy's `E` was a dead key in the darkest chapter in
+   * the game.
+   */
+  function key(input: string): boolean {
     const b = ctx.bots[ctx.cur];
     const d = ctx.byKind('droid');
     const bg = ctx.byKind('biggy');
@@ -525,20 +539,25 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         panelOn = true;
         ctx.removeWall(lock);
         ctx.flash("Droid reaches the projector panel from Biggy's shoulders — the middle cinema unlocks");
-        return;
+        return true;
       }
       if (!panelOn && !canMount && !d.mounted && b.kind === 'droid' && dist(b, panelAt) < PANEL_REACH) {
         ctx.flash('Droid: too high, even for me. If I stood on Biggy…');
-        return;
+        return true;
       }
-      if (b.kind === 'droid' || (b.kind === 'biggy' && d.mounted)) ctx.toggleMount();
+      if (b.kind === 'droid' || (b.kind === 'biggy' && d.mounted)) {
+        ctx.toggleMount();
+        return true;
+      }
+      // Nothing in this room for that robot's `E`. Hand it back.
+      return false;
     }
 
     // Backspace takes one back. A four-digit field with no way to correct a
     // fat-fingered press makes the player wait for it to fill up and be wrong.
     if (nearPad && input === 'Backspace' && entered.length > 0) {
       entered = entered.slice(0, -1);
-      return;
+      return true;
     }
 
     if (nearPad && /^Digit\d$/.test(input)) {
@@ -547,7 +566,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       // would fill the field with keys they never meant for it.
       if (!/^Digit[4-9]$/.test(input)) {
         ctx.flash(`${b.name}: this keypad is 4 to 9. ${input[5]} is a robot, not a digit`);
-        return;
+        return true;
       }
       entered += input[5];
       if (entered.length === 4) {
@@ -565,7 +584,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           entered = '';
         }
       }
+      return true;
     }
+    return false;
   }
 
   /* ------------------------------------------------------------------- update */

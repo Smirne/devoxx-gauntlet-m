@@ -303,7 +303,7 @@ const OBJECTIVE =
   'the <b>store</b> open. <b>Droid</b> reaches what is too high, <b>Biggy</b> moves what is too ' +
   'heavy, <b>Voxxy</b> goes where nothing else fits.';
 const KEYS =
-  '1/2/3/Tab: switch · WASD · E: use / climb / terminal · Space: take hold of Biggy · R: restart';
+  '1/2/3/Tab: switch · WASD · E: use / climb / terminal / hold Biggy / Voxxy jumps · R: restart';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');
@@ -680,7 +680,20 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     );
   }
 
-  function key(code: string): void {
+  /**
+   * This chapter's keys — and what it hands back.
+   *
+   * `false` means "`E` means nothing where you are standing", and `game.ts` then
+   * spends the key on Voxxy's hop or on taking hold of Biggy (see
+   * `ChapterRuntime.key`). Only Voxxy's dead end hands it back, and that is
+   * deliberate: she is the only one of the three who can jump, and she is the one
+   * who has to get hold of Biggy for the roller-door run — which is Michele's
+   * *"Why space and not e for catching? I'd keep it to one key"*, answered here
+   * rather than by a second key. Droid and Biggy keep their own last words,
+   * because "nothing to reach here" and "I don't do buttons, I do doors" say more
+   * in this room than a refusal to jump would.
+   */
+  function key(code: string): boolean {
     const b = ctx.bots[ctx.cur];
     const d = ctx.byKind('droid');
     const bg = ctx.byKind('biggy');
@@ -697,23 +710,23 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       if (code === 'Escape' || code === 'Enter') {
         router.prompting = false;
         ctx.flash(`${b.name} steps back from the terminal`);
-        return;
+        return true;
       }
       if (code === 'Backspace') {
         router.typed = router.typed.slice(0, -1);
-        return;
+        return true;
       }
       const letter = /^Key([A-Z])$/.exec(code);
       if (letter) {
         typeLetter(letter[1]);
-        return;
+        return true;
       }
       // Anything else (Tab, a digit) falls through and means what it always means;
       // taking a robot that is not at the terminal closes the prompt in `update`.
     }
 
     ctx.switchKey(code);
-    if (code !== 'KeyE') return;
+    if (code !== 'KeyE') return true;
 
     const atCabinet = dist(b, cabinetAt) < CABINET_REACH;
     const atTerminal = router.cabinetOpen && dist(b, cabinetAt) < TERMINAL_REACH;
@@ -725,7 +738,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       // whichever check happens to be written first.
       if (atTerminal && (!atPanel || dist(b, cabinetAt) <= dist(b, panelAt))) {
         useTerminal(b);
-        return;
+        return true;
       }
       if (atPanel) {
         breakersLeft--;
@@ -745,20 +758,20 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         } else {
           ctx.flash(`Droid flips a breaker (${BREAKERS - breakersLeft}/${BREAKERS})`);
         }
-        return;
+        return true;
       }
       // Route 3 starts here rather than at the cabinet: he climbs on wherever Biggy
       // happens to be standing, and the tower walks over afterwards.
       if (dist(d, bg) < d.r + bg.r + MOUNT_REACH && speed(bg) < MOUNT_BIGGY_MAX_SPEED) {
         ctx.toggleMount();
-        return;
+        return true;
       }
       if (atCabinet) {
         ctx.flash(
           'Droid: shut, and seized. Weight opens this, not leverage — and the label is inside the lid ' +
             'anyway, up at the top. One of those is a Biggy problem, the other one is both of us',
         );
-        return;
+        return true;
       }
       if (dist(b, posterAt) < POSTER_READ) {
         ctx.flash(
@@ -768,10 +781,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
                 'thirteen letters of orange fog. My eyes are for reaching things, not for reading them. Voxxy',
           4000,
         );
-        return;
+        return true;
       }
       ctx.flash('Droid: nothing to reach here');
-      return;
+      return true;
     }
 
     if (b.kind === 'voxxy') {
@@ -788,7 +801,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
             'under the sponsor tables',
           4600,
         );
-        return;
+        return true;
       }
       if (cable.carrying && dist(b, printerAt) < PLUG_REACH) {
         cable.carrying = false;
@@ -799,7 +812,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
             'The printer has its wire. Now it wants the other end of it to be awake',
           3000,
         );
-        return;
+        return true;
       }
       /*
        * THE LINE MICHELE COULD NOT PARSE — *"I still don't get where / how to
@@ -820,15 +833,15 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
             'steps in the hall\'s right-hand wall (the blue sign), then the lit pad on the counter. E there',
           4200,
         );
-        return;
+        return true;
       }
       if (atTerminal) {
         useTerminal(b);
-        return;
+        return true;
       }
       if (atCabinet) {
         ctx.flash('Voxxy: shut. I can see the seam and I cannot do one thing about it. Biggy opens this one');
-        return;
+        return true;
       }
       if (dist(b, posterAt) < POSTER_READ) {
         ctx.flash(
@@ -838,10 +851,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
                 'poking job — hold the beam on it',
           3600,
         );
-        return;
+        return true;
       }
-      ctx.flash('Voxxy: nothing to plug in here');
-      return;
+      // Her dead end, handed back: at Biggy it becomes a grab, anywhere else a hop.
+      return false;
     }
 
     /*
@@ -856,14 +869,14 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
             '<b>WiFi: DevoxxForever</b>. Of course it is. Now the terminal',
           3800,
         );
-        return;
+        return true;
       }
       if (router.cabinetOpen && !router.known && dist(bg, cabinetAt) < TERMINAL_REACH + 40) {
         ctx.flash('Droid: the tape is inside the lid, right at the top. Closer, Biggy — up against it');
-        return;
+        return true;
       }
       ctx.toggleMount();
-      return;
+      return true;
     }
 
     if (!router.cabinetOpen && atCabinet) {
@@ -882,13 +895,14 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
               'Nothing in this cabinet has a supply',
         4400,
       );
-      return;
+      return true;
     }
     if (atTerminal) {
       useTerminal(b);
-      return;
+      return true;
     }
     ctx.flash("Biggy: I don't do buttons. I do doors.");
+    return true;
   }
 
   /* ------------------------------------------------------------------- update */

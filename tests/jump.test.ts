@@ -237,3 +237,81 @@ describe('E, when the chapter has no use for it', () => {
     expect(g.snapshot().tow).toBeNull();
   });
 });
+
+/*
+ * THE FALL-THROUGH, CHAPTER BY CHAPTER.
+ *
+ * `E` is one key with two jobs — Michele: *"I'd keep E, when no other action is
+ * available"* — and it only works if the chapter gets first refusal. These are the
+ * two cases that must never blur into each other: a press the chapter WANTS must
+ * not also hop, and a press the chapter has no use for must not be swallowed.
+ * Chapter 3 is not taught yet; when it is, it belongs here too.
+ */
+describe('E falls through only where the chapter has no use for it', () => {
+  const night = (): DebugGame => createGame({ seed: 11, chapter: 1, cards: false });
+  const expo = (): DebugGame => createGame({ seed: 11, chapter: 2, cards: false });
+
+  /** Put the driven robot somewhere with nothing near it, and take it. */
+  function alone(g: DebugGame, kind: RobotKind, x: number, y: number): void {
+    g.debug.select(kind);
+    for (const o of g.snapshot().bots) if (o.kind !== kind) g.debug.place(o.kind, x + 300, y + 200);
+    g.debug.place(kind, x, y);
+    g.update(DT_MAX);
+  }
+
+  it('hops Voxxy in the chapter-1 corridor, where E has never meant anything for her', () => {
+    const g = night();
+    alone(g, 'voxxy', 330, 352);
+    g.key('KeyE');
+    expect(airborne(bot(g, 'voxxy'))).toBe(true);
+  });
+
+  it('leaves the climb alone: Droid at Biggy takes the shoulders, not the air', () => {
+    const g = night();
+    const bg = bot(g, 'biggy');
+    g.debug.select('droid');
+    g.debug.place('droid', bg.x - bg.r - bot(g, 'droid').r - 1, bg.y);
+    g.update(DT_MAX);
+    g.key('KeyE');
+    expect(bot(g, 'droid').mounted).toBe(true);
+    expect(airborne(bot(g, 'droid'))).toBe(false);
+  });
+
+  it('leaves the projector panel alone, refusal and all', () => {
+    const g = night();
+    const panel = g.snapshot().props.find((o) => o.kind === 'projector-panel');
+    if (!panel) throw new Error('no projector panel');
+    alone(g, 'droid', panel.x + 13, panel.y + 8);
+    g.key('KeyE');
+    // Droid says he is too short for it; he does not also refuse to jump.
+    expect(g.snapshot().toast?.t ?? '').toContain('If I stood on Biggy');
+  });
+
+  it('hops Voxxy in the chapter-2 hall, where her own E was a dead end', () => {
+    const g = expo();
+    alone(g, 'voxxy', 500, 400);
+    g.key('KeyE');
+    expect(airborne(bot(g, 'voxxy'))).toBe(true);
+  });
+
+  it('but takes hold of Biggy first when she is against him — one key, in order', () => {
+    const g = expo();
+    const bg = bot(g, 'biggy');
+    g.debug.select('voxxy');
+    g.debug.place('voxxy', bg.x - bg.r - bot(g, 'voxxy').r, bg.y);
+    g.update(DT_MAX);
+    g.key('KeyE');
+    expect(g.snapshot().tow?.holder).toBe('voxxy');
+    expect(airborne(bot(g, 'voxxy'))).toBe(false);
+  });
+
+  it('leaves the chapter-2 terminal alone', () => {
+    const g = expo();
+    const term = g.snapshot().props.find((o) => o.kind === 'terminal');
+    if (!term) throw new Error('no terminal');
+    alone(g, 'voxxy', term.x, term.y);
+    g.key('KeyE');
+    // Whatever the cabinet says back, she is on the floor saying it.
+    expect(airborne(bot(g, 'voxxy'))).toBe(false);
+  });
+});
