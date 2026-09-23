@@ -281,6 +281,16 @@ so anything marked *looks* waits behind anything marked *plays*.
 | Chapter 1's mirror puzzle plays off camera | Michele — *"since the 3 color room mechanic is reflecting on the screen, but the screen is not visible in this angulation, could we move the puzzle on the upper line?"* | **This was living in chat only and was nearly lost.** The bounce off cinema E's screen is the feedback for the whole puzzle and the fixed camera does not show the screen. Moving the puzzle to a top-row room turns the screen toward the camera; the alternative is re-pitching that one room's camera. His suggestion is the cheaper of the two. |
 | Robots do not stand on the ground floor's raised lobby or its stairs | agent, cutscene round | `groundRiseM(x)` exists in `geometry.ts` *for this*, its own doc says the renderer reads it, and **nothing reads it** — so a robot on the lobby plate stands half a metre inside it and one on the main flight is swallowed. This is why chapter 3's transition walks into a staircase. |
 
+## Measured, and waiting on Michele
+
+Two findings from the beer-bar round, 24 Sep. Both are measurements rather than opinions, and
+both change something he has already ruled on, so neither was acted on.
+
+| finding | the measurement | why it was not fixed |
+| --- | --- | --- |
+| **Chapter 3's catering gate leaks.** He said of the queue blocking Biggy from the soup: *"That is a good gate and it stays."* It stays — but it is not the gate the chapter's own text describes. | Flood fill at Biggy's frozen `r = 9`, every queue person a solid disc: the catering doorway is 44 px, so his centre may be anywhere in a 26 px band. The two files of the queue stand 10 px apart, leaving **11 px of clear centre line beside them with the queue shut** — enough for him to drive straight in. Clearing a queue widens that to 27 px. Nearest reachable floor to the soup station with the queues standing: **25 px, against a `POT_REACH` of 70**. He can fill the pot without Voxxy saying a word. | The one-line fix is to stand the queue's two files across the doorway's width instead of 10 px apart. That changes the soup's difficulty, which is his call, and the chapter-3 choreography in `chapters.test.ts` is tuned around the current spacing. `tests/beer-bar.test.ts` asserts the true thing — clearing a queue *widens* the doorway — and says in a comment why it does not assert the sealing a reader expects. |
+| **`beerDone` needs all six crates.** | A heap error scatters the crates 12–15 px, so in every driven run they have all been recoverable. Nothing prevents one ending up shoved under a booth, and then the chapter cannot be finished without finding it. | Either the gate drops to five, or a stranded crate gets a way back. Both are design choices. |
+
 ## Plays — closed since this list was written
 
 ### The tow bar is wired (23 Sep)
