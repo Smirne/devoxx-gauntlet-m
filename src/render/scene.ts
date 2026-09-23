@@ -27,7 +27,8 @@
 
 import * as THREE from 'three';
 
-import { MOUNT_OFFSET_Y, W as SIM_W, H as SIM_H } from '../sim/constants';
+import { hopPhase } from '../sim/bot';
+import { JUMP_RISE_M, MOUNT_OFFSET_Y, W as SIM_W, H as SIM_H } from '../sim/constants';
 import { groundRiseM } from '../sim/geometry';
 import type { GameSnapshot, Person, Prop, RobotKind, ViewRect } from '../sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M, STOREY_H_M, m } from '../sim/units';
@@ -1814,7 +1815,18 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
        * work of its own rather than a line here.
        */
       const rider = b.kind === 'droid' && b.mounted;
-      const lift = rider ? mountLift() : 0;
+      /*
+       * Voxxy's hop, drawn from the sim's own clock and nothing else.
+       *
+       * `hopPhase` runs 0 to 1 across the airtime and `4u(1 - u)` is the height
+       * of a body under constant gravity as a fraction of its apex, so the arc on
+       * screen is the arc `JUMP_AIR` was derived from. No easing curve, no second
+       * set of numbers to keep in step with the sim — which is the rule for this
+       * file (CLAUDE.md: the renderer reads, it does not decide).
+       */
+      const u = hopPhase(b);
+      const hop = u > 0 ? JUMP_RISE_M * 4 * u * (1 - u) : 0;
+      const lift = (rider ? mountLift() : 0) + hop;
       /*
        * "Droid light is oddly pointing somewhere else?"
        *

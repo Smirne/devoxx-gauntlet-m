@@ -24,7 +24,16 @@ import {
   TRAVEL_TIME_SCALE,
 } from './constants';
 import { VIEW_CLOSED } from './geometry';
-import { botsCollide, circleRect, mkBot, pushBiggy as leanOnBiggy, stepBot, syncMount, toggleMount as climbBiggy } from './bot';
+import {
+  botsCollide,
+  circleRect,
+  jump as leaveTheFloor,
+  mkBot,
+  pushBiggy as leanOnBiggy,
+  stepBot,
+  syncMount,
+  toggleMount as climbBiggy,
+} from './bot';
 import { canGrab, grab as takeHold, stepTow, towPlace, type TowState } from './tow';
 import type {
   Bot,
@@ -313,6 +322,24 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     flash(`${b.name} takes hold of Biggy — push or pull along the bar, steer across it`);
   }
 
+  /**
+   * `E` with nothing else on it: take hold of Biggy, let go of him, or hop.
+   *
+   * The order is intent, not convenience. A robot already on the bar means to let
+   * go; one standing against Biggy means to take hold, because that is the reason
+   * to be standing there; anything else is Voxxy's hop. She can always step away
+   * from Biggy to jump, and there is nothing she could want to hop over while
+   * touching him.
+   */
+  function spareE(): void {
+    const b = bots[cur];
+    if (tow || (b.kind !== 'biggy' && canGrab(b, byKind('biggy'), MOUNT_REACH))) {
+      towToggle();
+      return;
+    }
+    leaveTheFloor(b, flash);
+  }
+
   function release(why: string): void {
     if (!tow) return;
     const holder = byKind(tow.holder);
@@ -386,6 +413,8 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       o.vx = 0;
       o.vy = 0;
       o.boostCap = 0;
+      o.air = 0;
+      o.hopRest = 0;
     }
   }
 
@@ -589,6 +618,8 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       b.max = def.max;
       b.drag = def.drag;
       b.mass = def.mass;
+      b.air = 0;
+      b.hopRest = 0;
     }
   }
 
@@ -794,7 +825,20 @@ export function createGame(opts: GameOptions = {}): DebugGame {
         cur = (cur + 1) % bots.length;
       } while (bots[cur].mounted);
     }
-    runtime.key(code);
+    /*
+     * THE CHAPTER GETS FIRST REFUSAL ON `E`.
+     *
+     * Michele: *"Why space and not e for catching? I'd keep it to one key"*, and
+     * then *"I'd keep E, when no other action is available."* `E` already means
+     * use / climb / brace / lift / play inside the chapters, so this is an
+     * ordering problem rather than a rename: the chapter is asked first, and only
+     * a chapter that answers a flat `false` — "I looked, and `E` means nothing
+     * where you are standing" — hands the key on. A chapter that has not been
+     * taught to answer returns nothing and keeps the key, which is why this
+     * arrived one chapter at a time instead of all at once.
+     */
+    const claimed = runtime.key(code);
+    if (code === 'KeyE' && claimed === false) spareE();
     // Taking a different robot lets go of the bar: the holder is driven by the
     // stick, so leaving the pair joined while the stick is somewhere else means
     // Biggy drags a robot nobody is steering. This is checked AFTER the chapter

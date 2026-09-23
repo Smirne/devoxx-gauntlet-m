@@ -77,6 +77,16 @@ export interface Bot extends RobotDef {
   braced: boolean;
   /** Transient speed cap above `max`, granted by a push; decays at 1.5 s^-1. */
   boostCap?: number;
+  /**
+   * Seconds of airtime left on a hop; 0 or absent on the ground.
+   *
+   * The sim stays 2D: nothing here has a z. What being airborne means is precisely
+   * one thing — `low` walls are not there for this body — and how high it reads is
+   * the renderer's business, drawn from this clock and `JUMP_RISE_M`.
+   */
+  air?: number;
+  /** Seconds before this body may push off again, counted from take-off. */
+  hopRest?: number;
   /** Timestamp of the last "X pushes Biggy" toast, sim seconds. */
   pushFlash?: number;
 }
