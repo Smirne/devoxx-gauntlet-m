@@ -27,7 +27,7 @@ constants once to do it.
 ### Speeds — one factor
 
 `SPEED_SCALE = 0.25`, applied to every px/s quantity in `src/sim` and nowhere else. Rates in s⁻¹
-(`accel`, `drag`, `BOOST_DECAY`, the cam wheel's bearing drag) and pure ratios (masses, restitution,
+(`accel`, `drag`, `BOOST_DECAY`) and pure ratios (masses, restitution,
 `BOOST_CAP_FACTOR`) are dimensionless across a rescale and did not move, so every curve keeps its
 shape and only the unit on the velocity axis changed.
 

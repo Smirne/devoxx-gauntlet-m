@@ -167,12 +167,23 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
   jammed: { h: 2.1, color: 0x6b4630, tl: true },
   /* chapter 2 — the exhibition hall */
   // `breaker` is NOT in this table: its three handles carry a live sim value, so it
-  // is drawn by `drawBreaker` the way the cam wheel is drawn by `drawCamWheel`.
+  // is drawn by `drawBreaker` the way the router terminal is drawn by `drawTerminal`.
   // The rack's CARCASS is venue geometry (`ground.ts`), like the breaker enclosure:
   // this is the live band across its face, so the chapter's idle/active/done state
   // reads from across the room. Drawn as a solid box it was a second, duplicate
   // cabinet standing in the same place — the mistake the breaker panel was making.
   rack: { h: 0.3, color: 0x2b3a44, tl: true, lift: 1.55, glow: 0x1f5c38 },
+  /*
+   * The router terminal inside the cabinet, and the sponsor banner out in the hall
+   * that carries the password in its small print.
+   *
+   * Both carry a `glow`, for the reason `projector-panel` above carries one: the
+   * thing a player is looking FOR is by definition still idle, and Michele has
+   * filed "there should be something visible" against this exact failure twice.
+   * `drawTerminal` takes the screen further — a waiting terminal blinks.
+   */
+  terminal: { h: 0.34, color: 0x101820, tl: true, lift: 1.25, glow: 0x6b4406 },
+  poster: { h: 0.62, color: 0xe9e4d6, tl: true, lift: 0.95, glow: 0x2a3a52 },
   printer: { h: 0.95, color: 0xb9bec6, tl: true },
   roller: { h: 2.6, color: 0x7d8792, tl: true },
   gate: { h: 1.1, color: 0x2b3542, tl: true },
@@ -392,74 +403,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   cableLine.visible = false;
   dressing.add(cableLine);
 
-  /* ------------------------------------------------- the chapter-2 cam-lock wheel
-   *
-   * The one prop in the game whose *orientation* is live game state, so it cannot be
-   * a box out of `PROPS` like everything else. There is exactly one of it, so it is
-   * built once rather than pooled, in the pattern the cable already uses.
-   *
-   * The wheel stands in the world x-y plane on the cabinet's +z face — the face the
-   * diorama camera looks at — so it is never seen edge-on, and `rotation.z` reads
-   * straight off `Prop.v`, the sim's own angle. Sim angle 0 points along +x, which
-   * is screen right, and increases anticlockwise; nothing here converts it, which is
-   * what makes the HUD's "wheel 47°" and the picture agree.
-   *
-   * The BEZEL does not turn: the eight index marks are scribed on the cabinet, and
-   * the one the cam has to be stopped on lights up only while Voxxy's cone is on it
-   * (`GameSnapshot.props`, kind 'cam-mark', state 'active').
-   */
-  const WHEEL_SPOKES = 5;
-  const WHEEL_MARK_COUNT = 8;
-  /** Hub height off the floor, metres — about Biggy's shoulder, which is what hits it. */
-  const WHEEL_HUB_Y = 1.15;
-  /** Tick radius as a fraction of the rim: the bezel ring sits just outside the wheel. */
-  const BEZEL_R = 1.3;
-
-  const wheelSteel = new THREE.MeshStandardMaterial({ color: 0x9aa4b0, roughness: 0.35, metalness: 0.8 });
-  /** Biggy-blue: the handle he catches, and the pointer that has to line up with the mark. */
-  const wheelGrip = new THREE.MeshStandardMaterial({ color: 0x5f8fd0, roughness: 0.45, metalness: 0.3 });
   const bezelMat = new THREE.MeshStandardMaterial({ color: 0x2a2f36, roughness: 0.8, metalness: 0.2 });
-  const tickMat = new THREE.MeshStandardMaterial({ color: 0x6c757f, roughness: 0.7, metalness: 0.3 });
-  /** The target mark. Voxxy-orange and self-lit the moment her cone finds it. */
-  const markMat = new THREE.MeshStandardMaterial({
-    color: 0x3a2a1c,
-    roughness: 0.6,
-    emissive: 0x000000,
-    emissiveIntensity: 1,
-    toneMapped: false,
-  });
-
-  /** The turning part: rim, spokes, hub and the grip-and-pointer that shows the angle. */
-  const camWheel = new THREE.Group();
-  camWheel.name = 'cam-wheel';
-  camWheel.visible = false;
-  {
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(1, 0.12, 8, 28), wheelSteel);
-    rim.castShadow = true;
-    camWheel.add(rim);
-    for (let i = 0; i < WHEEL_SPOKES; i++) {
-      const a = (i * Math.PI * 2) / WHEEL_SPOKES;
-      const spoke = new THREE.Mesh(new THREE.BoxGeometry(2, 0.11, 0.1), wheelSteel);
-      spoke.rotation.z = a;
-      spoke.castShadow = true;
-      camWheel.add(spoke);
-    }
-    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.34, 12), wheelSteel);
-    hub.rotation.x = Math.PI / 2;
-    camWheel.add(hub);
-    // The handle and its pointer. Without one asymmetric feature a five-spoke wheel
-    // looks identical every 72°, and this beat is entirely about reading where it has
-    // got to: the pointer sits at the wheel's own angle 0, so "pointer on the lit
-    // mark" IS the sim's success condition, drawn.
-    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.42, 8), wheelGrip);
-    grip.rotation.x = Math.PI / 2;
-    grip.position.set(1, 0, 0.16);
-    camWheel.add(grip);
-    const pointer = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.16, 0.12), wheelGrip);
-    pointer.position.set(0.72, 0, 0.2);
-    camWheel.add(pointer);
-  }
-  dressing.add(camWheel);
 
   /* ------------------------------------------------- the chapter-2 breaker panel
    *
@@ -513,25 +457,6 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     breakerPanel.add(lamp);
   }
   dressing.add(breakerPanel);
-
-  /** The fixed bezel: a ring, eight ticks, and the target mark among them. */
-  const camBezel = new THREE.Group();
-  camBezel.name = 'cam-bezel';
-  camBezel.visible = false;
-  const camMark = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.2, 0.14), markMat);
-  {
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(BEZEL_R, 0.07, 6, 30), bezelMat);
-    camBezel.add(ring);
-    for (let i = 0; i < WHEEL_MARK_COUNT; i++) {
-      const a = (i * Math.PI * 2) / WHEEL_MARK_COUNT;
-      const tick = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.09, 0.1), tickMat);
-      tick.position.set(Math.cos(a) * BEZEL_R, Math.sin(a) * BEZEL_R, 0);
-      tick.rotation.z = a;
-      camBezel.add(tick);
-    }
-    camBezel.add(camMark);
-  }
-  dressing.add(camBezel);
 
   /**
    * What "the cabinet opens" looks like: the door leaf swings off its hinge and the
@@ -1521,6 +1446,41 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     mat.opacity = spec.flat ? 0.65 : 1;
   }
 
+  /**
+   * A beer crate — chapter 3's delivery (`src/sim/crates.ts`).
+   *
+   * Not a `PROPS` entry, because a crate's height off the floor is live state:
+   * `v` is which layer of a pile it is in, and a crate Biggy is CARRYING is piled
+   * on his dome rather than on the ground. Watching that column grow over his head
+   * is how the player sees the heap filling up, so it is drawn rather than
+   * described. Everything else about it is an ordinary pooled box.
+   */
+  const CRATE_H_M = 0.34;
+  const CRATE_GAP_M = 0.02;
+  function drawCrate(p: Prop, floorY: number): void {
+    const carried = p.state === 'active' || p.state === 'broken';
+    const layer = Math.max(0, p.v ?? 0) - (carried ? 1 : 0);
+    const base = carried ? ROBOT_HEIGHT_M.biggy : 0;
+    const wM = Math.max(m(p.w ?? 8), 0.3);
+    const dM = Math.max(m(p.h ?? 8), 0.3);
+
+    const mesh = propPool.get();
+    mesh.scale.set(wM, CRATE_H_M, dM * 0.8);
+    mesh.position.set(m(p.x), floorY + base + layer * (CRATE_H_M + CRATE_GAP_M) + CRATE_H_M / 2, m(p.y));
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    const mat = mesh.material as THREE.MeshStandardMaterial;
+    mat.color.setHex(p.state === 'done' ? 0x8f3a2b : 0xb4472f);
+    // The last crate that fits glows like a warning lamp: the heap error is only
+    // funny if the player could see it coming.
+    const tint = p.state === 'broken' ? 0x6b2206 : undefined;
+    mat.emissive.setHex(tint ?? 0x000000);
+    mat.emissiveIntensity = tint === undefined ? 0 : 1;
+    mat.transparent = false;
+    mat.opacity = 1;
+  }
+
   /** The cable, as a polyline on the floor. */
   function drawCable(p: Prop, floorY: number): void {
     const pts = p.pts;
@@ -1575,32 +1535,40 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     breakerHandleMat.color.setHex(on ? 0xdfe6df : 0xd8d4cc);
   }
 
-  /** The cam-lock wheel: one live angle out of the sim, straight onto `rotation.z`. */
-  function drawCamWheel(p: Prop, floorY: number): void {
-    const rM = m((p.w ?? 16) / 2);
-    camWheel.visible = true;
-    camWheel.scale.setScalar(rM);
-    camWheel.position.set(m(p.x), floorY + WHEEL_HUB_Y, m(p.y));
-    camWheel.rotation.z = p.v ?? 0;
-    wheelSteel.color.setHex(p.state === 'done' ? 0x7fd9a6 : 0x9aa4b0);
-    wheelSteel.emissive.setHex(p.state === 'done' ? 0x1f5c38 : p.state === 'active' ? 0x243c55 : 0x000000);
-  }
+  /**
+   * The router terminal, on the switch gear inside the cabinet.
+   *
+   * It is a screen, and the one thing a screen has that a grey box does not is that
+   * it BLINKS while it is waiting for you. Michele's note, twice over two playtests:
+   * *"I had trouble finding the projector / open the room... There should be
+   * something visible."* A terminal that wants a password pulses amber; one that has
+   * had it sits green. The sim owns every bit of that — `p.state` is 'idle' behind a
+   * shut door, 'active' once the door is open and 'done' once the password is in,
+   * and `p.v` is how much of the password is typed, 0..1 — so the only thing decided
+   * here is what those look like.
+   */
+  function drawTerminal(p: Prop, floorY: number, t: number): void {
+    const spec = PROPS.terminal ?? PROP_FALLBACK;
+    const wM = m(p.w ?? 16);
+    const dM = m(p.h ?? 4);
+    const mesh = propPool.get();
+    mesh.scale.set(Math.max(wM, 0.06), spec.h, Math.max(dM, 0.06));
+    mesh.position.set(m(p.x) + wM / 2, floorY + (spec.lift ?? 1.25) + spec.h / 2, m(p.y) + dM / 2);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
 
-  /** The bezel it has to be stopped against, and the one mark that matters. */
-  function drawCamMark(p: Prop, floorY: number): void {
-    const rM = m((p.w ?? 16) / 2);
-    camBezel.visible = true;
-    camBezel.scale.setScalar(rM);
-    camBezel.position.set(m(p.x), floorY + WHEEL_HUB_Y, m(p.y) + 0.02);
-    const a = p.v ?? 0;
-    camMark.position.set(Math.cos(a) * BEZEL_R, Math.sin(a) * BEZEL_R, 0.05);
-    camMark.rotation.z = a;
-    // Unlit it is a scratch in dark paint; under Voxxy's 0.38 rad cone it is the
-    // only orange thing in the room. Nothing else in the frame tells the player
-    // where to stop the wheel, which is the point of giving her the narrow beam.
-    const lit = p.state === 'active' || p.state === 'done';
-    markMat.color.setHex(lit ? 0xff9a3c : 0x3a2a1c);
-    markMat.emissive.setHex(lit ? (p.state === 'done' ? 0x2f7d4f : 0xff7a1a) : 0x000000);
+    const mat = mesh.material as THREE.MeshStandardMaterial;
+    mat.transparent = false;
+    mat.opacity = 1;
+    mat.color.setHex(spec.color);
+    const waiting = p.state === 'active';
+    const done = p.state === 'done';
+    mat.emissive.setHex(done ? 0x2f9d5f : waiting ? 0xff8a1a : (spec.glow ?? 0x6b4406));
+    // A cursor, not a strobe: the field brightens as it fills, and the empty field
+    // blinks hardest. 2.4 rad/s is about one blink a second.
+    const filled = Math.min(1, Math.max(0, p.v ?? 0));
+    const blink = waiting ? 0.45 + 0.35 * filled + 0.3 * (0.5 + 0.5 * Math.sin(t * 2.4)) * (1 - filled) : 1;
+    mat.emissiveIntensity = done ? 1.6 : waiting ? blink * 1.5 : 0.5;
   }
 
   /**
@@ -1699,8 +1667,6 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     propPool.begin();
     peoplePool.begin();
     cableLine.visible = false;
-    camWheel.visible = false;
-    camBezel.visible = false;
     breakerPanel.visible = false;
     cabinetOpen.visible = false;
     jammedLeaf.visible = false;
@@ -1708,9 +1674,9 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       if (p.kind === 'cable') drawCable(p, floorY);
       else if (p.kind === 'jammed') drawJammed(p, floorY);
       else if (p.kind === 'breaker') drawBreaker(p, floorY);
-      else if (p.kind === 'cam-wheel') drawCamWheel(p, floorY);
-      else if (p.kind === 'cam-mark') drawCamMark(p, floorY);
+      else if (p.kind === 'terminal') drawTerminal(p, floorY, snap.t);
       else if (p.kind === 'cabinet') drawCabinet(p, floorY);
+      else if (p.kind === 'crate') drawCrate(p, floorY);
       else drawProp(p, floorY);
     }
     for (const person of snap.people) drawPerson(person, floorY);

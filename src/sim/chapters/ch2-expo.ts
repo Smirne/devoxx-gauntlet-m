@@ -14,30 +14,52 @@
  *           his own top speed on purpose: alone he bounces off it announcing his
  *           own limit, and Voxxy has to shove him the length of the top lane.
  *
- * ## The network closet (added after gauntlet round 2)
+ * ## The network closet — the WiFi password
  *
- * `docs/gameplay-additions.md` §2. The badge printer needs POWER + CABLE + ROUTER,
- * and the router is behind a cam-lock wheel on the cabinet in the technical room.
- * The beat is deliberately the INVERSE of chapter 1's light mix: chapter 1 asks for
- * three things to be true *at the same time*, this asks for one thing to be true
- * *at the right moment*. All three robots are load-bearing and none of them by the
- * mechanic they already used upstairs:
+ * `docs/gameplay-additions.md` §2 described this beat as a cam-lock wheel. Michele
+ * killed the wheel on 23 Sep 2026 — *"Remove the wheel, too complicated"* — and the
+ * password itself took its place. His other two rules from the same conversation
+ * still stand and still shape it: **not** thirteen letters scattered round the venue
+ * (letter-collection is busywork) and **not** a second helping of chapter 1's light
+ * mix (that is chapter 1's identity).
  *
- *   Biggy — the only mass that breaks the cam free at all, and the only robot whose
- *           drag (0.35 s^-1, the lowest of the three) means he can never feather it.
- *   Droid — `braced` is finally the point of something: a planted Droid with a hand
- *           on the hub is the only brake in the building.
- *   Voxxy — a 0.38 rad cone against Biggy's 1.0: the only beam narrow enough to
- *           resolve a scribed index mark, so the target angle is literally unknown
- *           until Voxxy lights it.
+ * The badge printer needs POWER + CABLE + ROUTER. The router lives in the cabinet in
+ * the technical room, and the terminal wired to it wants the venue WiFi password:
+ * `DevoxxForever`. **Biggy is on every route** — the cabinet is a heavy steel door
+ * with seized hinges and nothing else in the building can swing it, and the terminal
+ * is inside it. Past that there are three ways to answer, and a player needs one:
+ *
+ *   1. **Type it.** It is on the chapter card, and it is the sort of password you
+ *      remember. Thirteen letters, case-insensitive, Backspace fixes a slip, and a
+ *      wrong key simply does not go in — it never throws the whole thing away.
+ *   2. **Voxxy reads it off the poster.** The sponsor banner in the hall carries it
+ *      in the small print at the bottom. Her cone is 0.38 rad against Biggy's 1.0:
+ *      the only beam in the game narrow enough to resolve type that size, and she
+ *      has to be close enough to read it rather than merely to light it.
+ *   3. **Droid reads the label, from Biggy's shoulders.** The tape is stuck inside
+ *      the cabinet lid, up at the top, which is where every conference's WiFi
+ *      password really lives. `toggleMount` is the mechanic — it exists, it is
+ *      tested, and outside chapter 1's projector panel almost nothing uses it.
+ *
+ * Whichever route found it, the answer is entered at the same terminal, and the
+ * chapter ends the same way: power + cable + router, then the roller door.
  */
 
-import { CABLE_MAX, PUSH_LEAN_MIN, ROLLER_DOOR_SPEED, SPEED_SCALE, T, TRAVEL_TIME_SCALE } from '../constants';
+import {
+  CABLE_MAX,
+  MOUNT_BIGGY_MAX_SPEED,
+  MOUNT_REACH,
+  PUSH_LEAN_MIN,
+  ROLLER_DOOR_SPEED,
+  SPEED_SCALE,
+  T,
+  TRAVEL_TIME_SCALE,
+} from '../constants';
 import { m } from '../units';
 import { GF, VIEW_GROUND, groundWallsFor, stairDoor } from '../geometry';
 import { botsCollide, dist, inRect, mkBot, speed, stepBot } from '../bot';
 import { buildLights, litBy } from '../lights';
-import type { Bot, Hit, LightSource, Mirror, Prop, Vec2, Wall } from '../types';
+import type { Bot, LightSource, Mirror, Prop, Vec2, Wall } from '../types';
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 
 /* ---------------------------------------------------------------- reach distances */
@@ -64,117 +86,64 @@ const CABLE_TALK_COOLDOWN = 4;
 const ROLLER_MIN_TALK = 40 * SPEED_SCALE;
 /** Seconds between the roller door's "not fast enough" readouts. */
 const ROLLER_TALK_COOLDOWN = 3;
-const BREAKERS = 3;
 
-/* ---------------------------------------------------------------- the cam-lock wheel
+/* ------------------------------------------------------------- the network closet
  *
  * Chapter-local tuning. Nothing here is a NEW physics constant: `src/sim/constants.ts`
- * is frozen (CLAUDE.md) and this beat deliberately needs no entry in it — it is
- * built out of the frozen numbers that already exist (Biggy's mass 7 and drag 0.35,
- * Droid's `braced`/`BRACED_MASS`, Voxxy's 0.38 rad cone). Every number below is a
- * property of one prop in one room, so it lives with that prop.
+ * is frozen (CLAUDE.md) and this beat deliberately needs no entry in it — it is built
+ * out of frozen numbers that already exist (Voxxy's 0.38 rad cone, `MOUNT_REACH` and
+ * the mount itself, the robots' own masses for who can swing a steel door). Every
+ * number below is a property of one prop in one room, so it lives with that prop.
  *
- * Two of them are speeds in disguise and therefore carry `SPEED_SCALE` from the
- * 2026-09-23 rescale: `WHEEL_MIN_INTO`, which is a px/s threshold, and `WHEEL_GAIN`,
- * which converts px/s into rad/s and so scales by its reciprocal. Everything else —
- * radians, rad/s, s^-1, px — is dimensionless across that rescale and is untouched.
+ * None of them is a speed, so none of them carries `SPEED_SCALE` from the 2026-09-23
+ * rescale. The three reaches are lengths in sim pixels, and lengths did not move.
  */
 
-/** Rim radius, sim px. 16 px across is ~1.3 m — an industrial hand wheel, readable at diorama zoom. */
-const WHEEL_R = 8;
-/** Index marks scribed round the bezel. Eight of them, so the target is a 1-in-8 unknown. */
-const WHEEL_MARKS = 8;
-const WHEEL_STEP = (Math.PI * 2) / WHEEL_MARKS;
 /**
- * The cam's sprung pawl rests in detents offset HALF a step from the index marks.
+ * The venue WiFi password, and the whole answer to this beat.
  *
- * This is the load-bearing line of the whole beat. A wheel nobody is holding always
- * walks itself into a detent, and a detent is by construction 22.5 deg from the
- * nearest mark — six times `WHEEL_TOL`. So a solo Biggy cannot park it on the mark
- * by luck, by patience or by feathering: not because a rule forbids it but because
- * the detent ball every valve wheel has ever had puts it back between two marks.
- * Stopping it ON a mark requires something that can hold it there. That is Droid.
+ * Compared upper-case against upper-case, which is what makes typing it
+ * case-insensitive without a single `toLowerCase` anywhere: `KeyboardEvent.code`
+ * says `KeyD` whether or not shift was down, so the sim never learns the case the
+ * player typed and cannot punish them for it.
  */
-const PAWL_OFFSET = WHEEL_STEP / 2;
-/** Above this the wheel rides straight over the detents; below it the ball drops in. rad/s. */
-const PAWL_CATCH = 0.18;
-/** The speed the ball rolls the wheel home at, rad/s. Under `PAWL_CATCH`, so it stays caught. */
-const PAWL_CREEP = 0.12;
-/** How fast the wheel is pulled onto the creep, s^-1. A catch, not a snap. */
-const PAWL_EASE = 5;
-/** Close enough to the detent, and slow enough, to seat the ball and stop dead. rad. */
-const PAWL_SNAP = 0.03;
+const PASSWORD = 'DEVOXXFOREVER';
+/** What the player is shown for a letter they have not typed yet. */
+const PASSWORD_BLANK = '·';
 /**
- * The wheel's own bearing drag, s^-1. Lower than every robot's — including Biggy's
- * 0.35 — because a greased cam wheel is the one thing in this building that coasts
- * better than he does.
+ * How close a robot must be to the terminal in the open cabinet to touch its keys,
+ * sim px — 4.3 m, measured from the cabinet's south face.
  *
- * It is not picked for feel, it is picked for a guarantee. Bracing is only a skill
- * if the mark actually comes past at a speed a player can react to, so the coast
- * from 1.0 rad/s down to `PAWL_CATCH` has to be at least one whole revolution:
- * (1.0 - 0.18) / 0.11 = 7.5 rad > 2 pi. Every heave therefore brings the mark past
- * Droid at least once below 1 rad/s, and the long tail under 0.4 rad/s widens the
- * brake's window to most of a second — demanding, never a lottery.
+ * Deliberately the same reach the cam-lock wheel had, for the same reason: the
+ * breaker panel is 89 px along the same back wall with its own 52 px reach, and
+ * these two must overlap only just, so that "Droid presses E at the cabinet" and
+ * "Droid presses E at the breakers" are different places to stand and not a coin
+ * toss. Where they do overlap, the nearer hand wins (see `key`).
  */
-const WHEEL_DRAG = 0.11;
+const TERMINAL_REACH = 54;
+/** How close Biggy has to be to get a shoulder behind the cabinet door, sim px. */
+const CABINET_REACH = 54;
 /**
- * Angular velocity added per px/s of the speed Biggy carries INTO the cabinet face.
+ * How close the tower has to be for Droid, up on Biggy's shoulders, to read the
+ * label taped inside the lid, sim px.
  *
- * This is the one number in the file that scales the OTHER way: it converts a speed
- * into a rad/s, so a rescale that divides speeds by four has to multiply it by four
- * for the same run-up to turn the wheel the same amount. The run-up the technical
- * room allows, across the full lever, still gives about 1.45 rad/s — a quarter-turn
- * a second, which is what a wheel this heavy should look like, and close to twenty
- * seconds of coast to spend on it before the pawl bites. Measured on a typical
- * run-up (x = 178, lever 0.81): 1.17 rad/s, settling after 18.9 s and 1.2 turns of
- * it below 1 rad/s.
+ * Tighter than `TERMINAL_REACH` because it is Biggy's centre being measured and he
+ * is 9 px of radius: at 44 px he is standing against the cabinet, not near it.
  */
-const WHEEL_GAIN = 0.013 / SPEED_SCALE;
+const LABEL_REACH = 44;
 /**
- * Below this speed into the face the cam does not break away at all — a heavy
- * industrial lock has static friction, and this is what stops the puzzle being
- * solved by nudging the wheel one degree at a time. The smallest heave that does
- * break it free already carries it past `PAWL_CATCH`, so the coarsest adjustment
- * available to Biggy alone is a whole detent.
+ * How close Voxxy has to be for her cone to resolve the small print on the poster,
+ * sim px — 5.6 m.
+ *
+ * Her lamp reaches 280 px, and lighting a poster from 22 m away is not reading it.
+ * This is the difference between the two, and it is the only number in the beat
+ * that is a judgement rather than a measurement: close enough that she has to walk
+ * to the booth and stand at it, far enough that it is not a pixel hunt.
  */
-const WHEEL_MIN_INTO = 55 * SPEED_SCALE;
-/**
- * Biggy has to catch a spoke, not the hub: torque is his speed into the face times
- * how far off the wheel's centre line he hit it, and dead centre only rattles. The
- * side he comes in on is the side it turns — the one bit of steering he gets.
- */
-const WHEEL_DEAD_LEVER = 0.18;
-/**
- * A braced Droid with a hand on the hub: angular damping, s^-1. The only brake in
- * the venue. It kills the coast in `vel / WHEEL_BRAKE` radians, so the player is
- * aiming the wheel's stopping distance at the mark, not the wheel.
- */
-const WHEEL_BRAKE = 7;
-/** How close Droid's centre has to be to the hub to get a hand on it, sim px. */
-const WHEEL_REACH = 54;
-/** The cam seats within this of the mark, rad (9.2 deg). Well inside `PAWL_OFFSET`'s 22.5. */
-const WHEEL_TOL = 0.16;
-/** ...and only once the wheel is this close to stopped, rad/s. */
-const WHEEL_STOP = 0.05;
-/**
- * ...and only if it STAYS there this long. A cam needs a moment to drop in, and
- * without the dwell the instant the pawl reverses a coasting wheel would count as a
- * stop — one frame of zero velocity that could land anywhere, which is exactly the
- * luck this beat is built to remove.
- */
-const WHEEL_SEAT = 0.3;
-/** Seconds between the wheel's readouts, so leaning on it is not sixty toasts a second. */
-const WHEEL_TALK_COOLDOWN = 2;
-
-const TAU = Math.PI * 2;
-/** 0..2pi. */
-const norm = (a: number): number => ((a % TAU) + TAU) % TAU;
-/** Signed shortest way from `b` round to `a`, -pi..pi. */
-function angDiff(a: number, b: number): number {
-  const d = norm(a - b);
-  return d > Math.PI ? d - TAU : d;
-}
-const deg = (a: number): number => Math.round((norm(a) * 180) / Math.PI);
+const POSTER_READ = 70;
+/** Seconds between the terminal's "that is not it" readouts, so a mashed key is not a wall of toast. */
+const TYPO_COOLDOWN = 1.2;
+const BREAKERS = 3;
 
 /** The exhibition hall has no cinema screen to bounce a lamp off. */
 const NO_MIRRORS: Mirror[] = [];
@@ -387,17 +356,20 @@ export interface ExpoState {
   breakersLeft: number;
   cable: { carrying: boolean; connected: boolean; len: number; snapped: boolean; taut: boolean };
   rollerBroken: boolean;
-  /** The cam-lock wheel on the router cabinet. Angles in radians, `vel` in rad/s. */
-  wheel: {
-    ang: number;
-    vel: number;
-    /** The target index mark, fixed for the run, unknown until Voxxy lights it. */
-    mark: number;
-    /** Voxxy's cone is on the scribed mark this frame. */
-    markLit: boolean;
-    /** A braced Droid has a hand on the hub. */
-    held: boolean;
-    open: boolean;
+  /** The router cabinet, its terminal, and the WiFi password. */
+  router: {
+    /** Biggy has shouldered the cabinet door open. Nothing else in here starts until he has. */
+    cabinetOpen: boolean;
+    /** The robots have read the password off the poster or off the label inside the lid. */
+    known: boolean;
+    /** The terminal has the keyboard: letters type instead of driving. */
+    prompting: boolean;
+    /** The prefix of `PASSWORD` typed in so far — never a wrong letter, so it only ever grows. */
+    typed: string;
+    /** Voxxy's cone is on the poster's small print this frame, and close enough to read it. */
+    posterLit: boolean;
+    /** The password is in and the router is up. */
+    online: boolean;
   };
   /** Power AND cable AND router: all three, or the badge printer prints nothing. */
   printerOnline: boolean;
@@ -408,13 +380,16 @@ const OBJECTIVE =
   'Chapter 2 · <b>Expo</b>. The exhibition hall before opening: dark, empty, registration in an hour. ' +
   '<b>Droid</b> flips the three breakers on the high panel in the technical room (E). ' +
   '<b>Voxxy</b> runs the network cable from the rack to the printer at reception — it is short: ' +
-  'straight line, <b>under the sponsor tables</b>. The printer also wants the <b>router</b>, and the ' +
-  'router is behind a cam-lock wheel only <b>Biggy</b> can shift, only <b>Droid</b> can stop and only ' +
-  '<b>Voxxy</b> can aim. <b>Biggy</b> also smashes the roller door of the badge ' +
+  'straight line, <b>under the sponsor tables</b>. The printer also wants the <b>router</b>: only ' +
+  '<b>Biggy</b> can shoulder that cabinet open (E), and the terminal inside wants the WiFi password. ' +
+  '<b>Type it</b> if you remember it from the card — or <b>Voxxy</b> reads it off a sponsor poster in ' +
+  'the hall with her narrow beam, or <b>Droid</b> reads the label inside the lid <b>from Biggy\'s ' +
+  'shoulders</b> (E beside him to climb on). <b>Biggy</b> also smashes the roller door of the badge ' +
   'store — above his own top speed, so <b>Voxxy takes hold of him (Space)</b> and runs him ' +
   'down the long top lane: the bar locks to one of eight directions, so the run cannot wander. ' +
   'Booth games on the way are optional swag.';
-const KEYS = '1/2/3/Tab: switch · WASD · E: use / brace · Space: take hold of Biggy · R: restart';
+const KEYS =
+  '1/2/3/Tab: switch · WASD · E: use / climb / terminal · A-Z: type the password · Space: take hold of Biggy · R: restart';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');
@@ -447,7 +422,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let lights: LightSource[] = [];
   let breakersLeft = BREAKERS;
   let rollerBroken = false;
-  let hintedPanel = false;
+  let hintedTech = false;
   let rollerTalk = -9;
 
   const cable = {
@@ -513,44 +488,49 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const rackAt: Vec2 = { x: GF.rack.x + 10, y: GF.rack.y + 12 };
   const panelAt: Vec2 = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
 
-  /* ------------------------------------------------------------ the cam-lock wheel */
+  /* ------------------------------------------------------------ the network closet */
 
   /**
-   * The hub, on the cabinet's south face — the face the diorama camera looks at.
-   * Everything about the wheel is measured from here: Biggy's lever arm, Droid's
-   * reach, and the point Voxxy's beam has to find.
+   * The cabinet's south face — the face the diorama camera looks at. Everything in
+   * this beat is measured from here: Biggy's shoulder, the terminal's keys, and the
+   * label taped inside the lid that Droid reads from up on Biggy.
    */
-  const wheelAt: Vec2 = { x: GF.cabinet.x + GF.cabinet.w / 2, y: GF.cabinet.y + GF.cabinet.h + 2 };
-  /** Half the face, which is the lever arm a full-width hit gets. */
-  const WHEEL_LEVER = GF.cabinet.w / 2;
-
-  const wheel = {
-    /** Parked in detent 0, where a cam-lock wheel that nobody has touched sits. */
-    ang: PAWL_OFFSET,
-    vel: 0,
-    /**
-     * The target mark, drawn once per run from the eight scribed marks. Seeded, so a
-     * run replays exactly (`game.ts`), and never on a detent by construction — the
-     * marks are at k * WHEEL_STEP, the detents half a step off them.
-     */
-    mark: Math.floor(ctx.rng() * WHEEL_MARKS) * WHEEL_STEP,
-    markLit: false,
-    held: false,
-    open: false,
-    /** How long the cam has been sitting on the mark, seconds. */
-    seat: 0,
-  };
-  let wheelTalk = -9;
+  const cabinetAt: Vec2 = { x: GF.cabinet.x + GF.cabinet.w / 2, y: GF.cabinet.y + GF.cabinet.h + 2 };
 
   /**
-   * Where the scribed mark actually is, for the light test.
+   * The sponsor poster, on the south face of the Cloudy Bank booth.
    *
-   * The wheel stands in a vertical plane, so only its horizontal extent exists in a
-   * 2D sim: the mark is offset along the cabinet face by `R cos(mark)` and sits a
-   * couple of pixels proud of it. That is enough for `litBy` to ask the one question
-   * this beat needs — is Voxxy's cone on it — without inventing a new light test.
+   * Placed off every errand in the chapter on purpose — Droid's breakers are in the
+   * technical room, Voxxy's cable runs along the bottom lane and Biggy's run-up is
+   * the top one — so reading it is a detour a player chooses, not something that
+   * happens to them on the way past. Two pixels proud of the booth's face, exactly
+   * as chapter 1's clues stand off their walls, so the booth itself never occludes
+   * the beam that is trying to read it.
    */
-  const markAt = (): Vec2 => ({ x: wheelAt.x + WHEEL_R * Math.cos(wheel.mark), y: wheelAt.y + 2 });
+  const posterBooth = GF.booths.find((b) => b.name === 'Cloudy Bank') ?? GF.booths[2];
+  const posterAt: Vec2 = { x: posterBooth.x + posterBooth.w / 2, y: posterBooth.y + posterBooth.h + 2 };
+
+  const router = {
+    cabinetOpen: false,
+    known: false,
+    prompting: false,
+    typed: '',
+    posterLit: false,
+    online: false,
+  };
+  let typoTalk = -9;
+
+  /**
+   * The terminal has the keyboard.
+   *
+   * `game.ts` asks this before it treats `R` as restart and the browser shell asks it
+   * before it treats `WASD` as driving (`GameSnapshot.typing`): `DevoxxForever` has a
+   * `D` in it and two `r`s, and without this the first letter of the password would
+   * drive the robot out of reach of the terminal and the seventh would restart the
+   * chapter. It is the only thing in the game that takes the keyboard, and it is the
+   * player who opens it with `E` and closes it with `E`, `Esc` or `Enter`.
+   */
+  const typing = (): boolean => router.prompting && router.cabinetOpen && !router.online;
 
   const cabinet: Wall = {
     ...GF.cabinet,
@@ -558,91 +538,155 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     /**
      * The mass gate, routed through the wall's own `why` so the throttling and the
      * toast plumbing are the ones every other blocked message in the game uses.
-     * Biggy gets no line here: his answer is the wheel moving, and it is spoken from
-     * `onHit` with the number on it.
+     * Biggy gets no line here: his answer is the door opening, and it is spoken
+     * from `key` when he puts his shoulder into it.
+     *
+     * The cabinet stays a collider once it is open — it is a full-height 19-inch
+     * floor cabinet, not a doorway — so the `why` has to fall silent rather than
+     * keep telling a robot it cannot open something that is already open.
      */
     why: (b) =>
-      b.kind === 'voxxy'
-        ? "Voxxy: cam-lock wheel. I hit that at full tilt and it did not even rattle — one kilo of me against a cabinet lock. My beam's the narrow one, though: point me at the bezel and I'll read the mark"
-        : b.kind === 'droid'
-          ? 'Droid: three times Voxxy and still nothing. The cam wants a shove, not a lever. Holding it, on the other hand, I can do — that is what I am ballasted for'
-          : null,
-    onHit: (b: Bot, hit: Hit): boolean => {
-      if (b.kind !== 'biggy' || wheel.open) return false;
-      // The wheel is bolted to the SOUTH face; the sides and the top are cabinet.
-      if (hit.ny < 0.5) return false;
-      // The projection, exactly as the chapter-1 jammed door does it: the speed
-      // INTO the face, not the speed Biggy happens to be carrying. A robot crossing
-      // the technical room at full tilt must not spin it in passing.
-      const into = -(b.vx * hit.nx + b.vy * hit.ny);
-      if (into < WHEEL_MIN_INTO) {
-        // 8 px/s of the prototype's scale: below a brush past the cabinet, he says nothing.
-        if (into > 8 * SPEED_SCALE && ctx.t - wheelTalk > WHEEL_TALK_COOLDOWN) {
-          wheelTalk = ctx.t;
-          ctx.flash(`Biggy: ${m(into).toFixed(1)} m/s into it and the cam did not break. Needs ${m(WHEEL_MIN_INTO).toFixed(1)}. Back up and run at it`);
-        }
-        return false;
-      }
-      const lever = Math.max(-1, Math.min(1, (b.x - wheelAt.x) / WHEEL_LEVER));
-      if (Math.abs(lever) < WHEEL_DEAD_LEVER) {
-        if (ctx.t - wheelTalk > WHEEL_TALK_COOLDOWN) {
-          wheelTalk = ctx.t;
-          ctx.flash('Biggy: straight at the hub. All that does is rattle it — catch a spoke, left or right of centre');
-        }
-        return false;
-      }
-      wheel.vel += WHEEL_GAIN * into * lever;
-      if (ctx.t - wheelTalk > WHEEL_TALK_COOLDOWN) {
-        wheelTalk = ctx.t;
-        ctx.flash(
-          `Biggy heaves — ${m(into).toFixed(1)} m/s into the ${lever > 0 ? 'right' : 'left'} spokes. ` +
-            'It turns. It does not stop. Somebody stop it',
-        );
-      }
-      return false;
-    },
+      router.cabinetOpen
+        ? null
+        : b.kind === 'voxxy'
+          ? "Voxxy: router cabinet, and the door is shut. I got both grippers under the lip and lifted MYSELF off the floor. One kilo of me against a steel door — that is a Biggy door"
+          : b.kind === 'droid'
+            ? 'Droid: the hinges have not moved since 2019. Three times Voxxy and still nothing, and there is no lever on a flush door. This wants weight. Biggy'
+            : null,
   };
   ctx.walls.push(cabinet);
 
   const mg = setupMinigames(ctx);
 
   ctx.objective(OBJECTIVE, KEYS);
+  /*
+   * THE CARD IS ROUTE 1.
+   *
+   * The password is on it, in the crew's own run sheet, and a player who reads the
+   * card can walk to the terminal and type it without finding anything at all. That
+   * is deliberate: it costs nothing, it rewards attention, and it is the reason the
+   * other two routes are alternatives rather than a gate. It is also the joke.
+   */
   ctx.card(
     '<b>Down the secondary staircase.</b><br>' +
-      '<span class="sub">The exhibition hall: twelve sponsor booths, no power, no network, and the badges locked in the pickup store.</span>' +
+      '<span class="sub">The exhibition hall: twelve sponsor booths, no power, no network, and the badges ' +
+      'locked in the pickup store. Taped to the technical room door, the crew\'s run sheet, in biro:<br><br>' +
+      '<b>WiFi: DevoxxForever</b> — and no, you cannot change it.</span>' +
       '<small>Press any key</small>',
   );
 
   /* --------------------------------------------------------------------- keys */
 
+  /**
+   * One letter at the terminal.
+   *
+   * Forgiving on purpose, because Michele's word for the beat that replaced the cam
+   * wheel was *simpler*: a wrong key does not go in and does not throw away what is
+   * already there, Backspace takes one back, and case never enters into it. What is
+   * left is thirteen key presses with a visible counter — a few seconds, and nothing
+   * to lose by being slow.
+   */
+  function typeLetter(ch: string): void {
+    if (ch === PASSWORD[router.typed.length]) {
+      router.typed += ch;
+      if (router.typed.length === PASSWORD.length) {
+        router.known = true;
+        router.online = true;
+        router.prompting = false;
+        ctx.flash('DevoxxForever. Four green lights come up on the router, and the venue is on the air', 3500);
+      }
+      return;
+    }
+    if (ctx.t - typoTalk <= TYPO_COOLDOWN) return;
+    typoTalk = ctx.t;
+    ctx.flash(
+      `Terminal: ${ch} — not that one. ${router.typed.length} of ${PASSWORD.length} still stand. ` +
+        'Backspace takes one back',
+    );
+  }
+
+  /** E at the terminal: type it, or have the robot that already read it type it for you. */
+  function useTerminal(b: Bot): void {
+    if (router.online) {
+      ctx.flash(`${b.name}: the router is up. Four green lights and a fan nobody has cleaned since 2019`);
+      return;
+    }
+    if (b.kind === 'biggy') {
+      ctx.flash('Biggy: thirteen little keys. These are not thirteen-little-key hands. Voxxy? Droid?');
+      return;
+    }
+    if (router.known) {
+      router.online = true;
+      router.prompting = false;
+      router.typed = PASSWORD;
+      ctx.flash(
+        `${b.name} types it in — DevoxxForever — and the router comes up. And no, you cannot change it`,
+        3500,
+      );
+      return;
+    }
+    if (router.prompting) {
+      router.prompting = false;
+      ctx.flash(`${b.name} steps back from the terminal`);
+      return;
+    }
+    router.prompting = true;
+    ctx.flash(
+      (b.kind === 'droid'
+        ? 'Droid: <b>WIFI PASSWORD?</b>, it says. That label will be taped inside the lid, up at the top — ' +
+          "from Biggy's shoulders I could read it"
+        : 'Voxxy: <b>WIFI PASSWORD?</b>, it says. Type it — or let me go looking, small print is what I am for') +
+        '. A–Z types, Backspace fixes a slip, Esc steps away',
+      4000,
+    );
+  }
+
   function key(code: string): void {
     const b = ctx.bots[ctx.cur];
+    const d = ctx.byKind('droid');
+    const bg = ctx.byKind('biggy');
+
+    /*
+     * While the terminal has the keyboard, letters are letters. This runs BEFORE
+     * `switchKey` so nothing else in the game sees the keystroke — and `game.ts`
+     * has already declined to treat `R` as restart, because `typing()` told it not
+     * to. `DevoxxForever` contains a D and two Rs; without this the first letter of
+     * the password would drive the robot out of reach of the terminal and the
+     * seventh would restart the chapter.
+     */
+    if (typing()) {
+      if (code === 'Escape' || code === 'Enter') {
+        router.prompting = false;
+        ctx.flash(`${b.name} steps back from the terminal`);
+        return;
+      }
+      if (code === 'Backspace') {
+        router.typed = router.typed.slice(0, -1);
+        return;
+      }
+      const letter = /^Key([A-Z])$/.exec(code);
+      if (letter) {
+        typeLetter(letter[1]);
+        return;
+      }
+      // Anything else (Tab, a digit) falls through and means what it always means;
+      // taking a robot that is not at the terminal closes the prompt in `update`.
+    }
+
     ctx.switchKey(code);
     if (code !== 'KeyE') return;
     if (mg.key(code, b)) return;
 
-    const atWheel = !wheel.open && dist(b, wheelAt) < WHEEL_REACH;
+    const atCabinet = dist(b, cabinetAt) < CABINET_REACH;
+    const atTerminal = router.cabinetOpen && dist(b, cabinetAt) < TERMINAL_REACH;
 
     if (b.kind === 'droid') {
       const atPanel = !power && dist(b, panelAt) < PANEL_REACH;
-      // The panel and the wheel share the technical room's back wall 89 px apart and
-      // their reaches just overlap, so the nearer hand wins rather than whichever
-      // check happens to be written first.
-      if (atWheel && (!atPanel || dist(b, wheelAt) <= dist(b, panelAt))) {
-        b.braced = !b.braced;
-        if (b.braced) {
-          b.vx = 0;
-          b.vy = 0;
-          b.ix = 0;
-          b.iy = 0;
-          ctx.flash(
-            'Droid plants his feet and gets a hand on the hub. Nothing turns while I am holding it — ' +
-              'E again to let go, and a short hold just bleeds the speed off',
-            3200,
-          );
-        } else {
-          ctx.flash('Droid lets go of the wheel');
-        }
+      // The panel and the cabinet share the technical room's back wall 89 px apart
+      // and their reaches just overlap, so the nearer hand wins rather than
+      // whichever check happens to be written first.
+      if (atTerminal && (!atPanel || dist(b, cabinetAt) <= dist(b, panelAt))) {
+        useTerminal(b);
         return;
       }
       if (atPanel) {
@@ -655,10 +699,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         }
         return;
       }
-      // Braced is a stance, not a place: E anywhere lets him out of it again.
-      if (b.braced) {
-        b.braced = false;
-        ctx.flash('Droid unplants');
+      // Route 3 starts here rather than at the cabinet: he climbs on wherever Biggy
+      // happens to be standing, and the tower walks over afterwards.
+      if (dist(d, bg) < d.r + bg.r + MOUNT_REACH && speed(bg) < MOUNT_BIGGY_MAX_SPEED) {
+        ctx.toggleMount();
+        return;
+      }
+      if (atCabinet) {
+        ctx.flash(
+          'Droid: shut, and seized. Weight opens this, not leverage — and the label is inside the lid ' +
+            'anyway, up at the top. One of those is a Biggy problem, the other one is both of us',
+        );
         return;
       }
       ctx.flash('Droid: nothing to reach here');
@@ -691,11 +742,19 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         ctx.flash('Voxxy: the printer is at reception, through the hall wall on the right');
         return;
       }
-      if (atWheel) {
+      if (atTerminal) {
+        useTerminal(b);
+        return;
+      }
+      if (atCabinet) {
+        ctx.flash('Voxxy: shut. I can see the seam and I cannot do one thing about it. Biggy opens this one');
+        return;
+      }
+      if (dist(b, posterAt) < POSTER_READ) {
         ctx.flash(
-          wheel.markLit
-            ? `Voxxy: got it — the mark is at ${deg(wheel.mark)}°. Hold me here and keep the beam on the bezel`
-            : 'Voxxy: I cannot shift it, but I can read it. Face me at the bezel and the scribed mark comes up',
+          router.known
+            ? 'Voxxy: read it already — DevoxxForever'
+            : 'Voxxy: there is small print along the bottom of this banner. Not a poking job — point the beam at it',
         );
         return;
       }
@@ -703,8 +762,39 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       return;
     }
 
-    if (atWheel) {
-      ctx.flash("Biggy: buttons no. Wheels, not with these hands. Running at things — that I can do. Give me the length of the room");
+    /*
+     * Biggy — or the tower, since control follows a mounted Droid: `b` is Biggy
+     * either way, and `d.mounted` is what says which of the two is being asked.
+     */
+    if (d.mounted) {
+      if (router.cabinetOpen && !router.known && dist(bg, cabinetAt) < LABEL_REACH) {
+        router.known = true;
+        ctx.flash(
+          'From up on Biggy, Droid gets his head inside the lid and reads the label tape: ' +
+            '<b>WiFi: DevoxxForever</b>. Of course it is. Now the terminal',
+          3800,
+        );
+        return;
+      }
+      if (router.cabinetOpen && !router.known && dist(bg, cabinetAt) < TERMINAL_REACH + 40) {
+        ctx.flash('Droid: the tape is inside the lid, right at the top. Closer, Biggy — up against it');
+        return;
+      }
+      ctx.toggleMount();
+      return;
+    }
+
+    if (!router.cabinetOpen && atCabinet) {
+      router.cabinetOpen = true;
+      ctx.flash(
+        'Biggy sets his shoulder against the cabinet door and walks it open. Inside: the venue router, ' +
+          'a fan full of 2019, and a little terminal blinking <b>WIFI PASSWORD?</b>',
+        4000,
+      );
+      return;
+    }
+    if (atTerminal) {
+      useTerminal(b);
       return;
     }
     ctx.flash("Biggy: I don't do buttons. I do doors.");
@@ -795,65 +885,61 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   }
 
   /**
-   * The wheel's own body: one angle, one angular velocity, its own drag, its own
-   * detent pawl, and exactly one thing in the world that can take energy out of it
-   * quickly — a braced Droid. Stepped after `stepAll`, so any heave Biggy landed
-   * through `cabinet.onHit` this frame is already in `wheel.vel`.
+   * The poster, read.
+   *
+   * One visibility test, not a light mix — chapter 1 owns mixing and this is not a
+   * second helping of it. The question asked is only ever "is Voxxy's own beam on
+   * the small print", and it is asked of a filtered light list: the SKIRT each
+   * robot throws around its own feet is dropped, so standing next to the banner in
+   * the dark is not reading it. That leaves her 0.38 rad cone against Biggy's 1.0
+   * and Droid's pool, which is the trait this route is built on, plus a range check
+   * because lighting a poster from 22 m away is not reading it either.
    */
-  function stepWheel(dt: number): void {
-    if (wheel.open) return;
-    const d = ctx.byKind('droid');
-    wheel.held = d.braced && dist(d, wheelAt) < WHEEL_REACH;
-
-    if (wheel.held) {
-      // BRACED_MASS is what makes this legal: Droid is not slowing the wheel down,
-      // he is an immovable object with a hand on it.
-      wheel.vel *= Math.exp(-WHEEL_BRAKE * dt);
-    } else {
-      wheel.vel *= Math.exp(-WHEEL_DRAG * dt);
-      if (Math.abs(wheel.vel) < PAWL_CATCH) {
-        const det = Math.round((wheel.ang - PAWL_OFFSET) / WHEEL_STEP) * WHEEL_STEP + PAWL_OFFSET;
-        const off = angDiff(det, wheel.ang);
-        if (Math.abs(off) < PAWL_SNAP && Math.abs(wheel.vel) < PAWL_CREEP * 1.2) {
-          wheel.ang = norm(det);
-          wheel.vel = 0;
-        } else {
-          const want = Math.sign(off) * PAWL_CREEP;
-          wheel.vel += (want - wheel.vel) * (1 - Math.exp(-PAWL_EASE * dt));
-        }
-      }
-    }
-    wheel.ang = norm(wheel.ang + wheel.vel * dt);
-
-    const onMark = Math.abs(angDiff(wheel.ang, wheel.mark)) < WHEEL_TOL && Math.abs(wheel.vel) < WHEEL_STOP;
-    wheel.seat = onMark ? wheel.seat + dt : 0;
-    if (wheel.seat >= WHEEL_SEAT) {
-      wheel.open = true;
-      wheel.vel = 0;
-      ctx.removeWall(cabinet);
-      ctx.flash('The cam drops in. The cabinet swings open on the venue router', 3500);
-      ctx.card(
-        '<b>The router cabinet is open.</b><br>' +
-          '<span class="sub">Four green lights, a fan nobody has cleaned since 2019, and a strip of label tape ' +
-          'stuck to the inside of the lid in somebody\'s handwriting:<br><br>' +
-          '<b>WiFi: DevoxxForever</b> — and no, you cannot change it.</span>' +
-          '<small>Press any key</small>',
-      );
-    }
+  function stepPoster(cast: LightSource[]): void {
+    const v = ctx.byKind('voxxy');
+    router.posterLit =
+      dist(v, posterAt) < POSTER_READ && litBy(cast.filter((L) => L.skirt !== true), 'voxxy', posterAt);
+    // Lighting it again once it has been read is just a robot pointing a torch at a
+    // banner: still true, and nothing left to say about it.
+    if (!router.posterLit || router.known) return;
+    router.known = true;
+    ctx.flash(
+      'Voxxy holds the beam on the bottom of the banner: <b>free coffee · free wifi · DevoxxForever</b>. ' +
+        'Sponsors. Now the terminal in the technical room',
+      3800,
+    );
   }
 
   function update(dt: number): void {
     ctx.stepAll(dt);
     ctx.pushBiggy(dt);
     mg.update(dt);
-    stepWheel(dt);
 
     const v = ctx.byKind('voxxy');
     if (cable.carrying) stepCable(v, dt);
 
-    if (!power && !hintedPanel && (inRect(v, GF.tech) || inRect(ctx.byKind('biggy'), GF.tech))) {
-      hintedPanel = true;
-      ctx.flash('Breakers — way up on the wall. Droid?');
+    /*
+     * Walking away from the terminal puts the keyboard back. There is no other way
+     * out of the prompt than this, `E`, `Esc` or `Enter` — and the robot being
+     * driven cannot walk while it is open, so in practice this is what fires when
+     * the player takes a different robot with Tab or 1/2/3.
+     */
+    if (router.prompting && dist(ctx.bots[ctx.cur], cabinetAt) > TERMINAL_REACH) router.prompting = false;
+
+    /*
+     * WHY THIS ROOM ANNOUNCES ITSELF. Michele, twice across two playtests: *"I had
+     * trouble finding the projector / open the room... There should be something
+     * visible."* The technical room now holds two of the chapter's four jobs, so
+     * the first robot through the door is told both are in here, and the terminal
+     * carries its own standby glow in the renderer the way the breaker panel does.
+     */
+    if (!hintedTech && (inRect(v, GF.tech) || inRect(ctx.byKind('biggy'), GF.tech) || inRect(ctx.byKind('droid'), GF.tech))) {
+      hintedTech = true;
+      ctx.flash(
+        (power ? '' : 'Breakers — way up on the wall, Droid. ') +
+          'And that grey cabinet is the router: shut, seized, and far too heavy for anybody but Biggy',
+        3600,
+      );
     }
 
     /*
@@ -879,12 +965,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      */
     const cast = buildLights(ctx.bots, ctx.walls, NO_MIRRORS);
     lights = cast;
-    // A single-colour visibility test, not a mix: only the 0.38 rad cone throws an
-    // edge hard enough to read a scribed line, which is why Biggy's 1.0 rad flood
-    // standing in the same doorway reveals nothing.
-    wheel.markLit = !wheel.open && litBy(cast, 'voxxy', markAt());
+    stepPoster(cast);
 
-    if (power && cable.connected && wheel.open && rollerBroken) {
+    if (power && cable.connected && router.online && rollerBroken) {
       ctx.score.expoT = Math.round(ctx.t);
       ctx.score.cable = Math.trunc(cable.len);
       ctx.startChapter(3);
@@ -909,36 +992,49 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         state: printerOnline() ? 'done' : cable.connected ? 'active' : 'idle',
         label: printerOnline()
           ? 'printer online'
-          : `badge printer — needs${power ? '' : ' power,'}${cable.connected ? '' : ' cable,'}${wheel.open ? '' : ' router,'}`.replace(/,$/, ''),
+          : `badge printer — needs${power ? '' : ' power,'}${cable.connected ? '' : ' cable,'}${router.online ? '' : ' router,'}`.replace(/,$/, ''),
       },
-      // The cabinet and its wheel. The renderer needs no chapter knowledge: the
-      // cabinet is a box with a state, the wheel carries its own angle in `v` and
-      // the mark carries the angle it is scribed at.
+      /*
+       * The cabinet, the terminal inside it and the poster out in the hall. The
+       * renderer needs no chapter knowledge for any of the three: each is a rect
+       * with a `state` and a `label`, and the terminal's standby glow — the thing
+       * that makes it findable in a blacked-out room before it is understood — is
+       * a property of the prop kind, exactly as it is for the breaker panel.
+       */
       {
         kind: 'cabinet',
         ...GF.cabinet,
-        state: wheel.open ? 'open' : 'shut',
-        label: wheel.open ? 'router cabinet — open' : 'router cabinet (cam-lock)',
+        state: router.cabinetOpen ? 'open' : 'shut',
+        label: router.cabinetOpen ? 'router cabinet — open' : 'router cabinet — shut (Biggy)',
       },
       {
-        kind: 'cam-wheel',
-        x: wheelAt.x,
-        y: wheelAt.y,
-        w: WHEEL_R * 2,
-        h: WHEEL_R * 2,
-        v: wheel.ang,
-        state: wheel.open ? 'done' : wheel.held ? 'active' : 'idle',
-        label: wheel.open ? 'cam-lock: open' : `cam-lock wheel at ${deg(wheel.ang)}°`,
+        kind: 'terminal',
+        // Centred on the cabinet face, and a metre wide: bigger than the KVM screen
+        // a real rack has, and deliberately so — at diorama zoom a true-to-life
+        // 40 cm panel is four pixels of dark grey in a blacked-out room, which is
+        // the exact failure Michele reported against the projector panel.
+        x: cabinetAt.x - 6,
+        y: cabinetAt.y - 2,
+        w: 12,
+        h: 4,
+        // `v` is how much of the password is in, so the renderer can fill the field
+        // without knowing what the password IS.
+        v: router.typed.length / PASSWORD.length,
+        state: router.online ? 'done' : !router.cabinetOpen ? 'idle' : 'active',
+        label: router.online
+          ? 'router online'
+          : !router.cabinetOpen
+            ? 'terminal — behind the cabinet door'
+            : `WIFI PASSWORD? ${maskedPassword()}`,
       },
       {
-        kind: 'cam-mark',
-        x: wheelAt.x,
-        y: wheelAt.y,
-        w: WHEEL_R * 2,
-        h: WHEEL_R * 2,
-        v: wheel.mark,
-        state: wheel.open ? 'done' : wheel.markLit ? 'active' : 'idle',
-        label: wheel.markLit ? `index mark ${deg(wheel.mark)}°` : 'index mark (unlit)',
+        kind: 'poster',
+        x: posterAt.x - 14,
+        y: posterAt.y - 2,
+        w: 28,
+        h: 3,
+        state: router.known ? 'done' : router.posterLit ? 'active' : 'idle',
+        label: router.known ? 'sponsor banner — read' : 'sponsor banner (small print — Voxxy)',
       },
       {
         kind: 'cable',
@@ -970,7 +1066,16 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   lights = buildLights(ctx.bots, ctx.walls, NO_MIRRORS);
 
   /** Power AND cable AND router. Three prerequisites, one printer. */
-  const printerOnline = (): boolean => power && cable.connected && wheel.open;
+  const printerOnline = (): boolean => power && cable.connected && router.online;
+
+  /**
+   * The password as the player sees it while typing: what is in, then a dot per
+   * letter still to come. The count is on the end because thirteen dots are not
+   * countable at a glance and "7/13" is.
+   */
+  const maskedPassword = (): string =>
+    `${router.typed}${PASSWORD_BLANK.repeat(PASSWORD.length - router.typed.length)} ` +
+    `(${router.typed.length}/${PASSWORD.length})`;
 
   /** The live bottom-of-screen line: the four jobs, each with its own counter. */
   function progress(): string {
@@ -982,11 +1087,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         : cable.carrying
           ? `cable ${Math.round(cable.len)}/${CABLE_MAX} px${cable.taut ? ' — TAUT' : ''}`
           : 'cable: on the reel at the rack';
-    const router = wheel.open
+    const net2 = router.online
       ? 'router ✓'
-      : `router: wheel ${deg(wheel.ang)}°, mark ${wheel.markLit ? `${deg(wheel.mark)}°` : 'unlit'}${wheel.held ? ' (held)' : ''}`;
+      : !router.cabinetOpen
+        ? 'router: cabinet shut — Biggy shoulders it open (E)'
+        : router.prompting
+          ? `WIFI PASSWORD ${maskedPassword()} · Backspace · Esc`
+          : router.known
+            ? 'router: password known — E at the terminal'
+            : 'router: terminal waiting — E at it and type the password';
     const store = rollerBroken ? 'badge store ✓' : `roller door: shut (needs ${m(ROLLER_DOOR_SPEED).toFixed(1)} m/s)`;
-    return `${breakers} · ${net} · ${router} · ${store}`;
+    return `${breakers} · ${net} · ${net2} · ${store}`;
   }
 
   return {
@@ -994,6 +1105,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     update,
     props,
     progress,
+    typing,
     lights: () => lights,
     placeProp: (kind: string, x: number, y: number): boolean => mg.place(kind, x, y),
     state: (): ExpoState => ({
@@ -1008,13 +1120,13 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         taut: cable.taut,
       },
       rollerBroken,
-      wheel: {
-        ang: wheel.ang,
-        vel: wheel.vel,
-        mark: wheel.mark,
-        markLit: wheel.markLit,
-        held: wheel.held,
-        open: wheel.open,
+      router: {
+        cabinetOpen: router.cabinetOpen,
+        known: router.known,
+        prompting: router.prompting,
+        typed: router.typed,
+        posterLit: router.posterLit,
+        online: router.online,
       },
       printerOnline: printerOnline(),
       minigames: mg.state(),

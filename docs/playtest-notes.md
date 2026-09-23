@@ -92,7 +92,7 @@ sim wall rect covers it) and REACHABLE (some robot can walk its centre there, `s
 sees the rooms that are open on frame one — and behind a gate is exactly where a missing collider
 hides longest. Cinema B is locked until Droid reaches the projector panel from Biggy's shoulders,
 cinema E is jammed until Biggy charges it, the store is behind a roller door and the router cabinet
-is cam-locked. The flood fill treats a wall with an `onHit` handler, or one of the gate kinds, as
+is shut until Biggy shoulders it open. The flood fill treats a wall with an `onHit` handler, or one of the gate kinds, as
 open. That change alone turned up cinema E's screen — 2.4 m of it, no collider, in the one room a
 player spends the end of chapter 1 in.
 
@@ -276,12 +276,8 @@ so anything marked *looks* waits behind anything marked *plays*.
 
 | item | who raised it | note |
 | --- | --- | --- |
-| Replace the cam-lock wheel with the WiFi password beat | Michele — *"too cryptic... I'd switch for a simpler password game"* | Agreed design: Biggy throws the breaker, a terminal asks for the password, and it can be typed from memory (**DevoxxForever**), read off a poster by Voxxy's narrow beam, or read off the router by Droid standing on Biggy. Removing the wheel removes its choreography tests with it — expect the test count to fall, and that is correct. |
-| Narrow the cinema-E aisle so Biggy genuinely does not fit | Michele — *"Biggy can now walk the aisle... the whole point was he cannot"* | **Caused by my rescale**: his collision radius went 1.36 m -> 0.72 m and the aisle was sized against the old one. He asked for the geometry to match the rule rather than the rule to be re-asserted. |
-| The keypad will not take digits from Voxxy or Droid | Michele — *"I don't seem to be able to activate it. imanaged with biggy"* | I read the code, saw digits route to the pad when a robot is parked there, and **declared it fine without testing it**. He then hit it again. Drive it headlessly, do not read it. |
 | Move the minigames from chapter 2 to chapter 3 | Michele — *"the hall is still closed at the moment"* | Correct: the booth games are in a hall nobody has opened yet. |
 | Voxxy's jump | Michele's idea, scoped down by him to *"just for one quiz. And for jumping around for fun"* | Natural home: hopping the cinema-E seat rows, which are `low` walls light already crosses. Gives her a verb of her own next to Droid's climb and Biggy's charge. |
-| The OutOfMemoryError beat | designed, never built | He asked to see it before approving. Design in `docs/gameplay-additions.md`. |
 | Chapter 1's mirror puzzle plays off camera | Michele — *"since the 3 color room mechanic is reflecting on the screen, but the screen is not visible in this angulation, could we move the puzzle on the upper line?"* | **This was living in chat only and was nearly lost.** The bounce off cinema E's screen is the feedback for the whole puzzle and the fixed camera does not show the screen. Moving the puzzle to a top-row room turns the screen toward the camera; the alternative is re-pitching that one room's camera. His suggestion is the cheaper of the two. |
 | Robots do not stand on the ground floor's raised lobby or its stairs | agent, cutscene round | `groundRiseM(x)` exists in `geometry.ts` *for this*, its own doc says the renderer reads it, and **nothing reads it** — so a robot on the lobby plate stands half a metre inside it and one on the main flight is swallowed. This is why chapter 3's transition walks into a staircase. |
 
@@ -315,6 +311,25 @@ player probably meant. The lane strip shows this before the run starts, so it is
 than surprising, but if it reads as fighting the player in a real playthrough the fix is to aim the
 bar with the stick at the moment of grabbing instead.
 
+### Four more closed, 24 Sep
+
+Michele, this round: *"Remove the wheel, too complicated."* and *"OutOfMemory, yes build it."*
+
+| what | outcome |
+| --- | --- |
+| The cam-lock wheel | Gone, and the WiFi password beat is in its place. Biggy shoulders the router cabinet open; the password is typed from memory, read off a sponsor poster by Voxxy's narrow beam, or read off the router's own label by Droid on Biggy's shoulders. |
+| The OutOfMemoryError beat | Built, as a morning beer delivery for that evening's party rather than drinking at breakfast. Four crates is Biggy's stack; the fifth throws a JVM trace and scatters the lot at his feet. Recovery measured at 5.8 s, which is a joke rather than a punishment. |
+| The chapter-1 keypad | Fixed at the root. The code's alphabet is 4-9 now, so no key it needs can also be the robot switcher — which is what made it read as dead just outside reach, and why Biggy (biggest radius, biggest reach) was the one it worked with. Backspace added; the rejection speaks in the robot's voice. |
+| Cinema E's aisle | 2.4 m -> 1.2 m. Droid keeps 10 cm either side, Biggy is 24 cm too wide. Measured: driven down the lane with a 3 px aim error, Voxxy and Droid reach the screen and Biggy stops at the back rows. |
+
+**And one thing that fell out of narrowing the aisle.** The end-to-end chapter-1 solve had Biggy
+teleported beside the alcove — a spot no player could walk to once the aisle was a real aisle.
+The test was green and describing an unplayable solution. It now places him at the front of the
+house, pointing his flood at the SCREEN: cinema E's screen is the chapter's mirror, and the bounce
+is how blue reaches a clue Biggy can never stand next to. That is the beat the room was designed
+around and no test had ever described it. `tests/aisle.test.ts` now measures clues against
+*reachable* ground rather than placed poses.
+
 ## Looks — deferred by him, explicitly
 
 | item | who | note |
@@ -338,5 +353,8 @@ bar with the stick at the moment of grabbing instead.
 | `gaitSpeed`'s `tanh` compression | The surviving cousin of the deleted `HUD_PX_PER_MPS`: it existed so a 23 m/s robot's legs did not blur. At 5.8 m/s it barely does anything and is probably removable — one more fudge out of the submission. |
 | `CUT_WALK_SPEED` is dead | The cutscene rewrite made walks duration-driven. Still exported, scaled and asserted; nothing reads it. |
 | Crowd and prop radii are the generous ones now | A conference-goer is 0.8-1.28 m wide and the cake crate is 1.36 m, sized when the robots were twice their current width. |
+| `pushBiggy` and `stepTow` ignore Biggy's mass | The crate beat adds mass and takes acceleration, and the design doc claimed the push and the tow would express the weight. They do not: both add `force · dt` straight to his velocity without dividing by mass. Only `botsCollide` reads it. Making them mass-aware retunes chapter 2's roller door, which is frozen physics and Michele's call. |
+| `mkBody` lives in `ch2-expo.ts` | Chapters 3 and 4 both import it across a chapter boundary now. It belongs in `bot.ts` or a `bodies.ts`. |
+| A careful player may never see the OutOfMemoryError | The HUD reads `heap 4/5`, which is what makes the beat survivable and also what makes it skippable. Mitigated (Biggy's line at four dares you, no penalty for trying); the guaranteed version is a seventh crate, so one overfill is forced. |
 | Chapter 4 runs about six minutes | Correct preservation of its difficulty through the rescale, possibly the wrong *shot*. The fix if playtesting says so is a run key or a smaller room, not re-tuning the clock back. |
 | `tools/progress/shots/` is 50+ MB | Prune before submission. |

@@ -39,6 +39,33 @@ import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
  * `nearPad` is reported to the HUD so the player is told when typing is live.
  */
 const PAD_REACH = 40;
+
+/**
+ * The keypad's alphabet: 4 to 9, never 0 to 3.
+ *
+ * Michele asked for this twice — *"You didn't follow my suggestion (don't use
+ * 1-2-3 in the door code)"* — and it is not a preference, it is the bug he filed
+ * one message earlier: *"I don't seem to be able to activate it. imanaged with
+ * biggy."*
+ *
+ * 1, 2 and 3 select a robot everywhere in this game, and at the keypad they type
+ * instead. That is fine while you are in reach and a trap the moment you are not:
+ * press the 2 of your code from a pixel outside `PAD_REACH` and you do not type a
+ * 2, you take Droid — who is across the room — so every digit after it also does
+ * nothing, and the keypad reads as dead. Biggy has the largest radius and
+ * therefore the largest reach (49 px against Voxxy's 44.8), which is exactly why
+ * he was the one it worked with.
+ *
+ * Restricting the alphabet removes the collision at the root rather than widening
+ * the reach until the overlap stops mattering. It also makes the existing "4-9
+ * mean nothing but keypad in this chapter" hint true, which it was not: the hint
+ * was written for this range and the generator was still emitting 0 to 9.
+ *
+ * 0 is out too. It switches nothing, but it is the one digit with no hint of its
+ * own, and a code that is all one contiguous range is a rule a player can hold.
+ */
+const PAD_LOW = 4;
+const PAD_HIGH = 9;
 /** How close Biggy must park for Droid, on his shoulders, to reach the panel. */
 const PANEL_REACH = 50;
 /** Biggy is loud about a run-up that will not do it, but only once he is moving. px/s. */
@@ -84,7 +111,7 @@ const OBJECTIVE =
   "cinema's back door, into the closed section — and the power is out. The fire door to the Devoxx " +
   'rooms has a keypad: find the <b>4 digits</b>, each visible only under the right <b>mix of lights</b>. ' +
   'Droid can climb on Biggy (E). Biggy can smash the jammed door with a straight run across the corridor.';
-const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb · Space: take hold of Biggy · digits at the keypad · R: restart';
+const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb · Space: take hold of Biggy · 4-9 at the keypad (Backspace) · R: restart';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('up');
@@ -111,7 +138,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let jamFall = 0;
   let fireOpen = false;
 
-  const digits = [0, 1, 2, 3].map(() => Math.floor(ctx.rng() * 10));
+  const digits = [0, 1, 2, 3].map(() => PAD_LOW + Math.floor(ctx.rng() * (PAD_HIGH - PAD_LOW + 1)));
 
   /* ------------------------------------------------------------ the fire door */
 
@@ -203,9 +230,26 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /* ------------------------------------------------------------ 4 · cinema E */
 
   const rE = R('E');
-  // One aisle up the left of the room; Biggy does not fit in it, but his flood does
-  // clear the seat backs, which is the hint the seats themselves give him.
-  const aisle: [number, number] = [rE.x + 50, rE.x + 80];
+  /**
+   * One aisle up the left of the room. Biggy does not fit in it, but his flood
+   * does clear the seat backs, which is the hint the seats themselves give him.
+   *
+   * WIDTH IS THE GATE, AND IT HAD STOPPED BEING ONE. Michele: *"Biggy can now
+   * walk the aisle. I think the whole point was he cannot."* He was right, and it
+   * was my doing: the 23 Sep rescale measured the radii off the rigs and Biggy's
+   * body went from 2.72 m across to 1.44 m, while this aisle stayed at the 2.4 m
+   * it was sized to when he was the wider robot. He asked for the geometry to move
+   * to meet the rule rather than the rule to be re-asserted, so it does.
+   *
+   * 15 px = 1.2 m, which is a real cinema aisle and sits in the only window that
+   * works: Droid's body is 1.00 m, so he keeps 10 cm either side, and Biggy's is
+   * 1.44 m, so he is a clear 24 cm too wide. There is no width that separates
+   * Droid from Voxxy — that window is 0.80 to 0.99 m and would leave Voxxy 7 cm a
+   * side, which is threading a needle, not a puzzle. Width gates Biggy; height
+   * (`tall`) is what gates Droid, in the rooms that use it.
+   */
+  const AISLE_W = 15;
+  const aisle: [number, number] = [rE.x + 50, rE.x + 50 + AISLE_W];
   const alcove: Rect = { x: rE.x + rE.w - 46, y: rE.y + rE.h - 78, w: 40, h: 40 };
   const whySeats = (b: { kind: string }): string | null =>
     b.kind === 'biggy' ? 'Biggy: too wide for that aisle — but my light goes over the seats' : null;
@@ -396,12 +440,34 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       if (b.kind === 'droid' || (b.kind === 'biggy' && d.mounted)) ctx.toggleMount();
     }
 
+    // Backspace takes one back. A four-digit field with no way to correct a
+    // fat-fingered press makes the player wait for it to fill up and be wrong.
+    if (nearPad && input === 'Backspace' && entered.length > 0) {
+      entered = entered.slice(0, -1);
+      return;
+    }
+
     if (nearPad && /^Digit\d$/.test(input)) {
+      // Only the pad's own alphabet goes in. A 0-3 here is a player using the
+      // robot switcher while parked at the door, and swallowing it as a digit
+      // would fill the field with keys they never meant for it.
+      if (!/^Digit[4-9]$/.test(input)) {
+        ctx.flash(`${b.name}: this keypad is 4 to 9. ${input[5]} is a robot, not a digit`);
+        return;
+      }
       entered += input[5];
       if (entered.length === 4) {
         if (entered === code) done();
         else {
-          ctx.flash('Wrong code');
+          // In the robot's own voice, and it says what it tried — a bare "Wrong
+          // code" leaves the player unsure the pad even took the digits.
+          ctx.flash(
+            b.kind === 'voxxy'
+              ? `Voxxy: ${entered}. Nope. Clearing it — say the digits again, in order`
+              : b.kind === 'droid'
+                ? `Droid: ${entered} rejected. Four digits, positions 1 to 4. Order matters`
+                : `Biggy: ${entered}. Still shut. Someone check the order`,
+          );
           entered = '';
         }
       }

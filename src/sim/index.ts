@@ -9,6 +9,7 @@ export * from './constants';
 export * from './units';
 export * from './geometry';
 export * from './bot';
+export * from './crates';
 export * from './lights';
 export * from './game';
 export * from './chapters';

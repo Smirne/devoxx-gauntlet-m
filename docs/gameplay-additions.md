@@ -40,45 +40,50 @@ chapters, and a broken gate is worth more points than a plausible speedometer.
 
 ---
 
-## 2. The WiFi password — approved, needs designing away from two traps
+## 2. The WiFi password — **the wheel was cut, 23 Sep 2026; the password shipped**
 
-Michele: yes to `DevoxxForever` appearing, but **not** as "find 13 letters scattered around the
-venue", and **not** as a second helping of the light-mixing puzzle unless the dynamics are
-genuinely different. Both notes are right: letter-collection is busywork, and the light mix is
-already chapter 1's whole identity — repeating it makes chapter 2 read as filler.
+Michele, 22 Sep: yes to `DevoxxForever` appearing, but **not** as "find 13 letters scattered around
+the venue", and **not** as a second helping of the light-mixing puzzle. Both notes are still right,
+and both still bind: letter-collection is busywork, and the light mix is already chapter 1's whole
+identity.
 
-So the beat leans on the one robot trait the game currently under-uses: **Biggy's inertia, and
-bracing as a brake.**
+What this section used to propose was a heavy cam-lock wheel on the router cabinet — Biggy the only
+mass that could break it free, Droid braced as the only brake, Voxxy's narrow cone the only beam
+that could read the index mark. It was built, and Michele killed it on 23 Sep in one line:
+
+> **"Remove the wheel, too complicated."**
+
+So the wheel is gone — state, constants, props and renderer — and the password itself is the beat.
+The cabinet is still Biggy's, but as a heavy door rather than a puzzle lock.
 
 ### "The network closet" — chapter 2, the technical room
 
-The room already exists and already holds the breakers and the network rack. Add a cabinet
-sealed by a heavy industrial cam-lock wheel.
+The badge printer needs POWER + CABLE + ROUTER. The router is in the cabinet, the cabinet is a
+steel door with seized hinges that only Biggy can swing, and the terminal inside it wants the
+password. Three ways to answer it, and a player needs one:
 
-- **Mass gate.** Only Biggy can turn the wheel at all. Voxxy (mass 1) and Droid (mass 3)
-  rebound off it, each saying why in their own voice.
-- **The actual puzzle is stopping, not starting.** The wheel carries Biggy's momentum and his
-  drag is 0.35 s⁻¹ — he coasts almost forever, which is exactly what makes him miss the index
-  mark every time on his own. This is the inverse of chapter 1's puzzle: chapter 1 asks for
-  three things to be true *simultaneously*, this asks for one thing to be true *at the right
-  moment*.
-- **Droid is the brake.** A braced robot has effectively infinite mass (`BRACED_MASS`), a
-  mechanic that exists, is tested, and is currently used for almost nothing. Droid braces
-  against the wheel to kill the coast. Timing that release is the skill.
-- **Voxxy reads the mark.** Its cone is 0.38 rad against Biggy's 1.0 — the only beam narrow
-  enough to resolve the fine index marks, so all three robots are load-bearing.
+1. **Typed from memory.** It is on the chapter card, in the crew's run sheet, and it is the sort of
+   password you remember. Thirteen letters, case-insensitive, Backspace fixes a slip, and a wrong
+   key does not go in and does not throw away what is already typed. About four seconds.
+2. **Read off the sponsor poster by Voxxy.** Her cone is 0.38 rad against Biggy's 1.0 — the only
+   beam narrow enough to resolve the small print, and she has to be close enough to read it rather
+   than merely to light it. Same trait the wheel leaned on for the index mark, and it is a real one.
+3. **Read off the router's own label by Droid, standing on Biggy.** The tape is inside the lid, up
+   at the top, which is where every conference's WiFi password really lives. `toggleMount` exists,
+   is tested, and outside chapter 1's projector panel almost nothing uses it.
 
-**Payoff, and why it is not a dead-end collectible.** Chapter 2 currently ends when the cable
-reaches the printer. With this, power + cable + router is what makes the badge printer actually
-print — the cabinet holds the router, and the password is on a label taped inside it, which is
-where every conference's WiFi password really lives. The joke lands as a card rather than as an
-inventory item: *DevoxxForever — and no, you cannot change it.*
+**What it costs.** The wheel was the one object in chapter 2 where all three robots were needed at
+the same time; three alternative routes cannot be that. Biggy is on every route and route 3 needs
+Droid as well, but the 10-point "all three robots" criterion is now carried by the chapter — Droid's
+breakers, Voxxy's cable, Biggy's roller door — rather than by this single object. That is the known
+price of "too complicated".
 
-Needs no new physics, no new constants, and no fourth chapter.
+**Payoff.** Power + cable + router is what makes the badge printer print, and the joke lands as a
+card rather than an inventory item: *DevoxxForever — and no, you cannot change it.*
 
----
+Needs no new physics, no frozen constant, and no fourth chapter.
 
-## 3. OutOfMemoryError — liked, approval held until it can be seen
+## 3. OutOfMemoryError — approved, **BUILT 23 Sep 2026**
 
 Michele wants to play it before approving. Fair: it is a joke, and jokes either land or they do
 not. Built next, after round 3, so there is something to judge.
@@ -101,3 +106,26 @@ line is on Devoxx's own signage.
 **What would make me pull it:** if the restart reads as punishment rather than comedy, it is a
 bad beat regardless of how good the joke is. The test is whether a player laughs the first time
 and then plays around it. That is Michele's call to make with it running in front of him.
+
+### Built — what changed on the way in
+
+Michele approved it in one word — *"OutOfMemory, yes build it"* — and it shipped as
+`src/sim/crates.ts` plus the beer sections of `ch3-breakfast.ts`.
+
+- **The framing moved with the story.** The paragraph above says lunch and Wednesday-evening
+  beers; chapter 3 is breakfast now. The crates are a **delivery**: they arrive at eight in the
+  morning, for tonight, which is when a brewery actually turns up and is funnier at breakfast than
+  at lunch — nobody is drinking, the pallet is simply standing in the way of three thousand
+  arriving people, and the shrink-wrap still carries Devoxx's own line about hangovers and
+  OutOfMemoryErrors. It is the same joke with a better reason to be there, and it fits beside the
+  tomato soup Michele already ruled stays.
+- **It is Stephan's third condition**, not a side quest. Soup, speaker, and that pallet out of his
+  aisle. A beat nobody finds cannot be judged, and the objective and progress lines carry it.
+- **Six crates, four fit, the fifth throws.** `CRATE_STACK_LIMIT = 5` and `CRATE_DELIVERY = 6`, so
+  four-then-two is the honest line and five-then-one is the one that does not exist.
+- **The numbers:** each crate is +1.5 mass and x0.82 acceleration, compounding. Four crates take
+  Biggy from 7 to 13 and from 0.6 s^-1 to 0.271, which is a quarter longer over a 16 m haul from a
+  standing start (measured: 5.0 s empty, 6.4 s loaded). Top speed, drag and radius are untouched.
+- **`DEFS` never moves.** The load is a modifier on the mutable `Bot` copy, recomputed from the
+  frozen table every time, and `game.ts` restores every robot's frozen identity at the head of
+  `startChapter`, so no load can leak into the next chapter or survive `R`.

@@ -17,6 +17,7 @@
 import {
   BLOCKED_THROTTLE,
   CUT_FADE,
+  DEFS,
   DT_MAX,
   MOUNT_REACH,
   TOAST_MS,
@@ -565,6 +566,32 @@ export function createGame(opts: GameOptions = {}): DebugGame {
 
   /* ------------------------------------------------------------- the manifest */
 
+  /**
+   * Give every robot its frozen identity back.
+   *
+   * A chapter is allowed to modify a robot's physical numbers for its own beat —
+   * chapter 3's beer crates put mass on Biggy and take acceleration off him
+   * (`src/sim/crates.ts`) — and `mkBot` spreads `DEFS` into a mutable copy
+   * precisely so it can. What a chapter must never do is let that modifier
+   * OUTLIVE it: skipping out of chapter 3 mid-carry, or pressing `R`, would
+   * otherwise hand chapter 4 or chapter 1 a Biggy who is still carrying four
+   * crates that no longer exist.
+   *
+   * So the restore lives here, at the one door every chapter comes through, and
+   * it reads `DEFS` rather than remembering anything. The frozen table itself is
+   * never written — it is deep-frozen, and writing it would throw.
+   */
+  function restoreIdentity(): void {
+    for (const b of bots) {
+      const def = DEFS[b.kind];
+      b.r = def.r;
+      b.accel = def.accel;
+      b.max = def.max;
+      b.drag = def.drag;
+      b.mass = def.mass;
+    }
+  }
+
   function startChapter(n: number): void {
     const def = CHAPTERS[n - 1];
     if (!def) throw new Error(`no chapter ${n}`);
@@ -576,6 +603,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     dropTow();
     blockedAt.clear();
     walls.length = 0;
+    restoreIdentity();
     runtime = def.setup(ctx);
   }
 
@@ -749,7 +777,9 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       card = null;
       if (chapter === 0) startChapter(1);
     }
-    if (code === 'KeyR') {
+    // `R` is restart everywhere except inside a chapter's own text prompt, where it
+    // is the two Rs in `DevoxxForever` (`ChapterRuntime.typing`).
+    if (code === 'KeyR' && !(runtime?.typing?.() ?? false)) {
       restart();
       return;
     }
@@ -796,6 +826,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       card,
       tow: tow ? { holder: tow.holder, dir: tow.dir, aim: tow.aim } : null,
       entered: r?.entered?.() ?? '',
+      typing: r?.typing?.() ?? false,
       score,
       swag,
     };

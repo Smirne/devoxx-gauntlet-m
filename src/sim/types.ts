@@ -296,6 +296,12 @@ export interface GameSnapshot {
    * The renderer draws the bar from this; nothing else may write it.
    */
   tow: { holder: RobotKind; dir: number; aim: number } | null;
+  /**
+   * The sim has the keyboard: a prompt is open and letters are being typed into it
+   * (chapter 2's router terminal). The browser shell must not also read those keys
+   * as movement — see `src/main.ts`.
+   */
+  typing: boolean;
   toast: Toast | null;
   /** 0 = clear, 1 = black. Cutscenes and chapter transitions. */
   fade: number;

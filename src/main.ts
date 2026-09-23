@@ -216,7 +216,14 @@ function codeOf(ev: KeyboardEvent): string {
 
 function onKeyDown(ev: KeyboardEvent): void {
   const code = codeOf(ev);
-  const axis = MOVE[code];
+  /*
+   * While the sim has the keyboard (chapter 2's router terminal — `snapshot().typing`)
+   * the movement keys are letters, not a stick. `DevoxxForever` starts with a `D`,
+   * and without this the first character of the password walks the robot out of
+   * reach of the terminal it is being typed into. Key-UP is never suppressed, or a
+   * key held when the prompt opened would stay held for ever.
+   */
+  const axis = game.snapshot().typing ? undefined : MOVE[code];
   if (axis) {
     held[axis] = true;
     pushStick();
@@ -224,6 +231,8 @@ function onKeyDown(ev: KeyboardEvent): void {
   }
   // Tab cycles the driven robot, so it must never move focus out of the game.
   if (code === 'Tab' || code === 'Space') ev.preventDefault();
+  // Backspace at the terminal must edit the password, not walk the browser back.
+  if (code === 'Backspace' && game.snapshot().typing) ev.preventDefault();
   if (ev.repeat) return;
   if (code === 'KeyM') {
     muted = !muted;
