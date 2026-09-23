@@ -276,7 +276,6 @@ so anything marked *looks* waits behind anything marked *plays*.
 
 | item | who raised it | note |
 | --- | --- | --- |
-| Wire the tow bar into chapter 2 | Michele — *"pushing biggy is really really hard"* | `src/sim/tow.ts` is written, tested and committed **unwired**. Needs a key binding, the chapter hookup, and a visual for the bar — the 2D experiment it was ported from has no debug rendering of the grab either, so that part is invented. |
 | Replace the cam-lock wheel with the WiFi password beat | Michele — *"too cryptic... I'd switch for a simpler password game"* | Agreed design: Biggy throws the breaker, a terminal asks for the password, and it can be typed from memory (**DevoxxForever**), read off a poster by Voxxy's narrow beam, or read off the router by Droid standing on Biggy. Removing the wheel removes its choreography tests with it — expect the test count to fall, and that is correct. |
 | Narrow the cinema-E aisle so Biggy genuinely does not fit | Michele — *"Biggy can now walk the aisle... the whole point was he cannot"* | **Caused by my rescale**: his collision radius went 1.36 m -> 0.72 m and the aisle was sized against the old one. He asked for the geometry to match the rule rather than the rule to be re-asserted. |
 | The keypad will not take digits from Voxxy or Droid | Michele — *"I don't seem to be able to activate it. imanaged with biggy"* | I read the code, saw digits route to the pad when a robot is parked there, and **declared it fine without testing it**. He then hit it again. Drive it headlessly, do not read it. |
@@ -284,6 +283,36 @@ so anything marked *looks* waits behind anything marked *plays*.
 | Voxxy's jump | Michele's idea, scoped down by him to *"just for one quiz. And for jumping around for fun"* | Natural home: hopping the cinema-E seat rows, which are `low` walls light already crosses. Gives her a verb of her own next to Droid's climb and Biggy's charge. |
 | The OutOfMemoryError beat | designed, never built | He asked to see it before approving. Design in `docs/gameplay-additions.md`. |
 | Robots do not stand on the ground floor's raised lobby or its stairs | agent, cutscene round | `groundRiseM(x)` exists in `geometry.ts` *for this*, its own doc says the renderer reads it, and **nothing reads it** — so a robot on the lobby plate stands half a metre inside it and one on the main flight is swallowed. This is why chapter 3's transition walks into a staircase. |
+
+## Plays — closed since this list was written
+
+### The tow bar is wired (23 Sep)
+
+Space takes hold of Biggy and lets go again, everywhere, in all four chapters. The bar snaps to
+one of eight compass directions; stick along it drives, stick across it walks the holder round to
+re-aim, pulling back for 0.2 s lets go. The renderer draws the bar between the pair and a lane
+strip on the floor ahead of Biggy, in the holder's lamp colour.
+
+Measured on the chapter-2 roller-door lane, with the pusher started off the centre line by the
+amount a player misses by when lining up by eye:
+
+| pusher off the line | free push: drift / top speed | tow: drift / top speed |
+| --- | --- | --- |
+| 0 px | 0.00 px / 78.8 | 0.00 px / 71.7 |
+| 2 px | 49.4 px / 38.8 | 0.00 px / 71.7 |
+| 4 px | 41.7 px / 24.2 | 0.00 px / 71.7 |
+
+Two pixels — a sixth of Voxxy's diameter — is the difference between opening the roller door and
+not reaching half its threshold. Wiring it up found three things wrong with the ported file, all
+recorded in `src/sim/tow.ts`'s own comments: the ported speed cap was slower than Biggy walking,
+`stepBot`'s clamp undid the tow every frame, and the eight-direction quantisation stopped applying
+after the first re-aim. Tests: `tests/tow.test.ts`.
+
+**Left open deliberately.** The grab direction is decided by where the holder is standing, and
+beyond about 6 px off the line it snaps to the next eighth — a diagonal — rather than the lane the
+player probably meant. The lane strip shows this before the run starts, so it is readable rather
+than surprising, but if it reads as fighting the player in a real playthrough the fix is to aim the
+bar with the stick at the moment of grabbing instead.
 
 ## Looks — deferred by him, explicitly
 
