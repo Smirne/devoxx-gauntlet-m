@@ -1354,10 +1354,13 @@ describe('chapter 3 — breakfast', () => {
     for (const p of crowd) expect(p.x).toBeLessThan(edge);
     expect(new Set(crowd.map((p) => Math.round(p.y / 70))).size).toBeGreaterThan(3);
     // 5,600 simulated frames of a 36-body crowd is a wall-clock budget, not a
-    // behaviour: it runs in a couple of seconds on a laptop and takes six in a
-    // container, and vitest's default 5 s cut it off there long before anything
-    // in this file was about beer crates.
-  }, 30000);
+    // behaviour, and this test is the most expensive in the suite: 13.1 s on an
+    // idle box and 38.9 s with four agents on it. The per-test 30 000 that used to
+    // sit here was the whole bug — it was written when the global was vitest's 5 s
+    // default, and once the global went to 30 s it stopped raising anything and
+    // started PINNING this test to 30 s while the rest of the suite got more. The
+    // budget belongs in `vitest.config.ts`, once, for everything.
+  });
 
   /* ----------------------------------------------------- the booth games
    *
