@@ -216,10 +216,20 @@ const NO_MIRRORS: Mirror[] = [];
  * Four pallets of crated Devoxx t-shirts, inside the pickup store.
  *
  * Michele: *"Gadgets must be ready... (and put crates, shirts and gadgets inside)...
- * But the devoxx shirt is a tradition."* They are dressing — no collider, no state —
- * and they exist so that what is behind the roller door is worth breaking it for.
- * Laid out clear of the door's swing so the crash reveals them rather than clipping
- * through them.
+ * But the devoxx shirt is a tradition."* They exist so that what is behind the roller
+ * door is worth breaking it for, and they are laid out clear of the door's swing so
+ * the crash reveals them rather than clipping through them.
+ *
+ * **They have colliders**, which they did not when they were first written ("dressing
+ * — no collider, no state"). `tests/colliders.test.ts` caught it the same night: a
+ * pallet of crated t-shirts finishes at 1.06 m and a robot could stand in the
+ * middle of it. There is no such thing as scenery you can walk through — that is
+ * exactly the bug the sweep was written to find — and Biggy coming through the
+ * shutter at 5.4 m/s and gliding through four pallets would undo the one moment the
+ * chapter builds to. The two rows leave a 28 px lane between them at y 127..155, so
+ * he can still get into the room: wider than he is, narrow enough that he has to
+ * come off the throttle first. The tall pallets finish at 1.06 m, so they are solid
+ * rather than `low` — see the note on the wall itself.
  */
 const STORE_PALLETS: readonly Vec2[] = [
   { x: GF.store.x + 34, y: GF.store.y + 30 },
@@ -387,6 +397,31 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     },
   };
   ctx.walls.push(roller);
+
+  // The pallets, as colliders: `drawCrate` centres its box on the prop, so these are
+  // the boxes the renderer draws, to the pixel.
+  for (const pt of STORE_PALLETS) {
+    ctx.walls.push({
+      x: pt.x - 8,
+      y: pt.y - 7,
+      w: 16,
+      h: 14,
+      kind: 'crate',
+      /*
+       * NOT `low`, which is the category Voxxy vaults and light crosses. `LOW_H` in
+       * the renderer is 0.78 m for every low wall in the game — seat rows, tables,
+       * counters — and `drawCrate` stacks these two crates high, so the tall pallets
+       * finish at 1.06 m. A 0.38 m robot does not get over that, and a metre of
+       * crated cotton does not pass a torch beam either.
+       */
+      why: (b) =>
+        b.kind === 'biggy'
+          ? 'Biggy: a pallet of t-shirts. Three thousand of them, and they do not slide'
+          : b.kind === 'droid'
+            ? 'Droid: crated shirts, stacked past my chest. Round it, not through it'
+            : 'Voxxy: a wall of Devoxx t-shirts, taller than I am. Going round',
+    });
+  }
 
   const printerAt: Vec2 = { x: GF.printer.x + 10, y: GF.printer.y + 6 };
   const rackAt: Vec2 = { x: GF.rack.x + 10, y: GF.rack.y + 12 };

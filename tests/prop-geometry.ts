@@ -78,7 +78,7 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
   dropzone: { h: 0.04, tl: true, flat: true },
   pot: { h: 0.45 },
   soup: { h: 0.12 },
-  sign: { h: 2.2, fw: 4.8, fd: 0.14 },
+  sign: { h: 2.2, fw: 4.8, fd: 0.14, lift: 2.2 },
   /* chapter 4 */
   cake: { h: 0.55 },
   'cake-mark': { h: 0.04, tl: true, flat: true },
