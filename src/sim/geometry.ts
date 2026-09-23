@@ -338,7 +338,14 @@ export function cinemaEExit(): Rect {
   // against the back of that row. Anything else leaves an orphan slot of walkable
   // floor between the two — in the shadow of the alcove wall, from this camera —
   // for a robot to drive into and vanish.
-  return { x: r.x + r.w - 44, y: r.y + 97, w: 40, h: 40 };
+  // 52 deep rather than a tidy 40, and that is the mirror's doing. The bounce off
+  // cinema E's screen carries `MIRROR_MIN_RANGE` (90 px) whatever else happens, and
+  // beyond that it is whatever the source had left. A pocket that ends 87 px from
+  // the screen puts the clue inside that floor from every angle; at 103 px — a
+  // 40-deep pocket in the same place — Biggy's reachable lighting positions fell
+  // from 539 to 73, which is a needle by another name. It also leaves 29 px of bay
+  // between the pocket and the front row, which is what Droid turns around in.
+  return { x: r.x + r.w - 44, y: r.y + 97, w: 40, h: 52 };
 }
 
 /** Square corridor column, sim px. */
