@@ -240,6 +240,20 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
   'race-marker': { h: 0.5, color: 0xff7a1a },
   /* chapter 3 — breakfast */
   'soup-station': { h: 1.0, color: 0xc0392b },
+  /*
+   * THE FINALLY BLOCK — chapter 3's beer bar (`src/sim/chapters/ch3-breakfast.ts`).
+   *
+   * Michele: *"ok but remember biggy can't reach the soup without voxxy's help. So
+   * it should be a different path, with clear hints. (glowing halo, taps ready,
+   * belgian beer glassess)."* The counter is also a `low` wall in the sim, so it
+   * stops a robot and passes light; these four boxes are only its face and what
+   * stands on it, and `lift` is what puts the taps and the glassware at counter
+   * height instead of on the floor. Each glass carries `v = 0..3` for its shape —
+   * the sim names the beer, not the silhouette.
+   */
+  'bar-counter': { h: 1.05, color: 0x6b4a2f },
+  'beer-tap': { h: 0.34, color: 0xc9a227, lift: 1.05, glow: 0x4a3405 },
+  'beer-glass': { h: 0.16, color: 0xf2e2b0, lift: 1.05, glow: 0x3a3320 },
   ladle: { h: 0.9, color: 0x9aa3ad, tl: true },
   dropzone: { h: 0.04, color: 0x2f7d4f, tl: true, flat: true },
   pot: { h: 0.45, color: 0x8e5a3a },
