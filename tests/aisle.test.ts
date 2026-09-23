@@ -189,9 +189,11 @@ describe("cinema E's aisle", () => {
      * 300-step routes through a chapter's full wall list. It came in at 1.9 s on
      * an idle machine and failed at 5.3 s while a build was running beside it —
      * a timeout, not a wrong answer, which is the worst kind of red because it
-     * looks like a regression.
+     * looks like a regression. 30 s was not enough either, on a box running four
+     * agents' test suites and two headless browsers; it is 90 now, because the
+     * only thing a tighter number buys is that same false red.
      */
-  }, 30000);
+  }, 90000);
 
   /*
    * THE BEAT ITSELF.
