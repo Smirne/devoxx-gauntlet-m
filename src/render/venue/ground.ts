@@ -25,20 +25,38 @@
  *
  * Nothing in this file is a collider: the sim owns collision, and anything drawn
  * here that the sim does not know about is kept flat against a real wall or low
- * enough to read as dressing — with the deliberate exception of the hall's column
- * grid, which the floor plan itself draws and which the sense-of-place check wants.
+ * enough to read as dressing.
+ *
+ * That rule used to have an exception — the hall's column grid was built here, out
+ * of the renderer's own loop, and the sim had never heard of it. Michele found what
+ * that means in play ("robots can go through staircase and objects") and a
+ * flood-fill probe put a number on it: eighteen columns, four lobby columns, two
+ * planters and both secondary staircases, 100% of every footprint walkable. All of
+ * that geometry now lives in `src/sim/geometry.ts` and arrives here through
+ * `groundWalls()` like every other wall, so there is no second copy to drift.
  */
 
 import * as THREE from 'three';
 
 import { H, T, W } from '../../sim/constants';
-import { GF, LOBBY_RISE_M, groundWalls } from '../../sim/geometry';
+import {
+  GF,
+  LOBBY_PLANTERS,
+  LOBBY_RISE_M,
+  groundWalls,
+  stairDoor,
+  stairFlightRect,
+  stairLanding,
+} from '../../sim/geometry';
 import type { Rect, Wall } from '../../sim/types';
 import { m } from '../../sim/units';
 import type { VenuePalette } from './materials';
 import {
+  BREAKER_H,
+  BREAKER_Y,
   DOOR_H,
   LOW_H,
+  NEAR_CUT_H,
   SHELL_H,
   WALL_H,
   anchorAt,
@@ -61,6 +79,18 @@ const STAIR_RISE = 5;
 const RISE = LOBBY_RISE_M;
 /** East of this the floor is the raised lobby plate; west of it, the hall. */
 const LOBBY_X = GF.smallStairs.x + GF.smallStairs.w;
+/**
+ * The plinth the network rack stands on, metres.
+ *
+ * Nothing in the plan asks for it; the diorama camera does. Chapter 2's pitch is
+ * 31 deg and the technical room's south side is the building shell — 3.8 m of it —
+ * four metres in front of a 1.95 m cabinet, so the rack's head cleared the wall top
+ * by 13 cm and Michele reported it as *"not visible at all"*. On a 0.4 m plinth it
+ * clears by half a metre, which is the difference between a silhouette you can see
+ * and one you cannot. It changes nothing in the sim: the rack's footprint, and
+ * therefore Voxxy's reach to the cable end on it, is the same rect.
+ */
+const RACK_PLINTH = 0.4;
 
 export interface GroundBuild {
   group: THREE.Group;
@@ -68,10 +98,6 @@ export interface GroundBuild {
   anchors: Map<number | string, THREE.Object3D>;
   /** Everything above head height, so a top-down debug shot can hide it. */
   overhead: THREE.Group;
-}
-
-function overlaps(a: Rect, b: Rect, pad = 0): boolean {
-  return a.x < b.x + b.w + pad && a.x + a.w + pad > b.x && a.y < b.y + b.h + pad && a.y + a.h + pad > b.y;
 }
 
 /** The walking surface a thing at this sim x stands on. */
@@ -88,6 +114,22 @@ function wallStyle(
 ): { mat: THREE.MeshStandardMaterial; height: number; base: number } | null {
   // Half tables are drawn as cloth-draped tables, not as slabs.
   if (w.booth) return w.booth.table ? null : { mat: p.boothWall, height: BOOTH_H, base: 0 };
+  // Drawn by their own builders further down: the 19-inch rack, the flight inside
+  // a stair shaft (the sim carries it as a wall because nothing climbs).
+  if (w.kind === 'rack' || w.kind === 'stair-foot') return null;
+  // The hall's structural grid: full shell height, because a roof column carries
+  // the roof. The lobby's are the dark blue ones on the raised plate.
+  if (w.kind === 'column') return { mat: p.concrete, height: SHELL_H, base: 0 };
+  if (w.kind === 'lobby-column') return { mat: p.lobbyColumn, height: SHELL_H, base: RISE };
+  if (w.kind === 'planter') return { mat: p.wood, height: 0.5, base: RISE };
+  /*
+   * The stair shafts. Their near (south) flank is cut to a parapet for the same
+   * reason the corridor's is upstairs (`NEAR_CUT_H` in props.ts): at full height it
+   * is a 2.45 m wall standing between the diorama camera and the inside of the very
+   * thing the player has to read as a stairwell.
+   */
+  if (w.kind === 'stairwell') return { mat: p.hallWall, height: WALL_H, base: 0 };
+  if (w.kind === 'stairwell-near') return { mat: p.hallWall, height: NEAR_CUT_H, base: 0 };
   const isShell =
     (w.w === W && (w.y === 0 || w.y === H - T)) || (w.h === H && (w.x === 0 || w.x === W - T));
   if (isShell) return { mat: p.shell, height: SHELL_H + RISE, base: 0 };
@@ -102,36 +144,6 @@ function wallStyle(
 }
 
 /* -------------------------------------------------------------- the hall */
-
-/**
- * The structural column grid. The plan draws it at a regular 160 x 140 sim-pixel
- * pitch — the same pitch the prototype's booth grid uses — so the grid is phased
- * half a bay off the booths, which is how a real hall is dressed: the booths are
- * built in the bays and the columns stand in the walking lanes between them.
- */
-function columnGrid(p: VenuePalette): THREE.Group {
-  const g = new THREE.Group();
-  g.name = 'column-grid';
-  const h = GF.hall;
-  const solids: Rect[] = [
-    GF.food.court,
-    GF.tech,
-    GF.store,
-    // Nothing stands in the threshold or against the concrete that frames it.
-    GF.smallStairs,
-    GF.concreteWall,
-    ...GF.stairs.map((s) => ({ x: s.x, y: s.y, w: s.w, h: s.h })),
-    ...GF.booths.map((b) => ({ x: b.x, y: b.y, w: b.w, h: b.h })),
-  ];
-  for (let x = h.x + 190; x < h.x + h.w; x += 160) {
-    for (let y = h.y + 110; y < h.y + h.h; y += 140) {
-      const foot: Rect = { x: x - 7, y: y - 7, w: 14, h: 14 };
-      if (solids.some((s) => overlaps(foot, s, 6))) continue;
-      g.add(boxAt(x, y, 14, 14, 0, SHELL_H, p.concrete));
-    }
-  }
-  return g;
-}
 
 /** The router cabinet's height, metres. A full-height 19-inch floor cabinet. */
 const CABINET_H = 2.05;
@@ -329,6 +341,16 @@ function reception(p: VenuePalette, overhead: THREE.Group): THREE.Group {
  * anybody can reach — is at the foot, on the south. All of them stop short of the
  * cinema floor plate: they disappear into the soffit rather than punching through a
  * level the diorama draws separately.
+ *
+ * ## The secondary flights are inside a box
+ *
+ * Michele, on chapter 2: *"In devoxx the stairs are not open but look like rooms."*
+ * They are rooms. `plans/exhibition-floor-simple.png` draws each secondary stair as
+ * a walled shaft with a pair of doors in its plan-north end — world WEST, by this
+ * module's rotation — and the ascent arrow running away from them, so the flight
+ * climbs eastward and the landing is behind the doors. The shell is `groundWalls()`'
+ * job now (it has to be a collider, which was the other half of the same report);
+ * what is built here is the flight inside it, the landing floor and the doors.
  */
 function staircases(p: VenuePalette, anchors: Map<number | string, THREE.Object3D>): THREE.Group {
   const g = new THREE.Group();
@@ -337,11 +359,13 @@ function staircases(p: VenuePalette, anchors: Map<number | string, THREE.Object3
   for (const s of GF.stairs) {
     const rect: Rect = { x: s.x, y: s.y, w: s.w, h: s.h };
     const flight = stairFlight({
-      rect,
+      rect: stairFlightRect(rect),
       topY: STAIR_RISE,
       bottomY: 0,
-      dir: '+x',
-      steps: 14,
+      // Top of the flight at its EAST end: you come down heading west, and step
+      // out of the doors in the west face.
+      dir: '-x',
+      steps: 12,
       tread: p.stairTreadDark,
       nosing: p.stairNosing,
       runs: 2,
@@ -349,6 +373,21 @@ function staircases(p: VenuePalette, anchors: Map<number | string, THREE.Object3
     });
     flight.name = `ground-stair-${s.to}`;
     g.add(flight);
+
+    // The landing behind the doors, and a lintel over them so the mouth reads as a
+    // doorway rather than as a hole in a wall.
+    const d = stairDoor(rect);
+    g.add(floorSlab(stairLanding(rect), 0.02, p.stairTreadDark, 0.1));
+    g.add(slab({ x: d.x, y: d.y, w: d.w, h: d.h }, DOOR_H, WALL_H - DOOR_H, p.hallWall));
+    // Two leaves standing open against the jambs, pushed back into the shaft.
+    for (const ly of [d.y + 1, d.y + d.h - 6]) {
+      g.add(slab({ x: d.x + T, y: ly, w: 15, h: 5 }, 0, DOOR_H, p.doorLeaf));
+    }
+    // The green running-man plate over the doors — this is a fire stair.
+    // Held 0.4 px off the jamb face: two coplanar surfaces is how the entrance
+    // got its flicker (see `lobby()`), and one costs nothing to avoid here.
+    g.add(slab({ x: d.x - 2.4, y: d.y + d.h / 2 - 7, w: 2, h: 14 }, DOOR_H + 0.12, 0.34, p.signGreen));
+
     const a = anchorAt(`anchor-stair-${s.to}`, s.x + s.w / 2, s.y + s.h / 2);
     anchors.set(`stair-${s.to}`, a);
     g.add(a);
@@ -404,13 +443,22 @@ function lobby(p: VenuePalette, overhead: THREE.Group): THREE.Group {
   /* ---------------- main entrance: the left-hand doors, and fixed panes beyond */
 
   const e = GF.entrance;
-  // Mullions up the fixed glazing, which the sim carries as two `glass` runs.
+  /*
+   * Mullions up the fixed glazing, which the sim carries as two `glass` runs.
+   *
+   * `MULLION_PROUD` is the second half of the entrance flicker: a mullion is wider
+   * and deeper than the pane it frames, but it used to be exactly as TALL, so its
+   * cap and the glass's cap were coplanar down the whole facade. A frame standing
+   * four centimetres proud of its glass is what a curtain wall actually looks like,
+   * and it is also the one thing that makes the two surfaces stop fighting.
+   */
+  const MULLION_PROUD = 0.04;
   for (const [y0, y1] of [
     [T, e.y],
     [e.y + e.h, H - T],
   ] as Array<[number, number]>) {
     for (let y = y0 + 24; y < y1 - 10; y += 46) {
-      g.add(slab({ x: e.x - 1, y, w: e.w + 2, h: 5 }, RISE, SHELL_H, p.mullion));
+      g.add(slab({ x: e.x - 1, y, w: e.w + 2, h: 5 }, RISE, SHELL_H + MULLION_PROUD, p.mullion));
     }
   }
   // The open doors: three bays of paired leaves, swung back into the lobby, with a
@@ -430,8 +478,19 @@ function lobby(p: VenuePalette, overhead: THREE.Group): THREE.Group {
 
   /* -------------------------------------------- the forecourt beyond the glass */
 
-  // Everything east of the facade is outside: paving, bollards and the dark.
-  g.add(floorSlab({ x: e.x + e.w, y: 0, w: W - (e.x + e.w), h: H }, RISE, p.paving, 0.3));
+  /*
+   * Everything east of the facade is outside: paving, bollards and the dark.
+   *
+   * **The flicker Michele saw at the entrance was here.** The lobby plate
+   * (`buildGround`) ran the full width of the canvas and the paving was laid on top
+   * of it — two floor slabs, four hundred sim pixels of overlap, and both of their
+   * top faces at exactly `RISE`. Two coplanar surfaces fighting for the same depth
+   * value is z-fighting by construction, and at diorama zoom it is the whole
+   * forecourt shimmering behind the glass. The plate now stops at the building line
+   * (see `buildGround`) and the paving carries the ground from there east, so the
+   * two are edge to edge with nothing coplanar between them.
+   */
+  g.add(floorSlab({ x: e.x + e.w, y: 0, w: W - (e.x + e.w), h: H }, RISE, p.paving, RISE + 0.3));
   for (let k = 0; k < 7; k++) g.add(postAt(e.x + e.w + 26, 120 + k * 78, 0.22, 0.9, RISE, p.blackMetal, 10));
   for (const [sx, sy] of [
     [e.x + e.w + 70, 300],
@@ -443,16 +502,14 @@ function lobby(p: VenuePalette, overhead: THREE.Group): THREE.Group {
 
   /* ------------------------------------- the concourse in front of the doors */
 
-  // Dark blue lobby columns — image-1790032582765.webp.
-  for (const [cx, cy] of [
-    [1078, 200],
-    [1078, 655],
-    [1240, 655],
-    [1400, 655],
-  ] as Array<[number, number]>) {
-    g.add(boxAt(cx, cy, 22, 22, RISE, SHELL_H, p.lobbyColumn));
-  }
-  // Rope-line stanchions funnelling arrivals from the doors past reception.
+  // The dark blue lobby columns and the concourse planters are sim walls now
+  // (`LOBBY_COLUMNS` / `LOBBY_PLANTERS` in geometry.ts, drawn by the wall loop):
+  // robots used to walk straight through all six of them.
+  //
+  // Rope-line stanchions funnelling arrivals from the doors past reception. These
+  // stay dressing: a velvet rope on a 26 cm post is not something a player expects
+  // to be stopped by, and a 4 px collider in the middle of the concourse would be
+  // an invisible snag rather than an obstacle.
   for (const [sx, sy] of [
     [1440, 604],
     [1370, 596],
@@ -463,13 +520,9 @@ function lobby(p: VenuePalette, overhead: THREE.Group): THREE.Group {
     g.add(postAt(sx, sy, 0.17, 0.05, RISE + 0.98, p.stanchion, 12));
     g.add(slab({ x: sx - 38, y: sy - 1, w: 38, h: 2 }, RISE + 0.78, 0.05, p.stanchionBelt));
   }
-  // Planters along the concourse.
-  for (const [sx, sy] of [
-    [1110, 350],
-    [1430, 250],
-  ] as Array<[number, number]>) {
-    g.add(boxAt(sx, sy, 56, 24, RISE, 0.5, p.wood));
-    g.add(boxAt(sx, sy, 48, 18, RISE + 0.5, 0.35, p.boothCloth));
+  // The greenery on top of the planters; the timber box under it is a sim wall.
+  for (const r of LOBBY_PLANTERS) {
+    g.add(slab({ x: r.x + 4, y: r.y + 3, w: r.w - 8, h: r.h - 6 }, RISE + 0.5, 0.35, p.boothCloth));
   }
 
   /* --------------------------------------------------------------- toilets */
@@ -520,8 +573,13 @@ export function buildGround(p: VenuePalette): GroundBuild {
   // The hall plate at the datum, the lobby plate half a metre above it. The raised
   // plate is thick enough to carry its own riser, so the level change is a solid
   // mass from the hall side rather than a floating sheet.
+  // The raised plate stops at the building line: east of it is the forecourt's own
+  // paving, and when the two overlapped at the same height they z-fought (see
+  // `lobby()`'s forecourt note — Michele's "something is flickering at the
+  // entrance").
+  const buildingLine = GF.entrance.x + GF.entrance.w;
   group.add(floorSlab({ x: 0, y: 0, w: LOBBY_X, h: H }, 0, p.lobbyFloor, 0.4));
-  group.add(floorSlab({ x: LOBBY_X - 6, y: 0, w: W - LOBBY_X + 6, h: H }, RISE, p.lobbyFloor, RISE + 0.3));
+  group.add(floorSlab({ x: LOBBY_X - 6, y: 0, w: buildingLine - LOBBY_X + 6, h: H }, RISE, p.lobbyFloor, RISE + 0.3));
   const hallFloor = floorSlab(GF.hall, 0.005, p.hallFloor, 0.1);
   hallFloor.name = 'hall-floor';
   group.add(hallFloor);
@@ -540,7 +598,6 @@ export function buildGround(p: VenuePalette): GroundBuild {
     group.add(slab(w.kind === 'facade' ? { ...w, w: 6 } : w, style.base, style.height, style.mat));
   }
 
-  group.add(columnGrid(p));
   group.add(threshold(p, anchors));
   group.add(catering(p));
   group.add(booths(p));
@@ -556,13 +613,50 @@ export function buildGround(p: VenuePalette): GroundBuild {
     group.add(slab({ x, y: h.y + h.h - 3, w: 90, h: 2 }, 0.4, 2, p.redPanel));
   }
 
-  // Technical room: breakers mounted high, network rack on the floor.
-  const breakers = slab(GF.panel, 1.45, 0.55, p.breakerBox);
-  breakers.name = 'breaker-panel';
-  group.add(breakers);
-  const rack = networkRack(GF.rack, 0, p);
+  /*
+   * THE BREAKER PANEL — the consumer unit on the technical room's back wall.
+   *
+   * Michele: *"The breaker should be graphical of course."* It was two objects in
+   * the same place and neither of them was a breaker panel: a 0.55 m slab drawn
+   * here at 1.45 m, and, on top of it, chapter 2's own `breaker` prop, which
+   * `scene.ts` drew from the generic `PROPS` table as a 1.5 m box **standing on the
+   * floor** — the coloured crate in the corner of the room.
+   *
+   * It is one object now, split the way the architecture asks: the enclosure, the
+   * conduit and the busbar are static venue fabric and live here; the three handles
+   * and the standby lamp carry a live sim value and are drawn in `scene.ts` from
+   * `GameSnapshot.props`, exactly as the cam-lock wheel is. This follows the
+   * treatment chapter 1's door override got (`PropSpec.lift` / `.glow`): a control
+   * a metre above Droid's head is drawn a metre above Droid's head, and it is lit
+   * from its own supply so it can be FOUND in a blackout before it is understood.
+   */
+  {
+    const pa = GF.panel;
+    const box = new THREE.Group();
+    box.name = 'breaker-panel';
+    // The enclosure, proud of the wall, and its darker recessed door.
+    box.add(slab(pa, BREAKER_Y, BREAKER_H, p.breakerBox));
+    box.add(slab({ x: pa.x + 2, y: pa.y + pa.h - 1, w: pa.w - 4, h: 2 }, BREAKER_Y + 0.06, BREAKER_H - 0.12, p.blackMetal));
+    // Conduit down to the floor and along to the router cabinet: the giveaway that
+    // this box is where the room's power comes from.
+    box.add(slab({ x: pa.x + pa.w / 2 - 2, y: pa.y + pa.h - 2, w: 4, h: 2 }, 0, BREAKER_Y, p.chafingSteel));
+    box.add(slab({ x: pa.x + pa.w / 2, y: pa.y + pa.h - 2, w: GF.cabinet.x - pa.x - pa.w / 2, h: 2 }, 0.1, 0.09, p.chafingSteel));
+    group.add(box);
+  }
+
+  /*
+   * Technical room: the network rack the cable comes off.
+   *
+   * The rack keeps its own builder — it is set dressing with a state the sim does
+   * not carry — but it is a collider now (`groundWalls`) and it is 40 sim px taller
+   * on its plinth, because from the diorama camera the technical room's south wall
+   * is 3.8 m of shell standing in front of a 1.95 m cabinet: Michele's *"cable rack
+   * is not visible at all"*. See `RACK_PLINTH`.
+   */
+  const rack = networkRack(GF.rack, RACK_PLINTH, p);
   rack.name = 'network-rack';
   group.add(rack);
+  group.add(slab({ x: GF.rack.x - 3, y: GF.rack.y - 3, w: GF.rack.w + 6, h: GF.rack.h + 6 }, 0, RACK_PLINTH, p.concrete));
 
   /*
    * The router cabinet, beside the breakers on the same back wall.

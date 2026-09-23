@@ -16,7 +16,7 @@
  */
 
 import { W, H, T } from './constants';
-import type { Booth, Rect, RoomDef, ViewRect, Wall } from './types';
+import type { Booth, Bot, Rect, RoomDef, ViewRect, Wall } from './types';
 
 /* ---------------------------------------------------------------- first floor */
 
@@ -294,7 +294,18 @@ export const GF = {
     sandwich: { x: 200, y: 100, w: 70, h: 30 },
     coffee: { x: 285, y: 100, w: 45, h: 30 },
   },
-  /** The two secondary staircases up to the cinema corridor, on the hall's far side. */
+  /**
+   * The two secondary staircases up to the cinema corridor, on the hall's far side.
+   *
+   * These are **enclosed shafts**, not open flights. Michele, playing chapter 2:
+   * *"In devoxx the stairs are not open but look like rooms."* He is right and the
+   * plan says so — `plans/exhibition-floor-simple.png` draws each one as a walled
+   * box standing free in the hall with a pair of doors in its plan-north end and
+   * the ascent arrow running away from them. Plan-north is world **west** (see this
+   * module's header: plan top -> world left), so the doors are in the `x` face and
+   * the flight climbs eastward. `stairDoor` and `stairFlightRect` below cut the
+   * rect up; `groundWalls` builds the shell.
+   */
   stairs: [
     { x: 150, y: 300, w: 200, h: 60, to: 'top' as const },
     { x: 150, y: 430, w: 200, h: 60, to: 'bot' as const },
@@ -384,6 +395,140 @@ export function groundRiseM(x: number): number {
   return ((x - s.x) / s.w) * LOBBY_RISE_M;
 }
 
+/* ------------------------------------------------- what stands in the hall
+ *
+ * Everything below lived in `src/render/venue/ground.ts` until Michele played
+ * chapter 2 and reported *"robots can go through staircase and objects"*. The
+ * renderer was drawing eighteen structural columns, four lobby columns, two
+ * planters and two whole staircases that the sim had never been told about — a
+ * throwaway flood-fill probe measured 100% of every one of those footprints as
+ * walkable. It is the same shape of bug as chapter 1's missing seat rows
+ * (`docs/playtest-notes.md`, note 3): the venue draws from the plan and the sim
+ * only knows what a chapter pushes at runtime.
+ *
+ * The cure is the same one: the geometry lives HERE, `groundWalls()` emits it, and
+ * the renderer draws the sim's own wall list. There is no second copy to drift.
+ */
+
+/** Sim px of stairwell wall the shaft's shell is built from. */
+const SHAFT_T = T;
+/** Clear width of the double doors in a shaft's west end, sim px. */
+const SHAFT_DOOR = 34;
+/**
+ * Depth of the landing inside the doors, before the first riser, sim px.
+ *
+ * The plan draws a square landing behind the doors and then the flight. The sim is
+ * 2D and nothing climbs, so the landing is the part of the shaft a robot may stand
+ * in and the flight is a wall: you came down it, you cannot walk back up it.
+ */
+const SHAFT_LANDING = 56;
+
+/** The doorway rect in a stair shaft's west end. */
+export function stairDoor(s: Rect): Rect {
+  return { x: s.x, y: s.y + s.h / 2 - SHAFT_DOOR / 2, w: SHAFT_T, h: SHAFT_DOOR };
+}
+
+/** The part of a stair shaft the flight itself occupies — east of the landing. */
+export function stairFlightRect(s: Rect): Rect {
+  const x = s.x + SHAFT_LANDING + SHAFT_T;
+  return { x, y: s.y + SHAFT_T, w: s.x + s.w - SHAFT_T - x, h: s.h - 2 * SHAFT_T };
+}
+
+/** The walkable landing inside the doors, west of the flight. */
+export function stairLanding(s: Rect): Rect {
+  return { x: s.x + SHAFT_T, y: s.y + SHAFT_T, w: SHAFT_LANDING - SHAFT_T, h: s.h - 2 * SHAFT_T };
+}
+
+/**
+ * Shell of one enclosed secondary staircase: three walls, a doorway, and the flight.
+ *
+ * The flight itself is a wall, and it is a real gate rather than scenery, so it
+ * speaks in three voices like every other gate in the building (CLAUDE.md). The
+ * shaft's own flanks get one line: a robot walking into the outside of a stairwell
+ * has not been stopped by a puzzle, it has been stopped by a building.
+ */
+function stairShaftWalls(s: Rect, to: string): Wall[] {
+  const d = stairDoor(s);
+  const kind = 'stairwell';
+  const why = (b: Bot): string =>
+    `${b.name}: the ${to === 'top' ? 'north' : 'south'} stairwell, walled in. The doors are round the far end`;
+  return [
+    // North flank, south flank and the closed east end, all inside the plan rect.
+    { x: s.x, y: s.y, w: s.w, h: SHAFT_T, kind, why },
+    { x: s.x, y: s.y + s.h - SHAFT_T, w: s.w, h: SHAFT_T, kind: 'stairwell-near', why },
+    { x: s.x + s.w - SHAFT_T, y: s.y + SHAFT_T, w: SHAFT_T, h: s.h - 2 * SHAFT_T, kind, why },
+    // The west end, cut by the double doors.
+    { x: s.x, y: s.y + SHAFT_T, w: SHAFT_T, h: d.y - (s.y + SHAFT_T), kind, why },
+    { x: s.x, y: d.y + d.h, w: SHAFT_T, h: s.y + s.h - SHAFT_T - (d.y + d.h), kind, why },
+    // The foot of the flight. Nothing in this game climbs stairs.
+    {
+      x: s.x + SHAFT_LANDING,
+      y: s.y + SHAFT_T,
+      w: SHAFT_T,
+      h: s.h - 2 * SHAFT_T,
+      kind: 'stair-foot',
+      stair: to === 'top' ? -1 : 1,
+      why: (b) =>
+        b.kind === 'voxxy'
+          ? 'Voxxy: back up? Twelve risers and every one of them is taller than I am. We came DOWN these for a reason'
+          : b.kind === 'droid'
+            ? 'Droid: I could take that flight. Slowly. And then I would be alone on a floor with nothing on it'
+            : 'Biggy: stairs. Down, once, loudly. Up, never',
+    },
+  ];
+}
+
+/**
+ * The hall's structural column grid, 14 x 14 sim px feet.
+ *
+ * The plan draws it at a regular 160 x 140 pitch — the same pitch as the booth
+ * grid, phased half a bay off it, so the columns stand in the walking lanes and the
+ * booths are built in the bays. A column that stands inside a block the plan
+ * already fills (the catering court, the technical room, the store, the threshold,
+ * a booth, a stair shaft) is not drawn and not built.
+ */
+export const HALL_COLUMNS: readonly Rect[] = (() => {
+  const h = GF.hall;
+  const solids: Rect[] = [
+    GF.food.court,
+    GF.tech,
+    GF.store,
+    GF.smallStairs,
+    GF.concreteWall,
+    ...GF.stairs.map((s) => ({ x: s.x, y: s.y, w: s.w, h: s.h })),
+    ...GF.booths.map((b) => ({ x: b.x, y: b.y, w: b.w, h: b.h })),
+  ];
+  const hits = (a: Rect, b: Rect, pad: number): boolean =>
+    a.x < b.x + b.w + pad && a.x + a.w + pad > b.x && a.y < b.y + b.h + pad && a.y + a.h + pad > b.y;
+  const out: Rect[] = [];
+  for (let x = h.x + 190; x < h.x + h.w; x += 160) {
+    for (let y = h.y + 110; y < h.y + h.h; y += 140) {
+      const foot: Rect = { x: x - 7, y: y - 7, w: 14, h: 14 };
+      if (solids.some((s) => hits(foot, s, 6))) continue;
+      out.push(foot);
+    }
+  }
+  return Object.freeze(out);
+})();
+
+/** The dark blue lobby columns — `media/other-images/image-1790032582765.webp`. */
+export const LOBBY_COLUMNS: readonly Rect[] = Object.freeze(
+  ([
+    [1078, 200],
+    [1078, 655],
+    [1240, 655],
+    [1400, 655],
+  ] as Array<[number, number]>).map(([x, y]): Rect => ({ x: x - 11, y: y - 11, w: 22, h: 22 })),
+);
+
+/** Planters along the arrivals concourse. Low: light crosses them, robots do not. */
+export const LOBBY_PLANTERS: readonly Rect[] = Object.freeze(
+  ([
+    [1110, 350],
+    [1430, 250],
+  ] as Array<[number, number]>).map(([x, y]): Rect => ({ x: x - 28, y: y - 12, w: 56, h: 24 })),
+);
+
 /** Walls of the exhibition level. */
 export function groundWalls(): Wall[] {
   const w: Wall[] = [];
@@ -455,6 +600,31 @@ export function groundWalls(): Wall[] {
         : (bb) => `${bb.name}: ${bo.name} — a built booth, solid walls`,
     });
   }
+
+  // The two enclosed secondary staircases, and the structural column grid.
+  for (const s of GF.stairs) w.push(...stairShaftWalls({ x: s.x, y: s.y, w: s.w, h: s.h }, s.to));
+  for (const c of HALL_COLUMNS) {
+    w.push({
+      ...c,
+      kind: 'column',
+      why: (b) =>
+        b.kind === 'biggy'
+          ? 'Biggy: that one is holding the roof up. I checked. Twice'
+          : `${b.name}: a roof column. Go round`,
+    });
+  }
+  for (const c of LOBBY_COLUMNS) {
+    w.push({ ...c, kind: 'lobby-column', why: (b) => `${b.name}: lobby column` });
+  }
+  for (const p of LOBBY_PLANTERS) {
+    w.push({ ...p, low: true, kind: 'planter', why: (b) => `${b.name}: a planter. Somebody waters these` });
+  }
+  // The network rack the cable comes off: a 19-inch cabinet, not a decal.
+  w.push({
+    ...GF.rack,
+    kind: 'rack',
+    why: (b) => (b.kind === 'voxxy' ? null : `${b.name}: the patch rack. The cable end on it is Voxxy's job`),
+  });
 
   /* ------------------------------------------------------------------ the lobby
    *

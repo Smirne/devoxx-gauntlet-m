@@ -6,7 +6,8 @@ almost everything here was invisible to a passing test suite, and several items 
 green check for four rounds.
 
 Status key: **done** shipped and pushed · **open** not started · **waiting** needs a decision ·
-**in flight** an agent has it now.
+**in flight** an agent has it now · **answered** the note was a question, and the answer is in the
+right-hand column — sometimes with a small change beside it, sometimes with none.
 
 ## Chapter 1
 
@@ -30,6 +31,46 @@ Status key: **done** shipped and pushed · **open** not started · **waiting** n
 | 16 | "those two are maybe too near to each other?" | open | Two clue spots. |
 | 17 | "I put all three robots in the room... needed different tries before finding the number" | waiting | His call: try the new arc markers first before adding more help. |
 | 18 | "they seem fit for biggy to pass, make the passage more narrow" | open | The secondary-staircase niche is 3.2 m wide. Must be sized *after* the radius rescale, which halves Biggy's sim width. |
+
+## Chapter 2
+
+Played 23 Sep 2026, on the build that already carried the speed rescale. Nine notes;
+the pattern in them is the same one chapter 1 kept producing — **the renderer knows
+about things the sim does not**, plus two cases of a control being drawn as a
+featureless box.
+
+| # | What he found | Status | What it actually was |
+| --- | --- | --- | --- |
+| 1 | "robots can go through staircase and objects" | done | The sim had never heard of most of the hall's furniture. A throwaway flood-fill probe (`tests/probe-*.test.ts`, gitignored) measured **100% of every footprint walkable** for: both secondary staircases, all 18 structural roof columns, 4 lobby columns, 2 planters and the network rack — every one of them drawn by `src/render/venue/ground.ts` out of its own loops. They are `GF`/`groundWalls()` geometry now, so the picture and the collider are the same object. Same bug as note 3 above, one floor down. |
+| 2 | "In devoxx the stairs are not open but look like rooms" | done | They are rooms — `plans/exhibition-floor-simple.png` draws each secondary stair as a **walled shaft** with double doors in its plan-north end and the ascent arrow running away from them. Ours were open flights climbing the wrong way. Now: shell, doorway in the west face, a walkable landing behind it, and the flight east of that. The chapter's start moved out of the doors with them. |
+| 3 | "After switching the room gets darker, not lighter (i think is the robot's light being switched off?)" | done | **His guess was right, and it was only half of it.** `ch2-expo.ts` stopped casting light polygons the instant `power` went true, which switched off all three lamps *and* all three key lights; and nothing on the renderer's side had ever heard of the breakers, so no house light came up. Measured on his build: mean scene luminance **12.5 → 5.1**, p90 **42 → 8.8**. The chapter casts its lamps the whole way through now and the last breaker eases the hall into `MOOD_EXPO_LIT` — fog mask off, ambient up, track spots driven as house lighting, lamps damped to 0.4 the way chapter 3's daylight damps them. Same measurement after the fix, same two shots: **9.3 → 24.0** mean, p90 **8.8 → 58.3**, and the share of the frame under L=8 goes 89% → 45%. |
+| 4 | "The breaker should be graphical of course" | done | Two objects in one place, neither of them a breaker panel: a static slab at 1.45 m in `ground.ts`, and chapter 2's own `breaker` prop drawn from the generic `PROPS` table as a **1.5 m box standing on the floor** — the coloured crate in the corner. Split the way chapter 1's door override was: enclosure, its recessed door and the conduit down to the floor are venue fabric; three handles that visibly flip and a supply lamp are drawn from the sim's own `Prop.v`. |
+| 5 | "Cable rack is not visible at all" | done | Not a missing object — an occluded one. Chapter 2's camera pitch is 31°, and the technical room's south side is 3.8 m of building shell standing 4 m in front of a 1.95 m cabinet: the rack's head cleared the wall top by **13 cm**. It stands on a 0.4 m plinth now (clears by half a metre) and is a collider, so it reads as a cabinet rather than as a decal. |
+| 6 | "When cable ends, Voxxy should be stopped and only further going would release it" | done | It simply ran out — one frame under `CABLE_MAX`, the next the plug was back on the rack. The reel has three states now: slack, **taut** (Voxxy held on the circle of what is left, outward velocity cancelled, the drawn cable turns red) and pulled out, which needs `CABLE_PULL_OUT` of continued lean. Sim-side, in `stepCable`. |
+| 7 | "Something is flickering at the entrance" | done | Z-fighting, twice over. The lobby's raised plate ran the full width of the canvas and the forecourt paving was laid on top of it — **400 sim px of overlap with both top faces at exactly `RISE`**. Second one on the same wall: the facade mullions were exactly as tall as the glass they frame, so every cap was coplanar with its pane. The plate stops at the building line now and the mullions stand 4 cm proud, which is what a curtain wall looks like anyway. |
+| 8 | "I can push this yellow thing around. Does it have a purpose?" | answered | It is the **rubber duck**, and it does: shuffleboard for Rubber Duck Inc, one of the three optional booth games, worth swag. What he could not see is the thing that explains it — the target circle is an unlit floor decal in a blacked-out hall, the exact failure that made him miss the projector panel in chapter 1. It carries a `glow` now, like that panel does. The duck is not a leftover and is meant to be pushable. |
+| 9 | "I don't get how to enter the reception" | answered + one change | There **is** a way and exactly one: the stepped threshold in the hall's right-hand wall (world y 285..568), which is the only opening in that edge by Michele's own plot. A flood fill confirms the lobby, reception, BOF rooms and toilets are all reachable through it and through nothing else. What was missing was that anything said so — every other door in the building is signed and this one had emergency greens and concrete. A "RECEPTION · badges · wardrobe · up the steps" plate now hangs on the concrete directly over the head of the steps, facing the hall. **No redesign; the route was always there.** |
+
+### What this round cost, and who should know
+
+`buildLights` is ~95% of a chapter-2 sim step, and its cost is (lights x rays x
+walls). Two changes landed the same day and both push on it: the hall's furniture
+becoming colliders (63 walls -> 100, note 1 above) and every robot gaining a skirt
+pool (3 lights -> 6, from chapter 1's "spread a bit of light around the character").
+Measured: **0.9 -> 1.83 -> 2.63 ms per cast**. Nothing is broken by it — the
+in-browser budget at 60 fps is 16.7 ms — but two headless pilot tests needed their
+wall-clock budgets raised, and if a third change lands on that path it is worth
+range-culling walls inside `buildLights` before adding to it.
+
+Checked while the colliders went in, because it is the obvious way this change
+breaks something nobody was looking at: chapter 3's thirty-six visitors walk a lane
+grid that runs 10-18 px from the new column feet. Over 60 s of sim after the crowd
+has settled, **0 of 21 visitors moved less than 6 px** — nothing jams on a column.
+
+One thing NOT changed, on purpose: the rope-line stanchions in the lobby are still
+walk-through. A velvet rope on a 26 cm post is not something a player expects to be
+stopped by, and a 4 px collider in the middle of the concourse would be an invisible
+snag rather than an obstacle.
 
 ## Ideas he raised
 

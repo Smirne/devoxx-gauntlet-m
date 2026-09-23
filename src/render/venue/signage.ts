@@ -342,6 +342,34 @@ const barSign: Paint = (ctx, w, h) => {
   ctx.fillText('a heavy blonde · on tap', w / 2, h * 0.76);
 };
 
+/**
+ * The wayfinding plate on the hall side of the steps — the one thing in chapter 2
+ * that says the lobby is over there and how you get to it.
+ *
+ * Michele: *"I don't get how to enter the reception."* There IS a way in and only
+ * one: the stepped threshold in the hall's right-hand wall (`GF.openings`, world y
+ * 285..568). Nothing named it. Every other door in this building has a sign over
+ * it; this one, the one the cable errand ends beyond, had emergency greens and
+ * concrete.
+ */
+const receptionSign: Paint = (ctx, w, h) => {
+  ctx.fillStyle = '#1c4a96';
+  ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(5, 5, w - 10, h - 10);
+  ctx.fillStyle = '#ffffff';
+  arrow(ctx, w * 0.12, h * 0.5, h * 0.44, false);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  const size = fitFont(ctx, 'RECEPTION', w * 0.6, Math.round(h * 0.42), 700);
+  ctx.font = `700 ${size}px ${FONT}`;
+  ctx.fillText('RECEPTION', w * 0.24, h * 0.36);
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.font = `400 ${Math.round(h * 0.22)}px ${FONT}`;
+  ctx.fillText('badges  ·  wardrobe  ·  up the steps', w * 0.24, h * 0.72);
+};
+
 const poloSign: Paint = (ctx, w, h) => {
   ctx.fillStyle = '#e1561c';
   ctx.fillRect(0, 0, w, h);
@@ -635,6 +663,29 @@ export function buildSignage(p: VenuePalette, roomAnchors: Map<number | string, 
       0,
       painter.material('wifi', 512, 175, '#1c4a96', wifiNotice),
       'wifi-sign',
+    ),
+  );
+
+  /*
+   * "RECEPTION >" over the steps, on the south face of the concrete that closes
+   * the hall's right edge above them.
+   *
+   * That face is the one the diorama camera looks at (yaw 0, +z), and it stands
+   * directly over the head of the threshold — so from anywhere in the hall the
+   * sign and the way through are the same object. The concrete block runs to
+   * `GF.openings[0][0]`, which is the top step, so the plate is hung just inside
+   * its own footprint rather than floating in the doorway.
+   */
+  ground.add(
+    signFace(
+      GF.concreteWall.x + GF.concreteWall.w / 2,
+      GF.concreteWall.y + GF.concreteWall.h + 1,
+      3.0,
+      0.8,
+      2.35,
+      0,
+      painter.material('reception-way', 768, 205, '#1c4a96', receptionSign),
+      'reception-wayfinding',
     ),
   );
 
