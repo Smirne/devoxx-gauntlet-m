@@ -858,12 +858,26 @@ export function buildBiggy(): RobotRig {
   // two fillets ending at the same height pinched a 40 mm notch out of the
   // block's outline at exactly y = 0.34 — a facet artefact that reads as a chip.
   const underH = SHORTS_Y2 - SHORTS_Y1 + 0.06;
-  const shortsUnder = part(
-    roundedBox(SHORTS_HW * 2 + 0.01, underH, SHORTS_HD * 2 + 0.01, 0.035, 3),
-    armourDark,
-    wear(0.55, 8),
-  );
-  shortsUnder.position.y = SHORTS_Y2 - underH / 2 - TORSO_Y;
+  /*
+   * Swept, for the same reason the orange below it is. Left as a box it became
+   * the square thing the moment the trousers stopped being one — a flat slab
+   * across the full width, hiding the curve underneath it. The two now share a
+   * silhouette and the lower body reads as one rounded mass.
+   */
+  const underPts: THREE.Vector2[] = [];
+  const UNDER_RINGS = 10;
+  for (let i = 0; i <= UNDER_RINGS; i++) {
+    const t = i / UNDER_RINGS;
+    // Widest at the bottom, where it meets the trousers, drawing in as it climbs
+    // into the gut's shadow.
+    const f = 1.005 - 0.06 * t * t;
+    underPts.push(new THREE.Vector2((SHORTS_HW + 0.005) * f, underH * t));
+  }
+  underPts.push(new THREE.Vector2(0, underH));
+  const underGeo = new THREE.LatheGeometry(underPts, 28);
+  underGeo.scale(1, 1, (SHORTS_HD + 0.005) / (SHORTS_HW + 0.005));
+  const shortsUnder = part(underGeo, armourDark, wear(0.55, 8));
+  shortsUnder.position.y = SHORTS_Y1 - 0.06 - TORSO_Y;
   torso.add(shortsUnder);
 
   /*
@@ -942,26 +956,21 @@ export function buildBiggy(): RobotRig {
    * rods laid across an orange block, so the lip is gone: one `armourDark` bar
    * a crease, dark against the rust and a shading break against the panel.
    */
-  for (const side of [1, -1] as const) {
-    for (const [i, hipY] of [0.388, 0.352, 0.316].entries()) {
-      const x0 = side * (SHORTS_HW - 0.03);
-      const x1 = side * 0.075;
-      const y1 = 0.232;
-      const len = Math.hypot(x0 - x1, hipY - y1);
-      const ang = Math.atan2(hipY - y1, Math.abs(x0 - x1)) * side;
-      const cx = (x0 + x1) / 2;
-      const cy = (hipY + y1) / 2;
-      // Deep and nearly buried: 4 mm of a 60 mm bar stands out of the block's
-      // face. A crease that stands off reads as a rod, and three of them read as
-      // whiskers — which is what 22 mm of standoff looked like from the portrait
-      // camera, where the block's own front rolls away under the outer end.
-      const creaseZ = SHORTS_HD - 0.026;
-      const crease = part(roundedBox(len, 0.012, 0.06, 0.004, 1), armourDark, wear(0.45, 63 + i));
-      crease.position.set(cx, cy - TORSO_Y, creaseZ);
-      crease.rotation.z = ang;
-      torso.add(crease);
-    }
-  }
+  /*
+   * THE WRAP FOLDS ARE GONE.
+   *
+   * They were three bars a side, pinned at a constant z on what used to be a flat
+   * trouser face. That worked while the trousers were a box. It does not work on
+   * a lathe: the surface falls away toward the outer end and the bar does not, so
+   * each fold stood proud of the shell and read as a wire laid across him — worse
+   * than the flatness they were added to relieve.
+   *
+   * They could be re-cut to follow the sweep, one crease at a time, and the pass
+   * that built them was already honest that "three straight bars on a flat face
+   * will never be cloth" and that a trouser texture was the real answer. So
+   * rather than a third attempt at a detail nobody asked for, the shape carries
+   * itself: Michele asked for a rounded form, not for folds.
+   */
 
   /**
    * The belt plate: 0.23 by 0.10, dead centre, flush with the block's underside.
