@@ -177,6 +177,41 @@ export interface WeatherOpts {
 
 const _tint = new THREE.Color();
 
+/** Rec.709 luminance of a linear colour. */
+const relLum = (r: number, g: number, b: number): number => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+/**
+ * How much brighter than its own panel a worn patch may come out, in linear
+ * luminance.
+ *
+ * `weather()` writes a RATIO against the material's colour, and a rust tint is
+ * brighter than graphite: on Droid's darkest panel (`#181b21`, relative
+ * luminance 0.0109) the rust `#8c5a32` is 12x brighter, so "wear" arrived as a
+ * pale fleck rather than as rust. Two separate things went wrong and both are
+ * fixed below.
+ *
+ * 1. The old code clamped each CHANNEL at 6 independently. Clamping channels
+ *    one at a time throws the tint's hue away — the channel that was going to
+ *    carry the rust is the one that saturates first — so what came out was a
+ *    brightened copy of the base colour, which on a near-black part is a white
+ *    flake. Measured before this change: Droid had 11 meshes and 53 vertices
+ *    pinned at the 6.0 clamp, Biggy 3 meshes and 18 vertices, Voxxy none.
+ * 2. Even short of the clamp the gain was unbounded in practice. Measured
+ *    linear-luminance gain of the brightest vertex over its own panel, before:
+ *    Droid 82 meshes above 1.05x, of which 28 above 2.5x and 15 at 4x or more;
+ *    Biggy 41 above 1.05x, of which 7 above 2.5x (peak 3.33x) even with the
+ *    local `darkWear` workaround in `biggy.ts`; Voxxy nothing at all — her wear
+ *    only ever lands on orange and white, which is why nobody had seen it.
+ *
+ * The cap is applied to the RESULT and scales all three channels by the same
+ * factor, so the tint keeps its hue exactly and only its brightness is held
+ * down. 2.0 is chosen off that census: it is above every mid-tone panel's
+ * natural gain (all of those sit under 1.5x and are untouched), and it is the
+ * point below which a rusted patch on graphite still reads as rust rather than
+ * as a chip of light.
+ */
+export const MAX_WEAR_LUM_GAIN = 2;
+
 /**
  * Bake wear into a geometry's vertex colours.
  *
@@ -199,6 +234,8 @@ export function weather(geo: THREE.BufferGeometry, mat: THREE.MeshStandardMateri
   const y1 = bb ? bb.max.y : 1;
   const col = new Float32Array(pos.count * 3);
   const safe = (v: number): number => (v < 1e-3 ? 1e-3 : v);
+  const baseLum = Math.max(1e-6, relLum(base.r, base.g, base.b));
+  const lumCeil = baseLum * MAX_WEAR_LUM_GAIN;
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
     const y = pos.getY(i);
@@ -210,9 +247,23 @@ export function weather(geo: THREE.BufferGeometry, mat: THREE.MeshStandardMateri
     // Broad shading variation plus dirt settling low on the part.
     const low = 1 - smoothstep(y0, y1 === y0 ? y0 + 1 : y1, y);
     const shade = 1 - amount * (0.22 * (n - 0.5) * 2 + grime * low * 0.35);
-    const r = lerp(base.r, _tint.r, patch) * shade;
-    const g = lerp(base.g, _tint.g, patch) * shade;
-    const b = lerp(base.b, _tint.b, patch) * shade;
+    let r = lerp(base.r, _tint.r, patch) * shade;
+    let g = lerp(base.g, _tint.g, patch) * shade;
+    let b = lerp(base.b, _tint.b, patch) * shade;
+    /*
+     * Hold the patch's BRIGHTNESS down without touching its hue. One factor on
+     * all three channels: a per-channel clamp is what used to turn rust on a
+     * dark panel into a pale fleck (see `MAX_WEAR_LUM_GAIN`). A tint darker than
+     * the panel — soot, grime, the usual case on a light part — is never scaled,
+     * because its luminance is already under the ceiling.
+     */
+    const outLum = relLum(r, g, b);
+    if (outLum > lumCeil) {
+      const k = lumCeil / outLum;
+      r *= k;
+      g *= k;
+      b *= k;
+    }
     col[i * 3] = clamp(r / safe(base.r), 0, 6);
     col[i * 3 + 1] = clamp(g / safe(base.g), 0, 6);
     col[i * 3 + 2] = clamp(b / safe(base.b), 0, 6);

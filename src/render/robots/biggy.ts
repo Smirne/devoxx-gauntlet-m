@@ -726,10 +726,18 @@ export function buildBiggy(): RobotRig {
   /**
    * Scuffing for the DARK parts.
    *
-   * `weather()` writes a multiplier against the material's own colour, so a rust
-   * tint on a near-black glove divides a bright patch by a very dark base and
-   * comes out as a white flake. Anything this dark gets a tint close to its own
-   * colour and a small amount.
+   * This started life as a workaround: `weather()` wrote a multiplier against
+   * the material's own colour and clamped it per channel, so a rust tint on a
+   * near-black glove came out as a white flake, and the local cure was to give
+   * the dark parts a tint close to their own colour. **The function is fixed**
+   * — `rig.ts` now caps the patch's luminance gain at `MAX_WEAR_LUM_GAIN` and
+   * scales all three channels together, so the hue survives (measured: Biggy's
+   * worst dark part went from 3.33x its own panel's luminance to 2.00x, and the
+   * three meshes that were pinned at the old per-channel clamp are gone).
+   *
+   * It stays because it is now an ART choice rather than a patch: rubber and
+   * work gloves collect soot and grey polish, not the rust that eats painted
+   * steel, and Biggy's dark parts are all rubber.
    */
   const darkWear = (amount: number, seed: number): WeatherOpts => ({
     amount,
