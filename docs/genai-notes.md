@@ -1791,3 +1791,120 @@ assert the chapter KEEPS the key, which it always did. That split is the point: 
 fail is not describing the change.
 
 102 of 102 green across `chapters`, `aisle`, `tow`, `keypad`, `ch2-chain` and `jump`.
+
+---
+
+## Session — 23 Sep 2026 — where the beer actually goes (agent)
+
+**Agent:** builder, scope `src/sim/chapters/ch3-breakfast.ts`, `src/sim/crates.ts`, the new
+`tests/beer-bar.test.ts`, and three additive lines in another agent's `tests/prop-geometry.ts`.
+Four other agents were live in the same working tree throughout.
+
+### What a human decided
+
+Michele, on the proposal that Biggy stack the crates behind the catering counter:
+
+> *"ok but remember biggy can't reach the soup without voxxy's help. So it should be a different
+> path, with clear hints. (glowing halo, taps ready, belgian beer glassess)."*
+
+and, earlier, on the crates themselves:
+
+> *"the beer joke / game is fine, keep it. But where should biggy take 'em? Of course they'll need
+> to look like beer crates, with funny names."*
+
+Both are design calls, and the build follows them rather than arguing: the drop is a **bar**, it
+stands outside the catering block, it is signposted with a glowing halo, and every crate carries an
+invented Belgian brewery.
+
+### What the agent measured before it moved anything
+
+The brief's own instruction was *"Measure it — flood-fill Biggy's reachable ground with the crowd
+standing where it stands"*, and the measurement contradicted the brief's premise, which is why it
+was worth taking. A flood fill of the exhibition hall at Biggy's frozen 9 px radius, treating every
+person in a catering queue as a solid disc:
+
+- the **old** drop (`BEER_STACK` at 346,112, hard against the catering block's east flank) was
+  already reachable from the pallet without touching a queue — a 244 px route straight down the
+  north aisle. The beat was not charging the soup's gate twice, whatever it looked like on screen;
+- what was actually wrong with it was legibility and room. It sat in an 11 px slot between the
+  catering block's east wall and a roof column, read as part of catering, and was "a marked patch
+  of floor" rather than a destination;
+- and the same fill found something nobody had asked about: **the soup's gate leaks.** A catering
+  doorway is 44 px wide, the queue standing in it is two files 10 px apart, and at Biggy's radius
+  that leaves about **11 px of clear centre line** beside the people — he can drive in without
+  Voxxy saying a word. Clearing the queue widens that window to 27 px, so the mechanic does
+  something, but it does not do what the chapter's text claims.
+
+That last one is **recorded, not fixed**: the soup gate belongs to another beat and tightening it
+would re-tune somebody else's chapter mid-round. `tests/beer-bar.test.ts` therefore asserts the
+true thing (clearing the queue *widens* the doorway) and says in a comment why it does not assert
+the sealing a reader would expect — a test that claimed it would be a false pass. The one-line fix
+when somebody wants it: stand the queue's two files across the doorway's width rather than 10 px
+apart, or give the front rank the full gap when `open` is 0.
+
+### What was built
+
+**The Finally Block** — a bar counter built for tonight in the open north aisle, its back to the
+hall wall, immediately east of the catering block. 92 x 14 px, a `low` wall (light crosses it,
+robots do not) pushed by the chapter rather than by `groundWalls()`, because it is not the building.
+Three taps and four Belgian glasses stand on it; the delivery stacks at its cellar end, beside the
+taps, instead of growing under the player's feet on the mark. The measured route from the pallet is
+**228 px with all three queues standing — a straight run west along the north aisle, +16 px of
+spare clearance at its tightest point, and never closer than 70 px to anybody in a queue against
+the 15 px at which they would touch**. It never enters the catering block at all. The whole
+two-trip delivery is 30.5 s of driving, and the greedy line — five crates, heap error, scatter,
+pick the load back up — is 28 s.
+
+**The halo.** `halo(rect, state)` lays four thin `dropzone` strips round any rectangle. It needs no
+render code: `STATE_EMISSIVE` already lights an `active` prop amber and a `done` one green, so the
+ring speaks the state colours the rest of the game is already using. Chapter 3 wears it three times
+— the pallet the crates start on, the bar they go to, and the spot the soup goes to — which is the
+point: Michele has asked for *"a red halo to signal it's interactive"* twice, and the prize is one
+visual language for "you can use this" rather than one beer decoration.
+
+**Six breweries** (`CRATE_BREWS`), in the register of the sponsor list next door: Brouwerij
+Dubbel-Checked, Lambiek Lambda, Tripel Equals, Gueuze Collector, Saison Stacktrace, Abdij van de
+Heap. Every one invented — `Dubbel`, `Tripel`, `Lambiek`, `Gueuze`, `Saison` and `Abdij` are beer
+styles and ordinary Dutch words, not anybody's trademark, which is the whole reason the list is
+built out of them. Biggy reads the name off every crate he lifts, and Droid and Voxxy name the one
+they cannot.
+
+### Rejected
+
+- **Moving the drop to the concourse south of the catering block**, which is where a bar would go
+  if the plan allowed it. Measured: a 564 px route that squeezes round the catering block's
+  south-east corner with zero clearance to spare, into a 44 px corridor between the block and a
+  stair shaft. Four legs of that is a hike, and the brief's own warning applies — *"if the route is
+  tedious to drive, it will be worse for him"*.
+- **Putting the bar in the lane at x 336..395**, the only north-south connection on that side of
+  the hall. A 7 m counter there cuts the hall in two.
+- **Lighting both the drop plate and its halo.** Two signals for one promise; the plate now behaves
+  exactly as the soup's always has and the ring carries the glow.
+- **Editing `src/render/scene.ts`.** Another agent held it. The three new prop kinds therefore draw
+  as `PROP_FALLBACK` boxes today — the counter reads, the taps and glasses sit inside it and are
+  invisible — and the four-line `PROPS` patch that finishes them is in the handback rather than in
+  the tree.
+
+### Verification
+
+A throwaway `git worktree` at the session's own commits with `node_modules` symlinked, four other
+agents left alone in the shared tree: `tsc --noEmit` clean, `vite build` clean, the new file green
+four runs in a row, and the chapter-3 block of `tests/chapters.test.ts` green. The full suite on
+the loaded box reports its usual timeouts under four concurrent agents; the two real failures at
+that moment were the collider sweep's *"classifies every kind"* (this session's three new prop
+kinds — fixed here by classifying them) and chapter 2's `sign`/`crate` walk-through, which
+reproduces at clean `HEAD` without this work and belongs to whoever holds `ch2-expo.ts`.
+
+Then the built page driven headlessly on `?chapter=3&warm=2&nofog=1&topdown=1&seed=7`, stepping the
+sim with `game.update(DT_MAX)` in real time rather than trusting `requestAnimationFrame`: both
+trips driven, four crates then two, the toasts naming the breweries, `beer ✓ (The Finally Block is
+stocked)` on the progress line, Biggy's mass and acceleration back at the frozen 7 / 0.6, the halo
+strips going from `active` to `done`, and `document.title` reading `After Dark · ERRORS:0` with an
+empty error list.
+
+And one change came out of *looking* at that build rather than out of a test: the first screenshot
+put the counter in the last twenty pixels of the diorama frame, at the very top of the hall. It
+came 6 px off the wall and grew to two metres deep — counter plus back bar — so the mark in front
+of it lands clear of the frame edge, and the taps and the glassware moved to the counter's front
+lip, which is the face the camera is on. The back face still leaves only 6 px to the wall, which is
+deliberate: any wider and there is a pocket behind the bar for a robot to get stuck in.
