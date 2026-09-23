@@ -866,9 +866,39 @@ export function buildBiggy(): RobotRig {
   shortsUnder.position.y = SHORTS_Y2 - underH / 2 - TORSO_Y;
   torso.add(shortsUnder);
 
+  /*
+   * The trousers are a LATHE, not a box.
+   *
+   * They were a `roundedBox`, and Michele called it: "biggy is still square down
+   * there. It should have some kind of slips - pants." He is right, and a bigger
+   * corner radius could never have fixed it — the block is only 0.145 m tall, so
+   * the radius is capped near 0.07 by its own height, which is 8% of its width.
+   * A box that wide and that short reads as a box whatever you do to its corners.
+   *
+   * The sheet's back and back-right views show something quite different: a soft
+   * rounded mass that swells out from under the gut and tucks back in above the
+   * legs, with no straight sides at all. So it is swept as a body of revolution
+   * and squashed in Z to keep the depth the front elevation was measured against.
+   * `LatheGeometry` about Y gives curved sides in plan, which is the whole point
+   * — from the diorama camera you see the plan curve, not the elevation.
+   */
   const mainH = SHORTS_Y1 - SHORTS_Y0;
-  const shortsMain = part(roundedBox(SHORTS_HW * 2, mainH, SHORTS_HD * 2, 0.045, 4), trouser, wear(0.8, 61, 6));
-  shortsMain.position.y = SHORTS_Y0 + mainH / 2 - TORSO_Y;
+  const SHORTS_RINGS = 14;
+  const shortsPts: THREE.Vector2[] = [];
+  for (let i = 0; i <= SHORTS_RINGS; i++) {
+    const t = i / SHORTS_RINGS;
+    // 1 at the waist, swelling a little below it, drawn in above the legs. The
+    // sine puts the widest ring a third of the way down, which is where the
+    // sheet's outline turns over.
+    const f = 0.9 + 0.1 * Math.sin(Math.PI * Math.min(1, t * 1.35)) - 0.22 * t * t;
+    shortsPts.push(new THREE.Vector2(SHORTS_HW * f, mainH * (1 - t)));
+  }
+  // Close the bottom so the sweep is a solid, not an open skirt.
+  shortsPts.push(new THREE.Vector2(0, mainH * 0.02));
+  const shortsGeo = new THREE.LatheGeometry(shortsPts, 28);
+  shortsGeo.scale(1, 1, SHORTS_HD / SHORTS_HW);
+  const shortsMain = part(shortsGeo, trouser, wear(0.8, 61, 6));
+  shortsMain.position.y = SHORTS_Y0 - TORSO_Y;
   torso.add(shortsMain);
 
   /*
