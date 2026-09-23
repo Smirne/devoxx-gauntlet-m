@@ -306,5 +306,17 @@ const clueSamples = (c: Vec2): Vec2[] => [
  * "Reaches it" means reaches its patch, not its centre — see `CLUE_SPOT`. Every
  * colour must still reach; the disc makes each one fair, not optional.
  */
+/**
+ * Does ONE colour reach a clue's patch?
+ *
+ * Exported because anything asking "can this robot light that clue" — the
+ * chapter, a test, a reachability probe — has to ask it the same way `clueLit`
+ * does. The first probe of this asked `litBy(lights, kind, clue)` against the
+ * clue's centre point and so measured the behaviour that had just been replaced,
+ * reporting no change from a change that had landed.
+ */
+export const clueLitBy = (lights: LightSource[], kind: RobotKind, clue: Vec2): boolean =>
+  clueSamples(clue).some((s) => litBy(lights, kind, s));
+
 export const clueLit = (lights: LightSource[], clue: Clue): boolean =>
-  clue.need.every((k) => clueSamples(clue).some((s) => litBy(lights, k, s)));
+  clue.need.every((k) => clueLitBy(lights, k, clue));
