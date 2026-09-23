@@ -332,7 +332,13 @@ export function roomScreen(r: RoomDef): Rect {
  */
 export function cinemaEExit(): Rect {
   const r = R('E');
-  return { x: r.x + r.w - 44, y: r.y + 120, w: 40, h: 40 };
+  // `+ 97` is not a taste. `ch1-night.ts` lays its seat rows from `r.y + 58` on a
+  // 24 px pitch, 9 px deep, so the SECOND row ends at `r.y + 91`; the alcove's top
+  // wall is `T` deep and sits immediately above `y`, so at `+ 97` it lands flush
+  // against the back of that row. Anything else leaves an orphan slot of walkable
+  // floor between the two — in the shadow of the alcove wall, from this camera —
+  // for a robot to drive into and vanish.
+  return { x: r.x + r.w - 44, y: r.y + 97, w: 40, h: 40 };
 }
 
 /** Square corridor column, sim px. */

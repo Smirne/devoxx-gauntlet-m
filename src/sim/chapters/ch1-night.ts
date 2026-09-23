@@ -336,14 +336,25 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    */
   const seatRects: Rect[] = [];
   const ROW_H = 9;
-  for (let y = rE.y + 58; y <= rE.y + 180; y += 24) {
+  const rowY: number[] = [];
+  for (let y = rE.y + 58; y <= rE.y + 180; y += 24) rowY.push(y);
+  const lastRow = rowY[rowY.length - 1];
+  for (const y of rowY) {
     const left: Rect = { x: rE.x, y, w: aisle[0] - rE.x, h: ROW_H };
     ctx.walls.push({ ...left, low: true, kind: 'seatrow', why: whySeats });
     seatRects.push(left);
-    // Right of the aisle there is only room for seats ABOVE the alcove: below its
-    // top wall the whole strip is the alcove and the bay in front of it, which is
-    // what makes the aisle the only way in.
-    if (y + ROW_H <= alcove.y - T) {
+    /*
+     * Right of the aisle: seats down to the alcove, nothing beside it, and then
+     * the FRONT ROW again.
+     *
+     * The front row is the load-bearing one. Without it the bay in front of the
+     * alcove opens straight into the front of house, and the front of house is
+     * open across the full width of the room — so Biggy strolls round the seating
+     * and into the alcove, and cinema E stops being a puzzle. With it, the 15 px
+     * aisle is the only way in or out of that bay, which is the gate, stated once
+     * in geometry instead of asserted in a comment.
+     */
+    if (y + ROW_H <= alcove.y - T || y === lastRow) {
       const right: Rect = { x: aisle[1], y, w: rE.x + rE.w - aisle[1], h: ROW_H };
       ctx.walls.push({ ...right, low: true, kind: 'seatrow', why: whySeats });
       seatRects.push(right);

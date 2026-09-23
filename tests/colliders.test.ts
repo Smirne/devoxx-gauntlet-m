@@ -61,6 +61,25 @@
  *
  * The last one is asserted BOTH ways: if somebody ever gives the stanchions
  * colliders, this file says so, so the exception cannot quietly go stale.
+ *
+ * ## The half of the venue this file could not see
+ *
+ * It walks `buildVenue()`, and `buildVenue()` is the STATIC set. Everything a
+ * chapter pushes through `props()` — cinema E's seat rows, its screen, its
+ * keypad, the joke on every closed cinema's door — becomes a mesh only when a
+ * frame is drawn, so none of it was ever measured. Michele then reported, of the
+ * one room this file was written for: *"Robots still pass through that wall"* and
+ * *"The room door is still big and walked on"*. He was right both times, and both
+ * were chapter props: a 5.2 m screen slab drawn over the screen the venue already
+ * draws, with a collider under only its middle third, and a 2.2 m joke hoarding
+ * standing across each doorway with nothing under it at all.
+ *
+ * So there is a second sweep below, over what the CHAPTERS draw, using
+ * `tests/prop-geometry.ts` — a transcription of the renderer's own `PROPS` table,
+ * because the renderer will not export it. Chapter 1 has to come back clean.
+ * Chapters 2 to 4 are held at a frozen list of offending kinds: their props are
+ * other people's files tonight, and a list that may not GROW is worth more than a
+ * sweep that is switched off.
  */
 
 import * as THREE from 'three';
@@ -72,6 +91,7 @@ import { F1, GF, LOBBY_RISE_M, LOBBY_STANCHIONS } from '../src/sim/geometry';
 import type { Bot, Rect, Wall } from '../src/sim/types';
 import { PX_PER_M, STOREY_H_M } from '../src/sim/units';
 import { buildVenue, type Venue } from '../src/render/venue/index';
+import { PROP_DRAW, propBox } from './prop-geometry';
 
 /** Grid pitch, sim px. 2 px is 16 cm — finer than any gap a robot could use. */
 const STEP = 2;
@@ -327,4 +347,117 @@ describe('every solid the venue draws is a collider', () => {
       expect(hit, `a stanchion at ${st.x},${st.y} has become a collider`).toBe(false);
     }
   });
+});
+
+/* ================================================= what the CHAPTERS draw ===
+ *
+ * See this file's header. `buildVenue()` is the static set; everything below is
+ * the furniture a chapter publishes through `props()`, which never became a mesh
+ * the sweep above could measure.
+ */
+
+/**
+ * The offending prop kinds in chapters 2 to 4, frozen.
+ *
+ * Every one of these is a box the renderer draws on the floor with no wall under
+ * it. They are not fixed here because chapters 2, 3 and 4 were open in other
+ * hands the night this sweep was written, and because several of them are real
+ * design questions rather than oversights — a loose `duck` and a `crate` are
+ * things you PUSH, a `spotlight` and a `race-marker` may well be meant to be
+ * stepped over. What this list buys is that the set cannot GROW: a new
+ * walk-through prop in any chapter fails here, and taking one off the list is a
+ * one-line edit that follows the fix.
+ */
+const KNOWN_WALKTHROUGH: Readonly<Record<number, readonly string[]>> = Object.freeze({
+  2: [],
+  3: ['ladle', 'sign', 'crate', 'duck', 'race-marker'],
+  4: ['cake', 'stage', 'banner-hook', 'spotlight'],
+});
+
+/** Which chapter props are drawn solid on the floor, and where. */
+function chapterSolids(n: number): { solids: Solid[]; kinds: string[]; unknown: string[] } {
+  const g = createGame({ seed: 20260930, chapter: n, cards: false });
+  // A few frames, so anything whose footprint is live (a door mid-fall, a prop a
+  // chapter only publishes once it has ticked) is in the list.
+  for (let i = 0; i < 4; i++) g.update(0.033);
+  const solids: Solid[] = [];
+  const kinds = new Set<string>();
+  const unknown: string[] = [];
+  for (const p of g.snapshot().props) {
+    kinds.add(p.kind);
+    const box = propBox(p);
+    if (box === null) {
+      unknown.push(p.kind);
+      continue;
+    }
+    // A door that Biggy has already put through the wall is lying on the floor
+    // on purpose; a flat decal and a hung fitting are not obstacles at all.
+    if (p.state === 'broken') continue;
+    if (PROP_DRAW[p.kind].flat === true || box.lo >= BAND_HI || box.hi <= BAND_LO) continue;
+    solids.push({ ...box.rect, name: `${p.kind}${p.state !== undefined ? `(${p.state})` : ''}`, lo: box.lo, hi: box.hi });
+  }
+  return { solids, kinds: [...kinds], unknown };
+}
+
+describe('every solid a CHAPTER draws is a collider', () => {
+  /** The grids a chapter is measured against — the same rule as the venue sweep. */
+  function gridsFor(n: number): { free: Uint8Array; reach: Uint8Array } {
+    const snap = createGame({ seed: 20260930, chapter: n, cards: false }).snapshot();
+    const walls = snap.walls as Wall[];
+    const starts = snap.bots.map((b): [number, number] => [b.x, b.y]);
+    const free = freeGrid(walls);
+    const reach = new Uint8Array(COLS * ROWS);
+    for (const b of snap.bots) {
+      const one = reachGrid(walls, b as Bot, starts);
+      for (let k = 0; k < reach.length; k++) if (one[k] === 1) reach[k] = 1;
+    }
+    return { free, reach };
+  }
+
+  it('classifies every kind all four chapters draw', () => {
+    const missing = new Set<string>();
+    for (const { n } of CHAPTERS) for (const k of chapterSolids(n).unknown) missing.add(k);
+    expect(
+      [...missing],
+      'a chapter is drawing a prop kind `tests/prop-geometry.ts` has never heard of. ' +
+        'Add it there, copying its entry from `PROPS` in src/render/scene.ts — an unclassified ' +
+        'kind is exactly how a walk-through solid hides from this sweep.',
+    ).toEqual([]);
+  });
+
+  it('chapter 1: nothing the night chapter draws can be walked through', () => {
+    const { free, reach } = gridsFor(1);
+    const bad: string[] = [];
+    for (const s of chapterSolids(1).solids) {
+      const cell = standableCell(s, free, reach);
+      if (cell) {
+        bad.push(
+          `${s.name} — drawn at ${s.x.toFixed(0)},${s.y.toFixed(0)} ${s.w.toFixed(0)}x${s.h.toFixed(0)} px, ` +
+            `standing ${s.lo.toFixed(2)}..${s.hi.toFixed(2)} m, and a robot can stand at ${cell[0]},${cell[1]}`,
+        );
+      }
+    }
+    expect(
+      bad,
+      `${bad.length} prop(s) chapter 1 draws with no collider. Either push a wall for it in ` +
+        'ch1-night.ts, or stop drawing it:\n  ' + bad.join('\n  '),
+    ).toEqual([]);
+  });
+
+  for (const n of [2, 3, 4]) {
+    it(`chapter ${n}: the list of walk-through props does not grow`, () => {
+      const { free, reach } = gridsFor(n);
+      const kinds = new Set<string>();
+      for (const s of chapterSolids(n).solids) {
+        if (standableCell(s, free, reach)) kinds.add(s.name.replace(/\(.*\)$/, ''));
+      }
+      const known = new Set(KNOWN_WALKTHROUGH[n] ?? []);
+      const fresh = [...kinds].filter((k) => !known.has(k));
+      expect(fresh, `new walk-through prop kind(s) in chapter ${n}: ${fresh.join(', ')}`).toEqual([]);
+      // And the other way: a kind that has been fixed comes off the list, or the
+      // list quietly stops describing the build.
+      const stale = [...known].filter((k) => !kinds.has(k));
+      expect(stale, `KNOWN_WALKTHROUGH[${n}] still lists ${stale.join(', ')}, which now has a collider`).toEqual([]);
+    });
+  }
 });
