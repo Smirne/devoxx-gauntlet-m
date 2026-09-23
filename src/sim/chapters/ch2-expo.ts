@@ -411,9 +411,10 @@ const OBJECTIVE =
   'straight line, <b>under the sponsor tables</b>. The printer also wants the <b>router</b>, and the ' +
   'router is behind a cam-lock wheel only <b>Biggy</b> can shift, only <b>Droid</b> can stop and only ' +
   '<b>Voxxy</b> can aim. <b>Biggy</b> also smashes the roller door of the badge ' +
-  'store — above his own top speed, so <b>Voxxy pushes him</b> down the long top lane. ' +
+  'store — above his own top speed, so <b>Voxxy takes hold of him (Space)</b> and runs him ' +
+  'down the long top lane: the bar locks to one of eight directions, so the run cannot wander. ' +
   'Booth games on the way are optional swag.';
-const KEYS = '1/2/3/Tab: switch · WASD · E: use / brace · R: restart';
+const KEYS = '1/2/3/Tab: switch · WASD · E: use / brace · Space: take hold of Biggy · R: restart';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');
@@ -479,10 +480,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     kind: 'roller',
     why: (b) =>
       b.kind === 'biggy'
-        ? `Biggy: roller door. I'd need ${m(ROLLER_DOOR_SPEED).toFixed(1)} m/s and I top out at ${m(b.max).toFixed(1)}. Unless someone pushes me all the way down that lane`
+        ? `Biggy: roller door. I'd need ${m(ROLLER_DOOR_SPEED).toFixed(1)} m/s and I top out at ${m(b.max).toFixed(1)}. Unless someone grabs hold and runs me down that lane`
         : b.kind === 'voxxy'
-          ? "Voxxy: roller door — every badge and polo is behind it. I bounce off. Biggy at full tilt isn't enough either, so I'll shove him down the whole top lane"
-          : 'Droid: a slatted roller door. Mass, not leverage. Biggy needs a longer run than he can give himself',
+          ? "Voxxy: roller door — every badge and polo is behind it. I bounce off. Biggy at full tilt isn't enough either, so I'll take hold of him (Space) and run him down the whole top lane"
+          : 'Droid: a slatted roller door. Mass, not leverage. Biggy needs a longer run than he can give himself — and a straighter one than I can give him. Voxxy has the legs for it',
     // Horizontal door: the speed that counts is the one along the lane.
     onHit: (b) => {
       if (b.kind !== 'biggy') return false;
@@ -500,7 +501,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         rollerTalk = ctx.t;
         ctx.flash(
           `Biggy: ${m(b.vx).toFixed(1)} m/s — needs ${m(ROLLER_DOOR_SPEED).toFixed(1)}. ` +
-            (b.vx > b.max - 5 * SPEED_SCALE ? "That's my top speed. Somebody push me" : 'Longer run-up, straighter line'),
+            (b.vx > b.max - 5 * SPEED_SCALE ? "That's my top speed. Somebody take hold of me" : 'Longer run-up, straighter line'),
         );
       }
       return false;

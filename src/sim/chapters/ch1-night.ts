@@ -84,7 +84,7 @@ const OBJECTIVE =
   "cinema's back door, into the closed section — and the power is out. The fire door to the Devoxx " +
   'rooms has a keypad: find the <b>4 digits</b>, each visible only under the right <b>mix of lights</b>. ' +
   'Droid can climb on Biggy (E). Biggy can smash the jammed door with a straight run across the corridor.';
-const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb · digits at the keypad · R: restart';
+const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb · Space: take hold of Biggy · digits at the keypad · R: restart';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('up');
