@@ -244,7 +244,22 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
   dropzone: { h: 0.04, color: 0x2f7d4f, tl: true, flat: true },
   pot: { h: 0.45, color: 0x8e5a3a },
   soup: { h: 0.12, color: 0xd9452f },
-  sign: { h: 2.2, color: 0x1f4f8f, fw: 4.8, fd: 0.14 },
+  /*
+   * HUNG, not planted. `tests/colliders.test.ts` caught this the night it learned
+   * to sweep what chapters draw: a `sign` is a 4.8 m blue panel 2.2 m tall, it was
+   * standing on the floor, and it had no collider — so five of them stood across
+   * cinema doorways in chapter 1 and four more across the hall in chapters 2 and 3,
+   * and a robot walked through every one.
+   *
+   * Giving them colliders would have been the wrong fix, because the real Kinepolis
+   * sign is not on the floor. `media/other-images/image-1790032663823.webp` is the
+   * corridor: the blue `uitgang zaal 6/7` panel is SUSPENDED, over the walking line,
+   * with people underneath it. Every sign this game emits is the same thing — a
+   * queue label, `SHIRTS & GADGETS`, `TECHNISCHE RUIMTE`, `taps ready · doors 18:00`
+   * — so they all hang. 2.2 m clears Biggy and Droid-on-Biggy; the top sits at 4.4 m
+   * under a 5.5 m storey.
+   */
+  sign: { h: 2.2, color: 0x1f4f8f, fw: 4.8, fd: 0.14, lift: 2.2 },
   /* chapter 4 — the keynote */
   cake: { h: 0.55, color: 0xe6d7b8 },
   'cake-mark': { h: 0.04, color: 0x2f7d4f, tl: true, flat: true },

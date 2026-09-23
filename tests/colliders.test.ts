@@ -370,7 +370,7 @@ describe('every solid the venue draws is a collider', () => {
  */
 const KNOWN_WALKTHROUGH: Readonly<Record<number, readonly string[]>> = Object.freeze({
   2: [],
-  3: ['ladle', 'sign', 'crate', 'duck', 'race-marker'],
+  3: ['ladle', 'crate', 'duck', 'race-marker'],
   4: ['cake', 'stage', 'banner-hook', 'spotlight'],
 });
 

@@ -274,10 +274,19 @@ export const MOUNT_OFFSET_Y = 6;
  * is the parabola `4 H u (1 - u)` over `u` in 0..1, which is what the renderer
  * draws. Change `JUMP_RISE_M` and the whole arc stays honest.
  *
- * 0.3 m is a knee-high robot clearing her own hip. It buys 0.49 s of air, which at
- * her top speed is 2.9 m of ground — four seat rows, or one sponsor table with room
- * to spare — and from a standstill it is a hop on the spot, which is the half of it
- * he asked for for its own sake.
+ * 0.3 m is a knee-high robot getting a foot up onto something. It buys 0.49 s of
+ * air, which at her top speed is 2.9 m of ground, and from a standstill it is a hop
+ * on the spot — the half of it he asked for for its own sake.
+ *
+ * **It is a vault, not a clearance.** Every `low` wall in this game is drawn 0.78 m
+ * tall (`LOW_H`, `src/render/venue/props.ts`) — seat rows, sponsor tables, the
+ * reception counter — and 0.3 m of air does not carry a 0.38 m robot over 0.78 m of
+ * furniture. What it does is what a small fast thing actually does to a seat row:
+ * a foot on it and over. So the rule the sim enforces is "one hop crosses one piece
+ * of low furniture, if she covers its depth", which is why chapter 1's 0.72 m-deep
+ * rows go and chapter 4's 7.2 m-deep seat BLOCKS do not, and why the one thing that
+ * is taller than 0.78 m — chapter 2's 1.06 m pallets of t-shirts — is not `low` at
+ * all and is not hers to cross.
  */
 export const GRAVITY = 9.81;
 /** Hop height, metres. The only free number in the jump. */

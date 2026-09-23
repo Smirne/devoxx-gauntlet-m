@@ -300,7 +300,8 @@ export function stepBot(b: Bot, dt: number, walls: Wall[], onBlocked?: (b: Bot, 
   for (const w of walls) {
     if (w.skipFor && w.skipFor(b)) continue;
     // Over the seat rows, the sponsor tables and the counters — the same `low` that
-    // already lets light across. Everything else is still a wall in the air.
+    // already lets light across, and uniformly 0.78 m of furniture she vaults rather
+    // than clears (see `JUMP_RISE_M`). Everything else is still a wall in the air.
     if (airborne && w.low) continue;
     const hit = circleRect(b, w);
     if (!hit) continue;
@@ -422,6 +423,8 @@ export const hopPhase = (b: Bot): number => (b.air ? 1 - b.air / JUMP_AIR : 0);
  * Her verb, next to Droid's climb and Biggy's charge, and the one Michele asked for
  * on its own terms: *"just for one quiz. And for jumping around for fun."* Both
  * halves are here — over a seat row at a run, or on the spot because it is funny.
+ * A foot on the furniture and over it, rather than a clean leap above it: see
+ * `JUMP_RISE_M` for why that distinction is the honest one at her size.
  *
  * The other two say why not, in their own voices, because a gate that just does
  * nothing is the worst kind (CLAUDE.md, and the mount's own history). Their reasons
