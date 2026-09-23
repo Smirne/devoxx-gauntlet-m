@@ -13,3 +13,8 @@ tools/progress/shots/*.tmp.png
 # occasionally resolves that against the repo root instead of the session's own
 # scratchpad. Never part of the project.
 scratchpad/
+
+# throwaway probes written into tests/ so they can run under vitest; excluded
+# from the suite in vitest.config.ts for the same reason
+tests/_*.test.ts
+tests/zz-*.test.ts
