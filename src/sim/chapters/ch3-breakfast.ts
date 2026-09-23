@@ -40,12 +40,19 @@
  * actually delivers, and which is funnier at breakfast than at lunch: nobody is
  * drinking, the pallet is simply standing in the way of three thousand people, and
  * the shrink-wrap label still carries Devoxx's own line about hangovers and
- * OutOfMemoryErrors. Biggy stacks them by the catering block. Every crate he picks
- * up adds mass and takes acceleration (`src/sim/crates.ts`), so a bigger load means
- * fewer trips and worse handling; the crate past `CRATE_STACK_LIMIT` throws a heap
- * error, he drops the lot, and the load becomes six bodies he has to shove out of
- * his own way. The optimal line is one crate under the limit, and greed is punished
- * by physics rather than by a rule — which is how the rest of this game works.
+ * OutOfMemoryErrors. Six crates, six invented Belgian breweries (`CRATE_BREWS`),
+ * and Biggy takes them to **The Finally Block** — the bar built for tonight in the
+ * open aisle, taps ready, Belgian glassware out, a lit halo on the floor in front
+ * of it. That bar is the beat's own path: see `BAR` below for why it is NOT behind
+ * the catering counters, and `tests/beer-bar.test.ts` for the flood-fill that
+ * proves the route never meets a queue.
+ *
+ * Every crate he picks up adds mass and takes acceleration (`src/sim/crates.ts`),
+ * so a bigger load means fewer trips and worse handling; the crate past
+ * `CRATE_STACK_LIMIT` throws a heap error, he drops the lot, and the load becomes
+ * six bodies he has to shove out of his own way. The optimal line is one crate
+ * under the limit, and greed is punished by physics rather than by a rule — which
+ * is how the rest of this game works.
  */
 
 import { PUSH_LEAN_MIN, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
@@ -60,6 +67,7 @@ import {
   CRATE_SHOVE_BIGGY,
   CRATE_SHOVE_OTHER,
   CRATE_STACK_LIMIT,
+  crateBrew,
   crateLoadAccel,
   crateLoadMass,
   loadBiggy,
@@ -113,25 +121,105 @@ const SPEAKER_WALK = 150 * SPEED_SCALE;
  * open, on the spot the camera is already looking at when the chapter opens.
  */
 const PALLET: Vec2 = { x: 600, y: 158 };
+/** The shrink-wrapped pallet's own footprint, for the halo that marks it. */
+const PALLET_MARK: Rect = { x: PALLET.x - 26, y: PALLET.y - 20, w: 52, h: 40 };
+
 /**
- * Where they are supposed to end up: against the catering block's east wall, out of
- * the walking lanes and next to the counters they will be served from tonight.
- * Biggy (r 9) stands inside this rect to put a load down.
+ * THE FINALLY BLOCK — the bar the delivery is FOR, and why it stands out here
+ * rather than behind the catering counters.
+ *
+ * Michele, on the first plan to stack the crates behind the counter: *"ok but
+ * remember biggy can't reach the soup without voxxy's help. So it should be a
+ * different path, with clear hints. (glowing halo, taps ready, belgian beer
+ * glassess)."*
+ *
+ * That is a design note, not a bug report, and it is right. The soup errand is
+ * DELIBERATELY Voxxy-dependent: three catering queues stand in the catering
+ * block's three doorways, Voxxy clearing one for `QUEUE_OPEN` seconds is the only
+ * way Biggy ever reaches the soup station, and a beer drop inside that same block
+ * would charge the player the same gate twice while pretending to be a second
+ * errand.
+ *
+ * So the bar is built OUTSIDE the block, in the open north aisle, with its back to
+ * the hall wall and its taps facing the floor — which is where a venue puts a bar
+ * for the evening, and which makes the crates Biggy's own job from end to end.
+ * `tests/beer-bar.test.ts` measures this rather than asserting it: a flood-fill of
+ * the ground floor at Biggy's radius, with all three queues standing where they
+ * stand, finds a route from the pallet to the mark that never comes within his own
+ * radius of anybody in a queue and never enters the catering block at all — and
+ * finds the soup station UNREACHABLE on the same fill, which is the soup's gate
+ * doing its job. The two errands share no metre of floor.
+ *
+ * The counter is a `low` wall (pushed in `setup`), so light crosses it and robots
+ * do not: a bar you can walk through is the *"this cube is walk-through"* note all
+ * over again.
  */
-const BEER_STACK: Rect = { x: 346, y: 112, w: 48, h: 64 };
+const BAR: Rect = { x: 336, y: 90, w: 92, h: 14 };
+/** What it is called, in the register the sponsor list next door uses. */
+const BAR_NAME = 'The Finally Block';
+/**
+ * The mark Biggy stands on to hand a load over the bar.
+ *
+ * In front of the taps, clear of the counter by more than his own radius and clear
+ * of the catering block's east wall by the same, so there is no corner of it he
+ * can be standing in and still be told there is nothing here.
+ */
+const BEER_STACK: Rect = { x: 346, y: 110, w: 72, h: 40 };
+/**
+ * Where the crates end up once he has handed them over: the cellar end of the bar,
+ * stacked against the hall wall beside the taps.
+ *
+ * Separate from the mark on purpose. The old stack grew in the middle of the same
+ * rect the player had to stand in, so the reward for the errand was a pile in your
+ * own way; here the mark stays clear and the finished delivery reads as stowed.
+ */
+const CELLAR: Vec2 = { x: 440, y: 99 };
 /** How close a robot has to get to the pallet to read what is printed on the wrap. */
 const LABEL_REACH = 90;
 /** The middle of the stack zone, and how close to it counts as "on the mark". */
 const STACK_AT: Vec2 = { x: BEER_STACK.x + BEER_STACK.w / 2, y: BEER_STACK.y + BEER_STACK.h / 2 };
 /**
- * 44 px, against the 48x64 zone's own 40 px half-diagonal: the marked square is
+ * 44 px, against the 72x40 zone's own 41 px half-diagonal: the marked rectangle is
  * the *smallest* place `E` works, not the only one. A player who has walked up to
  * the mark and is a body-width off one corner still puts the crates down.
  */
 const STACK_REACH = 44;
 /** Crates per layer on the finished stack, and the footprint they are set out on. */
 const STACK_WIDE = 3;
-const STACK_STEP = 12;
+const STACK_STEP = 13;
+/** The three taps, along the counter's centre line. */
+const TAPS: readonly Vec2[] = [352, 368, 384].map((x) => ({ x, y: BAR.y + BAR.h / 2 }));
+/** And the Belgian glassware set out beside them, one shape per beer. */
+const GLASSES: readonly Vec2[] = [400, 408, 416, 424].map((x) => ({ x, y: BAR.y + BAR.h / 2 }));
+
+/**
+ * A GLOWING HALO ROUND SOMETHING YOU CAN USE.
+ *
+ * Michele's standing idea, filed twice — *"Maybe with red halo to signal it's
+ * interactive"*, and again in the line above as one of the "clear hints" this beat
+ * owes the player. It is deliberately NOT a beer-only decoration: the prize is one
+ * visual language for "you can use this", so this is a ring anything can wear and
+ * chapter 3 already puts it on three different things — the pallet the crates
+ * start on, the bar they go to, and the spot the soup goes to.
+ *
+ * It needs no new render code. `dropzone` is already the flat floor plate the two
+ * drop marks are drawn with, and `STATE_EMISSIVE` in `src/render/scene.ts` already
+ * lights an `active` prop amber and a `done` one green — so a ring of four thin
+ * `dropzone` strips laid round a rect is a lit outline that goes green when the job
+ * is finished, in the state colours the rest of the game is already speaking.
+ *
+ * `state` is the whole vocabulary: 'active' for waiting, 'done' for finished.
+ */
+const HALO_W = 3;
+function halo(r: Rect, state: string): Prop[] {
+  const strip = (x: number, y: number, w: number, h: number): Prop => ({ kind: 'dropzone', x, y, w, h, state });
+  return [
+    strip(r.x - HALO_W, r.y - HALO_W, r.w + 2 * HALO_W, HALO_W),
+    strip(r.x - HALO_W, r.y + r.h, r.w + 2 * HALO_W, HALO_W),
+    strip(r.x - HALO_W, r.y, HALO_W, r.h),
+    strip(r.x + r.w, r.y, HALO_W, r.h),
+  ];
+}
 
 /**
  * The joke, and it has to survive a room full of Java developers: Devoxx is a Java
@@ -465,9 +553,10 @@ export interface BreakfastState {
 const OBJECTIVE =
   'Chapter 3 · <b>Breakfast</b>. The main entrance is open and 3,000 people walk in. <b>Stephan</b> stands ' +
   'at the main staircase and wants three things before he opens it: his <b>tomato soup</b> — at breakfast, ' +
-  'yes — the <b>keynote speaker</b>, and <b>tonight\'s beer delivery</b> out of the aisle. Droid: the ladle ' +
+  'yes — the <b>keynote speaker</b>, and <b>tonight\'s beer delivery</b> out of the aisle and onto the bar. Droid: the ladle ' +
   'is on the high shelf. Biggy: carry the pot (bumps spill it, and it cools), and stack the crates — he is ' +
-  'the only one who can lift one, and only so many at a time. Voxxy: clear a catering queue (E), find the ' +
+  'the only one who can lift one, and only so many at a time — they go to <b>The Finally Block</b>, the bar ' +
+  'with the lit mark on the floor, and that errand is his alone. Voxxy: clear a catering queue (E), find the ' +
   'speaker at a built booth. The sponsor booths are open and running their games: three bits of ' +
   '<b>swag</b> to be won on the way, all optional.';
 const KEYS =
@@ -491,6 +580,30 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   };
   ctx.walls.push(gate);
   let gateOpen = false;
+
+  /*
+   * The bar itself, as a collider.
+   *
+   * `low`, like the reception counter and the catering counters: light crosses it,
+   * robots do not. It is pushed by the chapter rather than living in
+   * `groundWalls()` because it is not the building — it is a pop-up bar set up for
+   * tonight, and it is only here on the morning this chapter happens.
+   *
+   * Three voices, because a wall that stops you owes you a reason in the voice of
+   * whoever walked into it (CLAUDE.md), and three ways of saying "it is a bar" is
+   * the point of having three robots.
+   */
+  ctx.walls.push({
+    ...BAR,
+    low: true,
+    kind: 'bar',
+    why: (b) =>
+      b.kind === 'voxxy'
+        ? `Voxxy: "${BAR_NAME}. From down here it is a wall with glasses on top. I can hear them."`
+        : b.kind === 'droid'
+          ? `Droid: "I can see every glass on that bar and reach exactly none of them from this side. Round the end."`
+          : `Biggy: "I have been through a bar before. They still talk about it. Round the end."`,
+  });
 
   const mg = setupMinigames(ctx);
 
@@ -724,7 +837,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    */
   const crates: Crate[] = [];
   for (let i = 0; i < CRATE_DELIVERY; i++) {
-    const c = mkBody(`beer crate ${i + 1}`, PALLET.x + ((i % 3) - 1) * 13, PALLET.y + (i < 3 ? -8 : 8), {
+    const c = mkBody(crateBrew(i), PALLET.x + ((i % 3) - 1) * 13, PALLET.y + (i < 3 ? -8 : 8), {
       r: CRATE_R,
       mass: CRATE_MASS,
       // `accel` 0: nothing drives a crate, it is only ever shoved.
@@ -753,10 +866,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   // replay of chapter 3 can never begin with the last run's load still on him.
   reload();
 
-  /** Where the k-th crate lands on the finished stack: three wide, then a layer up. */
+  /** Where the k-th crate lands at the cellar end of the bar: three wide, then a layer up. */
   const stackSlot = (k: number): { x: number; y: number; layer: number } => ({
-    x: BEER_STACK.x + 12 + (k % STACK_WIDE) * STACK_STEP,
-    y: BEER_STACK.y + BEER_STACK.h / 2,
+    x: CELLAR.x + (k % STACK_WIDE) * STACK_STEP,
+    y: CELLAR.y,
     layer: Math.floor(k / STACK_WIDE),
   });
 
@@ -854,9 +967,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     if (n === CRATE_STACK_LIMIT - 1) {
       // The last safe one says so, in his voice: the punchline is only funny if
       // the player could see it coming (and the progress line has been counting).
-      ctx.flash(`Biggy: "${n}. That is the stack. I can feel it in the knees."`, 3200);
+      ctx.flash(`Biggy: "${c.name}, and that is ${n}. That is the stack. I can feel it in the knees."`, 3200);
     } else {
-      ctx.flash(`Biggy takes a crate \u2014 ${n} up, ${held('loose').length} still on the floor`);
+      // The brewery on the crate, every time he lifts one: six invented Belgian
+      // names (`CRATE_BREWS`) are only a joke if the player gets to read them.
+      ctx.flash(`Biggy takes the ${c.name} \u2014 ${n} up, ${held('loose').length} still on the floor`, 2800);
     }
     return true;
   }
@@ -879,11 +994,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     if (done >= CRATE_DELIVERY) {
       beerDone = true;
       ctx.flash(
-        `Biggy: "${CRATE_DELIVERY} crates stacked, ${oom} heap error${oom === 1 ? '' : 's'}. The aisle is yours, Stephan."`,
+        `Biggy: "${CRATE_DELIVERY} crates on the bar, ${oom} heap error${oom === 1 ? '' : 's'}. ` +
+          `${BAR_NAME} is stocked and the aisle is yours, Stephan."`,
         4000,
       );
     } else {
-      ctx.flash(`Biggy sets ${load.length} down \u2014 ${done}/${CRATE_DELIVERY} stacked`);
+      ctx.flash(`Biggy hands ${load.length} over the bar \u2014 ${done}/${CRATE_DELIVERY} stacked at ${BAR_NAME}`);
     }
   }
 
@@ -943,7 +1059,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         labelRead = true;
         ctx.flash(
           'Printed on the shrink-wrap: "Belgian beers may cause hangovers and OutOfMemoryErrors." Delivered this ' +
-            'morning, for tonight.',
+            `morning, for tonight: ${crateBrew(0)}, ${crateBrew(1)}, ${crateBrew(3)}\u2026 and they go to ${BAR_NAME}.`,
           5000,
         );
         break;
@@ -983,8 +1099,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         ctx.flash('Droid reaches the high shelf — ladle secured');
         return;
       }
-      if (crateInReach(d)) {
-        ctx.flash('Droid: "Half my own mass, all of it above the knee. This one is Biggy\'s."');
+      const dc = crateInReach(d);
+      if (dc) {
+        ctx.flash(`Droid: "${dc.name}. Half my own mass, all of it above the knee. This one is Biggy's."`);
         return;
       }
       ctx.flash('Droid: nothing to reach here');
@@ -1025,7 +1142,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       }
       if (takeCrate(bg)) return;
       if (carriedCrates() > 0) {
-        ctx.flash('Biggy: "I am not putting these down in the middle of the floor. They go by the counters."');
+        ctx.flash(`Biggy: "I am not putting these down in the middle of the floor. They go to ${BAR_NAME}, by the taps."`);
         return;
       }
       ctx.flash('Biggy: nothing to pick up here');
@@ -1049,8 +1166,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       ctx.flash('Keynote speaker: "Oh! Is it time? Lead the way."');
       return;
     }
-    if (crateInReach(v)) {
-      ctx.flash('Voxxy: "It weighs more than I do. Considerably more. BIGGY!"');
+    const vc = crateInReach(v);
+    if (vc) {
+      ctx.flash(`Voxxy: "${vc.name} weighs more than I do. Considerably more. BIGGY!"`);
       return;
     }
     ctx.flash('Voxxy: nobody to talk to here');
@@ -1212,21 +1330,74 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       },
       { kind: 'dropzone', ...stage, state: delivered ? 'done' : 'idle', label: 'bring the soup here' },
       { kind: 'gate', ...GF.gate, state: gateOpen ? 'open' : 'shut', label: 'main staircase' },
+      /*
+       * THE BAR, and the three things that make it read as one.
+       *
+       * The counter is the `low` wall pushed in `setup` — this is its visual, at
+       * the same rect, the way `GF.gate` is a wall and a prop. The taps stand on
+       * it and the glassware is set out beside them, which is Michele's own list
+       * of what "the place beer goes" looks like: *"(glowing halo, taps ready,
+       * belgian beer glassess)"*. Centre coordinates, not top-left, so a renderer
+       * that has not been taught these kinds yet still puts them in the right
+       * place.
+       */
+      {
+        kind: 'bar-counter',
+        x: BAR.x + BAR.w / 2,
+        y: BAR.y + BAR.h / 2,
+        w: BAR.w,
+        h: BAR.h,
+        state: beerDone ? 'done' : 'active',
+        label: `${BAR_NAME} — the bar for tonight`,
+      },
       // The stack zone reads exactly like the soup's drop mark, because it is the
       // same promise: put the thing you are carrying down HERE.
-      { kind: 'dropzone', ...BEER_STACK, state: beerDone ? 'done' : 'idle', label: 'stack the beer crates here' },
-      // Devoxx's own line, on a Devoxx-blue sign, flat against the catering block
-      // above the stack so nobody has to walk through it to read it.
+      { kind: 'dropzone', ...BEER_STACK, state: beerDone ? 'done' : 'active', label: 'hand the beer crates over the bar here' },
+      // The bar's own sign, on the hall wall behind the taps.
       {
         kind: 'sign',
-        x: BEER_STACK.x - 6,
-        y: GF.hall.y + 6,
+        x: BAR.x + BAR.w / 2,
+        y: GF.hall.y + 2,
+        w: 60,
+        h: 8,
+        state: beerDone ? 'done' : 'active',
+        label: `${BAR_NAME} · taps ready · doors 18:00`,
+      },
+      // Devoxx's own line, on a Devoxx-blue sign, standing at the pallet: it is
+      // printed on the shrink-wrap, so it belongs where the shrink-wrap is.
+      {
+        kind: 'sign',
+        x: PALLET.x,
+        y: PALLET.y - 30,
         w: 60,
         h: 8,
         state: beerDone ? 'done' : 'active',
         label: 'Belgian beers may cause hangovers and OutOfMemoryErrors',
       },
     ];
+    for (const t of TAPS) {
+      out.push({ kind: 'beer-tap', x: t.x, y: t.y, w: 3, h: 3, state: beerDone ? 'done' : 'active', label: 'tap' });
+    }
+    GLASSES.forEach((gl, k) => {
+      out.push({
+        kind: 'beer-glass',
+        x: gl.x,
+        y: gl.y,
+        w: 3,
+        h: 3,
+        // Belgian glassware is a different shape per beer — a tulip, a goblet, a
+        // flute, a chalice. `v` is which, so a renderer can turn four numbers into
+        // four silhouettes without the sim knowing what a goblet looks like.
+        v: k,
+        state: beerDone ? 'done' : 'active',
+        label: 'Belgian glassware',
+      });
+    });
+    // The halos: where the crates are, where they go, and where the soup goes.
+    // One ring, three jobs — see `halo` above.
+    if (held('loose').length > 0 && !beerDone) out.push(...halo(PALLET_MARK, 'active'));
+    out.push(...halo(BEER_STACK, beerDone ? 'done' : 'active'));
+    out.push(...halo(stage, delivered ? 'done' : 'active'));
     // Crates: on the floor where they lie, on the stack in layers, or piled on
     // Biggy's back in the order he picked them up.
     for (const c of crates) {
@@ -1239,7 +1410,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         h: c.r * 2,
         v: c.layer,
         state: c.held === 'stacked' ? 'done' : 'idle',
-        label: 'beer crate',
+        label: `beer crate \u00b7 ${c.name}`,
       });
     }
     held('carried').forEach((c, k) => {
@@ -1251,7 +1422,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         h: c.r * 2,
         v: k + 1,
         state: k + 1 >= CRATE_STACK_LIMIT - 1 ? 'broken' : 'active',
-        label: 'beer crate',
+        label: `beer crate \u00b7 ${c.name}`,
       });
     });
     if (carrying && !delivered) {
@@ -1309,8 +1480,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         ? ` (×${(crateLoadMass(n) / crateLoadMass(0)).toFixed(2)} mass, −${Math.round((1 - crateLoadAccel(n) / crateLoadAccel(0)) * 100)}% accel)`
         : '';
     const beer = beerDone
-      ? 'beer ✓'
-      : `beer ${held('stacked').length}/${CRATE_DELIVERY} · heap ${n}/${CRATE_STACK_LIMIT}${load}`;
+      ? `beer ✓ (${BAR_NAME} is stocked)`
+      : `beer ${held('stacked').length}/${CRATE_DELIVERY} to ${BAR_NAME} · heap ${n}/${CRATE_STACK_LIMIT}${load}`;
     const soupLine = delivered
       ? 'soup ✓'
       : carrying
