@@ -90,7 +90,7 @@ export interface KeynoteState {
   spare: number;
 }
 
-const KEYS = '1/2/3/Tab: switch · WASD · E: use · R: restart';
+const KEYS = '1/2/3/Tab: switch · WASD · E: use · Space: take hold of Biggy · R: restart';
 const READY_OBJECTIVE =
   'Chapter 4 · <b>Keynote</b>. Stage ready. <b>Get all three robots on the stage</b> — Stephan and the speaker are waiting.';
 

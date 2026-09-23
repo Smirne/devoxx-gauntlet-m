@@ -116,7 +116,7 @@ const OBJECTIVE =
   'speaker</b> before he opens it. Droid: the ladle is on the high shelf. Biggy: carry the pot (bumps ' +
   'spill it, and it cools). Voxxy: clear a catering queue (E), find the speaker at a built booth. ' +
   'Booth games still count as swag.';
-const KEYS = '1/2/3/Tab: switch · WASD · E: use / ask / clear a queue · R: restart';
+const KEYS = '1/2/3/Tab: switch · WASD · E: use / ask / clear a queue · Space: tow Biggy · R: restart';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');

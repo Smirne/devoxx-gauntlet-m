@@ -18,11 +18,13 @@ import {
   BLOCKED_THROTTLE,
   CUT_FADE,
   DT_MAX,
+  MOUNT_REACH,
   TOAST_MS,
   TRAVEL_TIME_SCALE,
 } from './constants';
 import { VIEW_CLOSED } from './geometry';
-import { botsCollide, mkBot, pushBiggy as leanOnBiggy, stepBot, syncMount, toggleMount as climbBiggy } from './bot';
+import { botsCollide, circleRect, mkBot, pushBiggy as leanOnBiggy, stepBot, syncMount, toggleMount as climbBiggy } from './bot';
+import { canGrab, grab as takeHold, stepTow, towPlace, type TowState } from './tow';
 import type {
   Bot,
   Clue,
@@ -194,6 +196,8 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   let stickX = 0;
   let stickY = 0;
   let runtime: ChapterRuntime | null = null;
+  /** The tow bar, when somebody has hold of Biggy. See `tow.ts`. */
+  let tow: TowState | null = null;
 
   interface CutState {
     view: ViewRect;
@@ -253,20 +257,113 @@ export function createGame(opts: GameOptions = {}): DebugGame {
         b.ix = 0;
         b.iy = 0;
       }
+    });
+    // The bar reads the holder's stick and spends it on Biggy, so it has to run
+    // BEFORE the step — the velocity it sets is the one Biggy carries through his
+    // own wall resolution — and the holder's own stick is then spent, or it would
+    // walk off the bar under its own power as well.
+    stepTowBar(dt);
+    for (const b of bots) {
       if (b.braced) {
         b.vx = 0;
         b.vy = 0;
         b.ix = 0;
         b.iy = 0;
-        return;
+        continue;
       }
       const before: PrevVel = { vx: b.vx, vy: b.vy };
       stepBot(b, dt, walls, onBlocked);
       if (afterStep) afterStep(b, before);
-    });
+    }
     syncMount(bots);
     for (let i = 0; i < bots.length; i++) {
       for (let j = i + 1; j < bots.length; j++) botsCollide(bots[i], bots[j]);
+    }
+    settleTow();
+  }
+
+  /* -------------------------------------------------------------- the tow bar */
+
+  /**
+   * Take hold of Biggy, or let go. Space, and it is the same key both ways.
+   *
+   * Control follows the bar for the same reason it follows a mounted Droid: the
+   * pair moves as one thing, and a player steering Biggy's *holder* while the HUD
+   * says they are driving Biggy has to work out the indirection for themselves.
+   */
+  function towToggle(): void {
+    if (tow) {
+      release('lets go of Biggy');
+      return;
+    }
+    const bg = byKind('biggy');
+    const b = bots[cur];
+    if (b === bg) {
+      // Biggy cannot tow himself, and saying so is friendlier than a dead key.
+      flash('Biggy: "Someone has to pull. It is not going to be me."');
+      return;
+    }
+    if (!canGrab(b, bg, MOUNT_REACH)) {
+      flash(`${b.name}: "Not close enough to get a grip on Biggy."`);
+      return;
+    }
+    tow = takeHold(b, bg);
+    cur = ORDER.indexOf(tow.holder);
+    flash(`${b.name} takes hold of Biggy — push or pull along the bar, steer across it`);
+  }
+
+  function release(why: string): void {
+    if (!tow) return;
+    const holder = byKind(tow.holder);
+    tow = null;
+    flash(`${holder.name} ${why}`);
+  }
+
+  /** Quietly drop the bar — chapter change, cutscene, teleport. No toast. */
+  function dropTow(): void {
+    tow = null;
+  }
+
+  function stepTowBar(dt: number): void {
+    if (!tow) return;
+    const holder = byKind(tow.holder);
+    const bg = byKind('biggy');
+    const next = stepTow(tow, holder, bg, dt);
+    if (!next) {
+      release('lets go of Biggy');
+      return;
+    }
+    holder.ix = 0;
+    holder.iy = 0;
+  }
+
+  /**
+   * Put the holder back on the bar now that Biggy has moved and resolved his own
+   * walls, then push the holder out of anything it landed in.
+   *
+   * Pushing out rather than releasing is deliberate. The bar is a straight line
+   * and the venue is not: a run down a corridor clips the holder into a door
+   * reveal for a frame or two, and dropping the grab there would mean the tow
+   * fails exactly where a player most needs it. The drive uses the bar's axis,
+   * never the two robots' actual positions, so a holder nudged off the line still
+   * steers. Only a wall that genuinely separates the pair — more than half a
+   * robot's worth of daylight opened up — ends the grab.
+   */
+  function settleTow(): void {
+    if (!tow) return;
+    const holder = byKind(tow.holder);
+    const bg = byKind('biggy');
+    towPlace(tow, holder, bg);
+    for (const w of walls) {
+      if (w.skipFor && w.skipFor(holder)) continue;
+      const hit = circleRect(holder, w);
+      if (!hit) continue;
+      holder.x += hit.nx * hit.pen;
+      holder.y += hit.ny * hit.pen;
+    }
+    const gap = holder.r + bg.r;
+    if (Math.hypot(bg.x - holder.x, bg.y - holder.y) > gap + holder.r * 0.5) {
+      release('loses the grip on Biggy');
     }
   }
 
@@ -280,6 +377,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     const B = byKind('biggy');
     if (D.mounted) D.mounted = false;
     D.braced = false;
+    dropTow();
     [V.x, V.y] = v;
     [D.x, D.y] = d;
     [B.x, B.y] = b;
@@ -297,6 +395,9 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   }
 
   function toggleMount(): void {
+    // Climbing on is a second way of riding Biggy, and holding the bar while
+    // doing it left the holder welded to his flank mid-climb. One verb at a time.
+    dropTow();
     // While Droid rides Biggy the tower moves as one robot, so control follows it.
     if (climbBiggy(bots, flash)) cur = ORDER.indexOf('biggy');
   }
@@ -316,6 +417,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       b.vy = 0;
     }
     if (byKind('droid').mounted) toggleMount();
+    dropTow();
   }
 
   function cutUpdate(dt: number): void {
@@ -471,6 +573,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     cur = 0;
     toast = null;
     cut = null;
+    dropTow();
     blockedAt.clear();
     walls.length = 0;
     runtime = def.setup(ctx);
@@ -541,6 +644,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     fade = 0;
     toast = null;
     cut = null;
+    dropTow();
     runtime = null;
     chapter = 0;
     phase = 'intro';
@@ -650,6 +754,10 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       return;
     }
     if (phase !== 'play' || !runtime) return;
+    if (code === 'Space') {
+      towToggle();
+      return;
+    }
     if (code === 'Tab') {
       // Never hand control to a robot that is riding on another one.
       do {
@@ -657,6 +765,11 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       } while (bots[cur].mounted);
     }
     runtime.key(code);
+    // Taking a different robot lets go of the bar: the holder is driven by the
+    // stick, so leaving the pair joined while the stick is somewhere else means
+    // Biggy drags a robot nobody is steering. This is checked AFTER the chapter
+    // has had the key, because 1/2/3 are handled down there by `switchKey`.
+    if (tow && bots[cur].kind !== tow.holder) dropTow();
   }
 
   function snapshot(): GameSnapshot {
@@ -681,6 +794,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       toast,
       fade,
       card,
+      tow: tow ? { holder: tow.holder, dir: tow.dir, aim: tow.aim } : null,
       entered: r?.entered?.() ?? '',
       score,
       swag,

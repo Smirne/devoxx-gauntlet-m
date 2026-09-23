@@ -290,6 +290,12 @@ export interface GameSnapshot {
    * this is the part that ticks.
    */
   progress: string;
+  /**
+   * The tow bar, when somebody has hold of Biggy — `holder` is who, `aim` is the
+   * bar's angle and `dir` its snapped eighth. `null` when nobody is holding on.
+   * The renderer draws the bar from this; nothing else may write it.
+   */
+  tow: { holder: RobotKind; dir: number; aim: number } | null;
   toast: Toast | null;
   /** 0 = clear, 1 = black. Cutscenes and chapter transitions. */
   fade: number;

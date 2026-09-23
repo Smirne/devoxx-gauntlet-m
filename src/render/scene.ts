@@ -689,6 +689,53 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   activeRingGhost.renderOrder = 1;
   dressing.add(activeRingGhost);
 
+  /*
+   * THE TOW BAR.
+   *
+   * `src/sim/tow.ts` quantises the grab to one of eight compass directions, and
+   * that quantisation is the whole mechanic: it is what stops the run-up
+   * wandering. A player who cannot SEE which of the eight they are committed to
+   * has been given a lane and not told where it goes, which is the original
+   * complaint wearing a different hat.
+   *
+   * So two pieces. The bar itself, drawn between the pair at hand height, says
+   * "you are joined, and this robot is holding". The lane strip on the floor,
+   * running ahead of Biggy along the snapped axis, says where pushing will send
+   * him — before it sends him there. Both take the holder's lamp colour, so the
+   * pair reads at a glance even in an unlit room.
+   *
+   * Nothing here decides anything: every number comes off `snap.tow`, which the
+   * sim owns (CLAUDE.md — no game logic in render code, ever).
+   */
+  const TOW_BAR_H = 0.5;
+  const TOW_LANE_LEN = 4.0;
+  const TOW_LANE_W = 0.9;
+
+  const towBar = new THREE.Mesh(
+    new THREE.BoxGeometry(1, 0.09, 0.09),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }),
+  );
+  towBar.name = 'tow-bar';
+  towBar.visible = false;
+  dressing.add(towBar);
+
+  const towLane = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.34,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      toneMapped: false,
+    }),
+  );
+  towLane.name = 'tow-lane';
+  towLane.rotation.x = -Math.PI / 2;
+  towLane.renderOrder = 998;
+  towLane.visible = false;
+  dressing.add(towLane);
+
   /**
    * THE OCCLUDED SILHOUETTE.
    *
@@ -1365,6 +1412,48 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     );
   }
 
+  /** Draw the bar and its lane, or hide both. Reads `snap.tow`; decides nothing. */
+  function updateTow(snap: GameSnapshot, floorY: number): void {
+    const tow = snap.phase === 'play' ? snap.tow : null;
+    const holder = tow ? snap.bots.find((b) => b.kind === tow.holder) : undefined;
+    const big = tow ? snap.bots.find((b) => b.kind === 'biggy') : undefined;
+    if (!tow || !holder || !big) {
+      towBar.visible = false;
+      towLane.visible = false;
+      return;
+    }
+    towBar.visible = true;
+    towLane.visible = true;
+
+    const c = holder.light.c;
+    (towBar.material as THREE.MeshBasicMaterial).color.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
+    (towLane.material as THREE.MeshBasicMaterial).color.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
+
+    // World +X is sim +x and world +Z is sim +y, so a sim heading is a yaw of its
+    // negative about Y. The bar is modelled along its own +X and scaled to fit.
+    const hx = m(holder.x);
+    const hz = m(holder.y);
+    const bx = m(big.x);
+    const bz = m(big.y);
+    towBar.position.set((hx + bx) / 2, floorY + TOW_BAR_H, (hz + bz) / 2);
+    towBar.rotation.y = -Math.atan2(bz - hz, bx - hx);
+    towBar.scale.x = Math.max(Math.hypot(bx - hx, bz - hz), 0.2);
+
+    // The lane is drawn from Biggy's far edge outward: it shows where he is going,
+    // not where he already is, and the snapped `aim` is what the sim will drive.
+    const ax = Math.cos(tow.aim);
+    const az = Math.sin(tow.aim);
+    const start = m(big.r);
+    const mid = start + TOW_LANE_LEN / 2;
+    towLane.position.set(bx + ax * mid, floorY + 0.02, bz + az * mid);
+    // Euler XYZ applies Z first, so `rotation.z` turns the plane inside its own
+    // XY before `rotation.x` lays it flat: local +X lands on (cos z, 0, -sin z),
+    // which is the sim axis for z = -aim. Feeding it `atan2(az, ax)` mirrors the
+    // lane about the room's long axis, which looks plausible exactly half the time.
+    towLane.rotation.z = -tow.aim;
+    towLane.scale.set(TOW_LANE_LEN, TOW_LANE_W, 1);
+  }
+
   /* --------------------------------------------------------------- modes */
 
   let topDown = false;
@@ -1750,6 +1839,10 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     placeRobots(snap, dt, floorY);
     drawDressing(snap, floorY);
     activeRing.visible = false;
+    // The plan view is for measuring the map against `plans/`, not for playing:
+    // every marker that exists to help the player is off, the bar included.
+    towBar.visible = false;
+    towLane.visible = false;
     for (const list of ghosts.values()) for (const g of list) g.visible = false;
     for (const mark of clueMarks) mark.root.visible = false;
     aimPlanCamera(snap.floor);
@@ -1809,6 +1902,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     placeRobots(snap, dt, floorY);
     drawDressing(snap, floorY);
     updateActiveRing(snap, floorY);
+    updateTow(snap, floorY);
     updateXray(snap);
     updateClues(snap, floorY);
     lights.update(snap, dt);

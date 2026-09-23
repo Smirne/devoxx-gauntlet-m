@@ -12,3 +12,4 @@ export * from './bot';
 export * from './lights';
 export * from './game';
 export * from './chapters';
+export * from './tow';
