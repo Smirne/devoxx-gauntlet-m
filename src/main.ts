@@ -200,6 +200,21 @@ const anchors: SpeakerAnchors = {};
  * would, instead of being silently dropped.
  */
 function codeOf(ev: KeyboardEvent): string {
+  /*
+   * THE NUMERIC KEYPAD IS A KEYPAD.
+   *
+   * Michele, at chapter 1's fire door: *"This part does not takes number input
+   * with keypad, why?"* Because the sim only ever heard `Digit4`, and a numeric
+   * keypad sends `Numpad4`. A player typing a door code on the number pad is
+   * doing the most natural thing there is, and the game ignored every key.
+   *
+   * Normalised here rather than in the chapter, because it is not a chapter's
+   * business which of two physical keys a digit came from — this file owns the
+   * keyboard and nothing else should have to know. It also means the numpad
+   * selects robots like the top row, which is what a player pressing numpad 1
+   * expects. `NumpadEnter` and the operators are left alone; they are not digits.
+   */
+  if (ev.code && /^Numpad[0-9]$/.test(ev.code)) return `Digit${ev.code.slice(6)}`;
   if (ev.code) return ev.code;
   const k = ev.key;
   if (!k) return '';
