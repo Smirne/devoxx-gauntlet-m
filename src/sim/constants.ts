@@ -178,8 +178,38 @@ export const REST_BOT = 0.3;
 export const BRACED_MASS = 1e6;
 /** Below this speed with no input, velocity snaps to zero. */
 export const STOP_SNAP = 2 * SPEED_SCALE;
-/** Heading only updates above this speed, so a stopped robot keeps facing where it was. */
+/**
+ * A body with no player behind it takes its heading from its velocity, above this
+ * speed — so a crate that has been kicked points the way it is sliding, and one
+ * that has stopped keeps facing where it was. A robot under the stick takes its
+ * heading from the stick instead (`stepBot`), which is why this is no longer the
+ * only thing that decides where a robot looks.
+ */
 export const FACE_MIN_SPEED = 1 * SPEED_SCALE;
+
+/**
+ * How long a stick that only *dropped* an axis has to be held before the heading
+ * follows it. Seconds. NOT a frozen constant — added 23 Sep 2026 with the aim fix.
+ *
+ * A diagonal is two keys and two fingers, and two fingers never lift together. The
+ * game samples the keyboard once a frame, so "let go of up-right" arrives as a real
+ * up-right, then a real up held for a frame or three, then nothing — and a heading
+ * that believes every sample it is given ends up pointing at the key that happened
+ * to linger. That is the "robots tend to turn up when u release" in Michele's
+ * chapter-1 notes: measured at 14-43 deg of drift for Voxxy across a one-to-eight
+ * frame release skew, always toward the axis released last.
+ *
+ * So a stick that has only lost an axis — same signs, nothing new pressed — is
+ * treated as a possible fumble and the heading waits it out. A stick that presses
+ * something new is believed at once, because a player changing direction is not a
+ * player letting go, and aiming has to stay instant: that is the whole complaint.
+ *
+ * 0.1 s is three frames at the `DT_MAX` floor and six at 60 Hz — longer than the
+ * skew between two fingers leaving two keys, shorter than the ~150 ms of a press
+ * meant as a press, and it only ever delays the one transition "diagonal to one of
+ * its own two axes".
+ */
+export const AIM_SETTLE = 0.1;
 /** Gait phase advance: anim += speed * dt / ANIM_DIV. */
 export const ANIM_DIV = 18;
 
