@@ -102,13 +102,37 @@ const LAMP_FRACTION: Readonly<Record<RobotKind, number>> = Object.freeze({
  * Spotlight intensities. Three's lights are physical (intensity / distance^decay),
  * so these are art-direction numbers rather than photometry: a softer-than-inverse-
  * square decay keeps the far end of a 24 m beam alive. Tune here, nowhere else.
+ *
+ * DECAY IS THE WHOLE STORY, not the intensity.
+ *
+ * Every lamp is bolted to the robot that carries it — Droid's is 10 cm above his
+ * own helmet — so the robot's own body is the closest thing in the room to its
+ * own light. At the old 1.15 decay, Droid's head sat at `22 / 0.15^1.15` = 202,
+ * while the floor the lamp is actually meant to reveal, 1.8 m down, got 11. The
+ * head clipped to (139, 255, 255) against a material that is (48, 53, 65), and
+ * the craft pass on the model sheets never reached the player: the robots read as
+ * white cut-outs joined to differently-coloured legs.
+ *
+ * A near-flat decay collapses that 200:1 near/far ratio to about 2:1 across the
+ * 0.15 m -> 20 m span, which is what a *lamp you are standing inside* should look
+ * like: it tints you, it does not incinerate you. The intensities below are the
+ * old ones re-solved so the irradiance at 7 m — room distance, where these beams
+ * do their actual work — is unchanged to within a percent:
+ *
+ *     I_new = I_old / 7^(1.15 - LAMP_DECAY)
+ *
+ * so the venue keeps the lighting it was art-directed with, the far end of a 24 m
+ * beam gains about 2.5x (which the wall band at the top of chapter 1 wanted), and
+ * the robot's own shell drops roughly 10x at chest height and 28x at Droid's head.
+ * The coloured floor pools are NOT these spotlights — they are the additive fans
+ * below, which is why this re-tune leaves the puzzle's light mixing alone.
  */
 const LAMP_INTENSITY: Readonly<Record<RobotKind, number>> = Object.freeze({
-  voxxy: 30,
-  droid: 22,
-  biggy: 34,
+  voxxy: 5.9,
+  droid: 4.35,
+  biggy: 6.7,
 });
-const LAMP_DECAY = 1.15;
+const LAMP_DECAY = 0.3;
 
 /**
  * The per-robot key light (see `Lamp.key`).
