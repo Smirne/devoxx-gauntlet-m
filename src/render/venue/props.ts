@@ -282,11 +282,38 @@ export function stairFlight(o: StairOpts): THREE.Group {
     for (let k = 1; k < runs; k++) {
       const x = -widthM / 2 + (widthM * k) / runs;
       const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, railLen, 8), o.rail);
-      rail.rotation.set(Math.PI / 2 - angle, 0, 0);
+      /*
+       * `+ angle`, NOT `- angle`. Michele: *"there are floating things here?
+       * maybe handstand (corrimano?)"* — a thin bar hanging in the air over the
+       * flight, and he first read it as junk to delete.
+       *
+       * It is the handrail, sloping the WRONG WAY. A cylinder's axis is +Y, and
+       * rotating it about X by θ sends that axis to `(0, cos θ, sin θ)`. The
+       * treads descend as z grows — step `i` sits at `y = -stepRise·i`,
+       * `z = stepRun·(i + ½)` — so the rail has to run along `(0, −sin α, cos α)`.
+       * With `θ = π/2 − α` the axis came out as `(0, +sin α, cos α)`: the same
+       * slope mirrored, climbing while the stairs fall. So the rail crossed its
+       * own flight, buried at one end and a clear two metres over the treads at
+       * the other, which is the bit that reads as floating. `θ = π/2 + α` is the
+       * direction the posts were always standing in.
+       *
+       * The posts were never wrong — each one stands on the tread below it — so
+       * the rail disagreeing with them is what made it look like debris rather
+       * than like a mistake.
+       */
+      rail.rotation.set(Math.PI / 2 + angle, 0, 0);
       rail.position.set(x, -drop / 2 + 0.95, runM / 2);
       g.add(rail);
-      for (let p = 0; p <= 2; p++) {
-        const t = p / 2;
+      /*
+       * Enough posts that the rail is carried, not floated.
+       *
+       * Three posts over a flight that climbs five metres puts them four metres
+       * apart, so between them the rail reads as unsupported even once it is
+       * pointing the right way. One per two steps is what a real stair has.
+       */
+      const posts = Math.max(2, Math.round(o.steps / 2));
+      for (let p = 0; p <= posts; p++) {
+        const t = p / posts;
         const post = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.95, 8), o.rail);
         post.position.set(x, -drop * t + 0.475, runM * t);
         g.add(post);
