@@ -827,6 +827,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       tow: tow ? { holder: tow.holder, dir: tow.dir, aim: tow.aim } : null,
       entered: r?.entered?.() ?? '',
       typing: r?.typing?.() ?? false,
+      prompt: r?.prompt?.() ?? null,
       score,
       swag,
     };

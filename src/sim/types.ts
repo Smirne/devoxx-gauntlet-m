@@ -261,6 +261,36 @@ export interface Prop {
   progress?: number;
 }
 
+/**
+ * A TEXT FIELD THE SIM IS ASKING THE PLAYER TO FILL IN.
+ *
+ * Michele, 25 Sep 2026, on chapter 2's router terminal: *"Typing the password was
+ * hard, the game did not match it. I'd display an input text at center screen on e
+ * to make it easier."* There was no field: what he had typed lived in one clause of
+ * a 100-character status line along the bottom edge of the frame, which is not
+ * where anybody looks while they are typing.
+ *
+ * Everything the HUD needs to draw the field is here and nothing it could invent is:
+ * the sim decides what is being asked, what is in the box, how long the answer is
+ * and whether the last key was refused; `src/render/hud.ts` formats it and owns none
+ * of it (CLAUDE.md). `null` whenever no prompt is open, which is what makes the
+ * field appear and disappear.
+ */
+export interface TextPrompt {
+  /** What the field is asking for, e.g. `AUTHORISATION — venue WiFi password`. */
+  title: string;
+  /** What is in the box: exactly the characters the player should see. */
+  value: string;
+  /** How long the answer is, when that is known. 0 means "as long as it needs to be". */
+  total: number;
+  /** The glyph drawn for a character not yet typed. */
+  blank: string;
+  /** One line under the field: what the keys do. */
+  hint: string;
+  /** 1 the instant a key was refused, decaying to 0 — the field flashes on it. */
+  reject: number;
+}
+
 /** Everything the renderer reads for one frame. */
 export interface GameSnapshot {
   chapter: number;
@@ -302,6 +332,11 @@ export interface GameSnapshot {
    * as movement — see `src/main.ts`.
    */
   typing: boolean;
+  /**
+   * The text field to draw at the centre of the screen, or `null` for none.
+   * Open exactly when `typing` is true. See `TextPrompt`.
+   */
+  prompt: TextPrompt | null;
   toast: Toast | null;
   /** 0 = clear, 1 = black. Cutscenes and chapter transitions. */
   fade: number;
