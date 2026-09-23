@@ -61,6 +61,19 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
   'race-marker': { h: 0.5 },
   /* chapter 3 */
   'soup-station': { h: 1.0 },
+  /*
+   * The Finally Block — chapter 3's beer bar. Centre points, not corners.
+   *
+   * The counter is a metre of solid oak and has a `low` wall under it (pushed by
+   * `ch3-breakfast.ts`, kind `bar`), so it belongs in the band the sweep measures
+   * and is expected to pass it. The taps and the glassware stand ON that counter,
+   * which is what `lift: 1.05` says: above `BAND_HI`, so the sweep reads them as
+   * fittings rather than as things a robot walks into — you cannot walk into a
+   * beer glass that is a metre off the floor without first walking into the bar.
+   */
+  'bar-counter': { h: 1.05 },
+  'beer-tap': { h: 0.34, lift: 1.05 },
+  'beer-glass': { h: 0.16, lift: 1.05 },
   ladle: { h: 0.9, tl: true },
   dropzone: { h: 0.04, tl: true, flat: true },
   pot: { h: 0.45 },

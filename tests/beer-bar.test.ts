@@ -233,7 +233,17 @@ describe('the beer delivery has its own path', () => {
    */
   it('widens the catering doorway when Voxxy clears the queue — it does not seal it', () => {
     const g = mk();
-    const gap = GF.food.gaps[0];
+    // Everything here is read off the people standing in the doorway rather than
+    // off a constant, so the measurement still means something if somebody moves
+    // the catering block.
+    const file = g
+      .snapshot()
+      .people.filter((p) => p.role === 'queue')
+      .sort((p, q) => p.x - q.x);
+    const first = file.filter((p) => p.x <= file[0].x + 30);
+    const qx = first.reduce((a2, p) => a2 + p.x, 0) / first.length;
+    // The scan line is the doorway itself — the outer face of the catering block's
+    // south wall, where the queue's front rank is what narrows the opening.
     const y = GF.food.court.y + GF.food.court.h + 3;
 
     const window = (): number => {
@@ -244,7 +254,7 @@ describe('the beer delivery has its own path', () => {
       const blocked = blockedGrid(walls, discs, R);
       let best = 0;
       let run = 0;
-      for (let x = gap[0] - 20; x <= gap[1] + 20; x++) {
+      for (let x = qx - 45; x <= qx + 45; x++) {
         run = blocked[cell({ x, y })] ? 0 : run + 1;
         best = Math.max(best, run);
       }
@@ -253,9 +263,9 @@ describe('the beer delivery has its own path', () => {
 
     const shut = window();
     g.debug.select('voxxy');
-    g.debug.place('voxxy', (gap[0] + gap[1]) / 2, y + 22);
+    g.debug.place('voxxy', qx, y + 20);
     g.key('KeyE');
-    expect(breakfastOf(g).queues[0].open).toBeGreaterThan(0);
+    expect(breakfastOf(g).queues.some((q) => q.open > 0), 'Voxxy did not clear a queue').toBe(true);
     for (let i = 0; i < 40; i++) g.update(DT_MAX);
     const open = window();
     expect(open, `doorway window ${shut}px shut, ${open}px open`).toBeGreaterThan(shut);
