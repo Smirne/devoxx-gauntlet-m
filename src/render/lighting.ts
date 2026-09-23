@@ -47,6 +47,21 @@ const KINDS: readonly RobotKind[] = ['voxxy', 'droid', 'biggy'];
 const MAX_FAN_VERTS = 2 + Math.max(RAYS_CONE, RAYS_POOL, RAYS_MIRROR);
 /** Three lamps plus their mirror bounces (three per lamp per mirror), with slack. */
 const MAX_LIGHT_MESHES = 24;
+/**
+ * A floor mesh carries THREE concentric rings of the polygon, not one.
+ *
+ * Ring `r`'s vertex for rim index `i` lives at `r * MAX_FAN_VERTS + i`; slot 0 of
+ * ring 0 doubles as the triangle fan's apex. Ring 0 alone, fanned to the apex, is
+ * the ordinary pool every lamp has always drawn. All three together are the
+ * skirt's annulus, and they exist because a fan CANNOT draw one: a fan has two
+ * rings of vertices, the apex and the rim, and a colour that is dark at both ends
+ * is dark everywhere in between. See `SKIRT_PEAK`.
+ */
+const RING_STRIDE = MAX_FAN_VERTS;
+/** Indices in the fan half of the buffer; the annulus half starts after them. */
+const FAN_INDEX_COUNT = (MAX_FAN_VERTS - 2) * 3;
+/** Indices per rim step of the annulus half: two bands, two triangles each. */
+const ANNULUS_INDEX_STEP = 12;
 
 /** Floor pools sit just above the floor plate; the wedge rim just above them. */
 const FAN_Y = 0.035;
@@ -108,8 +123,26 @@ const MIX_HEADROOM = 0.72;
  * robot is standing next to is still lit in its colour — which is the whole point
  * of it — and the floor it is standing ON, where the numeral is and where its own
  * shell catches the bounce, is left alone.
+ *
+ * ### The annulus needs geometry, not just a profile
+ *
+ * That annulus was first written as a radial profile evaluated at the same
+ * vertices an ordinary pool uses — the apex and the polygon rim — and that made
+ * it draw NOTHING. A triangle fan interpolates linearly from the apex to the rim,
+ * the annulus profile is zero at the apex (the hole) and zero at the rim (the
+ * falloff's end), and zero to zero is zero across every pixel between them. On
+ * open floor every skirt ray runs the full 24 px, so every rim vertex sat at the
+ * profile's far zero and the skirt vanished outright. Michele saw exactly that
+ * and reported it exactly: *"The other two lost the halo."* Droid kept his
+ * because his LAMP is a pool — a real fan with a bright apex — so only Voxxy and
+ * Biggy, who carry cones, had nothing but the skirt to show at their feet.
+ *
+ * A profile with a peak in the middle needs a ring of vertices in the middle, so
+ * the skirt is drawn from three rings — hole, peak, rim — and the two bands
+ * between them (`RING_STRIDE`). The shape is the one the last round specified;
+ * this is the first build in which it reaches the screen.
  */
-const SKIRT_PEAK = 0.3;
+const SKIRT_PEAK = 0.34;
 /** Fraction of the skirt's range that stays dark: the robot's own footprint. */
 const SKIRT_HOLE = 0.3;
 /** Fraction of the range at which the annulus reaches full strength. */
@@ -555,6 +588,40 @@ function paintHalo(grid: FogGrid, x: number, y: number, dt: number): void {
 
 /* -------------------------------------------------------------- light meshes */
 
+/**
+ * One vertex of one concentric ring of a floor mesh: the polygon's own direction,
+ * pulled to `radius`, carrying `s` of the lamp's colour.
+ *
+ * Kept out of `writeLightMesh` because the annulus writes three of these per rim
+ * step and the arithmetic is the same every time.
+ */
+function writeRing(
+  fp: Float32Array,
+  fc: Float32Array,
+  ring: number,
+  i: number,
+  sx: number,
+  sz: number,
+  px: number,
+  pz: number,
+  dw: number,
+  radius: number,
+  y: number,
+  cr: number,
+  cg: number,
+  cb: number,
+  s: number,
+): void {
+  const o = (ring * RING_STRIDE + i) * 3;
+  const k = dw > 1e-6 ? radius / dw : 0;
+  fp[o] = sx + (px - sx) * k;
+  fp[o + 1] = y;
+  fp[o + 2] = sz + (pz - sz) * k;
+  fc[o] = cr * s;
+  fc[o + 1] = cg * s;
+  fc[o + 2] = cb * s;
+}
+
 interface LightMesh {
   fan: THREE.Mesh;
   vol: THREE.Mesh;
@@ -572,24 +639,47 @@ interface LightMesh {
  * A fan geometry with room for the widest polygon the sim can produce. Vertex 0
  * is the apex (the lamp), 1..n-1 the polygon rim, and the index buffer is the
  * fan — written once, never rebuilt.
+ *
+ * With `rings`, the buffer is three times as long and carries a second index
+ * block after the fan: the annulus, two bands of quads between rings 0-1 and 1-2,
+ * interleaved per rim step so that one `setDrawRange(FAN_INDEX_COUNT, k *
+ * ANNULUS_INDEX_STEP)` selects the first `k` steps of BOTH bands. Only the floor
+ * pools need it — the volumetric wedge is always a fan, and a skirt has no wedge.
  */
-function makeFanGeometry(): {
+function makeFanGeometry(rings = false): {
   geo: THREE.BufferGeometry;
   pos: THREE.BufferAttribute;
   col: THREE.BufferAttribute;
 } {
+  const verts = rings ? RING_STRIDE * 3 : MAX_FAN_VERTS;
   const geo = new THREE.BufferGeometry();
-  const pos = new THREE.BufferAttribute(new Float32Array(MAX_FAN_VERTS * 3), 3);
-  const col = new THREE.BufferAttribute(new Float32Array(MAX_FAN_VERTS * 3), 3);
+  const pos = new THREE.BufferAttribute(new Float32Array(verts * 3), 3);
+  const col = new THREE.BufferAttribute(new Float32Array(verts * 3), 3);
   pos.setUsage(THREE.DynamicDrawUsage);
   col.setUsage(THREE.DynamicDrawUsage);
   geo.setAttribute('position', pos);
   geo.setAttribute('color', col);
-  const idx = new Uint16Array((MAX_FAN_VERTS - 2) * 3);
-  for (let i = 1, k = 0; i < MAX_FAN_VERTS - 1; i++) {
+  const steps = MAX_FAN_VERTS - 2;
+  const idx = new Uint16Array(FAN_INDEX_COUNT + (rings ? steps * ANNULUS_INDEX_STEP : 0));
+  let k = 0;
+  for (let i = 1; i <= steps; i++) {
     idx[k++] = 0;
     idx[k++] = i;
     idx[k++] = i + 1;
+  }
+  if (rings) {
+    for (let i = 1; i <= steps; i++) {
+      for (let band = 0; band < 2; band++) {
+        const a = band * RING_STRIDE + i;
+        const b = (band + 1) * RING_STRIDE + i;
+        idx[k++] = a;
+        idx[k++] = a + 1;
+        idx[k++] = b;
+        idx[k++] = a + 1;
+        idx[k++] = b + 1;
+        idx[k++] = b;
+      }
+    }
   }
   geo.setIndex(new THREE.BufferAttribute(idx, 1));
   geo.setDrawRange(0, 0);
@@ -645,7 +735,7 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
 
   function growTo(count: number): void {
     while (meshes.length < count) {
-      const f = makeFanGeometry();
+      const f = makeFanGeometry(true);
       const v = makeFanGeometry();
       const fan = new THREE.Mesh(f.geo, fanMat);
       const vol = new THREE.Mesh(v.geo, volMat);
@@ -1204,16 +1294,15 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
     const vp = mesh.volPosArr;
     const vc = mesh.volColArr;
 
-    // Vertex 0: the lamp itself — the pool's hot spot and the wedge's apex.
+    // Vertex 0: the lamp itself — the pool's hot spot and the wedge's apex. A
+    // skirt does not use it at all: it draws the annulus index block instead, so
+    // nothing is ever fanned back to the robot's own feet.
     fp[0] = sx;
     fp[1] = floorY + FAN_Y;
     fp[2] = sz;
-    // A skirt's apex is its hole: the pool is an annulus, dark where the robot's
-    // own feet — and a solved clue's numeral — are.
-    const apexPeak = skirt ? 0 : peak;
-    fc[0] = cr * apexPeak;
-    fc[1] = cg * apexPeak;
-    fc[2] = cb * apexPeak;
+    fc[0] = cr * peak;
+    fc[1] = cg * peak;
+    fc[2] = cb * peak;
     vp[0] = sx;
     vp[1] = apexY;
     vp[2] = sz;
@@ -1239,17 +1328,24 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
       if (skirt) {
         /*
          * A skirt is an ANNULUS, not a disc: dark under the robot's own
-         * footprint, full at `SKIRT_FULL` of its range, gone at the rim. Both
-         * limbs are smoothstepped so it dissolves at each end instead of ending
-         * on a line, and the profile peaks at exactly 1 — this replaces the
-         * radial falloff above rather than multiplying it, or an annulus that
-         * peaks where the normal falloff is already two thirds spent would be
-         * too dim to say anything.
+         * footprint, brightest at `SKIRT_FULL` of its range, gone at the rim.
+         *
+         * Two extra rings of vertices carry that shape — the fan's own apex and
+         * rim can only describe a ramp. Their radii are the profile's own, pulled
+         * in to the ray's occluder if it stopped short, so a wall still cuts the
+         * skirt off exactly where it cuts the sim's polygon off. A ray that never
+         * reaches `SKIRT_FULL` fades out with `t`: light that a wall has eaten
+         * two thirds of should not be as bright as light that got through.
          */
         const u = d / range;
-        const rise = Math.min(1, Math.max(0, (u - SKIRT_HOLE) / (SKIRT_FULL - SKIRT_HOLE)));
-        const fall = Math.min(1, Math.max(0, (1 - u) / (1 - SKIRT_FULL)));
-        s = peak * rise * rise * (3 - 2 * rise) * fall * fall * (3 - 2 * fall);
+        const t = Math.min(1, Math.max(0, (u - SKIRT_HOLE) / (SKIRT_FULL - SKIRT_HOLE)));
+        const mid = peak * t * t * (3 - 2 * t);
+        const dw = Math.hypot(px - sx, pz - sz);
+        const rw = m(range);
+        writeRing(fp, fc, 0, i, sx, sz, px, pz, dw, Math.min(SKIRT_HOLE * rw, dw), floorY + FAN_Y, cr, cg, cb, 0);
+        writeRing(fp, fc, 1, i, sx, sz, px, pz, dw, Math.min(SKIRT_FULL * rw, dw), floorY + FAN_Y, cr, cg, cb, mid);
+        writeRing(fp, fc, 2, i, sx, sz, px, pz, dw, dw, floorY + FAN_Y, cr, cg, cb, 0);
+        s = 0;
       }
       if (cone) {
         // Angular penumbra at the cone's two side edges.
@@ -1280,7 +1376,9 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
     mesh.fanCol.needsUpdate = true;
     mesh.volPos.needsUpdate = true;
     mesh.volCol.needsUpdate = true;
-    mesh.fan.geometry.setDrawRange(0, (n - 2) * 3);
+    // A skirt draws the annulus index block; every other lamp draws the fan.
+    if (skirt) mesh.fan.geometry.setDrawRange(FAN_INDEX_COUNT, (n - 2) * ANNULUS_INDEX_STEP);
+    else mesh.fan.geometry.setDrawRange(0, (n - 2) * 3);
     mesh.vol.geometry.setDrawRange(0, (n - 2) * 3);
     mesh.fan.visible = peak > 0.004;
     mesh.vol.visible = volPeak > 0.004;
