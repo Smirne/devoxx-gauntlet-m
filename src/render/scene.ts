@@ -585,28 +585,110 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    * the clue is found.
    */
   const CLUE_MAX = 8;
+  /** Most colours any one clue asks for. */
+  const CLUE_ARCS = 3;
   const clueGroup = new THREE.Group();
   clueGroup.name = 'clue-markers';
   dressing.add(clueGroup);
-  const clueGeo = new THREE.RingGeometry(0.42, 0.62, 28);
+
+  /**
+   * The ring is CUT INTO ARCS, one per colour the clue needs.
+   *
+   * It used to be a single ring in the average of those colours, which is exactly
+   * the wrong thing to show: orange + green averages to a yellow that names no
+   * robot, and all three average to white. Michele: "Light points should give
+   * hints on the needed light... Gradient is an alternative, or double colored
+   * circles." So a two-colour clue is a half-and-half ring in Voxxy's orange and
+   * Droid's green, and a three-colour clue is thirds. You can read which robots
+   * to bring off the floor, without being told the answer.
+   *
+   * Geometry per arc count, built once: index n holds n arcs of 2pi/n each, with
+   * a small gap so the joins read as deliberate rather than as z-fighting.
+   */
+  const ARC_GAP = 0.13;
+  const clueArcGeo: THREE.RingGeometry[][] = [];
+  for (let n = 0; n <= CLUE_ARCS; n++) {
+    const set: THREE.RingGeometry[] = [];
+    for (let i = 0; i < n; i++) {
+      const span = (Math.PI * 2) / n;
+      set.push(new THREE.RingGeometry(0.42, 0.62, 28, 1, i * span + ARC_GAP / 2, span - ARC_GAP));
+    }
+    clueArcGeo.push(set);
+  }
   const pipGeo = new THREE.SphereGeometry(0.16, 12, 8);
-  const clueMarks: Array<{ root: THREE.Group; ring: THREE.Mesh; pip: THREE.Mesh }> = [];
+  const digitGeo = new THREE.PlaneGeometry(0.72, 0.72);
+
+  /**
+   * A digit as a canvas texture, cached. Ten of them at most, made on demand.
+   *
+   * `document` is guarded because this module is imported by headless code paths;
+   * without a canvas the marker simply keeps its found-green ring and no numeral,
+   * which is what the build did before.
+   */
+  const digitTex = new Map<number, THREE.CanvasTexture | null>();
+  function digitTexture(d: number): THREE.CanvasTexture | null {
+    const hit = digitTex.get(d);
+    if (hit !== undefined) return hit;
+    let tex: THREE.CanvasTexture | null = null;
+    if (typeof document !== 'undefined') {
+      const cv = document.createElement('canvas');
+      cv.width = 128;
+      cv.height = 128;
+      const g = cv.getContext('2d');
+      if (g) {
+        g.clearRect(0, 0, 128, 128);
+        g.font = 'bold 104px ui-monospace, "SF Mono", Menlo, monospace';
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        // A dark rim under the glyph so it holds up over a bright floor pool.
+        g.lineWidth = 10;
+        g.strokeStyle = 'rgba(8,12,10,0.85)';
+        g.strokeText(String(d), 64, 70);
+        g.fillStyle = '#eafff0';
+        g.fillText(String(d), 64, 70);
+        tex = new THREE.CanvasTexture(cv);
+        tex.anisotropy = 4;
+      }
+    }
+    digitTex.set(d, tex);
+    return tex;
+  }
+
+  const clueMarks: Array<{
+    root: THREE.Group;
+    arcs: THREE.Mesh[];
+    pip: THREE.Mesh;
+    digit: THREE.Mesh;
+  }> = [];
   for (let i = 0; i < CLUE_MAX; i++) {
     const root = new THREE.Group();
-    const ring = new THREE.Mesh(
-      clueGeo,
-      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }),
-    );
-    ring.rotation.x = -Math.PI / 2;
+    const arcs: THREE.Mesh[] = [];
+    for (let a = 0; a < CLUE_ARCS; a++) {
+      const arc = new THREE.Mesh(
+        clueArcGeo[CLUE_ARCS][a],
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }),
+      );
+      arc.rotation.x = -Math.PI / 2;
+      arcs.push(arc);
+      root.add(arc);
+    }
     const pip = new THREE.Mesh(
       pipGeo,
       new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.75, depthWrite: false, toneMapped: false }),
     );
     pip.position.y = 0.5;
-    root.add(ring, pip);
+    /** The digit, laid flat inside the ring once the clue is lit, and left there. */
+    const digit = new THREE.Mesh(
+      digitGeo,
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, toneMapped: false }),
+    );
+    digit.rotation.x = -Math.PI / 2;
+    digit.position.y = 0.012;
+    digit.visible = false;
+    root.add(pip, digit);
     root.visible = false;
     clueGroup.add(root);
-    clueMarks.push({ root, ring, pip });
+    clueMarks.push({ root, arcs, pip, digit });
   }
 
   /* -------------------------------------------------------- debug staging */
@@ -900,7 +982,30 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       }
       mark.root.visible = true;
       mark.root.position.set(m(clue.x), floorY + 0.02, m(clue.y));
-      // The mix's own colours, averaged: orange+green reads yellow, all three white.
+
+      const found = clue.found;
+      const pulse = 0.55 + 0.45 * Math.sin(snap.t * 2.1 + i * 1.7);
+      const n = Math.min(Math.max(clue.need.length, 1), CLUE_ARCS);
+
+      // One arc per colour the clue needs, each in that robot's own lamp colour,
+      // so the ring spells out the recipe. Found turns the whole ring green.
+      for (let a = 0; a < CLUE_ARCS; a++) {
+        const arc = mark.arcs[a];
+        if (a >= n) {
+          arc.visible = false;
+          continue;
+        }
+        arc.visible = true;
+        if (arc.geometry !== clueArcGeo[n][a]) arc.geometry = clueArcGeo[n][a];
+        const src = snap.bots.find((x) => x.kind === clue.need[a]);
+        const c = found ? [90, 210, 120] : (src ? src.light.c : [200, 200, 200]);
+        const mat = arc.material as THREE.MeshBasicMaterial;
+        mat.color.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
+        mat.opacity = found ? 0.8 : 0.34 + 0.3 * pulse;
+      }
+
+      // The pip keeps the averaged colour: it is the "something is here" marker,
+      // and it stops breathing once the clue is read.
       let r = 0;
       let g = 0;
       let b = 0;
@@ -911,15 +1016,30 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
         g += c[1];
         b += c[2];
       }
-      const n = Math.max(clue.need.length, 1);
-      const found = clue.found;
-      const pulse = 0.55 + 0.45 * Math.sin(snap.t * 2.1 + i * 1.7);
-      const col = found ? [90, 210, 120] : [r / n, g / n, b / n];
-      (mark.ring.material as THREE.MeshBasicMaterial).color.setRGB(col[0] / 255, col[1] / 255, col[2] / 255);
-      (mark.pip.material as THREE.MeshBasicMaterial).color.setRGB(col[0] / 255, col[1] / 255, col[2] / 255);
-      (mark.ring.material as THREE.MeshBasicMaterial).opacity = found ? 0.75 : 0.28 + 0.24 * pulse;
-      (mark.pip.material as THREE.MeshBasicMaterial).opacity = found ? 0.9 : 0.4 + 0.35 * pulse;
+      const avg = found ? [90, 210, 120] : [r / clue.need.length, g / clue.need.length, b / clue.need.length];
+      const pipMat = mark.pip.material as THREE.MeshBasicMaterial;
+      pipMat.color.setRGB(avg[0] / 255, avg[1] / 255, avg[2] / 255);
+      pipMat.opacity = found ? 0 : 0.4 + 0.35 * pulse;
+      mark.pip.visible = !found;
       mark.pip.position.y = 0.5 + 0.09 * pulse;
+
+      // ...and the digit takes its place, and STAYS, as the prototype does. The
+      // toast that announced it was the only record, and it scrolled away before
+      // Michele noticed it: "I didn't notice the circle nor that the number was
+      // found."
+      const digitMat = mark.digit.material as THREE.MeshBasicMaterial;
+      if (found) {
+        const tex = digitTexture(clue.digit);
+        if (tex && digitMat.map !== tex) {
+          digitMat.map = tex;
+          digitMat.needsUpdate = true;
+        }
+        mark.digit.visible = digitMat.map !== null;
+        digitMat.opacity = 0.96;
+      } else {
+        mark.digit.visible = false;
+        digitMat.opacity = 0;
+      }
     }
   }
 
@@ -1329,11 +1449,14 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
         const mesh = o as THREE.Mesh;
         if (mesh.isMesh) mesh.geometry.dispose();
       });
-      clueGeo.dispose();
+      for (const set of clueArcGeo) for (const geo of set) geo.dispose();
       pipGeo.dispose();
+      digitGeo.dispose();
+      for (const tex of digitTex.values()) tex?.dispose();
       for (const mark of clueMarks) {
-        (mark.ring.material as THREE.Material).dispose();
+        for (const arc of mark.arcs) (arc.material as THREE.Material).dispose();
         (mark.pip.material as THREE.Material).dispose();
+        (mark.digit.material as THREE.Material).dispose();
       }
       propPool.dispose();
       peoplePool.dispose();
