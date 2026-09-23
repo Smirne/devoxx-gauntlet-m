@@ -275,8 +275,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   const rE = R('E');
   /**
-   * One aisle up the left of the room. Biggy does not fit in it, but his flood
-   * does clear the seat backs, which is the hint the seats themselves give him.
+   * One aisle, and Biggy does not fit in it — but his flood does clear the seat
+   * backs, which is the hint the seats themselves give him.
    *
    * WIDTH IS THE GATE, AND IT HAD STOPPED BEING ONE. Michele: *"Biggy can now
    * walk the aisle. I think the whole point was he cannot."* He was right, and it
