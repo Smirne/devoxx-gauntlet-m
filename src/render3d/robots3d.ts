@@ -1,0 +1,227 @@
+/**
+ * robots3d.ts — Voxxy, Droid and Biggy in the 3D build.
+ *
+ * The rigs are the 2.5D build's own (`src/render/robots`), built from the model
+ * sheets and animated by the same gait — appearance is decided there and not
+ * re-litigated here (GAUNTLET.md Stage 1). What this file changes is surface and
+ * light:
+ *
+ *  - every shell material becomes a `MeshPhysicalMaterial` with a clearcoat
+ *    where the sheet shows gloss (Voxxy's orange) and a procedural micro-wear
+ *    patch (roughness breakup and hairline scratches in object space), so a
+ *    close camera sees a manufactured object rather than a flat colour;
+ *  - the emissive eyes and ports are pushed into HDR so the bloom treats them as
+ *    lights;
+ *  - each robot's lamp becomes a real shadow-casting SpotLight whose beam the
+ *    volumetric fog renders: Voxxy's narrow orange cone, Droid's green pool
+ *    thrown down from his chest, Biggy's wide blue flood. The sim decides where
+ *    the light GOES (its polygons open the clues); this only draws it.
+ */
+
+import * as THREE from 'three';
+
+import { DEFS, MOUNT_OFFSET_Y } from '../sim/constants';
+import type { Bot, GameSnapshot, RobotKind } from '../sim/types';
+import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
+import { createRobot, updateRobot, type RobotRig } from '../render/robots';
+import { WORLD_NOISE_GLSL } from './materials';
+
+export interface Robot3D {
+  kind: RobotKind;
+  rig: RobotRig;
+  lamp: THREE.SpotLight;
+  /**
+   * The lamp's spill on the robot itself and the floor round its feet — the 3D
+   * reading of the sim's own `SKIRT_RANGE` pool. It is what keeps the robot you
+   * are driving readable in a building with the lights out.
+   */
+  spill: THREE.PointLight;
+  /** How much of the lamp shows in the fog. */
+  fog: number;
+}
+
+const LAMP: Record<RobotKind, { intensity: number; fog: number; tilt: number }> = {
+  voxxy: { intensity: 420, fog: 0.16, tilt: 0.16 },
+  droid: { intensity: 420, fog: 0.0, tilt: 0 },
+  biggy: { intensity: 520, fog: 0.1, tilt: 0.2 },
+};
+
+/* --------------------------------------------------------- material upgrade */
+
+const WEAR_GLSL = /* glsl */ `
+float scr(vec3 p, float seed){
+  // Hairline scratches: thin bands of a rotated noise field.
+  float n = wNoise(p * vec3(3., 60., 3.) + seed);
+  return smoothstep(.97, 1., n);
+}
+`;
+
+function upgrade(mat: THREE.MeshStandardMaterial, kind: RobotKind): THREE.MeshPhysicalMaterial {
+  const p = new THREE.MeshPhysicalMaterial({
+    color: mat.color.clone(),
+    roughness: mat.roughness,
+    metalness: mat.metalness,
+    vertexColors: mat.vertexColors,
+    flatShading: mat.flatShading,
+    side: mat.side,
+    map: mat.map,
+    normalMap: mat.normalMap,
+    transparent: mat.transparent,
+    opacity: mat.opacity,
+  });
+  const hsl = { h: 0, s: 0, l: 0 };
+  p.color.getHSL(hsl);
+  const glossy = mat.roughness < 0.45;
+  if (kind === 'voxxy' && glossy && hsl.s > 0.4) {
+    // Voxxy's shell: glossy orange plastic, lacquered.
+    p.clearcoat = 1;
+    p.clearcoatRoughness = 0.06;
+    p.roughness = Math.max(0.28, p.roughness);
+    p.metalness = 0.0;
+  } else if (glossy) {
+    p.clearcoat = 0.5;
+    p.clearcoatRoughness = 0.2;
+  }
+  if (hsl.l < 0.08 && mat.roughness < 0.2) {
+    // Visors: black glass.
+    p.clearcoat = 1;
+    p.clearcoatRoughness = 0.02;
+    p.roughness = 0.05;
+  }
+  p.envMapIntensity = 1.2;
+  const seed = kind === 'voxxy' ? 1.3 : kind === 'droid' ? 7.7 : 4.1;
+  p.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vObjP;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObjP = position;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\nvarying vec3 vObjP;\n${WORLD_NOISE_GLSL}\n${WEAR_GLSL}`)
+      .replace(
+        '#include <roughnessmap_fragment>',
+        `#include <roughnessmap_fragment>
+         float wN = wFbm(vObjP * 18. + ${seed.toFixed(2)});
+         float s1 = scr(vObjP * 4., ${seed.toFixed(2)});
+         roughnessFactor = clamp(roughnessFactor + (wN - .5) * .22 + s1 * .25, .02, 1.);`,
+      )
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+         diffuseColor.rgb *= .9 + .2 * wFbm(vObjP * 9. + ${seed.toFixed(2)});
+         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.55), scr(vObjP * 4., ${seed.toFixed(2)}) * .35);`,
+      );
+  };
+  p.customProgramCacheKey = () => `robotwear-${kind}`;
+  return p;
+}
+
+function upgradeRig(rig: RobotRig): void {
+  const glow = new Set<THREE.Material>(rig.glow);
+  const cache = new Map<THREE.Material, THREE.Material>();
+  rig.root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    const mat = mesh.material as THREE.MeshStandardMaterial;
+    if (!mat || Array.isArray(mat)) return;
+    if (glow.has(mat)) {
+      if (!cache.has(mat)) {
+        mat.emissiveIntensity *= 3;
+        cache.set(mat, mat);
+      }
+      mesh.castShadow = false;
+      return;
+    }
+    if (!(mat as THREE.MeshStandardMaterial).isMeshStandardMaterial) return;
+    let up = cache.get(mat);
+    if (!up) {
+      up = upgrade(mat, rig.kind);
+      cache.set(mat, up);
+    }
+    mesh.material = up;
+  });
+}
+
+/* ------------------------------------------------------------------ robots */
+
+export function createRobots(parent: THREE.Object3D, shadowSize: number): Map<RobotKind, Robot3D> {
+  const out = new Map<RobotKind, Robot3D>();
+  for (const kind of ['voxxy', 'droid', 'biggy'] as RobotKind[]) {
+    const rig = createRobot(kind);
+    upgradeRig(rig);
+    parent.add(rig.root);
+    const def = DEFS[kind].light;
+    const col = new THREE.Color(def.c[0] / 255, def.c[1] / 255, def.c[2] / 255);
+    const L = LAMP[kind];
+    const range = m(def.range) * (kind === 'droid' ? 1 : 1.1);
+    const angle = def.type === 'cone' ? Math.min(1.2, def.ang ?? 0.5) : 1.2;
+    const lamp = new THREE.SpotLight(col, L.intensity, kind === 'droid' ? 12 : range, angle, kind === 'voxxy' ? 0.35 : 0.6, 2);
+    lamp.castShadow = true;
+    lamp.shadow.mapSize.set(shadowSize, shadowSize);
+    lamp.shadow.bias = -0.0006;
+    lamp.shadow.normalBias = 0.02;
+    lamp.shadow.camera.near = 0.2;
+    lamp.shadow.radius = 3;
+    parent.add(lamp, lamp.target);
+    const spill = new THREE.PointLight(col, kind === 'biggy' ? 9 : 7, 4, 2);
+    parent.add(spill);
+    out.set(kind, { kind, rig, lamp, spill, fog: L.fog });
+  }
+  return out;
+}
+
+const _p = new THREE.Vector3();
+let mountLiftM: number | null = null;
+
+function mountLift(droid: RobotRig): number {
+  if (mountLiftM !== null) return mountLiftM;
+  droid.root.updateMatrixWorld(true);
+  const pelvisY = new THREE.Vector3().setFromMatrixPosition(droid.bones.pelvis.matrixWorld).y - droid.root.position.y;
+  mountLiftM = ROBOT_HEIGHT_M.biggy - pelvisY - 0.02;
+  return mountLiftM;
+}
+
+/** Place and animate the robots from the snapshot, and aim their lamps. */
+export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot, dt: number): void {
+  const droid = robots.get('droid');
+  for (const b of snap.bots) {
+    const r = robots.get(b.kind);
+    if (!r) continue;
+    const rider = b.kind === 'droid' && b.mounted;
+    const lift = rider && droid ? mountLift(droid.rig) : 0;
+    const ry = rider ? b.y + MOUNT_OFFSET_Y : b.y;
+    r.rig.root.position.set(m(b.x), lift, m(ry));
+    updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: b.face, dt, mounted: b.mounted });
+    aimLamp(r, b);
+  }
+}
+
+function aimLamp(r: Robot3D, b: Bot): void {
+  r.rig.root.updateMatrixWorld(true);
+  r.rig.lampAnchor.getWorldPosition(_p);
+  const L = LAMP[r.kind];
+  const lamp = r.lamp;
+  if (r.kind === 'droid') {
+    // The pool: from above the head, straight down. Wider on Biggy's shoulders,
+    // as the sim widens it (MOUNT widens Droid's pool x1.6).
+    // The source is lifted well clear of his helmet — a lamp 15 cm over his
+    // shoulders put 1000+ lux on them and bleached a graphite robot white. From
+    // 1.4 m above his head the floor pool keeps the sim's radius and he casts a
+    // stage-light shadow at his own feet.
+    const top = r.rig.root.position.y + ROBOT_HEIGHT_M.droid + 1.4;
+    const rad = m(DEFS.droid.light.range) * (b.mounted ? 1.6 : 1);
+    lamp.position.set(_p.x, top, _p.z);
+    lamp.target.position.set(_p.x + Math.cos(b.face) * 0.3, 0, _p.z + Math.sin(b.face) * 0.3);
+    lamp.angle = Math.min(1.35, Math.atan(rad / top));
+    lamp.distance = Math.hypot(rad, top) + 1;
+  } else {
+    lamp.position.copy(_p);
+    const dx = Math.cos(b.face);
+    const dz = Math.sin(b.face);
+    lamp.target.position.set(_p.x + dx * 10, _p.y - 10 * Math.tan(L.tilt), _p.z + dz * 10);
+  }
+  lamp.target.updateMatrixWorld();
+  // Spill: just in front of and above the lamp, so it grazes the robot's own
+  // front and pools on the floor ahead of its feet.
+  r.spill.position.set(_p.x + Math.cos(b.face) * 1.1, Math.max(0.9, _p.y + 0.5), _p.z + Math.sin(b.face) * 1.1);
+}
