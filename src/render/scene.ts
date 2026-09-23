@@ -868,7 +868,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   /*
    * THE MARKERS ARE DRAWN AFTER THE LIGHT.
    *
-   * The arcs, the pip and the numeral are floor decals at renderOrder 0, and
+   * The slots, the pip and the numeral are floor decals at renderOrder 0, and
    * `lighting.ts` draws its additive floor pools at 12 and its wedges at 13 —
    * so every lamp in the room was composited ON TOP of the numeral. The glyph
    * is carried by a dark rim stroked under it, and additive light lifts that rim
@@ -885,8 +885,8 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    */
   const CLUE_ORDER = 20;
   const CLUE_MAX = 8;
-  /** Most colours any one clue asks for. */
-  const CLUE_ARCS = 3;
+  /** One slot per robot: the most colours any one clue can ask for. */
+  const CLUE_SLOTS = 3;
   const clueGroup = new THREE.Group();
   clueGroup.name = 'clue-markers';
   dressing.add(clueGroup);
@@ -984,7 +984,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
 
   const clueMarks: Array<{
     root: THREE.Group;
-    arcs: THREE.Mesh[];
+    slots: THREE.Mesh[];
     back: THREE.Mesh;
     pip: THREE.Mesh;
     digit: THREE.Mesh;
@@ -998,15 +998,15 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     back.rotation.x = -Math.PI / 2;
     back.renderOrder = CLUE_ORDER - 1;
     root.add(back);
-    const arcs: THREE.Mesh[] = [];
-    for (let a = 0; a < CLUE_ARCS; a++) {
+    const slots: THREE.Mesh[] = [];
+    for (let a = 0; a < CLUE_SLOTS; a++) {
       const arc = new THREE.Mesh(
         clueSlotGeo[KINDS[a]],
         new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }),
       );
       arc.rotation.x = -Math.PI / 2;
       arc.renderOrder = CLUE_ORDER;
-      arcs.push(arc);
+      slots.push(arc);
       root.add(arc);
     }
     const pip = new THREE.Mesh(
@@ -1027,7 +1027,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     root.add(pip, digit);
     root.visible = false;
     clueGroup.add(root);
-    clueMarks.push({ root, arcs, back, pip, digit });
+    clueMarks.push({ root, slots, back, pip, digit });
   }
 
   /* -------------------------------------------------------- debug staging */
@@ -1346,8 +1346,8 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       // One RING per colour the clue needs, each at that robot's own fixed
       // radius and in that robot's own lamp colour, so the marker spells out the
       // recipe by position as well as by hue.
-      for (let a = 0; a < CLUE_ARCS; a++) {
-        const arc = mark.arcs[a];
+      for (let a = 0; a < CLUE_SLOTS; a++) {
+        const arc = mark.slots[a];
         const kind = KINDS[a];
         if (!clue.need.includes(kind)) {
           arc.visible = false;
@@ -2051,7 +2051,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       digitGeo.dispose();
       for (const tex of digitTex.values()) tex?.dispose();
       for (const mark of clueMarks) {
-        for (const arc of mark.arcs) (arc.material as THREE.Material).dispose();
+        for (const arc of mark.slots) (arc.material as THREE.Material).dispose();
         (mark.back.material as THREE.Material).dispose();
         (mark.pip.material as THREE.Material).dispose();
         (mark.digit.material as THREE.Material).dispose();
