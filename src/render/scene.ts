@@ -555,26 +555,61 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    * itself passes the depth test first; behind a pillar it is a coloured ghost of
    * the right size in the right place.
    */
-  const xrayMat = new THREE.MeshBasicMaterial({
-    color: 0xff7a1a,
-    transparent: true,
-    opacity: 0.55,
-    depthTest: true,
-    depthWrite: false,
-    depthFunc: THREE.GreaterDepth,
-    toneMapped: false,
-  });
-  const xray = new THREE.Group();
-  xray.name = 'active-xray';
-  xray.renderOrder = 998;
-  {
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.5, 4, 14), xrayMat);
-    body.name = 'body';
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 14, 10), xrayMat);
-    head.name = 'head';
-    xray.add(body, head);
+  /*
+   * The ghost is the robot's OWN geometry, not a stand-in.
+   *
+   * It used to be a capsule and a sphere roughly the right size, which marked a
+   * spot without showing a robot — Michele, seeing one behind a wall: "when a
+   * robot is behind an object, show the silhuette, not this thing."
+   *
+   * Each mesh in the rig gets a child that shares its geometry and carries the
+   * x-ray material. A child with an identity transform has its parent's world
+   * matrix by construction, so the ghost follows every bone the gait moves
+   * without a second animation path to keep in step — and it costs no extra
+   * geometry, only the draw. Only the robot you are driving builds one.
+   */
+  const xrayMats = new Map<string, THREE.MeshBasicMaterial>();
+  function xrayMaterial(kind: string, c: readonly number[]): THREE.MeshBasicMaterial {
+    let mat = xrayMats.get(kind);
+    if (!mat) {
+      mat = new THREE.MeshBasicMaterial({
+        transparent: true,
+        opacity: 0.5,
+        depthTest: true,
+        depthWrite: false,
+        depthFunc: THREE.GreaterDepth,
+        toneMapped: false,
+      });
+      xrayMats.set(kind, mat);
+    }
+    mat.color.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
+    return mat;
   }
-  dressing.add(xray);
+
+  /** Ghost meshes per robot, built the first time that robot is driven. */
+  const ghosts = new Map<string, THREE.Mesh[]>();
+  function ensureGhost(kind: string, rig: RobotRig, c: readonly number[]): THREE.Mesh[] {
+    const made = ghosts.get(kind);
+    if (made) return made;
+    const mat = xrayMaterial(kind, c);
+    const list: THREE.Mesh[] = [];
+    const sources: THREE.Mesh[] = [];
+    rig.root.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (mesh.isMesh && mesh.userData[EXCLUDE_FROM_BOUNDS] !== true) sources.push(mesh);
+    });
+    for (const src of sources) {
+      const ghost = new THREE.Mesh(src.geometry, mat);
+      ghost.name = `${src.name}-xray`;
+      ghost.renderOrder = 998;
+      ghost.castShadow = false;
+      ghost.receiveShadow = false;
+      src.add(ghost);
+      list.push(ghost);
+    }
+    ghosts.set(kind, list);
+    return list;
+  }
 
   /**
    * CLUE MARKERS. `GameSnapshot.clues` carries the four light-mix spots; nothing
@@ -949,25 +984,26 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     return focus;
   }
 
-  /** The x-ray ghost of the driven robot, wherever geometry is in front of it. */
-  function updateXray(snap: GameSnapshot, floorY: number): void {
+  /**
+   * The driven robot's own silhouette, wherever geometry is in front of it.
+   *
+   * Nothing is positioned here: the ghosts are children of the rig's own meshes,
+   * so they are already exactly where the robot is, in whatever pose the gait has
+   * it in. All this does is decide whose ghosts are switched on.
+   */
+  function updateXray(snap: GameSnapshot): void {
     const bot = snap.bots[snap.active];
-    if (!bot || snap.chapter < 1 || snap.phase !== 'play') {
-      xray.visible = false;
-      return;
+    const live = bot !== undefined && snap.chapter >= 1 && snap.phase === 'play';
+    for (const [kind, list] of ghosts) {
+      const on = live && bot !== undefined && kind === bot.kind;
+      for (const g of list) g.visible = on;
     }
-    xray.visible = true;
-    const h = ROBOT_HEIGHT_M[bot.kind];
-    const rM = Math.max(m(bot.r), 0.3);
-    const body = xray.children[0] as THREE.Mesh;
-    const head = xray.children[1] as THREE.Mesh;
-    body.scale.set(rM / 0.34, (h * 0.62) / 1.18, rM / 0.34);
-    body.position.set(0, h * 0.37, 0);
-    head.scale.setScalar((rM * 0.8) / 0.3);
-    head.position.set(0, h * 0.82, 0);
-    xray.position.set(m(bot.x), floorY, m(bot.y));
-    const c = bot.light.c;
-    xrayMat.color.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
+    if (!live || !bot) return;
+    const rig = rigs.get(bot.kind);
+    if (!rig) return;
+    const made = ensureGhost(bot.kind, rig, bot.light.c);
+    for (const g of made) g.visible = true;
+    xrayMaterial(bot.kind, bot.light.c);
   }
 
   /** Floor markers on the chapter's clue spots. */
@@ -1330,7 +1366,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     placeRobots(snap, dt, floorY);
     drawDressing(snap, floorY);
     activeRing.visible = false;
-    xray.visible = false;
+    for (const list of ghosts.values()) for (const g of list) g.visible = false;
     for (const mark of clueMarks) mark.root.visible = false;
     aimPlanCamera(snap.floor);
 
@@ -1389,7 +1425,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     placeRobots(snap, dt, floorY);
     drawDressing(snap, floorY);
     updateActiveRing(snap, floorY);
-    updateXray(snap, floorY);
+    updateXray(snap);
     updateClues(snap, floorY);
     lights.update(snap, dt);
 
@@ -1444,11 +1480,9 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       applyMode();
     },
     dispose(): void {
-      xrayMat.dispose();
-      xray.traverse((o) => {
-        const mesh = o as THREE.Mesh;
-        if (mesh.isMesh) mesh.geometry.dispose();
-      });
+      // The ghosts share their source meshes' geometry, so only the materials
+      // are ours to free; `disposeTree` on each rig takes the geometry.
+      for (const mat of xrayMats.values()) mat.dispose();
       for (const set of clueArcGeo) for (const geo of set) geo.dispose();
       pipGeo.dispose();
       digitGeo.dispose();
