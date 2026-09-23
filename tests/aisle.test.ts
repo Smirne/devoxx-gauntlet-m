@@ -150,7 +150,14 @@ describe("cinema E's aisle", () => {
         }
       }
     }
-  });
+    /*
+     * An explicit timeout, because vitest's default is 5 s and this walks six
+     * 300-step routes through a chapter's full wall list. It came in at 1.9 s on
+     * an idle machine and failed at 5.3 s while a build was running beside it —
+     * a timeout, not a wrong answer, which is the worst kind of red because it
+     * looks like a regression.
+     */
+  }, 30000);
 
   /*
    * THE BEAT ITSELF.

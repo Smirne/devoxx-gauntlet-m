@@ -2,9 +2,9 @@
  * Chapter 2 — EXPO. The exhibition hall before opening: dark, empty, no network,
  * and three thousand badges locked in the pickup store.
  *
- * Ported from the prototype's `setupExpo` / `expoKey` / `expoUpdate` and its
- * `setupMinigames` block (`reference/poc/10-after-dark-kinepolis.html`). Three jobs,
- * one per robot, each of which only that robot can do:
+ * Ported from the prototype's `setupExpo` / `expoKey` / `expoUpdate`
+ * (`reference/poc/10-after-dark-kinepolis.html`). Three jobs, one per robot, each of
+ * which only that robot can do:
  *
  *   Droid — three breakers on a panel too high for anybody else.
  *   Voxxy — the network cable from the rack to the badge printer. The reel is
@@ -49,7 +49,6 @@ import {
   CABLE_MAX,
   MOUNT_BIGGY_MAX_SPEED,
   MOUNT_REACH,
-  PUSH_LEAN_MIN,
   ROLLER_DOOR_SPEED,
   SPEED_SCALE,
   T,
@@ -57,7 +56,7 @@ import {
 } from '../constants';
 import { m } from '../units';
 import { GF, VIEW_GROUND, groundWallsFor, stairDoor } from '../geometry';
-import { botsCollide, dist, inRect, mkBot, speed, stepBot } from '../bot';
+import { dist, inRect, mkBot, speed } from '../bot';
 import { buildLights, litBy } from '../lights';
 import type { Bot, LightSource, Mirror, Prop, Vec2, Wall } from '../types';
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
@@ -149,8 +148,14 @@ const BREAKERS = 3;
 const NO_MIRRORS: Mirror[] = [];
 
 /**
- * A pushable body that is not a robot: the shuffleboard duck here, the cake crate in
- * chapter 4. It borrows `Bot` only so it can reuse `stepBot` and `botsCollide`.
+ * A pushable body that is not a robot: chapter 3's beer crates, its crowd and its
+ * shuffleboard duck, and chapter 4's cake crate. It borrows `Bot` only so it can
+ * reuse `stepBot` and `botsCollide`.
+ *
+ * It lives here because chapter 2 was the first chapter to need one. Nothing in this
+ * chapter uses it any more — the booth minigames that did moved to chapter 3 on
+ * 24 Sep 2026 — but chapters 3 and 4 both import it from here and moving it would be
+ * churn for its own sake.
  *
  * `kind` is 'droid' and never read as an identity — the prototype gave these bodies
  * their own kinds ('duck', 'crate'), and the single place `stepBot` looks at `kind`
@@ -164,188 +169,6 @@ export function mkBody(name: string, x: number, y: number, over: Partial<Bot>): 
   b.tall = false;
   b.light = { c: [0, 0, 0], type: 'pool', range: 1 };
   return Object.assign(b, over);
-}
-
-/* ================================================================== minigames */
-
-export interface MinigameState {
-  duck: Vec2;
-  duckDone: boolean;
-  stickerDone: boolean;
-  raceDone: boolean;
-  /** Which of the four Regex Racing markers is next, 0 when the lap has not started. */
-  raceNext: number;
-}
-
-/**
- * The three optional booth games. Worth 0.5 points each on the final card and
- * nothing else — they exist so the hall rewards wandering, which is the only reason
- * a player looks at twelve sponsor booths at all.
- */
-export interface Minigames {
-  /** Returns true when the key was consumed, so the chapter does not also act on it. */
-  key(code: string, b: Bot): boolean;
-  update(dt: number): void;
-  props(): Prop[];
-  /** Debug/test seam: move the duck. */
-  place(kind: string, x: number, y: number): boolean;
-  state(): MinigameState;
-}
-
-export function setupMinigames(ctx: ChapterCtx): Minigames {
-  const booth = (name: string): { x: number; y: number; w: number; h: number } => {
-    const b = GF.booths.find((o) => o.name === name);
-    if (!b) throw new Error(`no booth ${name}`);
-    return b;
-  };
-
-  // Shuffleboard: shove the duck so it comes to rest inside the circle.
-  const duckB = booth('Rubber Duck Inc');
-  const duck = mkBody('duck', duckB.x + duckB.w + 30, duckB.y + 35, {
-    r: 8,
-    mass: 0.6,
-    accel: 0,
-    max: 500 * SPEED_SCALE,
-    drag: 1.1,
-  });
-  const duckTarget = { x: duckB.x + duckB.w + 30, y: duckB.y + 35 + 95, r: 22 };
-  // Swag already won in an earlier chapter stays won: the prototype kept one
-  // minigame object for the whole run, we rebuild it per chapter.
-  let duckDone = ctx.swag.includes('duck');
-
-  const stB = booth('Sticker Mine');
-  const sticker = { x: stB.x + stB.w / 2, y: stB.y + stB.h + 14 };
-  let stickerDone = ctx.swag.includes('sticker');
-
-  const rxB = booth('Regex Racing');
-  const racePts: Vec2[] = [
-    { x: rxB.x - 24, y: rxB.y - 16 },
-    { x: rxB.x + rxB.w + 24, y: rxB.y - 16 },
-    { x: rxB.x + rxB.w + 24, y: rxB.y + rxB.h + 16 },
-    { x: rxB.x - 24, y: rxB.y + rxB.h + 16 },
-  ];
-  /**
-   * The lap is a fixed length of floor, so the budget is a required speed wearing a
-   * clock's clothes: it grows with `TRAVEL_TIME_SCALE` or the rescale would quietly
-   * make the minigame impossible. 5 s of the prototype's Voxxy, 20 s of this one.
-   */
-  const RACE_LIMIT = 5 * TRAVEL_TIME_SCALE;
-  let raceNext = 0;
-  let raceT0 = 0;
-  let raceDone = ctx.swag.includes('race');
-
-  function key(code: string, b: Bot): boolean {
-    if (code !== 'KeyE') return false;
-    if (!stickerDone && dist(b, sticker) < 40) {
-      if (b.kind === 'droid') {
-        stickerDone = true;
-        ctx.addSwag('sticker', 'Droid peels the top-shelf holographic sticker. Swag +1');
-      } else {
-        ctx.flash(`${b.name}: the good stickers are on the top shelf. Droid?`);
-      }
-      return true;
-    }
-    return false;
-  }
-
-  function update(dt: number): void {
-    stepBot(duck, dt, ctx.walls);
-    for (const b of ctx.bots) {
-      if (b.mounted) continue;
-      const dx = duck.x - b.x;
-      const dy = duck.y - b.y;
-      const dd = Math.hypot(dx, dy);
-      if (dd <= 0 || dd >= b.r + duck.r + 4) continue;
-      const nx = dx / dd;
-      const ny = dy / dd;
-      const lean = b.ix * nx + b.iy * ny;
-      // A shove, not a carry: the duck only takes a kick while it is still slow.
-      if (lean > PUSH_LEAN_MIN && speed(duck) < 40 * SPEED_SCALE) {
-        const F = (b.kind === 'biggy' ? 900 : 350) * SPEED_SCALE;
-        duck.vx += nx * lean * F * dt;
-        duck.vy += ny * lean * F * dt;
-      }
-      botsCollide(b, duck);
-    }
-    if (!duckDone && speed(duck) < 5 * SPEED_SCALE && dist(duck, duckTarget) < duckTarget.r) {
-      duckDone = true;
-      ctx.addSwag('duck', 'The duck stops in the circle. Rubber Duck Inc hands over a giant duck. Swag +1');
-    }
-
-    if (raceDone) return;
-    const v = ctx.byKind('voxxy');
-    const p = racePts[raceNext];
-    if (dist(v, p) < 16) {
-      if (raceNext === 0) raceT0 = ctx.t;
-      raceNext++;
-      if (raceNext === 4) {
-        const el = ctx.t - raceT0;
-        if (el <= RACE_LIMIT) {
-          raceDone = true;
-          ctx.addSwag('race', `Regex Racing lap in ${el.toFixed(1)}s — under ${RACE_LIMIT}s. Swag +1`);
-        } else {
-          ctx.flash(`Regex Racing lap in ${el.toFixed(1)}s — too slow, again`);
-          raceNext = 0;
-        }
-      }
-    }
-    if (raceNext > 0 && ctx.t - raceT0 > RACE_LIMIT) {
-      raceNext = 0;
-      ctx.flash("Regex Racing: time's up, lap reset");
-    }
-  }
-
-  function props(): Prop[] {
-    const out: Prop[] = [
-      { kind: 'duck', x: duck.x, y: duck.y, w: duck.r * 2, h: duck.r * 2, state: duckDone ? 'done' : 'idle' },
-      {
-        kind: 'duck-target',
-        x: duckTarget.x,
-        y: duckTarget.y,
-        w: duckTarget.r * 2,
-        h: duckTarget.r * 2,
-        state: duckDone ? 'done' : 'idle',
-        label: 'duck shuffleboard',
-      },
-      {
-        kind: 'sticker',
-        x: sticker.x,
-        y: sticker.y,
-        w: 12,
-        h: 8,
-        state: stickerDone ? 'done' : 'idle',
-        label: stickerDone ? 'sticker ✓' : 'top-shelf sticker (E)',
-      },
-    ];
-    racePts.forEach((p, i) => {
-      out.push({
-        kind: 'race-marker',
-        x: p.x,
-        y: p.y,
-        w: 12,
-        h: 12,
-        v: i + 1,
-        state: raceDone ? 'done' : i === raceNext ? 'active' : 'idle',
-        label: raceDone ? 'lap ✓' : `Voxxy lap 1→4 under ${RACE_LIMIT}s`,
-      });
-    });
-    return out;
-  }
-
-  return {
-    key,
-    update,
-    props,
-    place(kind: string, x: number, y: number): boolean {
-      if (kind !== 'duck') return false;
-      duck.x = x;
-      duck.y = y;
-      duck.vx = 0;
-      duck.vy = 0;
-      return true;
-    },
-    state: () => ({ duck: { x: duck.x, y: duck.y }, duckDone, stickerDone, raceDone, raceNext }),
-  };
 }
 
 /* ==================================================================== chapter */
@@ -373,7 +196,6 @@ export interface ExpoState {
   };
   /** Power AND cable AND router: all three, or the badge printer prints nothing. */
   printerOnline: boolean;
-  minigames: MinigameState;
 }
 
 const OBJECTIVE =
@@ -386,8 +208,7 @@ const OBJECTIVE =
   'the hall with her narrow beam, or <b>Droid</b> reads the label inside the lid <b>from Biggy\'s ' +
   'shoulders</b> (E beside him to climb on). <b>Biggy</b> also smashes the roller door of the badge ' +
   'store — above his own top speed, so <b>Voxxy takes hold of him (Space)</b> and runs him ' +
-  'down the long top lane: the bar locks to one of eight directions, so the run cannot wander. ' +
-  'Booth games on the way are optional swag.';
+  'down the long top lane: the bar locks to one of eight directions, so the run cannot wander.';
 const KEYS =
   '1/2/3/Tab: switch · WASD · E: use / climb / terminal · A-Z: type the password · Space: take hold of Biggy · R: restart';
 
@@ -556,8 +377,6 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   };
   ctx.walls.push(cabinet);
 
-  const mg = setupMinigames(ctx);
-
   ctx.objective(OBJECTIVE, KEYS);
   /*
    * THE CARD IS ROUTE 1.
@@ -675,7 +494,6 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
     ctx.switchKey(code);
     if (code !== 'KeyE') return;
-    if (mg.key(code, b)) return;
 
     const atCabinet = dist(b, cabinetAt) < CABINET_REACH;
     const atTerminal = router.cabinetOpen && dist(b, cabinetAt) < TERMINAL_REACH;
@@ -913,7 +731,6 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   function update(dt: number): void {
     ctx.stepAll(dt);
     ctx.pushBiggy(dt);
-    mg.update(dt);
 
     const v = ctx.byKind('voxxy');
     if (cable.carrying) stepCable(v, dt);
@@ -1058,7 +875,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       // shove Biggy from, and it is sim data so the renderer need not guess.
       { kind: 'lane', x: 370, y: 160, w: GF.roller.x - 4 - 370, h: T, state: rollerBroken ? 'done' : 'idle', label: 'run-up lane → (Voxxy pushes Biggy)' },
     ];
-    return out.concat(mg.props());
+    return out;
   }
 
   // Cast once at setup so the very first drawn frame is already lit, rather than
@@ -1107,7 +924,6 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     progress,
     typing,
     lights: () => lights,
-    placeProp: (kind: string, x: number, y: number): boolean => mg.place(kind, x, y),
     state: (): ExpoState => ({
       chapter: 2,
       power,
@@ -1129,7 +945,6 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         online: router.online,
       },
       printerOnline: printerOnline(),
-      minigames: mg.state(),
     }),
   };
 }

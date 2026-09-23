@@ -513,7 +513,7 @@ describe('chapter 2 — expo', () => {
     expect(snapped.connected).toBe(false);
   });
 
-  it('gives Droid the breakers and the top-shelf sticker, and nobody else', () => {
+  it('gives Droid the breakers, and nobody else', () => {
     const g = mk(2);
     const panel = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
 
@@ -530,17 +530,39 @@ describe('chapter 2 — expo', () => {
     expect((g.debug.chapter() as ExpoState).breakersLeft).toBe(1);
     g.key('KeyE');
     expect((g.debug.chapter() as ExpoState).power).toBe(true);
+  });
 
-    const sticker = g.snapshot().props.find((p) => p.kind === 'sticker');
-    expect(sticker).toBeDefined();
-    g.debug.select('voxxy');
-    g.debug.place('voxxy', sticker!.x, sticker!.y + 20);
+  /**
+   * MICHELE'S CALL, 24 Sep 2026, playing this chapter: *"Minigames should be in
+   * chapter 3 — the hall is still closed at the moment."* A booth game needs a
+   * booth with somebody standing at it, and nobody is in this hall at 3 a.m.
+   *
+   * So chapter 2 has no booth props at all, awards no swag, and never mentions
+   * one in the briefing, the keys line or the progress line. The choreography
+   * that used to live here is now in the chapter-3 block below.
+   */
+  it('has no booth games in the empty hall — no props, no swag, no mention', () => {
+    const g = mk(2);
+    steps(g, 20);
+    const snap = g.snapshot();
+    for (const kind of ['duck', 'duck-target', 'sticker', 'race-marker']) {
+      expect(snap.props.find((p) => p.kind === kind), `chapter 2 still draws ${kind}`).toBeUndefined();
+    }
+    expect(snap.swag).toHaveLength(0);
+    expect(g.debug.placeProp('duck', 500, 500)).toBe(false);
+
+    const said = `${snap.objective} ${snap.keys} ${snap.progress}`.toLowerCase();
+    for (const word of ['swag', 'booth game', 'sticker', 'duck', 'lap']) {
+      expect(said.includes(word), `chapter 2 still talks about ${word}`).toBe(false);
+    }
+
+    // ...and pressing E where the booths are is an ordinary "nothing here", not a game.
+    const stB = GF.booths.find((b) => b.name === 'Sticker Mine');
+    expect(stB).toBeDefined();
+    g.debug.select('droid');
+    g.debug.place('droid', stB!.x + stB!.w / 2, stB!.y + stB!.h + 34);
     g.key('KeyE');
     expect(g.snapshot().swag).toHaveLength(0);
-    g.debug.select('droid');
-    g.debug.place('droid', sticker!.x, sticker!.y + 20);
-    g.key('KeyE');
-    expect(g.snapshot().swag).toContain('sticker');
   });
 
   /* ---------------------------------------------------- the network closet */
@@ -1308,6 +1330,85 @@ describe('chapter 3 — breakfast', () => {
     // container, and vitest's default 5 s cut it off there long before anything
     // in this file was about beer crates.
   }, 30000);
+
+  /* ----------------------------------------------------- the booth games
+   *
+   * Moved out of chapter 2 on Michele's call, 24 Sep 2026: *"Minigames should be
+   * in chapter 3 — the hall is still closed at the moment."* The choreography is
+   * the one the chapter-2 block used to run, plus the two games it never covered.
+   */
+
+  it('gives Droid the top-shelf sticker at the open booth, and nobody else', () => {
+    const g = mk(3);
+    const sticker = g.snapshot().props.find((p) => p.kind === 'sticker');
+    expect(sticker).toBeDefined();
+
+    for (const kind of ['voxxy', 'biggy'] as const) {
+      g.debug.select(kind);
+      g.debug.place(kind, sticker!.x, sticker!.y + 20);
+      g.key('KeyE');
+      expect(g.snapshot().swag, `${kind} took the sticker`).toHaveLength(0);
+    }
+
+    g.debug.select('droid');
+    g.debug.place('droid', sticker!.x, sticker!.y + 20);
+    g.key('KeyE');
+    expect(g.snapshot().swag).toContain('sticker');
+    expect(g.snapshot().progress).toContain('swag 1/3');
+  });
+
+  it('pays out the duck shuffleboard when the duck stops in the circle', () => {
+    const g = mk(3);
+    const target = g.snapshot().props.find((p) => p.kind === 'duck-target');
+    expect(target).toBeDefined();
+    const mgs = (): BreakfastState['minigames'] => (g.debug.chapter() as BreakfastState).minigames;
+    // The debug seam moved with the game: chapter 3 owns the duck now.
+    expect(g.debug.placeProp('duck', mgs().duck.x, mgs().duck.y)).toBe(true);
+
+    /*
+     * Shuffleboard, played properly: line up behind the duck, shove, let go, let it
+     * coast, look at where it stopped, go again. It is never placed on the circle —
+     * `duckDone` wants the duck under 5 px/s *inside* the ring, so a shove that is
+     * too hard runs it out the far side and the next one has to come back.
+     */
+    g.debug.select('voxxy');
+    for (let shot = 0; shot < 40 && !g.snapshot().swag.includes('duck'); shot++) {
+      const d = mgs().duck;
+      const dx = target!.x - d.x;
+      const dy = target!.y - d.y;
+      const len = Math.hypot(dx, dy) || 1;
+      g.debug.place('voxxy', d.x - (dx / len) * 22, d.y - (dy / len) * 22);
+      g.setStick(Math.abs(dx) > 3 ? Math.sign(dx) : 0, Math.abs(dy) > 3 ? Math.sign(dy) : 0);
+      steps(g, Math.max(3, Math.min(22, Math.round(len / 4))));
+      g.setStick(0, 0);
+      steps(g, 120);
+    }
+
+    expect(mgs().duckDone).toBe(true);
+    expect(g.snapshot().swag).toContain('duck');
+    expect(Math.hypot(mgs().duck.x - target!.x, mgs().duck.y - target!.y)).toBeLessThan((target!.w ?? 0) / 2);
+  });
+
+  it('gives Voxxy the Regex Racing lap when she takes all four markers in time', () => {
+    const g = mk(3);
+    const markers = g.snapshot().props.filter((p) => p.kind === 'race-marker');
+    expect(markers).toHaveLength(4);
+    const race = (): BreakfastState['minigames'] => (g.debug.chapter() as BreakfastState).minigames;
+
+    // Touch each marker in order. Teleporting between them is the pilot doing in
+    // one frame what a fast Voxxy does in four seconds — what is under test is
+    // the lap's order and its clock, and both are read from the sim.
+    g.debug.select('voxxy');
+    for (const mk_ of markers) {
+      g.debug.place('voxxy', mk_.x, mk_.y);
+      steps(g, 1);
+    }
+    expect(race().raceDone).toBe(true);
+    expect(g.snapshot().swag).toContain('race');
+
+    // All three, on one card.
+    expect(g.snapshot().progress).toContain('swag 1/3');
+  });
 });
 
 /* ================================================================ chapter 4 */
