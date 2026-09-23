@@ -1554,3 +1554,96 @@ the built page driven headlessly (`?chapter=1&warm=2&nofog=1&topdown=1`), steppi
 with `game.update(DT_MAX)` rather than trusting `requestAnimationFrame`: Voxxy driven south for 3 s
 and released ended facing south to the last digit, Droid walked into Biggy and was up him on the
 frame after contact, `document.title` read `After Dark · ERRORS:0` and no console errors at all.
+
+---
+
+## Session — 25 Sep 2026 — chapter 2's puzzle chain, the password field and the input bug
+
+**Agent:** builder, scope `src/sim/chapters/ch2-expo.ts`, `src/render/hud.ts`, `tests/ch2-chain.test.ts`
+and the chapter-2 block of `tests/chapters.test.ts`, plus the three additive lines that carry a new
+snapshot field (`src/sim/types.ts`, `src/sim/chapters/index.ts`, `src/sim/game.ts`). Four other
+agents were live in the same working tree throughout.
+
+### What a human decided
+
+Everything structural in this session is Michele's, taken from two rounds of notes on his chapter-2
+playthrough, and the agent built what he asked for rather than what it would have preferred:
+
+- **The chain.** *"The breaker lighted all up, with no need to activate the router. I thought they
+  were linked. How I'd do that? Breaker give energy, and a transformer/router lights up in the
+  cabinet. It needs authorization. First you need to open the door (biggy) than type."*
+- **Who types.** He was asked whether Voxxy or Droid should enter the password and answered
+  *"both are ok... what is excluding droid? Fingers too long?"* — so **both type**. The agent had
+  drafted a Voxxy-only version with a "too tall to reach into the bay" joke for Droid and threw it
+  away: inventing a disqualification to make the roles tidy is exactly what he said not to do.
+- **The intro.** *"yes, change the intro, the wifi password can't be there."*
+- **Where the password lives.** *"I'd put it here, spray painted, with a wifi symbol and '(And no,
+  you can't change it)'"* — against a photo of a dark hall wall — plus his own two objections to
+  his own idea, *"it's a bit far from the entrance, and all is dark"*.
+- **The store door.** *"Door should have Halo, Name on the side (shirts and gadget) and be
+  mentioned on the intro... (and put crates, shirts and gadgets inside)... But the devoxx shirt is
+  a tradition."*
+- **The field.** *"I'd display an input text at center screen on e to make it easier."*
+
+### What the agent did
+
+- Turned three independent flags into one chain. The breakers give a **supply** and the hall stays
+  dark; the transformer/router in the cabinet wakes on that supply; the terminal is a dead screen
+  until it does and says so in each robot's own voice; the password closes the lighting circuit.
+  `src/render` was not touched for any of it — the renderer learns "the hall is lit" off the
+  `breaker` prop's own `state`, which now has three values instead of two.
+- Added `GameSnapshot.prompt` (`TextPrompt`) and drew it as a centred field in `hud.ts`: one cell
+  per character, a caret on the next, and a red flash on a key the sim refused. The sim decides
+  every one of those; the HUD formats.
+- Reproduced the input bug in the built page over CDP (below), and fixed the half of it that lives
+  in the sim.
+- Moved the password from small print on a sponsor's banner to a spray tag on the hall's top wall,
+  at the **west** head of the run-up lane — close to the stairwell the robots come out of, which is
+  his "too far" objection answered rather than inherited.
+- Signposted both ends of the cable run in the world (blue wayfinding panels at the steps and the
+  desk, a lit pad on the counter) and rewrote the line he could not parse.
+- Gave the store door a halo, a name, crates of t-shirts behind it and a hail that names the lost
+  keys.
+
+### The input bug, and what was actually wrong
+
+He could not say what had happened — *"I don't know what was happening, but i kept typing and it
+never took it right."* Driven in the **built page** with real `Input.dispatchKeyEvent` events, the
+password matched under every keyboard variation tried: plain lowercase, Caps Lock, Shift held,
+overlapping keydowns, and auto-repeat. `KeyboardEvent.code` is `KeyD` however the key is shifted,
+so case genuinely never enters into it.
+
+What did reproduce is a **stale stick**. `src/main.ts` stops pushing the movement stick the moment
+the sim takes the keyboard, but it never clears it: a keydown suppressed while typing is not
+recorded as held, so nothing balances it, and the last stick value stays latched. Tap `E` without
+letting go of the key you drove up on and the robot keeps walking with the prompt open — measured
+at 25 px of drift in 1.4 s against a 54 px `TERMINAL_REACH`. Walk past the reach and the prompt
+closes silently, with no field on screen to show that it has, and every letter of `DevoxxForever`
+becomes a control again: `D` drives, `E` says "nothing to plug in here", and **`R` restarts the run
+into chapter 1**.
+
+Fixed in the sim, which is where "may this robot move" belongs: a robot at an open prompt is
+pinned. The browser-side half — clearing `held` when `snapshot().typing` goes true — is a one-line
+patch in `src/main.ts`, which belongs to another agent this session and is in the handover report.
+
+### Rejected
+
+- **Making Voxxy the only typist.** Tidier, and it would have put all three robots at the cabinet
+  for the climax, which is worth rubric points. Michele asked what excludes Droid and the honest
+  answer is nothing, so nothing does.
+- **Keeping the sponsor-banner poster as a second place to read the password.** Two places to find
+  one answer is not two routes, it is a muddy one.
+- **Letting `Enter` submit a free-typed buffer.** The forgiving prefix match was never the problem;
+  the silence was. With a field on screen it reads correctly, and the existing choreography that
+  asserts the forgiveness stays true.
+- **A red halo as its own prop kind.** It needs two lines in `PROPS` in `src/render/scene.ts`,
+  which is another agent's file this session. The halo ships as a lit floor plate built from prop
+  kinds the renderer already draws, and the patch that makes it a first-class `halo` kind — the
+  start of one visual language for "this is interactive" rather than a one-off — is in the report.
+
+### Verification
+
+A throwaway `git worktree` at this session's own commits with `node_modules` symlinked, four other
+agents left alone in the shared tree: `tsc --noEmit` clean, `tests/ch2-chain.test.ts` 14/14 and
+`tests/chapters.test.ts` 41/41 green, `vite build` clean. `tests/aisle.test.ts` fails 2 at the
+commit this branched from and is another agent's geometry work in flight, not this session's.
