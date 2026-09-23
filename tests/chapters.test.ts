@@ -18,7 +18,9 @@ import {
   DT_MAX,
   GF,
   JAMMED_DOOR_SPEED,
+  R,
   ROLLER_DOOR_SPEED,
+  roomDoor,
   circleRect,
   createGame,
   type Bot,
@@ -262,6 +264,37 @@ function braceOntoMark(g: DebugGame, budget = 2400): boolean {
 /* ================================================================ chapter 1 */
 
 describe('chapter 1 — night', () => {
+  /**
+   * The cinemas that are only scenery have to be shut, not merely labelled.
+   *
+   * A, C and D each carry a joke sign saying they are closed. For four rounds the
+   * sign was the only thing there: the doorway itself was a hole, so you could walk
+   * through "locked since the 2019 after-party" into an empty room. No test caught
+   * it because nothing asserted that a room nobody should enter cannot be entered —
+   * Michele found it in his first minute of play.
+   *
+   * B and E are deliberately excluded: they ARE the puzzle, and their gates open.
+   */
+  it('shuts the cinemas that are only scenery — you cannot walk through a closed sign', () => {
+    const g = mk(1);
+    const walls = g.snapshot().walls;
+
+    for (const n of ['A', 'C', 'D'] as const) {
+      const r = R(n);
+      const d = roomDoor(r);
+      const blocks = walls.some(
+        (w) =>
+          !w.low &&
+          !w.hidden &&
+          w.x < d.x + d.w &&
+          w.x + w.w > d.x &&
+          w.y < d.y + d.h &&
+          w.y + w.h > d.y,
+      );
+      expect(blocks, `cinema ${n} has a "closed" sign and an open doorway`).toBe(true);
+    }
+  });
+
   it('lights all four clues, including the kiosk one', () => {
     const g = mk(1);
     const night = (): NightState => g.debug.chapter() as NightState;

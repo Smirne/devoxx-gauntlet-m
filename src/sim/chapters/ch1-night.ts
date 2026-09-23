@@ -250,6 +250,40 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     label: 'all three',
   });
 
+  /* ------------------------------------------------ the cinemas nobody is using
+   *
+   * A, C and D carry a sign saying they are shut and, until now, nothing else:
+   * the sign was a prop and the doorway was a hole, so you could walk straight
+   * through "locked since the 2019 after-party" into an empty room. Michele found
+   * it on his first playthrough, walking into A from the corridor.
+   *
+   * B and E are the puzzle and already have their own gates — B's `lock`, E's
+   * `jam` — so they are skipped here. The three that are only scenery get a plain
+   * wall behind the joke, and, per CLAUDE.md, a line in each robot's voice saying
+   * WHY rather than a silent refusal. Each line answers the sign on that door.
+   */
+  const SHUT_VOICES: Readonly<Record<string, (b: { kind: string; name: string }) => string>> =
+    Object.freeze({
+      A: (b) =>
+        b.kind === 'voxxy'
+          ? 'Voxxy: popcorn machine is off and so is the door. Nothing in there but empty seats'
+          : `${b.name}: shut. No popcorn, no power, no reason to go in`,
+      C: (b) =>
+        b.kind === 'droid'
+          ? 'Droid: NO SIGNAL, and a dead projector means a dark room. Nothing to find'
+          : `${b.name}: that one is dark — the projector has had no signal for months`,
+      D: (b) =>
+        b.kind === 'biggy'
+          ? 'Biggy: locked since 2019. I could open it. I have been asked not to open things'
+          : `${b.name}: locked since the after-party, and nobody has found that key since`,
+    });
+
+  for (const n of Object.keys(SHUT_VOICES)) {
+    const r = R(n);
+    const d = roomDoor(r);
+    ctx.walls.push({ x: d.x, y: d.y, w: d.w, h: d.h, kind: 'shut', why: SHUT_VOICES[n] });
+  }
+
   const code = clues
     .slice()
     .sort((a, b) => a.slot - b.slot)
