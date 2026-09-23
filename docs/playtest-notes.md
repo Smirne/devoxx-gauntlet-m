@@ -353,8 +353,10 @@ a chapter that did not use it.
 ## The ground floor against the plan — Michele, 24 Sep, queued
 
 His chapter-2 playthrough was mostly a **sense-of-place** audit of the lobby, and every point below checks
-out against `plans/exhibition-floor-stairs-annotated.png`. Queued rather than in flight because
-`src/sim/geometry.ts` is held by another agent this round. Ten points of the score are sense of place,
+out against `plans/exhibition-floor-stairs-annotated.png`. **His priority, given 24 Sep: *"YEs staircase and reception right is priority 1. BOF can come later or be
+accepted."*** So the order is (1) the main staircase facing the entrance and reception's shape and sign,
+(2) everything else, (3) BOF last, and BOF may simply be accepted as it stands. Queued rather than in
+flight because `src/sim/geometry.ts` is held by another agent this round. Ten points of the score are sense of place,
 and the venue is one of the two things `CLAUDE.md` says may not drift.
 
 | his note | what the plan says |
@@ -368,6 +370,18 @@ and the venue is one of the two things `CLAUDE.md` says may not drift.
 | *"Main door should be closed, no going out in chapter 2. Not necessary in chapter 3 either, but we can keep it for flavour."* | Closes the forecourt, which an agent already flagged: robots can walk out into nothing at night. |
 | *"Robots light should go off when light is on."* | Once the hall is lit, the lamps are pointless and the mixing puzzle is over. |
 | *"this element before reception is not needed."* | The dark slab in front of the counter in his screenshot. |
+
+## Chapter 2, second pass — Michele, 24 Sep
+
+| his note | decision |
+| --- | --- |
+| *"Typing password can be Voxxy or Droid, I think both are ok. I'd say Voxxy if every robot needs to have just one role, but what is excluding droid? Fingers too long?"* | **Both type.** Nothing excludes Droid, and inventing a reason to would be tidiness posing as design. Biggy still refuses, because his refusal is the joke. |
+| *"Where is the wifi password? I'd put it here, spray painted, with a wifi symbol and '(And no, you can't change it)'. But it's a bit far from the entrance, and all is dark.."* | Graffiti on a hall wall, read by Voxxy's narrow beam. He flagged the real problem himself: a player has no reason to point a torch at that particular wall. The placement is the easy half. |
+| *"Door should have Halo, Name on the side (shirts and gadget) and be mentioned on the intro. Gadgets must be ready, but the door is shut (we could mention the same lost keys?)"* | The badge store gets a halo, a name, an intro mention, and crates of **Devoxx t-shirts** inside — *"the devoxx shirt is a tradition"*. Shutting it with the same lost keys ties the errand back to the premise. |
+| *"Why space and not e for catching? I'd keep it to one key."* | Agreed, and not yet done. `E` is chapter-handled and already means use / climb / brace / lift / play, so folding the grab into it is an ordering problem, not a rename — the chapter has to get first refusal and the grab take what is left. Held until the chapter files are free. |
+| *"remove this from the stairs. (both the big and the small)"* | **Not yet identified.** His screenshot shows a dark slab with a blue edge strip and an orange post beside a flight, and it does not match any single object in `venue/ground.ts` by elimination. Asked rather than guessed. |
+| *"The voxxy-biggy run worked, even if a bit clumsy."* | The tow bar is accepted. "Clumsy" is unexplained and may just be the eight-direction snap; leave it until he says more. |
+| *"I haven't been able to see voxxy jump, how should that happen?"* | It does not exist yet. I asked him in the previous round whether it should be gated in chapter 4 or stay purely for fun and never got an answer, so nothing was built. Proposal sent back to him. |
 
 ## Looks — deferred by him, explicitly
 
