@@ -395,6 +395,31 @@ export function pushBiggy(bots: Bot[], dt: number, t: number, flash: (s: string)
  *
  * Returns true when Droid is mounted after the call — the caller switches control
  * to Biggy then, because the tower moves as one robot (prototype: `cur = 2`).
+ *
+ * ## Why this stopped saying "Droid must be next to a standing Biggy"
+ *
+ * Michele, chapter 1: *"I had some trouble climbing on biggy (Droid must be next to
+ * a standing biggy — the exact situation i was in)."* He was right, and the refusal
+ * was right too, which is the worst combination a gate can manage: it named two
+ * conditions, he met the one he could see, and it refused on the one he could not.
+ *
+ * Measured on the frozen constants. The reach is honest — the window is a 32 cm
+ * shell of daylight around a body that is 1.44 m across, identical at all sixteen
+ * angles tested, and Droid is inside it from the moment he touches Biggy. The speed
+ * is where it goes wrong, and Droid does it to himself: **walking up to a parked
+ * Biggy knocks him to 1.0 m/s**, which is 2.6 s of refusals before he is under
+ * `MOUNT_BIGGY_MAX_SPEED` again — by which time he has rolled out of reach as
+ * well. Driving Biggy anywhere first is worse: 7.0 s from his top speed, because
+ * his 0.35 s^-1 drag is the lowest in the game and he coasts long after he looks
+ * stopped.
+ *
+ * So there are three answers now instead of one, and each says the thing that is
+ * actually wrong. And the middle one does something about it: a Droid with a hand
+ * on a slowly rolling Biggy **plants his feet and stops him**, which is the same
+ * `braced`-robot idea the rest of the game already runs on, costs a second press
+ * rather than a wait, and leaves the frozen gate exactly where it was — a moving
+ * Biggy is still not climbable. It is capped at Droid's own top speed: he can only
+ * catch what he could have kept up with.
  */
 export function toggleMount(bots: Bot[], flash: (s: string) => void): boolean {
   const d = bots.find((b) => b.kind === 'droid');
@@ -407,13 +432,28 @@ export function toggleMount(bots: Bot[], flash: (s: string) => void): boolean {
     flash('Droid climbs down');
     return false;
   }
-  if (dist(d, bg) < d.r + bg.r + MOUNT_REACH && speed(bg) < MOUNT_BIGGY_MAX_SPEED) {
-    d.mounted = true;
-    flash('Droid climbs onto Biggy — taller lamp, wider pool, higher reach');
-    return true;
+  const gap = dist(d, bg) - d.r - bg.r;
+  if (gap >= MOUNT_REACH) {
+    flash(
+      `Droid: ${m(gap).toFixed(1)} m of daylight. I climb with a hand on his shoulder — come round beside him`,
+    );
+    return false;
   }
-  flash('Droid must be next to a standing Biggy');
-  return false;
+  const sp = speed(bg);
+  if (sp >= MOUNT_BIGGY_MAX_SPEED) {
+    if (sp < DEFS.droid.max) {
+      bg.vx = 0;
+      bg.vy = 0;
+      bg.boostCap = 0;
+      flash(`Droid: still rolling at ${m(sp).toFixed(1)} m/s. Planting my feet — there. Again, and I am up`);
+      return false;
+    }
+    flash(`Droid: he is doing ${m(sp).toFixed(1)} m/s. I cannot catch that, never mind climb it — let him run down`);
+    return false;
+  }
+  d.mounted = true;
+  flash('Droid climbs onto Biggy — taller lamp, wider pool, higher reach');
+  return true;
 }
 
 /** Keep a mounted Droid glued to Biggy's shoulders. Call once per step, after `stepBot`. */
