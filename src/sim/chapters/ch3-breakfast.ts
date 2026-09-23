@@ -134,21 +134,29 @@ const PALLET_MARK: Rect = { x: PALLET.x - 26, y: PALLET.y - 20, w: 52, h: 40 };
  * glassess)."*
  *
  * That is a design note, not a bug report, and it is right. The soup errand is
- * DELIBERATELY Voxxy-dependent: three catering queues stand in the catering
- * block's three doorways, Voxxy clearing one for `QUEUE_OPEN` seconds is the only
- * way Biggy ever reaches the soup station, and a beer drop inside that same block
- * would charge the player the same gate twice while pretending to be a second
- * errand.
+ * DELIBERATELY Voxxy-dependent: the soup station stands inside the catering block,
+ * the block's only ways in are three doorways, and a queue stands in each of them
+ * for Voxxy to clear. A beer drop inside that same block would charge the player
+ * the same gate twice while pretending to be a second errand.
  *
  * So the bar is built OUTSIDE the block, in the open north aisle, with its back to
  * the hall wall and its taps facing the floor — which is where a venue puts a bar
  * for the evening, and which makes the crates Biggy's own job from end to end.
- * `tests/beer-bar.test.ts` measures this rather than asserting it: a flood-fill of
+ * `tests/beer-bar.test.ts` measures that rather than asserting it: a flood-fill of
  * the ground floor at Biggy's radius, with all three queues standing where they
  * stand, finds a route from the pallet to the mark that never comes within his own
- * radius of anybody in a queue and never enters the catering block at all — and
- * finds the soup station UNREACHABLE on the same fill, which is the soup's gate
- * doing its job. The two errands share no metre of floor.
+ * radius of anybody in a queue and never enters the catering block at all. The two
+ * errands share no floor.
+ *
+ * The same fill found something nobody asked about, so it is written down here
+ * rather than left in a report: **the soup's gate leaks.** A doorway is 44 px
+ * wide, the queue standing in it is two files 10 px apart, and at Biggy's radius
+ * that leaves about 11 px of clear centre line beside the people — he can drive in
+ * without Voxxy saying a word. Clearing the queue widens that to 27 px, so the
+ * mechanic does something; it does not do what the chapter's own text claims. It
+ * is not fixed here because it is not this beat: the fix is to stand the queue's
+ * two files across the doorway's width rather than 10 px apart, and it changes the
+ * soup's difficulty, which is somebody's call and not a builder's.
  *
  * The counter is a `low` wall (pushed in `setup`), so light crosses it and robots
  * do not: a bar you can walk through is the *"this cube is walk-through"* note all
