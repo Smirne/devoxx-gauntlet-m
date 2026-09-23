@@ -90,10 +90,21 @@ const FADE_IN_RATE = 1.4;
 /** Gait phase advance during a cutscene — `stepBot`'s `ANIM_DIV`, applied by hand. */
 const CUT_ANIM_DIV = 18;
 
+/**
+ * Michele's own words, 24 Sep 2026, kept verbatim.
+ *
+ * The version before it opened on "the entrance is shut", which states a fact
+ * about a door. His opens on Stephan losing the keys, which states a fact about
+ * a person — and it answers the question the old card left hanging: if the
+ * humans are locked out, why is anyone inside at all? The robots are already in
+ * there because they were set up for the conference. That is the premise, and it
+ * took one sentence.
+ */
 const TITLE_CARD =
   '<b>AFTER DARK</b><br>' +
-  '<span class="sub">Kinepolis Antwerp, the night before Devoxx. The entrance is shut, the power is out in the ' +
-  'closed cinema section, and somewhere a keynote has to happen tomorrow.<br>' +
+  '<span class="sub">Kinepolis Antwerp, the night before Devoxx. <b>Stephan</b> lost the keys — the humans are ' +
+  'locked out until morning, but three robots are already inside, set up for the conference. The power is out ' +
+  'in the closed cinema section, and somewhere a keynote has to happen after breakfast.<br>' +
   'Three robots. Two floors. Four chapters.</span><small>Press any key</small>';
 const TITLE_OBJECTIVE =
   '<b>After Dark</b> — the night before Devoxx, a power cut, three robots, two floors of Kinepolis and one keynote to save.';
