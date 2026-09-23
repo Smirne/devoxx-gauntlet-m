@@ -1210,7 +1210,15 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
         const c = src ? src.light.c : [200, 200, 200];
         const mat = arc.material as THREE.MeshBasicMaterial;
         mat.color.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
-        mat.opacity = found ? 0.8 : 0.34 + 0.3 * pulse;
+        /*
+         * Opaque enough that the COLOUR survives.
+         *
+         * At a third opacity over a near-black floor, Voxxy's orange composites
+         * to brown and Droid's green to teal — the ring was legible as a shape
+         * but not as a recipe, which is the one job it has. These arcs are the
+         * hint; muting them to taste defeats them.
+         */
+        mat.opacity = found ? 0.92 : 0.6 + 0.3 * pulse;
       }
 
       // The pip keeps the averaged colour: it is the "something is here" marker,
