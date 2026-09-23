@@ -273,8 +273,38 @@ export const litBy = (lights: LightSource[], kind: RobotKind, p: Vec2): boolean 
   lights.some((L) => L.owner === kind && pointInPoly(p, L.poly) && dist(L, p) < L.range);
 
 /**
+ * How big a clue is, sim px. A clue is a scuffed patch of floor, not a point.
+ *
+ * It used to be tested as a single coordinate, which made the hardest clue in
+ * chapter 1 a needle: a pose sweep found Biggy could light the cinema-E alcove
+ * from 36 of ~106,000 position-and-facing combinations, against 1008 and 595 for
+ * the other two clues that need him. That one is lit by a MIRROR BOUNCE off the
+ * cinema screen — he cannot fit down the aisle — and a bounce has a narrow
+ * geometric window that no amount of spill around his feet widens. Michele found
+ * it the only way you can: "I had trouble solving the last room... needed
+ * different tries before finding the number."
+ *
+ * 5 px is 0.4 m, smaller than any robot. It does not make a clue findable from
+ * somewhere you would not think to stand; it stops a solution failing because
+ * the beam's edge fell a handspan short of a mathematical point.
+ */
+export const CLUE_SPOT = 5;
+
+/** The centre and four cardinal points of a clue's patch. */
+const clueSamples = (c: Vec2): Vec2[] => [
+  c,
+  { x: c.x + CLUE_SPOT, y: c.y },
+  { x: c.x - CLUE_SPOT, y: c.y },
+  { x: c.x, y: c.y + CLUE_SPOT },
+  { x: c.x, y: c.y - CLUE_SPOT },
+];
+
+/**
  * A clue reveals its digit only while *every* colour it needs reaches it at the
  * same time — the whole point of the mechanic: one robot can never solve one alone.
+ *
+ * "Reaches it" means reaches its patch, not its centre — see `CLUE_SPOT`. Every
+ * colour must still reach; the disc makes each one fair, not optional.
  */
 export const clueLit = (lights: LightSource[], clue: Clue): boolean =>
-  clue.need.every((k) => litBy(lights, k, clue));
+  clue.need.every((k) => clueSamples(clue).some((s) => litBy(lights, k, s)));
