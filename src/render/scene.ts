@@ -27,7 +27,7 @@
 
 import * as THREE from 'three';
 
-import { W as SIM_W, H as SIM_H } from '../sim/constants';
+import { MOUNT_OFFSET_Y, W as SIM_W, H as SIM_H } from '../sim/constants';
 import type { GameSnapshot, Person, Prop, RobotKind, ViewRect } from '../sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M, STOREY_H_M, m } from '../sim/units';
 
@@ -646,7 +646,9 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     new THREE.MeshBasicMaterial({
       color: 0xff7a1a,
       transparent: true,
-      opacity: 0.85,
+      // The ring is the selection marker now that the robot itself no longer
+      // glows (see `xrayMaterial`), so it carries a little more weight.
+      opacity: 0.95,
       side: THREE.DoubleSide,
       depthWrite: false,
       toneMapped: false,
@@ -657,13 +659,25 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   activeRing.renderOrder = 999;
   dressing.add(activeRing);
 
-  /** The same ring, seen only through whatever is hiding it. */
+  /*
+   * The same ring, seen only through whatever is hiding it — and opaque, for the
+   * reason the robot's own ghost is (see `xrayMaterial`). Transparent, it was
+   * drawn after every opaque mesh in the scene, so `GreaterDepth` passed over the
+   * legs of the very robot the ring is drawn around: the marker painted a third
+   * of its colour across the robot's feet, which is the note this pair of rings
+   * exists to answer ("the circle around the selected chars shouldn't cover the
+   * robot"). In the opaque pass at renderOrder 1 it draws while the depth buffer
+   * holds only the venue, so it shows through a pillar and never through a robot.
+   *
+   * Dimmed on the way in rather than by `opacity`, which a non-transparent
+   * material ignores.
+   */
+  const RING_GHOST_DIM = 0.42;
   const activeRingGhost = new THREE.Mesh(
     ringGeo,
     new THREE.MeshBasicMaterial({
       color: 0xff7a1a,
-      transparent: true,
-      opacity: 0.32,
+      transparent: false,
       side: THREE.DoubleSide,
       depthWrite: false,
       depthFunc: THREE.GreaterDepth,
@@ -672,7 +686,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   );
   activeRingGhost.name = 'active-ring-ghost';
   activeRingGhost.rotation.x = -Math.PI / 2;
-  activeRingGhost.renderOrder = 998;
+  activeRingGhost.renderOrder = 1;
   dressing.add(activeRingGhost);
 
   /**
@@ -703,13 +717,45 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    * without a second animation path to keep in step — and it costs no extra
    * geometry, only the draw. Only the robot you are driving builds one.
    */
+  /*
+   * THE GHOST IS OPAQUE, AND THAT IS THE WHOLE FIX.
+   *
+   * `renderOrder` 1 on the ghost against 2 on the robot's own mesh was supposed
+   * to mean "the ghost draws after the room and before the robot, so the robot
+   * paints over it wherever he is actually visible". It never did, because three
+   * splits the render list into an OPAQUE pass and a TRANSPARENT pass and draws
+   * every opaque object before any transparent one; `renderOrder` only sorts
+   * WITHIN a pass. A `transparent: true` ghost is therefore always drawn after
+   * every opaque mesh in the scene, the robot's own shell included — so the
+   * ghost of each part drew wherever any nearer part of the same robot had
+   * already written depth, and the robot you were driving turned to glass.
+   *
+   * Measured on the build Michele played, Droid alone in an open corridor, with
+   * the ghosts switched off and on: torso L=109 -> 149, shins L=57 -> 93, and the
+   * "cinema closed tonight" sign four metres behind him reads straight through
+   * his legs. That is "the selected characters becomes lighted and a bit
+   * ethereal, in particular droid", and it was the selection highlight doing it,
+   * not the lamps.
+   *
+   * Opaque, the pass order does the work by itself: venue (renderOrder 0), then
+   * the ghosts (1) while the depth buffer holds nothing but the venue, so
+   * `GreaterDepth` passes exactly where the VENUE is in front of the robot and
+   * nowhere else, then the robot's own meshes (2) over the top. It is also the
+   * thing Michele asked for in the first place — "show the silhuette" — because
+   * with no blending the overlapping parts composite to one flat shape instead
+   * of an x-ray of the rig's insides.
+   *
+   * `transparent: false` is what puts it in the opaque pass, and three disables
+   * blending outright for a non-transparent material, so `opacity` is dead here:
+   * the colour is dimmed on the way in instead (`GHOST_DIM`).
+   */
+  const GHOST_DIM = 0.62;
   const xrayMats = new Map<string, THREE.MeshBasicMaterial>();
   function xrayMaterial(kind: string, c: readonly number[]): THREE.MeshBasicMaterial {
     let mat = xrayMats.get(kind);
     if (!mat) {
       mat = new THREE.MeshBasicMaterial({
-        transparent: true,
-        opacity: 0.5,
+        transparent: false,
         depthTest: true,
         depthWrite: false,
         depthFunc: THREE.GreaterDepth,
@@ -717,7 +763,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       });
       xrayMats.set(kind, mat);
     }
-    mat.color.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
+    mat.color.setRGB((c[0] / 255) * GHOST_DIM, (c[1] / 255) * GHOST_DIM, (c[2] / 255) * GHOST_DIM);
     return mat;
   }
 
@@ -731,7 +777,17 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const sources: THREE.Mesh[] = [];
     rig.root.traverse((o) => {
       const mesh = o as THREE.Mesh;
-      if (mesh.isMesh && mesh.userData[EXCLUDE_FROM_BOUNDS] !== true) sources.push(mesh);
+      if (!mesh.isMesh || mesh.userData[EXCLUDE_FROM_BOUNDS] === true) return;
+      /*
+       * Only the SHELL is ghosted. A rig's transparent parts — Voxxy's additive
+       * visor glow, the lamp profile — are drawn in the transparent pass, after
+       * the opaque ghosts, so ghosting them would put a solid blob of their
+       * geometry on top of the silhouette instead of a silhouette.
+       */
+      const mat = mesh.material as THREE.Material | THREE.Material[];
+      const clear = Array.isArray(mat) ? mat.some((mm) => mm.transparent) : mat.transparent;
+      if (clear === true) return;
+      sources.push(mesh);
     });
     for (const src of sources) {
       const ghost = new THREE.Mesh(src.geometry, mat);
@@ -768,6 +824,25 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    * which is all a light-mixing puzzle should give away, and it goes green once
    * the clue is found.
    */
+  /*
+   * THE MARKERS ARE DRAWN AFTER THE LIGHT.
+   *
+   * The arcs, the pip and the numeral are floor decals at renderOrder 0, and
+   * `lighting.ts` draws its additive floor pools at 12 and its wedges at 13 —
+   * so every lamp in the room was composited ON TOP of the numeral. The glyph
+   * is carried by a dark rim stroked under it, and additive light lifts that rim
+   * to the same value as the glyph it is meant to separate: "Light is sometimes
+   * too much (3 is no longer legible)". Measured with two robots standing on the
+   * clue, the numeral's contrast against the floor inside its own ring was 16 of
+   * 255 against 65 with one of the lights removed.
+   *
+   * Above the light layer (and above the fog mask at 10) the markers are lit by
+   * nothing and read the same on a blacked-out floor and under three lamps at
+   * once, which is what a piece of UI drawn into the world should do. They still
+   * depth-test, so a robot standing on a clue still hides the part of it he is
+   * standing on — that is a different note, and it was answered.
+   */
+  const CLUE_ORDER = 20;
   const CLUE_MAX = 8;
   /** Most colours any one clue asks for. */
   const CLUE_ARCS = 3;
@@ -825,8 +900,11 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
         g.textAlign = 'center';
         g.textBaseline = 'middle';
         // A dark rim under the glyph so it holds up over a bright floor pool.
-        g.lineWidth = 10;
-        g.strokeStyle = 'rgba(8,12,10,0.85)';
+        // A heavier rim than the original 10: it is the only thing separating the
+        // glyph from a floor that can be anything from black to three overlapping
+        // lamps, and it costs nothing.
+        g.lineWidth = 15;
+        g.strokeStyle = 'rgba(6,10,8,0.92)';
         g.strokeText(String(d), 64, 70);
         g.fillStyle = '#eafff0';
         g.fillText(String(d), 64, 70);
@@ -853,6 +931,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
         new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }),
       );
       arc.rotation.x = -Math.PI / 2;
+      arc.renderOrder = CLUE_ORDER;
       arcs.push(arc);
       root.add(arc);
     }
@@ -868,7 +947,9 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     );
     digit.rotation.x = -Math.PI / 2;
     digit.position.y = 0.012;
+    digit.renderOrder = CLUE_ORDER + 1;
     digit.visible = false;
+    pip.renderOrder = CLUE_ORDER;
     root.add(pip, digit);
     root.visible = false;
     clueGroup.add(root);
@@ -1277,7 +1358,11 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     activeRingGhost.position.copy(activeRing.position);
     const c = bot.light.c;
     (activeRing.material as THREE.MeshBasicMaterial).color.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
-    (activeRingGhost.material as THREE.MeshBasicMaterial).color.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
+    (activeRingGhost.material as THREE.MeshBasicMaterial).color.setRGB(
+      (c[0] / 255) * RING_GHOST_DIM,
+      (c[1] / 255) * RING_GHOST_DIM,
+      (c[2] / 255) * RING_GHOST_DIM,
+    );
   }
 
   /* --------------------------------------------------------------- modes */
@@ -1596,8 +1681,33 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
        * own ramp, which lives in `src/render/venue/ground.ts`, so it is a piece of
        * work of its own rather than a line here.
        */
-      const lift = b.kind === 'droid' && b.mounted ? mountLift() : 0;
-      rig.root.position.set(m(b.x), floorY + lift, m(b.y));
+      const rider = b.kind === 'droid' && b.mounted;
+      const lift = rider ? mountLift() : 0;
+      /*
+       * "Droid light is oddly pointing somewhere else?"
+       *
+       * It is not the lamp, and it is not `face` going stale — Droid's lamp is a
+       * pool and a pool has no direction. It is this line, and only while he is
+       * riding Biggy.
+       *
+       * `syncMount` (`src/sim/bot.ts`) puts a mounted Droid at
+       * `bg.y - MOUNT_OFFSET_Y`: six sim pixels NORTH of his carrier. That is the
+       * prototype's flat-canvas way of drawing "he is up on the shoulders", and
+       * this renderer already draws that in the axis it belongs in, by lifting him
+       * `mountLift()` metres. The comment that used to sit here said the sim keeps
+       * both at the same footprint; it does not, so the offset was being counted
+       * twice — once as height, once as half a metre of floor — and Droid was
+       * drawn 0.48 m behind his own light.
+       *
+       * `buildLights` emits a mounted lamp at the CARRIER's position, which is
+       * both correct and untouchable (moving it would move the polygon the clue
+       * rule tests). So the drawing is what comes back to the carrier: the offset
+       * is added out here, where it was introduced, and Droid sits on Biggy's
+       * axis with his pool centred under him. At chapter 1's zoom the gap was
+       * ~30 screen pixels of a pool that is meant to be centred on him.
+       */
+      const ry = rider ? b.y + MOUNT_OFFSET_Y : b.y;
+      rig.root.position.set(m(b.x), floorY + lift, m(ry));
       updateRobot(rig, {
         speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M,
         heading: b.face,

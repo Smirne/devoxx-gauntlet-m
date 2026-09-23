@@ -100,7 +100,32 @@ export function castPoly(
   n: number,
 ): Vec2[] {
   const pts: Vec2[] = [];
-  const occl = walls.filter((w) => !w.glass && !w.low);
+  /*
+   * Occluders, culled to the lamp's own reach.
+   *
+   * `!w.glass && !w.low` is the whole "glass passes light" rule and has been here
+   * since the port. The range test is new, and `docs/playtest-notes.md` called it
+   * before it was needed: `buildLights` is lights x rays x walls, it had already
+   * gone 0.9 -> 2.63 ms per cast over two rounds of additions, and the note says
+   * *"if a third change lands on that path it is worth range-culling walls inside
+   * buildLights before adding to it"*. The third change is the collider sweep —
+   * seat blocks, corridor columns, booth totems, the entrance frames — which
+   * roughly doubles the wall list on both floors.
+   *
+   * It cannot change a single polygon: every ray is clipped at `range` to begin
+   * with, and a rect entirely outside the square of half-width `range` about the
+   * lamp is entirely further away than `range` in the max norm, so further than
+   * `range` in Euclid too.
+   */
+  const occl = walls.filter(
+    (w) =>
+      !w.glass &&
+      !w.low &&
+      px + range > w.x &&
+      px - range < w.x + w.w &&
+      py + range > w.y &&
+      py - range < w.y + w.h,
+  );
   for (let i = 0; i <= n; i++) {
     const a = a0 + ((a1 - a0) * i) / n;
     const dx = Math.cos(a);
@@ -216,6 +241,22 @@ export function buildLights(bots: Bot[], walls: Wall[], mirrors: Mirror[]): Ligh
         // made every robot look like it was bouncing off a screen that was not
         // there.
         primary: true,
+        /*
+         * Labelled, so the renderer can tell a spill at a robot's own feet from a
+         * beam thrown across a room. Nothing in this file branches on it and
+         * nothing in the clue rule can see it: the polygon below is the same
+         * polygon it always was.
+         *
+         * It is needed because the skirt was drawn exactly like every other lamp
+         * — a full-strength additive floor pool AND a volumetric wedge whose apex
+         * is the robot's own lamp. At a 24 px range that wedge is a tent pitched
+         * over the robot's own body, and the pool's hot centre lands on the patch
+         * of floor the robot is standing on, which is where a solved clue writes
+         * its digit. Measured on the build Michele played: the digit's contrast
+         * against the floor inside its own ring fell from 65 to 16 of 255, and
+         * the share of clipped pixels around two robots went 6.4% -> 28.4%.
+         */
+        skirt: true,
         poly: [{ x: sx, y: sy }, ...castPoly(sx, sy, 0, Math.PI * 2, skirt, walls, SKIRT_RAYS)],
         full: true,
       });

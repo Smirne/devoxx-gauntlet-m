@@ -80,6 +80,53 @@ const CONE_PENUMBRA = 0.17;
  * a three-lamp overlap near 1.0 keeps the mixed colour a colour.
  */
 const MIX_HEADROOM = 0.72;
+/**
+ * THE SKIRT, drawn.
+ *
+ * `SKIRT_RANGE` in `src/sim/lights.ts` is a 24 px (1.9 m) pool of a robot's own
+ * colour at its own feet, and it earns its place: Michele could not light a clue
+ * he was standing next to, because Voxxy and Biggy carry cones that point past
+ * their own feet. The RULE it bought is not in question and is not touched here.
+ *
+ * What it cost was that it was drawn like any other lamp, and a lamp drawn at a
+ * robot's feet paints the robot:
+ *
+ *  - its **volumetric wedge** is a cone from the lamp (1.95 m up, on Droid) down
+ *    to a 1.9 m rim — a tent pitched over the robot's own body, additive, in the
+ *    robot's own colour. Measured: Droid's chest went L=126 -> 172 and its green
+ *    channel 151 -> 208 of 255 with the skirt on. That is most of "the selected
+ *    characters becomes lighted and a bit ethereal, in particular droid";
+ *  - its **floor pool** put a full-strength hot spot on the patch of floor the
+ *    robot is standing on, which is exactly where a solved clue writes its digit.
+ *    Measured: the digit's contrast against the floor inside its own ring fell
+ *    from 65 to 16 of 255 — "3 is no longer legible" — and around two robots the
+ *    share of clipped pixels went 6.4% -> 28.4%, which is the flat blown floor.
+ *
+ * So the skirt keeps its reach and loses its middle: no wedge at all, and a floor
+ * pool shaped as an ANNULUS that is dark under the robot's own footprint, full by
+ * `SKIRT_FULL` of its range and then falling off like any other pool. The floor a
+ * robot is standing next to is still lit in its colour — which is the whole point
+ * of it — and the floor it is standing ON, where the numeral is and where its own
+ * shell catches the bounce, is left alone.
+ */
+const SKIRT_PEAK = 0.3;
+/** Fraction of the skirt's range that stays dark: the robot's own footprint. */
+const SKIRT_HOLE = 0.3;
+/** Fraction of the range at which the annulus reaches full strength. */
+const SKIRT_FULL = 0.58;
+
+/**
+ * The driven robot's own light, boosted.
+ *
+ * Michele, on the selection highlight: *"We already have the circle, could we
+ * maybe make the projected light a little brighter?"* This is that — and it is
+ * deliberately the FLOOR POOL and the wedge, not the `SpotLight`, because the
+ * spotlight is the thing that lights the robot's own shell and the note is a
+ * request to stop lighting the robot. The light it throws gets brighter; the
+ * robot standing in it does not.
+ */
+const ACTIVE_POOL_GAIN = 1.25;
+
 /** The volumetric wedge is a haze, not a second lamp. */
 const VOL_CONE = 0.17;
 const VOL_POOL = 0.1;
@@ -973,6 +1020,10 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
 
     const droid = snap.bots.find((b) => b.kind === 'droid');
     const mounted = droid?.mounted === true;
+    // Who the stick is driving. The light layer reads it for one thing only: the
+    // driven robot's projected light is a touch brighter, so the selection reads
+    // off its lamp and its ring instead of off its body.
+    const activeKind: RobotKind | null = snap.bots[snap.active]?.kind ?? null;
     for (const kind of KINDS) {
       const lamp = lamps.get(kind);
       if (!lamp) continue;
@@ -1067,7 +1118,7 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
     const count = Math.min(snap.lights.length, MAX_LIGHT_MESHES);
     growTo(count);
     for (let i = 0; i < count; i++) {
-      writeLightMesh(meshes[i], snap.lights[i], floorY, cur.poolGain, mounted);
+      writeLightMesh(meshes[i], snap.lights[i], floorY, cur.poolGain, mounted, activeKind);
     }
     for (let i = count; i < meshes.length; i++) {
       meshes[i].fan.visible = false;
@@ -1125,6 +1176,7 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
     floorY: number,
     gain: number,
     mountedDroid: boolean,
+    activeKind: RobotKind | null,
   ): void {
     const poly = light.poly;
     const n = Math.min(poly.length, MAX_FAN_VERTS);
@@ -1135,8 +1187,13 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
     }
 
     const [cr, cg, cb] = linearColor(light.c);
-    const peak = (light.primary ? FAN_PRIMARY : FAN_BOUNCE) * gain * MIX_HEADROOM;
-    const volPeak = (light.type === 'cone' ? VOL_CONE : VOL_POOL) * (light.primary ? 1 : 0.6) * gain;
+    const skirt = light.skirt === true;
+    // The driven robot's light carries further; the driven robot itself does not
+    // get brighter (`ACTIVE_POOL_GAIN`).
+    const lead = light.owner === activeKind ? ACTIVE_POOL_GAIN : 1;
+    const peak = (skirt ? SKIRT_PEAK : light.primary ? FAN_PRIMARY : FAN_BOUNCE) * gain * MIX_HEADROOM * lead;
+    // A skirt gets NO wedge: at 1.9 m the wedge is a tent over the robot's body.
+    const volPeak = skirt ? 0 : (light.type === 'cone' ? VOL_CONE : VOL_POOL) * (light.primary ? 1 : 0.6) * gain * lead;
     const apexY = floorY + (light.primary ? lampHeight(light.owner, mountedDroid) : MIRROR_APEX_H);
     const range = Math.max(1, light.range);
     const sx = m(light.x);
@@ -1151,9 +1208,12 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
     fp[0] = sx;
     fp[1] = floorY + FAN_Y;
     fp[2] = sz;
-    fc[0] = cr * peak;
-    fc[1] = cg * peak;
-    fc[2] = cb * peak;
+    // A skirt's apex is its hole: the pool is an annulus, dark where the robot's
+    // own feet — and a solved clue's numeral — are.
+    const apexPeak = skirt ? 0 : peak;
+    fc[0] = cr * apexPeak;
+    fc[1] = cg * apexPeak;
+    fc[2] = cb * apexPeak;
     vp[0] = sx;
     vp[1] = apexY;
     vp[2] = sz;
@@ -1176,6 +1236,21 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
       // so a pool that reaches its range dissolves instead of ending on a line.
       const q = Math.max(0, 1 - d / range);
       let s = peak * q * q * (3 - 2 * q);
+      if (skirt) {
+        /*
+         * A skirt is an ANNULUS, not a disc: dark under the robot's own
+         * footprint, full at `SKIRT_FULL` of its range, gone at the rim. Both
+         * limbs are smoothstepped so it dissolves at each end instead of ending
+         * on a line, and the profile peaks at exactly 1 — this replaces the
+         * radial falloff above rather than multiplying it, or an annulus that
+         * peaks where the normal falloff is already two thirds spent would be
+         * too dim to say anything.
+         */
+        const u = d / range;
+        const rise = Math.min(1, Math.max(0, (u - SKIRT_HOLE) / (SKIRT_FULL - SKIRT_HOLE)));
+        const fall = Math.min(1, Math.max(0, (1 - u) / (1 - SKIRT_FULL)));
+        s = peak * rise * rise * (3 - 2 * rise) * fall * fall * (3 - 2 * fall);
+      }
       if (cone) {
         // Angular penumbra at the cone's two side edges.
         const u = (i - 1) / rimN;
