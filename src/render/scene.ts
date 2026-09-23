@@ -187,7 +187,7 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
   'duck-target': { h: 0.03, color: 0x3f7fa8, flat: true, glow: 0x1d4a63 },
   sticker: { h: 0.06, color: 0xff7a1a },
   'race-marker': { h: 0.5, color: 0xff7a1a },
-  /* chapter 3 — lunch */
+  /* chapter 3 — breakfast */
   'soup-station': { h: 1.0, color: 0xc0392b },
   ladle: { h: 0.9, color: 0x9aa3ad, tl: true },
   dropzone: { h: 0.04, color: 0x2f7d4f, tl: true, flat: true },

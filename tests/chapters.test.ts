@@ -5,7 +5,7 @@
  * "Tests are the acceptance criteria"), ported rather than reinvented: four clues
  * including the kiosk one, the jammed door for Biggy alone, the roller door that
  * needs a push, the cable that fits on the straight route and runs out on the long
- * one, the lunch chain, the keynote jobs, both cutscenes and Skip chapter.
+ * one, the breakfast chain, the keynote jobs, both cutscenes and Skip chapter.
  *
  * Everything runs at a fixed `DT_MAX` step, and the game is seeded, so a failure
  * here is a real regression and not a flaky frame.
@@ -39,7 +39,7 @@ import {
   type DebugGame,
   type ExpoState,
   type KeynoteState,
-  type LunchState,
+  type BreakfastState,
   type NightState,
   type RobotKind,
   type Vec2,
@@ -797,10 +797,10 @@ describe('chapter 2 — expo', () => {
 
 /* ================================================================ chapter 3 */
 
-describe('chapter 3 — lunch', () => {
+describe('chapter 3 — breakfast', () => {
   it('runs the soup chain and only opens the gate once the soup and the speaker are both there', () => {
     const g = mk(3);
-    const lunch = (): LunchState => g.debug.chapter() as LunchState;
+    const breakfast = (): BreakfastState => g.debug.chapter() as BreakfastState;
     const gateWall = (): Wall | undefined => g.debug.walls().find((w) => w.kind === 'gate');
     expect(gateWall()).toBeDefined();
 
@@ -808,30 +808,30 @@ describe('chapter 3 — lunch', () => {
     g.debug.select('voxxy');
     g.debug.place('voxxy', 110, 260);
     g.key('KeyE');
-    expect(lunch().queues[0].open).toBeGreaterThan(0);
+    expect(breakfast().queues[0].open).toBeGreaterThan(0);
 
     // The pot needs the ladle first, and the ladle needs Droid's reach.
     g.debug.select('biggy');
     g.debug.place('biggy', 105, 180);
     g.key('KeyE');
-    expect(lunch().carrying).toBe(false);
+    expect(breakfast().carrying).toBe(false);
 
     g.debug.select('droid');
     g.debug.place('droid', 176, 150);
     g.key('KeyE');
-    expect(lunch().ladle).toBe(true);
+    expect(breakfast().ladle).toBe(true);
 
     g.debug.select('biggy');
     g.key('KeyE');
-    expect(lunch().carrying).toBe(true);
+    expect(breakfast().carrying).toBe(true);
 
     // Hitting something at speed spills it.
     g.setStick(1, 0);
     steps(g, 70 * TRAVEL_TIME_SCALE);
     g.setStick(0, 0);
     steps(g, 10);
-    expect(lunch().soup).toBeLessThan(100);
-    expect(lunch().soup).toBeGreaterThan(0);
+    expect(breakfast().soup).toBeLessThan(100);
+    expect(breakfast().soup).toBeGreaterThan(0);
 
     // Soup alone is not enough. The drop is where Stephan stands: SOUTH of the main
     // staircase, past the reception desk — the only side of the flight anyone can
@@ -843,7 +843,7 @@ describe('chapter 3 — lunch', () => {
     expect(dropAt.x).toBeGreaterThan(GF.reception.x + GF.reception.w);
     g.debug.place('biggy', dropAt.x, dropAt.y);
     g.key('KeyE');
-    expect(lunch().delivered).toBe(true);
+    expect(breakfast().delivered).toBe(true);
     expect(gateWall()).toBeDefined();
 
     // Clear the top-shelf sticker out of the way first: it shares the booth grid with
@@ -856,7 +856,7 @@ describe('chapter 3 — lunch', () => {
 
     // Find the speaker at the booth they are hiding behind, then lead them over.
     const hiding = g.snapshot().people.find((p) => p.role === 'speaker');
-    const booth = GF.booths.find((b) => b.name === lunch().speaker.booth);
+    const booth = GF.booths.find((b) => b.name === breakfast().speaker.booth);
     expect(booth).toBeDefined();
     expect(booth?.table).toBe(false);
     const sx = hiding ? hiding.x : booth!.x + booth!.w / 2;
@@ -866,13 +866,13 @@ describe('chapter 3 — lunch', () => {
     g.debug.place('voxxy', sx, sy + 24);
     steps(g, 1);
     g.key('KeyE');
-    expect(lunch().speaker.following).toBe(true);
+    expect(breakfast().speaker.following).toBe(true);
 
     expect(walkTo(g, 'voxxy', dropAt)).toBe(true);
-    expect(until(g, () => lunch().speaker.onStage, 900)).toBe(true);
+    expect(until(g, () => breakfast().speaker.onStage, 900)).toBe(true);
 
     // Both delivered: the gate goes up and the cutscene runs.
-    expect(lunch().gateOpen).toBe(true);
+    expect(breakfast().gateOpen).toBe(true);
     expect(gateWall()).toBeUndefined();
     expect(g.snapshot().phase).toBe('cut');
     expect(until(g, () => g.snapshot().chapter === 4, 600)).toBe(true);
@@ -882,8 +882,8 @@ describe('chapter 3 — lunch', () => {
   it('puts thirty-six visitors on the lane grid, with Stephan at the foot of the stairs', () => {
     const g = mk(3);
     steps(g, 1400);
-    const lunch = g.debug.chapter() as LunchState;
-    expect(lunch.crowd).toBe(36);
+    const breakfast = g.debug.chapter() as BreakfastState;
+    expect(breakfast.crowd).toBe(36);
     expect(g.snapshot().people.filter((p) => p.role === 'visitor')).toHaveLength(36);
     const stephan = g.snapshot().people.find((p) => p.role === 'stephan');
     expect(stephan).toBeDefined();

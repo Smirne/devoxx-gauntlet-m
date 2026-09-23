@@ -1,11 +1,20 @@
 /**
- * Chapter 3 — LUNCH. The entrance is open, three thousand people are inside, and
+ * Chapter 3 — BREAKFAST. The entrance is open, three thousand people are inside, and
  * Stephan is standing in front of the main staircase with his arms crossed.
  *
  * Ported from the prototype's `setupLunch` / `lunchKey` / `lunchUpdate` / `lunchDone`
- * (`reference/poc/10-after-dark-kinepolis.html`). He wants two things before he opens
- * the rooms: his tomato soup, and the keynote speaker (still "TBA", still hiding from
- * the queues behind a built booth). Both need all three robots:
+ * (`reference/poc/10-after-dark-kinepolis.html`) — the prototype called this chapter
+ * Lunch, and those are its function names, kept so the parity is traceable.
+ *
+ * It is breakfast now because the opening keynote is a morning event: a keynote that
+ * happened after lunch would be a strange Devoxx. The tomato soup stayed anyway.
+ * Michele's ruling, 24 Sep 2026: *"The tomato soup stays, it's devoxx flavour, it's
+ * odder in the morning but i found it fun. And we're in belgium, i can't exclude
+ * they'd drink it at breakfast."*
+ *
+ * He wants two things before he opens the rooms: his tomato soup, and the keynote
+ * speaker (still "TBA", still hiding from the queues behind a built booth). Both need
+ * all three robots:
  *
  *   Droid — the ladle is on the high shelf.
  *   Biggy — carries the pot. He cannot stop quickly, every bump spills, and the soup
@@ -84,7 +93,7 @@ interface Queue {
   open: number;
 }
 
-export interface LunchState {
+export interface BreakfastState {
   chapter: 3;
   ladle: boolean;
   carrying: boolean;
@@ -102,10 +111,11 @@ export interface LunchState {
 }
 
 const OBJECTIVE =
-  'Chapter 3 · <b>Lunch</b>. The main entrance is open and 3,000 people walk in. <b>Stephan</b> stands ' +
-  'at the main staircase and wants his <b>tomato soup</b> and the <b>keynote speaker</b> before he opens ' +
-  'it. Droid: the ladle is on the high shelf. Biggy: carry the pot (bumps spill it, and it cools). ' +
-  'Voxxy: clear a catering queue (E), find the speaker at a built booth. Booth games still count as swag.';
+  'Chapter 3 · <b>Breakfast</b>. The main entrance is open and 3,000 people walk in. <b>Stephan</b> stands ' +
+  'at the main staircase and wants his <b>tomato soup</b> — at breakfast, yes — and the <b>keynote ' +
+  'speaker</b> before he opens it. Droid: the ladle is on the high shelf. Biggy: carry the pot (bumps ' +
+  'spill it, and it cools). Voxxy: clear a catering queue (E), find the speaker at a built booth. ' +
+  'Booth games still count as swag.';
 const KEYS = '1/2/3/Tab: switch · WASD · E: use / ask / clear a queue · R: restart';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
@@ -349,7 +359,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   ctx.objective(OBJECTIVE, KEYS);
   ctx.card(
-    "<b>Power, network, badges.</b> The main entrance opens… and it's already lunchtime." +
+    "<b>Power, network, badges.</b> The main entrance opens… and the queue for breakfast is already out of the door." +
       '<small>Press any key</small>',
   );
 
@@ -425,7 +435,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     ctx.score.soup = Math.trunc(soup);
     ctx.score.temp = Math.trunc(temp);
     ctx.score.complaints = complaints;
-    ctx.score.lunchT = Math.round(ctx.t);
+    ctx.score.breakfastT = Math.round(ctx.t);
     ctx.flash('Stephan: "Soup. Speaker. Fine — open the stairs." Up the main staircase', 4000);
     // Up the flight, which climbs NORTH from the gate Stephan has just opened.
     const route = (dx: number): Vec2[] => [
@@ -639,7 +649,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     people,
     progress,
     placeProp: (kind: string, x: number, y: number): boolean => mg.place(kind, x, y),
-    state: (): LunchState => ({
+    state: (): BreakfastState => ({
       chapter: 3,
       ladle,
       carrying,
@@ -656,4 +666,4 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   };
 }
 
-export const ch3Lunch: ChapterDef = { n: 3, title: '3 · Lunch — doors open', setup };
+export const ch3Breakfast: ChapterDef = { n: 3, title: '3 · Breakfast — doors open', setup };

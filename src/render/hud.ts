@@ -48,7 +48,7 @@ const CHAPTER_TITLES: readonly string[] = [
   'After Dark',
   '1 · Night — the closed cinema section',
   '2 · Expo — the exhibition hall',
-  '3 · Lunch — doors open',
+  '3 · Breakfast — doors open',
   '4 · Keynote — Room 8',
 ];
 

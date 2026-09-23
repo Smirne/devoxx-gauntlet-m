@@ -487,7 +487,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       score.soup ??= 100;
       score.temp ??= 100;
       score.complaints ??= 0;
-      score.lunchT ??= Math.round(t);
+      score.breakfastT ??= Math.round(t);
     }
     if (n === 4) {
       score.spare ??= 0;
