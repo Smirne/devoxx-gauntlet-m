@@ -436,7 +436,12 @@ describe('cinema E is a room the player can see into', () => {
      * CORRIDOR wall is already cut to a parapet by `wallStyle` in
      * `src/render/venue/floor1.ts` for exactly this reason, and the near ROOMS'
      * front walls are not — and it is why the puzzle has been moved OUT of that
-     * strip rather than lit better inside it. It was 42% before that move.
+     * strip rather than lit better inside it.
+     *
+     * Measured the same way on the build Michele could not solve (`ff668c4`), the
+     * room scored 67% and — the number that mattered — only **35%** of the ground
+     * within 90 px of the alcove clue was in shot, against 68% now, with the
+     * alcove and its bay at 100%.
      */
     expect(
       pct,
