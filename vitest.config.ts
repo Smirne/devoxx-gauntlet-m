@@ -10,10 +10,16 @@ export default defineConfig({
      * Agents and I both write throwaway probes into `tests/` so they can run
      * under vitest, and one of them once shipped: a measurement scratch file
      * matching the glob ran in `pnpm test` and printed debug output in front of
-     * whoever cloned the repo. Anything prefixed `_` or `zz-` is working
+     * whoever cloned the repo. Anything prefixed `_`, `zz` or `probe` is working
      * material — ignored here, and ignored by git.
+     *
+     * The patterns lost their hyphens on 24 Sep. They were `zz-*` and `probe-*`,
+     * and an agent this session wrote `tests/zzscratch.test.ts`: not ignored by
+     * git, not excluded here, and therefore a scratch file that RAN in the suite
+     * and was one `git add -A` from shipping. A convention that depends on
+     * remembering a hyphen is not a convention.
      */
-    exclude: ['tests/_*.test.ts', 'tests/zz-*.test.ts', 'tests/probe-*.test.ts', 'node_modules/**', 'dist*/**'],
+    exclude: ['tests/_*.test.ts', 'tests/zz*.test.ts', 'tests/probe*.test.ts', 'node_modules/**', 'dist*/**'],
     /*
      * 30 s, not vitest's 5.
      *
