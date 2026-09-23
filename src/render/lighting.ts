@@ -308,6 +308,42 @@ const MOODS: Readonly<Record<number, Mood>> = Object.freeze({
   },
 });
 
+/**
+ * 2 · Expo, **after Droid throws the last breaker**.
+ *
+ * Michele, playing chapter 2: *"After switching the room gets darker, not lighter
+ * (i think is the robot's light being switched off?)."* He was right, and it was
+ * two faults compounding:
+ *
+ *  1. `ch2-expo.ts` stopped casting the robots' own light polygons the instant
+ *     `power` went true (`lights = power ? NO_MIRROR_LIGHTS : cast`), which turned
+ *     off every lamp AND every robot key light — that is the half he guessed;
+ *  2. nothing on this side ever turned the hall's lights ON. Chapter 2 had one
+ *     mood, `house: 0`, a 0.6 fog mask, and no notion of the breakers at all.
+ *
+ * Measured on the build he played, mean scene luminance went 12.5 -> 5.1 and the
+ * 90th percentile 42 -> 8.8 when the last breaker went in: the switch made the hall
+ * three quarters darker. The chapter now casts its lamps the whole way through and
+ * this is the mood the last breaker eases the hall into — the fog mask off, the
+ * ambient up to a lit-interior level, the track spots on the beams driven hard, and
+ * the lamps damped the way chapter 3's daylight damps them, so the robots keep
+ * their key light and stop being the only thing in the room.
+ */
+const MOOD_EXPO_LIT: Mood = {
+  ...MOODS[2],
+  ambient: 0.5,
+  hemi: 0.58,
+  lampGain: 0.4,
+  poolGain: 0.3,
+  fogBase: 0,
+  exits: 0.5,
+  // Ground-floor fixtures ride `house` now; upstairs it was already the corridor's.
+  house: 1,
+  ambientColor: 0x2c3441,
+  skyColor: 0xc9d6e4,
+  groundColor: 0x4a4740,
+};
+
 /** Before a chapter starts (`chapter` 0) nothing is on but a faint night wash. */
 const MOOD_DEFAULT: Mood = { ...MOODS[1], fogBase: 0 };
 
@@ -848,11 +884,27 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
   let target: Mood = MOOD_DEFAULT;
   let chapter = -1;
   let cutNow = false;
+  /** Chapter 2 only: whether the last breaker is in. See `hallPowered`. */
+  let poweredNow = false;
   let floorKey: 'up' | 'down' = 'up';
   const scratch = new THREE.Vector3();
 
-  function applyChapter(n: number, cut: boolean): void {
-    const mood = MOODS[n] ?? MOOD_DEFAULT;
+  /**
+   * Has chapter 2's hall got its power back?
+   *
+   * Read off the sim's own `breaker` prop rather than invented here: the chapter
+   * already publishes `state: power ? 'done' : 'idle'` on it, which is game state
+   * arriving through the one channel the renderer is allowed to read. No game logic
+   * moves across the line — this is a lookup, the same one `drawBreaker` does.
+   */
+  function hallPowered(snap: GameSnapshot): boolean {
+    if (snap.chapter !== 2) return false;
+    for (const p of snap.props) if (p.kind === 'breaker') return p.state === 'done';
+    return false;
+  }
+
+  function applyChapter(n: number, cut: boolean, powered = false): void {
+    const mood = (powered && n === 2 ? MOOD_EXPO_LIT : MOODS[n]) ?? MOOD_DEFAULT;
     target = cut
       ? {
           ...mood,
@@ -886,15 +938,18 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
 
     // Chapter changes and entering/leaving a cutscene both re-pick the mood.
     const cut = snap.phase === 'cut';
+    const powered = hallPowered(snap);
     if (snap.chapter !== chapter) {
       // A new chapter is a new unexplored map.
       if (chapter >= 0) clearFog();
       chapter = snap.chapter;
       cutNow = cut;
-      applyChapter(chapter, cut);
-    } else if (cut !== cutNow) {
+      poweredNow = powered;
+      applyChapter(chapter, cut, powered);
+    } else if (cut !== cutNow || powered !== poweredNow) {
       cutNow = cut;
-      applyChapter(chapter, cut);
+      poweredNow = powered;
+      applyChapter(chapter, cut, powered);
     }
     if (snap.floor !== floorKey) setFloor(snap.floor);
 
@@ -971,12 +1026,20 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
       hl.intensity = onGround ? 0 : 9 * cur.house;
       hl.visible = hl.intensity > 0.02;
     }
-    // The hall's track spots ride the same switch as the exit greens: they are the
-    // dark-hall chapter's fixtures and nothing else's.
+    /*
+     * The hall's track spots. On standby they are the dark-hall chapter's own
+     * fixtures and ride the exit greens; once the breakers are in they are the
+     * house lighting and ride `house`, which is what "the hall lights come on,
+     * booth by booth" has to mean on this side of the line.
+     *
+     * `house` is zero in every other ground-floor mood, and the cinema-level house
+     * fittings above are already gated on `!onGround`, so the two never overlap.
+     */
     for (const tl of track) {
       tl.position.y = floorY + 3.2;
-      tl.intensity = onGround ? 5.5 * cur.exits : 0;
+      tl.intensity = onGround ? 5.5 * cur.exits + 30 * cur.house : 0;
       tl.visible = tl.intensity > 0.02;
+      tl.color.setHex(cur.house > 0.5 ? 0xf0efe6 : 0xa8c4e6);
     }
     stage.position.set(m(stageSim.x), floorY + 6.2, m(stageSim.y) + 2.2);
     stageTarget.position.set(m(stageSim.x), floorY + 0.6, m(stageSim.y));

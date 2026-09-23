@@ -130,6 +130,8 @@ const SPECS = {
   chafingSteel: { color: '#aeb4bb', roughness: 0.3, metalness: 0.85 },
   rollerSlat: { color: '#7d8086', roughness: 0.55, metalness: 0.6, flat: true },
   rackMetal: { color: '#202429', roughness: 0.6, metalness: 0.5 },
+  /** Patch-panel port LEDs. A switch on standby is the one lit thing in a dark room. */
+  rackLed: { color: '#2c3a33', roughness: 0.5, emissive: '#2fd17a', emissiveIntensity: 0.9 },
   /** Breaker panel face, with its little status LED. */
   breakerBox: { color: '#4d5560', roughness: 0.6, metalness: 0.35, emissive: '#d8452f', emissiveIntensity: 0.5 },
   printerWhite: { color: '#d9d7d2', roughness: 0.65 },
@@ -163,6 +165,8 @@ const SPECS = {
   signOrange: { color: '#e1561c', roughness: 0.75 },
   /** Kinepolis wayfinding blue. */
   signBlue: { color: '#1c4a96', roughness: 0.7 },
+  /** Emergency running-man green, lit from its own battery. */
+  signGreen: { color: '#35d17a', roughness: 0.6, emissive: '#1f8f4f', emissiveIntensity: 1 },
   signDark: { color: '#1b1e24', roughness: 0.8 },
 } as const;
 

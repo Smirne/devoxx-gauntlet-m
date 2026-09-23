@@ -21,6 +21,9 @@ import {
   DOOR,
   F1,
   GF,
+  HALL_COLUMNS,
+  LOBBY_COLUMNS,
+  LOBBY_PLANTERS,
   LOBBY_RISE_M,
   R,
   ROOM_D,
@@ -30,6 +33,9 @@ import {
   groundWalls,
   rooms,
   roomDoor,
+  stairDoor,
+  stairFlightRect,
+  stairLanding,
 } from '../src/sim/geometry';
 import type { Rect, RoomDef, Vec2, Wall } from '../src/sim/types';
 import { ROBOT_HEIGHT_M } from '../src/sim/units';
@@ -550,5 +556,141 @@ describe('ground floor — the lobby, where Michele plotted it', () => {
     // East of the glazing is the street: only the building's own shell is there.
     const outside = walls.filter((w) => w.x > GF.entrance.x + GF.entrance.w && w.x < W - T);
     expect(outside).toHaveLength(0);
+  });
+});
+
+/*
+ * ========================================================================
+ * EVERYTHING THE HALL DRAWS IS SOMETHING THE HALL STOPS YOU WITH.
+ *
+ * Michele, playing chapter 2: *"robots can go through staircase and objects."* The
+ * cause was the one chapter 1 already hit with its seat rows: `src/render/venue`
+ * built geometry out of its own loops — the column grid, the lobby columns, the
+ * planters, both secondary staircases — that the sim had never been told about. A
+ * throwaway flood-fill probe measured 100% of every one of those footprints as
+ * walkable floor.
+ *
+ * These are the tests that stop it coming back. They are deliberately written
+ * against `GF`/`HALL_COLUMNS` rather than against a hard-coded list, so a column
+ * added to the grid is a column that has to be a collider.
+ * ========================================================================
+ */
+describe('the hall stops you where it looks solid', () => {
+  const solid = (rect: Rect, r: number): boolean => {
+    const walls = groundWalls().filter((w) => !w.hidden);
+    const cx = rect.x + rect.w / 2;
+    const cy = rect.y + rect.h / 2;
+    return walls.some((w) => {
+      const px = Math.max(w.x, Math.min(cx, w.x + w.w));
+      const py = Math.max(w.y, Math.min(cy, w.y + w.h));
+      return (cx - px) ** 2 + (cy - py) ** 2 < r * r;
+    });
+  };
+
+  it('gives every structural column in the hall a collider', () => {
+    expect(HALL_COLUMNS.length).toBeGreaterThan(12);
+    for (const c of HALL_COLUMNS) {
+      expect(solid(c, DEFS.voxxy.r), `column at ${c.x},${c.y} is walkable`).toBe(true);
+    }
+  });
+
+  it('does the same for the lobby columns and the concourse planters', () => {
+    for (const c of LOBBY_COLUMNS) expect(solid(c, DEFS.voxxy.r), `lobby column ${c.x}`).toBe(true);
+    for (const c of LOBBY_PLANTERS) expect(solid(c, DEFS.voxxy.r), `planter ${c.x}`).toBe(true);
+    // The rack is the cable's own starting point, and it is a cabinet, not a decal.
+    expect(solid(GF.rack, DEFS.voxxy.r)).toBe(true);
+  });
+
+  it('never puts a column where a booth, a counter or a staircase already stands', () => {
+    const blocks: Rect[] = [
+      GF.food.court,
+      GF.tech,
+      GF.store,
+      GF.smallStairs,
+      GF.concreteWall,
+      ...GF.stairs.map((s) => ({ x: s.x, y: s.y, w: s.w, h: s.h })),
+      ...GF.booths.map((b) => ({ x: b.x, y: b.y, w: b.w, h: b.h })),
+    ];
+    for (const c of HALL_COLUMNS) {
+      for (const b of blocks) {
+        const hit = c.x < b.x + b.w && c.x + c.w > b.x && c.y < b.y + b.h && c.y + c.h > b.y;
+        expect(hit, `column at ${c.x},${c.y} stands inside built fabric`).toBe(false);
+      }
+    }
+    // ...and every one of them is inside the hall it holds up.
+    for (const c of HALL_COLUMNS) {
+      expect(c.x).toBeGreaterThan(GF.hall.x);
+      expect(c.x + c.w).toBeLessThan(GF.hall.x + GF.hall.w);
+    }
+  });
+});
+
+/*
+ * The secondary staircases are ROOMS. Michele: *"In devoxx the stairs are not open
+ * but look like rooms."* `plans/exhibition-floor-simple.png` draws each one as a
+ * walled shaft standing free in the hall with double doors in its plan-north end
+ * (world west) and the ascent arrow running away from them.
+ */
+describe('the secondary staircases are enclosed shafts', () => {
+  const shafts = GF.stairs.map((s) => ({ x: s.x, y: s.y, w: s.w, h: s.h }));
+
+  it('walls all four sides, and puts the one doorway in the west end', () => {
+    for (const s of shafts) {
+      const d = stairDoor(s);
+      // The doorway is in the west face and nowhere else.
+      expect(d.x).toBe(s.x);
+      expect(d.y).toBeGreaterThan(s.y);
+      expect(d.y + d.h).toBeLessThan(s.y + s.h);
+      // Biggy, the widest robot, fits through it.
+      expect(d.h).toBeGreaterThan(DEFS.biggy.r * 2 + 4);
+
+      // You can stand on the landing...
+      const landing = stairLanding(s);
+      expect(canWalk({ x: s.x - 20, y: s.y + s.h / 2 }, { x: landing.x + landing.w / 2, y: landing.y + landing.h / 2 }, DEFS.biggy.r)).toBe(true);
+      // ...and you cannot get past it onto the flight, from anywhere at all.
+      const flight = stairFlightRect(s);
+      expect(
+        canWalk({ x: s.x - 20, y: s.y + s.h / 2 }, { x: flight.x + flight.w - 8, y: flight.y + flight.h / 2 }, DEFS.voxxy.r),
+        'the flight is walkable',
+      ).toBe(false);
+    }
+  });
+
+  it('cannot be walked through from north to south, or from east to west', () => {
+    for (const s of shafts) {
+      const n = { x: s.x + s.w / 2, y: s.y - 22 };
+      const so = { x: s.x + s.w / 2, y: s.y + s.h + 22 };
+      const e = { x: s.x + s.w + 22, y: s.y + s.h / 2 };
+      // Going round is fine; going THROUGH is not, which is what a flood fill
+      // cannot tell you on its own — so the shaft's own strip is what is tested.
+      for (const r of [DEFS.voxxy.r, DEFS.biggy.r]) {
+        const walls = groundWalls().filter((w) => w.kind === 'stairwell' || w.kind === 'stairwell-near' || w.kind === 'stair-foot');
+        const blocked = (p: Vec2): boolean =>
+          walls.some((w) => {
+            const px = Math.max(w.x, Math.min(p.x, w.x + w.w));
+            const py = Math.max(w.y, Math.min(p.y, w.y + w.h));
+            return (p.x - px) ** 2 + (p.y - py) ** 2 < r * r;
+          });
+        // A straight line across the shaft always meets a wall of it.
+        let hitNS = false;
+        for (let y = n.y; y <= so.y; y += 2) if (blocked({ x: s.x + s.w / 2, y })) hitNS = true;
+        expect(hitNS, 'walked straight through the shaft north to south').toBe(true);
+        let hitEW = false;
+        for (let x = e.x; x >= s.x - 22; x -= 2) if (blocked({ x, y: s.y + s.h / 2 })) hitEW = true;
+        expect(hitEW, 'walked straight through the shaft east to west').toBe(true);
+      }
+    }
+  });
+
+  it('keeps the flight and the landing inside the plan rect, with the flight to the east', () => {
+    for (const s of shafts) {
+      const landing = stairLanding(s);
+      const flight = stairFlightRect(s);
+      expect(landing.x).toBeGreaterThanOrEqual(s.x);
+      expect(flight.x + flight.w).toBeLessThanOrEqual(s.x + s.w);
+      // Doors, then landing, then the first riser: the plan's own order.
+      expect(flight.x).toBeGreaterThan(landing.x + landing.w);
+      expect(flight.w).toBeGreaterThan(landing.w);
+    }
   });
 });

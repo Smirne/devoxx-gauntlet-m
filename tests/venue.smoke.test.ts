@@ -20,7 +20,7 @@ import * as THREE from 'three';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { H, W } from '../src/sim/constants';
-import { CY0, CY1, F1, GF, LOBBY_RISE_M, R, rooms } from '../src/sim/geometry';
+import { CY0, CY1, F1, GF, LOBBY_RISE_M, R, rooms, stairFlightRect } from '../src/sim/geometry';
 import { PX_PER_M, STOREY_H_M, m } from '../src/sim/units';
 import { DIORAMA_ELEVATIONS_DEG, dioramaToCameraAtDeg } from '../src/render/camera';
 import { buildVenue, simToWorld, type Venue } from '../src/render/venue/index';
@@ -197,6 +197,31 @@ describe('both staircases, which is what the overlay check fails rounds over', (
       expect(y).toBeGreaterThan(-STOREY_H_M);
     }
   });
+
+  /*
+   * Michele: *"In devoxx the stairs are not open but look like rooms."* Each
+   * secondary flight is drawn INSIDE the shaft `groundWalls()` builds round it —
+   * east of the landing, never out in the open hall — so the picture and the
+   * colliders are the same object seen twice.
+   */
+  it('draws each secondary flight inside its shaft, east of the landing', () => {
+    for (const s of GF.stairs) {
+      const rect = { x: s.x, y: s.y, w: s.w, h: s.h };
+      const flight = stairFlightRect(rect);
+      const o = venue.group.getObjectByName(`ground-stair-${s.to}`) as THREE.Object3D;
+      const box = new THREE.Box3().setFromObject(o);
+      // Inside the plan rect, with a little slack for the nosings.
+      expect(box.min.x).toBeGreaterThan(m(rect.x) - 0.2);
+      expect(box.max.x).toBeLessThan(m(rect.x + rect.w) + 0.2);
+      expect(box.min.z).toBeGreaterThan(m(rect.y) - 0.2);
+      expect(box.max.z).toBeLessThan(m(rect.y + rect.h) + 0.2);
+      // ...and clear of the landing behind the doors, which is walkable floor.
+      expect(box.min.x).toBeGreaterThan(m(flight.x) - 0.3);
+      // It climbs EASTWARD: the top of the run is at the far end from the doors.
+      const west = new THREE.Box3().setFromObject(o).min.y;
+      expect(west).toBeLessThan(0);
+    }
+  });
 });
 
 describe('signage', () => {
@@ -366,6 +391,26 @@ describe('signage', () => {
     for (const name of ['entrance-sign', 'catering-board', 'wifi-sign', 'wayfinding-top', 'wayfinding-bottom']) {
       expect(venue.group.getObjectByName(name), `missing ${name}`).toBeDefined();
     }
+  });
+
+  /*
+   * Michele: *"I don't get how to enter the reception."* There is one way from the
+   * hall to the lobby and it is the stepped threshold; what was missing was anything
+   * that said so. The plate has to hang over the steps and FACE THE HALL, which is
+   * the half of "put a sign up" that is easy to get wrong.
+   */
+  it('signs the way to reception, over the steps and facing the hall', () => {
+    const sign = venue.group.getObjectByName('reception-wayfinding') as THREE.Mesh;
+    expect(sign, 'missing reception-wayfinding').toBeDefined();
+    const p = sign.getWorldPosition(new THREE.Vector3());
+    // Over the head of the threshold: at the hall's right edge, just north of the
+    // opening the steps run through.
+    expect(p.x).toBeGreaterThan(m(GF.hall.x + GF.hall.w - 10));
+    expect(p.z).toBeLessThan(m(GF.openings[0][1]));
+    expect(p.z).toBeGreaterThan(m(GF.openings[0][0] - 20));
+    // Facing the camera side, not the lobby: its normal must point +z.
+    const n = new THREE.Vector3(0, 0, 1).applyQuaternion(sign.getWorldQuaternion(new THREE.Quaternion()));
+    expect(n.z).toBeGreaterThan(0.5);
   });
 
   it('builds headlessly, with no canvas and no leaked texture', () => {

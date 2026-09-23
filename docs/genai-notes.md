@@ -946,3 +946,66 @@ At 5.8 m/s it is barely doing anything any more and is probably now removable, b
 to another agent this round and were left alone. The cutscene walk speed constant is dead: a
 concurrent change made cutscenes duration-driven, which is the better answer, so `CUT_WALK_SPEED`
 is now scaled, asserted and unused.
+
+## 23 Sep 2026 — chapter 2's playtest batch: nine notes, one recurring cause
+
+**What the human did.** Played chapter 2 and filed nine short notes, reproduced verbatim in
+`docs/playtest-notes.md`. Three of them named a specific object ("cable rack", "the breaker",
+"this yellow thing"), two named a feeling ("gets darker, not lighter", "something is flickering")
+and one was a question ("I don't get how to enter the reception"). Nothing was diagnosed for the
+agent, and one of the diagnoses he *did* offer turned out to be half right in a way that mattered.
+
+**What the agent did.** Measured before touching anything, in three ways.
+
+*A flood fill, for "robots can go through staircase and objects".* The brief said not to guess, and
+guessing would have found the staircases and stopped. A throwaway probe (`tests/probe-*.test.ts`,
+gitignored, excluded from the suite) flooded the walkable area from the chapter's own start position
+and reported the fraction of every drawn footprint a robot centre can occupy. **100%** for both
+secondary staircases, eighteen structural roof columns, four lobby columns, two planters and the
+network rack — thirty-seven objects, not two. Every one of them was built inside
+`src/render/venue/ground.ts`'s own loops, which the sim never sees. The fix is architectural rather
+than local: the geometry moved into `src/sim/geometry.ts` and the renderer now draws the sim's wall
+list, so there is no second copy to drift. This is the third round in a row that this exact shape of
+bug has produced a playtest note (chapter 1's seat rows, chapter 1's cinema barriers, now the hall),
+which is itself the finding.
+
+*Pixel values, for "after switching the room gets darker".* The measurement was a driven build
+shot twice, breakers out and breakers in: mean scene luminance **12.5 → 5.1**, 90th percentile
+**42 → 8.8**. The switch really did make the hall three quarters darker. The same two shots on the
+fixed build read **9.3 → 24.0** and **8.8 → 58.3** — the same measurement, used twice, once to find
+the bug and once to prove the fix.
+
+*The camera, for "cable rack is not visible at all".* Not a missing object. At chapter 2's 31°
+pitch, the technical room's south side is 3.8 m of building shell standing four metres in front of a
+1.95 m cabinet; the rack's head cleared the wall top by 13 cm. The number is what chose the fix
+(a 0.4 m plinth) over the alternatives.
+
+**Where the human's own diagnosis was half right, and where that matters.** He guessed the darkness
+was "the robot's light being switched off". It was — `ch2-expo.ts` stopped casting light polygons
+the instant `power` went true, and the renderer drives each robot's spotlight *and* its key light
+from that list, so nine lights went out at once. But that was only half: nothing on the renderer's
+side had ever heard of the breakers, so no house light came up either. Fixing only the half he named
+would have left the hall no brighter than before the switch. Both halves are fixed and the note is
+recorded that way.
+
+**What was rejected.** (a) Flipping the secondary staircases' climb direction was nearly skipped as
+"not what he complained about" — the plan settles it: the doors are in the shaft's north end and the
+ascent arrow runs away from them, so an enclosure with the doors on the far side would have been a
+knowingly mirrored staircase. It was flipped, and the chapter's start position moved out of the
+doors with it. (b) Making the rope-line stanchions colliders: a velvet rope on a 26 cm post is not
+something a player expects to be stopped by, and a 4 px collider in the middle of the concourse is
+an invisible snag rather than an obstacle. Left walk-through, on the record. (c) Redesigning the way
+into the reception: a flood fill showed the route was always there and always the only one, so the
+change is a sign over the steps, not a new door.
+
+**What it cost, measured rather than assumed.** `buildLights` is ~95% of a chapter-2 sim step and
+scales as (lights x rays x walls). This change took the hall from 63 walls to 100 and a concurrent
+change took every robot from one light to two: **0.9 → 1.83 → 2.63 ms per cast**. Two headless pilot
+tests needed their wall-clock budgets raised as a result. That is a real regression, it is nobody's
+bug, and it is written down where the next agent will find it before adding a third thing to that
+path.
+
+**Four test edits, all declared.** Four assertions in `tests/chapters.test.ts` were *not* touched;
+what moved was the pilot — two hand-written waypoints that are now inside a collider, and two
+wall-clock timeouts. The rule the previous round arrived at held up: recalibrate the pilot loudly,
+never the expectation quietly.

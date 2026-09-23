@@ -61,6 +61,16 @@ export const GLASS_H = 2.15;
 export const DOOR_H = 2.1;
 /** Floor plate thickness. Floors hang *below* their walking surface. */
 export const FLOOR_T = 0.14;
+/**
+ * The breaker enclosure on the technical room's back wall: bottom edge and height.
+ *
+ * Shared, because two pieces have to agree on it — `ground.ts` builds the box and
+ * `scene.ts` hangs chapter 2's three live handles on its face. 1.45 m is over
+ * Voxxy's head (1.15) and over Biggy's (1.45) and inside a 2.1 m Droid's reach,
+ * which is the whole fiction of the beat.
+ */
+export const BREAKER_Y = 1.45;
+export const BREAKER_H = 0.72;
 
 /* -------------------------------------------------------------- primitives */
 
@@ -419,9 +429,18 @@ export function rollerDoor(r: Rect, p: VenuePalette, slats = 7): THREE.Group {
 export function networkRack(r: Rect, base: number, p: VenuePalette): THREE.Group {
   const g = new THREE.Group();
   g.add(slab(r, base, 1.9, p.rackMetal));
+  /*
+   * The patch panels go on the SOUTH face.
+   *
+   * They used to be laid on `r.y - 1`, the north one — the face turned away from
+   * the only camera this game has — so from the diorama the whole rack was an
+   * unrelieved black box. That is half of Michele's *"cable rack is not visible at
+   * all"*; the other half was that the building's shell stood in front of it, which
+   * `RACK_PLINTH` in `ground.ts` answers.
+   */
   for (let i = 0; i < 5; i++) {
-    const face: Rect = { x: r.x + 2, y: r.y - 1, w: r.w - 4, h: 2 };
-    g.add(slab(face, base + 0.35 + i * 0.28, 0.1, p.breakerBox));
+    const face: Rect = { x: r.x + 2, y: r.y + r.h - 1, w: r.w - 4, h: 2 };
+    g.add(slab(face, base + 0.35 + i * 0.28, 0.1, p.rackLed));
   }
   return g;
 }

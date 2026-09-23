@@ -34,7 +34,7 @@
 
 import { CABLE_MAX, PUSH_LEAN_MIN, ROLLER_DOOR_SPEED, SPEED_SCALE, T, TRAVEL_TIME_SCALE } from '../constants';
 import { m } from '../units';
-import { GF, VIEW_GROUND, groundWalls } from '../geometry';
+import { GF, VIEW_GROUND, groundWalls, stairDoor } from '../geometry';
 import { botsCollide, dist, inRect, mkBot, speed, stepBot } from '../bot';
 import { buildLights, litBy } from '../lights';
 import type { Bot, Hit, LightSource, Mirror, Prop, Vec2, Wall } from '../types';
@@ -46,6 +46,20 @@ const PANEL_REACH = 52;
 const PLUG_REACH = 40;
 /** A new cable point is only recorded once Voxxy has actually gone somewhere. */
 const CABLE_STEP = 6;
+/**
+ * How long Voxxy has to keep leaning on a taut cable before the plug comes out.
+ *
+ * A clock a robot travels against, so it carries `TRAVEL_TIME_SCALE` — 0.3 s of the
+ * prototype's Voxxy, 1.2 s of this one. Long enough to be a decision and short
+ * enough that a player who has decided does not have to hold it.
+ */
+const CABLE_PULL_OUT = 0.3 * TRAVEL_TIME_SCALE;
+/** ...and how fast that patience is given back once she stops pulling, s^-1. */
+const CABLE_PULL_RELAX = 3;
+/** How square-on the stick has to be to the cable to count as pulling, -1..1. */
+const CABLE_PULL_LEAN = 0.45;
+/** Seconds between "the cable goes tight" readouts. */
+const CABLE_TALK_COOLDOWN = 4;
 /** Below this, "Biggy: 0.8 m/s, needs 5.4" would fire on every nudge. px/s. */
 const ROLLER_MIN_TALK = 40 * SPEED_SCALE;
 /** Seconds between the roller door's "not fast enough" readouts. */
@@ -164,7 +178,6 @@ const deg = (a: number): number => Math.round((norm(a) * 180) / Math.PI);
 
 /** The exhibition hall has no cinema screen to bounce a lamp off. */
 const NO_MIRRORS: Mirror[] = [];
-const NO_MIRROR_LIGHTS: LightSource[] = [];
 
 /**
  * A pushable body that is not a robot: the shuffleboard duck here, the cake crate in
@@ -372,7 +385,7 @@ export interface ExpoState {
   chapter: 2;
   power: boolean;
   breakersLeft: number;
-  cable: { carrying: boolean; connected: boolean; len: number; snapped: boolean };
+  cable: { carrying: boolean; connected: boolean; len: number; snapped: boolean; taut: boolean };
   rollerBroken: boolean;
   /** The cam-lock wheel on the router cabinet. Angles in radians, `vel` in rad/s. */
   wheel: {
@@ -406,7 +419,20 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');
   ctx.setView(VIEW_GROUND);
   ctx.setWalls(groundWalls());
-  ctx.place([372, 440], [372, 470], [372, 502]);
+  /*
+   * Out of the secondary stairwell's doors, into the hall.
+   *
+   * They used to stand at x 372, off the EAST end of the staircase, because the
+   * staircase was an open flight that climbed westward. It is an enclosed shaft now
+   * with its doors in the west face and the flight climbing away from them, which
+   * is what `plans/exhibition-floor-simple.png` draws (see `GF.stairs`) — so the
+   * three of them come out on the west side. The old spot has also stopped being
+   * empty floor: one of the hall's roof columns stands at 380,480, and it is a
+   * collider now.
+   */
+  const shaft = GF.stairs[1];
+  const mouth = stairDoor({ x: shaft.x, y: shaft.y, w: shaft.w, h: shaft.h });
+  ctx.place([mouth.x - 20, mouth.y + 4], [mouth.x - 34, mouth.y + mouth.h / 2], [mouth.x - 20, mouth.y + mouth.h - 4]);
 
   let power = false;
   /**
@@ -428,8 +454,13 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     connected: false,
     len: 0,
     snapped: false,
+    /** The reel is paid out and Voxxy is being held on the end of it. */
+    taut: false,
+    /** Seconds she has spent leaning AGAINST the taut cable. See `CABLE_PULL_OUT`. */
+    pull: 0,
     pts: [] as Vec2[],
   };
+  let tautTalk = -9;
 
   const gate: Wall = {
     ...GF.gate,
@@ -637,6 +668,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       if (!cable.carrying && !cable.connected && dist(b, rackAt) < PLUG_REACH) {
         cable.carrying = true;
         cable.snapped = false;
+        cable.taut = false;
+        cable.pull = 0;
         cable.len = 0;
         cable.pts = [{ x: b.x, y: b.y }];
         ctx.flash("Voxxy takes the cable end. It's not long — straight to reception, under the tables");
@@ -644,6 +677,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       }
       if (cable.carrying && dist(b, printerAt) < PLUG_REACH) {
         cable.carrying = false;
+        cable.taut = false;
         cable.connected = true;
         ctx.flash(
           `Cable in — the run is made (${Math.trunc(cable.len)} of ${CABLE_MAX} px used). ` +
@@ -676,6 +710,88 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   }
 
   /* ------------------------------------------------------------------- update */
+
+  /**
+   * THE REEL, AND THE END OF IT.
+   *
+   * Michele: *"When cable ends, Voxxy should be stopped and only further going
+   * would release it."* It used to simply run out — one frame you were under the
+   * limit, the next the plug was back on the rack and thirty seconds of route with
+   * it, with nothing in between to tell you it was coming.
+   *
+   * A reel with `CABLE_MAX` on it has three states, and now the sim has all three:
+   *
+   *   - **slack** — every `CABLE_STEP` px of travel pays another point onto the run
+   *     and adds its length to the meter. Unchanged.
+   *   - **taut** — the reel is empty. Voxxy is held on a circle of the remaining
+   *     budget around the last pinned point, and the component of her velocity
+   *     pulling away from it is cancelled: she can still walk the circle, and she
+   *     can always walk back, because a cable pivots. This is the beat that was
+   *     missing — you *feel* the end of the cable, in the robot stopping, before
+   *     anything is lost.
+   *   - **pulled out** — she leans against it anyway for `CABLE_PULL_OUT` seconds,
+   *     and the plug comes out of the rack. Same failure as before, but now it is
+   *     something the player DID rather than something that happened to them.
+   *
+   * Nothing here is a new physics constant: the hold is a projection, exactly the
+   * one `bot.ts` does against a wall, and the two numbers below are properties of
+   * one reel in one chapter. `CABLE_PULL_OUT` is a clock a robot travels against,
+   * so it carries `TRAVEL_TIME_SCALE` from the 2026-09-23 rescale like every other
+   * one in the file.
+   */
+  function stepCable(v: Bot, dt: number): void {
+    const last = cable.pts[cable.pts.length - 1];
+    const budget = Math.max(0, CABLE_MAX - cable.len);
+    const dx = v.x - last.x;
+    const dy = v.y - last.y;
+    const d = Math.hypot(dx, dy);
+
+    if (d > budget) {
+      const nx = dx / (d || 1);
+      const ny = dy / (d || 1);
+      // Held on the end of it. Position first, then kill the outward velocity, or
+      // she would spend every frame accelerating into a stop.
+      v.x = last.x + nx * budget;
+      v.y = last.y + ny * budget;
+      const out = v.vx * nx + v.vy * ny;
+      if (out > 0) {
+        v.vx -= out * nx;
+        v.vy -= out * ny;
+      }
+      // How hard she is leaning on it: the stick's component along the cable.
+      const lean = v.ix * nx + v.iy * ny;
+      if (lean > CABLE_PULL_LEAN) {
+        cable.pull += dt;
+        if (!cable.taut && ctx.t - tautTalk > CABLE_TALK_COOLDOWN) {
+          tautTalk = ctx.t;
+          ctx.flash("The cable goes tight — that's the whole reel. Back up, or keep pulling and it comes out", 2600);
+        }
+      } else {
+        cable.pull = Math.max(0, cable.pull - dt * CABLE_PULL_RELAX);
+      }
+      cable.taut = true;
+      if (cable.pull >= CABLE_PULL_OUT) {
+        cable.carrying = false;
+        cable.snapped = true;
+        cable.taut = false;
+        cable.pull = 0;
+        cable.len = 0;
+        cable.pts = [];
+        ctx.flash(
+          "The plug comes out of the rack — that route was too long. Straight line, under the tables, Voxxy!",
+          3500,
+        );
+      }
+      return;
+    }
+
+    cable.taut = false;
+    cable.pull = Math.max(0, cable.pull - dt * CABLE_PULL_RELAX);
+    if (d > CABLE_STEP) {
+      cable.len += d;
+      cable.pts.push({ x: v.x, y: v.y });
+    }
+  }
 
   /**
    * The wheel's own body: one angle, one angular velocity, its own drag, its own
@@ -732,39 +848,36 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     stepWheel(dt);
 
     const v = ctx.byKind('voxxy');
-    if (cable.carrying) {
-      const last = cable.pts[cable.pts.length - 1];
-      const d = dist(v, last);
-      if (d > CABLE_STEP) {
-        cable.len += d;
-        cable.pts.push({ x: v.x, y: v.y });
-      }
-      if (cable.len > CABLE_MAX) {
-        cable.carrying = false;
-        cable.snapped = true;
-        cable.len = 0;
-        cable.pts = [];
-        ctx.flash(
-          "The cable's run out — that route was too long. It snaps back to the rack. Straight line, under the tables, Voxxy!",
-          3500,
-        );
-      }
-    }
+    if (cable.carrying) stepCable(v, dt);
 
     if (!power && !hintedPanel && (inRect(v, GF.tech) || inRect(ctx.byKind('biggy'), GF.tech))) {
       hintedPanel = true;
       ctx.flash('Breakers — way up on the wall. Droid?');
     }
 
-    // Once the house lights are on the prototype stops masking, and so do we: the
-    // renderer lights the hall from its own chapter mood instead.
-    //
-    // The polygons are still CAST while the cabinet is shut, because the index mark
-    // is a light question and it does not stop being one when the breakers go in —
-    // they are simply not handed to the renderer any more. One cone, one pool and
-    // one flood a frame, which is what chapter 1 pays for the whole way through.
-    const cast = !power || !wheel.open ? buildLights(ctx.bots, ctx.walls, NO_MIRRORS) : NO_MIRROR_LIGHTS;
-    lights = power ? NO_MIRROR_LIGHTS : cast;
+    /*
+     * THE LAMPS STAY ON. Michele: *"After switching the room gets darker, not
+     * lighter (i think is the robot's light being switched off?)."*
+     *
+     * This line is the half of that he guessed. It used to read
+     * `lights = power ? NO_MIRROR_LIGHTS : cast`, on the prototype's logic that
+     * once the house lights are up there is nothing left to reveal — but the
+     * renderer does not only draw pools from this list, it drives each robot's
+     * spotlight and its key light from it too (`src/render/lighting.ts`). Handing
+     * it an empty list switched all nine of those off, and since nothing on the
+     * renderer's side had ever heard of the breakers, the net effect of throwing
+     * them was that the hall went three-quarters darker: mean scene luminance
+     * 12.5 -> 5.1, 90th percentile 42 -> 8.8.
+     *
+     * One cone, one pool and one flood a frame is what chapter 1 pays for its whole
+     * length, so casting them the whole way through costs nothing new. The house
+     * lights coming up is now the RENDERER's answer to `power` (MOOD_EXPO_LIT),
+     * which is where a change in what the room looks like belongs; the mood damps
+     * these lamps to 0.4 the way chapter 3's daylight does, so they fade rather
+     * than vanish.
+     */
+    const cast = buildLights(ctx.bots, ctx.walls, NO_MIRRORS);
+    lights = cast;
     // A single-colour visibility test, not a mix: only the 0.38 rad cone throws an
     // edge hard enough to read a scribed line, which is why Biggy's 1.0 rad flood
     // standing in the same doorway reveals nothing.
@@ -834,7 +947,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         // drawn cable and the metered length agree to within one sample step.
         pts: cable.carrying ? [...cable.pts, { x: ctx.byKind('voxxy').x, y: ctx.byKind('voxxy').y }] : cable.pts,
         v: cable.len,
-        state: cable.connected ? 'done' : cable.carrying ? 'active' : cable.snapped ? 'broken' : 'idle',
+        state: cable.connected ? 'done' : cable.taut ? 'taut' : cable.carrying ? 'active' : cable.snapped ? 'broken' : 'idle',
         label: 'cable reel',
       },
       {
@@ -866,7 +979,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       : cable.snapped
         ? 'cable snapped — back to the rack'
         : cable.carrying
-          ? `cable ${Math.round(cable.len)}/${CABLE_MAX} px`
+          ? `cable ${Math.round(cable.len)}/${CABLE_MAX} px${cable.taut ? ' — TAUT' : ''}`
           : 'cable: on the reel at the rack';
     const router = wheel.open
       ? 'router ✓'
@@ -886,7 +999,13 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       chapter: 2,
       power,
       breakersLeft,
-      cable: { carrying: cable.carrying, connected: cable.connected, len: cable.len, snapped: cable.snapped },
+      cable: {
+        carrying: cable.carrying,
+        connected: cable.connected,
+        len: cable.len,
+        snapped: cable.snapped,
+        taut: cable.taut,
+      },
       rollerBroken,
       wheel: {
         ang: wheel.ang,

@@ -434,12 +434,22 @@ describe('chapter 2 — expo', () => {
     expect(top).toBeGreaterThan(bot(pushed, 'biggy').max);
   });
 
-  it('runs the cable to the printer on the straight route, and snaps it on the long way round', () => {
+  /*
+   * WHY THE PILOT NOW STANDS NORTH OF THE RACK RATHER THAN ON ITS CORNER.
+   *
+   * It used to walk to `rack.x + 10, rack.y - 14`, which is two sim pixels off the
+   * rack's north-east corner — fine while the rack was a picture. Michele's chapter
+   * 2 report ("robots can go through staircase and objects") turned the whole of
+   * the hall's drawn furniture into colliders, the 19-inch rack included, so that
+   * waypoint is now inside a cabinet. The pilot stands 24 px north of the reel
+   * instead: still well inside `PLUG_REACH`, same errand, same route.
+   */
+  it('runs the cable to the printer on the straight route, and snaps it on the long way round', { timeout: 30000 }, () => {
     const g = mk(2);
     const rack = { x: GF.rack.x + 10, y: GF.rack.y + 12 };
     const printer = { x: GF.printer.x + 10, y: GF.printer.y + 6 };
 
-    expect(walkTo(g, 'voxxy', { x: rack.x + 10, y: rack.y - 14 })).toBe(true);
+    expect(walkTo(g, 'voxxy', { x: rack.x, y: rack.y - 24 })).toBe(true);
     g.key('KeyE');
     expect((g.debug.chapter() as ExpoState).cable.carrying).toBe(true);
 
@@ -477,12 +487,21 @@ describe('chapter 2 — expo', () => {
     expect(cable.len).toBeGreaterThan(1140);
     expect(cable.len).toBeLessThan(CABLE_MAX * 0.85);
 
-    // The long way round: out of the technical room, down the bottom lane and back.
+    /*
+     * The long way round: out of the technical room, down the bottom lane and back.
+     *
+     * The first leg used to be a hand-written waypoint at 215,625, which threaded
+     * the technical room's door by eye. The hall has colliders now — a roof column
+     * stands at 220,620 and the rack itself is solid — so getting OUT of the room
+     * is routed rather than guessed, and the detour proper starts once she is in
+     * the open lane. The errand is the same: 2,100 px of walking against a 1,480 px
+     * reel.
+     */
     const long = mk(2);
-    expect(walkTo(long, 'voxxy', { x: rack.x + 10, y: rack.y - 14 })).toBe(true);
+    expect(walkTo(long, 'voxxy', { x: rack.x, y: rack.y - 24 })).toBe(true);
     long.key('KeyE');
+    expect(walkTo(long, 'voxxy', { x: 300, y: 650 })).toBe(true);
     const detour: Vec2[] = [
-      { x: 215, y: 625 },
       { x: 950, y: 650 },
       { x: 300, y: 650 },
       { x: 950, y: 650 },
@@ -490,6 +509,7 @@ describe('chapter 2 — expo', () => {
     driveTo(long, 'voxxy', detour, 10, 500);
     const snapped = (long.debug.chapter() as ExpoState).cable;
     expect(snapped.snapped).toBe(true);
+    expect(snapped.taut).toBe(false);
     expect(snapped.carrying).toBe(false);
     expect(snapped.connected).toBe(false);
   });
@@ -556,7 +576,17 @@ describe('chapter 2 — expo', () => {
 
   // Ten full coast-downs with the hall's light polygons cast every frame: slow, and
   // the point of it is the breadth of the sweep, so it gets its own budget.
-  it('turns the wheel for Biggy and strands it on a detent — he never lands the mark alone', { timeout: 30000 }, () => {
+  /*
+   * TIMEOUTS IN THIS BLOCK. `buildLights` is ~95% of a chapter-2 sim step and its
+   * cost is (lights x rays x walls). Two changes landed on 23 Sep 2026 that both
+   * push on it: the hall's drawn furniture became colliders (63 walls -> 100, from
+   * Michele's "robots can go through staircase and objects"), and every robot
+   * gained a skirt pool (3 lights -> 6, from "spread a bit of light around the
+   * character"). Measured here: 0.9 -> 1.83 -> 2.63 ms per cast. These pilots drive
+   * thousands of sim steps, so their wall-clock budgets grew with it. The
+   * assertions are all unchanged.
+   */
+  it('turns the wheel for Biggy and strands it on a detent — he never lands the mark alone', { timeout: 90000 }, () => {
     const g = mk(2);
     const mark = expo(g).wheel.mark;
     heaveWheel(g);
@@ -619,7 +649,75 @@ describe('chapter 2 — expo', () => {
     }
   });
 
-  it('keeps the badge printer offline until power, cable and router are all in', () => {
+  /*
+   * THE END OF THE REEL — Michele: *"When cable ends, Voxxy should be stopped and
+   * only further going would release it."*
+   *
+   * It used to just vanish: one frame under `CABLE_MAX`, the next the plug was back
+   * on the rack. There was nothing between "fine" and "gone", so there was nothing
+   * the player could react to. Three things are asserted here and each of them is
+   * invisible to every other test in this file: the cable goes TAUT, Voxxy is HELD
+   * while it is, and she is only released by continuing to pull.
+   */
+  it('holds Voxxy on the end of the cable, and only lets go if she keeps pulling', { timeout: 30000 }, () => {
+    const g = mk(2);
+    const rack = { x: GF.rack.x + 10, y: GF.rack.y + 12 };
+    g.debug.select('voxxy');
+    g.debug.place('voxxy', rack.x, rack.y - 24);
+    g.key('KeyE');
+    expect(expo(g).cable.carrying).toBe(true);
+
+    // Out of the technical room, then up and down the bottom lane until the reel
+    // is paid out. Long before the old code would have snapped it.
+    expect(walkTo(g, 'voxxy', { x: 300, y: 650 })).toBe(true);
+    const lane: Vec2[] = [
+      { x: 950, y: 650 },
+      { x: 300, y: 650 },
+      { x: 950, y: 650 },
+    ];
+    let taut = false;
+    for (const p of lane) {
+      for (let i = 0; i < 500 && !taut; i++) {
+        const b = bot(g, 'voxxy');
+        const dx = p.x - b.x;
+        const dy = p.y - b.y;
+        if (Math.hypot(dx, dy) <= 10) break;
+        g.setStick(Math.abs(dx) > 3 ? Math.sign(dx) : 0, Math.abs(dy) > 3 ? Math.sign(dy) : 0);
+        g.update(DT_MAX);
+        taut = expo(g).cable.taut;
+      }
+      if (taut) break;
+    }
+    expect(taut, 'the cable never went taut on a 2,100 px route').toBe(true);
+
+    // HELD. The stick is still down and she is still trying, and she does not get
+    // any further: the whole reel is out and the cable is what is stopping her.
+    const at = { ...bot(g, 'voxxy') };
+    const c = expo(g).cable;
+    expect(c.carrying).toBe(true);
+    expect(c.snapped).toBe(false);
+    expect(c.len).toBeGreaterThan(CABLE_MAX * 0.95);
+    expect(c.len).toBeLessThanOrEqual(CABLE_MAX);
+
+    // Let go of the stick: she stays put, and the plug stays in. Pulling is a
+    // decision, not a timer that was already running.
+    g.setStick(0, 0);
+    steps(g, 90);
+    expect(expo(g).cable.carrying, 'the plug came out while nobody was pulling').toBe(true);
+    expect(Math.hypot(bot(g, 'voxxy').x - at.x, bot(g, 'voxxy').y - at.y)).toBeLessThan(6);
+
+    // Now lean on it. THAT is what costs her the cable.
+    g.setStick(1, 0);
+    const out = until(g, () => expo(g).cable.snapped, 200);
+    g.setStick(0, 0);
+    expect(out, 'pulling against a taut cable never released the plug').toBe(true);
+    const after = expo(g).cable;
+    expect(after.carrying).toBe(false);
+    expect(after.taut).toBe(false);
+    expect(after.len).toBe(0);
+  });
+
+  it('keeps the badge printer offline until power, cable and router are all in', { timeout: 30000 }, () => {
     const g = mk(2);
     const panel = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
     const rack = { x: GF.rack.x + 10, y: GF.rack.y + 12 };
@@ -631,7 +729,7 @@ describe('chapter 2 — expo', () => {
     for (let i = 0; i < 3; i++) g.key('KeyE');
     expect(expo(g).power).toBe(true);
 
-    expect(walkTo(g, 'voxxy', { x: rack.x + 10, y: rack.y - 14 })).toBe(true);
+    expect(walkTo(g, 'voxxy', { x: rack.x, y: rack.y - 24 })).toBe(true);
     g.key('KeyE');
     expect(walkTo(g, 'voxxy', { x: printer.x, y: printer.y + 34 })).toBe(true);
     g.key('KeyE');
@@ -655,7 +753,7 @@ describe('chapter 2 — expo', () => {
     expect(g.snapshot().progress).toContain('router ✓');
   });
 
-  it('runs chapter 2 end to end — breakers, cable, router and the roller door', () => {
+  it('runs chapter 2 end to end — breakers, cable, router and the roller door', { timeout: 30000 }, () => {
     const g = mk(2);
     const panel = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
     const rack = { x: GF.rack.x + 10, y: GF.rack.y + 12 };
@@ -676,7 +774,7 @@ describe('chapter 2 — expo', () => {
     expect(expo(g).power).toBe(true);
 
     // 3. the cable
-    expect(walkTo(g, 'voxxy', { x: rack.x + 10, y: rack.y - 14 })).toBe(true);
+    expect(walkTo(g, 'voxxy', { x: rack.x, y: rack.y - 24 })).toBe(true);
     g.key('KeyE');
     expect(walkTo(g, 'voxxy', { x: printer.x, y: printer.y + 34 })).toBe(true);
     g.key('KeyE');
