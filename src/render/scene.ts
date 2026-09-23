@@ -1102,6 +1102,25 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
 
   /* ---------------------------------------------------------------- robots */
 
+  /**
+   * How far to raise Droid so he sits on Biggy's dome rather than hovering over it.
+   *
+   * Biggy's crown, less the height of Droid's own pelvis above his soles, less a
+   * couple of centimetres so he settles into the helmet instead of balancing on
+   * it. Measured once from the rigs at rest and cached — both robots are built
+   * procedurally, so a reshape of either changes this automatically.
+   */
+  let mountLiftM: number | null = null;
+  function mountLift(): number {
+    if (mountLiftM !== null) return mountLiftM;
+    const droid = rigs.get('droid');
+    if (!droid) return ROBOT_HEIGHT_M.biggy;
+    droid.root.updateMatrixWorld(true);
+    const pelvisY = new THREE.Vector3().setFromMatrixPosition(droid.bones.pelvis.matrixWorld).y;
+    mountLiftM = ROBOT_HEIGHT_M.biggy - pelvisY - 0.02;
+    return mountLiftM;
+  }
+
   function placeRobots(snap: GameSnapshot, dt: number, floorY: number): void {
     const show = snap.chapter >= 1;
     for (const b of snap.bots) {
@@ -1111,7 +1130,18 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       if (!show) continue;
       // Droid rides on Biggy: the sim keeps both at the same footprint, so the
       // renderer is the only place that knows how far up "on his shoulders" is.
-      const lift = b.kind === 'droid' && b.mounted ? ROBOT_HEIGHT_M.biggy : 0;
+      //
+      // This used to lift him by Biggy's full height, which is right only if his
+      // SOLES are what touch down. They are not: the mounted pose in `gait.ts`
+      // tucks his knees up, so his feet end up well above his own root and he
+      // floated a clear metre over the dome — "droid on biggy is floating.
+      // Sitting on the helmet should be it?"
+      //
+      // He sits instead. `mountLift` puts his PELVIS just into the crown, so the
+      // dome takes his weight where a rider's weight actually goes, and the
+      // measurement comes off the rig rather than being a magic number that goes
+      // stale the next time either robot is reshaped.
+      const lift = b.kind === 'droid' && b.mounted ? mountLift() : 0;
       rig.root.position.set(m(b.x), floorY + lift, m(b.y));
       updateRobot(rig, {
         speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M,

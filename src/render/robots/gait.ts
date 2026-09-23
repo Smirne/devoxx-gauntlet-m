@@ -538,12 +538,18 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
 
   /* ------------------------------------------------------------- legs */
   if (params.mounted) {
-    // Riding Biggy: knees up, feet tucked, nothing planted.
+    // Riding Biggy: sitting astride the dome, not curled up in mid-air.
+    //
+    // This was knees-up and feet-tucked, which reads as a crouching jump and,
+    // together with a lift that assumed his soles touched down, left him hovering
+    // over the helmet. He now straddles it: hips rolled well out so the thighs
+    // pass either side of a dome nearly a metre and a half across, shins hanging
+    // down its flanks, feet level.
     for (const L of ['L', 'R'] as const) {
-      bones[`thigh${L}`].rotation.x = -1.05;
-      bones[`shin${L}`].rotation.x = 1.55;
-      bones[`foot${L}`].rotation.x = 0.35;
-      bones[`hip${L}`].rotation.z = L === 'L' ? 0.22 : -0.22;
+      bones[`thigh${L}`].rotation.x = -0.52;
+      bones[`shin${L}`].rotation.x = 0.92;
+      bones[`foot${L}`].rotation.x = 0.12;
+      bones[`hip${L}`].rotation.z = L === 'L' ? 0.58 : -0.58;
     }
     st.contact[0] = false;
     st.contact[1] = false;
