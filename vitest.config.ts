@@ -13,7 +13,7 @@ export default defineConfig({
      * whoever cloned the repo. Anything prefixed `_` or `zz-` is working
      * material — ignored here, and ignored by git.
      */
-    exclude: ['tests/_*.test.ts', 'tests/zz-*.test.ts', 'node_modules/**', 'dist*/**'],
+    exclude: ['tests/_*.test.ts', 'tests/zz-*.test.ts', 'tests/probe-*.test.ts', 'node_modules/**', 'dist*/**'],
     reporters: ['default'],
   },
 });
