@@ -24,7 +24,7 @@
 
 import * as THREE from 'three';
 import type { RobotKind } from '../../sim/types';
-import { clamp, smoothstep, type RobotRig } from './rig';
+import { clamp, lerp, smoothstep, type RobotRig } from './rig';
 
 const TAU = Math.PI * 2;
 
@@ -53,6 +53,31 @@ export const IDLE_SPEED_MPS = 0.05;
 /** A gait never runs faster than this, however arcade the sim speed gets. */
 const MAX_STEP_FREQ = 6.5;
 
+/**
+ * How fast a shoulder is allowed to swing, radians per second.
+ *
+ * Michele, on the chapter-1 build: *"Voxxy's arms are frenetic at speed."* He is
+ * right and the number is worse than it looks. Her profile asks for 0.85 rad of
+ * swing, and at her top speed the cycle is 0.179 s, so the shoulder was being
+ * driven at **30.3 rad/s — 1735 degrees per second**, measured off the bone. A
+ * servo does not do that, and on screen it is a propeller.
+ *
+ * The cause is amplitude, not speed: she is at the speed he approved and
+ * `src/sim` is not involved. The cadence is already bounded (by `MAX_STEP_FREQ`
+ * and by the over-striding rule below, which is what stops her legs blurring);
+ * nothing bounded the SWING, so the faster the cycle ran the faster the same
+ * 0.85 rad had to be covered.
+ *
+ * So the arm gets the limit an actuator has: a peak angular rate. The requested
+ * amplitude is scaled down by whatever factor keeps `A * 2pi / cycle` under this,
+ * which is a statement about the arm rather than about the speed — and because
+ * it is a rate, it only ever binds on the robot that was actually breaking it.
+ * Measured at each robot's top speed with this in place: Voxxy 30.3 -> 12.0
+ * rad/s (her swing at 5.8 m/s falls 0.85 -> 0.34 rad), **Droid 3.4 and Biggy 6.4,
+ * both untouched**, and Voxxy's own walk at 1 m/s untouched at 9.3.
+ */
+const ARM_MAX_RATE = 12;
+
 export type PoseName = 'nope' | 'reach' | 'squeeze';
 
 const POSE_DURATION: Record<PoseName, number> = { nope: 0.6, reach: 1.15, squeeze: 0.95 };
@@ -71,6 +96,14 @@ export interface GaitParams {
   mounted?: boolean;
   /** Set to fire a one-shot pose. Edge triggered: hold it or clear it, either works. */
   pose?: PoseName | null;
+  /**
+   * Where a hop is in its arc: **0 on the ground, 0..1 across the airtime.**
+   *
+   * This is `hopPhase(bot)` from `src/sim/bot.ts` and nothing else — the sim owns
+   * the jump, the renderer reads its clock. The caller lifts the rig by
+   * `JUMP_RISE_M * 4u(1 - u)`; this is what the robot DOES while it is up there.
+   */
+  hop?: number;
 }
 
 /**
@@ -438,6 +471,25 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
   const head = bones.head;
   const scale = rig.height / 1.45;
 
+  /*
+   * THE HOP. Voxxy's verb, and the only robot that has one.
+   *
+   * `u` is the sim's own `hopPhase`, 0 at take-off and 1 at landing. Everything
+   * below is built from two shapes of it, so the pose is continuous at both ends
+   * without a blend parameter to keep in step:
+   *
+   *   `tuck`  climbs fast out of the floor, holds through the apex, and unwinds
+   *           into the landing — the knees coming up.
+   *   `land`  is zero until past the apex and 1 at touchdown — the legs reaching
+   *           for the floor and the arms coming down to catch.
+   *
+   * A mounted robot cannot hop (the sim will not let one), so the two never mix.
+   */
+  const u = params.mounted ? 0 : clamp(params.hop ?? 0, 0, 1);
+  const hopping = u > 0;
+  const tuck = hopping ? smoothstep(0, 0.16, u) * (1 - smoothstep(0.55, 0.96, u)) : 0;
+  const land = hopping ? smoothstep(0.5, 1, u) : 0;
+
   /* ------------------------------------------------------------ speed */
   const v = Math.max(0, params.speedMps || 0);
   const accelRaw = dt > 0 ? (v - st.prevSpeed) / dt : 0;
@@ -535,6 +587,13 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
 
   if (idleAmt > 0.01) applyIdlePelvis(rig, st, idleAmt);
   if (poseName) applyPosePelvis(rig, poseName, e, scale);
+  if (hopping) {
+    // The pelvis rides a little higher with the knees up and drops as she folds
+    // to absorb the landing. The bob and the lean are already in; this is on top,
+    // and it is BEFORE the legs so the IK blend below sees the real hip height.
+    pelvis.position.y += (0.035 * tuck - 0.045 * land) * scale;
+    pelvis.rotation.x += 0.16 * tuck - 0.1 * land;
+  }
 
   /* ------------------------------------------------------------- legs */
   if (params.mounted) {
@@ -580,10 +639,20 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
       }
       solveLeg(rig, st, side, z, y, pelvis.rotation.x, ankle);
     }
+    if (hopping) applyHopLegs(rig, st, tuck, land);
   }
 
   /* ------------------------------------------------------------- arms */
-  const swing = p.armSwing * amp;
+  /*
+   * The slew limit (see `ARM_MAX_RATE`). `upper.rotation.x` traces
+   * `A cos(2pi t / cycle)`, whose peak rate is `A * 2pi / cycle`; hold that under
+   * the limit and the whole arm — elbow included, or the forearm would outrun the
+   * upper arm it hangs off — is scaled by the same factor.
+   */
+  const wanted = p.armSwing * amp;
+  const armRate = (wanted * TAU) / Math.max(1e-4, cycle);
+  const armScale = armRate > ARM_MAX_RATE ? ARM_MAX_RATE / armRate : 1;
+  const swing = wanted * armScale;
   for (const side of [0, 1] as const) {
     const L = side === 0 ? 'L' : 'R';
     const shoulder = bones[`shoulder${L}`];
@@ -593,7 +662,7 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
     // +1 when this side's leg is forward; the arm counter-swings it.
     const fwd = Math.cos(u * TAU);
     upper.rotation.x += swing * fwd;
-    fore.rotation.x -= p.elbow * amp * Math.max(0, -fwd) + 0.06 * amp;
+    fore.rotation.x -= p.elbow * amp * armScale * Math.max(0, -fwd) + 0.06 * amp;
     // A little outward flare with speed, and a lag behind the turn.
     shoulder.rotation.z += (side === 0 ? 1 : -1) * 0.06 * amp;
     shoulder.rotation.y += clamp(-st.turn * 0.04, -0.2, 0.2);
@@ -616,13 +685,16 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
 
   if (idleAmt > 0.01) applyIdleUpper(rig, st, idleAmt, dt);
   if (poseName) applyPoseUpper(rig, poseName, e, st);
+  if (hopping) applyHopUpper(rig, tuck, land);
 
   /* --------------------------------------------------------- antenna */
   const ant = bones.antenna;
   if (ant) {
     // A damped spring whipped by acceleration and by turning. Biggy's is slack
     // and wobbles for ages; Voxxy's nub is stiff and barely moves.
-    const driveX = -clamp(st.accel, -30, 30) * 0.012 - Math.sin(st.t * 2.1) * 0.04 * idleAmt;
+    // The hop whips it too: she goes up, the nub stays behind, and it is still
+    // catching up when she lands. `tuck - land` is +1 rising and -1 falling.
+    const driveX = -clamp(st.accel, -30, 30) * 0.012 - Math.sin(st.t * 2.1) * 0.04 * idleAmt - 0.22 * (tuck - land);
     const driveZ = clamp(st.turn, -8, 8) * 0.06 + Math.sin(st.t * 1.5 + 1.1) * 0.03 * idleAmt;
     st.antXV += (-p.antK * st.antX - p.antC * st.antXV + driveX * p.antK) * dt;
     st.antZV += (-p.antK * st.antZ - p.antC * st.antZV + driveZ * p.antK) * dt;
@@ -707,6 +779,71 @@ function applyIdleUpper(rig: RobotRig, st: GaitState, w: number, dt: number): vo
       }
       break;
   }
+}
+
+/* -------------------------------------------------------------------- hop */
+
+/**
+ * The legs, while she is in the air.
+ *
+ * `solveLeg` has already run and planted both feet on a floor that is no longer
+ * under them, so this **blends over** its answer rather than adding to it: at
+ * the apex the leg is entirely the tuck, and at both ends of the arc it is
+ * entirely the walk, which is what makes take-off and landing continuous with
+ * whatever she was doing before she pressed the key.
+ *
+ * `contact` is cleared as well. A foot that is 30 cm off the floor is not
+ * planted, and `main.ts` fires a footstep off exactly this flag — without it she
+ * clattered across the whole arc.
+ */
+function applyHopLegs(rig: RobotRig, st: GaitState, tuck: number, land: number): void {
+  const b = rig.bones;
+  // Knees up and heels back on the way up; the leg straightens and the toes come
+  // up to meet the floor on the way down.
+  const thighT = -1.15 * tuck + 0.16 * land;
+  const shinT = 1.5 * tuck * (1 - 0.65 * land);
+  const footT = 0.34 * tuck - 0.5 * land;
+  const w = clamp(tuck + land * 0.85, 0, 1);
+  for (const L of ['L', 'R'] as const) {
+    const thigh = b[`thigh${L}`];
+    const shin = b[`shin${L}`];
+    const foot = b[`foot${L}`];
+    thigh.rotation.x = lerp(thigh.rotation.x, thighT, w);
+    shin.rotation.x = lerp(shin.rotation.x, shinT, w);
+    foot.rotation.x = lerp(foot.rotation.x, footT, w);
+    // A small splay, so the tuck is a frog and not a pair of scissors.
+    b[`hip${L}`].rotation.z += (L === 'L' ? 1 : -1) * 0.2 * tuck;
+  }
+  st.contact[0] = false;
+  st.contact[1] = false;
+}
+
+/**
+ * The arms, the torso and the head, while she is in the air.
+ *
+ * Voxxy's arms are the longest thing on her — the model sheet's own "very long
+ * tapered arms with a white band near the wrist" — so they are what has to carry
+ * the jump. Both go up and OUT on the way up (a small robot with a big reach,
+ * which is the read Michele keeps asking for: *"I vote funny, robots must be
+ * recognizable"*), then swing forward and down to catch the landing. It is
+ * written for any rig rather than for Voxxy alone, because only the sim decides
+ * who may leave the floor and this file should not have a second opinion.
+ */
+function applyHopUpper(rig: RobotRig, tuck: number, land: number): void {
+  const b = rig.bones;
+  for (const side of [1, -1] as const) {
+    const L = side > 0 ? 'L' : 'R';
+    // Negative rotation.x on a shoulder lifts the arm forward and up (see the
+    // 'reach' pose, which is the same sign).
+    b[`shoulder${L}`].rotation.x -= 1.55 * tuck - 0.6 * land;
+    b[`shoulder${L}`].rotation.z += side * (0.5 * tuck + 0.16 * land);
+    b[`upperArm${L}`].rotation.x -= 0.25 * tuck;
+    b[`forearm${L}`].rotation.x -= 0.5 * tuck + 0.3 * land;
+  }
+  b.torso.rotation.x -= 0.14 * tuck - 0.2 * land;
+  b.neck.rotation.x -= 0.1 * tuck - 0.08 * land;
+  // Looks up at the top of the arc and down at what she is about to land on.
+  b.head.rotation.x -= 0.2 * tuck - 0.16 * land;
 }
 
 /* ------------------------------------------------------------------ poses */
