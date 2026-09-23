@@ -379,7 +379,7 @@ const poloSign: Paint = (ctx, w, h) => {
   fitFont(ctx, 'DEVOXX POLO & BADGE', w * 0.9, Math.round(h * 0.34), 800);
   ctx.fillText('DEVOXX POLO & BADGE', w / 2, h * 0.38);
   ctx.font = `500 ${Math.round(h * 0.2)}px ${FONT}`;
-  ctx.fillText('pickup during lunch', w / 2, h * 0.74);
+  ctx.fillText('pickup at breakfast', w / 2, h * 0.74);
 };
 
 /* ------------------------------------------------------------------ placing */

@@ -535,7 +535,7 @@ export function createAudio(): Audio {
         bandNoise({ type: 'bandpass', f: 130, q: 0.6 }, 0.04, 0.05, 0.015);
         break;
       case 3:
-        // Lunch: three thousand people and a queue for tomato soup.
+        // Breakfast: three thousand people and a queue for tomato soup.
         bandNoise({ type: 'bandpass', f: 480, q: 0.8 }, 0.09, 0.17, 0.035);
         bandNoise({ type: 'bandpass', f: 1250, q: 1.1 }, 0.03, 0.23, 0.012);
         drone('sine', 96, 0.015);

@@ -134,15 +134,15 @@ export interface ChapterDef {
 
 import { ch1Night, type NightState } from './ch1-night';
 import { ch2Expo, type ExpoState } from './ch2-expo';
-import { ch3Lunch, type LunchState } from './ch3-lunch';
+import { ch3Breakfast, type BreakfastState } from './ch3-breakfast';
 import { ch4Keynote, type KeynoteState } from './ch4-keynote';
 
-export type { NightState, ExpoState, LunchState, KeynoteState };
+export type { NightState, ExpoState, BreakfastState, KeynoteState };
 
 /** The union a `ChapterRuntime.state()` may return; narrow it on `snapshot().chapter`. */
-export type ChapterState = NightState | ExpoState | LunchState | KeynoteState;
+export type ChapterState = NightState | ExpoState | BreakfastState | KeynoteState;
 
 /** The chapter manifest, in play order. Index 0 is the title card. */
-export const CHAPTERS: readonly ChapterDef[] = [ch1Night, ch2Expo, ch3Lunch, ch4Keynote];
+export const CHAPTERS: readonly ChapterDef[] = [ch1Night, ch2Expo, ch3Breakfast, ch4Keynote];
 
-export { ch1Night, ch2Expo, ch3Lunch, ch4Keynote };
+export { ch1Night, ch2Expo, ch3Breakfast, ch4Keynote };

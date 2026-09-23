@@ -262,7 +262,7 @@ const MOODS: Readonly<Record<number, Mood>> = Object.freeze({
     skyColor: 0x1e2a3c,
     groundColor: 0x13181f,
   },
-  /** 3 · Lunch. Daylight floods in through the entrance glazing; the lamps barely read. */
+  /** 3 · Breakfast. Daylight floods in through the entrance glazing; the lamps barely read. */
   3: {
     /*
      * Daylight, not flat fill.
