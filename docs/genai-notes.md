@@ -1454,3 +1454,103 @@ waits on `requestAnimationFrame` for every step of a minigame hangs. The sim is 
 with `game.update(DT_MAX)` while the page's own loop keeps drawing, and real frames are awaited at
 every checkpoint — and a second browser tab is fatal, because a background tab's RAF is throttled
 to a standstill.
+
+## 23 Sep 2026 — the third aiming complaint, and a refusal that was right for a reason it did not give (agent)
+
+Two control notes from Michele's latest chapter-1 playthrough, both raised before, both handed to a
+builder agent with one condition attached: **reproduce it headlessly before changing anything.**
+Closing a note by reading the code instead of testing it is a mistake already on the record in this
+file, and he caught it, so the brief made measurement the first deliverable rather than the fix.
+
+### 1. *"Pointing the light in a direction and stopping is still painful. Robots tend to turn up when u release / short press down."*
+
+**What the agent measured, before touching anything.** A throwaway probe drove each robot with the
+stick held in each of the eight directions, released, stepped until it stopped, and recorded the
+heading at release against the heading at rest — in free space, inside a box of walls, and in the
+real chapter-1 rooms through `createGame`.
+
+| situation | heading error at rest |
+|---|---|
+| free space, any hold length | 0.0 deg — the aim was never *drifting* |
+| inside a box of walls, all 8 directions, all 3 robots | **exactly 180 deg** |
+| chapter 1, driven 3 s from Voxxy's start | 180 deg in seven of eight directions |
+| one-frame press of a new direction at a run | Voxxy 64, Droid 82, Biggy 89 deg off the stick |
+| ragged release of a diagonal, 1-8 frame key skew | 14-43 deg, always toward the axis released last |
+
+**The cause, and it was not drift.** `face` was read off the *velocity*. A wall bounce reverses the
+normal component of the velocity, so the last frames of a coast point back the way the robot came:
+drive down into the seat rows, let go, and the robot turns round to face up the room. That is the
+"turn up", and it is 180 deg, not a wobble. The "short press" is the same mistake from the other
+end — the velocity has barely begun to turn, so a tap aims somewhere between the old heading and
+the new one. And a diagonal is two keys and two fingers that never lift together, so "let go of
+up-right" arrives at the sim as a real *up* for a frame or three.
+
+**What the agent changed.** Under the stick, the heading *is* the stick. Off the stick, it does not
+move. Unless the body is speeding up while nobody is steering it — a tow, a shove, a kick — in
+which case the world is moving it and the old velocity rule is right again, which is what keeps a
+towed Biggy and chapter 3's duck pointing the way they actually travel. All three measurements
+above now read 0.0 deg.
+
+**What that is and is not, against the freeze.** It changes what the heading is derived *from*. It
+retunes nothing: `FACE_MIN_SPEED` still reads `1 * SPEED_SCALE`, still gates the gait phase, still
+decides the heading of a body nobody is steering, and `tests/frozen-constants.test.ts` was not
+touched. One new constant was added, `AIM_SETTLE` (0.1 s), explicitly **not** frozen: a stick that
+has only *dropped* an axis is treated as a possible fumbled release and has to outlast the window,
+while a stick that presses something new is believed instantly, because aiming staying instant is
+the entire complaint.
+
+### 2. *"I had some trouble climbing on biggy (Droid must be next to a standing biggy - the exact situation i was in)."*
+
+He was quoting the game's own refusal back at it, and the honest answer is that **the refusal was
+correct and the message was a lie of omission.**
+
+| question the brief asked | measurement |
+|---|---|
+| is `MOUNT_REACH` honest? | yes — a 32 cm shell of daylight round a 1.44 m body, identical at all 16 angles swept |
+| can Droid get inside it? | yes, from the frame the two bodies touch |
+| how long is Biggy unclimbable after a small push? | **2.61 s** |
+| ...after being driven at his top speed? | **7.03 s** (drag 0.35 s^-1, the lowest in the game) |
+
+The trap is that **Droid does it to himself**: walking up to a parked Biggy knocks him to 1.0 m/s,
+which is 2.6 s of refusals, by the end of which Biggy has also rolled out of reach — so the next
+refusal is the *other* clause of the same sentence. Biggy was not standing, and the only reason he
+was not standing is that Droid had arrived.
+
+**What the agent changed.** Three answers instead of one, each naming what is actually wrong, in
+Droid's voice and with the distance or the speed in metres. And the middle one acts rather than
+scolds: a Droid already touching a slowly rolling Biggy plants his feet and stops him — the same
+braced-robot idea the rest of the game runs on, capped at Droid's own top speed on the grounds that
+he can only catch what he could have kept up with. The 2.61 s wait becomes one more keypress.
+
+**Nothing frozen moved here either.** A moving Biggy is still not climbable; `MOUNT_REACH` is still
+4 px and `MOUNT_BIGGY_MAX_SPEED` still `20 * BIGGY_SPEED_SCALE`.
+
+### What a human still has to decide
+
+The steadying is a **new mechanic**, not a bug fix, and it is flagged for Michele rather than
+presented as one. If he would rather Droid simply waited, deleting it leaves the corrected messages
+behind and the complaint half-answered. Raising `MOUNT_BIGGY_MAX_SPEED` so the knock never matters
+would answer it outright — and that is a frozen constant, so it is his call and not a builder's.
+
+### Rejected
+
+- **Retuning `FACE_MIN_SPEED`.** It is frozen, it is asserted, and the measurement showed it was
+  not the problem: the aim was not noisy, it was reading the wrong quantity.
+- **A turn-rate limit on the heading.** It would have smoothed the 180 deg flip into a slower 180
+  deg flip, and it costs aim response, which is the thing being complained about.
+- **Reverting the aim to the committed heading with a visible snap-back on release.** Waiting the
+  fumble out before believing it does the same job with nothing to see.
+- **Declaring the mount refusal a plain bug and widening the reach.** The reach measured honest at
+  every angle; widening it would have fixed the complaint by breaking the part that worked.
+
+### Verification
+
+A throwaway `git worktree` at the session's own commits, `node_modules` symlinked, three other
+agents left alone in the shared tree: `tsc --noEmit` clean, **281 of 282 tests green**, `vite build`
+clean. The one failure is chapter 3's crowd choreography timing out at 60 s; it passes in 17.4 s at
+clean `HEAD` and 20.7 s with this work when run on its own, so it is a slow test losing a race on a
+loaded box rather than a regression — recorded here because the next agent will see it too. Then
+the built page driven headlessly (`?chapter=1&warm=2&nofog=1&topdown=1`), stepping the sim directly
+with `game.update(DT_MAX)` rather than trusting `requestAnimationFrame`: Voxxy driven south for 3 s
+and released ended facing south to the last digit, Droid walked into Biggy and was up him on the
+frame after contact, `document.title` read `After Dark · ERRORS:0` and no console errors at all.
