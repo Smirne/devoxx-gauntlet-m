@@ -350,6 +350,25 @@ chapter 2 happened to need a loose body first; once the games left, chapter 2 st
 altogether and two other chapters were importing a physics helper across a chapter boundary from
 a chapter that did not use it.
 
+## The ground floor against the plan — Michele, 24 Sep, queued
+
+His chapter-2 playthrough was mostly a **sense-of-place** audit of the lobby, and every point below checks
+out against `plans/exhibition-floor-stairs-annotated.png`. Queued rather than in flight because
+`src/sim/geometry.ts` is held by another agent this round. Ten points of the score are sense of place,
+and the venue is one of the two things `CLAUDE.md` says may not drift.
+
+| his note | what the plan says |
+| --- | --- |
+| *"Stairs should be facing the entrance. As i enter i see stairs going straight up."* | Correct. The main staircase sits directly inside the main entrance and runs away from it. Ours does not face the door. |
+| *"Coat room / Wardrobe opening should be west."* | To be set against the plan's reception block when the rework starts. |
+| *"Reception i don't get it. There's a wood panel longer than the room. If it's the counter it should be lower, a half square, two sides (west and south): and it should be hollow inside. The printer might be on the reception counter, so no need to enter?"* | The counter is drawn as one long slab. He wants an L of two runs, hollow, at counter height, with the printer ON it — which also removes a reason to walk inside. |
+| *"Reception signal points the wrong way."* | The plan marks reception WEST of the main staircase; our sign points the other way. |
+| *"I think BOF is a single room and a bit longer, check the plan."* | Correct — the plan draws BOF as one room, east of the staircase. Ours is split. He will accept two rooms if one is too big a change, but not the current shape. *"There's the wood thing also here, so probably it's not the counter? This one is flickering."* — z-fighting to fix either way. |
+| *"Toilets are just on the west side, but it's not an important details. Cover it up."* | Plus a beat he offered: *"Wow, no queue"* in chapter 2, an actual queue and unreachable toilets in chapter 3. |
+| *"Main door should be closed, no going out in chapter 2. Not necessary in chapter 3 either, but we can keep it for flavour."* | Closes the forecourt, which an agent already flagged: robots can walk out into nothing at night. |
+| *"Robots light should go off when light is on."* | Once the hall is lit, the lamps are pointless and the mixing puzzle is over. |
+| *"this element before reception is not needed."* | The dark slab in front of the counter in his screenshot. |
+
 ## Looks — deferred by him, explicitly
 
 | item | who | note |
