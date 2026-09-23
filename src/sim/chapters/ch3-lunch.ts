@@ -356,7 +356,6 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /* --------------------------------------------------------------------- keys */
 
   function key(code: string): void {
-    if (code === 'KeyP' && !gateOpen) { done(); return; }
     const b = ctx.bots[ctx.cur];
     const d = ctx.byKind('droid');
     const bg = ctx.byKind('biggy');

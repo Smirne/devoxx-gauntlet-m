@@ -1009,3 +1009,64 @@ path.
 what moved was the pilot — two hand-written waypoints that are now inside a collider, and two
 wall-clock timeouts. The rule the previous round arrived at held up: recalibrate the pilot loudly,
 never the expectation quietly.
+
+## 2026-09-23 — two moments that were too quick to read (agent, from Michele's chapter-1 playtest)
+
+Michele, playing chapter 1: *"ah when biggy pushes the door in chapter 1 there should be some kind
+of animation. Shutter, or slide open or something. Also the animation in the chapter 1-2 passage is
+too fast and too dark, and I'd zoom more."*
+
+**The door did not open, it ceased to exist.** `onHit` set `jamBroken` and called `removeWall(jam)`
+in the same frame, and `props()` then stopped emitting the door at all — so the biggest physical
+thing the player does in the chapter was a door that blinked out between two frames. The sim now
+keeps the door in the prop list with a clock on it: `Prop.progress`, a normalised 0..1 documented as
+"how far through its own transition this prop is", ticked by `JAM_FALL_TIME = 0.55 s` in
+`ch1-night.ts`. The **collider still goes on the frame of the hit** — the player earned the passage,
+and a door that is visually open but physically shut is a worse bug than the one being fixed.
+
+*Human decision to make, not the agent's:* which animation. Michele offered a shutter, a slide or a
+swing. The agent measured the alternatives against the diorama camera and chose none of them: cinema
+E is on the bottom row, so its doorway FACES the camera, and a leaf on a vertical hinge is broadside
+at 0° and an edge-on sliver at 90° — the same trap `drawCabinet` already stops its leaf at 58° to
+avoid. A shutter or a slide keeps the leaf upright, which reads as *opened*, not as *hit*. It now
+tears off its bottom hinge and slams flat into the cinema, skewed and skidded, with one rattle: the
+largest change of silhouette this camera can show, and it leaves the leaf lying on the floor as a
+trophy. `camera.shake()` — written, documented and never called by anything since — is wired to the
+impact, as is the `crash` sound, which was in the same state.
+
+**"Too dark" was not the fades and not the ambient.** Measured, rather than guessed: a frame in the
+middle of the transition had a scene-band mean luminance of **7.09/255, 66% pure black, p90 6.94**
+— and from t=0.99 s to t=3.63 s those numbers did not move (7.09 → 6.76, p90/p99/max identical to
+two decimals). Three robots walking 250 px across the shot changed the picture by a tenth of a
+luminance level. Two causes, neither of them the fade (which was already at 0) and neither of them
+the chapter ambient (already boosted 3.5× with the fog mask already eased to nothing):
+
+1. **The robots' lamps stayed behind.** The cutscene runner walks the robots itself and never calls
+   `ChapterRuntime.update`, which is where chapter 1 rebuilds its light polygons — so for the whole
+   transition the three lamps went on shining on the keypad while their owners walked off down a
+   blacked-out corridor. A `relight()` hook on `ChapterRuntime`, called once a frame by the walk
+   stage, fixes it: **mean 7.0 → 25.3, p90 6.9 → 108.3.**
+2. **The shot was 72 m wide.** Cutscenes took `WIDE_MAX` (900×660 sim px). Chapter 1's is now
+   430×315 and tracks the middle of the group rather than whichever robot was last driven.
+
+**"Too fast" had been made worse by a concurrent change, and the measurement said so.** The
+transition Michele saw ran 3.73 s. By the time this was picked up, the speed rescale landed in the
+same tree and `CUT_WALK_MAX = 8` — a safety hatch, not a pace — was truncating the walk with Droid
+still mid-corridor. The runner is now driven by a DURATION (`CUT_WALK_TIME = 4.6 s`): each robot's
+pace is its own route length divided by the length of the shot, so no px/s constant is left in the
+cutscene code and the next rescale cannot retune the cinematography by accident. `CUT_WALK_SPEED`
+is now unused. With a longer black beat, a slower reveal, a hold on the final pose and a slower
+closing fade, both transitions run **7.2 s**. `tests/chapters.test.ts` passes untouched.
+
+**A latent bug the lockstep exposed.** `done` was set from "every robot reached *a* waypoint", not
+"every robot finished its route", so the leg ended on the frame all three touched the same corner —
+which is every corner once they walk at the same pace. The chapter 3→4 cutscene was stopping a third
+of the way up the main staircase.
+
+**What was rejected.** Brightening anything: the ambient table and the fade timings were both
+measured first and both exonerated. Zooming chapter 3's transition: it climbs the main staircase, and
+`placeRobots` has no elevation for a robot on a flight — `groundRiseM` exists in `sim/geometry.ts`
+for exactly this and says in its own comment that the renderer reads it, and nothing does — so the
+robots walk at hall height while the treads climb to 5 m over them. Zooming in would only frame that
+better. Chapter 3's cutscene keeps the wide shot until robot elevation is fixed, and the reason is
+written where the next person will look.

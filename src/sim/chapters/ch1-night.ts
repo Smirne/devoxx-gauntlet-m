@@ -18,7 +18,8 @@
  */
 
 import { CY0, CY1, DOOR, F1, R, VIEW_CLOSED, VIEW_F1, floor1Walls, roomDoor } from '../geometry';
-import { JAMMED_DOOR_SPEED, MOUNT_BIGGY_MAX_SPEED, MOUNT_REACH, T, W } from '../constants';
+import { JAMMED_DOOR_SPEED, MOUNT_BIGGY_MAX_SPEED, MOUNT_REACH, SPEED_SCALE, T, W } from '../constants';
+import { m } from '../units';
 import { buildLights, clueLit, litBy } from '../lights';
 import { dist, speed } from '../bot';
 import type { Clue, LightSource, Mirror, Prop, Rect, Wall } from '../types';
@@ -40,8 +41,19 @@ import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 const PAD_REACH = 40;
 /** How close Biggy must park for Droid, on his shoulders, to reach the panel. */
 const PANEL_REACH = 50;
-/** Biggy is loud about a run-up that will not do it, but only once he is moving. */
-const JAM_MIN_TALK = 20;
+/** Biggy is loud about a run-up that will not do it, but only once he is moving. px/s. */
+const JAM_MIN_TALK = 20 * SPEED_SCALE;
+/**
+ * How long the smashed door takes to finish falling, seconds.
+ *
+ * The COLLIDER is gone on the frame of the hit — the passage is earned the instant
+ * Biggy is through it, and a door that is visually open but physically shut would be
+ * a worse bug than the one this fixes. This clock only feeds `Prop.progress`, which
+ * is the renderer's cue to animate the leaf coming off its hinges. Half a second,
+ * tuned by eye: long enough to read as an impact, short enough that nobody waits for
+ * it. It is a duration, not a speed, so the physics rescale does not move it.
+ */
+const JAM_FALL_TIME = 0.55;
 
 /** The jokes on the doors of the cinemas Devoxx never uses. */
 const CLOSED_JOKES: Readonly<Record<string, string>> = Object.freeze({
@@ -61,6 +73,8 @@ export interface NightState {
   /** The projector-panel release that unlocks cinema B. */
   panelOn: boolean;
   jamBroken: boolean;
+  /** 0..1, how far the smashed door has got through falling. See `JAM_FALL_TIME`. */
+  jamFall: number;
   fireOpen: boolean;
   jokes: Readonly<Record<string, string>>;
 }
@@ -93,6 +107,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let entered = '';
   let panelOn = false;
   let jamBroken = false;
+  /** 0..1, the smashed door's own fall. Started by the hit, ticked in `update`. */
+  let jamFall = 0;
   let fireOpen = false;
 
   const digits = [0, 1, 2, 3].map(() => Math.floor(ctx.rng() * 10));
@@ -237,7 +253,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     kind: 'jammed',
     why: (b) =>
       b.kind === 'biggy'
-        ? `Biggy: jammed shut. Give me the width of the corridor and I'll go through it (needs ${JAMMED_DOOR_SPEED} px/s)`
+        ? `Biggy: jammed shut. Give me the width of the corridor and I'll go through it (needs ${m(JAMMED_DOOR_SPEED).toFixed(1)} m/s)`
         : `${b.name}: jammed shut. This one is Biggy's — from the far wall, straight at it`,
     // The check is the speed INTO the door, not the total speed: a fast robot sliding
     // along the corridor must not pop it open sideways. This was the prototype's own
@@ -247,13 +263,15 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       const into = Math.abs(b.vy);
       if (into > JAMMED_DOOR_SPEED) {
         jamBroken = true;
+        // The collider goes NOW. What is left is a prop with a clock on it: `jamFall`
+        // runs 0 -> 1 over `JAM_FALL_TIME` and the renderer draws the leaf falling.
         ctx.removeWall(jam);
-        ctx.flash(`CRASH — Biggy goes through the jammed door at ${Math.trunc(into)} px/s`);
+        ctx.flash(`CRASH — Biggy goes through the jammed door at ${m(into).toFixed(1)} m/s`);
         b.vx *= 0.5;
         b.vy *= 0.5;
         return true;
       }
-      if (into > JAM_MIN_TALK) ctx.flash(`Biggy: ${Math.trunc(into)} px/s — not enough, further back`);
+      if (into > JAM_MIN_TALK) ctx.flash(`Biggy: ${m(into).toFixed(1)} m/s — not enough, further back`);
       return false;
     },
   };
@@ -322,16 +340,25 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     // Out of the closed section and down the secondary staircase between 3 and 4 —
     // the one the plans put exactly there (GAUNTLET.md Stage 1).
     const nb = F1.nicheBot;
-    const route = (dy: number): Array<{ x: number; y: number }> => [
-      { x: F1.fireX + 30, y: 350 + dy },
-      { x: nb.x + 20, y: 350 + dy },
+    /*
+     * A loose diagonal, not a column.
+     *
+     * The three used to walk this with only a `dy` offset — 14 px apart along the
+     * diorama camera's own depth axis — so at the closer cutscene framing Biggy
+     * stood in front of the other two and the shot was one robot and two hats.
+     * Staggered in x as well they read as three, Voxxy out in front because she is
+     * the quick one, and they converge on the stairwell mouth for the descent.
+     */
+    const route = (dx: number, dy: number): Array<{ x: number; y: number }> => [
+      { x: F1.fireX + 30 + dx, y: 350 + dy },
+      { x: nb.x + 20 + dx, y: 350 + dy },
       { x: nb.x + 20, y: nb.y + 30 },
     ];
     ctx.startCut(
       [
-        { kind: 'voxxy', pts: route(-14) },
-        { kind: 'droid', pts: route(0) },
-        { kind: 'biggy', pts: route(14) },
+        { kind: 'voxxy', pts: route(18, -14) },
+        { kind: 'droid', pts: route(0, 0) },
+        { kind: 'biggy', pts: route(-18, 14) },
       ],
       () => ctx.startChapter(2),
       VIEW_F1,
@@ -386,6 +413,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   function update(dt: number): void {
     ctx.stepAll(dt);
     ctx.pushBiggy(dt);
+    if (jamBroken && jamFall < 1) jamFall = Math.min(1, jamFall + dt / JAM_FALL_TIME);
     lights = buildLights(ctx.bots, ctx.walls, mirrors);
     for (const c of clues) {
       if (!c.found && clueLit(lights, c)) {
@@ -413,7 +441,24 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       out.push({ kind: 'lock', x: d.x, y: d.y, w: d.w, h: d.h, state: 'shut' });
     }
     if (!panelOn) out.push({ kind: 'lock', x: lock.x, y: lock.y, w: lock.w, h: lock.h, state: 'shut' });
-    if (!jamBroken) out.push({ kind: 'jammed', x: jam.x, y: jam.y, w: jam.w, h: jam.h, state: 'shut' });
+    /*
+     * The jammed door is emitted whatever state it is in.
+     *
+     * It used to vanish from this list on the frame it broke, so the biggest
+     * physical thing the player does in the chapter had no picture at all: the door
+     * did not open, it ceased to exist. Broken, it keeps its place and carries
+     * `progress`; the leaf ends up lying on the cinema floor where Biggy put it,
+     * which is the trophy.
+     */
+    out.push({
+      kind: 'jammed',
+      x: jam.x,
+      y: jam.y,
+      w: jam.w,
+      h: jam.h,
+      state: jamBroken ? 'broken' : 'shut',
+      progress: jamFall,
+    });
     // The doors of the cinemas Devoxx never uses, each with its own excuse.
     for (const n of Object.keys(CLOSED_JOKES)) {
       const r = R(n);
@@ -452,6 +497,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     clues: () => clues,
     mirrors: () => mirrors,
     lights: () => lights,
+    // The only chapter whose picture IS its lamps: without this the cutscene out
+    // of the closed section is walked in the dark.
+    relight: () => {
+      lights = buildLights(ctx.bots, ctx.walls, mirrors);
+    },
     entered: () => entered,
     state: (): NightState => ({
       chapter: 1,
@@ -460,6 +510,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       entered,
       panelOn,
       jamBroken,
+      jamFall,
       fireOpen,
       jokes: CLOSED_JOKES,
     }),

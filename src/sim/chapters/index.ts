@@ -100,6 +100,15 @@ export interface ChapterRuntime {
   /** Chapter 1's keypad buffer. */
   entered?(): string;
   /**
+   * Rebuild whatever this chapter derives from where the robots ARE, running none
+   * of its rules. The cutscene runner walks the robots itself and never calls
+   * `update`, so chapter 1's lamps used to stay behind at the fire door for the
+   * whole transition: the three of them walked the length of a blacked-out
+   * corridor carrying light sources that were still shining on the keypad. Called
+   * once a frame while a cutscene is walking, and by nothing else.
+   */
+  relight?(): void;
+  /**
    * One short line of live progress for the HUD's bottom-centre readout, rebuilt
    * every frame (`GameSnapshot.progress`). Every chapter implements it: without
    * one a chapter shows the player a static briefing and no running score of what

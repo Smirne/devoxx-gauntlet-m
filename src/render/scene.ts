@@ -34,7 +34,7 @@ import { PX_PER_M, ROBOT_HEIGHT_M, STOREY_H_M, m } from '../sim/units';
 import { createCamera, type DioramaCamera } from './camera';
 import { createLightLayer, type LightLayer } from './lighting';
 import { createRobot, measureBounds, updateRobot, EXCLUDE_FROM_BOUNDS, type RobotRig } from './robots';
-import { buildVenue, type Venue } from './venue';
+import { BREAKER_H, BREAKER_Y, buildVenue, type Venue } from './venue';
 
 const KINDS: readonly RobotKind[] = ['voxxy', 'droid', 'biggy'];
 
@@ -76,6 +76,29 @@ const FOCUS_FALLBACK = { w: 360, h: 265 };
  * frame of chapter 4 (a 105 m rect) reads as an empty ribbon.
  */
 const WIDE_MAX = { w: 900, h: 660 };
+/**
+ * The cutscene window, sim px, per chapter — Michele's "I'd zoom more".
+ *
+ * A transition is a close beat, not an establishing shot. On the chapter's own rect
+ * the three robots were 900 px of corridor away from the camera and read as three
+ * specks; at this width they are the subject, and the camera tracks the middle of
+ * the group rather than whichever robot the player happened to be driving. Still
+ * wider than play (chapter 1 plays at 320x235) so the route they are walking is
+ * legible, but close enough that you can see who is walking it.
+ *
+ * **Chapter 3 is deliberately absent and stays on `WIDE_MAX`.** Its transition walks
+ * the three of them UP the main staircase, and the renderer has no elevation for a
+ * robot on a flight: `placeRobots` puts every robot at the storey's datum, and
+ * `groundRiseM` — which `src/sim/geometry.ts` exports for exactly this and says the
+ * renderer is the one that reads it — is not read by anything. So the robots walk
+ * at hall height while the treads climb to 5 m over them, and the closer the camera
+ * gets the more plainly they are inside the staircase rather than on it. That is a
+ * pre-existing gap, not this framing's; until it is fixed, zooming in on it would
+ * only frame it better. See the note in `placeRobots`.
+ */
+const CUT_FRAME: Readonly<Record<number, { w: number; h: number }>> = Object.freeze({
+  1: { w: 430, h: 315 },
+});
 /** Exponential approach rate of the framing, s^-1. High enough not to read as drift. */
 const FOCUS_EASE = 6;
 /** A jump larger than this (a `place`, a chapter change) cuts instead of panning. */
@@ -143,14 +166,25 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
   lock: { h: 2.1, color: 0x4a4038, tl: true },
   jammed: { h: 2.1, color: 0x6b4630, tl: true },
   /* chapter 2 — the exhibition hall */
-  breaker: { h: 1.5, color: 0x3a4250, tl: true },
-  rack: { h: 1.95, color: 0x232830, tl: true },
+  // `breaker` is NOT in this table: its three handles carry a live sim value, so it
+  // is drawn by `drawBreaker` the way the cam wheel is drawn by `drawCamWheel`.
+  // The rack's CARCASS is venue geometry (`ground.ts`), like the breaker enclosure:
+  // this is the live band across its face, so the chapter's idle/active/done state
+  // reads from across the room. Drawn as a solid box it was a second, duplicate
+  // cabinet standing in the same place — the mistake the breaker panel was making.
+  rack: { h: 0.3, color: 0x2b3a44, tl: true, lift: 1.55, glow: 0x1f5c38 },
   printer: { h: 0.95, color: 0xb9bec6, tl: true },
   roller: { h: 2.6, color: 0x7d8792, tl: true },
   gate: { h: 1.1, color: 0x2b3542, tl: true },
   lane: { h: 0.04, color: 0x6a5a2a, tl: true, flat: true },
   duck: { h: 0.3, color: 0xf0c040 },
-  'duck-target': { h: 0.03, color: 0x3f7fa8, flat: true },
+  // The circle the duck has to stop in. Michele found the duck ("I can push this
+  // yellow thing around. Does it have a purpose?") and not the target, which is
+  // exactly the `projector-panel` problem: an unlit floor decal in a blacked-out
+  // hall is not findable, and the thing that explains the yellow thing is the
+  // circle. `glow` makes it read before it is solved, as a painted line under a
+  // sponsor's own spot would.
+  'duck-target': { h: 0.03, color: 0x3f7fa8, flat: true, glow: 0x1d4a63 },
   sticker: { h: 0.06, color: 0xff7a1a },
   'race-marker': { h: 0.5, color: 0xff7a1a },
   /* chapter 3 — lunch */
@@ -427,6 +461,59 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   }
   dressing.add(camWheel);
 
+  /* ------------------------------------------------- the chapter-2 breaker panel
+   *
+   * Michele: *"The breaker should be graphical of course."* It was a 1.5 m grey box
+   * standing on the floor — `PROPS.breaker`, drawn by `drawProp` like a crate — in
+   * front of the static enclosure `ground.ts` was drawing at 1.45 m for the same
+   * control. Same failure as chapter 1's door override, same cure: the enclosure is
+   * venue fabric (`ground.ts`, named `breaker-panel`, at `BREAKER_Y`), and the part
+   * that is STATE lives here.
+   *
+   * Three handles on the enclosure's south face — the face the diorama camera looks
+   * at — each of which visibly flips from down to up as Droid throws it, plus the
+   * supply lamp that makes the panel findable in the dark before it is understood.
+   * `Prop.v` is how many are in; `Prop.state` is 'done' once the last one lands.
+   */
+  const BREAKER_COUNT = 3;
+  /** Handle angles about the panel's horizontal axis: tipped out and down, or up. */
+  const BREAKER_OFF = 0.7;
+  const BREAKER_ON = -0.2;
+
+  const breakerHandleMat = new THREE.MeshStandardMaterial({ color: 0xd8d4cc, roughness: 0.5, metalness: 0.1 });
+  const breakerLampMat = new THREE.MeshStandardMaterial({
+    color: 0x2a2018,
+    roughness: 0.4,
+    emissive: 0xb06a10,
+    emissiveIntensity: 1,
+    toneMapped: false,
+  });
+  const breakerPanel = new THREE.Group();
+  breakerPanel.name = 'breaker-handles';
+  breakerPanel.visible = false;
+  /** One pivot per handle, so `rotation.x` is the throw and nothing else moves. */
+  const breakerPivots: THREE.Group[] = [];
+  {
+    for (let i = 0; i < BREAKER_COUNT; i++) {
+      const pivot = new THREE.Group();
+      // The toggle itself, standing off the face, and the moulded base it sits in.
+      const lever = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.3, 0.08), breakerHandleMat);
+      lever.position.set(0, 0.15, 0.04);
+      lever.castShadow = true;
+      pivot.add(lever);
+      breakerPivots.push(pivot);
+      breakerPanel.add(pivot);
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.42, 0.06), bezelMat);
+      seat.position.set(0, 0.1, -0.03);
+      pivot.userData.seat = seat;
+      breakerPanel.add(seat);
+    }
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), breakerLampMat);
+    lamp.name = 'breaker-lamp';
+    breakerPanel.add(lamp);
+  }
+  dressing.add(breakerPanel);
+
   /** The fixed bezel: a ring, eight ticks, and the target mark among them. */
   const camBezel = new THREE.Group();
   camBezel.name = 'cam-bezel';
@@ -481,6 +568,54 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     cabinetOpen.add(cabinetLeaf);
   }
   dressing.add(cabinetOpen);
+
+  /* ------------------------------------------------- the jammed cinema door
+   *
+   * Chapter 1's door to cinema E, and the only thing in the game a robot destroys.
+   * It used to be deleted from the prop list on the frame Biggy hit it, so the
+   * player's biggest physical achievement in the chapter was a door that blinked
+   * out of existence. The sim now keeps it in the list with a `progress` on it
+   * (`Prop.progress`, 0..1, ticked by `JAM_FALL_TIME` in `ch1-night.ts`); all the
+   * decisions live there and this only draws what the number says.
+   *
+   * WHY IT FALLS FLAT rather than sliding aside or rolling up. Cinema E is on the
+   * bottom row, so its doorway faces the camera: a leaf that swung on a vertical
+   * hinge would be broadside at 0 degrees and an edge-on sliver at 90 — the same
+   * trap the cabinet leaf above is stopped at 58 degrees to avoid — and a shutter
+   * or a slide keeps the leaf upright, which reads as "opened", not as "hit".
+   * Tipped forward about its bottom edge, the leaf sweeps from a full-height
+   * rectangle to a foreshortened plate on the floor: the largest change of
+   * silhouette this camera can show, it clears the whole opening, and it finishes
+   * lying in the cinema where Biggy put it, which is the trophy. Biggy is running
+   * toward the camera when he hits it, so it goes down in front of the doorway,
+   * skewed and skidded, and rattles once before it settles.
+   */
+  const jammedLeaf = new THREE.Group();
+  jammedLeaf.name = 'jammed-door';
+  const jammedSlab = new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0.05 }));
+  jammedSlab.castShadow = true;
+  jammedSlab.receiveShadow = true;
+  jammedLeaf.add(jammedSlab);
+  dressing.add(jammedLeaf);
+
+  /** Radians the leaf tips through: a touch past flat, so it settles back onto the floor. */
+  const JAM_TIP = Math.PI / 2;
+  /** How far it skids into the room once it is off its hinges, metres. */
+  const JAM_SKID = 0.55;
+  /** How far off square it lands — it was hit off-centre, radians. */
+  const JAM_SKEW = 0.17;
+  /**
+   * The broken leaf is LIGHTER than the shut one, and deliberately.
+   *
+   * Shut, it is a painted face in a dark corridor and dark is right. Down, it is
+   * raw splintered timber, and it has to read — the first shot of it lying flat
+   * came back as a near-black patch of floor, because chapter 1's floor pools are
+   * decals on the floor plane and a slab lying ON that plane is not painted by
+   * them. Same lesson as the cabinet leaf above.
+   */
+  const JAM_BROKEN_COLOR = 0xa8825a;
+  /** Last frame's fall progress, so the impact is kicked once and not every frame. */
+  let jamLast = 0;
 
   /**
    * The ground ring under the robot being driven. Nothing else in the frame says
@@ -953,8 +1088,11 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    */
   function updateFocus(snap: GameSnapshot, dt: number): ViewRect {
     const view = snap.view;
-    const want = snap.phase === 'play' ? (FOCUS[snap.chapter] ?? FOCUS_FALLBACK) : WIDE_MAX;
-    if (snap.phase !== 'play') {
+    // A cutscene that has a framing of its own; chapters without one keep the wide
+    // shot they always had, which is also the untouched path for cards and the end.
+    const cut = snap.phase === 'cut' ? CUT_FRAME[snap.chapter] : undefined;
+    const want = snap.phase === 'play' ? (FOCUS[snap.chapter] ?? FOCUS_FALLBACK) : (cut ?? WIDE_MAX);
+    if (cut === undefined && snap.phase !== 'play') {
       // A wide shot, still centred on the robots rather than on the whole storey.
       focusReady = false;
       if (view.w <= WIDE_MAX.w && view.h <= WIDE_MAX.h) return view;
@@ -962,8 +1100,22 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const w = Math.min(want.w, view.w);
     const h = Math.min(want.h, view.h);
     const bot = snap.bots[snap.active];
-    const tx = clampTo(bot ? bot.x : view.x + view.w / 2, view.x + w / 2, view.x + view.w - w / 2);
-    const ty = clampTo(bot ? bot.y : view.y + view.h / 2, view.y + h / 2, view.y + view.h - h / 2);
+    // In a cutscene all three are the subject, so the camera tracks the middle of
+    // the group; in play it is the robot being driven.
+    let sx = bot ? bot.x : view.x + view.w / 2;
+    let sy = bot ? bot.y : view.y + view.h / 2;
+    if (cut !== undefined && snap.bots.length) {
+      sx = 0;
+      sy = 0;
+      for (const b of snap.bots) {
+        sx += b.x;
+        sy += b.y;
+      }
+      sx /= snap.bots.length;
+      sy /= snap.bots.length;
+    }
+    const tx = clampTo(sx, view.x + w / 2, view.x + view.w - w / 2);
+    const ty = clampTo(sy, view.y + h / 2, view.y + view.h - h / 2);
     if (snap.phase !== 'play') {
       focus.w = w;
       focus.h = h;
@@ -1184,6 +1336,40 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     cablePos.needsUpdate = true;
     cableGeo.setDrawRange(0, n);
     cableLine.visible = true;
+    // 'taut' is the sim holding Voxxy on the end of the reel (`stepCable`). The
+    // robot stopping is the loud half of that; this is the quiet half, so a player
+    // who is leaning into it can see WHAT is holding them.
+    cableMat.color.setHex(p.state === 'taut' ? 0xff4d3a : 0xffb347);
+  }
+
+  /**
+   * The breaker panel's three handles, on the face of the enclosure the venue drew.
+   *
+   * `p` is the panel rect (`GF.panel`, top-left), so the face is its south edge and
+   * the handles are spread across its width at the height `ground.ts` hung it at.
+   * `p.v` breakers are up; the rest are down.
+   */
+  function drawBreaker(p: Prop, floorY: number): void {
+    const wM = m(p.w ?? 26);
+    const dM = m(p.h ?? 16);
+    const thrown = p.v ?? 0;
+    breakerPanel.visible = true;
+    breakerPanel.position.set(m(p.x), floorY + BREAKER_Y, m(p.y) + dM);
+    for (let i = 0; i < BREAKER_COUNT; i++) {
+      const x = (wM * (i + 0.5)) / BREAKER_COUNT;
+      const y = BREAKER_H * 0.42;
+      const pivot = breakerPivots[i];
+      pivot.position.set(x, y, 0.02);
+      pivot.rotation.x = i < thrown ? BREAKER_ON : BREAKER_OFF;
+      const seat = pivot.userData.seat as THREE.Mesh;
+      seat.position.set(x, y + 0.1, -0.01);
+    }
+    // The supply lamp: amber on standby, green once the hall has power.
+    const lamp = breakerPanel.children[breakerPanel.children.length - 1];
+    lamp.position.set(wM - 0.12, BREAKER_H - 0.12, 0.03);
+    const on = p.state === 'done';
+    breakerLampMat.emissive.setHex(on ? 0x2fd17a : 0xb06a10);
+    breakerHandleMat.color.setHex(on ? 0xdfe6df : 0xd8d4cc);
   }
 
   /** The cam-lock wheel: one live angle out of the sim, straight onto `rotation.z`. */
@@ -1212,6 +1398,50 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const lit = p.state === 'active' || p.state === 'done';
     markMat.color.setHex(lit ? 0xff9a3c : 0x3a2a1c);
     markMat.emissive.setHex(lit ? (p.state === 'done' ? 0x2f7d4f : 0xff7a1a) : 0x000000);
+  }
+
+  /**
+   * The jammed door, shut or coming down. `p.progress` is the sim's clock, 0..1.
+   *
+   * The easing is front-loaded — most of the swing is spent in the first third of
+   * the time — because that is what being hit by 400 kg looks like; the tail of the
+   * curve is the leaf bouncing on the floor and going still.
+   */
+  function drawJammed(p: Prop, floorY: number): void {
+    const spec = PROPS.jammed ?? PROP_FALLBACK;
+    const wM = m(p.w ?? 24);
+    const dM = m(p.h ?? 12);
+    const u = Math.min(1, Math.max(0, p.progress ?? 0));
+    const broken = p.state === 'broken';
+
+    jammedLeaf.visible = true;
+    jammedSlab.scale.set(Math.max(wM, 0.06), spec.h, Math.max(dM, 0.06));
+
+    // Fast out, then a decaying rattle that dies to nothing by u = 1.
+    const swing = broken ? 1 - Math.pow(1 - u, 2) : 0;
+    const rattle = broken ? Math.exp(-6 * u) * Math.sin(u * 15) * 0.13 : 0;
+    const tip = Math.min(JAM_TIP, Math.max(0, JAM_TIP * swing + rattle));
+
+    // Pivot on the bottom edge nearest the camera: sim +y is world +z and the
+    // camera is on the +z side, so the leaf goes down between the doorway and the
+    // lens and stays in shot.
+    jammedLeaf.position.set(m(p.x) + wM / 2, floorY, m(p.y) + dM + JAM_SKID * swing);
+    jammedLeaf.rotation.set(tip, -JAM_SKEW * swing, 0);
+    jammedSlab.position.set(0, spec.h / 2, -dM / 2);
+
+    const mat = jammedSlab.material as THREE.MeshStandardMaterial;
+    mat.color.setHex(broken ? JAM_BROKEN_COLOR : spec.color);
+    // A flash of hot splintered wood on the impact, gone as it settles.
+    const heat = broken ? Math.max(0, 1 - u * 2.6) : 0;
+    mat.emissive.setRGB(heat * 0.16, heat * 0.06, heat * 0.015);
+    mat.emissiveIntensity = heat > 0 ? 1 : 0;
+    mat.transparent = false;
+    mat.opacity = 1;
+
+    // The hit itself: the camera takes it on the frame the sim starts the clock,
+    // once. `camera.shake` has been sitting here unused since it was written.
+    if (broken && u > 0 && jamLast <= 0) diorama.shake(0.9);
+    jamLast = broken ? u : 0;
   }
 
   /** The swung door leaf and the lit interior, once the cam has let go. */
@@ -1268,9 +1498,13 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     cableLine.visible = false;
     camWheel.visible = false;
     camBezel.visible = false;
+    breakerPanel.visible = false;
     cabinetOpen.visible = false;
+    jammedLeaf.visible = false;
     for (const p of snap.props) {
       if (p.kind === 'cable') drawCable(p, floorY);
+      else if (p.kind === 'jammed') drawJammed(p, floorY);
+      else if (p.kind === 'breaker') drawBreaker(p, floorY);
       else if (p.kind === 'cam-wheel') drawCamWheel(p, floorY);
       else if (p.kind === 'cam-mark') drawCamMark(p, floorY);
       else if (p.kind === 'cabinet') drawCabinet(p, floorY);
@@ -1322,6 +1556,17 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       // dome takes his weight where a rider's weight actually goes, and the
       // measurement comes off the rig rather than being a magic number that goes
       // stale the next time either robot is reshaped.
+      /*
+       * NOT HANDLED HERE, and it shows in chapter 3's transition: the height of
+       * the ground floor's own walking surface. `groundRiseM` in
+       * `src/sim/geometry.ts` gives the 0.5 m lobby plate at a sim x and says in
+       * its own doc comment that the renderer is what reads it — nothing does, so
+       * a robot standing on the raised lobby stands half a metre inside it, and a
+       * robot on the main flight (whose treads climb to 5 m) is swallowed whole.
+       * The fix is a rise term added to `floorY` per robot; it needs the flight's
+       * own ramp, which lives in `src/render/venue/ground.ts`, so it is a piece of
+       * work of its own rather than a line here.
+       */
       const lift = b.kind === 'droid' && b.mounted ? mountLift() : 0;
       rig.root.position.set(m(b.x), floorY + lift, m(b.y));
       updateRobot(rig, {
@@ -1494,6 +1739,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       }
       propPool.dispose();
       peoplePool.dispose();
+      (jammedSlab.material as THREE.Material).dispose();
       cableGeo.dispose();
       cableMat.dispose();
       contactGeo.dispose();
