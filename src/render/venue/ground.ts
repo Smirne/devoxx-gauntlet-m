@@ -339,6 +339,17 @@ function catering(p: VenuePalette): THREE.Group {
  *  - nothing new stands in an aisle. Michele: *"staircase should be clear of
  *    booths in general"* — the aisles get the same answer.
  *
+ * ## Standby, not shop window
+ *
+ * Constraint 4 of this piece: chapter 2 is an unlit hall with three robot lamps
+ * and a visibility polygon, and `media/other-images/image-1790032600128.webp` is
+ * what that hall looks like — near-black, red accent panels, track spots, one lit
+ * screen. Every printed surface here is re-used as an emissive map so that a stand
+ * is not simply *gone* for a whole chapter, but at a fraction of the 0.5 a
+ * corridor lightbox gets: 0.05 for a cloth (eight metres of it), 0.08 for a back
+ * wall, 0.18-0.22 for a banner or a totem. The first pass used the lightbox value
+ * and lit the entire exhibition floor through the blackout.
+ *
  * ## Why a built stand is enclosed
  *
  * The sim says a built booth is solid across its whole rect ("a built booth, solid
@@ -548,7 +559,7 @@ function booths(p: VenuePalette, art: SignPainter): THREE.Group {
        */
       const cloth = new THREE.Mesh(
         new THREE.PlaneGeometry(m(r.w) - 0.02, m(r.h) - 0.02),
-        art.material(`booth-cloth-${key}`, 800, 560, s.brand, sponsorCloth(bo.name, s), 0.16),
+        art.material(`booth-cloth-${key}`, 512, 358, s.brand, sponsorCloth(bo.name, s), 0.05),
       );
       cloth.rotation.x = -Math.PI / 2;
       cloth.position.set(m(r.x + r.w / 2), LOW_H + 0.006, m(r.y + r.h / 2));
@@ -569,7 +580,7 @@ function booths(p: VenuePalette, art: SignPainter): THREE.Group {
         0.22,
         0.63,
         1,
-        art.material(`booth-skirt-${key}`, 640, 76, s.brand, sponsorSkirt(s), 0.2),
+        art.material(`booth-skirt-${key}`, 512, 60, s.brand, sponsorSkirt(s), 0.07),
       );
       valance.name = `booth-skirt-${key}`;
       g.add(valance);
@@ -580,7 +591,7 @@ function booths(p: VenuePalette, art: SignPainter): THREE.Group {
        * it ON the table keeps it inside the collider and out of Voxxy's gap.
        */
       const banner = wallPanel(r.x + 22, r.y + 11, 1.1, 1.75, LOW_H + 0.9, 1,
-        art.material(`booth-banner-${key}`, 300, 460, s.brand, sponsorTotem(bo.name, s), 0.22));
+        art.material(`booth-banner-${key}`, 224, 356, s.brand, sponsorTotem(bo.name, s), 0.18));
       banner.name = `booth-banner-${key}`;
       g.add(banner);
       dark.push(boxGeo({ x: r.x + 18, y: r.y + 11, w: 8, h: 1.6 }, LOW_H, 0.05));
@@ -614,7 +625,7 @@ function booths(p: VenuePalette, art: SignPainter): THREE.Group {
         panelH,
         0.52 + panelH / 2,
         1,
-        art.material(`booth-screen-${key}`, 896, 280, s.brand, sponsorPanel(bo.name, s), 0.26),
+        art.material(`booth-screen-${key}`, 640, 200, s.brand, sponsorPanel(bo.name, s), 0.08),
       );
       face.name = `booth-screen-${key}`;
       g.add(face);
@@ -651,7 +662,7 @@ function booths(p: VenuePalette, art: SignPainter): THREE.Group {
         body.name = `booth-totem-body-${key}`;
         g.add(body);
         const totem = wallPanel(t.x + t.w / 2, t.y + t.h - 0.4, m(t.w) - 0.06, 1.6, 1.18, 1,
-          art.material(`booth-totem-${key}`, 240, 480, s.brand, sponsorTotem(bo.name, s), 0.3));
+          art.material(`booth-totem-${key}`, 192, 384, s.brand, sponsorTotem(bo.name, s), 0.22));
         totem.name = `booth-totem-${key}`;
         g.add(totem);
       }
@@ -674,11 +685,11 @@ function booths(p: VenuePalette, art: SignPainter): THREE.Group {
          * it. Three shelves at 0.62 / 1.24 / 1.92 m say it without a word.
          */
         for (const sy of [0.62, 1.24, 1.92]) {
-          pale.push(boxGeo({ x: r.x + 10, y: r.y + STAND_T, w: 40, h: 7 }, sy, 0.05));
+          pale.push(boxGeo({ x: r.x + r.w - 34, y: r.y + STAND_T, w: 28, h: 7 }, sy, 0.05));
         }
         for (let k = 0; k < 9; k++) {
           const sy = [0.67, 1.29, 1.97][k % 3];
-          bowls.put(r.x + 17 + Math.floor(k / 3) * 13, r.y + STAND_T + 3, sy);
+          bowls.put(r.x + r.w - 28 + Math.floor(k / 3) * 9, r.y + STAND_T + 3, sy);
         }
         break;
       }
@@ -704,8 +715,10 @@ function booths(p: VenuePalette, art: SignPainter): THREE.Group {
         }
         break;
       case 'Monolith GmbH':
-        // One deployable. One. It does not fit on the table and they brought it anyway.
-        dark.push(boxGeo({ x: r.x + r.w / 2 - 14, y: r.y + 20, w: 28, h: 26 }, LOW_H, 0.9));
+        // One deployable. One. It does not fit on the table and they brought it
+        // anyway. Parked at the back right: in the middle it punched a hole
+        // through the sponsor's own name on the cloth.
+        dark.push(boxGeo({ x: r.x + r.w - 40, y: r.y + 6, w: 28, h: 24 }, LOW_H, 0.9));
         break;
       default:
         break;
