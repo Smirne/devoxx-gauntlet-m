@@ -16,26 +16,39 @@
  */
 
 import { CY0, CY1, F1, R, VIEW_DEVOXX, floor1Walls, roomDoor } from '../geometry';
-import { PUSH_LEAN_MIN } from '../constants';
+import { PUSH_LEAN_MIN, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
 import { botsCollide, circleRect, dist, inRect, speed, stepBot } from '../bot';
 import type { Bot, Person, Prop, Rect, Vec2 } from '../types';
 import { mkBody } from './ch2-expo';
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 
-/** Seconds before the first attendee reaches the top of the stairs. */
-const HEAD = 14;
+/**
+ * Seconds before the first attendee reaches the top of the stairs.
+ *
+ * The crowd clock is the chapter's only real difficulty, and what it is measured
+ * against is how far three robots can walk before it runs out. Room 8 did not
+ * shrink when they slowed down, so both halves of the clock carry
+ * `TRAVEL_TIME_SCALE` (constants.ts, the 2026-09-23 rescale) and the race is the
+ * same race.
+ */
+const HEAD = 14 * TRAVEL_TIME_SCALE;
 /** Seconds for the room to fill once they start arriving. */
-const ARRIVAL = 80;
+const ARRIVAL = 80 * TRAVEL_TIME_SCALE;
 /** How close Droid must be to a banner hook. */
 const HOOK_REACH = 45;
 /** How close Voxxy must pass a spotlight to switch it on. */
 const SPOT_REACH = 22;
-/** Biggy's shove on the crate, px/s^2 — a crate is not a robot, it just slides. */
-const CRATE_FORCE = 900;
-/** Closing speed above which a robot has knocked an attendee over. */
-const BOWL_OVER = 120;
-/** The crate has to be actually moving to be blamed for shoving someone. */
-const CRATE_BLAME_SPEED = 25;
+/**
+ * Biggy's shove on the crate, px/s^2 — a crate is not a robot, it just slides.
+ *
+ * An acceleration is a velocity per second, and the rescale moved the velocity axis
+ * and left the time axis alone, so it carries `SPEED_SCALE` like every speed does.
+ */
+const CRATE_FORCE = 900 * SPEED_SCALE;
+/** Closing speed above which a robot has knocked an attendee over. px/s. */
+const BOWL_OVER = 120 * SPEED_SCALE;
+/** The crate has to be actually moving to be blamed for shoving someone. px/s. */
+const CRATE_BLAME_SPEED = 25 * SPEED_SCALE;
 
 const ATTENDEE_COLOURS = ['#b9a58c', '#8c9bb9', '#b98c8c', '#9bb98c'] as const;
 
@@ -132,7 +145,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     });
   }
 
-  const crate = mkBody('cake', d8.cx + 130, 350, { r: 17, mass: 20, drag: 2.2, accel: 0, max: 160 });
+  const crate = mkBody('cake', d8.cx + 130, 350, { r: 17, mass: 20, drag: 2.2, accel: 0, max: 160 * SPEED_SCALE });
   const stage: Rect = { x: cx - 110, y: top + 6, w: 220, h: 50 };
   const crateMark: Rect = { x: cx - 100, y: top + 12, w: 44, h: 34 };
   const hooks = [
@@ -169,7 +182,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let ended = false;
 
   ctx.objective(
-    `Chapter 4 · <b>Keynote</b>. Top of the main staircase — the crowd is right behind you: first attendees in ${HEAD}s, ${ARRIVAL}s to fill Room 8, front rows first. Before they sit: <b>Biggy</b> pushes the cake onto the stage, <b>Droid</b> hangs the banner (E at both hooks), <b>Voxxy</b> lights spotlights 1→4. Then <b>all three on stage</b> with Stephan and the speaker.`,
+    `Chapter 4 · <b>Keynote</b>. Top of the main staircase — the crowd is right behind you: first attendees in ${Math.round(HEAD)}s, ${Math.round(ARRIVAL)}s to fill Room 8, front rows first. Before they sit: <b>Biggy</b> pushes the cake onto the stage, <b>Droid</b> hangs the banner (E at both hooks), <b>Voxxy</b> lights spotlights 1→4. Then <b>all three on stage</b> with Stephan and the speaker.`,
     KEYS,
   );
   ctx.card(
@@ -185,7 +198,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     if (!seat) return;
     seat.taken = true;
     const a = mkBody('attendee', stair.x + 20, CY0 + 30 + ctx.rng() * 40, { r: 5, mass: 0.5 }) as Attendee;
-    a.walk = 70 + ctx.rng() * 40;
+    a.walk = (70 + ctx.rng() * 40) * SPEED_SCALE;
     a.colour = ATTENDEE_COLOURS[Math.floor(ctx.rng() * 4)];
     a.seat = seat;
     a.leg = 0;

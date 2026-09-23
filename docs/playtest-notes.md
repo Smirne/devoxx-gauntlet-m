@@ -47,3 +47,14 @@ describe a bigger, faster world than the one on screen. `units.ts` carried a sec
 `HUD_PX_PER_MPS`, whose only job was to stop the HUD quoting Voxxy at 23 m/s. Asked to choose,
 Michele authorised a **full rescale of speeds and radii** — the first time the frozen constants have
 been opened, and on the evidence of a playtest rather than a preference.
+
+**Done, 23 Sep 2026.** `SPEED_SCALE = 0.25` on every px/s quantity in `src/sim` — Voxxy 5.8 m/s,
+Droid 2.3, Biggy 4.7 — and the collision radii measured off the rigs the renderer builds: 0.38 /
+0.50 / 0.72 m against 0.72 / 1.04 / 1.36. `PUSH_REACH` went from 0.96 m of empty floor to 8 cm of
+contact. `HUD_PX_PER_MPS` is gone: there is one scale now, and the HUD reads the same metre the
+walls are built in. Her coast after the stick lets go is 0.55 m instead of 2.60 m, which is note 10.
+Details and the traversal cost in `docs/scale-and-units.md`.
+
+Note 18 is now unblocked and still open: the secondary-staircase niche was to be sized *after* the
+radius rescale, and the rescale has happened — Biggy is 1.44 m across in the sim now, not 2.72, so
+a 3.2 m passage has more slack than Michele wanted, not less.

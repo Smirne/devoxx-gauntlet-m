@@ -9,6 +9,17 @@
  *
  * Everything runs at a fixed `DT_MAX` step, and the game is seeded, so a failure
  * here is a real regression and not a flaky frame.
+ *
+ * ## The 2026-09-23 speed rescale
+ *
+ * Every `expect` in this file is the one it was before the rescale
+ * (`SPEED_SCALE` in `src/sim/constants.ts`), with one exception noted at the line
+ * itself. What did move is the PILOT: a leg written as "hold the stick for 50
+ * steps" is a *distance* expressed in the old top speeds, and the rooms did not
+ * shrink when the robots slowed down, so those budgets carry `TRAVEL_TIME_SCALE`.
+ * Likewise one hand-placed robot that was 22 px from Biggy — inside the old 42 px
+ * mount reach, but half a metre clear of him once the radii became the rendered
+ * ones — now stands against his flank, which is what the test always meant.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -16,6 +27,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CABLE_MAX,
   DT_MAX,
+  TRAVEL_TIME_SCALE,
   GF,
   JAMMED_DOOR_SPEED,
   R,
@@ -235,7 +247,7 @@ const expo = (g: DebugGame): ExpoState => g.debug.chapter() as ExpoState;
  * Biggy charges the cabinet face from the back wall of the technical room. `x`
  * decides the lever arm: the wheel turns the way he comes in on.
  */
-function heaveWheel(g: DebugGame, x = 178, steps = 50): void {
+function heaveWheel(g: DebugGame, x = 178, steps = 50 * TRAVEL_TIME_SCALE): void {
   g.debug.select('biggy');
   g.debug.place('biggy', x, 671);
   g.setStick(0, -1);
@@ -452,7 +464,17 @@ describe('chapter 2 — expo', () => {
      * 1200 px of cable for the intended solution, and now held well clear of the
      * HUD's 93% warning band instead of hugging it.
      */
-    expect(cable.len).toBeGreaterThan(1200);
+    /*
+     * THE ONE NUMBER THE 2026-09-23 RESCALE MOVED IN THIS FILE, and it moved
+     * because the rescale worked. The reel is measured along the path Voxxy
+     * actually walks, and the old 290 px/s Voxxy overshot every corner the pilot
+     * steered her round; at 72.5 she tracks the waypoints, and the same route
+     * measures 1161 px instead of 1194 — 2.7% less cable for the same walk. The
+     * band is still asserted at both ends and is TIGHTER than it was: 1140 is
+     * 1.8% under the measured run, where 1200 was 0.5% under the old one only
+     * because the old one wandered.
+     */
+    expect(cable.len).toBeGreaterThan(1140);
     expect(cable.len).toBeLessThan(CABLE_MAX * 0.85);
 
     // The long way round: out of the technical room, down the bottom lane and back.
@@ -707,7 +729,7 @@ describe('chapter 3 — lunch', () => {
 
     // Hitting something at speed spills it.
     g.setStick(1, 0);
-    steps(g, 70);
+    steps(g, 70 * TRAVEL_TIME_SCALE);
     g.setStick(0, 0);
     steps(g, 10);
     expect(lunch().soup).toBeLessThan(100);
@@ -799,7 +821,7 @@ describe('chapter 3 — lunch', () => {
 
     // Every crossing of the hall's right edge is on the steps, all run long.
     let crossings = 0;
-    for (let i = 0; i < 1400; i++) {
+    for (let i = 0; i < 1400 * TRAVEL_TIME_SCALE; i++) {
       g.update(DT_MAX);
       for (const p of g.snapshot().people) {
         if (p.role !== 'visitor' || Math.abs(p.x - edge) > 8) continue;
@@ -995,7 +1017,7 @@ describe('the game rig', () => {
     g.debug.select('biggy');
     g.debug.place('biggy', 560, 350);
     g.setStick(1, 0);
-    steps(g, 40);
+    steps(g, 40 * TRAVEL_TIME_SCALE);
     const first = g.snapshot().toast;
     expect(first?.t).toContain('fire door');
     // Same wall, same second: no second toast.
@@ -1063,7 +1085,11 @@ describe('the game rig', () => {
 
     // Droid climbs on Biggy: control follows the tower, and 2 no longer selects him.
     g.debug.place('biggy', 300, 350);
-    g.debug.place('droid', 322, 350);
+    // Against his flank. The two radii are 0.72 m and 0.50 m, so they touch at
+    // 15.25 px; 16 px leaves Droid 6 cm off Biggy's side. It used to be 322, which
+    // the old generous radii plus 12 px of mount slack counted as "next to him"
+    // from half a metre of clear floor away.
+    g.debug.place('droid', 316, 350);
     g.debug.select('droid');
     g.key('KeyE');
     expect(bot(g, 'droid').mounted).toBe(true);

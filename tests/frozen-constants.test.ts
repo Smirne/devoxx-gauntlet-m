@@ -2,9 +2,36 @@
  * The frozen physics constants (GAUNTLET.md, "Frozen physics constants").
  *
  * Changing one of these is a human decision, never a builder's — so every value in
- * that table is pinned here, and the last block checks the numbers still match the
- * prototype they were ported from. If a value has genuinely been re-decided, the
- * table, `src/sim/constants.ts` and this file move together, in one reviewed commit.
+ * that table is pinned here, and the last block checks the numbers still trace back
+ * to the prototype they were ported from. If a value has genuinely been re-decided,
+ * the table, `src/sim/constants.ts` and this file move together, in one reviewed
+ * commit.
+ *
+ * ## They were unfrozen exactly once: 23 September 2026
+ *
+ * Michele playtested chapter 1 and filed three complaints — Voxxy too fast to
+ * control, aiming her beam hard because she would not stop, and Droid shoving Biggy
+ * "just by coming close, with no contacts". All three were one cause: these were
+ * arcade numbers read through a real geometry scale, so Voxxy's 290 px/s was 23 m/s
+ * and Biggy's 17 px collision radius was 1.36 m against a body 0.72 m wide.
+ * `src/sim/units.ts` carried a second, invented scale (`HUD_PX_PER_MPS = 72.5`)
+ * whose only job was to keep that off the HUD. He authorised a full rescale of
+ * speeds and radii; it is the only one, and they are frozen again behind it.
+ *
+ *   - **Speeds.** Every px/s quantity is the prototype's number times
+ *     `SPEED_SCALE = 0.25`, which puts Voxxy at 5.8 m/s, Droid at 2.3 and Biggy at
+ *     4.7. Rates in s^-1 and pure ratios are dimensionless across that rescale and
+ *     did not move, so every curve keeps its shape. The last block below asserts
+ *     the factor itself against the prototype source: one factor, no exceptions.
+ *   - **Radii.** `DEFS.*.r` is measured off the rig `src/render/robots` builds, not
+ *     guessed, and `PUSH_REACH` is contact slack again instead of 0.96 m of reach.
+ *     `tests/robots.smoke.test.ts` owns the rigs; this file pins the numbers they
+ *     produced.
+ *
+ * The relationships between the speeds are load-bearing — the roller door is only
+ * passable with a push BECAUSE it is above Biggy's cap — so they are asserted as
+ * relationships too, not only as values, and the next person cannot break the
+ * puzzle by nudging one number.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -15,6 +42,8 @@ import proto from '../reference/poc/10-after-dark-kinepolis.html?raw';
 
 import {
   ANIM_DIV,
+  SPEED_SCALE,
+  TRAVEL_TIME_SCALE,
   BLOCKED_THROTTLE,
   BOOST_CAP_FACTOR,
   BOOST_DECAY,
@@ -55,6 +84,10 @@ import { PX_PER_M } from '../src/sim/units';
 
 const KINDS: RobotKind[] = ['voxxy', 'droid', 'biggy'];
 
+/** What the prototype had, kept so the size of each decision stays visible. */
+const PROTO_RADII: Record<RobotKind, number> = { voxxy: 9, droid: 13, biggy: 17 };
+const PROTO_MAX: Record<RobotKind, number> = { voxxy: 290, droid: 115, biggy: 235 };
+
 describe('the robot table', () => {
   it('has the three robots and nothing else', () => {
     expect(Object.keys(DEFS).sort()).toEqual(['biggy', 'droid', 'voxxy']);
@@ -63,10 +96,22 @@ describe('the robot table', () => {
     expect(DEFS.biggy.name).toBe('Biggy');
   });
 
-  it('radii: 9 / 13 / 17 sim px', () => {
-    expect(DEFS.voxxy.r).toBe(9);
-    expect(DEFS.droid.r).toBe(13);
-    expect(DEFS.biggy.r).toBe(17);
+  /*
+   * The collision footprint each robot actually has on screen: the widest point of
+   * the rest pose about its own vertical axis, measured off `createRobot(kind)` with
+   * `measureBounds` and rounded to the nearest half pixel. Voxxy measured 0.377 m,
+   * Droid 0.503, Biggy 0.722.
+   */
+  it('radii: the rendered footprint, 0.38 / 0.50 / 0.72 m', () => {
+    expect(DEFS.voxxy.r).toBe(4.75);
+    expect(DEFS.droid.r).toBe(6.25);
+    expect(DEFS.biggy.r).toBe(9);
+    expect(DEFS.voxxy.r / PX_PER_M).toBeCloseTo(0.38, 3);
+    expect(DEFS.droid.r / PX_PER_M).toBeCloseTo(0.5, 3);
+    expect(DEFS.biggy.r / PX_PER_M).toBeCloseTo(0.72, 3);
+    // Small, tall-and-narrow, wide — in that order, as the model sheets are.
+    expect(DEFS.voxxy.r).toBeLessThan(DEFS.droid.r);
+    expect(DEFS.droid.r).toBeLessThan(DEFS.biggy.r);
   });
 
   it('accel: 12 / 4 / 0.6 s^-1', () => {
@@ -75,10 +120,45 @@ describe('the robot table', () => {
     expect(DEFS.biggy.accel).toBe(0.6);
   });
 
-  it('top speed: 290 / 115 / 235 px/s', () => {
-    expect(DEFS.voxxy.max).toBe(290);
-    expect(DEFS.droid.max).toBe(115);
-    expect(DEFS.biggy.max).toBe(235);
+  it('top speed: 72.5 / 28.75 / 58.75 px/s — the prototype x SPEED_SCALE', () => {
+    expect(DEFS.voxxy.max).toBe(72.5);
+    expect(DEFS.droid.max).toBe(28.75);
+    expect(DEFS.biggy.max).toBe(58.75);
+    expect(SPEED_SCALE).toBe(0.25);
+    expect(TRAVEL_TIME_SCALE).toBe(4);
+  });
+
+  /*
+   * WHAT THE HUD AND THE WALLS BOTH SAY NOW.
+   *
+   * `PX_PER_M` is the geometry scale the venue is built at, and since the rescale it
+   * is also the speed scale: there is no second number any more. A knee-high robot
+   * that sprints, a two-metre one that walks briskly, and a heavy one that rolls.
+   */
+  it('reads as 5.8 / 2.3 / 4.7 m/s through the geometry scale', () => {
+    expect(DEFS.voxxy.max / PX_PER_M).toBeCloseTo(5.8, 6);
+    expect(DEFS.droid.max / PX_PER_M).toBeCloseTo(2.3, 6);
+    expect(DEFS.biggy.max / PX_PER_M).toBeCloseTo(4.7, 6);
+    // Inside the 4-6 m/s window the rescale was authorised against.
+    expect(DEFS.voxxy.max / PX_PER_M).toBeGreaterThanOrEqual(4);
+    expect(DEFS.voxxy.max / PX_PER_M).toBeLessThanOrEqual(6);
+  });
+
+  /*
+   * THE ORDERING IS THE CAST. Voxxy is the fast one, Biggy is the heavy one that
+   * still outruns Droid once he is going, and Droid is the deliberate one. Three
+   * numbers that could each be nudged without failing a value assertion, and any
+   * one of those nudges would be a different game.
+   */
+  it('keeps the three of them in their own order, fast to deliberate', () => {
+    expect(DEFS.voxxy.max).toBeGreaterThan(DEFS.biggy.max);
+    expect(DEFS.biggy.max).toBeGreaterThan(DEFS.droid.max);
+    expect(DEFS.voxxy.accel).toBeGreaterThan(DEFS.droid.accel);
+    expect(DEFS.droid.accel).toBeGreaterThan(DEFS.biggy.accel);
+    expect(DEFS.voxxy.drag).toBeGreaterThan(DEFS.droid.drag);
+    expect(DEFS.droid.drag).toBeGreaterThan(DEFS.biggy.drag);
+    expect(DEFS.voxxy.mass).toBeLessThan(DEFS.droid.mass);
+    expect(DEFS.droid.mass).toBeLessThan(DEFS.biggy.mass);
   });
 
   it('drag: 9 / 7 / 0.35 s^-1', () => {
@@ -146,9 +226,12 @@ describe('collision and motion', () => {
     expect(BRACED_MASS / DEFS.biggy.mass).toBeGreaterThan(1e5);
   });
 
-  it('stop snap 2 px/s, heading floor 1 px/s, gait divisor 18', () => {
-    expect(STOP_SNAP).toBe(2);
-    expect(FACE_MIN_SPEED).toBe(1);
+  it('stop snap 0.5 px/s, heading floor 0.25 px/s, gait divisor 18', () => {
+    expect(STOP_SNAP).toBe(2 * SPEED_SCALE);
+    expect(FACE_MIN_SPEED).toBe(1 * SPEED_SCALE);
+    // The gait phase advances per pixel TRAVELLED, and lengths did not move, so
+    // this one is the prototype's number untouched — the legs still take a step
+    // every 18 px of floor.
     expect(ANIM_DIV).toBe(18);
   });
 
@@ -164,13 +247,33 @@ describe('collision and motion', () => {
 });
 
 describe('pushing, mounting and the doors', () => {
-  it('push force 170 (Voxxy) / 120 (Droid), lean at least 0.3', () => {
-    expect(PUSH_FORCE.voxxy).toBe(170);
-    expect(PUSH_FORCE.droid).toBe(120);
+  it('push force 42.5 (Voxxy) / 30 (Droid), lean at least 0.3', () => {
+    // An acceleration is a velocity per second and the time axis did not move.
+    expect(PUSH_FORCE.voxxy).toBe(170 * SPEED_SCALE);
+    expect(PUSH_FORCE.droid).toBe(120 * SPEED_SCALE);
     expect(PUSH_FORCE.biggy).toBe(0);
     expect(PUSH_LEAN_MIN).toBe(0.3);
-    expect(PUSH_REACH).toBe(12);
     expect(PUSH_FLASH_COOLDOWN).toBe(3);
+  });
+
+  /*
+   * MICHELE'S THIRD COMPLAINT, PINNED.
+   *
+   * "droid is pushing Biggy just by coming close, with no contacts." He was right:
+   * 12 px of slack on top of two radii that were already 0.4 m too big put the push
+   * zone 2.3 m from Biggy's centre, most of it empty floor. It is 8 cm now — a hand
+   * on him. Mounting is allowed to reach further, because climbing is a reach and
+   * shoving is not, but it is still well under half a metre.
+   */
+  it('pushes only on contact, and never from further away than a robot is wide', () => {
+    expect(PUSH_REACH).toBe(1);
+    expect(PUSH_REACH / PX_PER_M).toBeLessThan(0.1);
+    expect(MOUNT_REACH).toBe(4);
+    expect(MOUNT_REACH / PX_PER_M).toBeLessThan(0.4);
+    expect(MOUNT_REACH).toBeGreaterThan(PUSH_REACH);
+    // The whole push zone, centre to centre, is smaller than Biggy is wide.
+    expect(DEFS.droid.r + DEFS.biggy.r + PUSH_REACH).toBeLessThan(DEFS.biggy.r * 2 + DEFS.droid.r * 2);
+    expect((DEFS.droid.r + DEFS.biggy.r + PUSH_REACH) / PX_PER_M).toBeLessThan(1.35);
   });
 
   it('boostCap = speed x 1.05, decaying at 1.5 s^-1', () => {
@@ -178,23 +281,42 @@ describe('pushing, mounting and the doors', () => {
     expect(BOOST_DECAY).toBe(1.5);
   });
 
-  it('mounting needs Biggy below 20 px/s and widens the pool x1.6', () => {
-    expect(MOUNT_BIGGY_MAX_SPEED).toBe(20);
+  it('mounting needs Biggy below 5 px/s and widens the pool x1.6', () => {
+    expect(MOUNT_BIGGY_MAX_SPEED).toBe(20 * SPEED_SCALE);
     expect(MOUNT_POOL_SCALE).toBe(1.6);
-    expect(MOUNT_REACH).toBe(12);
     expect(MOUNT_OFFSET_Y).toBe(6);
+    // "Nearly stationary" has to stay nearly stationary: well under a tenth of the
+    // speed he tops out at, or Droid could step onto a moving Biggy.
+    expect(MOUNT_BIGGY_MAX_SPEED).toBeLessThan(DEFS.biggy.max * 0.1);
   });
 
-  it('jammed door 70 px/s, roller door 270 px/s, cable 1480 px', () => {
-    expect(JAMMED_DOOR_SPEED).toBe(70);
-    expect(ROLLER_DOOR_SPEED).toBe(270);
+  it('jammed door 17.5 px/s, roller door 67.5 px/s, cable 1480 px', () => {
+    expect(JAMMED_DOOR_SPEED).toBe(70 * SPEED_SCALE);
+    expect(ROLLER_DOOR_SPEED).toBe(270 * SPEED_SCALE);
+    // A LENGTH: the reel is a physical object in a room, and rooms did not move.
     expect(CABLE_MAX).toBe(1480);
   });
 
+  /*
+   * THE TWO DOORS ARE A RELATIONSHIP, NOT TWO NUMBERS.
+   *
+   * Chapter 1 works because Biggy can reach the jammed door's threshold alone and
+   * chapter 2 works because he cannot reach the roller door's. Both survive the
+   * rescale only because one factor was applied to all three numbers; asserting
+   * that here means the next person who nudges one gets a failing test instead of a
+   * silently unsolvable chapter 2 or a chapter 1 that opens itself.
+   */
   it('the roller door is above Biggy\'s own top speed — that is the puzzle', () => {
     expect(ROLLER_DOOR_SPEED).toBeGreaterThan(DEFS.biggy.max);
+    // ...and far enough above it that a boosted coast cannot creep over by luck.
+    expect(ROLLER_DOOR_SPEED).toBeGreaterThan(DEFS.biggy.max * 1.1);
+    // A push tops out near the pusher's own speed, so it has to be reachable too.
+    expect(ROLLER_DOOR_SPEED).toBeLessThan(DEFS.voxxy.max);
     // ...while the jammed door is well inside it, so Biggy can take that one alone.
     expect(JAMMED_DOOR_SPEED).toBeLessThan(DEFS.biggy.max / 2);
+    // And it is above the speed he drifts at, or the door would open by accident.
+    expect(JAMMED_DOOR_SPEED).toBeGreaterThan(MOUNT_BIGGY_MAX_SPEED);
+    expect(JAMMED_DOOR_SPEED).toBeGreaterThan(STOP_SNAP * 10);
   });
 });
 
@@ -216,12 +338,14 @@ describe('light and feedback', () => {
     expect(TOAST_MS).toBe(2200);
   });
 
-  it('cutscene fade 0.35 s, walk 150 px/s', () => {
+  it('cutscene fade 0.35 s, walk 37.5 px/s', () => {
     expect(CUT_FADE).toBe(0.35);
-    expect(CUT_WALK_SPEED).toBe(150);
+    expect(CUT_WALK_SPEED).toBe(150 * SPEED_SCALE);
+    // A cutscene walk is a walk: slower than the robot it carries, never a sprint.
+    expect(CUT_WALK_SPEED).toBeLessThan(DEFS.voxxy.max);
   });
 
-  it('the renderer scale is 12.5 px per metre', () => {
+  it('the one scale is 12.5 px per metre, for geometry and for speed alike', () => {
     expect(PX_PER_M).toBe(12.5);
   });
 });
@@ -245,15 +369,29 @@ describe('DEFS is frozen', () => {
     expect(() => {
       voxxy.max = 999;
     }).toThrow(TypeError);
-    expect(DEFS.voxxy.max).toBe(290);
+    expect(DEFS.voxxy.max).toBe(72.5);
   });
 });
 
-describe('still the prototype\'s numbers', () => {
-  // Parity with `reference/poc/10-after-dark-kinepolis.html` is the acceptance test
-  // (CLAUDE.md), so the robot table is read straight out of it and compared.
+describe('still the prototype\'s numbers, times one factor', () => {
+  /*
+   * Parity with `reference/poc/10-after-dark-kinepolis.html` is the acceptance test
+   * (CLAUDE.md), so the robot table is read straight out of it and compared. After
+   * the 2026-09-23 rescale "parity" means something sharper than it used to: every
+   * px/s quantity is the prototype's number times `SPEED_SCALE` and every rate,
+   * ratio and length is the prototype's number unchanged. That is what makes the
+   * rescale a change of unit rather than a re-tune, and it is checked here rather
+   * than asserted in prose — if somebody "improves" one speed on its own, the
+   * factor stops being one factor and this block fails.
+   *
+   * The radii are the exception, and deliberately: they were never the prototype's
+   * measurement of anything, they were a guess at a footprint, and they are now
+   * taken off the rig the renderer builds. The prototype's own values are still
+   * read here, and still asserted — as the numbers we moved AWAY from, so the size
+   * of that decision stays visible instead of disappearing into a diff.
+   */
   for (const kind of KINDS) {
-    it(`${kind} matches the prototype's DEFS entry`, () => {
+    it(`${kind} is the prototype's entry, speeds scaled and nothing else`, () => {
       const line = new RegExp(`${kind}:\\{[^}]*`).exec(proto);
       expect(line).not.toBeNull();
       const entry = line ? line[0] : '';
@@ -263,23 +401,50 @@ describe('still the prototype\'s numbers', () => {
         return m ? Number(m[1]) : NaN;
       };
       const def = DEFS[kind];
-      expect(num('r')).toBe(def.r);
+      // px/s: one factor.
+      expect(def.max).toBeCloseTo(num('max') * SPEED_SCALE, 10);
+      // s^-1 and ratios: dimensionless across a rescale, so untouched.
       expect(num('accel')).toBe(def.accel);
-      expect(num('max')).toBe(def.max);
       expect(num('drag')).toBe(def.drag);
       expect(num('mass')).toBe(def.mass);
+      // Lengths: the lamp reaches as far into the room as it always did.
       expect(num('range')).toBe(def.light.range);
       expect(entry).toContain(`[${def.light.c.join(',')}]`);
       expect(entry).toContain(`type:'${def.light.type}'`);
+      // ...and the radius is the one thing that is NOT the prototype's any more.
+      expect(num('r')).toBe(PROTO_RADII[kind]);
+      expect(def.r).toBeLessThan(PROTO_RADII[kind]);
     });
   }
 
-  it('the thresholds are the prototype\'s too', () => {
+  it('the thresholds are the prototype\'s too, through the same factor', () => {
     expect(proto).toContain('N.JAM=70');
+    expect(JAMMED_DOOR_SPEED).toBeCloseTo(70 * SPEED_SCALE, 10);
     expect(proto).toContain('X.NEED=270');
+    expect(ROLLER_DOOR_SPEED).toBeCloseTo(270 * SPEED_SCALE, 10);
     expect(proto).toContain('MAX:1480');
-    expect(proto).toContain('Math.exp(-1.5*dt)'); // boost decay
-    expect(proto).toContain('*1.05'); // boost cap factor
-    expect(proto).toContain("b.kind==='biggy'?0.45:0.05"); // wall restitution
+    expect(CABLE_MAX).toBe(1480); // a length: unscaled
+    expect(proto).toContain('Math.exp(-1.5*dt)'); // boost decay, s^-1: unscaled
+    expect(BOOST_DECAY).toBe(1.5);
+    expect(proto).toContain('*1.05'); // boost cap factor, a ratio: unscaled
+    expect(BOOST_CAP_FACTOR).toBe(1.05);
+    expect(proto).toContain("b.kind==='biggy'?0.45:0.05"); // wall restitution: unscaled
+  });
+
+  it('applies that factor to every speed and to nothing else', () => {
+    // One factor, read back out of the table it was applied to.
+    const factors = KINDS.map((k) => DEFS[k].max / PROTO_MAX[k]);
+    for (const f of factors) expect(f).toBeCloseTo(SPEED_SCALE, 12);
+    expect(new Set(factors.map((f) => f.toFixed(12))).size).toBe(1);
+    // And nothing that is not a speed went with it.
+    expect(DT_MAX).toBe(0.033);
+    expect(ANIM_DIV).toBe(18);
+    expect(BRACED_MASS).toBe(1e6);
+    expect(BLOCKED_THROTTLE).toBe(2.5);
+    expect(TOAST_MS).toBe(2200);
+    expect(MIRROR_MIN_RANGE).toBe(90);
+    expect(W).toBe(1900);
+    expect(H).toBe(700);
+    expect(T).toBe(6);
   });
 });

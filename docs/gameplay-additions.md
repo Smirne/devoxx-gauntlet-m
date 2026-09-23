@@ -6,10 +6,12 @@ still needs a human yes.
 
 ---
 
-## 1. Speed scale — decided, mine to call
+## 1. Speed scale — decided, mine to call — **DONE 23 Sep 2026**
 
-Michele left this one to me. **We rescale the absolute speeds to real metres per second,
-after round 3 clears the two first-class gates, as its own round.**
+Michele left this one to me, then his chapter-1 playtest made it urgent and he called it himself.
+Shipped as its own round: `SPEED_SCALE = 0.25` on every px/s quantity, radii measured off the rigs,
+`HUD_PX_PER_MPS` deleted. See `docs/scale-and-units.md` for the decision, the measurements and what
+it cost in traversal time. The reasoning below is what it was before the work, kept as written.
 
 The problem is not hypothetical. The sim runs at prototype pixels and the renderer converts at
 `PX_PER_M = 12.5`, so Voxxy's 290 px/s is **23 m/s** and Biggy's 235 is **19 m/s** in the world

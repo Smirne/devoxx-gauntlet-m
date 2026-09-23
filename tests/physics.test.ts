@@ -6,6 +6,16 @@
  * takes the length of a hall to get going and another to stop, nothing tunnels, a
  * braced robot is a wall — rather than re-stating the constants, which
  * `frozen-constants.test.ts` already pins down.
+ *
+ * ## The 2026-09-23 speed rescale
+ *
+ * Every speed here is now written against `DEFS[kind].max` rather than as a bare
+ * number of pixels, and every "drive for N seconds until you hit something" is a
+ * distance the robot has to cover, so it carries `TRAVEL_TIME_SCALE`. Nothing was
+ * relaxed: a bound that was 50 px/s against Droid's 115 is 0.4 of his top speed
+ * now and bites exactly as hard. Writing them this way is what makes them
+ * behaviour tests rather than a second copy of the constants table — which is what
+ * they claimed to be all along, and were not.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -19,6 +29,7 @@ import {
   REST_WALL_OTHER,
   ROLLER_DOOR_SPEED,
   T,
+  TRAVEL_TIME_SCALE,
 } from '../src/sim/constants';
 import type { Bot, RobotKind, Wall } from '../src/sim/types';
 
@@ -63,7 +74,7 @@ describe('acceleration — three robots, three personalities', () => {
   it('Voxxy is at full tilt inside a second, Biggy needs the length of a hall', () => {
     const v = mkBot('voxxy', 0, 0);
     drive(v, 1, 1, 0);
-    expect(v.vx).toBeGreaterThan(289);
+    expect(v.vx).toBeGreaterThan(DEFS.voxxy.max * 0.996);
     expect(v.vx).toBeLessThanOrEqual(DEFS.voxxy.max);
     expect(timeToTopSpeed('voxxy')).toBeLessThan(1);
 
@@ -105,13 +116,15 @@ describe('momentum — stopping is a physical event', () => {
     const bg = mkBot('biggy', 0, 0);
     drive(bg, 6, 1, 0);
     const bgCoast = drive(bg, 3, 0, 0);
-    expect(bgCoast).toBeGreaterThan(400);
-    expect(speed(bg)).toBeGreaterThan(20); // still rolling after three seconds
+    // Three seconds of coast at drag 0.35 s^-1 is 1.7 top speeds of floor, whatever
+    // the top speed is: 34 m of it for the prototype's Biggy, 8.5 m for this one.
+    expect(bgCoast).toBeGreaterThan(DEFS.biggy.max * 1.7);
+    expect(speed(bg)).toBeGreaterThan(DEFS.biggy.max * 0.08); // still rolling after three seconds
 
     const v = mkBot('voxxy', 0, 0);
     drive(v, 2, 1, 0);
     const vCoast = drive(v, 3, 0, 0);
-    expect(vCoast).toBeLessThan(40);
+    expect(vCoast).toBeLessThan(DEFS.voxxy.max * 0.14);
     expect(speed(v)).toBe(0); // snapped to a dead stop
     expect(bgCoast / vCoast).toBeGreaterThan(10);
   });
@@ -244,7 +257,7 @@ describe('walls', () => {
           break;
         }
       }
-      expect(impact).toBeGreaterThan(50);
+      expect(impact).toBeGreaterThan(DEFS[kind].max * 0.4);
       expect(rebound / impact).toBeCloseTo(rest, 2);
     }
   });
@@ -301,13 +314,13 @@ describe('walls', () => {
 
     // Nudged from close up, Biggy arrives under the threshold and is turned away.
     const slow = mkBot('biggy', 270, 200);
-    drive(slow, 0.25, 1, 0, walls);
+    drive(slow, 0.25 * TRAVEL_TIME_SCALE, 1, 0, walls);
     expect(broken).toBe(false);
     expect(slow.x).toBeLessThan(300);
 
     // A run-up across the corridor and the door goes.
     const fast = mkBot('biggy', 60, 200);
-    drive(fast, 4, 1, 0, walls);
+    drive(fast, 4 * TRAVEL_TIME_SCALE, 1, 0, walls);
     expect(broken).toBe(true);
     expect(fast.x).toBeGreaterThan(314);
   });
@@ -319,7 +332,7 @@ describe('robot against robot', () => {
     droid.braced = true;
     const biggy = mkBot('biggy', 180, 200);
     let bounced = 0;
-    for (let t = 0; t < 3; t += DT) {
+    for (let t = 0; t < 3 * TRAVEL_TIME_SCALE; t += DT) {
       biggy.ix = 1;
       biggy.iy = 0;
       droid.ix = 0;
@@ -329,7 +342,7 @@ describe('robot against robot', () => {
       const hit = botsCollide(biggy, droid);
       if (hit) bounced = Math.max(bounced, hit.rv);
     }
-    expect(bounced).toBeGreaterThan(100); // Biggy arrived with real momentum
+    expect(bounced).toBeGreaterThan(DEFS.biggy.max * 0.4); // Biggy arrived with real momentum
     expect(droid.x).toBeCloseTo(300, 2);
     expect(droid.y).toBeCloseTo(200, 2);
     expect(speed(droid)).toBe(0);
@@ -339,7 +352,7 @@ describe('robot against robot', () => {
   it('the same shove moves an unbraced robot', () => {
     const droid = mkBot('droid', 300, 200);
     const biggy = mkBot('biggy', 180, 200);
-    for (let t = 0; t < 3; t += DT) {
+    for (let t = 0; t < 3 * TRAVEL_TIME_SCALE; t += DT) {
       biggy.ix = 1;
       biggy.iy = 0;
       droid.ix = 0;
@@ -366,11 +379,11 @@ describe('robot against robot', () => {
 
   it('robots that are already separating are not impulsed again', () => {
     const a = mkBot('voxxy', 200, 200);
-    const b = mkBot('biggy', 215, 200);
-    b.vx = 100; // moving away from a
+    const b = mkBot('biggy', 200 + DEFS.voxxy.r + DEFS.biggy.r - 2, 200); // overlapping by 2 px
+    b.vx = DEFS.biggy.max; // moving away from a
     const res = botsCollide(a, b);
     expect(res).toEqual({ rv: 0 });
-    expect(b.vx).toBe(100);
+    expect(b.vx).toBe(DEFS.biggy.max);
     expect(a.vx).toBe(0);
   });
 
@@ -380,7 +393,7 @@ describe('robot against robot', () => {
     const bg = mkBot('biggy', 300, 206);
     expect(botsCollide(d, bg)).toBeNull();
     d.ix = 1;
-    d.vx = 200;
+    d.vx = DEFS.droid.max;
     stepBot(d, DT, []);
     expect(speed(d)).toBe(0);
     expect(d.x).toBe(300);
@@ -435,7 +448,7 @@ describe('pushing Biggy through the roller door', () => {
 
   it('the push needs the lean: shoving sideways does nothing', () => {
     const bg = mkBot('biggy', 370, 160);
-    const v = mkBot('voxxy', 370 - bg.r - 9, 160);
+    const v = mkBot('voxxy', 370 - bg.r - DEFS.voxxy.r, 160);
     const bots: Bot[] = [v, bg];
     for (let t = 0; t < 2; t += DT) {
       v.ix = 0;
@@ -451,8 +464,8 @@ describe('pushing Biggy through the roller door', () => {
 
   it('the boost cap decays, so the extra speed is not free forever', () => {
     const bg = mkBot('biggy', 0, 0);
-    bg.vx = 300;
-    bg.boostCap = 320;
+    bg.vx = ROLLER_DOOR_SPEED * 1.11;
+    bg.boostCap = ROLLER_DOOR_SPEED * 1.19;
     for (let t = 0; t < 4; t += DT) {
       bg.ix = 1;
       bg.iy = 0;
@@ -465,7 +478,7 @@ describe('pushing Biggy through the roller door', () => {
   it('a braced or mounted robot cannot push', () => {
     for (const mode of ['braced', 'mounted'] as const) {
       const bg = mkBot('biggy', 370, 160);
-      const v = mkBot('voxxy', 370 - bg.r - 9, 160);
+      const v = mkBot('voxxy', 370 - bg.r - DEFS.voxxy.r, 160);
       v[mode] = true;
       const bots: Bot[] = [v, bg];
       for (let t = 0; t < 1; t += DT) {
