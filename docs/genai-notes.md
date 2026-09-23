@@ -1647,3 +1647,64 @@ A throwaway `git worktree` at this session's own commits with `node_modules` sym
 agents left alone in the shared tree: `tsc --noEmit` clean, `tests/ch2-chain.test.ts` 14/14 and
 `tests/chapters.test.ts` 41/41 green, `vite build` clean. `tests/aisle.test.ts` fails 2 at the
 commit this branched from and is another agent's geometry work in flight, not this session's.
+
+## 24 Sep 2026 — cinema E: he could not solve a room every test said was solvable (agent)
+
+**Michele, on the chapter-1 build:** *"I'd try the aisle room on the opposite way, for better
+interaction. I no longer see the hint in that room, i wasn't able to solve it."* Plus, of the same
+room, *"Robots still pass through that wall"* and *"The room door is still big and walked on."*
+
+**What the agent was asked to do first: look, not fix.** Drive chapter 1 headlessly into cinema E
+at the zoom the game is played at, take real frames, and report what they show before changing
+anything. That instruction is the reason this session found the cause instead of another symptom.
+
+**The frames.** With Droid parked at the foot of the aisle, cinema E rendered as a black floor, a
+dark slab and nothing else: the exit alcove read as a 12-pixel green sliver and the clue marker as
+a four-pixel grey dot. Ray-cast against the fixed diorama camera, the numbers behind the picture:
+**58% of the reachable floor of cinema E was not in shot**, the entire front of house — every
+square metre of the walk from the aisle to the alcove — was hidden, and the clue itself sat in a
+**15 px keyhole**, one robot-width either side of which it disappeared.
+
+**The cause, and it was ours.** Three separate things stood between the camera and that room, and
+the biggest was a duplicate: `ch1-night.ts` emitted a `screen` prop on top of the screen
+`buildVenue()` already draws for every auditorium. Drawn from the renderer's `PROPS` table it is
+**5.2 m tall** against the real screen's 2.75, wider than it, and — because only the middle two
+thirds of it had a sim wall under it — **you could walk through both ends**. That is Michele's
+"robots still pass through that wall", in the room his screenshot is of. The room's own 2.45 m
+front wall hid the rest.
+
+**What a human decided.** Mirroring the room was Michele's own proposal and it was taken: the aisle
+now runs up the RIGHT of cinema E with the exit alcove at its foot, so the gate, the route and the
+prize are one picture instead of two ends of a dark room. `plans/` fixes where rooms are, not which
+side a chapter dresses an aisle on, so this is not a venue change.
+
+**What else changed.** The alcove moved up out of the camera's blind strip and became venue
+geometry (`cinemaEExit`), because nothing in `src/render` reads `snapshot().walls` — as chapter
+walls its two slabs were invisible and a robot stopped dead against thin air. The alcove is 52 px
+deep rather than a tidy 40 for a measured reason: the mirror bounce carries `MIRROR_MIN_RANGE`
+whatever else happens, and a pocket ending 87 px from the screen sits inside that floor from every
+angle, where a 40-deep one at 103 px cut Biggy's reachable lighting positions from 539 to 73. The
+keypad got a collider and stopped being a 1.9 m-deep box parked in the corridor; door leaves are
+drawn 0.48 m thick instead of 0.96; and each closed cinema's joke stopped being a 2.2 m
+floor-standing hoarding planted across its doorway with nothing under it and became a hung
+`poster`. Biggy now says so, once, the first time his flood throws a bounce off the screen —
+because the only feedback a robot locked out of a room gives you is a refusal.
+
+**The tests, which is the real finding.** `tests/aisle.test.ts` was green throughout: it measured
+REACHABILITY — 539 positions from which Biggy could light that clue — and called it playability. It
+now ray-casts from the clue, from a robot standing at it and from every cell of the alcove and its
+bay toward the camera, the way `venue.smoke.test.ts` already does for the Zaal numerals, and it
+asserts the gate where the gate actually lives: **Biggy has no route into the alcove at all**. The
+first cut of the mirrored layout let him walk round the seating into it and every test in the file
+stayed green, because they were all about the aisle. `tests/colliders.test.ts` had the same shape
+of blind spot one level up — it measures `buildVenue()`, so nothing a CHAPTER draws was ever swept,
+which is exactly where the screen slab, the keypad and five joke hoardings were hiding. It now
+sweeps chapter props too.
+
+**Rejected.** Cutting cinema E's front wall down to a parapet, which is the one change that would
+put the last 30% of the room in shot — `wallStyle` already does it for the near CORRIDOR wall, for
+this exact reason. It is `src/render/venue/floor1.ts`, another agent's territory this session, so
+the patch is in the report rather than in the tree. Also rejected: fixing chapters 2 to 4's
+walk-through props, found by the new sweep (a duck and a crate are things you PUSH, a spotlight may
+well be meant to be stepped over — those are design calls in other people's files). They are frozen
+as a list that may not grow.

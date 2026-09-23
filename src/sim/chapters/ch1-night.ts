@@ -414,7 +414,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   clues.push({
     x: alcove.x + alcove.w / 2,
-    y: alcove.y + 18,
+    // Just inside the MOUTH of the alcove, not at the back of it: that is where
+    // the bounce off the screen arrives, and it is the part of the pocket the
+    // camera looks straight into.
+    y: alcove.y + alcove.h - 18,
     need: ['voxxy', 'droid', 'biggy'],
     slot: 4,
     digit: digits[3],

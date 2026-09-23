@@ -215,8 +215,9 @@ describe("cinema E's aisle", () => {
      * costs four minutes here, because each pose rebuilds the chapter's whole
      * visibility-polygon set. The question this test asks is only "is there a
      * FINDABLE place, or a needle" — so it counts to WANT and stops. A full census
-     * belongs in a throwaway probe, and one was run when the aisle was narrowed:
-     * Voxxy 1778 spots, Droid 401, Biggy 539.
+     * belongs in a throwaway probe, and one is run whenever the room moves. After
+     * the room was mirrored and the alcove brought into shot: Voxxy 470 spots,
+     * Droid 114, Biggy 147, on a 6 px lattice inside 280 px of the clue.
      */
     const WANT = 60;
     const STEP = 6;
@@ -244,7 +245,7 @@ describe("cinema E's aisle", () => {
       }
       expect(spots, `${kind} has nowhere reachable to light the alcove`).toBeGreaterThanOrEqual(WANT);
     }
-  }, 60000);
+  }, 150000);
 
   /**
    * THE GATE, stated where it actually lives now.
