@@ -117,7 +117,42 @@ const SPECS = {
   steelBlue: { color: '#5f7387', roughness: 0.5, metalness: 0.55 },
 
   /* ------------------------------------------------------------ expo stuff */
-  boothWall: { color: '#39485a', roughness: 0.85 },
+  boothWall: { color: '#2a2f38', roughness: 0.85 },
+  /*
+   * ---------------------------------------------------------- sponsor stands
+   *
+   * Michele: *"Polishing the graphic, making people and stands real etc."* A
+   * stand's own colour is PAINTED, not a material: the twelve brand grounds live
+   * in `BOOTH_SCHEMES` in `signage.ts` and arrive as a canvas texture, so twelve
+   * sponsors cost twelve textures and none of these entries. What is here is the
+   * fabric every stand is built out of, shared by all twelve.
+   */
+  /** Booth carpet: a shade darker than the hall's, which is how a stand edge reads. */
+  boothCarpet: { color: '#282b31', roughness: 1 },
+  /**
+   * The pale line around a stand's carpet — `image-1790032650288.webp` shows it
+   * clearly, a white tape edge separating the stand from the aisle. It is the
+   * cheapest thing on this list and it does more for "this is a stand and that is
+   * a walkway" than any amount of furniture.
+   */
+  boothEdge: { color: '#b6b9bf', roughness: 0.8 },
+  /** White tub chairs and stools, the show's other signature — same photographs. */
+  tubChair: { color: '#e7e6e1', roughness: 0.6 },
+  /** Planter tubs along the aisles. */
+  planterTub: { color: '#cfcbc2', roughness: 0.85 },
+  planterGreen: { color: '#46663c', roughness: 0.95 },
+  /** Rubber Duck Inc's stock, and the giveaway bowls on every counter. */
+  duckYellow: { color: '#f2bf18', roughness: 0.5 },
+  /**
+   * A stand on standby.
+   *
+   * Constraint 4 of this piece: chapter 2 is a blackout, and anything whose only
+   * readable state is "brightly lit" is invisible for a whole chapter. Every stand
+   * carries one of these strips along its counter, at the intensity of a switched
+   * socket rather than of a light — `image-1790032600128.webp` is a near-black
+   * hall in which you can still see exactly where the fittings are.
+   */
+  boothStandby: { color: '#111a26', roughness: 0.5, emissive: '#2f6ea8', emissiveIntensity: 0.55 },
   /** Cloth-draped half tables. Voxxy is the only one who fits under one. */
   boothCloth: { color: '#3b3550', roughness: 1 },
   /** Sponsor LED walls and booth screens. */

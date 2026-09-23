@@ -48,6 +48,7 @@ import {
   LOBBY_RISE_M,
   LOBBY_STANCHIONS,
   bofTables,
+  boothTotem,
   entranceLeaves,
   groundWalls,
   stairDoor,
@@ -57,6 +58,13 @@ import {
 import type { Rect, Wall } from '../../sim/types';
 import { m } from '../../sim/units';
 import type { VenuePalette } from './materials';
+import {
+  BOOTH_SCHEMES,
+  type SignPainter,
+  sponsorPanel,
+  sponsorSkirt,
+  sponsorTotem,
+} from './signage';
 import {
   BREAKER_H,
   BREAKER_Y,
@@ -71,14 +79,14 @@ import {
   floorSlab,
   networkRack,
   pendant,
+  mergeSimple,
   postAt,
   rollerDoor,
   slab,
   stairFlight,
+  wallPanel,
 } from './props';
 
-/** Built sponsor booths stand a head taller than a partition; tables are `low`. */
-const BOOTH_H = 2.4;
 /** How far the visible part of a staircase climbs before the ceiling swallows it. */
 const STAIR_RISE = 5;
 /** The lobby's walking surface, above the hall's. */
@@ -118,8 +126,13 @@ function wallStyle(
   w: Wall,
   p: VenuePalette,
 ): { mat: THREE.MeshStandardMaterial; height: number; base: number } | null {
-  // Half tables are drawn as cloth-draped tables, not as slabs.
-  if (w.booth) return w.booth.table ? null : { mat: p.boothWall, height: BOOTH_H, base: 0 };
+  /*
+   * Every sponsor booth is drawn by `booths()` — half tables as cloth-draped
+   * tables, built booths as a back wall, two returns and a counter. A built booth
+   * used to come through here as one `BOOTH_H` slab across its whole rect, which
+   * is why the hall read as six grey blocks with a stripe.
+   */
+  if (w.booth) return null;
   // Drawn by their own builders further down: the 19-inch rack, the router cabinet
   // and its louvres, the slatted roller door, the turned forecourt bollards, and
   // the flight inside a stair shaft (the sim carries it as a wall because nothing
@@ -135,7 +148,9 @@ function wallStyle(
    * forecourt planters. Michele, on that build: *"this cube is walk-through"*,
    * *"Entrance walls are still walkable"*.
    */
-  if (w.kind === 'totem') return { mat: p.devoxxOrange, height: 2.1, base: 0 };
+  // The totem is drawn by `booths()` too: it carries its sponsor's name now, and
+  // a name needs a painted face rather than a block of `devoxxOrange`.
+  if (w.kind === 'totem') return null;
   if (w.kind === 'crate') return { mat: p.blackMetal, height: 1.05, base: 0 };
   if (w.kind === 'accent-panel') return { mat: p.redPanel, height: 2, base: 0.4 };
   if (w.kind === 'store-wall') return { mat: p.wood, height: 1.9, base: 0 };
@@ -283,26 +298,429 @@ function catering(p: VenuePalette): THREE.Group {
 
 /* ------------------------------------------------------------------ booths */
 
-function booths(p: VenuePalette): THREE.Group {
+/**
+ * THE TWELVE SPONSOR STANDS.
+ *
+ * Michele, tonight: *"Polishing the graphic, making people and stands real etc."*
+ *
+ * What was here before: six built booths got a single LED slab laid across the
+ * back edge, six half tables got a cloth, and the twelve sponsors' names — which
+ * `src/sim/geometry.ts` has carried all along, and which the "why am I blocked"
+ * lines already speak — appeared on screen nowhere. From the diorama camera a
+ * trade-show floor read as six grey blocks with a stripe and six purple slabs.
+ *
+ * The references are `media/other-images/image-1790032630885/-637969/-650288/
+ * -655131.webp`, and what they say a Devoxx stand is, in the order you read it:
+ *
+ *  1. **a flat panel of one brand colour with the name on it** — the thing you
+ *     read from across the hall, over everybody's heads;
+ *  2. **a slim lit totem out in the lane** — the thing you read at head height
+ *     when the panel is behind a crowd (the hall shot is full of them);
+ *  3. **a pale carpet tile with a white taped edge**, which is what separates a
+ *     stand from the aisle more cheaply than any amount of furniture;
+ *  4. only then the furniture: a counter, black metal high tables, white tub
+ *     stools, a planter.
+ *
+ * So that is the order this builds them in, and the first three are the ones that
+ * are never allowed to be cut.
+ *
+ * ## Where a mesh is allowed to stand
+ *
+ * `tests/colliders.test.ts` sweeps every mesh the venue draws and fails any solid
+ * a robot can stand inside. The sim's booth slab — the whole 100 x 70 px rect —
+ * is this stand's collider and the only one it gets; `src/sim/geometry.ts` is held
+ * by another builder tonight, so nothing here may ask for a new one. Therefore:
+ *
+ *  - anything standing on the floor is **inside the booth's own rect**, or inside
+ *    `boothTotem()`/`boothCrate()`, which are colliders already;
+ *  - anything outside it is either **flat** (the carpet: top 0.07 m, under the
+ *    sweep's 0.15 m floor-plate cut) or **hung** above 0.6 m;
+ *  - nothing new stands in an aisle. Michele: *"staircase should be clear of
+ *    booths in general"* — the aisles get the same answer.
+ *
+ * ## Why a built stand is enclosed
+ *
+ * The sim says a built booth is solid across its whole rect ("a built booth, solid
+ * walls"), and a render that shows an open stand you can see straight into would
+ * be calling that a lie. So it is built as the kind of stand that IS solid: a back
+ * wall, two side returns and a counter closing the front. The counter is 0.95 m
+ * rather than the venue's usual `LOW_H` 0.78 on purpose — in this game 0.78 is the
+ * height of the `low` walls Voxxy can jump, and a stand front is not one of them.
+ */
+
+/** Back wall of a built stand. Taller than a partition: it is the stand's poster. */
+const STAND_WALL_H = 3.0;
+/** The side returns that make the back wall a stand rather than a hoarding. */
+const STAND_RETURN_H = 2.5;
+/** How deep the returns run from the back wall, sim px. */
+const STAND_RETURN_D = 42;
+/** The counter across the front, and the pale top laid on it. */
+const STAND_COUNTER_H = 0.88;
+const STAND_COUNTER_TOP = 0.1;
+/** Depth of the back wall, the returns and the counter, sim px. */
+const STAND_T = 5;
+const STAND_COUNTER_D = 12;
+/** The carpet tile's overhang into the aisle, sim px, and its two layers. */
+const CARPET_BLEED = 7;
+const CARPET_TOP = 0.045;
+const CARPET_EDGE_TOP = 0.075;
+
+/** A sim rect extruded to a world-space geometry, ready for `mergeSimple`. */
+function boxGeo(r: Rect, base: number, height: number): THREE.BufferGeometry {
+  const h = Math.max(height, 0.01);
+  const geo = new THREE.BoxGeometry(m(r.w), h, m(r.h));
+  geo.translate(m(r.x + r.w / 2), base + h / 2, m(r.y + r.h / 2));
+  return geo;
+}
+
+/** One `InstancedMesh`'s worth of a repeated prop: one geometry, many placings. */
+class Instanced {
+  private readonly at: THREE.Matrix4[] = [];
+  constructor(
+    private readonly name: string,
+    private readonly geo: THREE.BufferGeometry,
+    private readonly mat: THREE.MeshStandardMaterial,
+  ) {}
+  /** Place a copy with its origin on the floor at a sim point. */
+  put(simX: number, simY: number, base = 0): void {
+    this.at.push(new THREE.Matrix4().makeTranslation(m(simX), base, m(simY)));
+  }
+  build(): THREE.InstancedMesh | null {
+    if (this.at.length === 0) {
+      this.geo.dispose();
+      return null;
+    }
+    const mesh = new THREE.InstancedMesh(this.geo, this.mat, this.at.length);
+    mesh.name = this.name;
+    this.at.forEach((mat4, i) => mesh.setMatrixAt(i, mat4));
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    return mesh;
+  }
+}
+
+/** A white tub stool: a seat disc on a pedestal, origin between its feet. */
+function stoolGeometry(): THREE.BufferGeometry {
+  const seat = new THREE.CylinderGeometry(0.2, 0.19, 0.08, 12);
+  seat.translate(0, 0.63, 0);
+  const stem = new THREE.CylinderGeometry(0.045, 0.045, 0.6, 8);
+  stem.translate(0, 0.32, 0);
+  const foot = new THREE.CylinderGeometry(0.17, 0.18, 0.04, 12);
+  foot.translate(0, 0.02, 0);
+  return mergeSimple([seat, stem, foot]);
+}
+
+/**
+ * A black metal high table — the single most recognisable object on that floor.
+ * Every drone frame has a dozen of them: a thin square tube frame and a dark top.
+ */
+function highTableGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const top = new THREE.BoxGeometry(0.62, 0.05, 0.62);
+  top.translate(0, 1.03, 0);
+  parts.push(top);
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as Array<[number, number]>) {
+    const leg = new THREE.BoxGeometry(0.035, 1.03, 0.035);
+    leg.translate(sx * 0.28, 0.515, sz * 0.28);
+    parts.push(leg);
+  }
+  return mergeSimple(parts);
+}
+
+/** A planter tub, and the grass in it as a separate green instance. */
+function planterTubGeometry(): THREE.BufferGeometry {
+  const tub = new THREE.BoxGeometry(0.72, 0.46, 0.72);
+  tub.translate(0, 0.23, 0);
+  return tub;
+}
+function planterGrassGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  for (const [dx, dz, hgt] of [[0, 0, 0.8], [-0.16, 0.1, 0.62], [0.17, -0.09, 0.7], [0.05, 0.18, 0.55]] as Array<[number, number, number]>) {
+    const blade = new THREE.BoxGeometry(0.07, hgt, 0.07);
+    blade.translate(dx, 0.46 + hgt / 2, dz);
+    parts.push(blade);
+  }
+  return mergeSimple(parts);
+}
+
+/** A bowl of giveaways. There is one on every counter at that show. */
+function bowlGeometry(): THREE.BufferGeometry {
+  const bowl = new THREE.CylinderGeometry(0.17, 0.11, 0.1, 12);
+  bowl.translate(0, 0.05, 0);
+  return bowl;
+}
+
+/** A rubber duck, at the only level of detail a diorama camera resolves. */
+function duckGeometry(): THREE.BufferGeometry {
+  const body = new THREE.SphereGeometry(0.11, 10, 8);
+  body.scale(1, 0.85, 1.25);
+  body.translate(0, 0.1, 0);
+  const head = new THREE.SphereGeometry(0.07, 8, 6);
+  head.translate(0, 0.21, -0.08);
+  const bill = new THREE.BoxGeometry(0.05, 0.03, 0.07);
+  bill.translate(0, 0.19, -0.16);
+  return mergeSimple([body, head, bill]);
+}
+
+function booths(p: VenuePalette, art: SignPainter): THREE.Group {
   const g = new THREE.Group();
   g.name = 'booths';
+
+  // Repeated furniture is instanced across the whole field: the sweep expands an
+  // InstancedMesh per instance, so each stool is still measured on its own, and
+  // twelve stands' worth of stools costs one draw call rather than twenty-four.
+  const stools = new Instanced('booth-stools', stoolGeometry(), p.tubChair);
+  const tables = new Instanced('booth-high-tables', highTableGeometry(), p.blackMetal);
+  const tubs = new Instanced('booth-planters', planterTubGeometry(), p.planterTub);
+  const grass = new Instanced('booth-planter-grass', planterGrassGeometry(), p.planterGreen);
+  const bowls = new Instanced('booth-giveaway-bowls', bowlGeometry(), p.duckYellow);
+  const ducks = new Instanced('booth-ducks', duckGeometry(), p.duckYellow);
+  /** Both carpet layers for all twelve, merged: they are flat, so one mesh is right. */
+  const carpet: THREE.BufferGeometry[] = [];
+  const carpetEdge: THREE.BufferGeometry[] = [];
+
   for (const bo of GF.booths) {
-    const rect: Rect = { x: bo.x, y: bo.y, w: bo.w, h: bo.h };
-    if (bo.table) {
-      // A half table: cloth on three sides, open toward the lane below it. That
-      // open side is the gap the sim gives Voxxy and nobody else. The flight case
-      // in front of it is `boothCrate()` in the sim and comes through the wall loop.
-      const table = clothTable(rect, '+z', p);
-      table.name = `booth-table-${bo.col}-${bo.row}`;
-      g.add(table);
-    } else {
-      // A built booth: the sim's slab carries the walls, so this is the back-wall
-      // LED that makes it read as a stand rather than a block. The totem beside it
-      // is `boothTotem()` in the sim, for the same reason as the flight case.
-      const led = slab({ x: bo.x + 6, y: bo.y - 2, w: bo.w - 12, h: 3 }, 0.9, 1.5, p.boothScreen);
-      led.name = `booth-screen-${bo.col}-${bo.row}`;
-      g.add(led);
+    const r: Rect = { x: bo.x, y: bo.y, w: bo.w, h: bo.h };
+    // `row * 4 + col` is the order `SPONSORS` is laid out in, so a stand's brand
+    // is a pure function of where the plan puts it. No RNG: a screenshot of this
+    // hall is the same screenshot tomorrow.
+    const idx = bo.row * 4 + bo.col;
+    const s = BOOTH_SCHEMES[idx % BOOTH_SCHEMES.length];
+    const key = `${bo.col}-${bo.row}`;
+
+    /*
+     * The carpet tile, and its white taped edge.
+     *
+     * It bleeds into the aisle, which is the only thing here that leaves the
+     * booth's own rect — allowed because it tops out at 7.5 cm, under the sweep's
+     * 0.15 m floor-plate cut, and because a carpet is not something you walk into.
+     *
+     * The east edge is clamped off `GF.smallStairs`. Column 3 of the booth grid
+     * (x 880..980) already overlaps the small staircase (x 952) by 28 px — that is
+     * Michele's *"is it a booth? in the middle of the stairs?"*, it is a fix in
+     * `geometry.ts`, and `geometry.ts` is held tonight. What this file can do is
+     * not make it worse by laying sponsor carpet up the steps.
+     */
+    const bleedE = Math.min(r.x + r.w + CARPET_BLEED, GF.smallStairs.x);
+    const tile: Rect = {
+      x: r.x - CARPET_BLEED,
+      y: r.y - CARPET_BLEED,
+      w: Math.max(bleedE - (r.x - CARPET_BLEED), r.w),
+      h: r.h + CARPET_BLEED * 2,
+    };
+    carpet.push(boxGeo(tile, CARPET_TOP - 0.04, 0.04));
+    const EDGE = 1.6;
+    for (const band of [
+      { x: tile.x, y: tile.y, w: tile.w, h: EDGE },
+      { x: tile.x, y: tile.y + tile.h - EDGE, w: tile.w, h: EDGE },
+      { x: tile.x, y: tile.y, w: EDGE, h: tile.h },
+      { x: tile.x + tile.w - EDGE, y: tile.y, w: EDGE, h: tile.h },
+    ]) {
+      carpetEdge.push(boxGeo(band, CARPET_EDGE_TOP - 0.03, 0.03));
     }
+
+    /** Everything of this stand built in the shared dark stand fabric. */
+    const dark: THREE.BufferGeometry[] = [];
+    /** Everything in the pale counter/shelf fabric. */
+    const pale: THREE.BufferGeometry[] = [];
+
+    if (bo.table) {
+      /*
+       * A HALF TABLE. The cloth covers the whole rect, because the whole rect is
+       * what the sim lets Voxxy under ("only something Voxxy-sized goes under the
+       * tablecloth"), and the south side is left open because that gap IS the
+       * mechanic — do not close it.
+       */
+      const table = clothTable(r, '+z', p);
+      table.name = `booth-table-${key}`;
+      g.add(table);
+
+      /*
+       * The printed valance: a 22 cm band hanging from the table edge across the
+       * open side, with half a metre of dark gap still showing under it. A draped
+       * table at a trade show always has one, and it is the only surface on a
+       * table stand that faces the camera at all.
+       */
+      const valance = wallPanel(
+        r.x + r.w / 2,
+        r.y + r.h + 0.4,
+        m(r.w) - 0.1,
+        0.22,
+        0.63,
+        1,
+        art.material(`booth-skirt-${key}`, 640, 76, s.brand, sponsorSkirt(s), 0.2),
+      );
+      valance.name = `booth-skirt-${key}`;
+      g.add(valance);
+
+      /*
+       * The desktop roll-up banner at the back of the table. A table stand carries
+       * its name on one of these, not on a wall it has not paid for, and standing
+       * it ON the table keeps it inside the collider and out of Voxxy's gap.
+       */
+      const banner = wallPanel(r.x + 24, r.y + 12, 0.92, 1.4, LOW_H + 0.72, 1,
+        art.material(`booth-banner-${key}`, 300, 460, s.brand, sponsorTotem(bo.name, s), 0.22));
+      banner.name = `booth-banner-${key}`;
+      g.add(banner);
+      dark.push(boxGeo({ x: r.x + 21, y: r.y + 12, w: 6, h: 1.6 }, LOW_H, 0.05));
+
+      // On the table: the giveaway bowl, and a standby strip along the cloth edge.
+      bowls.put(r.x + r.w - 26, r.y + 26, LOW_H);
+      g.add(slab({ x: r.x + 8, y: r.y + r.h - 5, w: r.w - 16, h: 1.4 }, LOW_H - 0.09, 0.05, p.boothStandby));
+    } else {
+      /*
+       * A BUILT STAND: back wall, two returns, a counter closing the front. See
+       * the header for why it is closed rather than open.
+       */
+      dark.push(boxGeo({ x: r.x, y: r.y, w: r.w, h: STAND_T }, 0, STAND_WALL_H));
+      for (const rx of [r.x, r.x + r.w - STAND_T]) {
+        dark.push(boxGeo({ x: rx, y: r.y, w: STAND_T, h: STAND_RETURN_D }, 0, STAND_RETURN_H));
+      }
+      const front: Rect = { x: r.x, y: r.y + r.h - STAND_COUNTER_D, w: r.w, h: STAND_COUNTER_D };
+      dark.push(boxGeo(front, 0, STAND_COUNTER_H));
+      pale.push(boxGeo({ ...front, x: front.x - 0.5, w: front.w + 1 }, STAND_COUNTER_H, STAND_COUNTER_TOP));
+
+      /*
+       * The branded back wall itself. The face is a plane held 0.4 px proud of the
+       * wall body — two coplanar surfaces is how the entrance got its flicker (see
+       * `lobby()`), and one costs nothing to avoid here.
+       */
+      const panelH = 2.2;
+      const face = wallPanel(
+        r.x + r.w / 2,
+        r.y + STAND_T + 0.4,
+        m(r.w) - 0.35,
+        panelH,
+        0.52 + panelH / 2,
+        1,
+        art.material(`booth-screen-${key}`, 896, 280, s.brand, sponsorPanel(bo.name, s), 0.26),
+      );
+      face.name = `booth-screen-${key}`;
+      g.add(face);
+
+      // The standby strip along the counter front: the stand's one lit thing in a
+      // blackout. Chapter 2 is lit by three robot lamps and nothing else.
+      g.add(slab({ x: r.x + 5, y: r.y + r.h - 1.6, w: r.w - 10, h: 1.4 }, 0.68, 0.06, p.boothStandby));
+
+      // The furniture inside: a high table, two stools, a planter, a bowl.
+      tables.put(r.x + 34, r.y + 34);
+      stools.put(r.x + 22, r.y + 40);
+      stools.put(r.x + 46, r.y + 29);
+      tubs.put(r.x + r.w - 17, r.y + 18);
+      grass.put(r.x + r.w - 17, r.y + 18);
+      bowls.put(r.x + r.w - 30, r.y + r.h - 6, STAND_COUNTER_H + STAND_COUNTER_TOP);
+
+      /*
+       * The totem in the lane. `boothTotem()` has been a collider since the "this
+       * cube is walk-through" round; `wallStyle` no longer draws it as an orange
+       * block, because an orange block is exactly what Michele could not identify
+       * (*"the orange thing and the big black thing with halo"*). It is a lit
+       * pylon with the sponsor's name on it now, which is what those are.
+       */
+      const t = boothTotem(bo);
+      if (t) {
+        /*
+         * Its own mesh, not merged into the stand's: the totem stands out in the
+         * lane, and one merged geometry spanning the stand AND the totem has a
+         * bounding box that swallows the aisle between them. The collider sweep
+         * measures bounding boxes, so it read that aisle as a drawn solid with no
+         * collider — correctly. Six of them, first run.
+         */
+        const body = slab({ x: t.x, y: t.y, w: t.w, h: t.h - 1 }, 0, 2.1, p.boothWall);
+        body.name = `booth-totem-body-${key}`;
+        g.add(body);
+        const totem = wallPanel(t.x + t.w / 2, t.y + t.h - 0.4, m(t.w) - 0.06, 1.6, 1.18, 1,
+          art.material(`booth-totem-${key}`, 240, 480, s.brand, sponsorTotem(bo.name, s), 0.3));
+        totem.name = `booth-totem-${key}`;
+        g.add(totem);
+      }
+    }
+
+    /* ------------------------------------------------- the named jokes land */
+    switch (bo.name) {
+      case 'Rubber Duck Inc':
+        // Chapter 3 shuffles a duck across the lane here. A stand stacked with the
+        // things is how a player finds out which stand that is.
+        for (let k = 0; k < 6; k++) ducks.put(r.x + 12 + (k % 3) * 13, r.y + 34 + Math.floor(k / 3) * 15, LOW_H);
+        break;
+      case 'Sticker Mine': {
+        /*
+         * The top shelf, drawn.
+         *
+         * `ch3-breakfast.ts` gives the holographic sticker to whoever can reach
+         * the top of this stand, and only Droid (2.1 m) can — Voxxy is 1.15 and
+         * Biggy 1.45. That gate was a line of prose with nothing on screen behind
+         * it. Three shelves at 0.62 / 1.24 / 1.92 m say it without a word.
+         */
+        for (const [sy, sx] of [[0.62, 0], [1.24, 0], [1.92, 0]] as Array<[number, number]>) {
+          pale.push(boxGeo({ x: r.x + 12 + sx, y: r.y + STAND_T, w: r.w - 30, h: 7 }, sy, 0.05));
+        }
+        for (let k = 0; k < 9; k++) {
+          const sy = [0.67, 1.29, 1.97][k % 3];
+          bowls.put(r.x + 18 + Math.floor(k / 3) * 22, r.y + STAND_T + 3, sy);
+        }
+        break;
+      }
+      case 'Regex Racing': {
+        // A chequered apron across the front of the carpet: four metres of it, and
+        // the four race markers chapter 3 drops sit just outside it.
+        for (let k = 0; k < 10; k++) {
+          if (k % 2 === 0) continue;
+          carpetEdge.push(boxGeo({ x: r.x + k * (r.w / 10), y: r.y + r.h + 1, w: r.w / 10, h: 5 }, CARPET_EDGE_TOP - 0.03, 0.03));
+        }
+        break;
+      }
+      case 'The Coffee Sponsor':
+        // The queue joke, in cups. `soupCup` is already the show's yellow-orange.
+        for (let k = 0; k < 8; k++) {
+          g.add(boxAt(r.x + 52 + (k % 4) * 9, r.y + 30 + Math.floor(k / 4) * 10, 6, 6, LOW_H, 0.14, p.soupCup));
+        }
+        break;
+      case 'Legacy Systems SA':
+        // A stack of beige boxes on the counter. It is 2026 and they still ship it.
+        for (let k = 0; k < 3; k++) {
+          pale.push(boxGeo({ x: r.x + 14 + k * 3, y: r.y + r.h - 10, w: 16, h: 8 }, STAND_COUNTER_H + STAND_COUNTER_TOP + k * 0.14, 0.14));
+        }
+        break;
+      case 'Monolith GmbH':
+        // One deployable. One. It does not fit on the table and they brought it anyway.
+        dark.push(boxGeo({ x: r.x + r.w / 2 - 14, y: r.y + 20, w: 28, h: 26 }, LOW_H, 0.9));
+        break;
+      default:
+        break;
+    }
+
+    if (dark.length > 0) {
+      const mesh = new THREE.Mesh(mergeSimple(dark), p.boothWall);
+      mesh.name = `booth-shell-${key}`;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      g.add(mesh);
+    }
+    if (pale.length > 0) {
+      const mesh = new THREE.Mesh(mergeSimple(pale), p.counterWhite);
+      mesh.name = `booth-counter-${key}`;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      g.add(mesh);
+    }
+  }
+
+  const tiles = new THREE.Mesh(mergeSimple(carpet), p.boothCarpet);
+  tiles.name = 'booth-carpet';
+  tiles.castShadow = false;
+  tiles.receiveShadow = true;
+  g.add(tiles);
+  const edges = new THREE.Mesh(mergeSimple(carpetEdge), p.boothEdge);
+  edges.name = 'booth-carpet-edge';
+  edges.castShadow = false;
+  edges.receiveShadow = true;
+  g.add(edges);
+
+  for (const inst of [stools, tables, tubs, grass, bowls, ducks]) {
+    const mesh = inst.build();
+    if (mesh) g.add(mesh);
   }
   return g;
 }
@@ -595,7 +1013,11 @@ function lobby(p: VenuePalette, overhead: THREE.Group): THREE.Group {
 
 /* --------------------------------------------------------------------- build */
 
-export function buildGround(p: VenuePalette): GroundBuild {
+export function buildGround(
+  p: VenuePalette,
+  /** The venue's one canvas painter — the twelve sponsor stands print on it. */
+  painter: SignPainter,
+): GroundBuild {
   const group = new THREE.Group();
   group.name = 'ground';
   const overhead = new THREE.Group();
@@ -632,7 +1054,7 @@ export function buildGround(p: VenuePalette): GroundBuild {
 
   group.add(threshold(p, anchors));
   group.add(catering(p));
-  group.add(booths(p));
+  group.add(booths(p, painter));
   group.add(reception(p, overhead));
   group.add(staircases(p, anchors));
 
