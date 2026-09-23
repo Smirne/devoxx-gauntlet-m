@@ -22,6 +22,30 @@ import { dist } from './bot';
  * the last pixel of it, or the bounce flickers as the robot walks.
  */
 const MIRROR_EDGE_MARGIN = 10;
+/**
+ * How far a robot's own colour spills around its feet, sim px.
+ *
+ * Sized against the robots themselves rather than picked by eye: 24 px is 1.9 m,
+ * a little over Biggy's own width and about three times Voxxy's. Close enough to
+ * read as "the light this thing gives off just by being here", far enough that
+ * standing next to a clue is standing ON it.
+ */
+export const SKIRT_RANGE = 24;
+
+/**
+ * Rays in the skirt's visibility polygon.
+ *
+ * A quarter of `RAYS_POOL`, and not for tidiness: the first cut cast a full
+ * 72-ray fan per robot per frame on top of every existing lamp, which timed out
+ * two chapter tests outright. It would have cost the same on a judge's laptop.
+ *
+ * 18 is enough because the skirt is 24 px: at that radius the gap between rays
+ * is under 9 px, so a wall cannot hide inside one. It still has to be cast at
+ * all — a robot pressed against a wall would otherwise spill its colour into the
+ * room on the other side, and in chapter 1 that room is where the clues are.
+ */
+export const SKIRT_RAYS = 18;
+
 /** The sample is tested this far off the mirror's reflective face, to stay off the wall line. */
 const MIRROR_PROBE = 3;
 /** The secondary source is seated this far off the face, so its own fan is not clipped by it. */
@@ -156,6 +180,46 @@ export function buildLights(bots: Bot[], walls: Wall[], mirrors: Mirror[]): Ligh
             ],
           };
     lights.push(src);
+
+    /*
+     * A small pool of the robot's own colour, right around its feet.
+     *
+     * Michele, playing chapter 1: *"Sometime it's hard to light up the clues,
+     * even if the robots are next. What if we spread a bit of light around the
+     * character so it's simpler?"* He is describing a real unfairness. Voxxy and
+     * Biggy both carry CONES, so a robot standing on a clue is not lighting it —
+     * its lamp is pointed past it — and the player is left nudging a heading by
+     * degrees to satisfy something they are already standing on.
+     *
+     * Every lamp therefore has a skirt: isotropic, short, and in the same colour.
+     * It does not weaken the puzzle, because it only reaches about a robot's own
+     * length — you still have to bring the RIGHT robots to the RIGHT spot, which
+     * is the whole mechanic. What it removes is the aiming pixel-hunt once they
+     * are there.
+     *
+     * Not applied to a mounted robot: Droid on Biggy's shoulders is a metre and a
+     * half up, and a skirt at his feet would be lighting the inside of Biggy.
+     */
+    if (!b.mounted) {
+      const skirt = SKIRT_RANGE;
+      lights.push({
+        x: sx,
+        y: sy,
+        face: b.face,
+        c: L.c,
+        type: 'pool',
+        range: skirt,
+        owner: b.kind,
+        // `primary` separates what a ROBOT emits from what a MIRROR re-emits —
+        // `lights.filter(l => !l.primary)` is how the bounce tests find bounces.
+        // The skirt comes off the robot, so it is primary; marking it otherwise
+        // made every robot look like it was bouncing off a screen that was not
+        // there.
+        primary: true,
+        poly: [{ x: sx, y: sy }, ...castPoly(sx, sy, 0, Math.PI * 2, skirt, walls, SKIRT_RAYS)],
+        full: true,
+      });
+    }
 
     // The cinema screen bounces light: sample the segment, keep the points this
     // source actually reaches, and re-emit from the nearest, the median and the

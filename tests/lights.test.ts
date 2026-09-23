@@ -79,8 +79,11 @@ describe('shadows', () => {
 describe('the lamps themselves', () => {
   it('a pool light is a full circle', () => {
     const lights = buildLights([lamp('droid', 400, 400)], NO_WALLS, NO_MIRRORS);
-    expect(lights).toHaveLength(1);
-    const pool = lights[0];
+    // Two lamps per robot now: its own light, and the short skirt of the same
+    // colour around its feet (see SKIRT_RANGE). The lamp is the long one.
+    expect(lights).toHaveLength(2);
+    const pool = lights.find((l) => l.range === DEFS.droid.light.range)!;
+    expect(pool).toBeDefined();
     expect(pool.type).toBe('pool');
     expect(pool.full).toBe(true);
     expect(pool.poly).toHaveLength(RAYS_POOL + 2); // centre + the closed fan
