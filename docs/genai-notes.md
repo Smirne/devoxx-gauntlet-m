@@ -1398,3 +1398,59 @@ kill condition, read literally.
 through the left-hand doors` times out at clean `HEAD` in this container: it simulates 5,600 frames
 of a 36-body crowd and vitest's default budget is 5 s. It now carries an explicit 30 s timeout,
 because a wall-clock budget on a headless sim is a property of the machine and not of the game.
+
+## 24 Sep 2026 — the booth games move to chapter 3, because chapter 2's hall is shut
+
+**The human decision.** Michele, playing chapter 2: *"Minigames should be in chapter 3."* His
+reason came in the same message — *"the hall is still closed at the moment."* He is right, and it
+is not a placement quibble: the premise of a booth game is a booth with somebody standing at it,
+and chapter 2's exhibition hall is dark, empty, unpowered and an hour from opening. Nobody is there
+to start a stopwatch, nobody is there to hand over a giant rubber duck, and the sponsor who would
+is asleep. Chapter 3 is breakfast with the doors open and thirty-six visitors on the floor, which
+is the only reading of "win some swag at a stand" that holds up.
+
+**What the agent moved.** Three games, not the two the brief guessed at: the duck shuffleboard, the
+top-shelf sticker and the Regex Racing lap. `MinigameState`, `Minigames` and `setupMinigames` left
+`src/sim/chapters/ch2-expo.ts` for `src/sim/chapters/ch3-breakfast.ts` unchanged in mechanics —
+same reaches, same forces, same `RACE_LIMIT`, same `TRAVEL_TIME_SCALE` on the lap clock. Chapter 3
+was *already* calling `setupMinigames` (it imported it from chapter 2), so this is chapter 2 losing
+them rather than chapter 3 gaining them: what actually changed hands is the code's home, chapter
+2's briefing, and every prop chapter 2 was drawing at booths nobody could reach.
+
+**What legitimately changed with the move, and nothing else.** The lines. The sticker's refusal was
+one sentence with the robot's name swapped into it; CLAUDE.md says every gate speaks in that
+robot's voice, so Voxxy and Biggy now have their own, and each of them now has somebody behind the
+counter enjoying not fetching the stool. The win line credits the Sticker Mine crew, because there
+is a crew now. The duck's payout line already read *"Rubber Duck Inc hands over a giant duck"* —
+written for a staffed booth, and it has finally got one. Chapter 2's objective dropped "Booth games
+on the way are optional swag"; chapter 3's gained a sentence saying the booths are open and running
+their games, its keys line gained "play a booth game", and its progress line gained a `swag n/3`
+tail that only appears once something has been won, so an optional beat never reads as a task.
+
+**Nothing was cut.** All three games survive intact. None of them depended on the hall being shut;
+all three depended on it being open and were quietly wrong for four chapters' worth of playtests.
+
+**What was deliberately left alone.** `mkBody` — the loose-body helper the crates, the crowd, the
+cake crate and the duck are all built from — stays exported from `ch2-expo.ts` even though chapter
+2 no longer uses it, because chapters 3 and 4 both import it from there and moving it would mean
+editing a file another agent was writing in the same tree. Flagged as a wart, not fixed. Also left
+alone: the Regex Racing lap can be started by Voxxy brushing marker 1 on an unrelated errand and
+then reset with a toast twenty seconds later. That is pre-existing behaviour and the move did not
+make it worse, so touching it would have been a rewrite disguised as a move.
+
+**Rejected.** Splitting the three games across chapters 3 and 4, or gating them behind Stephan's
+three jobs. Both make optional swag feel like homework, and the decision was about *where a booth
+game is plausible*, not about pacing.
+
+**Verification.** A throwaway `git worktree` at clean `HEAD` with only the three changed files
+copied in: `tsc --noEmit` clean, 260 tests green (255 before this work, 259 at the checkpoint
+commit), `vite build` clean. Then the built page driven headlessly on chapters 2 and 3, and all
+three games *actually played* in their new home rather than read: Voxxy and Biggy refused the
+sticker in two different voices, Droid took it, the duck was shoved into the circle with the stick
+and stopped there, the lap paid out, the progress line reached `swag 3/3` and `document.title` read
+`After Dark · ERRORS:0` on both chapters. One thing worth recording for the next agent who drives
+this build: under swiftshader this scene draws at **one to two frames a second**, so a harness that
+waits on `requestAnimationFrame` for every step of a minigame hangs. The sim is stepped directly
+with `game.update(DT_MAX)` while the page's own loop keeps drawing, and real frames are awaited at
+every checkpoint — and a second browser tab is fatal, because a background tab's RAF is throttled
+to a standstill.

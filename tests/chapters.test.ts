@@ -1409,6 +1409,34 @@ describe('chapter 3 — breakfast', () => {
     // All three, on one card.
     expect(g.snapshot().progress).toContain('swag 1/3');
   });
+
+  /**
+   * The swag counter and the half-point-per-swag on the final card are `game.ts`'s,
+   * not a chapter's, so moving the games between chapters must not touch them. This
+   * is the one assertion that says so out loud: a swag id earned HERE is still on the
+   * end card three chapters later, and it is still worth its half point.
+   */
+  it('carries swag won in chapter 3 through to the final card', () => {
+    const plain = createGame({ seed: SEED, chapter: 3, cards: false });
+    for (let i = 0; i < 2; i++) plain.skipChapter();
+    const bare = /(\d)\/9/.exec(plain.snapshot().card ?? '');
+    expect(plain.snapshot().card).toContain('Swag 0/3');
+
+    const g = mk(3);
+    const sticker = g.snapshot().props.find((p) => p.kind === 'sticker');
+    g.debug.select('droid');
+    g.debug.place('droid', sticker!.x, sticker!.y + 20);
+    g.key('KeyE');
+    expect(g.snapshot().swag).toContain('sticker');
+
+    for (let i = 0; i < 2; i++) g.skipChapter();
+    expect(g.snapshot().phase).toBe('done');
+    expect(g.snapshot().card).toContain('Swag 1/3');
+    // Half a point each, so one swag is worth either nothing or one whole point
+    // once the total is rounded — never less than the run without it.
+    const withSwag = /(\d)\/9/.exec(g.snapshot().card ?? '');
+    expect(Number(withSwag![1])).toBeGreaterThanOrEqual(Number(bare![1]));
+  });
 });
 
 /* ================================================================ chapter 4 */

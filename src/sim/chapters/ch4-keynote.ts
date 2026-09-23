@@ -17,9 +17,9 @@
 
 import { CY0, CY1, F1, R, VIEW_DEVOXX, floor1Walls, roomDoor } from '../geometry';
 import { PUSH_LEAN_MIN, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
-import { botsCollide, circleRect, dist, inRect, speed, stepBot } from '../bot';
+import { botsCollide, circleRect, dist, inRect, mkBody, speed, stepBot } from '../bot';
 import type { Bot, Person, Prop, Rect, Vec2 } from '../types';
-import { mkBody } from './ch2-expo';
+
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 
 /**

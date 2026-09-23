@@ -72,6 +72,34 @@ export function mkBot(kind: RobotKind, x: number, y: number): Bot {
   };
 }
 
+/* ---------------------------------------------------------------- loose bodies */
+
+/**
+ * A pushable body that is not a robot: chapter 3's beer crates, its crowd, its
+ * shuffleboard duck, and chapter 4's cake crate. It borrows `Bot` only so it can
+ * reuse `stepBot` and `botsCollide`.
+ *
+ * It lived in `ch2-expo.ts` until 24 Sep 2026, because chapter 2 happened to be the
+ * first chapter that needed one. When the booth minigames moved to chapter 3,
+ * chapter 2 stopped using it and stopped being anything but an address — two other
+ * chapters importing a physics helper across a chapter boundary from a chapter that
+ * does not use it. It belongs here, with the step and the collision it exists to
+ * borrow.
+ *
+ * `kind` is 'droid' and never read as an identity — the prototype gave these bodies
+ * their own kinds ('duck', 'crate'), and the single place `stepBot` looks at `kind`
+ * is the wall restitution, where anything that is not Biggy gets `REST_WALL_OTHER`.
+ * 'droid' reproduces that exactly. They are never added to `ctx.bots`, so no lamp,
+ * no mount and no player input ever reaches them.
+ */
+export function mkBody(name: string, x: number, y: number, over: Partial<Bot>): Bot {
+  const b = mkBot('droid', x, y);
+  b.name = name;
+  b.tall = false;
+  b.light = { c: [0, 0, 0], type: 'pool', range: 1 };
+  return Object.assign(b, over);
+}
+
 /* ---------------------------------------------------------------- collision */
 
 /**
