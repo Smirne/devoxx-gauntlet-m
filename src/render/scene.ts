@@ -736,9 +736,23 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     for (const src of sources) {
       const ghost = new THREE.Mesh(src.geometry, mat);
       ghost.name = `${src.name}-xray`;
-      ghost.renderOrder = 998;
+      /*
+       * Order matters more than it looks, and getting it wrong is what Michele
+       * saw: "biggy should not be transparent here, it's fully visible."
+       *
+       * The ghost draws where the depth buffer already holds something NEARER.
+       * With the ghosts drawn last, the robot's own body counted — Biggy's dome
+       * is in front of his belly, so the belly's ghost showed straight through
+       * him and the whole robot read as glass.
+       *
+       * So the ghosts go between the venue and the robot: after the room, which
+       * is what should hide him, and before his own meshes, which then paint
+       * over the ghost wherever he is actually visible.
+       */
+      ghost.renderOrder = 1;
       ghost.castShadow = false;
       ghost.receiveShadow = false;
+      src.renderOrder = 2;
       src.add(ghost);
       list.push(ghost);
     }
@@ -1186,7 +1200,14 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
         arc.visible = true;
         if (arc.geometry !== clueArcGeo[n][a]) arc.geometry = clueArcGeo[n][a];
         const src = snap.bots.find((x) => x.kind === clue.need[a]);
-        const c = found ? [90, 210, 120] : (src ? src.light.c : [200, 200, 200]);
+        /*
+         * A found clue KEEPS its colours. It used to go green, which threw away
+         * the one worked example the player has — Michele: "Keep the colors on
+         * the found codes, it remains as a hint for the next ones." A solved
+         * ring still says "this one wanted orange and green", which is how you
+         * learn to read the unsolved ones.
+         */
+        const c = src ? src.light.c : [200, 200, 200];
         const mat = arc.material as THREE.MeshBasicMaterial;
         mat.color.setRGB(c[0] / 255, c[1] / 255, c[2] / 255);
         mat.opacity = found ? 0.8 : 0.34 + 0.3 * pulse;
@@ -1204,7 +1225,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
         g += c[1];
         b += c[2];
       }
-      const avg = found ? [90, 210, 120] : [r / clue.need.length, g / clue.need.length, b / clue.need.length];
+      const avg = [r / clue.need.length, g / clue.need.length, b / clue.need.length];
       const pipMat = mark.pip.material as THREE.MeshBasicMaterial;
       pipMat.color.setRGB(avg[0] / 255, avg[1] / 255, avg[2] / 255);
       pipMat.opacity = found ? 0 : 0.4 + 0.35 * pulse;
