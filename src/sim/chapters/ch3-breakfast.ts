@@ -25,6 +25,12 @@
  * The crowd is not decoration: thirty-six visitors walk the hall's lane grid, and
  * shoving them costs complaints on the final card.
  *
+ * ## The booth games
+ *
+ * The three optional sponsor games live here, and only here, since 24 Sep 2026 —
+ * Michele, playing chapter 2: *"Minigames should be in chapter 3. The hall is still
+ * closed at the moment."* See `setupMinigames` below.
+ *
  * ## The beer delivery, and the OutOfMemoryError
  *
  * `docs/gameplay-additions.md` §3, and the last of its three calls to be approved:
@@ -61,7 +67,7 @@ import {
 import { GF, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
 import { botsCollide, circleRect, dist, inRect, speed, stepBot } from '../bot';
 import type { Bot, Person, Prop, Rect, Vec2, Wall } from '../types';
-import { mkBody, setupMinigames, type MinigameState, type Minigames } from './ch2-expo';
+import { mkBody } from './ch2-expo';
 import type { ChapterCtx, ChapterDef, ChapterRuntime, PrevVel } from './index';
 
 /* ---------------------------------------------------------------- reach and pacing */
@@ -207,6 +213,212 @@ interface Queue {
   open: number;
 }
 
+/* =============================================================== booth games */
+
+export interface MinigameState {
+  duck: Vec2;
+  duckDone: boolean;
+  stickerDone: boolean;
+  raceDone: boolean;
+  /** Which of the four Regex Racing markers is next, 0 when the lap has not started. */
+  raceNext: number;
+}
+
+/**
+ * The three optional booth games. Worth 0.5 points each on the final card and
+ * nothing else — they exist so the hall rewards wandering, which is the only
+ * reason a player looks at twelve sponsor booths at all.
+ *
+ * THEY USED TO BE CHAPTER 2'S. Michele moved them here on 24 Sep 2026, playing
+ * chapter 2: *"Minigames should be in chapter 3 — the hall is still closed at the
+ * moment."* He is right, and it is not a small point: the premise of a booth game
+ * is a booth with somebody standing at it, and chapter 2's hall is dark, empty and
+ * an hour from opening. Nobody is there to start a stopwatch, nobody is there to
+ * hand over a giant rubber duck, and the sponsor who would is asleep. Here the
+ * doors are open, three thousand people are on the floor and the crew are at their
+ * stands — so the swag is theirs to give, and the lines below say so.
+ */
+interface Minigames {
+  /** Returns true when the key was consumed, so the chapter does not also act on it. */
+  key(code: string, b: Bot): boolean;
+  update(dt: number): void;
+  props(): Prop[];
+  /** Debug/test seam: move the duck. */
+  place(kind: string, x: number, y: number): boolean;
+  state(): MinigameState;
+  /** How many of the three are won, for the HUD's progress line. */
+  won(): number;
+}
+
+function setupMinigames(ctx: ChapterCtx): Minigames {
+  const booth = (name: string): { x: number; y: number; w: number; h: number } => {
+    const b = GF.booths.find((o) => o.name === name);
+    if (!b) throw new Error(`no booth ${name}`);
+    return b;
+  };
+
+  // Shuffleboard: shove the duck so it comes to rest inside the circle.
+  const duckB = booth('Rubber Duck Inc');
+  const duck = mkBody('duck', duckB.x + duckB.w + 30, duckB.y + 35, {
+    r: 8,
+    mass: 0.6,
+    accel: 0,
+    max: 500 * SPEED_SCALE,
+    drag: 1.1,
+  });
+  const duckTarget = { x: duckB.x + duckB.w + 30, y: duckB.y + 35 + 95, r: 22 };
+  // Swag already won stays won: `ctx.swag` outlives the chapter object, so a
+  // replay of chapter 3 (R, or Skip back into it) does not re-award anything.
+  let duckDone = ctx.swag.includes('duck');
+
+  const stB = booth('Sticker Mine');
+  const sticker = { x: stB.x + stB.w / 2, y: stB.y + stB.h + 14 };
+  let stickerDone = ctx.swag.includes('sticker');
+
+  const rxB = booth('Regex Racing');
+  const racePts: Vec2[] = [
+    { x: rxB.x - 24, y: rxB.y - 16 },
+    { x: rxB.x + rxB.w + 24, y: rxB.y - 16 },
+    { x: rxB.x + rxB.w + 24, y: rxB.y + rxB.h + 16 },
+    { x: rxB.x - 24, y: rxB.y + rxB.h + 16 },
+  ];
+  /**
+   * The lap is a fixed length of floor, so the budget is a required speed wearing a
+   * clock's clothes: it grows with `TRAVEL_TIME_SCALE` or the rescale would quietly
+   * make the minigame impossible. 5 s of the prototype's Voxxy, 20 s of this one.
+   */
+  const RACE_LIMIT = 5 * TRAVEL_TIME_SCALE;
+  let raceNext = 0;
+  let raceT0 = 0;
+  let raceDone = ctx.swag.includes('race');
+
+  /**
+   * The top shelf, and who can reach it.
+   *
+   * A gate, so each robot says why in its own voice (CLAUDE.md) — and now there is
+   * somebody behind the counter who could hand it down and is enjoying not to.
+   */
+  function key(code: string, b: Bot): boolean {
+    if (code !== 'KeyE') return false;
+    if (!stickerDone && dist(b, sticker) < 40) {
+      if (b.kind === 'droid') {
+        stickerDone = true;
+        ctx.addSwag(
+          'sticker',
+          'The Sticker Mine crew watch Droid take the holographic one off the top shelf without a stool. ' +
+            '"…keep it." Swag +1',
+        );
+      } else if (b.kind === 'voxxy') {
+        ctx.flash('Voxxy: "The holographic one?" — "Top shelf." I am 38 cm of robot. DROID!');
+      } else {
+        ctx.flash('Biggy: I leaned on the stand to reach and the whole stand leaned back. Droid does this one.');
+      }
+      return true;
+    }
+    return false;
+  }
+
+  function update(dt: number): void {
+    stepBot(duck, dt, ctx.walls);
+    for (const b of ctx.bots) {
+      if (b.mounted) continue;
+      const dx = duck.x - b.x;
+      const dy = duck.y - b.y;
+      const dd = Math.hypot(dx, dy);
+      if (dd <= 0 || dd >= b.r + duck.r + 4) continue;
+      const nx = dx / dd;
+      const ny = dy / dd;
+      const lean = b.ix * nx + b.iy * ny;
+      // A shove, not a carry: the duck only takes a kick while it is still slow.
+      if (lean > PUSH_LEAN_MIN && speed(duck) < 40 * SPEED_SCALE) {
+        const F = (b.kind === 'biggy' ? 900 : 350) * SPEED_SCALE;
+        duck.vx += nx * lean * F * dt;
+        duck.vy += ny * lean * F * dt;
+      }
+      botsCollide(b, duck);
+    }
+    if (!duckDone && speed(duck) < 5 * SPEED_SCALE && dist(duck, duckTarget) < duckTarget.r) {
+      duckDone = true;
+      ctx.addSwag('duck', 'The duck stops in the circle. Rubber Duck Inc hands over a giant duck. Swag +1');
+    }
+
+    if (raceDone) return;
+    const v = ctx.byKind('voxxy');
+    const p = racePts[raceNext];
+    if (dist(v, p) < 16) {
+      if (raceNext === 0) raceT0 = ctx.t;
+      raceNext++;
+      if (raceNext === 4) {
+        const el = ctx.t - raceT0;
+        if (el <= RACE_LIMIT) {
+          raceDone = true;
+          ctx.addSwag('race', `Regex Racing lap in ${el.toFixed(1)}s — under ${RACE_LIMIT}s. Swag +1`);
+        } else {
+          ctx.flash(`Regex Racing lap in ${el.toFixed(1)}s — too slow, again`);
+          raceNext = 0;
+        }
+      }
+    }
+    if (raceNext > 0 && ctx.t - raceT0 > RACE_LIMIT) {
+      raceNext = 0;
+      ctx.flash("Regex Racing: time's up, lap reset");
+    }
+  }
+
+  function props(): Prop[] {
+    const out: Prop[] = [
+      { kind: 'duck', x: duck.x, y: duck.y, w: duck.r * 2, h: duck.r * 2, state: duckDone ? 'done' : 'idle' },
+      {
+        kind: 'duck-target',
+        x: duckTarget.x,
+        y: duckTarget.y,
+        w: duckTarget.r * 2,
+        h: duckTarget.r * 2,
+        state: duckDone ? 'done' : 'idle',
+        label: 'duck shuffleboard',
+      },
+      {
+        kind: 'sticker',
+        x: sticker.x,
+        y: sticker.y,
+        w: 12,
+        h: 8,
+        state: stickerDone ? 'done' : 'idle',
+        label: stickerDone ? 'sticker ✓' : 'top-shelf sticker (E)',
+      },
+    ];
+    racePts.forEach((p, i) => {
+      out.push({
+        kind: 'race-marker',
+        x: p.x,
+        y: p.y,
+        w: 12,
+        h: 12,
+        v: i + 1,
+        state: raceDone ? 'done' : i === raceNext ? 'active' : 'idle',
+        label: raceDone ? 'lap ✓' : `Voxxy lap 1→4 under ${RACE_LIMIT}s`,
+      });
+    });
+    return out;
+  }
+
+  return {
+    key,
+    update,
+    props,
+    place(kind: string, x: number, y: number): boolean {
+      if (kind !== 'duck') return false;
+      duck.x = x;
+      duck.y = y;
+      duck.vx = 0;
+      duck.vy = 0;
+      return true;
+    },
+    state: () => ({ duck: { x: duck.x, y: duck.y }, duckDone, stickerDone, raceDone, raceNext }),
+    won: () => (duckDone ? 1 : 0) + (stickerDone ? 1 : 0) + (raceDone ? 1 : 0),
+  };
+}
+
 export interface BreakfastState {
   chapter: 3;
   ladle: boolean;
@@ -243,8 +455,10 @@ const OBJECTIVE =
   'yes — the <b>keynote speaker</b>, and <b>tonight\'s beer delivery</b> out of the aisle. Droid: the ladle ' +
   'is on the high shelf. Biggy: carry the pot (bumps spill it, and it cools), and stack the crates — he is ' +
   'the only one who can lift one, and only so many at a time. Voxxy: clear a catering queue (E), find the ' +
-  'speaker at a built booth. Booth games still count as swag.';
-const KEYS = '1/2/3/Tab: switch · WASD · E: use / lift a crate / ask / clear a queue · Space: tow Biggy · R: restart';
+  'speaker at a built booth. The sponsor booths are open and running their games: three bits of ' +
+  '<b>swag</b> to be won on the way, all optional.';
+const KEYS =
+  '1/2/3/Tab: switch · WASD · E: use / lift a crate / ask / clear a queue / play a booth game · Space: tow Biggy · R: restart';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');
@@ -265,7 +479,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.walls.push(gate);
   let gateOpen = false;
 
-  const mg: Minigames = setupMinigames(ctx);
+  const mg = setupMinigames(ctx);
 
   const food = GF.food;
   const station: Vec2 = { x: food.soup.x + 45, y: food.soup.y + 15 };
@@ -1096,7 +1310,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       : speaker.following
         ? 'speaker: following you to Stephan'
         : 'speaker: hiding behind a built booth (Voxxy, E)';
-    return `${beer} · ${soupLine} · ${spk}`;
+    const w = mg.won();
+    // Optional, so it never leads and never reads like a task: last, and only once
+    // the player has actually won something.
+    const sw = w > 0 ? ` · swag ${w}/3` : '';
+    return `${beer} · ${soupLine} · ${spk}${sw}`;
   }
 
   return {
