@@ -99,3 +99,54 @@ Details and the traversal cost in `docs/scale-and-units.md`.
 Note 18 is now unblocked and still open: the secondary-staircase niche was to be sized *after* the
 radius rescale, and the rescale has happened — Biggy is 1.44 m across in the sim now, not 2.72, so
 a 3.2 m passage has more slack than Michele wanted, not less.
+
+---
+
+# The backlog
+
+Michele, 24 Sep 2026: *"Are you keeping track of all those 'later' polish?"* Partially, and not well
+enough — deferrals were living in chat replies and in agents' own "still weak" lists rather than in
+one place. This is that place. Nothing here blocks a playthrough; everything here was either
+deferred by him, deferred by me with a reason, or reported by an agent as knowingly incomplete.
+
+His standing priority, 23 Sep: **"Priority is making it playable and finishing all chapters"** —
+so anything marked *looks* waits behind anything marked *plays*.
+
+## Plays — mechanics still owed
+
+| item | who raised it | note |
+| --- | --- | --- |
+| Wire the tow bar into chapter 2 | Michele — *"pushing biggy is really really hard"* | `src/sim/tow.ts` is written, tested and committed **unwired**. Needs a key binding, the chapter hookup, and a visual for the bar — the 2D experiment it was ported from has no debug rendering of the grab either, so that part is invented. |
+| Replace the cam-lock wheel with the WiFi password beat | Michele — *"too cryptic... I'd switch for a simpler password game"* | Agreed design: Biggy throws the breaker, a terminal asks for the password, and it can be typed from memory (**DevoxxForever**), read off a poster by Voxxy's narrow beam, or read off the router by Droid standing on Biggy. Removing the wheel removes its choreography tests with it — expect the test count to fall, and that is correct. |
+| Narrow the cinema-E aisle so Biggy genuinely does not fit | Michele — *"Biggy can now walk the aisle... the whole point was he cannot"* | **Caused by my rescale**: his collision radius went 1.36 m -> 0.72 m and the aisle was sized against the old one. He asked for the geometry to match the rule rather than the rule to be re-asserted. |
+| The keypad will not take digits from Voxxy or Droid | Michele — *"I don't seem to be able to activate it. imanaged with biggy"* | I read the code, saw digits route to the pad when a robot is parked there, and **declared it fine without testing it**. He then hit it again. Drive it headlessly, do not read it. |
+| Move the minigames from chapter 2 to chapter 3 | Michele — *"the hall is still closed at the moment"* | Correct: the booth games are in a hall nobody has opened yet. |
+| Voxxy's jump | Michele's idea, scoped down by him to *"just for one quiz. And for jumping around for fun"* | Natural home: hopping the cinema-E seat rows, which are `low` walls light already crosses. Gives her a verb of her own next to Droid's climb and Biggy's charge. |
+| The OutOfMemoryError beat | designed, never built | He asked to see it before approving. Design in `docs/gameplay-additions.md`. |
+| Robots do not stand on the ground floor's raised lobby or its stairs | agent, cutscene round | `groundRiseM(x)` exists in `geometry.ts` *for this*, its own doc says the renderer reads it, and **nothing reads it** — so a robot on the lobby plate stands half a metre inside it and one on the main flight is swallowed. This is why chapter 3's transition walks into a staircase. |
+
+## Looks — deferred by him, explicitly
+
+| item | who | note |
+| --- | --- | --- |
+| Climbing and descending animations | Michele — *"keep them for next rounds / if we have time"* | |
+| Door opening animation when the code is entered, then the transition | Michele — *"this also can wait, but keep track"* | The jammed door already falls; this is the fire door. |
+| A better-looking breaker enclosure | Michele — *"fine for now... Maybe with red halo to signal it's interactive"* | His idea generalises: **one visual language for interactive props** would replace the projector panel, the duck target, the cam-lock and the keypad all being individually hacked into visibility. |
+| Biggy's lower body is still squarish | Michele — *"a bit better, but still squarish. We can address it later"* | Trousers and undercut are now swept lathes; the belt plate is still a flat slab and there is a sawtooth where the undercut meets the right leg. |
+| Droid sitting on Biggy reads well only from some angles | Michele | |
+| Voxxy's arms are frenetic at speed | Michele | Gait amplitude, not speed — she is at the speed he approved. |
+| The HUD stays up through cutscenes | agent | The objective paragraph, three robot chips and a live speed meter sit over a shot meant to be a beat. |
+| The secondary staircases are in the wrong place | Michele, with drone footage | They are lateral in the real hallway; he marked the descent direction on the photo. |
+
+## Structural — nobody asked, but they will bite
+
+| item | note |
+| --- | --- |
+| `rig.ts`'s `weather()` brightens dark materials | It writes vertex colour as a *ratio* against the material's own colour, so a rust tint on a near-black part divides a light colour by a dark base and "wear" comes out as white flakes. Biggy works around it locally; **Voxxy and Droid almost certainly have it on their dark parts**. |
+| `buildLights` is ~95% of a chapter-2 sim step | 0.9 -> 2.63 ms per cast across today's two changes (colliders, and the skirt doubling the light count). Fine against a 16.7 ms frame, but the next change to that path should cull walls outside a light's range first. |
+| Four helper sets want promoting to `rig.ts` | Three agents independently wrote their own: a UV-carrying patch, a clearcoat material, a surface kit (seams, bolts, revolve mounts), a bellows. `rig.ts`'s `boltRing` also aims rivets with a sphere's normal, which tilts them visibly on a lathe. |
+| `gaitSpeed`'s `tanh` compression | The surviving cousin of the deleted `HUD_PX_PER_MPS`: it existed so a 23 m/s robot's legs did not blur. At 5.8 m/s it barely does anything and is probably removable — one more fudge out of the submission. |
+| `CUT_WALK_SPEED` is dead | The cutscene rewrite made walks duration-driven. Still exported, scaled and asserted; nothing reads it. |
+| Crowd and prop radii are the generous ones now | A conference-goer is 0.8-1.28 m wide and the cake crate is 1.36 m, sized when the robots were twice their current width. |
+| Chapter 4 runs about six minutes | Correct preservation of its difficulty through the rescale, possibly the wrong *shot*. The fix if playtesting says so is a run key or a smaller room, not re-tuning the clock back. |
+| `tools/progress/shots/` is 50+ MB | Prune before submission. |
