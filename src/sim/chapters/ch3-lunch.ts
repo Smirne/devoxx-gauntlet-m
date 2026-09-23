@@ -16,6 +16,7 @@
  * shoving them costs complaints on the final card.
  */
 
+import { SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
 import { GF, VIEW_GROUND, groundWalls } from '../geometry';
 import { botsCollide, circleRect, dist, inRect, speed } from '../bot';
 import type { Bot, Person, Prop, Vec2, Wall } from '../types';
@@ -27,21 +28,31 @@ import type { ChapterCtx, ChapterDef, ChapterRuntime, PrevVel } from './index';
 const SHELF_REACH = 45;
 const POT_REACH = 70;
 const TALK_REACH = 40;
-/** A queue steps aside for this long. */
-const QUEUE_OPEN = 5;
+/**
+ * A queue steps aside for this long — a window Voxxy has to *walk* through, so it
+ * grows with `TRAVEL_TIME_SCALE` (constants.ts, the 2026-09-23 rescale).
+ */
+const QUEUE_OPEN = 5 * TRAVEL_TIME_SCALE;
 /** Sideways shuffle of a queue that is making way. */
 const QUEUE_STEP = 30;
-/** Seconds for the soup to go from boiling to stone cold. */
-const COOL_SECONDS = 150;
+/**
+ * Seconds for the soup to go from boiling to stone cold.
+ *
+ * The clock is really a distance: it is how far Biggy may carry the pot before it
+ * is undrinkable, and the hall did not get shorter when he got slower. It scales
+ * with `TRAVEL_TIME_SCALE` so the pot still goes cold in the same place.
+ */
+const COOL_SECONDS = 150 * TRAVEL_TIME_SCALE;
 /** Visitors on the floor at once. */
 const VISITORS = 36;
 const SPAWN_EVERY = 0.9;
-/** Closing speed above which a robot has knocked someone over rather than brushed them. */
-const BOWL_OVER = 110;
-/** The jerk that counts as "Biggy hit something" while he is carrying the pot. */
-const SPILL_DV = 90;
-const SPILL_MIN_SPEED = 60;
-const SPEAKER_WALK = 150;
+/** Closing speed above which a robot has knocked someone over rather than brushed them. px/s. */
+const BOWL_OVER = 110 * SPEED_SCALE;
+/** The jerk that counts as "Biggy hit something" while he is carrying the pot. px/s. */
+const SPILL_DV = 90 * SPEED_SCALE;
+const SPILL_MIN_SPEED = 60 * SPEED_SCALE;
+/** The speaker's walking pace once Voxxy has talked them out from behind the booth. px/s. */
+const SPEAKER_WALK = 150 * SPEED_SCALE;
 
 const VISITOR_COLOURS = ['#b9a58c', '#8c9bb9', '#c98c8c', '#9bb98c'] as const;
 const QUEUE_COLOURS = ['#b9a58c', '#8c9bb9', '#b98c8c', '#9bb98c'] as const;
@@ -224,7 +235,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     const lane = ctx.rng();
     const step = st.y + 34 + lane * (st.h - 68);
     const v = mkBody('attendee', e.x, e.y + 8 + lane * (e.h - 16), { r: 5, mass: 0.5 }) as Visitor;
-    v.walk = 60 + ctx.rng() * 40;
+    v.walk = (60 + ctx.rng() * 40) * SPEED_SCALE;
     v.colour = VISITOR_COLOURS[Math.floor(ctx.rng() * 4)];
     v.dwell = 0;
     v.hitCd = 0;
@@ -345,6 +356,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /* --------------------------------------------------------------------- keys */
 
   function key(code: string): void {
+    if (code === 'KeyP' && !gateOpen) { done(); return; }
     const b = ctx.bots[ctx.cur];
     const d = ctx.byKind('droid');
     const bg = ctx.byKind('biggy');
@@ -442,7 +454,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       // full tilt is fine, hitting a booth at the same speed is not.
       const dv = Math.hypot(b.vx - before.vx, b.vy - before.vy);
       const sp = Math.hypot(before.vx, before.vy);
-      if (dv > SPILL_DV && sp > SPILL_MIN_SPEED) spill(Math.min(25, sp / 10), 'Biggy hit something');
+      if (dv > SPILL_DV && sp > SPILL_MIN_SPEED) spill(Math.min(25, sp / (10 * SPEED_SCALE)), 'Biggy hit something');
     });
 
     spawnT += dt;
@@ -489,7 +501,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
               b.vx -= vn * nx * 1.2;
               b.vy -= vn * ny * 1.2;
             }
-            if (b.kind === 'biggy' && !p.cd && speed(b) > 40) {
+            if (b.kind === 'biggy' && !p.cd && speed(b) > 40 * SPEED_SCALE) {
               p.cd = 1;
               complaints++;
               if (carrying && !delivered) spill(4, 'bumped into the queue');

@@ -887,3 +887,62 @@ Biggy's lower body is a standing workaround for a belly that is a true sphere wh
 tucks in below the equator. And Droid's own green floor lamp blows his face out completely in
 chapter 1, so the features of a whole round are invisible in the chapter where he is the
 protagonist — which is a lighting problem, not a model one, and is being handled separately.
+
+## Round 6 — the frozen physics constants were unfrozen, once, on the evidence of a playtest
+
+**What a human decided.** Everything that matters here. Michele played chapter 1 and wrote three
+complaints in his own words — Voxxy "too fast, it's almost hard to control"; "it's really hard to
+stop a character pointing the light in the right direction"; "droid is pushing Biggy just by coming
+close, with no contacts". He was then offered the choice of fixing them separately or rescaling the
+world, and picked **"Full rescale: speeds and radii."** He also set the target band (Voxxy 4–6 m/s)
+and the constraint that the chapters must not turn into a walking simulator. The agent chose the
+factor inside that band and did the arithmetic; it did not choose to open the constants.
+
+**What the agent did.** Applied one factor, `SPEED_SCALE = 0.25`, to every px/s quantity in
+`src/sim` and to nothing else: the three `max` values, the two door thresholds, the stop-snap and
+heading floors, the mount speed, the push and crate forces (an acceleration is a velocity per
+second), the cutscene walk, the crowd's walking pace, and seven chapter-local thresholds nobody had
+listed. Measured the three collision radii off the rigs the renderer actually builds, instead of
+inheriting a guess. Deleted `HUD_PX_PER_MPS`.
+
+**The discovery that changed the shape of the job.** The brief framed the rescale as a pure unit
+change — "only the unit changed, so every choreography is preserved exactly". It is not, and the
+measurement said so within an hour: **lengths did not move.** Rooms are the same size, so dividing
+every speed by four multiplies every traversal time by four, and anything the game measures as a
+*clock against distance travelled* silently changes difficulty. Four of them were load-bearing: the
+soup's 150 s cooling timer, the keynote crowd's 14 s + 80 s arrival, the Regex Racing 5 s lap, and
+the window a catering queue stands aside in. Left alone, the Regex Racing swag becomes unwinnable
+and chapter 4 becomes unfinishable — a silent difficulty change dressed up as a unit conversion.
+They now carry `TRAVEL_TIME_SCALE = 1 / SPEED_SCALE`, which is the same rescale seen from the time
+axis rather than a second free parameter.
+
+**The brief's headline claim was falsified by running it.** "`tests/chapters.test.ts` must all still
+pass without being touched. If one fails, your `k` broke a relationship — find it rather than
+editing the test." Six failed, and none of them was a broken relationship. Five were the *pilot*:
+lines like `heaveWheel(g, x, steps = 50)` and `steps(g, 70)` are distances written in the old top
+speeds, and a robot that is four times slower does not reach the wall it is supposed to hit. One was
+a robot hand-placed 22 px from Biggy, which the old 1.04 m + 1.36 m radii plus 12 px of mount slack
+counted as "next to him" from half a metre away. The right answer was to recalibrate the pilot and
+say so loudly, not to pretend the suite was untouched — every `expect` is the one it was, with a
+single documented exception, and the header of each test file now says what moved and why.
+
+**The one assertion that genuinely changed, and it changed because the fix worked.** The chapter-2
+cable run is measured along the path Voxxy *walks*. At 290 px/s she overshot every corner the test
+pilot steered her round; at 72.5 she tracks them, and the identical route measures 1161 px instead
+of 1194. The lower bound moved from 1200 to 1140 — which is a *tighter* margin under the measured
+run than the old bound was, because the old run wandered. That is Michele's complaint about aiming,
+visible as a number.
+
+**What the agent got wrong before measuring.** It assumed the radii would collide with
+`tests/robots.smoke.test.ts`'s demand that Biggy's silhouette be 0.93 of his height — the brief
+warned about it explicitly. Measured: Biggy's widest point about his own axis is 0.722 m, the
+silhouette test needs a half-width past 0.674 m, and the collision radius is now 0.72 m. The two
+constraints are the same arm corner and they agree. No assertion had to be loosened, and the warning
+in the brief was about a conflict that does not exist.
+
+**What is still weak.** `gaitSpeed` in `src/render/robots/index.ts` exists for the same reason
+`HUD_PX_PER_MPS` did — it saturates the leg cycle so a 23 m/s robot does not look like a blur.
+At 5.8 m/s it is barely doing anything any more and is probably now removable, but the rigs belonged
+to another agent this round and were left alone. The cutscene walk speed constant is dead: a
+concurrent change made cutscenes duration-driven, which is the better answer, so `CUT_WALK_SPEED`
+is now scaled, asserted and unused.

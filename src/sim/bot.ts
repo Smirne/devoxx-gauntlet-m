@@ -31,6 +31,7 @@ import {
   REST_WALL_OTHER,
   STOP_SNAP,
 } from './constants';
+import { m } from './units';
 import type { Bot, Hit, Rect, RobotKind, Vec2, Wall } from './types';
 
 /* ---------------------------------------------------------------- small helpers */
@@ -246,7 +247,7 @@ export function pushBiggy(bots: Bot[], dt: number, t: number, flash: (s: string)
       }
       if (!bg.pushFlash || t - bg.pushFlash > PUSH_FLASH_COOLDOWN) {
         bg.pushFlash = t;
-        flash(`${p.name} pushes Biggy — ${Math.trunc(speed(bg))} px/s and climbing`);
+        flash(`${p.name} pushes Biggy — ${m(speed(bg)).toFixed(1)} m/s and climbing`);
       }
     }
   }

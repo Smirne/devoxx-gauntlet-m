@@ -57,27 +57,45 @@ with simple primitives and materials informed by the venue photos. Legible over 
 
 ### Frozen physics constants
 
-Ported verbatim from the prototype into `src/sim/constants.ts` and asserted by
+Ported from the prototype into `src/sim/constants.ts` and asserted by
 `tests/frozen-constants.test.ts`. Changing one is a human decision, never a builder's.
+
+**They were unfrozen exactly once — 23 Sep 2026, by Michele.** His chapter-1 playtest
+(`docs/playtest-notes.md`) filed three complaints with one cause: read through the venue's own
+geometry scale, the prototype's arcade numbers made Voxxy a 23 m/s robot with a 0.72 m radius on
+screen and a 1.36 m radius in the sim. He authorised a **full rescale of speeds and radii**; see
+`docs/scale-and-units.md` for the decision and the measurements. They are frozen again behind it,
+and the rule is unchanged: the next change is another human decision.
 
 | | Voxxy | Droid | Biggy |
 |---|---|---|---|
-| radius (sim px) | 9 | 13 | 17 |
-| accel (s⁻¹) | 12 | 4 | 0.6 |
-| top speed (px/s) | 290 | 115 | 235 |
-| drag (s⁻¹) | 9 | 7 | 0.35 |
-| mass | 1 | 3 | 7 |
-| lamp | cone 0.38 rad, range 280, orange | pool range 95, green | cone 1.0 rad, range 300, blue |
+| radius (sim px) | 4.75 | 6.25 | 9 |
+| radius (m) — measured off the rig | 0.38 | 0.50 | 0.72 |
+| accel (s⁻¹) — unscaled | 12 | 4 | 0.6 |
+| top speed (px/s) | 72.5 | 28.75 | 58.75 |
+| top speed (m/s) | 5.8 | 2.3 | 4.7 |
+| drag (s⁻¹) — unscaled | 9 | 7 | 0.35 |
+| mass — unscaled | 1 | 3 | 7 |
+| lamp — unscaled | cone 0.38 rad, range 280, orange | pool range 95, green | cone 1.0 rad, range 300, blue |
+
+Every px/s quantity is the prototype's number × `SPEED_SCALE = 0.25`, and that is the only thing the
+rescale did to speeds — the prototype's own values are still read out of the POC and checked against
+the factor in `tests/frozen-constants.test.ts`, so "one factor, no exceptions" is a test and not a
+claim. Lengths did not move, so a clock a robot has to travel against scales the other way, by
+`TRAVEL_TIME_SCALE = 4`.
 
 Also frozen: wall restitution 0.45 for Biggy and 0.05 for the others; robot–robot restitution 0.3;
-push force 170 (Voxxy) / 120 (Droid) with lean ≥ 0.3; `boostCap = speed × 1.05` decaying at
-1.5 s⁻¹; jammed-door threshold **70 px/s on the speed into the door**; roller-door threshold
-**270 px/s** (above Biggy's own 235); cable length **1480**; mount requires Biggy below 20 px/s and
-widens Droid's pool ×1.6; blocked-message throttle 2.5 s; `dt` clamped to 0.033 s.
+push force 42.5 (Voxxy) / 30 (Droid) with lean ≥ 0.3; `boostCap = speed × 1.05` decaying at
+1.5 s⁻¹; jammed-door threshold **17.5 px/s on the speed into the door**; roller-door threshold
+**67.5 px/s** (above Biggy's own 58.75 — that relationship is asserted, not just the values); cable
+length **1480 px** (a length: unscaled); `PUSH_REACH` 1 px and `MOUNT_REACH` 4 px; mount requires
+Biggy below 5 px/s and widens Droid's pool ×1.6; blocked-message throttle 2.5 s; `dt` clamped to
+0.033 s.
 
 Rates in s⁻¹, masses and restitutions as ratios, and thresholds compared against the robots' own
-caps all survive a rescale unchanged — which is why the sim can stay in prototype pixels while the
-renderer works in metres at `PX_PER_M = 12.5`.
+caps all survive a rescale unchanged — which is what made the rescale a change of unit rather than a
+re-tune. There is now one scale for the whole project, `PX_PER_M = 12.5`: the sim computes in pixels
+and converts on the way out, for the renderer and for anything the game says out loud to the player.
 
 ---
 

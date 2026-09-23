@@ -32,7 +32,8 @@
  *           until Voxxy lights it.
  */
 
-import { CABLE_MAX, PUSH_LEAN_MIN, ROLLER_DOOR_SPEED, T } from '../constants';
+import { CABLE_MAX, PUSH_LEAN_MIN, ROLLER_DOOR_SPEED, SPEED_SCALE, T, TRAVEL_TIME_SCALE } from '../constants';
+import { m } from '../units';
 import { GF, VIEW_GROUND, groundWalls } from '../geometry';
 import { botsCollide, dist, inRect, mkBot, speed, stepBot } from '../bot';
 import { buildLights, litBy } from '../lights';
@@ -45,19 +46,24 @@ const PANEL_REACH = 52;
 const PLUG_REACH = 40;
 /** A new cable point is only recorded once Voxxy has actually gone somewhere. */
 const CABLE_STEP = 6;
-/** Below this, "Biggy: 40 px/s, needs 270" would fire on every nudge. */
-const ROLLER_MIN_TALK = 40;
+/** Below this, "Biggy: 0.8 m/s, needs 5.4" would fire on every nudge. px/s. */
+const ROLLER_MIN_TALK = 40 * SPEED_SCALE;
 /** Seconds between the roller door's "not fast enough" readouts. */
 const ROLLER_TALK_COOLDOWN = 3;
 const BREAKERS = 3;
 
 /* ---------------------------------------------------------------- the cam-lock wheel
  *
- * Chapter-local tuning. NOTHING here is a physics constant: `src/sim/constants.ts`
+ * Chapter-local tuning. Nothing here is a NEW physics constant: `src/sim/constants.ts`
  * is frozen (CLAUDE.md) and this beat deliberately needs no entry in it — it is
  * built out of the frozen numbers that already exist (Biggy's mass 7 and drag 0.35,
  * Droid's `braced`/`BRACED_MASS`, Voxxy's 0.38 rad cone). Every number below is a
  * property of one prop in one room, so it lives with that prop.
+ *
+ * Two of them are speeds in disguise and therefore carry `SPEED_SCALE` from the
+ * 2026-09-23 rescale: `WHEEL_MIN_INTO`, which is a px/s threshold, and `WHEEL_GAIN`,
+ * which converts px/s into rad/s and so scales by its reciprocal. Everything else —
+ * radians, rad/s, s^-1, px — is dimensionless across that rescale and is untouched.
  */
 
 /** Rim radius, sim px. 16 px across is ~1.3 m — an industrial hand wheel, readable at diorama zoom. */
@@ -99,13 +105,17 @@ const PAWL_SNAP = 0.03;
 const WHEEL_DRAG = 0.11;
 /**
  * Angular velocity added per px/s of the speed Biggy carries INTO the cabinet face.
- * The 115 px/s run-up the technical room allows, across the full lever, gives about
- * 1.45 rad/s — a quarter-turn a second, which is what a wheel this heavy should look
- * like, and close to twenty seconds of coast to spend on it before the pawl bites.
- * Measured on a typical run-up (x = 178, lever 0.81): 1.17 rad/s, settling after
- * 18.9 s and 1.2 turns of it below 1 rad/s.
+ *
+ * This is the one number in the file that scales the OTHER way: it converts a speed
+ * into a rad/s, so a rescale that divides speeds by four has to multiply it by four
+ * for the same run-up to turn the wheel the same amount. The run-up the technical
+ * room allows, across the full lever, still gives about 1.45 rad/s — a quarter-turn
+ * a second, which is what a wheel this heavy should look like, and close to twenty
+ * seconds of coast to spend on it before the pawl bites. Measured on a typical
+ * run-up (x = 178, lever 0.81): 1.17 rad/s, settling after 18.9 s and 1.2 turns of
+ * it below 1 rad/s.
  */
-const WHEEL_GAIN = 0.013;
+const WHEEL_GAIN = 0.013 / SPEED_SCALE;
 /**
  * Below this speed into the face the cam does not break away at all — a heavy
  * industrial lock has static friction, and this is what stops the puzzle being
@@ -113,7 +123,7 @@ const WHEEL_GAIN = 0.013;
  * break it free already carries it past `PAWL_CATCH`, so the coarsest adjustment
  * available to Biggy alone is a whole detent.
  */
-const WHEEL_MIN_INTO = 55;
+const WHEEL_MIN_INTO = 55 * SPEED_SCALE;
 /**
  * Biggy has to catch a spoke, not the hub: torque is his speed into the face times
  * how far off the wheel's centre line he hit it, and dead centre only rattles. The
@@ -213,7 +223,7 @@ export function setupMinigames(ctx: ChapterCtx): Minigames {
     r: 8,
     mass: 0.6,
     accel: 0,
-    max: 500,
+    max: 500 * SPEED_SCALE,
     drag: 1.1,
   });
   const duckTarget = { x: duckB.x + duckB.w + 30, y: duckB.y + 35 + 95, r: 22 };
@@ -232,7 +242,12 @@ export function setupMinigames(ctx: ChapterCtx): Minigames {
     { x: rxB.x + rxB.w + 24, y: rxB.y + rxB.h + 16 },
     { x: rxB.x - 24, y: rxB.y + rxB.h + 16 },
   ];
-  const RACE_LIMIT = 5;
+  /**
+   * The lap is a fixed length of floor, so the budget is a required speed wearing a
+   * clock's clothes: it grows with `TRAVEL_TIME_SCALE` or the rescale would quietly
+   * make the minigame impossible. 5 s of the prototype's Voxxy, 20 s of this one.
+   */
+  const RACE_LIMIT = 5 * TRAVEL_TIME_SCALE;
   let raceNext = 0;
   let raceT0 = 0;
   let raceDone = ctx.swag.includes('race');
@@ -263,14 +278,14 @@ export function setupMinigames(ctx: ChapterCtx): Minigames {
       const ny = dy / dd;
       const lean = b.ix * nx + b.iy * ny;
       // A shove, not a carry: the duck only takes a kick while it is still slow.
-      if (lean > PUSH_LEAN_MIN && speed(duck) < 40) {
-        const F = b.kind === 'biggy' ? 900 : 350;
+      if (lean > PUSH_LEAN_MIN && speed(duck) < 40 * SPEED_SCALE) {
+        const F = (b.kind === 'biggy' ? 900 : 350) * SPEED_SCALE;
         duck.vx += nx * lean * F * dt;
         duck.vy += ny * lean * F * dt;
       }
       botsCollide(b, duck);
     }
-    if (!duckDone && speed(duck) < 5 && dist(duck, duckTarget) < duckTarget.r) {
+    if (!duckDone && speed(duck) < 5 * SPEED_SCALE && dist(duck, duckTarget) < duckTarget.r) {
       duckDone = true;
       ctx.addSwag('duck', 'The duck stops in the circle. Rubber Duck Inc hands over a giant duck. Swag +1');
     }
@@ -433,7 +448,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     kind: 'roller',
     why: (b) =>
       b.kind === 'biggy'
-        ? `Biggy: roller door. I'd need ${ROLLER_DOOR_SPEED} px/s and I top out at ${b.max}. Unless someone pushes me all the way down that lane`
+        ? `Biggy: roller door. I'd need ${m(ROLLER_DOOR_SPEED).toFixed(1)} m/s and I top out at ${m(b.max).toFixed(1)}. Unless someone pushes me all the way down that lane`
         : b.kind === 'voxxy'
           ? "Voxxy: roller door — every badge and polo is behind it. I bounce off. Biggy at full tilt isn't enough either, so I'll shove him down the whole top lane"
           : 'Droid: a slatted roller door. Mass, not leverage. Biggy needs a longer run than he can give himself',
@@ -444,7 +459,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         rollerBroken = true;
         ctx.removeWall(roller);
         ctx.flash(
-          `CRASH — Biggy rolls through at ${Math.trunc(b.vx)} px/s. The Devoxx crew and 3,000 badges are free`,
+          `CRASH — Biggy rolls through at ${m(b.vx).toFixed(1)} m/s. The Devoxx crew and 3,000 badges are free`,
           3500,
         );
         b.vx *= 0.4;
@@ -453,8 +468,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       if (b.vx > ROLLER_MIN_TALK && ctx.t - rollerTalk > ROLLER_TALK_COOLDOWN) {
         rollerTalk = ctx.t;
         ctx.flash(
-          `Biggy: ${Math.trunc(b.vx)} px/s — needs ${ROLLER_DOOR_SPEED}. ` +
-            (b.vx > b.max - 5 ? "That's my top speed. Somebody push me" : 'Longer run-up, straighter line'),
+          `Biggy: ${m(b.vx).toFixed(1)} m/s — needs ${m(ROLLER_DOOR_SPEED).toFixed(1)}. ` +
+            (b.vx > b.max - 5 * SPEED_SCALE ? "That's my top speed. Somebody push me" : 'Longer run-up, straighter line'),
         );
       }
       return false;
@@ -529,9 +544,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       // the technical room at full tilt must not spin it in passing.
       const into = -(b.vx * hit.nx + b.vy * hit.ny);
       if (into < WHEEL_MIN_INTO) {
-        if (into > 8 && ctx.t - wheelTalk > WHEEL_TALK_COOLDOWN) {
+        // 8 px/s of the prototype's scale: below a brush past the cabinet, he says nothing.
+        if (into > 8 * SPEED_SCALE && ctx.t - wheelTalk > WHEEL_TALK_COOLDOWN) {
           wheelTalk = ctx.t;
-          ctx.flash(`Biggy: ${Math.trunc(into)} px/s into it and the cam did not break. Needs ${WHEEL_MIN_INTO}. Back up and run at it`);
+          ctx.flash(`Biggy: ${m(into).toFixed(1)} m/s into it and the cam did not break. Needs ${m(WHEEL_MIN_INTO).toFixed(1)}. Back up and run at it`);
         }
         return false;
       }
@@ -547,7 +563,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       if (ctx.t - wheelTalk > WHEEL_TALK_COOLDOWN) {
         wheelTalk = ctx.t;
         ctx.flash(
-          `Biggy heaves — ${Math.trunc(into)} px/s into the ${lever > 0 ? 'right' : 'left'} spokes. ` +
+          `Biggy heaves — ${m(into).toFixed(1)} m/s into the ${lever > 0 ? 'right' : 'left'} spokes. ` +
             'It turns. It does not stop. Somebody stop it',
         );
       }
@@ -855,7 +871,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     const router = wheel.open
       ? 'router ✓'
       : `router: wheel ${deg(wheel.ang)}°, mark ${wheel.markLit ? `${deg(wheel.mark)}°` : 'unlit'}${wheel.held ? ' (held)' : ''}`;
-    const store = rollerBroken ? 'badge store ✓' : `roller door: shut (needs ${ROLLER_DOOR_SPEED} px/s)`;
+    const store = rollerBroken ? 'badge store ✓' : `roller door: shut (needs ${m(ROLLER_DOOR_SPEED).toFixed(1)} m/s)`;
     return `${breakers} · ${net} · ${router} · ${store}`;
   }
 

@@ -15,7 +15,12 @@
   (Three.js, fixed isometric/orthographic camera per room) only reads it. No game logic in render
   code, ever.
 - Physics constants are frozen — see GAUNTLET.md's "Frozen physics constants" — and asserted by
-  tests.
+  tests. They were unfrozen **once**, on 23 Sep 2026, by Michele, after his chapter-1 playtest:
+  Voxxy too fast to control, her beam impossible to aim because she coasted 2.6 m, and "droid is
+  pushing Biggy just by coming close, with no contacts". He authorised a full rescale of speeds and
+  radii — one factor `SPEED_SCALE = 0.25` on every px/s quantity, and radii measured off the rigs
+  instead of guessed (`docs/scale-and-units.md`). The rule did not change: they are frozen again,
+  and the next change is another human decision, not a builder's.
 - Robots: Voxxy small/fast (orange beam), Droid tall/deliberate (green pool, climbs Biggy), Biggy
   heavy/inertial (blue flood). Every gate says *why* a robot is blocked, in that robot's voice.
   Appearance must match `robots/*.png` model sheets — non-negotiable, see GAUNTLET.md Stage 1.
