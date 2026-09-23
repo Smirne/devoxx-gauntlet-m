@@ -862,29 +862,54 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   dressing.add(clueGroup);
 
   /**
-   * The ring is CUT INTO ARCS, one per colour the clue needs.
+   * The ring says WHICH COLOURS, and it says it by RADIUS.
    *
    * It used to be a single ring in the average of those colours, which is exactly
    * the wrong thing to show: orange + green averages to a yellow that names no
    * robot, and all three average to white. Michele: "Light points should give
    * hints on the needed light... Gradient is an alternative, or double colored
-   * circles." So a two-colour clue is a half-and-half ring in Voxxy's orange and
-   * Droid's green, and a three-colour clue is thirds. You can read which robots
-   * to bring off the floor, without being told the answer.
+   * circles." So the ring was cut into one arc per colour needed — and that is
+   * where the next note came from: *"I don't know if it's me, but green and blue
+   * on the hints are too similar."*
    *
-   * Geometry per arc count, built once: index n holds n arcs of 2pi/n each, with
-   * a small gap so the joins read as deliberate rather than as z-fighting.
+   * He is right, and the lamp colours are not the problem — they are the robots'
+   * identity and the whole light-mixing puzzle is built on them. The problem is
+   * that two arcs of a 0.2 m-thick ring, at a diorama zoom where a metre is about
+   * 34 px across and half that down the screen, are **three pixels thick** and
+   * six pixels apart, at 60-90% opacity over a floor that can be anything from
+   * black to a green wash. Hue is the only thing separating them and hue is the
+   * thing that survives least at that size.
+   *
+   * So the arcs stop sharing a circle. Each robot owns a **slot at its own
+   * radius**, always the same one, drawn as a complete ring rather than an arc:
+   *
+   *   Voxxy inner, Droid middle, Biggy outer — smallest robot, smallest ring.
+   *
+   * Green and blue are then separated by 0.34 m of dark floor, not by hue, and
+   * each gets two and a half times the pixels an arc had. A slot a clue does not
+   * need is simply not drawn, so the recipe still reads off the marker: two rings
+   * with the inner slot empty means "green and blue, no orange".
    */
-  const ARC_GAP = 0.13;
-  const clueArcGeo: THREE.RingGeometry[][] = [];
-  for (let n = 0; n <= CLUE_ARCS; n++) {
-    const set: THREE.RingGeometry[] = [];
-    for (let i = 0; i < n; i++) {
-      const span = (Math.PI * 2) / n;
-      set.push(new THREE.RingGeometry(0.42, 0.62, 28, 1, i * span + ARC_GAP / 2, span - ARC_GAP));
-    }
-    clueArcGeo.push(set);
-  }
+  const CLUE_SLOT: Readonly<Record<RobotKind, readonly [number, number]>> = Object.freeze({
+    voxxy: [0.38, 0.56],
+    droid: [0.64, 0.82],
+    biggy: [0.90, 1.08],
+  });
+  /**
+   * The keyline under the slots.
+   *
+   * The arcs are drawn over the additive floor pools, so under three lamps at
+   * once a 0.6-opacity colour composites toward whatever the floor is doing and
+   * the hue the marker is trying to name is the first casualty. A near-opaque
+   * dark disc behind the whole marker gives every slot the same black backing
+   * whatever the lighting, which is most of what makes the colours hold.
+   */
+  const clueBackGeo = new THREE.RingGeometry(0.32, 1.14, 40);
+  const clueSlotGeo: Record<RobotKind, THREE.RingGeometry> = {
+    voxxy: new THREE.RingGeometry(CLUE_SLOT.voxxy[0], CLUE_SLOT.voxxy[1], 40),
+    droid: new THREE.RingGeometry(CLUE_SLOT.droid[0], CLUE_SLOT.droid[1], 44),
+    biggy: new THREE.RingGeometry(CLUE_SLOT.biggy[0], CLUE_SLOT.biggy[1], 48),
+  };
   const pipGeo = new THREE.SphereGeometry(0.16, 12, 8);
   const digitGeo = new THREE.PlaneGeometry(0.72, 0.72);
 
@@ -930,15 +955,23 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   const clueMarks: Array<{
     root: THREE.Group;
     arcs: THREE.Mesh[];
+    back: THREE.Mesh;
     pip: THREE.Mesh;
     digit: THREE.Mesh;
   }> = [];
   for (let i = 0; i < CLUE_MAX; i++) {
     const root = new THREE.Group();
+    const back = new THREE.Mesh(
+      clueBackGeo,
+      new THREE.MeshBasicMaterial({ color: 0x04070a, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }),
+    );
+    back.rotation.x = -Math.PI / 2;
+    back.renderOrder = CLUE_ORDER - 1;
+    root.add(back);
     const arcs: THREE.Mesh[] = [];
     for (let a = 0; a < CLUE_ARCS; a++) {
       const arc = new THREE.Mesh(
-        clueArcGeo[CLUE_ARCS][a],
+        clueSlotGeo[KINDS[a]],
         new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }),
       );
       arc.rotation.x = -Math.PI / 2;
@@ -964,7 +997,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     root.add(pip, digit);
     root.visible = false;
     clueGroup.add(root);
-    clueMarks.push({ root, arcs, pip, digit });
+    clueMarks.push({ root, arcs, back, pip, digit });
   }
 
   /* -------------------------------------------------------- debug staging */
@@ -1279,19 +1312,19 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
 
       const found = clue.found;
       const pulse = 0.55 + 0.45 * Math.sin(snap.t * 2.1 + i * 1.7);
-      const n = Math.min(Math.max(clue.need.length, 1), CLUE_ARCS);
 
-      // One arc per colour the clue needs, each in that robot's own lamp colour,
-      // so the ring spells out the recipe. Found turns the whole ring green.
+      // One RING per colour the clue needs, each at that robot's own fixed
+      // radius and in that robot's own lamp colour, so the marker spells out the
+      // recipe by position as well as by hue.
       for (let a = 0; a < CLUE_ARCS; a++) {
         const arc = mark.arcs[a];
-        if (a >= n) {
+        const kind = KINDS[a];
+        if (!clue.need.includes(kind)) {
           arc.visible = false;
           continue;
         }
         arc.visible = true;
-        if (arc.geometry !== clueArcGeo[n][a]) arc.geometry = clueArcGeo[n][a];
-        const src = snap.bots.find((x) => x.kind === clue.need[a]);
+        const src = snap.bots.find((x) => x.kind === kind);
         /*
          * A found clue KEEPS its colours. It used to go green, which threw away
          * the one worked example the player has — Michele: "Keep the colors on
@@ -1307,10 +1340,12 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
          *
          * At a third opacity over a near-black floor, Voxxy's orange composites
          * to brown and Droid's green to teal — the ring was legible as a shape
-         * but not as a recipe, which is the one job it has. These arcs are the
-         * hint; muting them to taste defeats them.
+         * but not as a recipe, which is the one job it has. These rings are the
+         * hint; muting them to taste defeats them. The pulse now swings between
+         * 0.78 and 1, not between 0.6 and 0.9: it still breathes, and the dim
+         * half of the breath no longer costs the hue its chroma.
          */
-        mat.opacity = found ? 0.92 : 0.6 + 0.3 * pulse;
+        mat.opacity = found ? 0.97 : 0.78 + 0.22 * pulse;
       }
 
       // The pip keeps the averaged colour: it is the "something is here" marker,
@@ -1969,12 +2004,14 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       // The ghosts share their source meshes' geometry, so only the materials
       // are ours to free; `disposeTree` on each rig takes the geometry.
       for (const mat of xrayMats.values()) mat.dispose();
-      for (const set of clueArcGeo) for (const geo of set) geo.dispose();
+      clueBackGeo.dispose();
+      for (const geo of Object.values(clueSlotGeo)) geo.dispose();
       pipGeo.dispose();
       digitGeo.dispose();
       for (const tex of digitTex.values()) tex?.dispose();
       for (const mark of clueMarks) {
         for (const arc of mark.arcs) (arc.material as THREE.Material).dispose();
+        (mark.back.material as THREE.Material).dispose();
         (mark.pip.material as THREE.Material).dispose();
         (mark.digit.material as THREE.Material).dispose();
       }
