@@ -1217,3 +1217,72 @@ same range, same rays, same polygon, so `clueLitBy` and `clueLit` cannot see it 
 `tests/chapters.test.ts` passes unchanged. Every actual change is in `src/render`. That is the
 CLAUDE.md line working — the temptation was to fix a *look* by moving a light in the sim, and the
 architecture made the cost of that obvious enough to refuse.
+
+---
+
+## 23 Sep 2026 — wiring the tow bar, and three things the port got wrong
+
+**What the human decided.** Michele, having played chapter 2: *"the big thing: pushing biggy is
+really really hard, It tends to go sideways, and hitting a good speed is a very hard task."* He did
+not ask for a tuning pass. He pointed at `welldsagl/devoxx-game-experiments`, a parallel 2D port
+where the same problem had already been met and solved, and handed over its grab design rather than
+have the agent rediscover one. The eight-direction quantisation is his team's call, not this
+project's.
+
+**What the agent did.** `src/sim/tow.ts` had been sitting in the tree, ported and committed but
+never connected to anything. This session bound it to Space in `game.ts`, stepped it inside
+`stepAll` before the physics step (so the velocity it sets is the one Biggy carries through his own
+wall resolution) and re-placed the holder after it, drew the bar and a floor lane strip in
+`scene.ts`, and wrote `tests/tow.test.ts`.
+
+**Wiring it up proved three things wrong with the port, and none of them would have shown up in a
+review.** All three were found by driving the thing, not by reading it:
+
+1. **The speed cap was nonsense in our units.** The experiment's literal was 210, carried through as
+   `210 * SPEED_SCALE` = 52.5 px/s. Biggy's own top speed is 58.75 and the roller door — the one
+   gate in the game that demands a straight run — needs 67.5. A "tow" capped at 52.5 is slower than
+   Biggy walking and could never have opened the door it exists to open. The docstring shipped with
+   the literal claimed it was "above his own top speed ... but below `ROLLER_DOOR_SPEED`", which is
+   not a description of 52.5 and is not a coherent design either. It is derived now — you cannot
+   drag Biggy faster than you can run — which needs no new frozen number and puts Voxxy above the
+   door and Droid below it, so chapter 2's gate still names the robot it always named.
+2. **`stepBot` undid the whole thing every frame**, clamping Biggy back to his own `max` on the next
+   line of the same tick. `boostCap` is the existing hole in that clamp; `pushBiggy` opens it the
+   same way.
+3. **The eight directions were cosmetic after the first steer.** Walking the holder round advances
+   `aim` continuously, and the drive reads `aim`, not `dir` — so one re-aim and the "lane" was a
+   fiction, with the drift the bar exists to remove quietly back. The file's own header calls the
+   quantisation "the load-bearing choice", and the code had stopped honouring it. The bar now
+   settles into the nearest eighth when the swing stops and re-projects Biggy's momentum onto it.
+
+A fourth, smaller: `towSnap` returned `-1` for every northward direction, because `%` in JavaScript
+keeps the sign of its left operand. Nothing in the sim read `dir`, so it surfaced only when the
+renderer started drawing the bar.
+
+**The acceptance criterion is the complaint, measured.** Not "the code runs" — the first test in
+`tests/tow.test.ts` starts the pusher off the centre line by the amount a player misses by when
+lining up by eye, and compares:
+
+| pusher off the line | free push: drift / top speed | tow: drift / top speed |
+| --- | --- | --- |
+| 0 px | 0.00 px / 78.8 | 0.00 px / 71.7 |
+| 2 px | 49.4 px / 38.8 | 0.00 px / 71.7 |
+| 4 px | 41.7 px / 24.2 | 0.00 px / 71.7 |
+
+Two pixels is a sixth of Voxxy's diameter, and it is the difference between opening the roller door
+and not reaching half its threshold. That table is the test, so anyone who retunes the bar back into
+a shove fails it.
+
+**One test of my own was wrong and failed honestly.** It asserted that swinging the bar cuts Biggy's
+forward speed. The bleed never claimed that — he is a coasting mass and the bar is not a brake. What
+it promises is that his velocity stays *along* the bar. Rewriting the assertion to say that is what
+turned up finding 3 above: the invariant only holds once the lane settles, and nothing was settling
+it.
+
+**Rejected.** Making Space grab for Droid *and* climb for Droid: E already climbs, and overloading
+one key with two ways of riding Biggy left the holder welded to his flank mid-climb. Taking the
+mount out instead was rejected as scope; `toggleMount` drops the bar. Also rejected: releasing the
+grab when the holder is pushed into a wall. The bar is a straight line and the venue is not, so a
+corridor run clips the holder into a door reveal for a frame or two and the tow would fail exactly
+where a player most needs it — the holder is pushed out instead, and only a wall that genuinely
+separates the pair ends the grab.
