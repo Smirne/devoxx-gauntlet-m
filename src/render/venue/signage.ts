@@ -53,7 +53,7 @@ import { PX_PER_M, m } from '../../sim/units';
 import type { VenuePalette } from './materials';
 import { slab } from './props';
 
-type Paint = (ctx: CanvasRenderingContext2D, w: number, h: number) => void;
+export type Paint = (ctx: CanvasRenderingContext2D, w: number, h: number) => void;
 
 const FONT = '"Helvetica Neue", Helvetica, Arial, sans-serif';
 
@@ -63,13 +63,21 @@ const FONT = '"Helvetica Neue", Helvetica, Arial, sans-serif';
  * The one place a canvas is ever created. Materials are cached by key, so the
  * eight Zaal panels cost eight textures and asking for one twice costs nothing.
  */
-class SignPainter {
+export class SignPainter {
   private readonly cache = new Map<string, THREE.MeshStandardMaterial>();
   private readonly textures: THREE.Texture[] = [];
   /** False in node and in any environment without a DOM. */
   private readonly canPaint = typeof document !== 'undefined' && typeof document.createElement === 'function';
 
-  material(key: string, wPx: number, hPx: number, fallback: string, paint: Paint): THREE.MeshStandardMaterial {
+  /**
+   * `glow` is the emissive intensity the baked art is re-used at.
+   *
+   * Half is right for a corridor lightbox. The sponsor panels take much less:
+   * twelve of them at 0.5 lit chapter 2's blacked-out hall like a shop window,
+   * and CAPTIONS.md is explicit that the dark hall is "near-black with red accent
+   * panels and track spots". A stand on standby glows; it does not illuminate.
+   */
+  material(key: string, wPx: number, hPx: number, fallback: string, paint: Paint, glow = 0.5): THREE.MeshStandardMaterial {
     const hit = this.cache.get(key);
     if (hit) return hit;
 
@@ -81,7 +89,7 @@ class SignPainter {
     });
     // Signs in a dark venue are lightboxes: the same art drives colour and glow.
     mat.emissive = new THREE.Color(this.canPaint ? '#ffffff' : fallback);
-    mat.emissiveIntensity = 0.5;
+    mat.emissiveIntensity = glow;
 
     const tex = this.canPaint ? this.bake(wPx, hPx, paint) : null;
     if (tex) {
@@ -512,8 +520,16 @@ export function zaalPosterX(n: number): number {
  * those anchors are for: another piece can move or light a room's frontage without
  * re-deriving a single coordinate.
  */
-export function buildSignage(p: VenuePalette, roomAnchors: Map<number | string, THREE.Object3D>): SignageBuild {
-  const painter = new SignPainter();
+export function buildSignage(
+  p: VenuePalette,
+  roomAnchors: Map<number | string, THREE.Object3D>,
+  /**
+   * The shared canvas painter. `buildGround` prints the twelve sponsor stands
+   * from the same cache and the same `dispose()`, so passing one in is what stops
+   * the venue owning two texture pools — see `index.ts`.
+   */
+  painter: SignPainter,
+): SignageBuild {
   const floor1 = new THREE.Group();
   floor1.name = 'signage-floor1';
   const ground = new THREE.Group();
@@ -702,11 +718,7 @@ export function buildSignage(p: VenuePalette, roomAnchors: Map<number | string, 
     ),
   );
 
-  return {
-    floor1,
-    ground,
-    dispose: () => painter.dispose(),
-  };
+  return { floor1, ground, dispose: () => painter.dispose() };
 }
 
 /**
@@ -719,3 +731,154 @@ export function zaalSignX(n: number): number {
   const r = R(n);
   return roomDoor(r).cx + zaalSignSide(r) * SIGN_OFFSET_PX;
 }
+
+/* ======================================================= sponsor stand art ==
+
+ * Michele, tonight: *"Polishing the graphic, making people and stands real etc."*
+ *
+ * Before this the twelve sponsors existed only as `SPONSORS` in
+ * `src/sim/geometry.ts` — the names were in the sim, used for the "why am I
+ * blocked" lines, and they were on screen nowhere at all. A trade-show floor with
+ * no sponsor names on it is not a trade-show floor, it is twelve boxes.
+ *
+ * `media/other-images/image-1790032637969.webp` and `-650288.webp` are the brief:
+ * what you read from across that hall is a **big flat panel of one brand colour
+ * with the name on it**, plus a slim lit totem out in the lane. Everything else —
+ * the counters, the white tub chairs, the black metal high tables — is furniture
+ * you only resolve up close.
+ *
+ * The art lives here rather than in `ground.ts` because this module is where the
+ * venue's lettering is drawn, and it already owns the one canvas painter and its
+ * texture cache. `ground.ts` says where a panel hangs; this says what is on it.
+ */
+
+/** One sponsor's identity: the brand colour, what it is legible in, and the gag. */
+export interface BoothScheme {
+  /** The panel ground. */
+  readonly brand: string;
+  /** Text on `brand`. */
+  readonly ink: string;
+  /** Strapline under the name. Devoxx-flavoured, nothing that needs permission. */
+  readonly strap: string;
+}
+
+/**
+ * Twelve schemes, in `SPONSORS` order — which is `row * 4 + col`, so a booth's
+ * scheme is a pure function of its plan position and a screenshot is reproducible.
+ * That is the whole of the "deterministic per booth" requirement: no RNG here.
+ */
+export const BOOTH_SCHEMES: readonly BoothScheme[] = Object.freeze([
+  { brand: '#2f6ae0', ink: '#ffffff', strap: 'boils your cluster dry' },
+  { brand: '#6f4a2d', ink: '#f3e2c7', strap: 'since 1995 · still serializable' },
+  { brand: '#14798b', ink: '#ffffff', strap: 'your money, eventually consistent' },
+  { brand: '#f2bf18', ink: '#2a2413', strap: 'tell it your bug · it never blinks' },
+  { brand: '#141a14', ink: '#d8b64a', strap: 'COBOL support since before you' },
+  { brand: '#3b3f4a', ink: '#dfe3ea', strap: 'one deployable · one' },
+  { brand: '#1b3a6b', ink: '#ffffff', strap: 'we cover what you did not check' },
+  { brand: '#2f7fd0', ink: '#ffffff', strap: 'your flight will resolve shortly' },
+  { brand: '#c4507f', ink: '#ffffff', strap: 'everything is a crumb, then a loaf' },
+  { brand: '#e0328c', ink: '#ffffff', strap: 'laptop real estate · free' },
+  { brand: '#b81f28', ink: '#ffffff', strap: '/^(a+)+$/ — do not run this' },
+  { brand: '#4a2c18', ink: '#f0d9b8', strap: 'the queue starts here' },
+]);
+
+/** A backlit-panel wash: hotter along the top edge, shadowed at the bottom. */
+function lightbox(ctx: CanvasRenderingContext2D, w: number, h: number, ground: string): void {
+  ctx.fillStyle = ground;
+  ctx.fillRect(0, 0, w, h);
+  const wash = ctx.createLinearGradient(0, 0, 0, h);
+  wash.addColorStop(0, 'rgba(255,255,255,0.14)');
+  wash.addColorStop(0.5, 'rgba(255,255,255,0)');
+  wash.addColorStop(1, 'rgba(0,0,0,0.20)');
+  ctx.fillStyle = wash;
+  ctx.fillRect(0, 0, w, h);
+}
+
+/**
+ * The big branded back wall of a built stand: the sponsor's name across it, the
+ * gag under the name, and a Devoxx caplet in the corner.
+ *
+ * The name is sized to the PANEL, not to a font list — `Sticker Mine` and
+ * `NullPointer Insurance` are the same height on the wall, which is what a real
+ * stand build does and what makes twelve of them read as one hall.
+ */
+export const sponsorPanel =
+  (name: string, s: BoothScheme): Paint =>
+  (ctx, w, h) => {
+    lightbox(ctx, w, h, s.brand);
+
+    // A soft brand-lighter blob behind the name: every one of these walls in the
+    // drone footage has some graphic on it, and a flat field reads as a painted
+    // board rather than as a printed one.
+    ctx.save();
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = s.ink;
+    ctx.beginPath();
+    ctx.ellipse(w * 0.82, h * 0.30, w * 0.26, h * 0.42, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.fillStyle = s.ink;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const size = fitFont(ctx, name, w * 0.86, Math.round(h * 0.26), 800);
+    ctx.fillText(name, w * 0.07, h * 0.42);
+
+    ctx.globalAlpha = 0.82;
+    ctx.font = `500 ${Math.round(size * 0.34)}px ${FONT}`;
+    ctx.fillText(s.strap, w * 0.07, h * 0.62);
+    ctx.globalAlpha = 1;
+
+    // The rule and the Devoxx caplet: the mark every stand at the show carries.
+    ctx.fillStyle = s.ink;
+    ctx.globalAlpha = 0.35;
+    ctx.fillRect(w * 0.07, h * 0.74, w * 0.86, Math.max(2, h * 0.006));
+    ctx.globalAlpha = 1;
+    ctx.font = `700 ${Math.round(h * 0.075)}px ${FONT}`;
+    ctx.fillText('DEVOXX BELGIUM', w * 0.07, h * 0.84);
+  };
+
+/**
+ * The slim lit pylon standing in the lane beside a built stand.
+ *
+ * `image-1790032607096.webp` is full of these: a two-metre portrait lightbox is
+ * what you actually read at head height in a crowded hall, because the back walls
+ * are behind people. It is `boothTotem()` in the sim and has been a collider since
+ * the "this cube is walk-through" round; all that changes here is that it now says
+ * whose it is.
+ */
+export const sponsorTotem =
+  (name: string, s: BoothScheme): Paint =>
+  (ctx, w, h) => {
+    lightbox(ctx, w, h, s.brand);
+    ctx.fillStyle = s.ink;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitFont(ctx, name, w * 0.86, Math.round(h * 0.12), 800);
+    const lines = wrap(ctx, name, w * 0.86).slice(0, 3);
+    const step = h * 0.115;
+    lines.forEach((line, i) => ctx.fillText(line, w / 2, h * 0.34 + (i - (lines.length - 1) / 2) * step));
+    ctx.globalAlpha = 0.3;
+    ctx.fillRect(w * 0.22, h * 0.52, w * 0.56, Math.max(2, h * 0.004));
+    ctx.globalAlpha = 1;
+    ctx.font = `600 ${Math.round(h * 0.045)}px ${FONT}`;
+    ctx.fillText('DEVOXX', w / 2, h * 0.6);
+  };
+
+/**
+ * The printed valance across the front of a draped half table.
+ *
+ * Small type, read from the lane, and it carries the strapline rather than the
+ * name: the name is already on the roll-up banner standing on the same table, and
+ * saying it twice at two scales is what a stand builder charges you extra for.
+ */
+export const sponsorSkirt =
+  (s: BoothScheme): Paint =>
+  (ctx, w, h) => {
+    lightbox(ctx, w, h, s.brand);
+    ctx.fillStyle = s.ink;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitFont(ctx, s.strap, w * 0.8, Math.round(h * 0.44), 600);
+    ctx.fillText(s.strap, w / 2, h * 0.52);
+  };
