@@ -1070,3 +1070,150 @@ for exactly this and says in its own comment that the renderer reads it, and not
 robots walk at hall height while the treads climb to 5 m over them. Zooming in would only frame that
 better. Chapter 3's cutscene keeps the wide shot until robot elevation is fixed, and the reason is
 written where the next person will look.
+
+## 2026-09-23 — the third round of "I walked through that", and the test that ends it (agent)
+
+**The brief was the class, not the bug.** Michele had now reported the same shape of fault three
+times — chapter 1's seat rows, chapter 2's thirty-seven ground-floor objects, and, on the newest
+build, *"this cube is walk-through"* and *"Entrance walls are still walkable"*. Each had been fixed
+where it was found. The instruction this round was to find every remaining case, fix them the same
+way, and then **make the class impossible to reintroduce**.
+
+**Enumerate, do not audit.** The probe walks the venue **as built** — both `THREE.Group`s, every
+mesh, instanced meshes expanded per instance — takes each mesh's world-space AABB, converts it back
+to sim pixels, and asks two questions: is any cell of that footprint uncovered by a sim wall, and
+can a robot centre reach it by walking from where the chapter starts? It found walk-through meshes
+in **thirteen families** across both floors — 23 of them reachable in chapter 1, 195 in chapter 4,
+43 in chapter 2 and 50 in chapter 3, counted after the three declared exceptions are taken out:
+all eleven dressed auditoriums' seating and screens, the corridor's twenty columns, the foyer bar and its stools, the booth totems and
+flight cases, the hall's red panels, the entrance's four mullions and three open door leaves, the
+BOF slat walls and tables, the toilet partitions, the store's back wall, the forecourt's nine
+bollards and planters, and — in chapter 3 only — the roller door and the router cabinet, which had
+been chapter-2-only colliders all along. The full table is in `docs/playtest-notes.md`.
+
+**The fix is the architecture rule, applied.** Every one moved into `src/sim/geometry.ts`; the
+renderer draws the sim's wall list. `floor1.ts` lost the seating plan, the screens, the columns and
+the bar; `ground.ts` lost the totems, the panels, the partitions, the entrance frames and the
+forecourt. The renderer keeps what it is for — heights, materials, a turned stool, a cloth skirt —
+and no longer owns a single plan coordinate that a robot can collide with.
+
+**The deliverable is `tests/colliders.test.ts`.** Written against structures, not names: it measures
+whatever the venue builds, so a new column in a grid is a new column that must be a collider. Its
+flood fill **opens the gates a chapter opens** — a wall with an `onHit` handler, or a lock, a jam, a
+roller door, a cam-locked cabinet — because behind a gate is where a missing collider hides longest;
+that alone turned up cinema E's screen, 2.4 m of it, in the room the end of chapter 1 is played in.
+Verified by mutation in both directions — and the mutation is what found the test's own hole. A box
+added to the chapter-1 corridor went unreported, because the stair exception list mixed both floors
+and the two levels share one 1900x700 plan, so a ground-floor stairwell was excusing first-floor
+geometry standing over it. Per-floor now, and the mutant is reported by name, rect and the cell a
+robot can stand in.
+
+*Judgement calls the agent made and would defend:*
+
+- **Three exceptions, all explicit.** Staircases (a flight and its landing are floor), the
+  auditorium rake (the room's own stepped floor; the seats on it are the collider) and the rope-line
+  stanchions (Michele's decision from the chapter-2 round). The stanchions moved into the sim as
+  `LOBBY_STANCHIONS` — a list of rectangles that are deliberately *not* walls — so the decision and
+  the exception are the same four rectangles, and the test asserts it both ways so nobody can
+  quietly "fix" it.
+- **The cinema screens are `glass`, not solid.** They stop a robot and pass light, because in room E
+  the screen is the MIRROR chapter 1 bounces orange and green off: seating a secondary source 4 px
+  from an occluding screen would have swallowed the bounce and broken clue 4 in silence.
+- **The seats are `low`,** like every other seat row, table, counter and desk in the game — light
+  crosses them. That is what keeps a dark auditorium readable, and it is why Biggy can still flood
+  clue 3 over the seat backs from the concourse while Droid threads the aisle.
+
+**The debt the last round wrote down came due, and was paid.** `docs/playtest-notes.md` had recorded
+that `buildLights` is lights x rays x walls, had gone 0.9 -> 2.63 ms per cast over two rounds, and
+that *"if a third change lands on that path it is worth range-culling walls inside buildLights
+before adding to it"*. This was the third change. Chapter 1's wall list went from **98 to 179** (81 occluders
+to 95), which took the suite from 58 s to 71 s and tripped a vitest worker RPC timeout; culling
+occluders to the lamp's own reach — which cannot change a polygon, since every ray is clipped at
+`range` already — took it to **20 s**, faster than before any of this. A note written for the next person turned out to be a note written for the
+next agent.
+
+**Measured, not assumed, twice more.** A new collider can break a puzzle without breaking a test, so
+both chapters that could suffer were swept: every chapter-1 clue is still lightable from hundreds of
+*reachable* spots by each robot that has to light it, and chapter 3's crowd — which at first was not
+getting in at all, because visitors aimed at any point across a 136 px opening that now has frames
+in it — comes in through the three door bays.
+
+**The kiosk, and why "identify it before changing it" was the whole instruction.** Michele twice
+asked for "the black block" to go, guessing it was a bench. It was not. Shot, cropped and traced to
+its mesh, it was the kiosk's own **fascia**: `floor1.ts` drew it as a 60 x 60 px plate laid flat at
+2.15 m — a LID over the whole kiosk, 4.8 m square, unlit, seen from a 30-degree camera.
+
+The first explanation written down for it was still wrong, and an A/B said so. The claim was that
+the lid covers the clue; at this pitch its projection actually falls north of the ring. What it does
+is **shade** it. Three builds of the same tree, one variable each, mean luminance of the 100 x 80 px
+box around the ring: **43.5 with neither lid nor counter, 39.1 with the lid back (brightest arc
+pixels 174.1 -> 128.8), 43.8 with the counter back** — the counter, the "bench", costs nothing
+measurable, because it sits south of the ring and was invisible in an unlit kiosk, which is
+presumably why the guess carried a question mark. So: four 3 px fascia bands, top open, counter
+deleted because he asked for it, and the glazing untouched — it was already `glass: true`.
+
+And the honest part: his build measured **5.8** in that box against 43.5 now, and most of that climb
+is NOT this change. Another agent's clue-marker and lighting work landed in the same tree during
+this session; the kiosk's own share, isolated by A/B, is the 39.1 -> 43.5 and the 128.8 -> 174.1.
+A before/after screenshot across a shared worktree is not an attribution.
+
+**What the agent got wrong, on the record.** Two `git checkout <file>` calls to undo a mutation test
+discarded the whole of that session's work on `floor1.ts` and `ground.ts` — both files had to be
+rebuilt from the transcript. A `git stash`/`stash pop` earlier in the same session was worse
+judgement: this repo is a shared worktree with other agents live in it, and stashing moved someone
+else's in-flight `biggy.ts` out from under them. Neither is a tooling problem; copy the file to the
+scratchpad and copy it back.
+
+## 2026-09-24 — four lighting notes, and the two causes the human's brief got wrong (agent)
+
+**What the agent was asked to do.** Michele's playtest produced four notes about light: a solved
+clue's digit washing out, the selected robot going "lighted and a bit ethereal, in particular
+droid", Droid's light "oddly pointing somewhere else", and floor blowing out to flat colour in his
+screenshots. The brief named a prime suspect — the light skirt added hours earlier — and, to its
+credit, said **"measure before you change anything… if it is not, say that instead — I would rather
+be wrong early."**
+
+**What a human decided.** That the skirt is not to be deleted: *"the problem it solved (hard to
+light up the clues, even if the robots are next) was real and his, and is not to be reintroduced."*
+And that the selection highlight should read off the ring and the robot's own projected light rather
+than off its body — Michele's own suggestion, taken as written.
+
+**What the measurement said, and where it disagreed with the brief.** The agent built the game with
+a runtime toggle on each suspect, staged identical frames through the debug handle
+(`__afterdark.game.debug.place`) and sampled pixels off a PNG decoder written for the purpose.
+
+- The skirt **was** guilty of the digit and of the flat floor: clipped-channel pixels around two
+  robots on a clue went **6.4% -> 28.4%** with it on, and the numeral's contrast inside its own ring
+  fell from 65 to 16 of 255.
+- But it was **not** the main cause of the ethereal robot, and the brief's mechanism for that ("it
+  lights the robot itself from below") was wrong in detail: an additive floor decal cannot light a
+  robot standing on it. What lit the robot was the skirt's *volumetric wedge* — a 1.9 m-rim cone
+  from a lamp 1.95 m up, i.e. a tent pitched over the body.
+- And the **bigger** cause of the ethereal robot was not the skirt at all: it was the x-ray ghost,
+  which had been drawing over the robot it marks for two rounds. Ghost off vs on, Droid alone:
+  torso **L=109 -> 149**, shins **57 -> 93**. The cause is a three.js fact rather than a typo — the
+  renderer draws every opaque mesh before any transparent one, so `renderOrder` cannot put a
+  transparent ghost *before* an opaque robot, which is exactly what the code's own comment claimed
+  it did. Making the ghost material opaque fixes it and, as a side effect, gives Michele the flat
+  silhouette he asked for two rounds ago instead of an x-ray of the rig's insides.
+- "Droid's light points somewhere else" is the mounted case, and it is a drawing bug: `syncMount`
+  offsets a riding Droid six sim px north as the prototype's flat-canvas way of saying "up", and
+  this renderer already draws that as height, so the offset was counted twice and Droid was drawn
+  0.48 m behind his own pool.
+
+**What was rejected, and why.** Moving the mounted lamp in `buildLights` to Droid's own position —
+the obvious sim-side fix — was rejected outright: it would move the polygon `clueLit` tests, and
+the brief ring-fenced the clue rule. The renderer takes the offset back out instead. Deleting the
+skirt was rejected for the reason the brief gives. Lowering the skirt's intensity flat was rejected
+in favour of reshaping it: an annulus keeps the light where a neighbouring clue is (it is **2.8x**
+brighter there than the old profile) and removes it only from the robot's own 0.58 m footprint,
+which is both where the numeral is and where the body was catching the wedge. And brightening the
+selected robot's `SpotLight` was rejected in favour of brightening only its additive floor pool,
+because the spotlight is the thing that lights the robot's shell and the note was a request to stop
+lighting the robot.
+
+**The sim was touched once, on purpose, and it is a label.** `LightSource.skirt` carries no rule:
+same range, same rays, same polygon, so `clueLitBy` and `clueLit` cannot see it and
+`tests/chapters.test.ts` passes unchanged. Every actual change is in `src/render`. That is the
+CLAUDE.md line working — the temptation was to fix a *look* by moving a light in the sim, and the
+architecture made the cost of that obvious enough to refuse.

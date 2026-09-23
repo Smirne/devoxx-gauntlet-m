@@ -155,6 +155,16 @@ export interface LightSource {
   poly: Vec2[];
   /** Pool lights cover the full circle. */
   full?: boolean;
+  /**
+   * True for the short spill around a robot's own feet (`SKIRT_RANGE`).
+   *
+   * A label, not a rule: the skirt's polygon, range and ray count are exactly
+   * what they were, so `clueLitBy` and `clueLit` cannot tell it from any other
+   * pool and the puzzle is untouched. It exists because the RENDERER has to draw
+   * a light that is emitted at the robot's own feet differently from one that is
+   * thrown across a room — see `writeLightMesh` in `src/render/lighting.ts`.
+   */
+  skirt?: boolean;
 }
 
 /** The cinema screen: a horizontal mirror segment that re-emits light. */

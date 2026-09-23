@@ -27,7 +27,7 @@ right-hand column — sometimes with a small change beside it, sometimes with no
 | 12 | "when biggy pushes the door there should be some kind of animation" | in flight | The door does not open, it ceases to exist — `removeWall` in the same frame as the hit. |
 | 13 | "the animation in the chapter 1-2 passage is too fast and too dark, and I'd zoom more" | in flight | |
 | 14 | "lighting on south room is odd. I should be able to see the seats" | open | Same room as #3; may already be fixed by drawing the seats. Needs a re-look. |
-| 15 | "reduce the black block, make it into a glass wall or something to show the circle better" | open | Something opaque hides the kiosk clue. |
+| 15 | "reduce the black block, make it into a glass wall or something to show the circle better" · and again: "the black bench(?) has to go, for a glass wall as suggested before" | done | Not a bench. The kiosk's own **fascia**: `floor1.ts` drew it as a 60 x 60 px plate laid flat at 2.15 m — a LID over the whole kiosk, 4.8 m square, and unlit from a 30 deg camera that is exactly what a black block looks like. It does not stand between the camera and the clue, it **shades** it: A/B on one build, the ring's box measures mean 39.1 with the lid and 43.5 without, brightest arc pixels 128.8 against 174.1. The counter he guessed at costs 43.8 vs 43.5 — nothing — and is gone anyway because he asked for it. Four 3 px fascia bands now, top open. The glazing was already `glass: true` in the sim and needed no change. **Not all of the ring's improvement is this change**: his build measured 5.8 mean in that box, and most of the climb from there is the concurrent clue-and-lighting work in the same tree, not the kiosk. |
 | 16 | "those two are maybe too near to each other?" | open | Two clue spots. |
 | 17 | "I put all three robots in the room... needed different tries before finding the number" | waiting | His call: try the new arc markers first before adding more help. |
 | 18 | "they seem fit for biggy to pass, make the passage more narrow" | open | The secondary-staircase niche is 3.2 m wide. Must be sized *after* the radius rescale, which halves Biggy's sim width. |
@@ -71,6 +71,166 @@ One thing NOT changed, on purpose: the rope-line stanchions in the lobby are sti
 walk-through. A velvet rope on a 26 cm post is not something a player expects to be
 stopped by, and a 4 px collider in the middle of the concourse would be an invisible
 snag rather than an obstacle.
+
+## Chapter 3 of the same bug — and the end of it
+
+Played 23 Sep 2026, on the build that carried the thirty-seven ground-floor colliders. Two notes,
+and they are the same note a third time: **"this cube is walk-through"** (a screenshot with a robot
+standing on top of a block) and **"Entrance walls are still walkable"**.
+
+Each of the three rounds was fixed where it was found; the CLASS was not, so the class kept coming
+back. This round closed the class instead. The method is the chapter-2 one, generalised: a
+throwaway probe (`tests/probe-*.test.ts`, gitignored) walks the **built** venue for both floors,
+takes every mesh's world-space footprint, and asks whether a robot centre can stand in it. Nothing
+is enumerated by hand — the scene graph is the list.
+
+A drawn mesh counts as an obstacle if its underside is below 0.6 m (it is standing on the floor,
+not hung on a wall or laid on a counter) and it fails if any cell of its footprint is both FREE (no
+sim wall rect covers it) and REACHABLE (some robot can walk its centre there, `skipFor` honoured).
+
+**Reachability has to open the gates.** Measured from the chapter's start alone, the sweep only ever
+sees the rooms that are open on frame one — and behind a gate is exactly where a missing collider
+hides longest. Cinema B is locked until Droid reaches the projector panel from Biggy's shoulders,
+cinema E is jammed until Biggy charges it, the store is behind a roller door and the router cabinet
+is cam-locked. The flood fill treats a wall with an `onHit` handler, or one of the gate kinds, as
+open. That change alone turned up cinema E's screen — 2.4 m of it, no collider, in the one room a
+player spends the end of chapter 1 in.
+
+### What the sweep found, before
+
+| Where | What | How many |
+| --- | --- | --- |
+| F1, all rooms but E | auditorium **seat rows** — the same bug as note 3, in the other eleven rooms | 179 seat instances measured walk-through in chapter 4 alone, plus cinema B's, which the probe cannot see from a chapter's start because its door is locked until the projector panel is thrown |
+| F1, all rooms but E | the **cinema screens**, 2.4 m tall, standing 4 px off the end wall | 13 |
+| F1, corridor | the **square corridor columns** and their knee-high plinths | 20 |
+| F1, foyer | the **bar counter** and its three stools | 4 |
+| F1, kiosk | the dark **counter slab** | 1 |
+| GF, hall | sponsor-booth **totems** (2.1 m) and **flight cases** (1.05 m) — his "cube" | 12 |
+| GF, hall | the **red accent panels**, 2 m tall, standing 1 px proud of the wall | 8 |
+| GF, hall | the store's **wood back wall** and, in chapter 3 only, the **roller door** and the **router cabinet** (both were chapter-2-only colliders) | 4 |
+| GF, lobby | the entrance's **door-bay mullions** and the three **leaves standing open** in them — his "entrance walls" | 7 |
+| GF, lobby | the **BOF rooms' slat walls** (2.45 m) and their six workshop **tables** | 9 |
+| GF, lobby | the **toilet partitions** | 2 |
+| GF, forecourt | seven **bollards** and two **planters**, out through the open doors | 9 |
+| F1, cinema E | the **screen** the chapter-1 mirror bounces off — found only once the sweep started opening the gates a chapter opens (see below) | 1 |
+
+**After: zero** on both floors and all four chapters, bar the three declared exceptions below.
+
+Every one of them was fixed the same way and it is the way CLAUDE.md already prescribes: the
+geometry moved into `src/sim/geometry.ts`, and `src/render/venue/*.ts` draws the sim's wall list.
+`floor1.ts` no longer owns the seating plan (`roomSeating()`), the screens (`roomScreen()`), the
+corridor columns or the bar; `ground.ts` no longer owns the totems, the panels, the partitions, the
+entrance frames or the forecourt. There is no second copy left to drift.
+
+### The test that should make this the last round
+
+`tests/colliders.test.ts` — **a drawn solid must be a collider**, checked against the venue's own
+structures rather than a list of names, so adding a column to a grid adds a column that has to be a
+collider. It is the deliverable, not the fixes: a fourth playtest should find none of these because
+the suite does. Proved by mutation: a box added to `floor1.ts` out of the renderer's own numbers is
+reported by name, position and the cell a robot can stand in.
+
+Three exceptions, each explicit and each read out of `src/sim/geometry.ts` rather than typed into
+the test:
+
+- **staircases** — a flight, its landing, treads, nosings, cheek walls, handrails and well edging
+  are floor you walk on. The sim's answer to "nothing in this game climbs" is a `stair-foot` wall
+  across the bottom riser, not a solid staircase. Held **per floor**: the two levels share one
+  1900x700 plan, and a single list quietly excused anything upstairs that stood over a stairwell
+  downstairs — which a mutation caught before this shipped.
+- **the auditorium rake** — the stepped floor under a seat block is the room's own floor; the seats
+  on it are the collider, and the aisles are cut through both.
+- **the rope-line stanchions** — Michele's own call from the chapter-2 round, now recorded as
+  `LOBBY_STANCHIONS` beside the walls rather than as a comment in the renderer. The test asserts it
+  **both ways**: if somebody ever gives them colliders, it says so, so the exception cannot go stale.
+
+Still walk-through and knowingly so, under the first of those: the **door leaves standing open in
+the two stair shafts**. They are inside the shaft footprint, which is why the exception covers them;
+a robot on the landing can walk through a leaf. Worth a look next round, and not worth a 5 px
+collider in a doorway this one.
+
+### What this cost, and the debt it paid
+
+`buildLights` is lights x rays x walls, and the wall lists nearly doubled — chapter 1 goes from
+**98 walls to 179**, and its occluders (the solid ones, the only ones a ray is cast against) from
+81 to 95. The note at the end of the chapter-2 round called this exactly: *"if a third change
+lands on that path it is worth range-culling walls inside `buildLights` before adding to it"*. This
+was the third change, it did land there, and the cull went in: `castPoly` now keeps only the walls
+within the lamp's own reach, which cannot change a polygon because every ray is already clipped at
+`range`. The suite went **58 s -> 20 s** — faster than before the colliders existed, and the
+chapter tests pass untouched. One test-side helper needed the same treatment: `canWalk` in
+`tests/geometry.test.ts` was cells x walls (9.6M distance checks a call at the new wall count) and
+tipped over vitest's 5 s default on a loaded machine; it rasterises each wall once now, same answer.
+
+Two gameplay checks, because a new collider can break a puzzle in silence:
+
+- **chapter 1 stays solvable.** Every clue, every robot that has to light it, swept over reachable
+  standing spots and twelve facings each: clue 1 orange 3121 / green 1182 spots, clue 2 orange 3411
+  / blue 2964, clue 3 green 470 / blue 1102, clue 4 orange 204 / green 180 / blue 147. Room B's
+  seats now mean Droid threads the aisle (he can: 470 spots inside) and Biggy floods over the seat
+  backs from the concourse, which is exactly the hint the seat rows are supposed to give.
+- **chapter 3's crowd still gets in.** It did not, at first: the entrance is one opening in the plot
+  and three bays on the ground, and visitors aimed at any point across the 136 px run stood in a
+  mullion for the whole chapter. They pick a bay now (`entranceBayGaps()`).
+
+## Light and readability, 24 Sep 2026
+
+Four notes, from screenshots rather than from one room. The brief that went out with them named a
+prime suspect — the light skirt added a few hours earlier — and told the agent to measure it before
+trusting it. Half right: the skirt owns notes 1 and 4, and the mechanism named in the brief ("it
+lights the robot itself from below") was wrong, because an additive floor decal cannot light a robot
+standing on it. The thing that was lighting the robot had been in the build for two rounds and
+nobody had suspected it at all. Every number below is a pixel measurement off the build he played,
+staged headlessly through `__afterdark.game.debug.place` and sampled with a PNG decoder, two builds
+differing only in the change under test.
+
+| # | What he found | Status | What it actually was |
+| --- | --- | --- | --- |
+| 1 | "Light is sometimes too much (3 is no longer legible)" | done | **The clue markers were drawn UNDER the light.** Arcs, pip and numeral are floor decals at `renderOrder` 0; `lighting.ts` draws its additive floor pools at 12. So every lamp in the room composited on top of the numeral, and the dark rim that carries the glyph was lifted to the same value as the glyph. Measured on the "3" with two robots standing on it: darkest pixel inside the numeral **L=214 of 255** — the rim was simply gone — for a Michelson contrast of **0.087**. The markers draw at 20/21 now, above the pools and above the fog mask, so they read the same on a black floor and under three lamps: **0.488**, and the two arcs are legibly orange and green again instead of white. The skirt (below) was making it worse, but it was not the cause: even with the skirt off the rim only came back to L=160. |
+| 2 | "The selected characters becomes lighted and a bit ethereal, in particular droid. Maybe we can find an alternative highlight?" | done | **The x-ray ghost was painting the robot it marks.** The ghost is the rig's own geometry at `renderOrder` 1 with `depthFunc: GreaterDepth`, the robot's meshes at 2, which was supposed to mean "the ghost draws after the room and before the robot". It never did: three splits the draw into an opaque pass and a transparent pass and draws **every** opaque mesh before **any** transparent one — `renderOrder` only sorts within a pass — so a `transparent: true` ghost always drew last, and each part's ghost appeared wherever any nearer part of the same robot had written depth. Droid alone in a corridor, ghost off vs on: torso **L=109 -> 149**, shins **57 -> 93**, and the "cinema · closed tonight" sign four metres behind him read straight through his legs. Fixed by making the ghost material **opaque**: the pass order then does the work by itself, the ghost appears only where the venue is in front, and with no blending it composites to one flat silhouette — which is what he asked for two rounds ago ("show the silhuette, not this thing"). Same bug, same fix, on the active ring's ghost, which was painting a third of its colour across the feet of the robot it circles. |
+| 3 | "Droid light is oddly pointing somewhere else?" | done | **Only while he is riding Biggy, and it is the drawing, not the lamp.** Not a stale `face` — his lamp is a pool and a pool has no direction. `syncMount` puts a mounted Droid at `bg.y - MOUNT_OFFSET_Y`, six sim px **north** of his carrier: the prototype's flat-canvas way of drawing "up on the shoulders". This renderer already draws that in the axis it belongs in (`mountLift()` metres of height), so the offset was counted twice and Droid was drawn **0.48 m behind his own light** — ~30 screen px at chapter 1's zoom, on a pool that is meant to be centred under him. Measured: rig at sim y **394**, lamp at **400**. `buildLights` emits a mounted lamp at the carrier's position and that is untouchable (it would move the polygon the clue rule tests), so the renderer adds the offset back out where it introduced it. He also sits on Biggy's axis now rather than half a metre back, which is the same line. |
+| 4 | Whole areas of floor blowing out to flat colour (implicit in the screenshots) | done | **The light skirt, and this one was the suspect.** `SKIRT_RANGE` is a 1.9 m pool of a robot's own colour at its own feet, added so he could light a clue he was standing next to — a real fix for a real complaint. But it was *drawn* like any other lamp: a full-strength additive floor pool with its hot spot exactly on the floor the robot stands on, and a volumetric wedge whose apex is the robot's own lamp 1.95 m up — at a 1.9 m rim that wedge is a tent pitched over the robot's body. Measured around two robots on a clue: clipped-channel pixels **6.4% -> 28.4%** with the skirt on; Droid's chest **L=126 -> 172** with green at **208 of 255**. The skirt now has **no wedge at all** and its floor pool is an **annulus** — dark under the robot's own footprint, full at 58% of its range. Same area after: **1.0% clipped** at the same mean scene luminance (93.7 -> 93.5). |
+
+### What the skirt kept, and why it is not a nerf
+
+The sim side of the skirt is untouched: same 24 px range, same 18 rays, same polygon, so `clueLitBy`
+and `clueLit` cannot tell that anything happened and `tests/chapters.test.ts` passes unchanged. The
+only sim-side edit is a `skirt: true` label on the `LightSource` so the renderer can tell a spill at
+a robot's feet from a beam thrown across a room.
+
+What changed is the *drawn* radial profile, and it is brighter, not dimmer, everywhere a
+neighbouring clue actually is. At the clue in his own screenshot — 20 sim px from each robot, 83% of
+the skirt's range — the annulus is **2.8x** the old value, because the old smooth falloff had spent
+nearly all of itself by then while the annulus is still on its way down from full. It is darker only
+inside 0.58 m, which is the robot's own footprint: the patch where the numeral is written and where
+its own shell was catching the bounce.
+
+### Still weak, on the record
+
+- **The three-lamp overlap still clips.** Chapter 1's opening frame has all three cones crossing in
+  the corridor and that patch is still a white hole. It is `MIX_HEADROOM`'s job, not the skirt's,
+  and it was not in these four notes — but it is the one place left where "light is too much" is
+  still true.
+- **The chapter-opening frames are too noisy to measure with.** Three captures of the *same* build
+  at `?chapter=2&warm=60` gave mean scene luminance 7.5, 12.0 and 13.4: `--virtual-time-budget`
+  does not pin the number of frames, and chapter 2's mood ease and the fog-of-war memory both run
+  on elapsed time. Every claim above therefore comes from a staged scene with the robots placed and
+  the camera settled, not from an opening shot. Anyone quoting a luminance off a `warm=60` frame
+  should capture it three times first.
+- **A robot behind a solid wall now shows a solid silhouette** rather than a half-transparent one.
+  It only ever happens to the robot you are driving, which the camera is following, so in practice
+  you see it through pillars and signs rather than through walls — but it is louder than it was.
+- **`syncMount`'s six-pixel offset is still a trap.** The renderer takes it back out now, but a 2D
+  "up" expressed as a y offset in a 3D game will catch the next person who reads `bot.y` for a
+  mounted Droid. It belongs in `bot.ts` as a flag rather than as a displacement.
+
+### Also fixed on the way past
+
+Building the ghost used to stamp `renderOrder = 2` onto **every** mesh in the rig, transparent
+overlays included — so the first time you drove Voxxy, her additive eye glow lost the order
+`voxxy.ts` sets for it deliberately ("`renderOrder` puts it after the glass it floats 6 mm in front
+of"). The ghost is built from opaque shell meshes only now, so the glows keep their own order.
+
 
 ## Ideas he raised
 
