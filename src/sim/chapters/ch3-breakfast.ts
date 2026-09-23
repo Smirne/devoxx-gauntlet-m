@@ -152,9 +152,11 @@ const PALLET_MARK: Rect = { x: PALLET.x - 26, y: PALLET.y - 20, w: 52, h: 40 };
  *
  * The counter is a `low` wall (pushed in `setup`), so light crosses it and robots
  * do not: a bar you can walk through is the *"this cube is walk-through"* note all
- * over again.
+ * over again. It is two metres deep — counter plus back bar — and its back face
+ * leaves only 6 px to the hall wall, which is deliberate: any wider and there is a
+ * pocket behind the bar for a robot to get stuck in.
  */
-const BAR: Rect = { x: 336, y: 90, w: 92, h: 14 };
+const BAR: Rect = { x: 336, y: 96, w: 92, h: 26 };
 /** What it is called, in the register the sponsor list next door uses. */
 const BAR_NAME = 'The Finally Block';
 /**
@@ -164,7 +166,7 @@ const BAR_NAME = 'The Finally Block';
  * of the catering block's east wall by the same, so there is no corner of it he
  * can be standing in and still be told there is nothing here.
  */
-const BEER_STACK: Rect = { x: 346, y: 110, w: 72, h: 40 };
+const BEER_STACK: Rect = { x: 346, y: 128, w: 72, h: 40 };
 /**
  * Where the crates end up once he has handed them over: the cellar end of the bar,
  * stacked against the hall wall beside the taps.
@@ -173,7 +175,7 @@ const BEER_STACK: Rect = { x: 346, y: 110, w: 72, h: 40 };
  * rect the player had to stand in, so the reward for the errand was a pile in your
  * own way; here the mark stays clear and the finished delivery reads as stowed.
  */
-const CELLAR: Vec2 = { x: 440, y: 99 };
+const CELLAR: Vec2 = { x: 440, y: 106 };
 /** How close a robot has to get to the pallet to read what is printed on the wrap. */
 const LABEL_REACH = 90;
 /** The middle of the stack zone, and how close to it counts as "on the mark". */
@@ -187,10 +189,17 @@ const STACK_REACH = 44;
 /** Crates per layer on the finished stack, and the footprint they are set out on. */
 const STACK_WIDE = 3;
 const STACK_STEP = 13;
-/** The three taps, along the counter's centre line. */
-const TAPS: readonly Vec2[] = [352, 368, 384].map((x) => ({ x, y: BAR.y + BAR.h / 2 }));
-/** And the Belgian glassware set out beside them, one shape per beer. */
-const GLASSES: readonly Vec2[] = [400, 408, 416, 424].map((x) => ({ x, y: BAR.y + BAR.h / 2 }));
+/**
+ * The three taps, and the glassware beside them.
+ *
+ * On the counter's FRONT lip rather than its middle: the diorama camera sits on
+ * the +y side (`src/render/camera.ts`), so the front edge is the one the player
+ * is looking at, and a tap set back behind two metres of bar is a tap nobody sees.
+ */
+const BAR_TOP = BAR.y + BAR.h - 7;
+const TAPS: readonly Vec2[] = [352, 368, 384].map((x) => ({ x, y: BAR_TOP }));
+/** Belgian glassware, one shape per beer. */
+const GLASSES: readonly Vec2[] = [400, 408, 416, 424].map((x) => ({ x, y: BAR_TOP }));
 
 /**
  * A GLOWING HALO ROUND SOMETHING YOU CAN USE.
