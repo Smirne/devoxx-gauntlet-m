@@ -156,6 +156,47 @@ const CSS = `
 .ad-pad .ad-cap{font-size:13px;color:#d7d3cc;letter-spacing:.01em;padding:4px 12px;border-radius:7px;
   background:rgba(10,11,14,.82);border:1px solid #2a2e36;text-align:center;max-width:min(860px,88vw)}
 
+/* THE TEXT FIELD, at the centre of the screen.
+
+   Michele, on chapter 2's router terminal: "Typing the password was hard, the game
+   did not match it. I'd display an input text at center screen on e to make it
+   easier." What he had typed was one clause of a 100-character status line along
+   the bottom edge of the frame, which is not where anybody looks while they type.
+
+   It is not an <input>: the sim owns the buffer and the keyboard, and a focusable
+   element inside a pointer-events:none overlay would fight the canvas for focus and
+   swallow the very keys the game is reading. It is a box that DRAWS what the sim
+   says is in the box, one character per cell, with a caret on the next one. */
+.ad-prompt{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);
+  display:flex;flex-direction:column;align-items:center;gap:9px;padding:18px 24px 15px;
+  border:1px solid ${ACCENT};border-radius:12px;background:rgba(10,11,14,.95);
+  box-shadow:0 22px 64px rgba(0,0,0,.66),0 0 0 9999px rgba(4,5,8,.18);
+  animation:ad-rise .18s cubic-bezier(.2,.9,.3,1) both;max-width:min(92vw,720px)}
+.ad-prompt .ad-ptitle{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:${ACCENT};
+  text-align:center}
+.ad-pfield{display:flex;flex-wrap:wrap;justify-content:center;gap:5px}
+.ad-pchar{width:26px;height:34px;border-radius:5px;border:1px solid #333944;background:#0e1016;
+  display:flex;align-items:center;justify-content:center;color:#3c434e;
+  font:600 19px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  transition:color .12s,border-color .12s,background-color .12s}
+.ad-pchar.ad-in{color:#ffd995;border-color:${ACCENT};background:#191309;
+  box-shadow:0 0 12px -3px rgba(255,179,71,.55)}
+.ad-pchar.ad-caret{border-color:#ffd995;animation:ad-blink 1.05s steps(1,end) infinite}
+.ad-prompt.ad-bad{border-color:#e0533a;animation:ad-shake .22s ease-in-out}
+.ad-prompt.ad-bad .ad-pchar.ad-caret{border-color:#e0533a;background:#20100d;animation:none}
+.ad-pcount{font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:${MUTED};
+  font-variant-numeric:tabular-nums}
+.ad-phint{font-size:12.5px;color:#c7c2b9;text-align:center}
+@keyframes ad-blink{0%,55%{background:#241a0b}56%,100%{background:#0e1016}}
+@keyframes ad-shake{25%{transform:translate(calc(-50% - 6px),-50%)}75%{transform:translate(calc(-50% + 6px),-50%)}}
+@media (prefers-reduced-motion:reduce){
+  .ad-pchar.ad-caret{animation:none}
+  .ad-prompt.ad-bad{animation:none}
+}
+@media (max-width:760px){
+  .ad-pchar{width:20px;height:28px;font-size:15px}
+}
+
 /* A vignette, so the diorama's floor plate ends at a deliberate edge instead of
    running off the corner of the frame on an arbitrary diagonal. It is part of the
    HUD on purpose: ?nohud=1 turns it off, and the overlay and model-sheet checks
@@ -490,6 +531,15 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   }
   const padCap = el('div', 'ad-cap', pad);
 
+  /* the centre-screen text field (GameSnapshot.prompt) */
+  const promptBox = el('div', 'ad-prompt ad-hide', root);
+  const promptTitle = el('div', 'ad-ptitle', promptBox);
+  const promptField = el('div', 'ad-pfield', promptBox);
+  const promptCount = el('div', 'ad-pcount', promptBox);
+  const promptHint = el('div', 'ad-phint', promptBox);
+  /** One cell per character of the answer, grown on demand and reused after that. */
+  const promptCells: HTMLElement[] = [];
+
   /* bottom-left: robot switcher + speed gauge */
   const left = el('div', 'ad-left ad-chrome', root);
   const botsWrap = el('div', 'ad-bots', left);
@@ -614,6 +664,44 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
       cell.classList.toggle('ad-found', typed === '' && !!clue?.found);
     }
     setText(padCap, line, textCache);
+  }
+
+  /**
+   * THE TEXT FIELD. Pure formatting: everything it shows is decided in `src/sim`
+   * and arrives on `GameSnapshot.prompt` (`TextPrompt`), and nothing here decides
+   * whether a key was right, what the answer is or how long it is (CLAUDE.md).
+   *
+   * One cell per character, so what is in and what is left are countable at a
+   * glance — the same language the chapter-1 keypad cells already speak, moved to
+   * the middle of the screen where a player who is typing is actually looking. The
+   * next empty cell carries the caret; a refused key turns the whole box red for a
+   * third of a second, which is the feedback that was missing entirely.
+   */
+  function updatePrompt(snap: GameSnapshot): void {
+    const p = snap.prompt;
+    promptBox.classList.toggle('ad-hide', p === null);
+    if (p === null) {
+      promptBox.classList.remove('ad-bad');
+      return;
+    }
+    // `total` 0 means "as long as it needs to be": show what is typed plus one
+    // empty cell for the caret, so an open-ended field still has somewhere to blink.
+    const cells = p.total > 0 ? p.total : p.value.length + 1;
+    while (promptCells.length < cells) promptCells.push(el('div', 'ad-pchar', promptField));
+    for (let i = 0; i < promptCells.length; i++) {
+      const cell = promptCells[i];
+      const used = i < cells;
+      cell.classList.toggle('ad-hide', !used);
+      if (!used) continue;
+      const typed = i < p.value.length;
+      setText(cell, typed ? p.value[i] : p.blank, textCache);
+      cell.classList.toggle('ad-in', typed);
+      cell.classList.toggle('ad-caret', i === p.value.length);
+    }
+    setText(promptTitle, p.title, textCache);
+    setText(promptCount, p.total > 0 ? `${p.value.length} / ${p.total}` : `${p.value.length}`, textCache);
+    setText(promptHint, p.hint, textCache);
+    promptBox.classList.toggle('ad-bad', p.reject > 0);
   }
 
   function updateMeters(snap: GameSnapshot): void {
@@ -753,6 +841,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     updateChips(snap);
     updateSpeed(snap);
     updateKeypad(snap);
+    updatePrompt(snap);
     updateMeters(snap);
     updateToasts(snap);
     placeBubbles(anchors);
@@ -767,6 +856,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
       const v = chrome.toFixed(2);
       top.style.opacity = v;
       pad.style.opacity = v;
+      promptBox.style.opacity = v;
       left.style.opacity = v;
       meters.style.opacity = v;
     }
@@ -778,6 +868,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     skip.removeEventListener('click', onSkipClick);
     objEl.removeEventListener('click', onBriefClick);
     live.length = 0;
+    promptCells.length = 0;
     meterRows.clear();
     textCache.clear();
     htmlCache.clear();

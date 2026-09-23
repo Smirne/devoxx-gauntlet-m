@@ -234,12 +234,14 @@ function walkTo(g: DebugGame, kind: RobotKind, target: Vec2, tol = 7): boolean {
 
 /** The cabinet's south face, from `GF` — the same point `ch2-expo.ts` measures from. */
 const HUB: Vec2 = { x: GF.cabinet.x + GF.cabinet.w / 2, y: GF.cabinet.y + GF.cabinet.h + 2 };
-/** The Cloudy Bank booth's south face, where the sponsor banner hangs. */
-const POSTER: Vec2 = (() => {
-  const bo = GF.booths.find((o) => o.name === 'Cloudy Bank');
-  if (!bo) throw new Error('no Cloudy Bank booth');
-  return { x: bo.x + bo.w / 2, y: bo.y + bo.h + 2 };
-})();
+/**
+ * The spray tag on the hall's top wall — Michele's placement, 25 Sep 2026, in
+ * place of the small print on the Cloudy Bank booth's banner. Same point
+ * `ch2-expo.ts` measures from.
+ */
+const POSTER: Vec2 = { x: 400, y: GF.hall.y + 8 };
+/** The three breakers, on the technical room's high panel. */
+const PANEL: Vec2 = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
 
 const expo = (g: DebugGame): ExpoState => g.debug.chapter() as ExpoState;
 
@@ -253,6 +255,21 @@ function openCabinet(g: DebugGame): boolean {
   g.debug.place('biggy', HUB.x, HUB.y + 30);
   g.key('KeyE');
   return expo(g).router.cabinetOpen;
+}
+
+/**
+ * LINK 1 OF THE CHAIN: Droid throws the three breakers.
+ *
+ * It is a helper rather than three lines at every call site because after
+ * Michele's 25 Sep note the terminal is DEAD without it, so every choreography
+ * that ends at the terminal has to come through here first. That is the chain,
+ * and the fact that this helper is now unavoidable is the test of it.
+ */
+function powerUp(g: DebugGame): boolean {
+  g.debug.select('droid');
+  g.debug.place('droid', PANEL.x + 20, PANEL.y + 30);
+  for (let i = 0; i < 3; i++) g.key('KeyE');
+  return expo(g).power;
 }
 
 /** Type a string at the terminal, one `KeyX` at a time, exactly as the shell does. */
@@ -571,6 +588,7 @@ describe('chapter 2 — expo', () => {
     // Voxxy and Droid, right up against the door, pressing E: it does not move.
     for (const kind of ['voxxy', 'droid'] as const) {
       const g = mk(2);
+      powerUp(g);
       g.debug.select(kind);
       g.debug.place(kind, HUB.x, HUB.y + 20);
       g.key('KeyE');
@@ -616,6 +634,7 @@ describe('chapter 2 — expo', () => {
    */
   it('takes the WiFi password typed at the terminal, and forgives a wrong key and a slip', () => {
     const g = mk(2);
+    expect(powerUp(g)).toBe(true);
     expect(openCabinet(g)).toBe(true);
 
     // Biggy is standing right at it and cannot type a word of it.
@@ -650,7 +669,7 @@ describe('chapter 2 — expo', () => {
     expect(expo(g).router.typed).toBe('DE');
 
     // The live readout shows what is in and what is left, so it is never a guess.
-    expect(g.snapshot().progress).toContain('WIFI PASSWORD');
+    expect(g.snapshot().progress).toContain('AUTHORISATION');
     expect(g.snapshot().progress).toContain('(2/13)');
 
     typeAt(g, 'VOXXFOREVER');
@@ -670,6 +689,7 @@ describe('chapter 2 — expo', () => {
   it('gives the keyboard to the terminal only while its prompt is open', () => {
     const g = mk(2);
     expect(g.snapshot().typing).toBe(false);
+    expect(powerUp(g)).toBe(true);
     expect(openCabinet(g)).toBe(true);
 
     // No prompt: R is restart, and a restart drops the whole run back to chapter 1.
@@ -677,6 +697,7 @@ describe('chapter 2 — expo', () => {
     expect(g.snapshot().chapter).toBe(1);
 
     g.startChapter(2);
+    expect(powerUp(g)).toBe(true);
     expect(openCabinet(g)).toBe(true);
     g.debug.select('voxxy');
     g.debug.place('voxxy', HUB.x, HUB.y + 20);
@@ -708,7 +729,7 @@ describe('chapter 2 — expo', () => {
    * The skirt each robot throws round its own feet is excluded on purpose, or
    * standing next to the banner in the dark would BE reading it.
    */
-  it("reads the poster under Voxxy's narrow beam, and not by standing near it", () => {
+  it("reads the spray tag under Voxxy's narrow beam, and not by standing near it", () => {
     const park = (g: DebugGame, kinds: RobotKind[]): void => {
       kinds.forEach((k, i) => g.debug.place(k, 560 + 30 * i, 660));
     };
@@ -759,6 +780,7 @@ describe('chapter 2 — expo', () => {
    */
   it('lets Droid read the label inside the lid only from Biggy\'s shoulders', () => {
     const g = mk(2);
+    expect(powerUp(g)).toBe(true);
     expect(openCabinet(g)).toBe(true);
 
     // Droid on his own feet at the cabinet gets the terminal, never the label.
@@ -897,7 +919,8 @@ describe('chapter 2 — expo', () => {
     steps_(noRouter, 2);
     expect(noRouter.snapshot().chapter).toBe(2);
 
-    // Now the router: Biggy opens the cabinet, Voxxy types the password.
+    // Now the router: Biggy opens the cabinet, Voxxy types the password. The
+    // breakers went in at the top of this test, so the terminal is awake.
     expect(openCabinet(g)).toBe(true);
     expect(expo(g).printerOnline, 'an open cabinet alone brought the printer up').toBe(false);
     g.debug.select('voxxy');
@@ -916,10 +939,19 @@ describe('chapter 2 — expo', () => {
     const rack = { x: GF.rack.x + 10, y: GF.rack.y + 12 };
     const printer = { x: GF.printer.x + 10, y: GF.printer.y + 6 };
 
-    // 1. the router cabinet and its terminal, everyone still in the technical room.
-    //    Played the long way round on purpose — Biggy's shoulder, then Droid up on
-    //    Biggy for the label, then Droid typing it in — so the end-to-end run
-    //    exercises the route with the most moving parts rather than the shortest.
+    /*
+     * 1. THE CHAIN, in the order Michele designed it: the breakers give energy,
+     *    Biggy opens the cabinet, the unit inside wakes up, and only then is there
+     *    a terminal to type at. Played the long way round on purpose — Droid up on
+     *    Biggy for the label, then Droid typing it in — so the end-to-end run
+     *    exercises the route with the most moving parts rather than the shortest.
+     */
+    g.debug.select('droid');
+    g.debug.place('droid', panel.x + 20, panel.y + 30);
+    for (let i = 0; i < 3; i++) g.key('KeyE');
+    expect(expo(g).power).toBe(true);
+    expect(expo(g).hallLit, 'the breakers lit the hall on their own').toBe(false);
+
     expect(openCabinet(g)).toBe(true);
     g.debug.place('biggy', 300, 640);
     g.debug.place('droid', 284, 640);
@@ -937,12 +969,8 @@ describe('chapter 2 — expo', () => {
     g.debug.place('droid', HUB.x, HUB.y + 20);
     g.key('KeyE');
     expect(expo(g).router.online).toBe(true);
-
-    // 2. the breakers
-    g.debug.select('droid');
-    g.debug.place('droid', panel.x + 20, panel.y + 30);
-    for (let i = 0; i < 3; i++) g.key('KeyE');
-    expect(expo(g).power).toBe(true);
+    // ...and THAT is what lights the hall.
+    expect(expo(g).hallLit).toBe(true);
 
     // 3. the cable
     expect(walkTo(g, 'voxxy', { x: rack.x, y: rack.y - 24 })).toBe(true);

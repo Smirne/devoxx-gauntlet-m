@@ -1356,29 +1356,29 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     const breakers = power
       ? hallLit()
         ? 'power ✓'
-        : 'power ✓ (hall still dark)'
-      : `breakers ${BREAKERS - breakersLeft}/${BREAKERS} — Droid, high on the wall (E)`;
+        : 'power ✓ — hall still dark'
+      : `breakers ${BREAKERS - breakersLeft}/${BREAKERS} (Droid, high)`;
     const net2 = router.online
-      ? 'router ✓ — the hall is lit'
+      ? 'router ✓'
       : !router.cabinetOpen
-        ? 'router: cabinet shut — Biggy shoulders it open (E)'
+        ? 'router: cabinet shut — Biggy opens it (E)'
         : !power
-          ? 'router: open, and dead. No supply until the breakers are in'
+          ? 'router: open and dead — no supply'
           : router.prompting
-            ? `AUTHORISATION ${maskedPassword()} · Backspace · Esc`
+            ? `AUTHORISATION ${maskedPassword()} · Esc`
             : router.known
-              ? 'router: powered, password known — E at the terminal'
-              : 'router: powered, waiting for the WiFi password — E at the terminal';
+              ? 'router: password known — E at the terminal'
+              : 'router: powered, wants the WiFi password (E)';
     const net = cable.connected
       ? 'cable ✓'
       : cable.snapped
         ? 'cable snapped — back to the rack'
         : cable.carrying
           ? `cable ${Math.round(cable.len)}/${CABLE_MAX} px${cable.taut ? ' — TAUT' : ''} → reception`
-          : 'cable: on the reel at the rack (Voxxy, E)';
+          : 'cable: on the reel at the rack';
     const store = rollerBroken
       ? 'shirts & gadgets ✓'
-      : `store shutter: shut (needs ${m(ROLLER_DOOR_SPEED).toFixed(1)} m/s)`;
+      : `roller door: shut (needs ${m(ROLLER_DOOR_SPEED).toFixed(1)} m/s)`;
     return `${breakers} · ${net2} · ${net} · ${store}`;
   }
 
