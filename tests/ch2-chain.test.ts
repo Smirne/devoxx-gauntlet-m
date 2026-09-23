@@ -426,6 +426,47 @@ describe('chapter 2 — what the player is told, and what they have to find', ()
   });
 
   /**
+   * *"Biggy reaching the room is a bit sawkward and not much visible, so it seems
+   * he's passing through a wall."*
+   *
+   * The doorway is four metres of clear gap — he is not grinding on a jamb — so
+   * what is missing is the ability to SEE it in a blacked-out hall. Same two props
+   * as the store shutter: a lit plate lying in the opening and a name beside it.
+   * The occlusion behind the complaint is the renderer's and is in the report.
+   */
+  it('lights the technical room\'s doorway, and hails it from outside', () => {
+    const g = mk();
+    const gapY: [number, number] = [600, 650];
+    const plate = props(g, 'lane').find((p) => (p.label ?? '').includes('technical room'));
+    expect(plate, 'the doorway is unmarked').toBeDefined();
+    expect(plate?.state).toBe('broken');
+    // It lies IN the gap `groundWallsFor` leaves, not beside it.
+    expect(plate!.y).toBeGreaterThanOrEqual(gapY[0] - 2);
+    expect(plate!.y + (plate!.h ?? 0)).toBeLessThanOrEqual(gapY[1] + 2);
+    expect(plate!.x).toBeLessThan(GF.tech.x + GF.tech.w);
+    expect(plate!.x + (plate!.w ?? 0)).toBeGreaterThan(GF.tech.x + GF.tech.w);
+    expect(props(g, 'sign').some((p) => (p.label ?? '').includes('TECHNISCHE'))).toBe(true);
+
+    // Biggy is told what the room is from OUTSIDE it, not once he is already in.
+    g.debug.select('biggy');
+    g.debug.place('biggy', GF.tech.x + GF.tech.w + 60, 625);
+    expect(g.debug.walls().some((w) => w.x === GF.tech.x + GF.tech.w && w.y === 600), 'the gap was walled up').toBe(false);
+    steps(g, 2);
+    const hail = said(g);
+    expect(hail).toContain('cabinet');
+    expect(hail.toLowerCase()).toContain('breakers');
+
+    // ...and once the chain is done the doorway goes green.
+    powerUp(g);
+    openCabinet(g);
+    atTerminal(g, 'voxxy');
+    g.key('KeyE');
+    typeAt(g, 'DEVOXXFOREVER');
+    steps(g, 1);
+    expect(props(g, 'lane').find((p) => (p.label ?? '').includes('technical room'))?.state).toBe('done');
+  });
+
+  /**
    * THE STORE DOOR, as he designed it: *"Door should have Halo, Name on the side
    * (shirts and gadget) and be mentioned on the intro. Gadgets must be ready, but
    * the door is shut (we could mention the same lost keys?) (and put crates, shirts

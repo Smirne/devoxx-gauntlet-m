@@ -203,6 +203,8 @@ const POSTER_READ = 70;
 const STORE_HAIL = 150;
 /** ...and how close before reception says which desk the cable is looking for. */
 const RECEPTION_HAIL = 150;
+/** ...and how close to the technical room's door before it says what is inside. */
+const TECH_DOOR_HAIL = 120;
 /** Seconds between the terminal's "that is not it" readouts, so a mashed key is not a wall of toast. */
 const TYPO_COOLDOWN = 1.2;
 const BREAKERS = 3;
@@ -391,6 +393,25 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const panelAt: Vec2 = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
   /** The middle of the roller door, on its hall side — what the halo is drawn around. */
   const storeAt: Vec2 = { x: GF.roller.x, y: GF.roller.y + GF.roller.h / 2 };
+  /**
+   * The technical room's doorway, on the hall side — `groundWallsFor` leaves the
+   * gap at x `tech.x + tech.w`, y 600..650.
+   *
+   * Michele: *"Biggy reaching the room is a bit sawkward and not much visible, so
+   * it seems he's passing through a wall."* Driven and photographed: the doorway is
+   * 50 sim px (4 m) wide against Biggy's 18 px, so he is not grinding on a jamb —
+   * what he cannot see is the opening. The technical room sits in the bottom-left
+   * corner of a blacked-out hall, and from the diorama camera the room's own east
+   * wall below the door, plus the 3.8 m building shell along the hall's south edge,
+   * stand between the camera and the gap. Biggy walks west, disappears behind that
+   * wall for a second and reappears inside the room.
+   *
+   * The occlusion is the renderer's to fix and it is in the handover report. What
+   * the chapter can do is make the OPENING legible: a lit threshold plate lying in
+   * the gap and a name panel beside it, the same two props the store shutter gets,
+   * so a dark wall with a hole in it reads as a dark wall with a door in it.
+   */
+  const techDoorAt: Vec2 = { x: GF.tech.x + GF.tech.w + 4, y: 625 };
 
   /* ------------------------------------------------------------ the network closet */
 
@@ -1005,7 +1026,15 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      * the first robot through the door is told both are in here, and the terminal
      * carries its own standby glow in the renderer the way the breaker panel does.
      */
-    if (!hintedTech && (inRect(v, GF.tech) || inRect(ctx.byKind('biggy'), GF.tech) || inRect(ctx.byKind('droid'), GF.tech))) {
+    /*
+     * ...and it fires at the DOOR rather than once a robot is already inside, which
+     * is a second or two earlier and, in a blackout, the difference between being
+     * told what a room is and being told what a room was.
+     */
+    if (
+      !hintedTech &&
+      (ctx.bots.some((b) => inRect(b, GF.tech)) || ctx.bots.some((b) => dist(b, techDoorAt) < TECH_DOOR_HAIL))
+    ) {
       hintedTech = true;
       ctx.flash(
         (power ? '' : 'Breakers — way up on the wall, Droid. ') +
@@ -1131,6 +1160,35 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
        *     floor plate chapter 3 uses for its delivery drop zone, which is the
        *     vocabulary this game already teaches.
        */
+      /*
+       * THE TECHNICAL ROOM'S DOORWAY — a lit threshold and a name, for the reason
+       * the store shutter has them. See `techDoorAt`: the gap is four metres wide
+       * and Michele still could not see it, because in an unlit hall an opening in
+       * a dark wall and a dark wall are the same picture.
+       *
+       * The plate lies IN the gap (`groundWallsFor` leaves x 200..200+T free
+       * between y 600 and 650), so it is light on the floor a robot walks over
+       * rather than a marker beside the thing it is marking. Red while there is
+       * still a job in there, green when the room is done with.
+       */
+      {
+        kind: 'lane',
+        x: GF.tech.x + GF.tech.w - 8,
+        y: 600,
+        w: 20,
+        h: 50,
+        state: hallLit() ? 'done' : 'broken',
+        label: 'technical room — breakers & router cabinet',
+      },
+      {
+        kind: 'sign',
+        x: GF.tech.x + GF.tech.w + 3,
+        y: 592,
+        w: 5,
+        h: 18,
+        state: hallLit() ? 'done' : 'idle',
+        label: 'TECHNISCHE RUIMTE · TECHNICAL',
+      },
       {
         kind: 'sign',
         x: GF.smallStairs.x - 26,
