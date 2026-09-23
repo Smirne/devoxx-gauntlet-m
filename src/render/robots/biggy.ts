@@ -8,20 +8,26 @@
  *
  * The read is ONE THING: **a huge round gut with a tin lid on it.**
  *
- * THE BELLY IS A BALL, NOT A CUSHION.
- * ----------------------------------
+ * THE BELLY IS A BALL ON TOP AND A TUCKED-IN ONE UNDERNEATH.
+ * ---------------------------------------------------------
  * Fitting a circle to the sheet's front elevation — flood-filled, 584 px crown
  * to 976 px sole, so 392 px tall — the belly's own outline is a circular arc of
  * radius 0.41 of the figure's height whose centre sits a little under halfway
  * up. Sampled at three heights the fit is within two pixels each time, which is
  * as close to "it is a sphere" as a painted sheet gets. What hides that is the
  * occlusion: the helmet is a LID over the ball's top cap and the trousers are a
- * collar round its bottom cap, so only the middle 60% of a sphere is ever in
- * view. The build this replaces drew the visible part as a squashed ellipsoid —
- * 1.2 m across by 0.75 tall — and got a cushion instead of a ball. Now the
- * profile is the circle itself (`BELLY_R` about `BELLY_CY`), cut at the two
- * heights where the other parts take over, so the outline curves like a sphere
- * because it is one.
+ * block under its bottom cap, so only the middle 60% of a sphere is ever in
+ * view. The build before that drew the visible part as a squashed ellipsoid —
+ * 1.2 m across by 0.75 tall — and got a cushion instead of a ball. The profile
+ * is the circle itself (`BELLY_R` about `BELLY_CY`), cut at the two heights
+ * where the other parts take over, so the outline curves like a sphere because
+ * it is one.
+ *
+ * Those three sample heights were all above the equator, and below it the sheet
+ * is NOT a circle — it tucks, which is the whole of the waist. That correction
+ * is `BELLY_TUCK`, and it is confined to the underside: at and above the widest
+ * ring the fitted circle is untouched, down to the last millimetre and the last
+ * texture coordinate.
  *
  * Three ratios are asserted in `tests/robots.smoke.test.ts` and none of them
  * moved: the gut is 0.83 of his height across (sheet 0.82), the whole figure
@@ -57,14 +63,18 @@
  *   - one smooth slab forearm per side, hanging straight down outside the gut,
  *     with a narrow cuff and a dark hand of four LONG three-segment fingers —
  *     0.15 m of finger on a 0.40 m arm. No pauldron, no ring joint, no lens;
- *   - a wide boxy trouser mass nearly as wide as the gut, squared off at the
- *     bottom, with a dark vented undercut above it, a diagonal wrap fold either
- *     side and a belt plate low on the front;
+ *   - a boxy trouser mass 0.60 of his height across — a good deal NARROWER than
+ *     the gut, which is the point of it — squared off at the bottom, with a
+ *     dark vented undercut above it, a fan of three diagonal wrap folds either
+ *     side and a belt plate flush with its bottom edge;
  *   - two short legs set well apart, each a fat concertina, a smaller two-ring
  *     bellows and a wide grey moulded boot. The whole leg is 0.19 m of his 1.45.
  *
- * The belly and its paint are NOT part of that: they were signed off in the
- * round before this one and are left exactly as they were found.
+ * The belly's paint, the helmet and the legs are NOT part of that: each was
+ * signed off in one of the rounds before this one and is left exactly as it was
+ * found. The belly's UPPER half goes with the paint — "the belly is better, the
+ * color is nice" — and only its underside was reopened, with the ruling that
+ * reopened it: "the gut / pants is an hard NO. stick to the model sheet."
  *
  * Finish is matte to satin throughout. Biggy is the one robot where gloss would
  * be wrong, so nothing here goes above 0.55 metalness and the painted panels sit
@@ -125,35 +135,77 @@ const BELLY_CY = 0.735;
 const BELLY_CUT_LO = 0.256;
 /** Where the helmet's gasket takes over. */
 const BELLY_CUT_HI = 1.15;
+/**
+ * HOW HARD THE GUT TUCKS IN UNDER ITS OWN EQUATOR.
+ *
+ * The round above this file said the sheet's gut is a circle. It is — for the
+ * top half. Traced again off the FRONT VIEW panel, this time by following the
+ * dark crease where the gut meets the arm rather than where its orange paint
+ * runs out (which stops at the terminator and reads 20 px narrow in the
+ * shadow), the two halves are not the same curve. With the gut's own equator at
+ * source row 800 and its half-width there 151 px, and writing `t` for how far
+ * below the equator a row is in units of that half-width:
+ *
+ *   t      0.13   0.20   0.27   0.33   0.40   0.46   0.50
+ *   sheet  0.987  0.970  0.944  0.907  0.848  0.781  0.755
+ *   circle 0.991  0.980  0.964  0.944  0.918  0.886  0.868
+ *
+ * The residual is `1 - 1.06 t^3` to within a pixel at every sampled row, so
+ * that is what the profile multiplies the circle by. It is one number and it is
+ * the whole difference between a ball and a man with a waist: at the height
+ * where the trousers start the gut is 0.417 m across the axis instead of the
+ * circle's 0.507, which is what lets a trouser block at the SHEET'S width sit
+ * under it and be seen. Everything at or above t = 0 is untouched — the widest
+ * ring is still exactly `BELLY_R`, which is the ring the asserted gut width,
+ * the dome ratio and the silhouette ratio are all measured at.
+ */
+const BELLY_TUCK = 1.06;
 
-/** Radius of the ball at world height `y` — exact, no table to drift out of step. */
+/**
+ * Radius of the gut at world height `y` — exact, no table to drift out of step.
+ *
+ * Above the equator this is the fitted circle, unchanged. Below it the circle
+ * is scaled by the tuck (see `BELLY_TUCK`). Both factors fall to zero before
+ * `y` runs out, so the shell closes without a lip at either end.
+ */
 function ballR(y: number): number {
   const d = (y - BELLY_CY) / BELLY_R;
-  return d <= -1 || d >= 1 ? 0 : BELLY_R * Math.sqrt(1 - d * d);
+  if (d <= -1 || d >= 1) return 0;
+  const t = Math.max(0, -d);
+  return BELLY_R * Math.sqrt(1 - d * d) * Math.max(0, 1 - BELLY_TUCK * t * t * t);
 }
 
 /**
  * The belly's lathe profile, `[radius, worldY]`, bottom to top.
  *
- * The circular section is sampled by ANGLE and forced through theta = 0, so the
- * lathe's widest ring is exactly `BELLY_R` and the asserted gut width cannot
- * drift with the sample count. Above and below the cuts the profile closes with
- * a few steep points: they are inside the helmet and inside the trousers
+ * The section is sampled by ANGLE and forced through theta = 0, so the lathe's
+ * widest ring is exactly `BELLY_R` and the asserted gut width cannot drift with
+ * the sample count. Above and below the cuts the profile closes with a few
+ * steep points: they are inside the helmet and inside the trousers
  * respectively, and the steepness is deliberate — a shallow closure would meet
  * the leg cones almost tangentially, which is precisely the geometry that used
  * to saw the left knee into a row of notches.
+ *
+ * THE HEIGHTS IN THIS LIST ARE LOAD-BEARING AND THE RADII ARE NOT. `bellyV`
+ * walks the same list to turn a world height into a texture `v`, and
+ * `LatheGeometry` lays the map out by profile INDEX, so the stencil, the
+ * meridian seams and the hatch decals are all pinned to this column of `y`
+ * values and to their count. The tuck therefore changes only the radius at each
+ * of the heights the circle already had: the sampling, the count and every `y`
+ * are exactly what they were, so nothing painted on the gut moved.
  */
 function bellyProfile(): Array<[number, number]> {
   const pts: Array<[number, number]> = [];
-  // Bottom cap, inside the trousers.
-  pts.push([0, 0.2455], [0.18, 0.2465], [0.3, 0.2495], [0.348, 0.2525]);
+  // Bottom cap, inside the trousers — tucked in step with the shell above it.
+  pts.push([0, 0.2455], [0.083, 0.2465], [0.139, 0.2495], [0.161, 0.2525]);
   const t0 = Math.asin((BELLY_CUT_LO - BELLY_CY) / BELLY_R);
   const t1 = Math.asin((BELLY_CUT_HI - BELLY_CY) / BELLY_R);
   const nLo = 13;
   const nHi = 11;
   for (let i = 0; i <= nLo; i++) {
     const t = t0 + ((0 - t0) * i) / nLo;
-    pts.push([BELLY_R * Math.cos(t), BELLY_CY + BELLY_R * Math.sin(t)]);
+    const y = BELLY_CY + BELLY_R * Math.sin(t);
+    pts.push([ballR(y), y]);
   }
   for (let i = 1; i <= nHi; i++) {
     const t = (t1 * i) / nHi;
@@ -284,18 +336,43 @@ const FORE_LEN = 0.34;
  * Hip spacing. The sheet's boot centres are 0.253 m either side of the gut's
  * axis and its boots are 0.207 m wide, so the stance measures 0.677 outer to
  * outer — 0.503 of the figure's width, which is what
- * `docs/model-sheet-targets.md` reports for it. 0.255 rather than 0.253 because
- * our trousers are 0.15 m wider than the sheet's (see them, below) and the legs
- * have to stay under them rather than under their overhang.
+ * `docs/model-sheet-targets.md` reports for it. 0.255 rather than 0.253 is two
+ * millimetres of slack left over from the round when the trousers were 0.15 m
+ * too wide; it is inside the legs, which are signed off, so it stays.
  */
 const HIP_X = 0.255;
 /** Where the trousers stop and the concertina starts. */
 const LEG_TOP = 0.212;
 /** Where the trousers' own bottom face sits, just inside `LEG_TOP`. */
 const SHORTS_Y0 = 0.205;
-/** How wide they are: 1.00 m, against 1.20 of gut. */
-const SHORTS_HW = 0.5;
-const SHORTS_HD = 0.5;
+/**
+ * Where the rusted orange of the trousers stops and the dark vented undercut
+ * above it starts. Sheet row 895, and the gut's lip is at row 877 — 65 mm of
+ * dark band between the two, which is where the vents live.
+ */
+const SHORTS_Y1 = 0.35;
+/** The top of the dark undercut block. Buried in the gut; only has to reach. */
+const SHORTS_Y2 = 0.47;
+/**
+ * HOW WIDE THE TROUSERS ARE, MEASURED RATHER THAN ARGUED.
+ *
+ * Flood-filled off the FRONT VIEW panel the block runs from x = 300 to x = 540
+ * at source row 888, where it first clears the arms: 241 px on a figure 402.5 px
+ * tall, so 0.599 of his height, so 0.868 m at our 1.45. 0.86 here, a centimetre
+ * under, because the arm slabs hang at 0.4455 and the sheet leaves daylight
+ * between the two rather than tucking one behind the other.
+ *
+ * Against our gut that is 0.717. The 1.00 m block this replaces was 0.833 of
+ * it, and the note that came with it — "1.00 m across clears the sphere at
+ * y = 0.408, and that is the number the sphere chooses for us" — was true and
+ * was the whole problem: it was a workaround for a gut that did not tuck, it
+ * overlapped the arm's inner edge by 55 mm, and it made the folds on it read as
+ * planks because nothing else at that height was anywhere near as wide. The gut
+ * tucks now, so the sheet's own number fits.
+ */
+const SHORTS_HW = 0.43;
+/** Depth. The LEFT PROFILE panel gives 0.92 m through the hips; 0.88 here. */
+const SHORTS_HD = 0.44;
 
 /* ------------------------------------------------------- paint texture */
 
@@ -730,99 +807,149 @@ export function buildBiggy(): RobotRig {
    */
 
   /*
-   * THE TROUSERS: A WIDE BOXY MASS, NOT A YOKE.
+   * THE TROUSERS: A BLOCK UNDER A WAIST, NOT A COLLAR ROUND A BALL.
    *
-   * On the sheet this is the biggest single thing under the gut — a squared-off
-   * block 0.849 m across (0.70 of the gut) and 0.21 m deep in height, with a
-   * dark vented undercut above it, a diagonal wrap fold running in from each hip
-   * and a belt plate low on the front. What was here instead was a 0.09 m
-   * lathed collar with a ribbed hose round it, which is the demo's waist, not
-   * this robot's, and the owner read it as "a narrow yoke, far too small".
+   * Everything here is off the FRONT VIEW panel, read at source rows 877-932
+   * against a figure 402.5 px tall with its axis at x = 419.5:
    *
-   * WHY OURS IS WIDER THAN THE SHEET'S. The sheet's gut is not quite a ball: it
-   * tucks in below its equator, so the trousers show from 0.42 m up even though
-   * they are narrower than a sphere would be there. Ours IS a ball, and that is
-   * frozen. A 0.849 m block under a true 1.20 m sphere is swallowed whole until
-   * y = 0.26, which leaves 5 cm of trouser. 1.00 m across clears the sphere at
-   * y = 0.408 — the sheet's own height for the top of the block — and that is
-   * the number the sphere chooses for us. 0.83 of the gut instead of 0.70.
+   *   the block         x 300..540 at row 888, 241 px = 0.599 of his height
+   *   its underside     row 932, and it tapers 241 -> 222 px on the way down
+   *   the dark undercut rows 877..895, between the gut's lip and the orange
+   *   three vent slots  x 400..440 at row 890 — a small central group, 0.14 m
+   *                     of slot altogether, NOT one across the whole front
+   *   the belt plate    x 392..455, rows 902..931: 0.23 by 0.10, sitting on the
+   *                     block's bottom edge rather than floating above it
+   *   the wrap folds    THREE creases a side, fanning from the block's bottom
+   *                     corners out and UP to the hip at 14, 19 and 24 degrees
+   *
+   * The round before this built a 1.00 m block because the gut was a perfect
+   * sphere and nothing narrower could be seen under it. The gut tucks now (see
+   * `BELLY_TUCK`), so the block is the sheet's width, the arm's inner edge has
+   * its daylight back, and the folds sit on something the same size as they are
+   * instead of cantilevering off a shelf.
    */
 
   /*
    * THE BUMPER LIP.
    *
    * On the sheet the gut does not fade into the trousers: it ends on a hard,
-   * near-horizontal dark rim at y = 0.42 — a rubber bumper round its underside —
-   * and the trousers start below that. Ours is a true sphere, so without the
-   * rim its bottom just curves away and the whole lower body reads as one
-   * pear-shaped lump with a band painted on it. The torus stands 25 mm proud of
-   * the ball at the height it crosses, which is enough to draw the line and not
-   * enough to widen anything: 0.527 against a gut of 0.600.
+   * near-horizontal dark rim — a rubber bumper round its underside — and the
+   * trousers start below that. The torus rides the tucked shell — 8 mm proud of
+   * it, at 0.427, the last centimetre before the block's edge overtakes the
+   * gut's — so the rim is the gut's own flange and not a hoop hung round it.
+   * The 0.505 m one this replaces was sized for a sphere that no longer exists
+   * and would now stand 75 mm off the shell.
    */
-  const bumper = part(new THREE.TorusGeometry(0.505, 0.023, 9, 56), rubber, wear(0.4, 70));
+  const LIP_Y = 0.427;
+  const bumper = part(new THREE.TorusGeometry(ballR(LIP_Y) - 0.007, 0.015, 9, 56), rubber, wear(0.4, 70));
   bumper.rotation.x = Math.PI / 2;
-  bumper.position.y = 0.415 - TORSO_Y;
+  bumper.position.y = LIP_Y - TORSO_Y;
   torso.add(bumper);
 
   /*
-   * The dark undercut is a SECOND block 3 mm bigger all round, not a band drawn
-   * on the first one, and its corner radius and height are chosen so that its
-   * straight-sided section — the only part of it that is actually 3 mm bigger —
-   * covers the 5 cm between where the gut stops overhanging (y = 0.408) and
-   * where the trousers proper take over (y = 0.357). The first cut of this had
-   * both blocks rounded the same and the dark band never appeared at all: the
-   * undercut was inside its own bottom fillet exactly where it had to show.
+   * The dark undercut is a SECOND block 5 mm bigger all round, not a band drawn
+   * on the first one. It runs from inside the gut down to `SHORTS_Y1`, where the
+   * orange takes over, so the 75 mm of dark between the bumper and the orange is
+   * this block's own straight side. Its corner radius is small for the same
+   * reason it has to be: round it like the gut and the band vanishes into its
+   * own bottom fillet exactly where it has to show.
    */
+  // It carries on 60 mm BEHIND the orange rather than meeting it edge to edge:
+  // two fillets ending at the same height pinched a 40 mm notch out of the
+  // block's outline at exactly y = 0.34 — a facet artefact that reads as a chip.
+  const underH = SHORTS_Y2 - SHORTS_Y1 + 0.06;
   const shortsUnder = part(
-    roundedBox(SHORTS_HW * 2 + 0.006, 0.3, SHORTS_HD * 2 + 0.006, 0.08, 3),
+    roundedBox(SHORTS_HW * 2 + 0.01, underH, SHORTS_HD * 2 + 0.01, 0.035, 3),
     armourDark,
     wear(0.55, 8),
   );
-  shortsUnder.position.y = 0.45 - TORSO_Y;
+  shortsUnder.position.y = SHORTS_Y2 - underH / 2 - TORSO_Y;
   torso.add(shortsUnder);
 
-  const shortsMain = part(roundedBox(SHORTS_HW * 2, 0.3, SHORTS_HD * 2, 0.08, 3), trouser, wear(0.8, 61, 6));
-  shortsMain.position.y = SHORTS_Y0 + 0.15 - TORSO_Y;
+  const mainH = SHORTS_Y1 - SHORTS_Y0;
+  const shortsMain = part(roundedBox(SHORTS_HW * 2, mainH, SHORTS_HD * 2, 0.045, 4), trouser, wear(0.8, 61, 6));
+  shortsMain.position.y = SHORTS_Y0 + mainH / 2 - TORSO_Y;
   torso.add(shortsMain);
 
   /*
-   * The dark central panel — on the sheet the middle third of the trousers is a
-   * different, darker material from the rusted orange either side of it, and the
-   * wrap folds cross onto it. It is 2 cm deeper than the block so it shows on
-   * the front without z-fighting the face it sits on.
+   * The dark central panel. On the sheet the rusted orange is only the outer
+   * sixth of the block on each side — x 300..320 and 525..540 of a block that
+   * runs 300..540 — and everything between is the same cool dark armour as the
+   * belt. 0.55 m of 0.86 here, and it stands only 4 mm off the block's face: at
+   * 6 mm it beat the undercut above it as well and turned the whole crotch into
+   * a slab hung off his front. At 4 it wins over the orange, which is all it is
+   * for, and loses to the undercut, which is what it has to do.
    */
-  const crotchPanel = part(roundedBox(0.44, 0.3, SHORTS_HD * 2 + 0.018, 0.06, 2), armourDark, wear(0.5, 62));
-  crotchPanel.position.y = SHORTS_Y0 + 0.15 - TORSO_Y;
+  const crotchH = SHORTS_Y1 + 0.015 - SHORTS_Y0;
+  const crotchPanel = part(
+    roundedBox(0.55, crotchH, SHORTS_HD * 2 + 0.008, 0.045, 2),
+    armourDark,
+    wear(0.5, 62),
+  );
+  crotchPanel.position.y = SHORTS_Y0 + crotchH / 2 - TORSO_Y;
   torso.add(crotchPanel);
 
   /*
    * THE DIAGONAL WRAP FOLDS.
    *
-   * Two raised ridges running in and down from the hips to meet over the belt
-   * plate, like a cloth wrap crossed over itself. They are the one thing that
-   * stops the trousers reading as a plain box, and they are unmistakable on the
-   * sheet — a bright fold line with a dark crease under it on each side.
+   * A fan of three creases a side, converging on the bottom corner of the belt
+   * plate and running out and UP to the hip, like a cloth wrap gathered at the
+   * waist. High-pass the sheet's trouser block and they are the loudest thing on
+   * it — three dark lines a side, unmistakable, at roughly 14, 19 and 24 degrees.
+   *
+   * Each is built from its two measured ends rather than from a length and an
+   * angle, because the end that matters is the outer one: it has to land ON the
+   * block's edge and not past it. What shipped before was a 0.44 m bar on a
+   * 1.00 m block at a flat 12 degrees, cantilevered out where the gut had
+   * already curved away above it, and it photographed as an orange plank.
+   *
+   * They are DARK, and they are only that. On the sheet a fold is a shadow with
+   * a thin lit edge over it, so what carries it is the crease and not the
+   * ridge — which is the other half of why the last pass read as planks: the
+   * ridge was the trousers' own rusted orange, three centimetres proud, on the
+   * only part of him nothing else was covering. This build tried a light lip on
+   * top of each crease as well and three of them turned straight back into grey
+   * rods laid across an orange block, so the lip is gone: one `armourDark` bar
+   * a crease, dark against the rust and a shading break against the panel.
    */
   for (const side of [1, -1] as const) {
-    const fold = part(roundedBox(0.44, 0.03, 0.05, 0.013, 2), trouser, wear(0.6, 63));
-    fold.position.set(side * 0.225, 0.316 - TORSO_Y, SHORTS_HD - 0.004);
-    fold.rotation.z = side * 0.22;
-    torso.add(fold);
-    const crease = part(roundedBox(0.44, 0.016, 0.05, 0.007, 2), armourDark, wear(0.5, 64));
-    crease.position.set(side * 0.225, 0.298 - TORSO_Y, SHORTS_HD - 0.005);
-    crease.rotation.z = side * 0.22;
-    torso.add(crease);
+    for (const [i, hipY] of [0.388, 0.352, 0.316].entries()) {
+      const x0 = side * (SHORTS_HW - 0.03);
+      const x1 = side * 0.075;
+      const y1 = 0.232;
+      const len = Math.hypot(x0 - x1, hipY - y1);
+      const ang = Math.atan2(hipY - y1, Math.abs(x0 - x1)) * side;
+      const cx = (x0 + x1) / 2;
+      const cy = (hipY + y1) / 2;
+      // Deep and nearly buried: 4 mm of a 60 mm bar stands out of the block's
+      // face. A crease that stands off reads as a rod, and three of them read as
+      // whiskers — which is what 22 mm of standoff looked like from the portrait
+      // camera, where the block's own front rolls away under the outer end.
+      const creaseZ = SHORTS_HD - 0.026;
+      const crease = part(roundedBox(len, 0.012, 0.06, 0.004, 1), armourDark, wear(0.45, 63 + i));
+      crease.position.set(cx, cy - TORSO_Y, creaseZ);
+      crease.rotation.z = ang;
+      torso.add(crease);
+    }
   }
 
-  /** The belt plate: a blue rectangle low and dead centre. */
-  const belt = part(roundedBox(0.26, 0.085, 0.06, 0.02, 2), armourDark, wear(0.45, 65));
-  belt.position.set(0, 0.255 - TORSO_Y, SHORTS_HD - 0.006);
+  /**
+   * The belt plate: 0.23 by 0.10, dead centre, flush with the block's underside.
+   * In front of the folds, whose fans converge on its two bottom corners.
+   */
+  const belt = part(roundedBox(0.23, 0.1, 0.05, 0.022, 2), armourDark, wear(0.45, 65));
+  belt.position.set(0, 0.258 - TORSO_Y, SHORTS_HD + 0.006);
   torso.add(belt);
 
-  /** Vent slots in the undercut, where the sheet has three of them. */
-  for (const vx of [-0.14, 0, 0.14]) {
-    const vent = part(roundedBox(0.1, 0.026, 0.03, 0.008, 1), rubber);
-    vent.position.set(vx, 0.382 - TORSO_Y, SHORTS_HD);
+  /*
+   * Vent slots in the undercut: three of them, and a SMALL central group. The
+   * sheet's span the 40 px between x 400 and 440 — 0.14 m in all, about a sixth
+   * of the block — where the pass before this drew them 0.38 m apart and turned
+   * a louvre into a grille across his whole front.
+   */
+  for (const vx of [-0.047, 0, 0.047]) {
+    const vent = part(roundedBox(0.036, 0.016, 0.03, 0.006, 1), rubber);
+    vent.position.set(vx, 0.372 - TORSO_Y, SHORTS_HD);
     torso.add(vent);
   }
 
