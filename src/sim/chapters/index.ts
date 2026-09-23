@@ -22,6 +22,7 @@ import type {
   Person,
   Prop,
   RobotKind,
+  TextPrompt,
   ViewRect,
   Wall,
 } from '../types';
@@ -110,6 +111,13 @@ export interface ChapterRuntime {
    * reach of the terminal and then restarts the chapter.
    */
   typing?(): boolean;
+  /**
+   * The text field to put on screen while this chapter has the keyboard
+   * (`GameSnapshot.prompt`). Returning `null` — or not implementing it — means the
+   * HUD draws none, so a chapter that takes letters without wanting a field still
+   * can.
+   */
+  prompt?(): TextPrompt | null;
   /**
    * Rebuild whatever this chapter derives from where the robots ARE, running none
    * of its rules. The cutscene runner walks the robots itself and never calls

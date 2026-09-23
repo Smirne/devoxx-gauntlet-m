@@ -1,6 +1,6 @@
 /**
  * Chapter 2 — EXPO. The exhibition hall before opening: dark, empty, no network,
- * and three thousand badges locked in the pickup store.
+ * and three thousand Devoxx t-shirts locked in the pickup store.
  *
  * Ported from the prototype's `setupExpo` / `expoKey` / `expoUpdate`
  * (`reference/poc/10-after-dark-kinepolis.html`). Three jobs, one per robot, each of
@@ -14,7 +14,39 @@
  *           his own top speed on purpose: alone he bounces off it announcing his
  *           own limit, and Voxxy has to shove him the length of the top lane.
  *
- * ## The network closet — the WiFi password
+ * ## THE CHAIN — Michele, 25 Sep 2026, after his chapter-2 playtest
+ *
+ * *"The breaker lighted all up, with no need to activate the router. I thought they
+ * were linked. How I'd do that? Breaker give energy, and a transformer/router lights
+ * up in the cabinet. It needs authorization. First you need to open the door (biggy)
+ * than type."*
+ *
+ * `power`, `cable.connected` and `router.online` used to be three independent flags
+ * that happened to be ANDed at the badge printer, and the breakers lit the whole
+ * hall by themselves — so the router read as an optional errand instead of as the
+ * next link. It is one chain now, and each link is visibly dead until the one before
+ * it lands:
+ *
+ *   1. **Droid throws the three breakers.** Power reaches the room. THE HALL STAYS
+ *      DARK — a supply is not a lit room, and the only thing that changes out here
+ *      is that something behind the cabinet door starts to spin up.
+ *   2. **Biggy shoulders the cabinet open.** A steel door with seized hinges;
+ *      nothing else in the building has the weight. Before the breakers the unit
+ *      inside is a dead grey box, and the terminal wired to it is a dark screen
+ *      that says so in the robot's own voice.
+ *   3. **With power, the transformer/router in the cabinet comes up** — amber, its
+ *      own link lights, a fan full of 2019 — and the terminal wakes and asks for
+ *      authorisation.
+ *   4. **Somebody types the venue WiFi password.** Only then does the lighting
+ *      circuit close and the hall come up, booth by booth, and only then is there a
+ *      network for the cable to carry.
+ *
+ * The renderer learns "the hall is lit" the way it always has, off the `breaker`
+ * prop's own `state` (`src/render/lighting.ts`, `hallPowered`) — which now goes
+ * idle -> active (supply on, hall dark) -> done (the circuit is closed). No game
+ * logic crossed the line; the sim simply stopped calling step 1 the end of the job.
+ *
+ * ## The password, and where it lives
  *
  * `docs/gameplay-additions.md` §2 described this beat as a cam-lock wheel. Michele
  * killed the wheel on 23 Sep 2026 — *"Remove the wheel, too complicated"* — and the
@@ -23,26 +55,45 @@
  * (letter-collection is busywork) and **not** a second helping of chapter 1's light
  * mix (that is chapter 1's identity).
  *
- * The badge printer needs POWER + CABLE + ROUTER. The router lives in the cabinet in
- * the technical room, and the terminal wired to it wants the venue WiFi password:
- * `DevoxxForever`. **Biggy is on every route** — the cabinet is a heavy steel door
- * with seized hinges and nothing else in the building can swing it, and the terminal
- * is inside it. Past that there are three ways to answer, and a player needs one:
+ * It is `DevoxxForever`, and on 25 Sep 2026 he placed it himself: *"Where is the
+ * wifi password? I'd put it here, spray painted, with a wifi symbol and '(And no,
+ * you can't change it)'."* — against a photograph of a long dark hall wall. So it
+ * is a **spray tag on the hall's top wall**, not small print on a sponsor's banner.
+ * He flagged the two problems with his own idea in the same breath — *"it's a bit
+ * far from the entrance, and all is dark"* — and both are answered rather than
+ * inherited:
  *
- *   1. **Type it.** It is on the chapter card, and it is the sort of password you
- *      remember. Thirteen letters, case-insensitive, Backspace fixes a slip, and a
- *      wrong key simply does not go in — it never throws the whole thing away.
- *   2. **Voxxy reads it off the poster.** The sponsor banner in the hall carries it
- *      in the small print at the bottom. Her cone is 0.38 rad against Biggy's 1.0:
- *      the only beam in the game narrow enough to resolve type that size, and she
- *      has to be close enough to read it rather than merely to light it.
+ *   - it is at the WEST head of the top lane, a few seconds from where the three of
+ *     them come out of the stairwell, and on the lane Voxxy has to run Biggy down
+ *     anyway, so nobody crosses the hall for it;
+ *   - the paint carries its own standby glow (`PROPS.poster`), so from across a
+ *     blacked-out hall it reads as *something is on that wall* long before it reads
+ *     as letters — and resolving letters still takes Voxxy's 0.38 rad cone inside
+ *     `POSTER_READ`, which is the route;
+ *   - and nobody has to guess: the terminal itself says where the crew put it, and
+ *     the run sheet on the chapter card says somebody sprayed it.
+ *
+ * Past Biggy's shoulder there are three ways to answer, and a player needs one:
+ *
+ *   1. **Type it from memory.** Thirteen letters, case-insensitive, Backspace fixes
+ *      a slip, and a wrong key simply does not go in — it never throws the whole
+ *      thing away. It is no longer printed on the chapter card: Michele, 25 Sep,
+ *      *"yes, change the intro, the wifi password can't be there."*
+ *   2. **Voxxy reads the tag.** Her cone is 0.38 rad against Biggy's 1.0: the only
+ *      beam in the game narrow enough to resolve type that size, and she has to be
+ *      close enough to read it rather than merely to light it.
  *   3. **Droid reads the label, from Biggy's shoulders.** The tape is stuck inside
  *      the cabinet lid, up at the top, which is where every conference's WiFi
  *      password really lives. `toggleMount` is the mechanic — it exists, it is
  *      tested, and outside chapter 1's projector panel almost nothing uses it.
  *
+ * **Who may type it.** Michele, asked: *"Typing password can be Voxxy or Droid, I
+ * think both are ok... what is excluding droid? Fingers too long?"* Nothing excludes
+ * him, so nothing does. Both type; Biggy refuses, and his refusal is the joke.
+ * Knowing the password and entering it stay two acts whoever performs them.
+ *
  * Whichever route found it, the answer is entered at the same terminal, and the
- * chapter ends the same way: power + cable + router, then the roller door.
+ * chapter ends the same way: the chain, then the roller door.
  */
 
 import {
@@ -58,7 +109,7 @@ import { m } from '../units';
 import { GF, VIEW_GROUND, groundWallsFor, stairDoor } from '../geometry';
 import { dist, inRect, speed } from '../bot';
 import { buildLights, litBy } from '../lights';
-import type { Bot, LightSource, Mirror, Prop, Vec2, Wall } from '../types';
+import type { Bot, LightSource, Mirror, Prop, TextPrompt, Vec2, Wall } from '../types';
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 
 /* ---------------------------------------------------------------- reach distances */
@@ -131,15 +182,27 @@ const CABINET_REACH = 54;
  */
 const LABEL_REACH = 44;
 /**
- * How close Voxxy has to be for her cone to resolve the small print on the poster,
- * sim px — 5.6 m.
+ * How close Voxxy has to be for her cone to resolve the spray tag, sim px — 5.6 m.
  *
- * Her lamp reaches 280 px, and lighting a poster from 22 m away is not reading it.
- * This is the difference between the two, and it is the only number in the beat
- * that is a judgement rather than a measurement: close enough that she has to walk
- * to the booth and stand at it, far enough that it is not a pixel hunt.
+ * Her lamp reaches 280 px, and lighting a wall from 22 m away is not reading what
+ * is written on it. This is the difference between the two, and it is the only
+ * number in the beat that is a judgement rather than a measurement: close enough
+ * that she has to walk up to the wall and stand at it, far enough that it is not a
+ * pixel hunt.
  */
 const POSTER_READ = 70;
+/**
+ * How close anybody has to get to the pickup store before it introduces itself,
+ * sim px — 12 m, measured from the roller door.
+ *
+ * Michele, twice now and against two different props: *"There's no hint on where
+ * the cable should go or which door should be slammed and how."* The door carries
+ * a halo and a name on the side, and the first robot to come down the top lane is
+ * told what is behind it.
+ */
+const STORE_HAIL = 150;
+/** ...and how close before reception says which desk the cable is looking for. */
+const RECEPTION_HAIL = 150;
 /** Seconds between the terminal's "that is not it" readouts, so a mashed key is not a wall of toast. */
 const TYPO_COOLDOWN = 1.2;
 const BREAKERS = 3;
@@ -147,10 +210,32 @@ const BREAKERS = 3;
 /** The exhibition hall has no cinema screen to bounce a lamp off. */
 const NO_MIRRORS: Mirror[] = [];
 
+/**
+ * Four pallets of crated Devoxx t-shirts, inside the pickup store.
+ *
+ * Michele: *"Gadgets must be ready... (and put crates, shirts and gadgets inside)...
+ * But the devoxx shirt is a tradition."* They are dressing — no collider, no state —
+ * and they exist so that what is behind the roller door is worth breaking it for.
+ * Laid out clear of the door's swing so the crash reveals them rather than clipping
+ * through them.
+ */
+const STORE_PALLETS: readonly Vec2[] = [
+  { x: GF.store.x + 34, y: GF.store.y + 30 },
+  { x: GF.store.x + 34, y: GF.store.y + 72 },
+  { x: GF.store.x + 80, y: GF.store.y + 30 },
+  { x: GF.store.x + 80, y: GF.store.y + 72 },
+];
+
 /* ==================================================================== chapter */
 
 export interface ExpoState {
   chapter: 2;
+  /**
+   * The three breakers are in and there is a supply on the bars.
+   *
+   * LINK 1 OF THE CHAIN, and no longer the end of anything: power reaching the room
+   * is not the room being lit. See `hallLit`.
+   */
   power: boolean;
   breakersLeft: number;
   cable: { carrying: boolean; connected: boolean; len: number; snapped: boolean; taut: boolean };
@@ -159,34 +244,54 @@ export interface ExpoState {
   router: {
     /** Biggy has shouldered the cabinet door open. Nothing else in here starts until he has. */
     cabinetOpen: boolean;
-    /** The robots have read the password off the poster or off the label inside the lid. */
+    /**
+     * LINK 2: the unit in the cabinet has a supply, so its lamps are up and the
+     * terminal is awake. Dead — and it says so — until the breakers are in.
+     */
+    powered: boolean;
+    /** The robots have read the password off the wall or off the label inside the lid. */
     known: boolean;
     /** The terminal has the keyboard: letters type instead of driving. */
     prompting: boolean;
     /** The prefix of `PASSWORD` typed in so far — never a wrong letter, so it only ever grows. */
     typed: string;
-    /** Voxxy's cone is on the poster's small print this frame, and close enough to read it. */
+    /** Voxxy's cone is on the spray tag this frame, and close enough to read it. */
     posterLit: boolean;
-    /** The password is in and the router is up. */
+    /** LINK 3: the password is in, the router is up and it has authorised the circuit. */
     online: boolean;
   };
-  /** Power AND cable AND router: all three, or the badge printer prints nothing. */
+  /**
+   * The hall's own lights.
+   *
+   * Michele's chain, and the whole of what changed: the breakers do NOT do this.
+   * The router closes the lighting circuit when it is authorised, which is the only
+   * reason the terminal is worth walking to.
+   */
+  hallLit: boolean;
+  /** The chain, all the way through, plus the cable: or the badge printer prints nothing. */
   printerOnline: boolean;
 }
 
+/**
+ * THE BRIEFING, AND WHAT IT IS NOT ALLOWED TO CONTAIN.
+ *
+ * The old one was 84 words. It printed the password, named all three discovery
+ * routes and explained the tow bar, which is the whole chapter solved in a
+ * paragraph across the top of the frame. Michele, 25 Sep 2026: *"yes, change the
+ * intro, the wifi password can't be there."*
+ *
+ * So it says what the chapter WANTS and who does what, and stops. It names the
+ * pickup store, because he asked for that by name — *"Door should have Halo, Name
+ * on the side (shirts and gadget) and be mentioned on the intro"* — and it names
+ * no route to the password at all. The routes are the game.
+ */
 const OBJECTIVE =
-  'Chapter 2 · <b>Expo</b>. The exhibition hall before opening: dark, empty, registration in an hour. ' +
-  '<b>Droid</b> flips the three breakers on the high panel in the technical room (E). ' +
-  '<b>Voxxy</b> runs the network cable from the rack to the printer at reception — it is short: ' +
-  'straight line, <b>under the sponsor tables</b>. The printer also wants the <b>router</b>: only ' +
-  '<b>Biggy</b> can shoulder that cabinet open (E), and the terminal inside wants the WiFi password. ' +
-  '<b>Type it</b> if you remember it from the card — or <b>Voxxy</b> reads it off a sponsor poster in ' +
-  'the hall with her narrow beam, or <b>Droid</b> reads the label inside the lid <b>from Biggy\'s ' +
-  'shoulders</b> (E beside him to climb on). <b>Biggy</b> also smashes the roller door of the badge ' +
-  'store — above his own top speed, so <b>Voxxy takes hold of him (Space)</b> and runs him ' +
-  'down the long top lane: the bar locks to one of eight directions, so the run cannot wander.';
+  'Chapter 2 · <b>Expo</b>. Registration opens in an hour: no power, no network, and every ' +
+  'Devoxx t-shirt shut in the pickup store. Get the <b>badge printer at reception</b> printing and ' +
+  'the <b>store</b> open. <b>Droid</b> reaches what is too high, <b>Biggy</b> moves what is too ' +
+  'heavy, <b>Voxxy</b> goes where nothing else fits.';
 const KEYS =
-  '1/2/3/Tab: switch · WASD · E: use / climb / terminal · A-Z: type the password · Space: take hold of Biggy · R: restart';
+  '1/2/3/Tab: switch · WASD · E: use / climb / terminal · Space: take hold of Biggy · R: restart';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');
@@ -284,6 +389,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const printerAt: Vec2 = { x: GF.printer.x + 10, y: GF.printer.y + 6 };
   const rackAt: Vec2 = { x: GF.rack.x + 10, y: GF.rack.y + 12 };
   const panelAt: Vec2 = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
+  /** The middle of the roller door, on its hall side — what the halo is drawn around. */
+  const storeAt: Vec2 = { x: GF.roller.x, y: GF.roller.y + GF.roller.h / 2 };
 
   /* ------------------------------------------------------------ the network closet */
 
@@ -295,17 +402,29 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const cabinetAt: Vec2 = { x: GF.cabinet.x + GF.cabinet.w / 2, y: GF.cabinet.y + GF.cabinet.h + 2 };
 
   /**
-   * The sponsor poster, on the south face of the Cloudy Bank booth.
+   * THE SPRAY TAG, on the hall's top wall at the head of the run-up lane.
    *
-   * Placed off every errand in the chapter on purpose — Droid's breakers are in the
-   * technical room, Voxxy's cable runs along the bottom lane and Biggy's run-up is
-   * the top one — so reading it is a detour a player chooses, not something that
-   * happens to them on the way past. Two pixels proud of the booth's face, exactly
-   * as chapter 1's clues stand off their walls, so the booth itself never occludes
-   * the beam that is trying to read it.
+   * Michele placed it: *"Where is the wifi password? I'd put it here, spray painted,
+   * with a wifi symbol and '(And no, you can't change it)'"* — over a photograph of
+   * a long dark hall wall. It used to be eight-point small print along the bottom of
+   * a sponsor's banner on the Cloudy Bank booth, which is both duller and harder to
+   * find, and the booth face is in the middle of the room where a beam sweep never
+   * settles.
+   *
+   * WHERE, and why not further: the booths start at y 250, so the strip between the
+   * hall's top edge and the first row is the one long uninterrupted wall in the
+   * room, and this is its WEST end — level with the stairwell the three of them come
+   * out of, about 40 m from their feet, and on the lane Voxxy has to run Biggy down
+   * for the roller door anyway. That answers his own objection to his own idea
+   * (*"it's a bit far from the entrance"*) without making it free: it is still a
+   * detour nobody is pushed into, and it is still unreadable without her cone.
+   *
+   * Four pixels proud of the wall, as chapter 1's clues stand off theirs, so nothing
+   * occludes the beam that is trying to read it.
    */
-  const posterBooth = GF.booths.find((b) => b.name === 'Cloudy Bank') ?? GF.booths[2];
-  const posterAt: Vec2 = { x: posterBooth.x + posterBooth.w / 2, y: posterBooth.y + posterBooth.h + 2 };
+  const tagAt: Vec2 = { x: 400, y: GF.hall.y + 8 };
+  /** Kept under the old name inside the beat: it is still the thing Voxxy reads. */
+  const posterAt: Vec2 = tagAt;
 
   const router = {
     cabinetOpen: false,
@@ -314,8 +433,13 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     typed: '',
     posterLit: false,
     online: false,
+    /** Sim seconds of the last key the terminal refused, so the HUD can flash the field. */
+    rejectAt: -9,
   };
   let typoTalk = -9;
+  /** The store and reception each introduce themselves once, the way the technical room does. */
+  let hailedStore = false;
+  let hailedReception = false;
 
   /**
    * The terminal has the keyboard.
@@ -325,9 +449,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * `D` in it and two `r`s, and without this the first letter of the password would
    * drive the robot out of reach of the terminal and the seventh would restart the
    * chapter. It is the only thing in the game that takes the keyboard, and it is the
-   * player who opens it with `E` and closes it with `E`, `Esc` or `Enter`.
+   * player who opens it with `E` and closes it with `Esc` or `Enter`.
+   *
+   * `power` is in here because of the chain: a dark screen has no keyboard to take.
    */
-  const typing = (): boolean => router.prompting && router.cabinetOpen && !router.online;
+  const typing = (): boolean => router.prompting && router.cabinetOpen && power && !router.online;
 
   const cabinet: Wall = {
     ...GF.cabinet,
@@ -355,18 +481,26 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   ctx.objective(OBJECTIVE, KEYS);
   /*
-   * THE CARD IS ROUTE 1.
+   * THE CARD NO LONGER GIVES IT AWAY.
    *
-   * The password is on it, in the crew's own run sheet, and a player who reads the
-   * card can walk to the terminal and type it without finding anything at all. That
-   * is deliberate: it costs nothing, it rewards attention, and it is the reason the
-   * other two routes are alternatives rather than a gate. It is also the joke.
+   * It used to print `WiFi: DevoxxForever` in bold, which made every other route to
+   * it decorative. Michele's call, 25 Sep 2026: *"yes, change the intro, the wifi
+   * password can't be there."*
+   *
+   * What is left is the run sheet with that line **torn off** — which is a better
+   * joke than the password was, tells the player there IS a password without
+   * telling them what it is, and points at the wall the crew sprayed it on. It also
+   * carries the two things he asked the intro to carry: the store by name, and the
+   * reason it is shut, which is the same pair of keys Stephan lost on the title
+   * card.
    */
   ctx.card(
     '<b>Down the secondary staircase.</b><br>' +
-      '<span class="sub">The exhibition hall: twelve sponsor booths, no power, no network, and the badges ' +
-      'locked in the pickup store. Taped to the technical room door, the crew\'s run sheet, in biro:<br><br>' +
-      '<b>WiFi: DevoxxForever</b> — and no, you cannot change it.</span>' +
+      '<span class="sub">The exhibition hall: twelve sponsor booths, no power, no network, and the whole ' +
+      'of <b>SHIRTS &amp; GADGETS</b> — three thousand t-shirts, crated and ready — behind the pickup ' +
+      'store\'s roller door. The shutter key is on the ring Stephan lost.<br><br>' +
+      'Taped to the technical room door, the crew\'s run sheet, in biro. The top line has been torn ' +
+      'off. Under the gap, in a different hand: <b>\u201cwifi\u2019s on the wall, Bart did it in orange\u201d</b>.</span>' +
       '<small>Press any key</small>',
   );
 
@@ -384,19 +518,47 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   function typeLetter(ch: string): void {
     if (ch === PASSWORD[router.typed.length]) {
       router.typed += ch;
-      if (router.typed.length === PASSWORD.length) {
-        router.known = true;
-        router.online = true;
-        router.prompting = false;
-        ctx.flash('DevoxxForever. Four green lights come up on the router, and the venue is on the air', 3500);
-      }
+      if (router.typed.length === PASSWORD.length) authorise('DevoxxForever');
       return;
     }
+    /*
+     * A REFUSED KEY IS NOW VISIBLE.
+     *
+     * Michele: *"Typing the password was hard, the game did not match it... I don't
+     * know what was happening, but i kept typing and it never took it right."* The
+     * forgiveness was right and the silence was not: with no field on screen and a
+     * 1.2 s throttle on the toast, most refused keys produced no feedback of any
+     * kind, so a player who was mistyping — or whose prompt had quietly closed —
+     * saw a game that had stopped listening.
+     *
+     * `rejectAt` is a sim clock, and the HUD's field flashes off it. The toast is
+     * still throttled, because thirteen toasts is a wall of text; the flash is not,
+     * because it is one frame of colour.
+     */
+    router.rejectAt = ctx.t;
     if (ctx.t - typoTalk <= TYPO_COOLDOWN) return;
     typoTalk = ctx.t;
     ctx.flash(
       `Terminal: ${ch} — not that one. ${router.typed.length} of ${PASSWORD.length} still stand. ` +
         'Backspace takes one back',
+    );
+  }
+
+  /**
+   * LINK 3 LANDS — and it is the router, not the breakers, that lights the hall.
+   *
+   * One place, so both ways in (typed letter by letter, or entered in one go by a
+   * robot that already knows it) end the chain identically.
+   */
+  function authorise(how: string): void {
+    router.known = true;
+    router.online = true;
+    router.prompting = false;
+    router.typed = PASSWORD;
+    ctx.flash(
+      `${how}. The transformer takes it — a relay drops somewhere over your head, and the hall comes up ` +
+        'booth by booth, all twelve of them. Four green lights on the router. The venue is on the air',
+      4200,
     );
   }
 
@@ -406,18 +568,38 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       ctx.flash(`${b.name}: the router is up. Four green lights and a fan nobody has cleaned since 2019`);
       return;
     }
+    /*
+     * LINK 1 GATES LINK 2, and each robot says so in its own voice. This is the
+     * sentence that makes the breakers and the router read as one chain instead of
+     * two errands: the player is standing at the thing they need, and it is dead.
+     */
+    if (!power) {
+      ctx.flash(
+        b.kind === 'voxxy'
+          ? 'Voxxy: dead screen. No standby lamp, no fan, nothing humming — there is not a volt coming down ' +
+              'this wire. Somebody wants to put a supply on it before I start pressing things'
+          : b.kind === 'droid'
+            ? 'Droid: the unit is cold. Every link light on it is out, which means the cabinet is not fed, ' +
+                'which means the three breakers on that wall are still down. Mine, and I am the only one tall ' +
+                'enough to reach them'
+            : 'Biggy: black screen. I opened the door, I did not bring the electricity. That is a Droid job, ' +
+                'up on the panel',
+        4000,
+      );
+      return;
+    }
+    /*
+     * BIGGY'S HANDS ARE THE JOKE, and the joke is the reason there is a gate here
+     * at all. Michele, asked which of the other two should type: *"Typing password
+     * can be Voxxy or Droid, I think both are ok... what is excluding droid?
+     * Fingers too long?"* — nothing excludes him, so nothing does. Both type.
+     */
     if (b.kind === 'biggy') {
       ctx.flash('Biggy: thirteen little keys. These are not thirteen-little-key hands. Voxxy? Droid?');
       return;
     }
     if (router.known) {
-      router.online = true;
-      router.prompting = false;
-      router.typed = PASSWORD;
-      ctx.flash(
-        `${b.name} types it in — DevoxxForever — and the router comes up. And no, you cannot change it`,
-        3500,
-      );
+      authorise(`${b.name} types it in — DevoxxForever, and no, you cannot change it`);
       return;
     }
     if (router.prompting) {
@@ -426,13 +608,19 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       return;
     }
     router.prompting = true;
+    /*
+     * ...and the terminal says WHERE, because Michele's own objection to his own
+     * hiding place was that nobody would think to point a torch at that wall.
+     */
     ctx.flash(
       (b.kind === 'droid'
-        ? 'Droid: <b>WIFI PASSWORD?</b>, it says. That label will be taped inside the lid, up at the top — ' +
-          "from Biggy's shoulders I could read it"
-        : 'Voxxy: <b>WIFI PASSWORD?</b>, it says. Type it — or let me go looking, small print is what I am for') +
-        '. A–Z types, Backspace fixes a slip, Esc steps away',
-      4000,
+        ? 'Droid: <b>AUTHORISATION?</b>, it says — the venue WiFi password, because of course it is the same ' +
+          'one for everything. That label will be taped inside the lid, up at the top; from Biggy\'s ' +
+          'shoulders I could read it'
+        : 'Voxxy: <b>AUTHORISATION?</b>, it says — the venue WiFi password. Nobody writes those down. Except ' +
+          'that somebody sprayed it along the top wall of the hall, in orange, and small paint is what I am for') +
+        '. Type it: A–Z, Backspace fixes a slip, Esc steps away',
+      4600,
     );
   }
 
@@ -487,7 +675,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         breakersLeft--;
         if (breakersLeft <= 0) {
           power = true;
-          ctx.flash('Droid flips the last breaker — the hall lights come on, booth by booth', 3500);
+          /*
+           * LINK 1, AND NOT THE END OF IT. This used to read "the hall lights come
+           * on, booth by booth" and they did, which is precisely what made the
+           * router optional. A supply is not a lit room: what the player gets for
+           * the breakers is a noise behind a door, and a reason to go and open it.
+           */
+          ctx.flash(
+            'Droid throws the last breaker. The bars go live with a thump you feel through the floor — ' +
+              'and the hall stays black. Something behind that grey cabinet door starts spinning up',
+            4200,
+          );
         } else {
           ctx.flash(`Droid flips a breaker (${BREAKERS - breakersLeft}/${BREAKERS})`);
         }
@@ -506,6 +704,16 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         );
         return;
       }
+      if (dist(b, posterAt) < POSTER_READ) {
+        ctx.flash(
+          router.known
+            ? 'Droid: orange paint, a wifi symbol, and DevoxxForever. Read it already'
+            : 'Droid: somebody has been at this wall with a spray can. I can see a wifi symbol and then ' +
+                'thirteen letters of orange fog. My eyes are for reaching things, not for reading them. Voxxy',
+          4000,
+        );
+        return;
+      }
       ctx.flash('Droid: nothing to reach here');
       return;
     }
@@ -518,7 +726,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         cable.pull = 0;
         cable.len = 0;
         cable.pts = [{ x: b.x, y: b.y }];
-        ctx.flash("Voxxy takes the cable end. It's not long — straight to reception, under the tables");
+        ctx.flash(
+          'Voxxy takes the cable end. Reception is at the far RIGHT of the hall: up the steps in the ' +
+            'right-hand wall, then the desk with the lit pad on it. The reel is short — straight line, ' +
+            'under the sponsor tables',
+          4600,
+        );
         return;
       }
       if (cable.carrying && dist(b, printerAt) < PLUG_REACH) {
@@ -527,13 +740,30 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         cable.connected = true;
         ctx.flash(
           `Cable in — the run is made (${Math.trunc(cable.len)} of ${CABLE_MAX} px used). ` +
-            'Now it wants power and a router on the other end',
+            'The printer has its wire. Now it wants the other end of it to be awake',
           3000,
         );
         return;
       }
+      /*
+       * THE LINE MICHELE COULD NOT PARSE — *"I still don't get where / how to
+       * connect the cable to the reception. 'thought the hall wall on the right'?
+       * what does that mean."*
+       *
+       * It said `through the hall wall on the right`, which is a typo away from
+       * nonsense and, read correctly, still names no landmark, no direction the
+       * player can act on and no whose-right. What a robot says has to be usable
+       * directions in a world the player can see, so this one gives the distance
+       * left, the landmark to aim at (the blue RECEPTION sign is a prop now) and
+       * the thing to press E on when she gets there.
+       */
       if (cable.carrying) {
-        ctx.flash('Voxxy: the printer is at reception, through the hall wall on the right');
+        const away = Math.round(dist(b, printerAt) / 12.5);
+        ctx.flash(
+          `Voxxy: the printer is on the reception desk, ${away} m that way — keep going RIGHT, up the ` +
+            'steps in the hall\'s right-hand wall (the blue sign), then the lit pad on the counter. E there',
+          4200,
+        );
         return;
       }
       if (atTerminal) {
@@ -547,8 +777,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       if (dist(b, posterAt) < POSTER_READ) {
         ctx.flash(
           router.known
-            ? 'Voxxy: read it already — DevoxxForever'
-            : 'Voxxy: there is small print along the bottom of this banner. Not a poking job — point the beam at it',
+            ? 'Voxxy: read it already — DevoxxForever. And no, you cannot change it'
+            : 'Voxxy: orange spray, a wifi symbol, and something under it in letters half my size. Not a ' +
+                'poking job — hold the beam on it',
+          3600,
         );
         return;
       }
@@ -580,10 +812,19 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
     if (!router.cabinetOpen && atCabinet) {
       router.cabinetOpen = true;
+      /*
+       * LINK 2 — and what is behind the door depends on whether link 1 has landed,
+       * which is the whole of Michele's chain in one sentence of narration.
+       */
       ctx.flash(
-        'Biggy sets his shoulder against the cabinet door and walks it open. Inside: the venue router, ' +
-          'a fan full of 2019, and a little terminal blinking <b>WIFI PASSWORD?</b>',
-        4000,
+        power
+          ? 'Biggy sets his shoulder against the cabinet door and walks it open. Inside, already humming: ' +
+              'the venue transformer, a router with its link lights coming up one by one, a fan full of ' +
+              '2019 — and a terminal blinking <b>AUTHORISATION?</b>'
+          : 'Biggy sets his shoulder against the cabinet door and walks it open. Inside: the venue ' +
+              'transformer, the router, a fan full of 2019, and a terminal. All of it dead, dark and cold. ' +
+              'Nothing in this cabinet has a supply',
+        4400,
       );
       return;
     }
@@ -679,45 +920,83 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   }
 
   /**
-   * The poster, read.
+   * The spray tag, read.
    *
    * One visibility test, not a light mix — chapter 1 owns mixing and this is not a
    * second helping of it. The question asked is only ever "is Voxxy's own beam on
-   * the small print", and it is asked of a filtered light list: the SKIRT each
-   * robot throws around its own feet is dropped, so standing next to the banner in
-   * the dark is not reading it. That leaves her 0.38 rad cone against Biggy's 1.0
-   * and Droid's pool, which is the trait this route is built on, plus a range check
-   * because lighting a poster from 22 m away is not reading it either.
+   * the paint", and it is asked of a filtered light list: the SKIRT each robot
+   * throws around its own feet is dropped, so standing against the wall in the dark
+   * is not reading it. That leaves her 0.38 rad cone against Biggy's 1.0 and
+   * Droid's pool, which is the trait this route is built on, plus a range check
+   * because lighting a wall from 22 m away is not reading what is on it either.
    */
   function stepPoster(cast: LightSource[]): void {
     const v = ctx.byKind('voxxy');
     router.posterLit =
       dist(v, posterAt) < POSTER_READ && litBy(cast.filter((L) => L.skirt !== true), 'voxxy', posterAt);
     // Lighting it again once it has been read is just a robot pointing a torch at a
-    // banner: still true, and nothing left to say about it.
+    // wall: still true, and nothing left to say about it.
     if (!router.posterLit || router.known) return;
     router.known = true;
     ctx.flash(
-      'Voxxy holds the beam on the bottom of the banner: <b>free coffee · free wifi · DevoxxForever</b>. ' +
-        'Sponsors. Now the terminal in the technical room',
-      3800,
+      'Voxxy holds the beam on the paint. A wifi symbol, a metre of orange, and under it: ' +
+        '<b>DevoxxForever</b> — <i>(and no, you can\u2019t change it)</i>. Bart. Now the terminal in the ' +
+        'technical room',
+      4600,
     );
   }
 
+  /**
+   * A ROBOT AT A TERMINAL IS TYPING, NOT WALKING — and this is half of the bug
+   * Michele filed.
+   *
+   * *"Typing the password was hard, the game did not match it... I kept typing and
+   * it never took it right."* Reproduced over CDP with real key events: tap `E`
+   * while still holding the key you drove up on, and the prompt opens — but the
+   * browser shell stops pushing the stick without CLEARING it (`held` in
+   * `src/main.ts` keeps its last value, because a keydown suppressed while typing
+   * never records the key as down and so never gets balanced). The stick stays hard
+   * over, the robot keeps walking, it leaves `TERMINAL_REACH`, and the line below
+   * quietly shuts the prompt. From then on every letter of `DevoxxForever` is a
+   * control again: `D` drives, `E` says "nothing to plug in here", and `R` restarts
+   * the whole run back to chapter 1.
+   *
+   * The sim is the source of truth for whether a robot may move (CLAUDE.md), so the
+   * sim is where this is answered: while the prompt has the keyboard, the robot at
+   * it is pinned. It cannot drift out of its own prompt, whatever the shell does
+   * with a stick. The prompt still closes the moment the PLAYER leaves — `Esc`,
+   * `Enter`, or taking another robot, which moves `ctx.cur` to somebody far away.
+   */
+  let typeAnchor: Vec2 | null = null;
+
   function update(dt: number): void {
+    const wasTyping = typing();
+    const driven = ctx.bots[ctx.cur];
+    if (wasTyping && typeAnchor === null) typeAnchor = { x: driven.x, y: driven.y };
+    if (!wasTyping) typeAnchor = null;
+
     ctx.stepAll(dt);
     ctx.pushBiggy(dt);
+
+    if (typeAnchor !== null && typing()) {
+      driven.x = typeAnchor.x;
+      driven.y = typeAnchor.y;
+      driven.vx = 0;
+      driven.vy = 0;
+    }
 
     const v = ctx.byKind('voxxy');
     if (cable.carrying) stepCable(v, dt);
 
     /*
      * Walking away from the terminal puts the keyboard back. There is no other way
-     * out of the prompt than this, `E`, `Esc` or `Enter` — and the robot being
-     * driven cannot walk while it is open, so in practice this is what fires when
-     * the player takes a different robot with Tab or 1/2/3.
+     * out of the prompt than this, `Esc` or `Enter` — and the robot being driven is
+     * pinned while it is open, so in practice this is what fires when the player
+     * takes a different robot with Tab or 1/2/3.
      */
     if (router.prompting && dist(ctx.bots[ctx.cur], cabinetAt) > TERMINAL_REACH) router.prompting = false;
+    // The chain runs backwards too: pull the supply and the prompt is a dark screen.
+    if (router.prompting && !power) router.prompting = false;
 
     /*
      * WHY THIS ROOM ANNOUNCES ITSELF. Michele, twice across two playtests: *"I had
@@ -730,8 +1009,40 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       hintedTech = true;
       ctx.flash(
         (power ? '' : 'Breakers — way up on the wall, Droid. ') +
-          'And that grey cabinet is the router: shut, seized, and far too heavy for anybody but Biggy',
+          'And that grey cabinet is the venue transformer and the router: shut, seized, and far too heavy ' +
+          'for anybody but Biggy',
         3600,
+      );
+    }
+
+    /*
+     * THE STORE AND THE DESK INTRODUCE THEMSELVES, exactly as the technical room
+     * does. Michele has now reported three times that he could not tell what a
+     * thing in this hall was for — the projector panel, the duck, and now both ends
+     * of this chapter at once: *"There's no hint on where the cable should go or
+     * which door should be slammed and how."*
+     *
+     * Each fires once, off proximity, and names the thing and the job. The props
+     * carry the rest: a halo and a name at the door, a blue wayfinding sign at the
+     * steps and a lit pad on the counter.
+     */
+    if (!hailedStore && ctx.bots.some((b) => dist(b, storeAt) < STORE_HAIL)) {
+      hailedStore = true;
+      ctx.flash(
+        '<b>SHIRTS &amp; GADGETS</b>, stencilled down the side of the shutter, and a red halo painted on ' +
+          'the floor in front of it. Three thousand Devoxx t-shirts, crated, on the other side — and the ' +
+          'shutter key went with Stephan\u2019s ring. This door opens the hard way',
+        4600,
+      );
+    }
+    if (!hailedReception && ctx.bots.some((b) => dist(b, printerAt) < RECEPTION_HAIL)) {
+      hailedReception = true;
+      ctx.flash(
+        cable.connected
+          ? 'Reception. The badge printer on the counter, wired at last'
+          : 'Reception — the blue sign, the desk, and the badge printer on the counter with a lit pad in ' +
+              'front of it. That pad is where the cable ends',
+        4000,
       );
     }
 
@@ -760,7 +1071,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     lights = cast;
     stepPoster(cast);
 
-    if (power && cable.connected && router.online && rollerBroken) {
+    if (printerOnline() && rollerBroken) {
       ctx.score.expoT = Math.round(ctx.t);
       ctx.score.cable = Math.trunc(cable.len);
       ctx.startChapter(3);
@@ -771,12 +1082,29 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   function props(): Prop[] {
     const out: Prop[] = [
+      /*
+       * THE BREAKER PANEL, AND HOW THE RENDERER LEARNS THE HALL IS LIT.
+       *
+       * `src/render/lighting.ts` asks one question of this prop — is its `state`
+       * 'done'? — and lifts the hall to `MOOD_EXPO_LIT` if it is. That is the one
+       * channel the renderer is allowed to read, so the chain is expressed HERE
+       * rather than over there: 'idle' while breakers are down, 'active' once the
+       * supply is on and the hall is still dark, 'done' only when the router has
+       * closed the lighting circuit. Nothing in `src/render` changed.
+       *
+       * `v` is still how many handles are up, so the panel itself shows the player
+       * that link 1 is done even while the room around it stays black.
+       */
       {
         kind: 'breaker',
         ...GF.panel,
         v: BREAKERS - breakersLeft,
-        state: power ? 'done' : 'idle',
-        label: power ? 'power ON' : `breakers ${BREAKERS - breakersLeft}/${BREAKERS} (high)`,
+        state: hallLit() ? 'done' : power ? 'active' : 'idle',
+        label: hallLit()
+          ? 'power ON · hall lit'
+          : power
+            ? 'supply ON — the hall is still dark (the router has not authorised)'
+            : `breakers ${BREAKERS - breakersLeft}/${BREAKERS} (high)`,
       },
       { kind: 'rack', ...GF.rack, state: cable.carrying || cable.connected ? 'active' : 'idle', label: 'network rack' },
       {
@@ -786,6 +1114,49 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         label: printerOnline()
           ? 'printer online'
           : `badge printer — needs${power ? '' : ' power,'}${cable.connected ? '' : ' cable,'}${router.online ? '' : ' router,'}`.replace(/,$/, ''),
+      },
+      /*
+       * WHERE THE CABLE GOES, drawn in the world instead of described in a line
+       * nobody could parse. Michele: *"I still don't get where / how to connect the
+       * cable to the reception."*
+       *
+       * Three props, no renderer changes — every kind below is already in
+       * `PROPS` (`src/render/scene.ts`):
+       *
+       *   - a blue Dutch wayfinding panel in the hall at the foot of the steps,
+       *     in the venue's own signage language (`media/other-images/CAPTIONS.md`),
+       *     lit amber while the cable is in Voxxy's hand and green once it is in;
+       *   - a second one at the desk, so the landmark is visible from both ends;
+       *   - a lit pad on the counter under the printer — the same "put it HERE"
+       *     floor plate chapter 3 uses for its delivery drop zone, which is the
+       *     vocabulary this game already teaches.
+       */
+      {
+        kind: 'sign',
+        x: GF.smallStairs.x - 26,
+        y: GF.smallStairs.y + GF.smallStairs.h / 2,
+        w: 6,
+        h: 40,
+        state: cable.connected ? 'done' : cable.carrying ? 'active' : 'idle',
+        label: 'RECEPTION · BADGE PRINTER →',
+      },
+      {
+        kind: 'sign',
+        x: GF.reception.x + GF.reception.w / 2,
+        y: GF.reception.y - 12,
+        w: 70,
+        h: 5,
+        state: cable.connected ? 'done' : cable.carrying ? 'active' : 'idle',
+        label: 'RECEPTIE · RECEPTION',
+      },
+      {
+        kind: 'dropzone',
+        x: GF.printer.x - 6,
+        y: GF.printer.y + GF.printer.h + 2,
+        w: GF.printer.w + 12,
+        h: 14,
+        state: cable.connected ? 'done' : cable.carrying ? 'active' : 'idle',
+        label: cable.connected ? 'cable in' : 'cable ends here (Voxxy, E)',
       },
       /*
        * The cabinet, the terminal inside it and the poster out in the hall. The
@@ -800,34 +1171,69 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         state: router.cabinetOpen ? 'open' : 'shut',
         label: router.cabinetOpen ? 'router cabinet — open' : 'router cabinet — shut (Biggy)',
       },
+      /*
+       * THE TRANSFORMER/ROUTER ITSELF, which Michele asked to SEE come up: *"Breaker
+       * give energy, and a transformer/router lights up in the cabinet."*
+       *
+       * It is a second `terminal`-kind prop — `drawTerminal` pools its mesh, so a
+       * chapter may emit as many as it likes — standing to the left of the little
+       * keypad screen across the cabinet's face. Dead grey while the breakers are
+       * down, pulsing amber the moment they are in (which is the beat: the player
+       * throws three handles at one end of the room and a box lights up at the
+       * other), green once it has authorised. `v` is high so it reads as a row of
+       * settled link lights rather than as an empty field waiting for a cursor.
+       */
       {
         kind: 'terminal',
-        // Centred on the cabinet face, and a metre wide: bigger than the KVM screen
-        // a real rack has, and deliberately so — at diorama zoom a true-to-life
-        // 40 cm panel is four pixels of dark grey in a blacked-out room, which is
-        // the exact failure Michele reported against the projector panel.
-        x: cabinetAt.x - 6,
+        x: GF.cabinet.x + 4,
+        y: cabinetAt.y - 3,
+        w: 26,
+        h: 4,
+        v: 0.85,
+        state: !router.cabinetOpen || !power ? 'idle' : router.online ? 'done' : 'active',
+        label: !power
+          ? 'venue transformer/router — no supply'
+          : router.online
+            ? 'transformer/router — online'
+            : 'transformer/router — powered, waiting for authorisation',
+      },
+      {
+        kind: 'terminal',
+        // Beside it, and a metre wide: bigger than the KVM screen a real rack has,
+        // and deliberately so — at diorama zoom a true-to-life 40 cm panel is four
+        // pixels of dark grey in a blacked-out room, which is the exact failure
+        // Michele reported against the projector panel.
+        x: cabinetAt.x + 4,
         y: cabinetAt.y - 2,
-        w: 12,
+        w: 16,
         h: 4,
         // `v` is how much of the password is in, so the renderer can fill the field
         // without knowing what the password IS.
         v: router.typed.length / PASSWORD.length,
-        state: router.online ? 'done' : !router.cabinetOpen ? 'idle' : 'active',
+        state: router.online ? 'done' : !router.cabinetOpen || !power ? 'idle' : 'active',
         label: router.online
           ? 'router online'
           : !router.cabinetOpen
             ? 'terminal — behind the cabinet door'
-            : `WIFI PASSWORD? ${maskedPassword()}`,
+            : !power
+              ? 'terminal — dark (no supply)'
+              : `AUTHORISATION? ${maskedPassword()}`,
       },
+      /*
+       * THE SPRAY TAG. Still `PROPS.poster` — the kind that carries a standby glow
+       * and needs a narrow beam to resolve — but a wall's worth of it now, 7 m of
+       * orange on the hall's top wall rather than eight-point type on a banner.
+       * The glow is what answers Michele's *"and all is dark"*: from across the
+       * hall it reads as something painted there, and only her cone reads what.
+       */
       {
         kind: 'poster',
-        x: posterAt.x - 14,
-        y: posterAt.y - 2,
-        w: 28,
-        h: 3,
+        x: posterAt.x - 44,
+        y: posterAt.y - 6,
+        w: 88,
+        h: 4,
         state: router.known ? 'done' : router.posterLit ? 'active' : 'idle',
-        label: router.known ? 'sponsor banner — read' : 'sponsor banner (small print — Voxxy)',
+        label: router.known ? 'the wall: DevoxxForever' : 'spray tag — wifi symbol, unreadable (Voxxy\u2019s beam)',
       },
       {
         kind: 'cable',
@@ -838,14 +1244,73 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         pts: cable.carrying ? [...cable.pts, { x: ctx.byKind('voxxy').x, y: ctx.byKind('voxxy').y }] : cable.pts,
         v: cable.len,
         state: cable.connected ? 'done' : cable.taut ? 'taut' : cable.carrying ? 'active' : cable.snapped ? 'broken' : 'idle',
-        label: 'cable reel',
+        // The HUD's reel meter takes its label from here (`collectMeters`), so the
+        // distance still to run is sim state rather than a number the overlay works
+        // out for itself. It is the second half of "where does the cable go": the
+        // bar stops being an abstract budget and becomes "62 m left, 118 m of reel".
+        label: cable.connected
+          ? `cable reel — in at reception (${Math.round(cable.len)} px used)`
+          : cable.carrying
+            ? `cable reel — ${Math.round(dist(ctx.byKind('voxxy'), printerAt) / 12.5)} m still to reception`
+            : 'cable reel',
+      },
+      /*
+       * THE STORE DOOR, as Michele designed it: *"Door should have Halo, Name on the
+       * side (shirts and gadget) and be mentioned on the intro. Gadgets must be
+       * ready, but the door is shut (we could mention the same lost keys?) (and put
+       * crates, shirts and gadgets inside)."*
+       *
+       * The HALO is a flat plate on the floor across the front of the shutter —
+       * `PROPS.lane` is the one flat kind this chapter already draws, and
+       * `STATE_EMISSIVE.broken` is the dark red in the renderer's own palette, so a
+       * red glow on the floor at the door costs no change in `src/render`. It turns
+       * green when the door is down. A proper `halo` kind is a two-line patch to
+       * `PROPS` and it is in the handover report: this is the stand-in that works
+       * today, not the final shape of the idea.
+       *
+       * The NAME is a blue wayfinding panel down the side of the shutter, in the
+       * venue's own signage language; nothing draws prop text yet, so the words
+       * themselves are spoken by the store's own hail in `update` and carried in
+       * the label for when something does.
+       *
+       * And what is BEHIND it is drawn, because an empty room behind a door you
+       * broke is an anticlimax: four pallets of crated Devoxx t-shirts, visible the
+       * moment the shutter goes.
+       */
+      {
+        kind: 'lane',
+        x: GF.roller.x - 26,
+        y: GF.roller.y - 6,
+        w: 26,
+        h: GF.roller.h + 12,
+        state: rollerBroken ? 'done' : 'broken',
+        label: rollerBroken ? 'SHIRTS & GADGETS — open' : 'SHIRTS & GADGETS — shut (the key is on Stephan\u2019s ring)',
+      },
+      {
+        kind: 'sign',
+        x: GF.roller.x - 4,
+        y: GF.roller.y - 16,
+        w: 5,
+        h: 22,
+        state: rollerBroken ? 'done' : 'idle',
+        label: 'SHIRTS & GADGETS',
       },
       {
         kind: 'roller',
         ...GF.roller,
         state: rollerBroken ? 'broken' : 'shut',
-        label: 'roller door',
+        label: rollerBroken ? 'roller door — down' : 'roller door — shirts & gadgets, shut',
       },
+      ...STORE_PALLETS.map((pt, i): Prop => ({
+        kind: 'crate',
+        x: pt.x,
+        y: pt.y,
+        w: 16,
+        h: 14,
+        v: i % 2 === 0 ? 2 : 1,
+        state: 'idle',
+        label: 'Devoxx t-shirts',
+      })),
       { kind: 'gate', ...GF.gate, state: 'shut', label: 'registration gate' },
       // The lane the prototype drew as a dashed hint: this is where Voxxy has to
       // shove Biggy from, and it is sim data so the renderer need not guess.
@@ -858,7 +1323,16 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   // one black frame before `update` runs.
   lights = buildLights(ctx.bots, ctx.walls, NO_MIRRORS);
 
-  /** Power AND cable AND router. Three prerequisites, one printer. */
+  /**
+   * THE HALL'S LIGHTS. The breakers give energy; the router closes the circuit.
+   *
+   * One function, read by the breaker prop (which is how `src/render/lighting.ts`
+   * learns the room is lit) and by the state block the tests read. It is deliberately
+   * not a stored flag: a chain has no state of its own beyond its links.
+   */
+  const hallLit = (): boolean => power && router.online;
+
+  /** The chain, and the cable: all of it, or the printer prints nothing. */
   const printerOnline = (): boolean => power && cable.connected && router.online;
 
   /**
@@ -870,27 +1344,68 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     `${router.typed}${PASSWORD_BLANK.repeat(PASSWORD.length - router.typed.length)} ` +
     `(${router.typed.length}/${PASSWORD.length})`;
 
-  /** The live bottom-of-screen line: the four jobs, each with its own counter. */
+  /**
+   * The live bottom-of-screen line — now written as THE CHAIN, in order.
+   *
+   * The old one read as four independent errands with four independent counters,
+   * which is exactly how the chapter played. Each link now says what the one before
+   * it is waiting on, so a player who reads one line knows why the thing in front of
+   * them is dead.
+   */
   function progress(): string {
-    const breakers = power ? 'power ✓' : `breakers ${BREAKERS - breakersLeft}/${BREAKERS}`;
+    const breakers = power
+      ? hallLit()
+        ? 'power ✓'
+        : 'power ✓ (hall still dark)'
+      : `breakers ${BREAKERS - breakersLeft}/${BREAKERS} — Droid, high on the wall (E)`;
+    const net2 = router.online
+      ? 'router ✓ — the hall is lit'
+      : !router.cabinetOpen
+        ? 'router: cabinet shut — Biggy shoulders it open (E)'
+        : !power
+          ? 'router: open, and dead. No supply until the breakers are in'
+          : router.prompting
+            ? `AUTHORISATION ${maskedPassword()} · Backspace · Esc`
+            : router.known
+              ? 'router: powered, password known — E at the terminal'
+              : 'router: powered, waiting for the WiFi password — E at the terminal';
     const net = cable.connected
       ? 'cable ✓'
       : cable.snapped
         ? 'cable snapped — back to the rack'
         : cable.carrying
-          ? `cable ${Math.round(cable.len)}/${CABLE_MAX} px${cable.taut ? ' — TAUT' : ''}`
-          : 'cable: on the reel at the rack';
-    const net2 = router.online
-      ? 'router ✓'
-      : !router.cabinetOpen
-        ? 'router: cabinet shut — Biggy shoulders it open (E)'
-        : router.prompting
-          ? `WIFI PASSWORD ${maskedPassword()} · Backspace · Esc`
-          : router.known
-            ? 'router: password known — E at the terminal'
-            : 'router: terminal waiting — E at it and type the password';
-    const store = rollerBroken ? 'badge store ✓' : `roller door: shut (needs ${m(ROLLER_DOOR_SPEED).toFixed(1)} m/s)`;
-    return `${breakers} · ${net} · ${net2} · ${store}`;
+          ? `cable ${Math.round(cable.len)}/${CABLE_MAX} px${cable.taut ? ' — TAUT' : ''} → reception`
+          : 'cable: on the reel at the rack (Voxxy, E)';
+    const store = rollerBroken
+      ? 'shirts & gadgets ✓'
+      : `store shutter: shut (needs ${m(ROLLER_DOOR_SPEED).toFixed(1)} m/s)`;
+    return `${breakers} · ${net2} · ${net} · ${store}`;
+  }
+
+  /**
+   * THE FIELD ON SCREEN — `GameSnapshot.prompt`, and the other half of Michele's
+   * *"I'd display an input text at center screen on e to make it easier."*
+   *
+   * Everything the HUD needs to draw a text field, and nothing it could decide for
+   * itself: the sim says what is being asked, what is in the box, how long the
+   * answer is, what the keys do and whether the last key was refused. The renderer
+   * formats it and owns none of it (CLAUDE.md). `null` whenever no prompt is open,
+   * which is what makes the field appear and disappear.
+   */
+  function prompt(): TextPrompt | null {
+    if (!typing()) return null;
+    return {
+      title: 'AUTHORISATION — venue WiFi password',
+      value: router.typed,
+      total: PASSWORD.length,
+      blank: PASSWORD_BLANK,
+      hint: router.known
+        ? 'You have read it. Type it: A–Z · Backspace · Esc steps away'
+        : 'A–Z types · Backspace fixes a slip · Esc steps away',
+      // A refusal is worth about a third of a second of red, which is long enough
+      // to see on a key you did not mean and short enough not to stack up.
+      reject: Math.max(0, 1 - (ctx.t - router.rejectAt) / 0.35),
+    };
   }
 
   return {
@@ -899,6 +1414,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     props,
     progress,
     typing,
+    prompt,
     lights: () => lights,
     state: (): ExpoState => ({
       chapter: 2,
@@ -914,12 +1430,14 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       rollerBroken,
       router: {
         cabinetOpen: router.cabinetOpen,
+        powered: power,
         known: router.known,
         prompting: router.prompting,
         typed: router.typed,
         posterLit: router.posterLit,
         online: router.online,
       },
+      hallLit: hallLit(),
       printerOnline: printerOnline(),
     }),
   };
