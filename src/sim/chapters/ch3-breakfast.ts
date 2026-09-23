@@ -1352,7 +1352,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       },
       // The stack zone reads exactly like the soup's drop mark, because it is the
       // same promise: put the thing you are carrying down HERE.
-      { kind: 'dropzone', ...BEER_STACK, state: beerDone ? 'done' : 'active', label: 'hand the beer crates over the bar here' },
+      // The plate stays idle/done exactly as the soup's always has: the HALO round
+      // it is what says "you can use this", and one signal is worth more than two.
+      { kind: 'dropzone', ...BEER_STACK, state: beerDone ? 'done' : 'idle', label: 'hand the beer crates over the bar here' },
       // The bar's own sign, on the hall wall behind the taps.
       {
         kind: 'sign',
