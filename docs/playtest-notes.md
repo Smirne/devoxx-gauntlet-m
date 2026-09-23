@@ -276,7 +276,6 @@ so anything marked *looks* waits behind anything marked *plays*.
 
 | item | who raised it | note |
 | --- | --- | --- |
-| Move the minigames from chapter 2 to chapter 3 | Michele — *"the hall is still closed at the moment"* | Correct: the booth games are in a hall nobody has opened yet. |
 | Voxxy's jump | Michele's idea, scoped down by him to *"just for one quiz. And for jumping around for fun"* | Natural home: hopping the cinema-E seat rows, which are `low` walls light already crosses. Gives her a verb of her own next to Droid's climb and Biggy's charge. |
 | Chapter 1's mirror puzzle plays off camera | Michele — *"since the 3 color room mechanic is reflecting on the screen, but the screen is not visible in this angulation, could we move the puzzle on the upper line?"* | **This was living in chat only and was nearly lost.** The bounce off cinema E's screen is the feedback for the whole puzzle and the fixed camera does not show the screen. Moving the puzzle to a top-row room turns the screen toward the camera; the alternative is re-pitching that one room's camera. His suggestion is the cheaper of the two. |
 | Robots do not stand on the ground floor's raised lobby or its stairs | agent, cutscene round | `groundRiseM(x)` exists in `geometry.ts` *for this*, its own doc says the renderer reads it, and **nothing reads it** — so a robot on the lobby plate stands half a metre inside it and one on the main flight is swallowed. This is why chapter 3's transition walks into a staircase. |
@@ -330,6 +329,27 @@ is how blue reaches a clue Biggy can never stand next to. That is the beat the r
 around and no test had ever described it. `tests/aisle.test.ts` now measures clues against
 *reachable* ground rather than placed poses.
 
+### The booth games are in chapter 3 (24 Sep)
+
+Michele: *"Minigames should be in chapter 3"* — *"the hall is still closed at the moment."*
+
+There were **three**, not two: the duck shuffleboard, the top-shelf sticker, and a Regex Racing
+lap. And chapter 3 was already running them — it imported the whole set from chapter 2 and called
+it. So what actually changed is that **chapter 2 lost them**: no booth props, no swag, and `E` at
+the dark Sticker Mine is now an ordinary nothing-here. Nothing was cut. None of the three depended
+on the hall being shut; all three depended on it being open, which is his point exactly.
+
+Two seams closed on the way in: the sticker refusal was one sentence with the name swapped, and is
+now two lines in two voices; and a Regex lap the player never meant to start now expires in
+silence. Brushing marker 1 on an unrelated errand started the clock and announced the failure
+twenty seconds later — one marker is a brush, two is a decision, so the toast is gated on the
+second.
+
+`mkBody` moved to `src/sim/bot.ts` at the same time. It had lived in `ch2-expo.ts` only because
+chapter 2 happened to need a loose body first; once the games left, chapter 2 stopped using it
+altogether and two other chapters were importing a physics helper across a chapter boundary from
+a chapter that did not use it.
+
 ## Looks — deferred by him, explicitly
 
 | item | who | note |
@@ -354,7 +374,8 @@ around and no test had ever described it. `tests/aisle.test.ts` now measures clu
 | `CUT_WALK_SPEED` is dead | The cutscene rewrite made walks duration-driven. Still exported, scaled and asserted; nothing reads it. |
 | Crowd and prop radii are the generous ones now | A conference-goer is 0.8-1.28 m wide and the cake crate is 1.36 m, sized when the robots were twice their current width. |
 | `pushBiggy` and `stepTow` ignore Biggy's mass | The crate beat adds mass and takes acceleration, and the design doc claimed the push and the tow would express the weight. They do not: both add `force · dt` straight to his velocity without dividing by mass. Only `botsCollide` reads it. Making them mass-aware retunes chapter 2's roller door, which is frozen physics and Michele's call. |
-| `mkBody` lives in `ch2-expo.ts` | Chapters 3 and 4 both import it across a chapter boundary now. It belongs in `bot.ts` or a `bodies.ts`. |
 | A careful player may never see the OutOfMemoryError | The HUD reads `heap 4/5`, which is what makes the beat survivable and also what makes it skippable. Mitigated (Biggy's line at four dares you, no penalty for trying); the guaranteed version is a seventh crate, so one overfill is forced. |
+| The crowd walks through the shuffleboard duck | `pushOutOfCrates` keeps the 36 visitors out of the beer crates and knows nothing about the duck, which is a separate body inside the minigames closure. Pre-existing, but chapter 3 is the only home now, so a craft screenshot can catch an attendee standing inside a rubber duck. Not fixed on purpose: letting the crowd displace the duck would let it drift into or out of the scoring circle with no player input, which is a design change rather than a move. |
+| `E` precedence at the Sticker Mine | The minigames' key handler runs before the chapter's own, so Droid standing at the sticker takes it before anything else can happen there — and that booth shares the grid with the keynote speaker's hiding places. The chapter-3 end-to-end test already works around it by clearing the sticker first. |
 | Chapter 4 runs about six minutes | Correct preservation of its difficulty through the rescale, possibly the wrong *shot*. The fix if playtesting says so is a run key or a smaller room, not re-tuning the clock back. |
 | `tools/progress/shots/` is 50+ MB | Prune before submission. |

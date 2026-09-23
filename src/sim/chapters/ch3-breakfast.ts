@@ -65,9 +65,9 @@ import {
   loadBiggy,
 } from '../crates';
 import { GF, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
-import { botsCollide, circleRect, dist, inRect, speed, stepBot } from '../bot';
+import { botsCollide, circleRect, dist, inRect, mkBody, speed, stepBot } from '../bot';
 import type { Bot, Person, Prop, Rect, Vec2, Wall } from '../types';
-import { mkBody } from './ch2-expo';
+
 import type { ChapterCtx, ChapterDef, ChapterRuntime, PrevVel } from './index';
 
 /* ---------------------------------------------------------------- reach and pacing */
@@ -171,7 +171,7 @@ const oomCardHtml = (n: number): string =>
   `<small>${CRATE_STACK_LIMIT - 1} fit. ${CRATE_STACK_LIMIT - 1} always fitted. · Press any key</small>`;
 
 /**
- * A beer crate: a body, not a robot. `mkBody` (ch2) is the same thing the
+ * A beer crate: a body, not a robot. `mkBody` (`bot.ts`) is the same thing the
  * shuffleboard duck and the cake crate are built from.
  */
 interface Crate extends Bot {
@@ -360,8 +360,21 @@ function setupMinigames(ctx: ChapterCtx): Minigames {
       }
     }
     if (raceNext > 0 && ctx.t - raceT0 > RACE_LIMIT) {
+      /*
+       * A lap the player never meant to start must expire in silence.
+       *
+       * Marker 1 sits on a route Voxxy has three separate errands along, and
+       * brushing it starts the clock. Announcing the reset told a player who was
+       * fetching the ladle that they had failed a game they did not know they had
+       * entered — twenty seconds after the fact, with no marker on screen since.
+       *
+       * One marker is a brush; two is a decision, because the second is only
+       * reachable by going the way the lap goes. So the toast is gated on the
+       * second, and the reset itself still happens either way.
+       */
+      const committed = raceNext >= 2;
       raceNext = 0;
-      ctx.flash("Regex Racing: time's up, lap reset");
+      if (committed) ctx.flash("Regex Racing: time's up, lap reset");
     }
   }
 

@@ -56,7 +56,7 @@ import {
 } from '../constants';
 import { m } from '../units';
 import { GF, VIEW_GROUND, groundWallsFor, stairDoor } from '../geometry';
-import { dist, inRect, mkBot, speed } from '../bot';
+import { dist, inRect, speed } from '../bot';
 import { buildLights, litBy } from '../lights';
 import type { Bot, LightSource, Mirror, Prop, Vec2, Wall } from '../types';
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
@@ -146,30 +146,6 @@ const BREAKERS = 3;
 
 /** The exhibition hall has no cinema screen to bounce a lamp off. */
 const NO_MIRRORS: Mirror[] = [];
-
-/**
- * A pushable body that is not a robot: chapter 3's beer crates, its crowd and its
- * shuffleboard duck, and chapter 4's cake crate. It borrows `Bot` only so it can
- * reuse `stepBot` and `botsCollide`.
- *
- * It lives here because chapter 2 was the first chapter to need one. Nothing in this
- * chapter uses it any more — the booth minigames that did moved to chapter 3 on
- * 24 Sep 2026 — but chapters 3 and 4 both import it from here and moving it would be
- * churn for its own sake.
- *
- * `kind` is 'droid' and never read as an identity — the prototype gave these bodies
- * their own kinds ('duck', 'crate'), and the single place `stepBot` looks at `kind`
- * is the wall restitution, where anything that is not Biggy gets `REST_WALL_OTHER`.
- * 'droid' reproduces that exactly. They are never added to `ctx.bots`, so no lamp,
- * no mount and no player input ever reaches them.
- */
-export function mkBody(name: string, x: number, y: number, over: Partial<Bot>): Bot {
-  const b = mkBot('droid', x, y);
-  b.name = name;
-  b.tall = false;
-  b.light = { c: [0, 0, 0], type: 'pool', range: 1 };
-  return Object.assign(b, over);
-}
 
 /* ==================================================================== chapter */
 
