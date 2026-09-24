@@ -73,8 +73,17 @@ const int = (n: string): number | undefined => {
   return Number.isFinite(x) ? Math.trunc(x) : undefined;
 };
 const Q: QualityName[] = ['low', 'medium', 'high', 'ultra'];
+const Q_KEY = 'afterdark3d.quality';
+function storedQuality(): QualityName | null {
+  try {
+    const v = window.localStorage.getItem(Q_KEY) as QualityName | null;
+    return v && Q.includes(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
 const qParam = params.get('q') as QualityName | null;
-const quality: QualityName = qParam && Q.includes(qParam) ? qParam : 'high';
+const quality: QualityName = qParam && Q.includes(qParam) ? qParam : storedQuality() ?? 'high';
 const shotMode = flag('shot');
 const hideHud = flag('nohud') || shotMode;
 const warm = Math.max(0, Math.min(int('warm') ?? 0, 20000));
@@ -155,6 +164,18 @@ window.addEventListener('keydown', (ev) => {
     muted = !muted;
     audio.mute(muted);
   }
+  // Q cycles the render quality. The pipeline is built for one quality, so the
+  // choice is remembered and the page reloads into it.
+  if (code === 'KeyQ' && !game.snapshot().typing) {
+    const next = Q[(Q.indexOf(quality) + 1) % Q.length];
+    try {
+      window.localStorage.setItem(Q_KEY, next);
+    } catch {
+      /* no storage: the URL's ?q= still works */
+    }
+    window.location.reload();
+    return;
+  }
   if (code === 'KeyP') {
     photo = !photo;
     document.body.classList.toggle('ad-nohud', photo || hideHud);
@@ -223,9 +244,10 @@ function showEnd(): void {
   const card = document.createElement('div');
   card.className = 'ad3d-end';
   card.innerHTML =
-    '<h1>END OF THE 3D PROOF OF CONCEPT</h1><p>The fire door is open. Chapter 2 — the exhibition hall — exists only in the 2.5D build for now.</p>' +
-    '<p><a href="./index.html?chapter=2">Continue in the 2.5D build →</a> · <a href="./3d.html">Replay chapter 1 in 3D</a></p>';
+    '<h1>END OF THE 3D PROOF OF CONCEPT</h1><p>The fire door is open. Chapter 2, the exhibition hall, exists only in the 2.5D build for now.</p>' +
+    '<p><button type="button" id="ad3d-replay">Replay chapter 1</button></p>';
   app.appendChild(card);
+  card.querySelector('#ad3d-replay')?.addEventListener('click', () => window.location.reload());
 }
 
 /* ================================================================= loop ==== */

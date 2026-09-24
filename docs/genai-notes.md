@@ -1554,3 +1554,53 @@ the built page driven headlessly (`?chapter=1&warm=2&nofog=1&topdown=1`), steppi
 with `game.update(DT_MAX)` rather than trusting `requestAnimationFrame`: Voxxy driven south for 3 s
 and released ended facing south to the last digit, Droid walked into Biggy and was up him on the
 frame after contact, `document.title` read `After Dark · ERRORS:0` and no console errors at all.
+
+## 24 Sep 2026 — a full-3D proof of concept of chapter 1, aimed at Cyberpunk 2077's look (agent, overnight)
+
+**What a human asked.** Michele: a quick POC of a *full 3D* version, chapter 1 or part of it, on its
+own branch, "graphic level on par with Cyberpunk 2077", looping and comparing against screenshots of
+the game. He was going to bed; questions could wait for the morning.
+
+**What the agent decided without asking.** `main` held only reference files, so the fork point was
+the 2.5D branch (`claude/blissful-faraday-3ymwwa`) — the work he meant by "main" — so the tested sim
+and the sheet-matched robots could be reused rather than rewritten. The 3D build is a second page
+(`3d.html`) and a second renderer (`src/render3d/`) over the *same* sim; `src/sim` is untouched, so
+every rule, constant and test still applies.
+
+**What the agent did.** Built an HDR pipeline in three.js WebGL2 (planar reflections, GTAO,
+single-scattering volumetric fog raymarched through each lamp's own shadow map, a COD-style bloom
+chain, AgX and a grade), GPU-baked every texture from shaders, raised the closed section to full
+height from `floor1Walls()`, gave it a third-person camera, and then iterated on screenshots: about
+fifteen rounds, four canonical shots each. See `docs/3d-poc.md` for the file map.
+
+**What the loop caught that reasoning had not.**
+- The first frame was black: physically based light units with guessed intensities. Neon sources
+  went up ~6x before anything read.
+- Two long RectAreaLights along the coves filled every lit surface with sparkle noise; switching
+  them off in the harness proved it, and they became point lights.
+- The corridor's coved ceiling was invisible: both cove strips were wound backwards and culled.
+- Droid rendered bone-white: his pool lamp sat 15 cm above his shoulders (1000+ lux). Lifted to a
+  virtual source 1.4 m up; his graphite came back.
+- The city outside the new foyer windows was hidden by a 56 m sheet of plaster: a wall was classified
+  as "faces the corridor" once, at its midpoint. Faces are now classified in 10 px runs.
+- The fog only ever saw the first ten emitters; it now takes the sixteen nearest the camera.
+- A scripted playtest (Playwright holding keys) found the camera's auto-follow turning strafes into
+  circles; it now follows forward runs only.
+- Posters had been placed in two doorways and behind a column; placements now come from the sim's
+  door and column positions.
+
+**Rejected.** WebGPU/TSL post-processing (not available in the headless browser the loop depends
+on); a physics engine or imported models (CLAUDE.md); raking the cinema floors (the sim is flat, so
+robots would float over or sink into the rows); screen-space reflections (the planar mirror keeps
+off-screen neon); copying anything from the reference game.
+
+**Blocked.** The egress policy denied every host with Cyberpunk screenshots, so "compare with
+screenshots from the game" became comparison against a written checklist of its visual signature.
+
+**For Michele to decide.** The deviations listed in `docs/3d-poc.md` (terrazzo floor, glazed foyer,
+emergency lighting, the lifted pool lamp), whether the 3D look is worth pursuing for the entry at
+all given the brief's "a sharp 2D game beats a vague 3D one", and which GPU to judge performance on.
+
+**Verification.** `tsc --noEmit` clean; `vite build` clean; the test suite at 275/282 with the same
+seven failures as the fork point (chapter 2 was mid-change there); headless runs with zero console
+errors; a scripted playtest of movement, strafing, robot switching and camera follow.

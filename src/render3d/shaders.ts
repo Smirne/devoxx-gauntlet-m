@@ -25,7 +25,7 @@ void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }
  */
 export const MAX_SPOTS = 12;
 export const MAX_SHADOWED = 4;
-export const MAX_POINTS = 10;
+export const MAX_POINTS = 16;
 
 export const VOL_FRAG = /* glsl */ `
 precision highp float;

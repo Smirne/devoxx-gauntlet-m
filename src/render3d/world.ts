@@ -114,8 +114,40 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     cam.camera.updateProjectionMatrix();
   }
 
+  /*
+   * Adaptive resolution: the pipeline is heavy (a reflection pass, GTAO, a
+   * volumetric march, a bloom chain), so on a weaker GPU the pixel ratio steps
+   * down until the frame fits, and back up when there is room. Frame time is
+   * measured on the wall clock, not the sim's clamped dt.
+   */
+  const maxRatio = Math.min(window.devicePixelRatio || 1, quality.pixelRatio);
+  let ratio = maxRatio;
+  let slow = 0;
+  let fast = 0;
+  let lastWall = performance.now();
+  function adapt(): void {
+    if (opts.preserveDrawingBuffer) return; // screenshot mode: never
+    const now = performance.now();
+    const ms = now - lastWall;
+    lastWall = now;
+    if (ms > 200) return; // a hitch (tab switch, shader compile), not a trend
+    slow = ms > 24 ? slow + 1 : Math.max(0, slow - 1);
+    fast = ms < 13 ? fast + 1 : 0;
+    let next = ratio;
+    if (slow > 45) next = Math.max(0.55, ratio - 0.15);
+    else if (fast > 240) next = Math.min(maxRatio, ratio + 0.1);
+    if (next !== ratio) {
+      ratio = next;
+      slow = 0;
+      fast = 0;
+      renderer.setPixelRatio(ratio);
+      resize(w, h);
+    }
+  }
+
   function render(snap: GameSnapshot, dt: number): void {
     time += dt;
+    adapt();
     if (!envBaked) bakeEnv();
     venue.update(time, dt);
     updateRobots(robots, snap, dt);
@@ -145,11 +177,19 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     }
     for (; mi < mirrorSpots.length; mi++) mirrorSpots[mi].visible = false;
 
+    // The fog takes a fixed number of lights. The robots' lamps always, then
+    // whatever else is nearest the camera — so the haze you can see is lit by
+    // the lights you can see, wherever you are in the building.
+    const eye = cam.camera.position;
     volSpots.length = 0;
-    for (const r of robots.values()) volSpots.push({ light: r.lamp, fog: r.fog });
-    for (const s of venue.volumeSpots) volSpots.push(s);
-    for (const s of mirrorSpots) if (s.visible) volSpots.push({ light: s, fog: 0.03 });
-    pipeline.setVolumeLights(volSpots, [...venue.volumePoints, ...props.volumePoints]);
+    for (const r of robots.values()) if (r.fog > 0) volSpots.push({ light: r.lamp, fog: r.fog });
+    const others: VolumeSpot[] = [...venue.volumeSpots];
+    for (const s of mirrorSpots) if (s.visible) others.push({ light: s, fog: 0.03 });
+    others.sort((a, b) => a.light.position.distanceToSquared(eye) - b.light.position.distanceToSquared(eye));
+    volSpots.push(...others);
+    const pts = [...venue.volumePoints, ...props.volumePoints];
+    pts.sort((a, b) => a.position.distanceToSquared(eye) - b.position.distanceToSquared(eye));
+    pipeline.setVolumeLights(volSpots, pts);
     pipeline.render(dt);
   }
 

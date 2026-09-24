@@ -25,6 +25,7 @@ import type { Materials } from './materials';
 import { box, withReflection, worldUV } from './materials';
 import type { VolumePoint } from './pipeline';
 import type { PlanarReflection } from './reflector';
+import { adScreen, ledTicker } from './screens';
 import { POSTERS, cityscape, emitter, exitSign, menuBoard, neonText, poster, rainMask, wayfinding, zaalPanel } from './signs';
 
 /** Where chapter 1's geometry stops, sim px: just past the fire door. */
@@ -356,15 +357,38 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
       }
       addStepLights(group, dots);
     }
-    // Wall sconces (dead) along the side walls.
+    // Wall sconces on standby: a dim amber glow under each shade, the only
+    // light a dark auditorium keeps.
+    const glowMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.55, 0.2).multiplyScalar(5), toneMapped: false });
     for (const x of [r.x + 1.2, r.x + r.w - 1.2]) {
       for (let k = 1; k <= 3; k++) {
         const z = m(r.y + (r.h * k) / 4);
-        const sc = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.25, 0.5, 16), mats.steel);
-        sc.position.set(m(x) + (x < r.x + r.w / 2 ? 0.1 : -0.1), 3.6, z);
+        const sx = m(x) + (x < r.x + r.w / 2 ? 0.1 : -0.1);
+        const sc = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.25, 0.5, 16, 1, true), mats.steel);
+        sc.position.set(sx, 3.6, z);
         group.add(sc);
+        const bulb = new THREE.Mesh(new THREE.CircleGeometry(0.2, 16), glowMat);
+        bulb.rotation.x = Math.PI / 2;
+        bulb.position.set(sx, 3.36, z);
+        group.add(bulb);
+        volumePoints.push({ position: V(sx, 3.2, z), color: new THREE.Color(1, 0.5, 0.18).multiplyScalar(0.25), range: 1.8 });
       }
     }
+    // Pleated velvet drapes down both side walls.
+    for (const side of [-1, 1]) {
+      const len = m(r.h) - 1.2;
+      const g = new THREE.PlaneGeometry(len, 5.4, Math.ceil(len * 12), 1);
+      const pos = g.getAttribute('position') as THREE.BufferAttribute;
+      for (let i = 0; i < pos.count; i++) pos.setZ(i, Math.abs(Math.sin(pos.getX(i) * 9)) * 0.14);
+      g.computeVertexNormals();
+      const drape = new THREE.Mesh(g, mats.drape);
+      drape.rotation.y = side < 0 ? Math.PI / 2 : -Math.PI / 2;
+      drape.position.set(side < 0 ? m(r.x) + 0.05 : m(r.x + r.w) - 0.05, 3.9, m(r.y + r.h / 2));
+      drape.receiveShadow = true;
+      group.add(drape);
+    }
+    // Fibre-optic star ceiling.
+    group.add(starCeiling(r));
   }
 
   /* ---------------------------------------------------------- the foyer */
@@ -634,13 +658,13 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   }
 
   // Backlit poster boxes between the doors.
+  // Free wall spans only (worked out from the sim's doors, columns and Zaal
+  // panels — the first guess put two posters in doorways and one behind a column).
   const posterSpots: Array<[number, number]> = [
-    [150, -1],
-    [236, -1],
-    [405, -1],
-    [575, -1],
-    [300, 1],
-    [470, 1],
+    [199, -1],
+    [539, -1],
+    [330, 1],
+    [530, 1],
   ];
   posterSpots.forEach(([x, side], i) => {
     const zFace = side < 0 ? m(CY0) + 0.08 : m(CY1) - 0.08;
@@ -658,6 +682,31 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
       group.add(pl);
     }
   });
+
+  // A tall animated ad between cinemas B and C: the conference, the keynote
+  // speaker still TBA, tomato soup.
+  {
+    const ad = adScreen(1.7, 3.3);
+    ad.position.set(m(369), 2.15, m(CY0) + 0.07);
+    group.add(ad);
+    updaters.push((t) => (ad.userData.tick as (t: number) => void)(t));
+    const frame = new THREE.Mesh(box(1.9, 3.5, 0.12, V(0, 0, 0)), mats.darkMetal);
+    frame.position.set(m(369), 2.15, m(CY0) + 0.0);
+    group.add(frame);
+    const pl = new THREE.PointLight(0xb040ff, 26, 7, 2);
+    pl.position.set(m(369), 1.8, m(CY0) + 1.2);
+    group.add(pl);
+    volumePoints.push({ position: pl.position.clone(), color: new THREE.Color(0.6, 0.3, 1).multiplyScalar(0.8), range: 3 });
+  }
+  // The dot-matrix sign over the fire shutter says what the chapter wants.
+  {
+    const tick = ledTicker('SECTION CLOSED  ·  FIRE DOOR SEALED  ·  ENTER THE 4-DIGIT CODE AT THE KEYPAD  ·  DEVOXX ROOMS 3–10 BEYOND', 7.6, 0.55, 0xff3a0a);
+    tick.rotation.y = -Math.PI / 2;
+    tick.position.set(m(F1.fireX + 7) - 0.37, 4.75, (c0 + c1) / 2);
+    group.add(tick);
+    updaters.push((t) => (tick.userData.tick as (t: number) => void)(t));
+    volumePoints.push({ position: V(m(F1.fireX) - 0.8, 4.6, (c0 + c1) / 2), color: new THREE.Color(1, 0.2, 0.05).multiplyScalar(1.2), range: 5 });
+  }
 
   // Blue wayfinding (CAPTIONS.md): toward the foyer and toward the Devoxx rooms.
   {
@@ -983,4 +1032,40 @@ function hologram(): THREE.Group {
   g.add(beam);
   g.userData.mat = mat;
   return g;
+}
+
+/* ------------------------------------------------------------- star ceiling */
+
+function starCeiling(r: RoomDef): THREE.Points {
+  const n = Math.round((r.w * r.h) / 110);
+  const pos = new Float32Array(n * 3);
+  const seed = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    pos[i * 3] = m(r.x + 4 + Math.random() * (r.w - 8));
+    pos[i * 3 + 1] = HEIGHTS.room - 0.02;
+    pos[i * 3 + 2] = m(r.y + 4 + Math.random() * (r.h - 8));
+    seed[i] = Math.random();
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('seed', new THREE.BufferAttribute(seed, 1));
+  const mat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: { time: { value: 0 } },
+    vertexShader: /* glsl */ `attribute float seed; varying float vS; uniform float time;
+      void main(){ vS = seed; vec4 mv = modelViewMatrix * vec4(position, 1.); gl_Position = projectionMatrix * mv; gl_PointSize = max(1.5, (1. + 2. * seed) * 14. / -mv.z); }`,
+    fragmentShader: /* glsl */ `varying float vS; uniform float time;
+      void main(){ vec2 d = gl_PointCoord - .5; float a = smoothstep(.5, 0., length(d));
+        float tw = .55 + .45 * sin(time * (1. + vS * 3.) + vS * 40.);
+        vec3 c = mix(vec3(1., .85, .6), vec3(.6, .8, 1.), step(.7, vS));
+        gl_FragColor = vec4(c * a * tw * 40., a); }`,
+  });
+  const pts = new THREE.Points(g, mat);
+  pts.frustumCulled = false;
+  pts.onBeforeRender = (_r, _s, _c) => {
+    mat.uniforms.time.value = performance.now() / 1000;
+  };
+  return pts;
 }
