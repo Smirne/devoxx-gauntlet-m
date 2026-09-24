@@ -178,6 +178,14 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
    */
   breaker: { h: 0.9, tl: true, lift: 0.6 },
   cabinet: { h: 1.75, tl: true, lift: 0.15 },
+  /*
+   * The router cabinet's pilot lamp: an annunciator strip across the top of the
+   * carcass, whose own top sits just under the cabinet's 1.90 m. It is bolted to
+   * a cabinet a robot already cannot walk through, so it carries no collider of
+   * its own and is excused by `isFloorDecalOrHung` on its lift, like the breaker
+   * handles and the beer taps.
+   */
+  pilot: { h: 0.1, tl: true, lift: 1.78 },
   crate: { h: 0.34 },
   cable: { h: 0.02, flat: true },
 });

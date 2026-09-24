@@ -107,6 +107,35 @@ export type SoundId =
   | 'clue'
   /** A breaker lever thrown in the technical room. */
   | 'breaker'
+  /**
+   * The exhibition hall's switchboard taking load: the last of the three breakers.
+   *
+   * Michele, 26 Sep 2026: *"the braker activation seems to do nothing, apart from
+   * the message."* The design says why the hall does NOT come up here — a supply
+   * is not a lit room, and the lighting circuit's contactor stays open until the
+   * router authorises it (`ch2-expo.ts`) — so this cue has one job: make a supply
+   * arriving feel like something without lighting anything. The contactor pulling
+   * in, a relay dropping somewhere over your head, and then the board settling
+   * into a hum at 100 Hz, which is twice the Belgian 50 Hz mains and what a
+   * transformer core actually does. Nothing in it is bright.
+   */
+  | 'busbar'
+  /**
+   * The router negotiating with the world: a 56k handshake, and Michele asked for
+   * it by name — *"A 56k like sound for the modem"*.
+   *
+   * Synthesised like everything else here, which a handshake makes easy because a
+   * handshake is tones and shaped noise and nothing else. The beats, in order:
+   * DTMF dialling the venue's ancient fallback line, the answering modem's 2100 Hz
+   * ANSam tone, the two V.21 channels FSK-ing against each other (980/1180 one
+   * way, 1650/1850 the other — the "bee-doo bee-doo"), the scrambled training
+   * sequence, and the drop into the connected hiss. Everything inside the
+   * 300–3400 Hz telephone band, which is the whole reason a modem sounds like a
+   * modem. Two seconds; a real one is thirty and nobody wants that in a puzzle
+   * game. `tests/audio-cues.test.ts` asserts the carriers, because nobody in this
+   * environment can hear it.
+   */
+  | 'modem'
   /** Droid climbing onto Biggy: servos, then weight settling. */
   | 'mount'
   /** Chapter transition swell, under the fade to black. */
@@ -139,8 +168,23 @@ export interface Audio {
 
 /** Headroom under the limiter; the mix is deliberately quiet under the HUD. */
 const MASTER_GAIN = 0.55;
-/** Hard cap on simultaneous one-shot voices. Extra requests are dropped, not queued. */
-const MAX_VOICES = 14;
+/**
+ * Hard cap on simultaneous one-shot voices. Extra requests are dropped, not queued.
+ *
+ * It was 14, and 14 was a cap on how many things SOUND at once — which is not what
+ * it counts. A voice is taken when it is created and given back when it stops, and
+ * a cue schedules its whole timeline up front, so a two-second cue holds a slot per
+ * voice for two seconds whether or not any of them is sounding yet. `victory`
+ * already books eleven of the fourteen for two and a half seconds; land a Biggy
+ * footstep (three voices) on top of it and the fifteenth request went silently in
+ * the bin. `modem` books sixteen for two seconds and would have been truncated
+ * halfway through its own handshake.
+ *
+ * Twenty-four is still a cap and still cheap — these are sine and sawtooth
+ * oscillators and one shared noise buffer — and it leaves the whole of the longest
+ * cue plus three robots' footsteps inside the budget.
+ */
+const MAX_VOICES = 24;
 /** Ambient crossfade, seconds. Long enough to feel like a room change, not a cut. */
 const BED_FADE = 1.2;
 /** Minimum spacing between footsteps of the same robot, seconds. */
@@ -291,6 +335,20 @@ export function createAudio(): Audio {
     attack?: number;
     filter?: FilterSpec;
     detune?: number;
+    /**
+     * Frequencies this one voice SWITCHES to, seconds after `t0` — not a glide.
+     *
+     * Written for `modem`, and it is the difference between a modem and a siren:
+     * a V.21 channel is one continuous carrier being keyed between a mark and a
+     * space tone, so the pitch changes instantly and the voice never stops. Done
+     * as one short tone per segment it would be eight voices, eight attacks and
+     * eight decays — a row of beeps. Done here it is one voice that steps, which
+     * is both what the hardware does and a quarter of the budget.
+     *
+     * Ignored by every other cue, and not to be combined with `f1`: a ramp and a
+     * step would be two things scheduling the same parameter.
+     */
+    steps?: ReadonlyArray<{ t: number; f: number }>;
   }
 
   /** One pitched voice: oscillator -> (filter) -> envelope -> master. */
@@ -301,6 +359,7 @@ export function createAudio(): Audio {
     osc.type = o.type;
     osc.frequency.setValueAtTime(Math.max(10, o.f0), o.t0);
     if (o.f1 !== undefined) osc.frequency.exponentialRampToValueAtTime(Math.max(10, o.f1), o.t0 + o.dur);
+    if (o.steps) for (const s of o.steps) osc.frequency.setValueAtTime(Math.max(10, s.f), o.t0 + s.t);
     if (o.detune) osc.detune.value = o.detune;
     const env = envelope(c, o.t0, o.peak, o.attack ?? 0.006, o.dur);
     const nodes: AudioNode[] = [osc, env];
@@ -691,6 +750,158 @@ export function createAudio(): Audio {
         tone({ type: 'sine', f0: 92, f1: 44, t0: t0 + 0.005, dur: 0.24, peak: 0.24 * g, attack: 0.002 });
         break;
       }
+      case 'busbar': {
+        /*
+         * THE BOARD TAKES LOAD — and the hall stays black, which is the hard part.
+         *
+         * Everything in here is low. Nothing rings, nothing chimes, nothing
+         * brightens: the one thing this cue must not sound like is a room coming
+         * on, because the room does not come on (`ch2-expo.ts`, and
+         * `tests/ch2-chain.test.ts` guards it). What a switchboard does when the
+         * last handle goes up is pull a contactor in, drop a relay somewhere over
+         * your head, and then HUM, and the hum is the part that says a supply
+         * arrived rather than something got hit.
+         */
+        // 1. The contactor pulling in. A hard clack with a body under it — this is
+        //    a lump of copper being slammed onto a busbar, not a switch clicking.
+        noise({ t0, dur: 0.04, peak: 0.16 * g, attack: 0.001, filter: { type: 'highpass', f: 2400 } });
+        tone({ type: 'sine', f0: 78, f1: 36, t0: t0 + 0.004, dur: 0.22, peak: 0.26 * g, attack: 0.002 });
+        // 2. The board settles into a hum. 100 Hz, because a transformer core hums
+        //    at TWICE the mains and Kinepolis is on a 50 Hz supply — with the
+        //    second and third harmonics over it, which is what makes it a core and
+        //    not a test tone. Slow attack: it arrives over a third of a second,
+        //    the way a big machine does.
+        tone({ type: 'sine', f0: 100, t0: t0 + 0.05, dur: 1.25, peak: 0.11 * g, attack: 0.38 });
+        tone({
+          type: 'triangle',
+          f0: 200,
+          t0: t0 + 0.08,
+          dur: 1.15,
+          peak: 0.035 * g,
+          attack: 0.45,
+          filter: { type: 'lowpass', f: 700 },
+        });
+        tone({ type: 'sine', f0: 300, t0: t0 + 0.1, dur: 1.05, peak: 0.022 * g, attack: 0.5 });
+        // 3. A relay dropping somewhere over your head — the chapter's own line.
+        //    Brighter and much quieter than the contactor: it is twenty metres
+        //    away and up, so it has a transient and no weight at all.
+        noise({ t0: t0 + 0.14, dur: 0.035, peak: 0.07 * g, attack: 0.001, filter: { type: 'bandpass', f: 1800, q: 4 } });
+        tone({ type: 'sine', f0: 120, f1: 70, t0: t0 + 0.145, dur: 0.1, peak: 0.06 * g, attack: 0.002 });
+        // 4. ...and the cabinet's fan, spinning up behind a shut steel door. The
+        //    band opens as it gets to speed. This is the noise Michele's own
+        //    design promised the player and never made.
+        noise({
+          t0: t0 + 0.22,
+          dur: 1.1,
+          peak: 0.05 * g,
+          attack: 0.55,
+          filter: { type: 'bandpass', f: 260, f1: 900, q: 1 },
+        });
+        break;
+      }
+      case 'modem': {
+        /*
+         * A 56k HANDSHAKE, IN TWO SECONDS. Michele asked for the sound by name.
+         *
+         * Recognisable beats precise (CLAUDE.md), and the two agree here: the
+         * things that make a handshake recognisable are the actual frequencies of
+         * the actual protocol, so the shortcut and the honest version are the same
+         * sound. What is compressed is only TIME — a real V.90 train is thirty
+         * seconds of this.
+         *
+         * The fiction: it is 2019 hardware in a cabinet nobody has opened since,
+         * and the venue's uplink falls back over a line that was old when the
+         * cinema was built. The joke and the physics are the same joke.
+         */
+        // 1. Dialling. Three DTMF digits, each two tones at once off the standard
+         //   697/770/941 rows and 1209/1336/1477 columns. Nothing else in the cue
+         //   is as instantly placeable as this.
+        const dial: ReadonlyArray<readonly [number, number]> = [
+          [697, 1209],
+          [770, 1336],
+          [941, 1477],
+        ];
+        for (let k = 0; k < dial.length; k++) {
+          for (const f of dial[k]) {
+            tone({
+              type: 'sine',
+              f0: f,
+              t0: t0 + k * 0.1,
+              dur: 0.07,
+              peak: 0.045 * g,
+              attack: 0.004,
+              filter: { type: 'lowpass', f: 3400 },
+            });
+          }
+        }
+        // 2. The answer tone: 2100 Hz ANSam, the "beeeee". A second oscillator
+        //    three hertz off it beats slowly against the first, which is what the
+        //    real thing's phase reversals sound like from a speaker on a desk.
+        tone({ type: 'sine', f0: 2100, t0: t0 + 0.36, dur: 0.34, peak: 0.075 * g, attack: 0.012 });
+        tone({ type: 'sine', f0: 2103, t0: t0 + 0.37, dur: 0.32, peak: 0.05 * g, attack: 0.012 });
+        // 3. The two V.21 channels, keyed against each other — the "bee-doo
+        //    bee-doo". One continuous carrier per channel, stepping between its
+        //    mark and its space tone (see `ToneOpts.steps`), because that is what
+        //    FSK is: eight separate beeps would be a siren.
+        const KEYED = 0.05;
+        const fsk = (mark: number, space: number, phase: number): ReadonlyArray<{ t: number; f: number }> =>
+          Array.from({ length: 8 }, (_, k) => ({ t: k * KEYED, f: (k + phase) % 2 === 0 ? mark : space }));
+        tone({
+          type: 'sine',
+          f0: 980,
+          steps: fsk(980, 1180, 0),
+          t0: t0 + 0.72,
+          dur: 0.4,
+          peak: 0.05 * g,
+          attack: 0.01,
+          filter: { type: 'lowpass', f: 3400 },
+        });
+        tone({
+          type: 'sine',
+          f0: 1850,
+          steps: fsk(1650, 1850, 1),
+          t0: t0 + 0.72,
+          dur: 0.4,
+          peak: 0.05 * g,
+          attack: 0.01,
+          filter: { type: 'lowpass', f: 3400 },
+        });
+        // 4. The scrambled training sequence — the "pshhhkkkkkrrr". It CANNOT be
+        //    tones: scrambling is what makes data look like noise, and a modem
+        //    training is two modems sending each other noise on purpose. Three
+        //    bands: one sweeping up through the voice band, one narrow and hard
+        //    over it, and a low growl under both.
+        noise({
+          t0: t0 + 1.1,
+          dur: 0.5,
+          peak: 0.08 * g,
+          attack: 0.03,
+          filter: { type: 'bandpass', f: 800, f1: 2900, q: 0.9 },
+        });
+        noise({
+          t0: t0 + 1.16,
+          dur: 0.38,
+          peak: 0.055 * g,
+          attack: 0.02,
+          rate: 1.6,
+          filter: { type: 'bandpass', f: 1750, q: 5 },
+        });
+        noise({ t0: t0 + 1.1, dur: 0.42, peak: 0.04 * g, attack: 0.04, filter: { type: 'bandpass', f: 420, q: 1.2 } });
+        // 5. Carrier lock, and the line going quiet. Two quick pips a fourth
+        //    apart — still inside the telephone band, because everything is — over
+        //    a hiss that thins out and dies. A cue needs an arrival, and this is
+        //    a handshake's: the noise stops.
+        tone({ type: 'sine', f0: 1760, t0: t0 + 1.62, dur: 0.09, peak: 0.05 * g, attack: 0.005 });
+        tone({ type: 'sine', f0: 2349, t0: t0 + 1.71, dur: 0.11, peak: 0.045 * g, attack: 0.005 });
+        noise({
+          t0: t0 + 1.6,
+          dur: 0.36,
+          peak: 0.03 * g,
+          attack: 0.05,
+          filter: { type: 'bandpass', f: 2400, f1: 1100, q: 0.6 },
+        });
+        break;
+      }
       case 'mount': {
         // Servos winding up, then Droid's weight settling on Biggy's shoulders.
         tone({
@@ -929,8 +1140,18 @@ export function createAudio(): Audio {
     next.gain.gain.setValueAtTime(0.0001, t);
     next.gain.gain.exponentialRampToValueAtTime(1, t + BED_FADE);
     bed = next;
-    // The hall's power coming back is the sound of chapter 2 starting.
-    if (chapter === 2) play('breaker', { delay: 0.45, gain: 0.8 });
+    /*
+     * CHAPTER 2 NO LONGER OPENS ON A BREAKER.
+     *
+     * This used to fire `breaker` half a second into the bed, on the grounds that
+     * *"the hall's power coming back is the sound of chapter 2 starting"* — which
+     * was harmless while nothing else in the game ever played that cue, and is
+     * exactly wrong now that it has a job. `breaker` means ONE HANDLE WENT UP, and
+     * the chapter opens with all three of them down: a player who hears it on the
+     * title card has been told something that is not true, and has heard the
+     * feedback for Droid's job before doing it. The chapter's own opening sound is
+     * `transition` from `main.ts`, over the dark hall's bed.
+     */
   }
 
   /* ---------------------------------------------------------------- transport */

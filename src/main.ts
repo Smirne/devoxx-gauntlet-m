@@ -316,6 +316,10 @@ let lastLockSwing = 0;
 let lastCabinetSwing = 0;
 /** Last frame's swing on chapter 3's registration gate, so the hook plays once. */
 let lastGateSwing = 0;
+/** Handles up on chapter 2's breaker panel, so each one gets its own cue. */
+let lastBreakerV = 0;
+/** The router cabinet's pilot lamp: '' outside chapter 2, then idle/active/done. */
+let lastPilot = '';
 /** Last frame's flourish per robot, so a party trick's cue plays once. */
 const lastFlair: Record<RobotKind, number> = { voxxy: 0, droid: 0, biggy: 0 };
 /**
@@ -404,6 +408,38 @@ function updateAudio(snap: GameSnapshot, dt: number): void {
   if (shouldering > 0 && lastCabinetSwing <= 0) audio.play('cabinet');
   lastCabinetSwing = shouldering;
 
+  /*
+   * CHAPTER 2'S SWITCHBOARD.
+   *
+   * Michele: *"the braker activation seems to do nothing, apart from the
+   * message. A 56k like sound for the modem and a light on a cabinet to signal
+   * you should go there?"* All three of those are here.
+   *
+   * The handle count and not the strike, because the strike decays over 0.45 s
+   * and two `E` presses can be 100 ms apart — a progress edge would swallow the
+   * second cue. A ladder of three, so the board audibly settles as the load
+   * comes on.
+   */
+  const breakerV = snap.props.find((p) => p.kind === 'breaker')?.v ?? 0;
+  if (breakerV > lastBreakerV) audio.play('breaker', { semitones: [0, -3, -6][breakerV - 1] ?? 0 });
+  lastBreakerV = breakerV;
+
+  /*
+   * The cabinet's pilot lamp is the state machine for the other two cues, which
+   * is why they ride it rather than the breaker count: the lamp coming up IS the
+   * supply landing, and the lamp going green IS the router on the air.
+   */
+  const pilot = snap.props.find((p) => p.kind === 'pilot')?.state ?? '';
+  // The supply landing — the third handle. Nothing in it is above 300 Hz: the
+  // hall is still dark and a bright cue would promise a room the light isn't in.
+  if (pilot === 'active' && lastPilot === 'idle') audio.play('busbar');
+  // The handshake, and the arpeggio landing as its hiss dies.
+  if (pilot === 'done' && lastPilot === 'active') {
+    audio.play('modem');
+    audio.play('chime', { delay: 1.95 });
+  }
+  lastPilot = pilot;
+
   // Stephan opening the stairs for the day: a hook off an eye, and nothing hits.
   // The chapter holds the hall for the whole swing before the exit cutscene, so
   // this is heard over the thing it describes rather than under a fade.
@@ -464,6 +500,8 @@ function updateAudio(snap: GameSnapshot, dt: number): void {
     lastLockSwing = 0;
     lastCabinetSwing = 0;
     lastGateSwing = 0;
+    lastBreakerV = 0;
+    lastPilot = '';
     audio.setAmbient(snap.chapter);
     if (snap.chapter > 1) audio.play('transition');
   }

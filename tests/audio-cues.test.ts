@@ -23,23 +23,55 @@ interface Voice {
   kind: 'osc' | 'noise';
   start: number;
   stop: number;
+  /**
+   * Every frequency this oscillator is set to, in the order it is set — the pitch
+   * it starts on, anything it ramps to, and every step inside it. Empty for noise,
+   * which has no pitch.
+   *
+   * Michele asked for a 56k handshake, which is a specific set of frequencies and
+   * not a vibe: without this the test could only count voices, and a cue that put
+   * the answer tone at 400 Hz would pass. See `the modem` below.
+   */
+  freqs: number[];
+  /**
+   * The loudest this voice's own envelope is asked to reach.
+   *
+   * `envelope()` ramps to `peak` and back down, so the largest value the gain is
+   * ramped to IS the peak. It is what lets the test say "nothing clips" with a
+   * number rather than a hope.
+   */
+  peak: number;
 }
 
 /** A scheduled `AudioParam`: only the calls `audio.ts` actually makes. */
-function param(value = 0): Record<string, unknown> {
+function param(value = 0, rec?: (v: number) => void): Record<string, unknown> {
+  const note = (v: number): void => {
+    if (rec && Number.isFinite(v)) rec(v);
+  };
   return {
     value,
-    setValueAtTime: (): void => undefined,
-    exponentialRampToValueAtTime: (): void => undefined,
-    linearRampToValueAtTime: (): void => undefined,
+    setValueAtTime: (v: number): void => note(v),
+    exponentialRampToValueAtTime: (v: number): void => note(v),
+    linearRampToValueAtTime: (v: number): void => note(v),
     cancelScheduledValues: (): void => undefined,
-    setTargetAtTime: (): void => undefined,
+    setTargetAtTime: (v: number): void => note(v),
   };
 }
 
 function stubAudio(): { voices: Voice[]; restore: () => void } {
   const voices: Voice[] = [];
   const connect = (n: unknown): unknown => n;
+  /**
+   * The voice whose envelope has not been created yet.
+   *
+   * `tone()` creates its oscillator and then its envelope gain; `noise()` creates
+   * the buffer source, a filter, then its envelope gain. So the FIRST gain made
+   * after a source is that source's envelope, and that is how a peak is attached
+   * to a voice without the stub having to model the graph. The master gain is
+   * created in `ensure()`, before any source exists, so it is never mistaken for
+   * one.
+   */
+  let pending: Voice | null = null;
 
   class Ctx {
     currentTime = 0;
@@ -47,7 +79,9 @@ function stubAudio(): { voices: Voice[]; restore: () => void } {
     state = 'running';
     destination = { connect };
     createGain(): unknown {
-      return { gain: param(1), connect };
+      const v = pending;
+      pending = null;
+      return { gain: param(1, v ? (x): void => void (v.peak = Math.max(v.peak, x)) : undefined), connect };
     }
     createDynamicsCompressor(): unknown {
       return { threshold: param(), knee: param(), ratio: param(), attack: param(), release: param(), connect };
@@ -56,10 +90,11 @@ function stubAudio(): { voices: Voice[]; restore: () => void } {
       return { type: 'lowpass', frequency: param(), Q: param(), connect };
     }
     createOscillator(): unknown {
-      const v: Voice = { kind: 'osc', start: 0, stop: 0 };
+      const v: Voice = { kind: 'osc', start: 0, stop: 0, freqs: [], peak: 0 };
+      pending = v;
       const node = {
         type: 'sine',
-        frequency: param(),
+        frequency: param(0, (f) => v.freqs.push(f)),
         detune: param(),
         connect,
         onended: null as null | (() => void),
@@ -75,7 +110,8 @@ function stubAudio(): { voices: Voice[]; restore: () => void } {
       return node;
     }
     createBufferSource(): unknown {
-      const v: Voice = { kind: 'noise', start: 0, stop: 0 };
+      const v: Voice = { kind: 'noise', start: 0, stop: 0, freqs: [], peak: 0 };
+      pending = v;
       const node = {
         buffer: null as unknown,
         loop: false,
@@ -115,6 +151,36 @@ function stubAudio(): { voices: Voice[]; restore: () => void } {
 
 afterEach(() => vi.unstubAllGlobals());
 
+/** `MASTER_GAIN` in `src/render/audio.ts` — the headroom every cue is mixed under. */
+const MASTER_GAIN = 0.55;
+
+/**
+ * The loudest the whole cue can be, at the destination, before the limiter.
+ *
+ * Each voice is treated as a rectangle of its own envelope peak from start to
+ * stop, which is a deliberate OVER-estimate: a real envelope only touches its
+ * peak for an instant and is below it everywhere else. So a cue that passes this
+ * cannot clip, and one that fails it might not — which is the right way round for
+ * a bound nobody can hear in this environment.
+ */
+function loudest(voices: readonly Voice[]): number {
+  if (voices.length === 0) return 0;
+  const end = Math.max(...voices.map((v) => v.stop));
+  let worst = 0;
+  for (let t = 0; t <= end; t += 0.001) {
+    let sum = 0;
+    for (const v of voices) if (t >= v.start && t < v.stop) sum += v.peak;
+    if (sum > worst) worst = sum;
+  }
+  return worst * MASTER_GAIN;
+}
+
+/** Every pitch any oscillator in the cue is set to, rounded to the nearest hertz. */
+const pitches = (voices: readonly Voice[]): number[] => voices.flatMap((v) => v.freqs).map((f) => Math.round(f));
+/** Is `f` among them, within `tol` Hz? */
+const hasTone = (voices: readonly Voice[], f: number, tol = 3): boolean =>
+  pitches(voices).some((p) => Math.abs(p - f) <= tol);
+
 const IDS: readonly SoundId[] = [
   'chime',
   'nope',
@@ -131,6 +197,8 @@ const IDS: readonly SoundId[] = [
   'switch',
   'clue',
   'breaker',
+  'busbar',
+  'modem',
   'mount',
   'transition',
   'applause',
@@ -311,6 +379,130 @@ describe('the synthesised cues', () => {
     const last = Math.max(...voices.map((v) => v.start)) - t0;
     expect(last).toBeGreaterThan(0.6);
     expect(last).toBeLessThan(1.1);
+    audio.dispose();
+    restore();
+  });
+
+  /**
+   * THE SWITCHBOARD TAKING LOAD — Michele, 26 Sep 2026: *"the braker activation
+   * seems to do nothing, apart from the message."*
+   *
+   * The last handle is the one that closes the supply, and the chapter's own
+   * narration has always said what that sounds like: *"a thump you feel through
+   * the floor"*, *"a relay drops somewhere over your head"*. What it must NOT
+   * sound like is a room lighting up, because the room does not light up — the
+   * whole chain rests on that (`tests/ch2-chain.test.ts`), and a bright cue is a
+   * promise a dark hall then breaks.
+   */
+  it('lands the supply low, and hums at twice the mains', () => {
+    const { voices, restore } = stubAudio();
+    const audio = createAudio();
+    audio.play('busbar');
+    const t0 = Math.min(...voices.map((v) => v.start));
+    const end = Math.max(...voices.map((v) => v.stop));
+
+    // The contactor pulling in is the first thing, and it is a hit: something with
+    // a body under it, not a tap. (The stair gate is the opposite case and is
+    // measured the same way, two tests up.)
+    expect(voices.some((v) => v.start - t0 < 0.01), 'nothing happens when the handle goes up').toBe(true);
+    expect(
+      voices.some((v) => v.start - t0 < 0.02 && v.stop - v.start >= 0.12),
+      'the board takes seven hundred amps and it sounds like a pen click',
+    ).toBe(true);
+
+    /*
+     * ...and then the board HUMS, which is the half of this that says a supply
+     * arrived rather than something being hit. A transformer core hums at twice
+     * the mains frequency — 100 Hz on a Belgian 50 Hz supply, not 50 — and it has
+     * to hold long enough to be a room changing rather than a note.
+     */
+    expect(hasTone(voices, 100), 'the board does not hum at twice the 50 Hz mains').toBe(true);
+    const hum = voices.filter((v) => v.freqs.some((f) => Math.abs(f - 100) <= 3));
+    expect(Math.max(...hum.map((v) => v.stop - v.start)), 'the hum is a blip, not a room').toBeGreaterThan(1);
+
+    // Nothing in it is a lamp or a chime: a supply arriving is a low sound, and
+    // the hall is still black when it finishes.
+    for (const f of pitches(voices)) {
+      expect(f, 'something bright is in the supply cue — the hall does NOT light up here').toBeLessThan(700);
+    }
+    expect(end - t0, 'the board is still talking long after the handle went up').toBeLessThan(1.8);
+    expect(loudest(voices), 'the supply cue clips').toBeLessThan(1);
+
+    audio.dispose();
+    restore();
+  });
+
+  /**
+   * THE MODEM — Michele, 26 Sep 2026: *"A 56k like sound for the modem"*.
+   *
+   * It belongs to the router coming ONLINE, not to the breakers: the supply is
+   * `busbar` above, and this is the thing on the end of the wire finally agreeing
+   * with the thing at the other end. Synthesised like everything else in
+   * `audio.ts` — no asset files, ever (CLAUDE.md) — which a 56k handshake makes
+   * easy, because a handshake is literally tones and shaped noise.
+   *
+   * The frequencies are not decoration. A real V.8/V.21 exchange is:
+   *
+   *   - DTMF dialling, two tones at a time off the 697/770/852/941 rows and the
+   *     1209/1336/1477 columns;
+   *   - the answering modem's **2100 Hz** ANSam tone, the "beeeee" everybody can
+   *     hum;
+   *   - the two V.21 channels FSK-ing against each other — 980/1180 originate,
+   *     1650/1850 answer — which is the "bee-doo bee-doo";
+   *   - a scrambled training sequence, which is noise;
+   *   - and the connected hiss.
+   *
+   * All of it inside the 300–3400 Hz telephone band, because that is the whole
+   * reason a modem sounds like a modem: it is a sound built to survive a phone
+   * line. That band is the assertion — a cue with the answer tone at 400 Hz would
+   * be a beep, and this test is the only way anybody here can tell the difference.
+   */
+  it('handshakes like a 56k modem, inside the telephone band', () => {
+    const { voices, restore } = stubAudio();
+    const audio = createAudio();
+    audio.play('modem');
+    const t0 = Math.min(...voices.map((v) => v.start));
+    const end = Math.max(...voices.map((v) => v.stop));
+
+    // A real handshake is thirty seconds. Nobody wants thirty seconds of it in a
+    // puzzle game, and a cue shorter than a second cannot get through the beats.
+    expect(end - t0, 'the handshake is over before it is recognisable').toBeGreaterThan(1.5);
+    expect(end - t0, 'a real handshake is thirty seconds; this is a game').toBeLessThan(2.3);
+
+    // The carriers, where a 56k handshake's carriers are.
+    expect(hasTone(voices, 2100), 'no 2100 Hz answer tone — the one everybody can hum').toBe(true);
+    for (const f of [980, 1180]) {
+      expect(hasTone(voices, f), `the originating V.21 channel is missing ${f} Hz`).toBe(true);
+    }
+    for (const f of [1650, 1850]) {
+      expect(hasTone(voices, f), `the answering V.21 channel is missing ${f} Hz`).toBe(true);
+    }
+    // ...and it dials first: two tones at once off the DTMF grid.
+    expect(
+      [697, 770, 852, 941].filter((f) => hasTone(voices, f)).length,
+      'nothing dials — no DTMF row tones',
+    ).toBeGreaterThanOrEqual(2);
+    expect(
+      [1209, 1336, 1477, 1633].filter((f) => hasTone(voices, f)).length,
+      'nothing dials — no DTMF column tones',
+    ).toBeGreaterThanOrEqual(2);
+
+    // The telephone band. Everything pitched lives in it, or it is not a modem.
+    for (const f of pitches(voices)) {
+      expect(f, 'a pitch outside the 300–3400 Hz telephone band').toBeGreaterThanOrEqual(300);
+      expect(f, 'a pitch outside the 300–3400 Hz telephone band').toBeLessThanOrEqual(3400);
+    }
+
+    // The shape: dialling at the front, the carriers in the middle, the scrambled
+    // training sequence as NOISE (it cannot be tones — that is what scrambling is),
+    // and something still sounding at the end, which is the line going quiet.
+    expect(voices.some((v) => v.start - t0 < 0.02), 'it does not start on the dial').toBe(true);
+    const training = voices.filter((v) => v.kind === 'noise' && v.start - t0 > 0.9 && v.start - t0 < 1.6);
+    expect(training.length, 'there is no scrambled training sequence, only tones').toBeGreaterThanOrEqual(2);
+    expect(voices.some((v) => v.start - t0 > 1.5), 'the handshake never connects').toBe(true);
+
+    expect(loudest(voices), 'the handshake clips').toBeLessThan(1);
+
     audio.dispose();
     restore();
   });
