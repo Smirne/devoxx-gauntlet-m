@@ -2298,3 +2298,61 @@ visibility polygon does not touch it. The levels are standby now (0.05 cloth, 0.
 banner, 0.22 totem) and were tuned on measured pixels — the Kube Kettle panel goes 129 to 75 in
 blue — rather than on how the crop looked. Anything else in this venue that wants to be visible in
 chapter 2 will hit the same wall.
+
+## The staircase, cleared — and a minigame that was played on it
+
+**What the human decided.** Michele filed this twice, from two directions. A screenshot first:
+*"the orange thing and the big black thing with halo (is it a booth? in the middle of the
+stairs?)"* — and when I asked which object he meant rather than guessing, he answered with the
+rule instead of the object: *"staircase should be clear of booths in geenral"*.
+
+**Two separate faults in that one corner, and the dressing round exposed both.** Sponsor column 3
+ran 880..980 against `GF.smallStairs.x = 952` — 28 px inside the stairwell, three booths deep —
+and `boothTotem()` put a lit totem at 967..977, entirely inside it. That totem is the orange
+thing. It survived rounds of review because an undressed booth is a grey block; the moment the
+stands were given names it started announcing **Async Airlines** from the middle of a flight of
+stairs. Dressing the stands made the fault easier to see, not harder, which is the argument for
+doing the looks work at all.
+
+The second fault was worse and nobody had reported it: **chapter 3's shuffleboard was played on
+the staircase.** The duck and its target were laid out east of the Rubber Duck stand, which put
+both inside `GF.smallStairs` and drew the target decal across the treads.
+
+**What the agent did.** End-of-row stands are 60 px instead of 100, which ends column 3 at 940
+with 12 px of daylight and moves the totem to 927..937. The 160 x 140 pitch does not move, because
+`HALL_COLUMNS` is derived from these rects and the column grid phases against the bays — measured
+before and after, the grid is identical, eighteen columns at the same eighteen positions.
+
+**The duck lane took three goes, and the two failures are the part worth keeping.**
+
+1. The 60 px aisle immediately west of the stand: both **ends** of the lane measured clear, and a
+   roof column at x 853..867, y 333..347 sits squarely in the middle of it. Checking a route's
+   endpoints and calling it clear is the exact mistake `aisle.test.ts` was rewritten to stop
+   making, and it was caught here the same way — by a test that walks the whole lane, written
+   before the fix rather than after it.
+2. The aisle further north, at y 170: lane clear, target clear, **and Voxxy could not play it.**
+   She lines up 22 px behind the duck, and behind it was x 902 — inside `GF.store` (x 900..1040).
+   She was pushed out of the wall every shot and the duck never moved. A lane is not just where
+   the puck goes; it is also where the player has to stand to hit it. The trace is in the notes
+   because "the test passed and the game was unplayable" is the failure mode this repo keeps
+   finding.
+
+The scan that produced the shipped lane requires all four: the shove spot at 22, 30 and 40 px
+back, every point of the 95 px lane at 10 px of duck clearance, the 22 px target ring, and 30 px
+of run-off past it so a hard shove does not bury the duck in a wall. 91 positions survive; the
+duck now sits in the aisle directly in front of its own stand.
+
+**One thing the narrowing broke, and the test that caught it.** `The Coffee Sponsor`'s eight cups
+were placed at a literal `r.x + 52`, which at w 60 put them in mid-air over a walking lane with no
+collider under them. `tests/booths.test.ts` — written by the stands agent the same night —
+reported it by position and size. They are anchored to the stand's right edge now.
+
+**New: `tests/staircase-clear.test.ts`.** Five tests. No sponsor stand in the stairwell, none of
+the booths' own furniture either (the totem named separately, because a stand can be clear while
+the lit sign beside it is not), a real 6 px gap rather than a shared edge, the column grid pinned
+at eighteen known positions so the next person to resize a stand finds out in a second instead of
+in a screenshot, and the shuffleboard lane walked end to end. Nothing had ever asked whether an
+object had been put somewhere absurd — every test in the repo asked whether a robot could walk
+somewhere.
+
+Full suite: 362 passed, 19 files, 0 failed.
