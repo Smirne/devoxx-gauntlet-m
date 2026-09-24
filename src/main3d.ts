@@ -146,14 +146,43 @@ const MOVE: Readonly<Record<string, keyof typeof held>> = {
   ArrowRight: 'right',
 };
 
-/** The sim's stick, from held keys and the camera's yaw — refreshed every frame. */
-function pushStick(): void {
+/** A/D alone, from standing: the robot is turning on the spot until they let go. */
+let spinning = false;
+
+/**
+ * The sim's stick, from held keys and the camera's yaw — refreshed every frame.
+ *
+ * WASD are camera-relative (the first build's controls, which Michele asked to
+ * keep). One exception, his too: A or D on their own, from standing, turn the
+ * robot in place rather than walking it off diagonally ("pressing left makes it
+ * go ahead and left; I expect it only to turn, if not already moving"). The sim
+ * runs any stick at full speed, so the turn goes through `Game.turn`, which
+ * turns a standing robot without moving it.
+ */
+function pushStick(dt: number): void {
   const fwd = (held.up ? 1 : 0) - (held.down ? 1 : 0);
   const strafe = (held.right ? 1 : 0) - (held.left ? 1 : 0);
   if (fwd === 0 && strafe === 0) {
+    spinning = false;
     game.setStick(0, 0);
     return;
   }
+  const snap = game.snapshot();
+  const b = snap.bots[snap.active] ?? snap.bots[0];
+  const moving = Math.hypot(b.vx, b.vy) > 8;
+  if (fwd === 0 && (spinning || !moving)) {
+    spinning = true;
+    game.setStick(0, 0);
+    game.turn?.(strafe * 2.4 * dt);
+    // The camera turns with her, so W afterwards goes the way she now faces
+    // (W is camera-relative: without this it sent her back the old way).
+    const want = Math.atan2(-Math.cos(b.face), -Math.sin(b.face));
+    let d = want - world.cam.yaw;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    world.cam.yaw += d * Math.min(1, dt * 6);
+    return;
+  }
+  spinning = false;
   const [sx, sy] = world.cam.stick(fwd, strafe);
   game.setStick(sx, sy);
 }
@@ -295,7 +324,7 @@ function frame(dt: number): void {
     world.render(game.snapshot(), dt, true);
     return;
   }
-  pushStick();
+  pushStick(dt);
   game.update(dt);
   const snap = game.snapshot();
   if (snap.chapter > 1) {

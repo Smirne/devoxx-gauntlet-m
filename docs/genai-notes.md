@@ -3017,3 +3017,10 @@ wall.
   to 0.95 of his height. Rejected on the way, and why: every change fixed one screenshot and made
   steering harder. The room clamp pulled the camera in close; the switch reset and the chase
   steering changed what "forward" meant under the player's fingers.
+- *"Pressing left makes it go ahead and left; I expect it only to turn, if not already moving."*
+  Camera-relative A is "walk left", and the sim runs any stick at full speed, so there was no way
+  to turn on the spot. The sim gained `Game.turn(rad)`: it turns the driven robot without moving
+  it, only while standing (under 8 px/s). It is gameplay input (it aims a lamp without walking),
+  so it lives in the sim; only the 3D build calls it, and the 2.5D controls are unchanged unless
+  Michele wires it in there. In 3D, A/D alone from standing turn in place, and the camera swings
+  behind so that W then goes the way the robot faces. Under way, A/D steer as before.

@@ -431,6 +431,14 @@ export interface Game {
   key(code: string): void;
   /** Movement stick, each axis -1..1. */
   setStick(x: number, y: number): void;
+  /**
+   * Turn the driven robot on the spot by `rad` (sim radians, +clockwise on
+   * screen), without moving it. Only while it is standing: a robot under way
+   * steers with the stick. Added for the 3D build's "A/D alone turn in place"
+   * (Michele, 24 Sep); it aims a lamp without walking, so it is gameplay input,
+   * not presentation, and lives here.
+   */
+  turn?(rad: number): void;
   skipChapter(): void;
   /** Jump straight to a chapter — used by tests and the debug overlay. */
   startChapter(n: number): void;
