@@ -33,6 +33,7 @@
  * play" beat rather than a teleport.
  */
 
+import { DEFS } from './constants';
 import type { RobotKind, ViewRect } from './types';
 
 /** Sim px per metre — the crate row is measured in metres by the renderer. */
@@ -127,55 +128,86 @@ export const CRATE_AT: Record<RobotKind, { x: number; y: number }> = {
   biggy: { x: CRATE_ROW.x + 1.46 * PX_PER_M, y: CRATE_ROW.y - (1.78 / 2) * PX_PER_M },
 };
 
-/** The beats, in seconds from the first frame. Durations, never speeds. */
-export const DARK = 1.1;
-/** One lamp warming per robot, in order, overlapping by design. */
-export const LAMP_EACH = 0.55;
-export const LAMP_STEP = 0.4;
-/** The front panel coming off, per crate, staggered the same way. */
-export const PANEL_AT = DARK + LAMP_STEP * 2 + LAMP_EACH + 0.25;
-export const PANEL_EACH = 0.75;
-export const PANEL_STEP = 0.3;
-/** When the walk to the chapter's own marks begins. */
-export const WALK_AT = PANEL_AT + PANEL_STEP * 2 + PANEL_EACH;
-/** How long the title holds at full before it fades under the lamps. */
-/**
- * The title is up, held and gone before `PANEL_AT` — so the crates open onto a
- * clear frame. In, hold and out sum to 2.7 s, which is `PANEL_AT` exactly; if
- * either moves, `tests/opening.test.ts` says so rather than letting the title
- * sit across the one beat it is meant to introduce.
+/*
+ * THE BEATS. Durations, never speeds — and one robot at a time.
+ *
+ * Michele, after the first cut: *"We might also add 1 for Voxxy, small and
+ * swift, 2 for Droid, tall and thoughtful, 3 for biggy.. em.. sturdy? And they
+ * come out one at a time?"* So the opening is a presentation, and it teaches the
+ * three keys by using them: each robot's own slot shows its number while it is
+ * the only thing moving on screen.
+ *
+ * That is also the whole instruction set for switching robots, delivered without
+ * a single line of "press 1 to select Voxxy" — the thing he called *"very good"*
+ * when it was first proposed.
  */
-export const TITLE_IN = 0.5;
-export const TITLE_HOLD = 1.4;
-export const TITLE_OUT = 0.8;
+/** Black, before anything wakes — long enough for the title to have its say. */
+export const LEAD = 1.6;
+/** One robot's whole presentation: lamp, panel, step out, and a beat to be looked at. */
+export const SLOT = 2.9;
+/** Inside a slot, measured from its own start. */
+export const LAMP_EACH = 0.55;
+export const PANEL_DELAY = 0.5;
+export const PANEL_EACH = 0.7;
+export const STEP_DELAY = 1.25;
+/**
+ * How long the stride out of the crate takes — DERIVED, not chosen.
+ *
+ * The first version was 0.95 s flat and Droid came out at **48.7 px/s against a
+ * top speed of 40.25**, which `tests/opening.test.ts` caught immediately. Two
+ * things had been missed: his crate is deeper than the others so his stride is
+ * the longest, and an ease has a peak faster than its average — the `u(2 - u)`
+ * ease-out starts at twice the mean, which is the worst possible curve to leave
+ * ahead of a speed limit.
+ *
+ * So the ease is a smoothstep (peak 1.5x the mean, both ends still) and the
+ * duration falls out of the slowest robot's own `max`. Move a crate or a mark
+ * and this re-sizes itself instead of quietly breaking the one rule the physics
+ * score rests on.
+ */
+export const STEP_PEAK = 1.5;
+/** Headroom under the limit, so a re-measure does not land exactly on it. */
+const STEP_MARGIN = 1.25;
+export const STEP_TIME = (['voxxy', 'droid', 'biggy'] as const).reduce((worst, kind) => {
+  const from = CRATE_AT[kind];
+  const to = STAND_AT[kind];
+  const d = Math.hypot(to.x - from.x, to.y - from.y);
+  return Math.max(worst, (d * STEP_PEAK * STEP_MARGIN) / DEFS[kind].max);
+}, 0.6);
+/** Everyone is out and standing: the beat before the game takes the screen. */
+export const HOLD = 0.8;
+/** When the last robot has finished, and the one transition begins. */
+export const WALK_AT = LEAD + SLOT * 2 + STEP_DELAY + STEP_TIME + HOLD;
 
 /**
- * The shot the opening opens on: tight on the three crates.
+ * The title is up, held and gone before the first crate opens, so the crates
+ * open onto a clear frame.
+ */
+export const TITLE_IN = 0.45;
+export const TITLE_HOLD = 0.7;
+export const TITLE_OUT = 0.45;
+
+/**
+ * The shot the whole presentation plays in: tight on the three crates.
  *
- * The crate agent measured the legibility and gave a number rather than a
- * feeling — `DEVOXX` reads from 14 screen px per metre, the `ANTWERPEN ·
- * T.A.V. STEPHAN` line from 34, the small red corner labels from 46, and at the
- * diorama's own pitch add about 15%. Chapter 1's play framing works out at ~44
- * px/m, which reads the two spanning bands and loses the corner labels. This
- * The camera's own fit margin and HUD-safe area widen whatever rect they are
- * given — measured on the built page, a 200 px rect framed the 4.82 m row at
- * about 60 px/m rather than the 80 the arithmetic promised. So the number here was
- * chosen by shooting it rather than by arithmetic: at 116 px the row fills the
- * middle of the frame and every band on all three crates reads, including the
- * small red `HIGHLY FRAGILE`.
+ * The crate module measured the legibility rather than guessing at it —
+ * `DEVOXX` reads from 14 screen px per metre, the `ANTWERPEN · T.A.V. STEPHAN`
+ * line from 34, the small red corner labels from 46, plus about 15% at the
+ * diorama's pitch. The camera's own fit margin widens whatever rect it is given,
+ * so this number was chosen by shooting it: at 116 px the row fills the middle
+ * of the frame and every band on all three crates reads.
  */
 export const VIEW_CRATES: ViewRect = { x: CRATE_ROW.x - 58, y: CRATE_ROW.y - 34, w: 116, h: 85 };
 
-/**
- * The shot the step-out plays in: the crates plus the row in front of them, and
- * no more. The old sequence handed the walk chapter 1's whole rect, which is why
- * the camera appeared to cut somewhere else and back — the step is 17 px, so the
- * frame has no reason to move at all.
- */
-export const VIEW_CRATES_OUT: ViewRect = { x: CRATE_ROW.x - 68, y: CRATE_ROW.y - 30, w: 136, h: 100 };
-
 /** How long the camera takes to pull back from the crates to the corridor. */
-export const PULL_BACK = 2.4;
+export const PULL_BACK = 1.6;
+
+/** What each robot is introduced as, in the order they come out. */
+export const CARDS: Record<RobotKind, { key: number; name: string; line: string }> = {
+  voxxy: { key: 1, name: 'VOXXY', line: 'small and swift' },
+  droid: { key: 2, name: 'DROID', line: 'tall and thoughtful' },
+  biggy: { key: 3, name: 'BIGGY', line: 'heavy and unstoppable' },
+};
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 const ramp = (t: number, at: number, dur: number): number => clamp01((t - at) / dur);
@@ -191,6 +223,18 @@ export interface OpeningView {
   lamp: Record<RobotKind, number>;
   /** 0 shut .. 1 the front panel is off, per crate. */
   open: Record<RobotKind, number>;
+  /**
+   * 0 still inside .. 1 standing on its mark, per robot. The stride out of the
+   * crate: `game.ts` reads it and puts the robot between `CRATE_AT` and
+   * `STAND_AT`, which is the whole of the movement in this sequence.
+   */
+  step: Record<RobotKind, number>;
+  /**
+   * Whose presentation card is on screen, or `null`. One at a time, by design —
+   * the card carries the robot's own switch key, so the opening teaches 1, 2 and
+   * 3 by using them rather than by listing them.
+   */
+  card: RobotKind | null;
   /** 0..1 on the title card over the first shot. */
   title: number;
   /** True once the robots have started walking to their marks. */
@@ -221,13 +265,20 @@ export function openingView(t: number, to: ViewRect): ViewRect {
 export function openingAt(t: number): OpeningView {
   const lamp = {} as Record<RobotKind, number>;
   const open = {} as Record<RobotKind, number>;
+  const step = {} as Record<RobotKind, number>;
+  let card: RobotKind | null = null;
   for (let i = 0; i < ORDER.length; i++) {
     const kind = ORDER[i];
-    lamp[kind] = ramp(t, DARK + i * LAMP_STEP, LAMP_EACH);
-    open[kind] = ramp(t, PANEL_AT + i * PANEL_STEP, PANEL_EACH);
+    const at = LEAD + i * SLOT;
+    lamp[kind] = ramp(t, at, LAMP_EACH);
+    open[kind] = ramp(t, at + PANEL_DELAY, PANEL_EACH);
+    step[kind] = ramp(t, at + STEP_DELAY, STEP_TIME);
+    // Its card is up from the moment its lamp does until the next one starts —
+    // so exactly one name is ever on screen, which is what makes it teach.
+    if (t >= at && t < at + SLOT) card = kind;
   }
-  // In, hold, out — the title is over the first shot and gone before the panels
-  // drop, so the thing it names is what the player is looking at when it clears.
+  // In, hold, out — the title is over the first shot and gone before the first
+  // crate opens, so the thing it names is what the player is looking at.
   const title = t < TITLE_IN + TITLE_HOLD ? ramp(t, 0, TITLE_IN) : 1 - ramp(t, TITLE_IN + TITLE_HOLD, TITLE_OUT);
-  return { t, lamp, open, title: clamp01(title), walking: t >= WALK_AT };
+  return { t, lamp, open, step, card, title: clamp01(title), walking: t >= WALK_AT };
 }
