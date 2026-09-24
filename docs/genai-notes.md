@@ -2356,3 +2356,25 @@ object had been put somewhere absurd — every test in the repo asked whether a 
 somewhere.
 
 Full suite: 362 passed, 19 files, 0 failed.
+
+## Chapter 3 was the last one taught, and it was reported from the other end
+
+The `E` fall-through landed chapter by chapter as the files came free. Chapter 3 was last, and
+nobody noticed it was missing by pressing `E` — the rig round found it while building Voxxy's hop
+pose and could not get her off the ground anywhere in that chapter. The cause is worth recording:
+**every branch of chapter 3's `key()` ends in a line of dialogue, and a line of dialogue was
+claiming the key.**
+
+So the rule that decides which branches hand it back is not "did anything happen" — it is whether
+the chapter gave the player an ANSWER. *"No ladle. Droid, the shelf!"*, *"I am three crates deep"*,
+*"That weighs more than I do. Considerably more. BIGGY!"* — those keep the key, because hopping
+instead of saying one of them would be a worse game. Only the two genuine dead ends hand it back:
+Voxxy with nobody to talk to, and Biggy with nothing to pick up. Two tests hold both halves, and
+the second one is the one that matters: a refusal that names a reason must NOT hop.
+
+`updateRobot` also takes the hop now, passed the same `hopPhase(bot)` the lift is drawn from, so
+the pose and the height are two readings of one number rather than two animations that can drift.
+The rig's own arc clears `st.contact` for the whole hop, which stops `main.ts` firing footstep
+audio at a robot 30 cm off the floor — a bug that only exists once the feature does.
+
+All four chapters are taught. 364 passed, 19 files, 0 failed.

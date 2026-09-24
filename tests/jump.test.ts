@@ -305,6 +305,29 @@ describe('E falls through only where the chapter has no use for it', () => {
     expect(airborne(bot(g, 'voxxy'))).toBe(false);
   });
 
+  it('hops Voxxy in chapter 3, where every refusal was claiming the key', () => {
+    /*
+     * Reported from the other end: the rig round found she could not hop ANYWHERE
+     * in chapter 3, because everything in that chapter ends in a line of dialogue
+     * and a line of dialogue was claiming `E`. Only the two dead ends hand it back.
+     */
+    const g = createGame({ seed: 11, chapter: 3, cards: false });
+    alone(g, 'voxxy', 620, 470);
+    g.key('KeyE');
+    expect(airborne(bot(g, 'voxxy'))).toBe(true);
+  });
+
+  it('leaves a chapter-3 refusal that names a reason alone', () => {
+    // "That weighs more than I do" is an answer, not a dead end. She stays down.
+    const g = createGame({ seed: 11, chapter: 3, cards: false });
+    const crate = g.snapshot().props.find((o) => o.kind === 'crate');
+    if (!crate) throw new Error('no beer crate');
+    alone(g, 'voxxy', crate.x, crate.y);
+    g.key('KeyE');
+    expect(airborne(bot(g, 'voxxy'))).toBe(false);
+    expect(g.snapshot().toast?.t ?? '').toContain('BIGGY');
+  });
+
   it('leaves the chapter-2 terminal alone', () => {
     const g = expo();
     const term = g.snapshot().props.find((o) => o.kind === 'terminal');
