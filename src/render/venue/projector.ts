@@ -466,16 +466,16 @@ export function projectionBooth(r: RoomDef, p: VenuePalette): THREE.Group | null
    * half of the deck, which the machine leaves empty and which is the half
    * turned toward the camera.
    */
-  bay.add(box(0.62, 0.05, 0.44, 0.92, deck + 0.7, 0.98, p.sectionCut));
+  bay.add(box(0.62, 0.05, 0.44, 0.92, deck + 0.7, 0.98, p.concrete));
   for (const lz of [0.8, 1.16]) {
     bay.add(box(0.05, 0.7, 0.05, 0.66, deck + 0.35, lz, p.blackMetal));
     bay.add(box(0.05, 0.7, 0.05, 1.18, deck + 0.35, lz, p.blackMetal));
   }
-  const canFlat = new THREE.Mesh(puck(0.24, 0.07, 18), p.concrete);
+  const canFlat = new THREE.Mesh(puck(0.24, 0.07, 18), p.sectionCut);
   canFlat.position.set(0.92, deck + 0.76, 0.98);
   canFlat.castShadow = true;
   bay.add(canFlat);
-  const canLeaning = new THREE.Mesh(puck(0.3, 0.07, 18), p.concrete);
+  const canLeaning = new THREE.Mesh(puck(0.3, 0.07, 18), p.sectionCut);
   canLeaning.rotation.set(Math.PI / 2 - 0.22, 0, 0);
   canLeaning.position.set(-0.85, deck + 0.3, PORT_Z - 0.2);
   canLeaning.castShadow = true;
