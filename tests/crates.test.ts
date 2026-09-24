@@ -39,6 +39,8 @@ import {
   PALLET_H,
   buildCrates,
   crateLayout,
+  robotHeightM,
+  robotWidthM,
 } from '../src/render/crates';
 
 const layout = crateLayout();
@@ -69,6 +71,18 @@ describe('the three crates, as a row', () => {
     for (let i = 0; i < layout.seams.length; i++) {
       const a = layout.crates[i];
       expect(layout.seams[i]).toBeCloseTo(a.centreX + a.width / 2 + CRATE_GAP / 2, 9);
+    }
+  });
+
+  /**
+   * "…the three faces must be coplanar and evenly gapped, or the word skews."
+   * Centring the crates on z instead of aligning their faces put Biggy's face
+   * 0.31 m in front of Droid's, and at the diorama's own azimuth that hid half
+   * the letters it was drawn for. Coplanar is a number, so it gets a test.
+   */
+  it('stands every front face in one plane, whatever the crate depth', () => {
+    for (const c of layout.crates) {
+      expect(c.centreZ + c.depth / 2, `${c.kind} face`).toBeCloseTo(0, 9);
     }
   });
 
@@ -150,13 +164,25 @@ describe('ANTWERPEN · T.A.V. STEPHAN, the continuous second line', () => {
     for (const c of layout.crates) expect(c.sub.length).toBeGreaterThan(0);
   });
 
-  it('splits it in proportion to the faces, so the type stays one size', () => {
-    // Characters per metre of ink width, per face: within 20% of each other is the
-    // most a reader would ever notice at this size.
-    const density = layout.crates.map((c) => c.sub.length / (c.width - 2 * INK_MARGIN));
-    const lo = Math.min(...density);
-    const hi = Math.max(...density);
-    expect(hi / lo).toBeLessThan(1.2);
+  it('splits it by WIDTH, not by character count, so the type stays one size', () => {
+    /*
+     * The first build split by character count and put eight glyphs of `N · T.A.`
+     * — five of them punctuation — across the same 1.28 m that eight letters of
+     * `ANTWERPE` filled, so the middle crate came out spaced like a ransom note.
+     * The measure is therefore ink per metre of face, using the same Helvetica
+     * advances the layout cuts on: an `I` is not a `W`.
+     */
+    const ADV: Record<string, number> = {
+      A: 0.722, E: 0.667, H: 0.722, N: 0.722, P: 0.667, R: 0.722, S: 0.667,
+      T: 0.611, V: 0.667, W: 0.944, '.': 0.278, ' ': 0.278, '\u00b7': 0.35,
+    };
+    const em = (s: string): number => [...s].reduce((a, ch) => a + (ADV[ch] ?? 0.7), 0);
+    const density = layout.crates.map((c) => em(c.sub) / (c.width - 2 * INK_MARGIN));
+    expect(Math.max(...density) / Math.min(...density)).toBeLessThan(1.2);
+  });
+
+  it('never starts a face with a full stop or a space', () => {
+    for (const c of layout.crates) expect(c.sub[0]).toMatch(/[A-Z\u00b7]/);
   });
 
   it('keeps Stephan whole, on the crate with the room for him', () => {
@@ -202,8 +228,12 @@ describe('a crate fits its robot — which is the whole gag', () => {
     it(`packs ${kind} with clearance all round`, () => {
       const c = layout.crates.find((o) => o.kind === kind);
       expect(c).toBeDefined();
-      const across = 2 * m(DEFS[kind].r);
-      const tall = ROBOT_HEIGHT_M[kind];
+      // Through the module's own helpers, so the clearance check and the crate
+      // are reading the frozen radius and height the same way.
+      const across = robotWidthM(kind);
+      const tall = robotHeightM(kind);
+      expect(across).toBeCloseTo(2 * m(DEFS[kind].r), 9);
+      expect(tall).toBe(ROBOT_HEIGHT_M[kind]);
       const i = (c as NonNullable<typeof c>).interior;
       expect(i.width, 'width').toBeGreaterThan(across + 0.1);
       expect(i.depth, 'depth').toBeGreaterThan(across + 0.05);
@@ -243,7 +273,8 @@ describe('the built model', () => {
       crates.root.updateMatrixWorld(true);
       const p = crates.byKind('droid').anchor.getWorldPosition(new THREE.Vector3());
       expect(p.x).toBeCloseTo(4 + layout.crates[1].centreX, 6);
-      expect(p.z).toBeCloseTo(-2, 6);
+      // `centre` places the face line; the crate's body hangs behind it.
+      expect(p.z).toBeCloseTo(-2 + layout.crates[1].centreZ, 6);
       expect(p.y).toBeCloseTo(1.5 + PALLET_H + 0.05, 6);
     } finally {
       crates.dispose();
