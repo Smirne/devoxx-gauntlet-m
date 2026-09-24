@@ -503,3 +503,77 @@ describe('chapter 2 — what the player is told, and what they have to find', ()
     expect(hail.toLowerCase()).toContain('stephan');
   });
 });
+
+/* ============================================================= the curtain === */
+
+/**
+ * *"when all actions are done, chapter 2 ends abruptly. I just finished the biggy
+ * run, i expected to see the animation and the inside of the gadget room. Since u
+ * can finish in different orders, give some seconds for animation / see what
+ * happens before the chap 3 screen."* — Michele, 24 Sep 2026.
+ *
+ * It called `startChapter(3)` on the frame the second of the two conditions
+ * flipped, so the shutter was still 0.42 s from the top of its housing when the
+ * chapter card came down over it. Both finishing orders are driven here, because
+ * the abruptness he hit was in one of them and the fix has to hold for both.
+ */
+describe('chapter 2 — the curtain before chapter 3', () => {
+  /** Runs the cable so the printer comes up. Leaves the roller alone. */
+  function runCable(g: DebugGame): void {
+    powerUp(g);
+    openCabinet(g);
+    atTerminal(g, 'voxxy');
+    g.key('KeyE');
+    typeAt(g, 'DEVOXXFOREVER');
+    g.key('Enter');
+    g.debug.select('voxxy');
+    g.debug.place('voxxy', GF.rack.x + 10, GF.rack.y + 12 - 24);
+    steps(g, 2);
+    g.key('KeyE');
+    g.debug.place('voxxy', GF.printer.x + 10, GF.printer.y + GF.printer.h + 22);
+    steps(g, 2);
+    g.key('KeyE');
+  }
+
+  /** Voxxy shoves Biggy down the top lane into the shutter. */
+  function smashRoller(g: DebugGame): void {
+    g.debug.select('voxxy');
+    g.debug.place('biggy', 400, 160);
+    g.debug.place('voxxy', 372, 160);
+    g.setStick(1, 0);
+    for (let i = 0; i < 400 && !expo(g).rollerBroken; i++) g.update(DT_MAX);
+    g.setStick(0, 0);
+  }
+
+  for (const last of ['roller', 'printer'] as const) {
+    it(`holds the hall for a beat when the ${last} is the last thing done`, () => {
+      const g = mk();
+      if (last === 'roller') {
+        runCable(g);
+        smashRoller(g);
+      } else {
+        smashRoller(g);
+        runCable(g);
+      }
+      const st = expo(g);
+      expect(st.printerOnline, 'the printer never came up').toBe(true);
+      expect(st.rollerBroken, 'the shutter never went').toBe(true);
+
+      // It does NOT cut on the frame the last one lands.
+      steps(g, 2);
+      expect(g.snapshot().chapter, 'chapter 2 ended on the spot again').toBe(2);
+
+      // A second in, still chapter 2 — and the shutter, whose own lift is 0.42 s,
+      // has had time to finish it where the player can see.
+      for (let i = 0; i < Math.ceil(1 / DT_MAX); i++) g.update(DT_MAX);
+      expect(g.snapshot().chapter, 'the curtain is shorter than the animation under it').toBe(2);
+      expect(g.snapshot().props.find((p) => p.kind === 'roller')?.progress ?? 0).toBeCloseTo(1, 5);
+      // And the player still has the keyboard: this is a curtain, not a cutscene.
+      expect(g.snapshot().phase).toBe('play');
+
+      // And it does cut, a few seconds in rather than never.
+      for (let i = 0; i < Math.ceil(4 / DT_MAX) && g.snapshot().chapter === 2; i++) g.update(DT_MAX);
+      expect(g.snapshot().chapter, 'the curtain never lifted').toBe(3);
+    });
+  }
+});
