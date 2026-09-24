@@ -213,11 +213,11 @@ const CSS = `
 .ad-bubble{position:absolute;transform:translate(-50%,-100%);max-width:330px;width:max-content;
   padding:8px 13px;border-radius:11px;border:1px solid currentColor;
   background:rgba(10,11,14,.93);box-shadow:0 10px 30px rgba(0,0,0,.55);font-size:15px;line-height:1.28;
-  text-align:left;animation:ad-rise .22s cubic-bezier(.2,.9,.3,1) both}
+  text-align:left;animation:ad-rise-b .22s cubic-bezier(.2,.9,.3,1) both}
 .ad-bubble::after{content:'';position:absolute;left:50%;bottom:-7px;width:12px;height:12px;
   margin-left:-6px;transform:rotate(45deg);background:rgba(10,11,14,.93);
   border-right:1px solid currentColor;border-bottom:1px solid currentColor}
-.ad-bubble.ad-out{animation:ad-sink .34s ease-in forwards}
+.ad-bubble.ad-out{animation:ad-sink-b .34s ease-in forwards}
 
 .ad-toasts{position:absolute;left:50%;bottom:96px;transform:translateX(-50%);width:min(680px,74vw);
   display:flex;flex-direction:column;align-items:center;gap:6px}
@@ -228,6 +228,16 @@ const CSS = `
 .ad-toast.ad-out{animation:ad-sink .34s ease-in forwards}
 @keyframes ad-rise{from{opacity:0;transform:translateY(18px) scale(.985)}to{opacity:1;transform:none}}
 @keyframes ad-sink{to{opacity:0;transform:translateY(-10px)}}
+/* A SPEECH BUBBLE CARRIES ITS OWN TRANSFORM, so it needs its own keyframes.
+   .ad-bubble is anchored by its BOTTOM CENTRE - translate(-50%,-100%) - which is
+   what puts the tail on the robot. The shared ad-rise ends on transform:none and
+   runs with 'both', so that final frame persisted and silently cancelled the
+   anchor: every bubble jumped half its width right and its whole height down the
+   moment its entry animation finished. These keep the anchor in every frame. */
+@keyframes ad-rise-b{from{opacity:0;transform:translate(-50%,-100%) translateY(18px) scale(.985)}
+  to{opacity:1;transform:translate(-50%,-100%)}}
+@keyframes ad-sink-b{from{opacity:1;transform:translate(-50%,-100%)}
+  to{opacity:0;transform:translate(-50%,-100%) translateY(-10px)}}
 @media (prefers-reduced-motion:reduce){
   .ad-toast,.ad-toast.ad-out{animation-duration:.01s}
   .ad-fill{transition:none}
@@ -481,6 +491,9 @@ function toastLifeMs(until: number, snapT: number): number {
   if (!Number.isFinite(ms)) ms = TOAST_MS;
   return Math.max(900, Math.min(8000, ms));
 }
+
+/** Clear air left between two bubbles that would otherwise touch, in px. */
+const BUBBLE_GAP = 6;
 
 interface LiveToast {
   node: HTMLElement;
@@ -847,6 +860,20 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     if (!anchors) return;
     const w = root.clientWidth || 1;
     const h = root.clientHeight || 1;
+    /*
+     * TWO ROBOTS STANDING TOGETHER SPEAK OVER EACH OTHER. Each bubble hangs at
+     * its own speaker's anchor, so when the robots are a metre apart on screen
+     * the boxes land on top of one another and the one underneath is unreadable
+     * — Michele: "sometimes the toast are multiple and not all are visible".
+     *
+     * So place them, then separate them. The lowest bubble keeps its spot (it is
+     * the one closest to its robot, and the tail has to point somewhere true);
+     * every bubble above it that would still touch it is lifted clear. Only
+     * boxes whose horizontal spans actually cross are pushed — bubbles side by
+     * side stay at their own height.
+     */
+    const placed: { l: number; r: number; top: number; bot: number }[] = [];
+    const rows: { lt: LiveToast; x: number; y: number; bw: number; bh: number }[] = [];
     for (const lt of live) {
       if (!lt.speaker) continue;
       const at = anchors[lt.speaker];
@@ -855,10 +882,40 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
         continue;
       }
       lt.node.style.opacity = '';
-      const x = Math.min(Math.max(at.x, 180), w - 180);
-      const y = Math.min(Math.max(at.y - 18, 92), h - 40);
-      lt.node.style.left = `${Math.round(x)}px`;
-      lt.node.style.top = `${Math.round(y)}px`;
+      const bw = lt.node.offsetWidth || 0;
+      const bh = lt.node.offsetHeight || 0;
+      rows.push({
+        lt,
+        x: Math.min(Math.max(at.x, 180), w - 180),
+        y: Math.min(Math.max(at.y - 18, 92), h - 40),
+        bw,
+        bh,
+      });
+    }
+    rows.sort((a, b) => b.y - a.y);
+    for (const r of rows) {
+      let y = r.y;
+      const l = r.x - r.bw / 2;
+      const rt = r.x + r.bw / 2;
+      // Lift until nothing is left to clear. Each pass can expose a new
+      // neighbour above, so keep going rather than resolving once.
+      for (let guard = 0; guard < placed.length + 1; guard++) {
+        let lift = 0;
+        for (const q of placed) {
+          if (rt <= q.l || l >= q.r) continue;
+          const top = y - r.bh;
+          if (top >= q.bot || y <= q.top) continue;
+          lift = Math.max(lift, y - q.top + BUBBLE_GAP);
+        }
+        if (lift <= 0) break;
+        y -= lift;
+      }
+      // Never push one off the top of the canvas; an overlap there beats a
+      // bubble nobody can see at all.
+      y = Math.max(y, r.bh + 8);
+      placed.push({ l, r: rt, top: y - r.bh, bot: y });
+      r.lt.node.style.left = `${Math.round(r.x)}px`;
+      r.lt.node.style.top = `${Math.round(y)}px`;
     }
   }
 

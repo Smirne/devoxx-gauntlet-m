@@ -218,10 +218,14 @@ describe('the presentation light', () => {
       presentationLight(rig, 1);
       let lifted = 0;
       for (const s of shotOf(rig.root)) {
-        if (glow.has(s.mat)) {
-          // A glow material is already emissive at up to 1.8 intensity with tone
-          // mapping off. Lifting one is how a robot ends up with two white holes
-          // in its face.
+        if (glow.has(s.mat) || (!s.mat.map && relLum(s.mat.color) < 1e-4)) {
+          /*
+           * Two kinds are left alone. A glow material is already emissive at up
+           * to 1.8 intensity with tone mapping off, and lifting one is how a
+           * robot ends up with two white holes in its face. And a material whose
+           * own colour is black has nothing to expose — Voxxy's glass highlights
+           * are `#000000` plus an emissive, and deliberately not in `rig.glow`.
+           */
           expect(s.emissive).toBe(before.get(s.mat));
           continue;
         }
@@ -264,7 +268,7 @@ describe('the presentation light', () => {
       const read = (v: number): number[] => {
         presentationLight(rig, v);
         return shotOf(rig.root)
-          .filter((s) => !glow.has(s.mat))
+          .filter((s) => !glow.has(s.mat) && !(!s.mat.map && relLum(s.mat.color) < 1e-4))
           .map((s) => relLum(s.mat.emissive));
       };
       const a = read(0);
