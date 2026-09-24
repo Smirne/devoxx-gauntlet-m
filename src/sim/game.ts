@@ -24,6 +24,7 @@ import {
   TRAVEL_TIME_SCALE,
 } from './constants';
 import { VIEW_CLOSED, groundPlates } from './geometry';
+import { CRATE_AT, openingAt, openingView } from './opening';
 import {
   botsCollide,
   circleRect,
@@ -160,6 +161,8 @@ const TITLE_CARD =
 const TITLE_OBJECTIVE =
   '<b>After Dark</b> — the night before Devoxx, a power cut, three robots, two floors of Kinepolis and one keynote to save.';
 const TITLE_KEYS = 'Press any key to start · 1/2/3/Tab: switch · WASD: move · E: use · Skip chapter: top right';
+/** While the crates are opening: the one thing the player can do is not watch. */
+const OPENING_KEYS = 'Any key to skip';
 
 /* ---------------------------------------------------------------------- rng */
 
@@ -256,6 +259,25 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   let runtime: ChapterRuntime | null = null;
   /** The tow bar, when somebody has hold of Biggy. See `tow.ts`. */
   let tow: TowState | null = null;
+  /**
+   * The opening, while it is running: the clock `src/sim/opening.ts` reads.
+   *
+   * `null` once the player has the keyboard — including immediately, when the
+   * game is built with `cards: false`, because every test and probe in the repo
+   * expects chapter 1 to be playable on the first frame.
+   */
+  let opening: number | null = null;
+  /**
+   * Where chapter 1 puts the three of them — read off the chapter itself rather
+   * than copied from it, by starting the chapter and looking at where the robots
+   * landed before the opening moves them onto their pallets. A second copy of
+   * `ctx.place([40, 350], [92, 334], [148, 366])` in this file is a second thing
+   * to keep in step, and it would be wrong the first time the chapter's opening
+   * shot moved.
+   */
+  let startMarks: Array<{ kind: RobotKind; x: number; y: number }> = [];
+  /** True while the opening's step-down walk is running, so a key can cut it short. */
+  let openingWalk = false;
 
   interface CutState {
     view: ViewRect;
@@ -808,6 +830,59 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   }
 
   /**
+   * THE OPENING: three robots arrive in crates, and then the game starts.
+   *
+   * Michele: *"I'd start with the three robots frontal, on pedestal or pallets
+   * (imballati). They light up, get down and we are ready to play"*, staged
+   * *"in the corridor where chapter 1 already starts"*, and skippable.
+   *
+   * Chapter 1 runs UNDERNEATH it: the venue is built, the corridor is dark and
+   * the chapter's own lamps are live, because staging the opening anywhere else
+   * would mean a second set to build and keep in step. What the opening changes
+   * is where the three of them are standing and who has the keyboard.
+   *
+   * `phase` stays `'intro'` throughout, which is the phase that already means
+   * "the game is on screen and the player is not driving yet" — so every chapter
+   * rule, every collider and every `E` is inert without a single new guard.
+   */
+  function startOpening(): void {
+    startChapter(1);
+    startMarks = bots.map((b) => ({ kind: b.kind, x: b.x, y: b.y }));
+    phase = 'intro';
+    opening = 0;
+    fade = 0;
+    // On their pallets, facing the camera. `face` is a sim heading and +y is
+    // toward the camera, so PI/2 is frontal — which is what he asked for.
+    for (const b of bots) {
+      const at = CRATE_AT[b.kind];
+      b.x = at.x;
+      b.y = at.y;
+      b.vx = 0;
+      b.vy = 0;
+      b.face = Math.PI / 2;
+    }
+    view = openingView(0, VIEW_CLOSED);
+    objective = TITLE_OBJECTIVE;
+    keysLine = OPENING_KEYS;
+  }
+
+  /**
+   * End it — because it ran out, or because the player skipped it.
+   *
+   * Either way the chapter is started again from scratch rather than nudged into
+   * place: `startChapter` is the one thing that knows where a chapter's robots
+   * belong and what it resets, and a skip that left the opening's staging behind
+   * would hand the player three robots standing in a row in the wrong place.
+   */
+  function endOpening(): void {
+    opening = null;
+    openingWalk = false;
+    cut = null;
+    fade = 0;
+    startChapter(1);
+  }
+
+  /**
    * `R` — start THIS chapter again, not the whole run.
    *
    * Michele, listing the controls he wants the instructions panel to teach:
@@ -932,6 +1007,32 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     if (fade > 0 && phase !== 'cut') fade = Math.max(0, fade - dt * FADE_IN_RATE);
     if (toast && t > toast.until) toast = null;
     if (card !== null) return;
+    if (opening !== null) {
+      opening += dt;
+      const o = openingAt(opening);
+      /*
+       * The opening KEEPS TICKING through the walk, and that is not tidiness.
+       * It used to stop the moment the robots stepped out, which meant the
+       * crates stopped being drawn on the same frame — three robots walked away
+       * from nothing, having just climbed out of something. The clock runs until
+       * the chapter takes over, so the crates stand there empty behind them, and
+       * the HUD stays out of the way for the whole shot rather than half of it.
+       *
+       * The camera is the walk's while the walk is running: `startCut` sets its
+       * own framing, and two things easing the same rect would fight.
+       */
+      if (phase === 'intro') view = openingView(opening, VIEW_CLOSED);
+      // The walk to the chapter's own marks is the cutscene walker, at the pace
+      // it derives from the slowest robot's own `max` — nothing here sets a
+      // speed. When it finishes, the player has the keyboard.
+      if (o.walking && phase === 'intro') {
+        const routes = startMarks.map((mk) => ({ kind: mk.kind, pts: [{ x: mk.x, y: mk.y }] }));
+        openingWalk = true;
+        startCut(routes, endOpening, VIEW_CLOSED);
+        return;
+      }
+      if (phase !== 'cut') return;
+    }
     if (phase === 'cut') {
       t += dt;
       cutUpdate(dt);
@@ -957,6 +1058,16 @@ export function createGame(opts: GameOptions = {}): DebugGame {
    * `phase` at 'done', where everything below but `R` falls through harmlessly.
    */
   function key(code: string): void {
+    /*
+     * Skippable from the first frame — Michele asked for that explicitly. It is
+     * the first key of the session for most players and it must not also do
+     * something else, so it is consumed here: a player mashing Space to get past
+     * the crates does not also toggle the tow bar on the frame they arrive.
+     */
+    if (opening !== null || openingWalk) {
+      endOpening();
+      return;
+    }
     if (card !== null) {
       card = null;
       if (chapter === 0) startChapter(1);
@@ -1045,6 +1156,9 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       objective,
       keys: keysLine,
       progress: r?.progress?.() ?? '',
+      // The opening's own clock, or null once the player is driving. The
+      // renderer reads it to pose the crates; it decides nothing.
+      opening: opening === null ? null : openingAt(opening),
       // The list behind the meter, the panel's checklist and every hint. A
       // chapter that publishes none gets an empty array, which the HUD reads as
       // "no meter" rather than as "nothing left to do".
@@ -1083,7 +1197,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   };
 
   if (opts.chapter !== undefined) startChapter(opts.chapter);
-  else if (showCards) showCard(TITLE_CARD);
+  else if (showCards) startOpening();
   else startChapter(1);
 
   return { snapshot, update, key, setStick: (x, y) => { stickX = x; stickY = y; }, skipChapter, startChapter, debug };

@@ -1556,12 +1556,23 @@ describe('the game rig', () => {
      * longer loses both by pressing the key the HUD tells them to press.
      */
     const g = createGame({ seed: SEED });
-    expect(g.snapshot().card).toContain('AFTER DARK');
-    expect(g.snapshot().chapter).toBe(0);
+    /*
+     * The run opens on the crates, not on a card: chapter 1 is already built and
+     * running underneath, the three of them are on their pallets, and `phase`
+     * stays 'intro' so nothing the chapter owns can fire yet. The title is drawn
+     * over that shot instead of on a card of its own.
+     */
+    expect(g.snapshot().opening, 'the run no longer opens on the crates').not.toBe(null);
+    expect(g.snapshot().card).toBe(null);
+    expect(g.snapshot().chapter).toBe(1);
+    expect(g.snapshot().phase).toBe('intro');
     g.update(DT_MAX);
     expect(g.snapshot().t).toBe(0);
+    // Skippable from the first frame, and the key that skips does nothing else.
     g.key('Space');
+    expect(g.snapshot().opening).toBe(null);
     expect(g.snapshot().chapter).toBe(1);
+    expect(g.snapshot().phase).toBe('play');
     steps(g, 10);
     expect(g.snapshot().t).toBeGreaterThan(0);
     g.key('KeyR');

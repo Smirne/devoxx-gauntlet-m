@@ -3184,3 +3184,55 @@ loosened: "one doorway in the west end" became "both short ends solid, a doorway
 face", and the descent-waypoint check gained a second assertion that the middle of the flight is
 now wall. Suite at hand-off: **516 tests, 30 files, green**, `npx tsc --noEmit` clean,
 `document.title` = `After Dark · ERRORS:0` on every shot.
+
+## 2026-09-24 — one list behind the meter, the checklist and the hints (chapters 2, 3, 4)
+
+**What a human decided.** Michele asked for an instructions panel carrying "the main mission
+(getting Devoxx ready to start!), the chapter mission, command reminder and eventually checklist /
+hints", a meter on the HUD ("x of y things done") in place of the bottom objective bar, and hints
+"just on demand, for desperate player. arrow last is good". He also fixed the architecture of it:
+all three read ONE list so they cannot drift apart — `Task` in `src/sim/types.ts`, published per
+chapter as `ChapterRuntime.tasks()`, with chapter 1 already written as the worked example.
+
+**What the agent did.** Wrote `tasks()` for chapters 2, 3 and 4, reading the same locals each
+chapter's `progress()` already reads — no new state, no recomputation, and no behaviour change:
+every one of the three diffs is additive apart from one `import type` line. Four rows for the expo
+(power, router, cable, store), five for breakfast (ladle, soup, speaker, beer, stairs) and four for
+the keynote (cake, banner, spotlights, stage).
+
+**Three judgements worth recording.**
+
+- *The router is one row, not four.* Cabinet shut → open and dead → wanting the password → online
+  are four states of one object in one place; four checklist rows would claim the chapter has four
+  times the network jobs it has. The row's tail says which step it is at, which is the sentence
+  `progress()` already writes. While the terminal's prompt is open the row publishes **no** `at`:
+  the password is typed, not walked to, and an arrow would point at the robot's own feet.
+- *The swag is not in the list at all.* The three booth games are optional (`OBJECTIVE` says so and
+  `progress()` refuses to let them lead), so counting them would tell a player who has done
+  everything asked of them that they are 5 of 8 done. `tests/tasks.test.ts` plays chapter 3 to the
+  gate, wins a sticker on the way, and asserts the list is still five rows.
+- *Chapter 4's clock is not a row.* The crowd arriving is a deadline, not a thing to do: nobody can
+  tick it off, and a meter counting it down would read "3 of 5" for a stage that is finished. It
+  stays where a countdown belongs — the `crowd` prop and the progress line.
+
+**Rejected.** Pointing the arrow at the keynote speaker's hiding place. Which booth they are behind
+is that errand's answer, and the chapter deliberately does not even publish the person until Voxxy
+is close enough to have spotted them; the row carries no `at` until they are following her, and
+then it points at Stephan. Also rejected: putting the WiFi password or a keypad digit in a hint —
+the hints name the two places the password is written down and never a letter of it.
+
+**Found, not fixed.** Chapter 1's `code` row points its arrow at the keypad's own rect, which is a
+pad ON the corridor wall, so the target is inside the slab rather than the floor in front of it.
+Harmless for an arrow and left alone (chapter 1 was not this change's to edit); `wellFormed` in the
+new test allows 34 px of slack for exactly this case and asserts chapters 2–4 need none of it.
+
+**What `Task` still cannot say,** flagged for whoever builds the panel: *optional* (the swag), *who
+it needs when that is more than one robot* (chapter 1 picks `need[0]`; chapter 4's stage needs all
+three), and *blocked by* (the router while the breakers are down).
+
+**Tests.** `tests/tasks.test.ts` new — 15 cases, every chapter including 1, and almost nothing
+asserted at setup: ids unique and unchanged across real state changes, `done` flipping under the
+shared A* pilot and the existing choreographies, `n ≤ of`, every `at` reachable after play as well
+as before, and no line containing the chapter's own generated secret (chapter 1's code read from
+`NightState`, chapter 2's password read from the terminal's own buffer, chapter 3's hiding booth).
+Suite at hand-off: **534 tests, 32 files, green**, `npx tsc --noEmit` clean.

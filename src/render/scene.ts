@@ -37,6 +37,8 @@ import { PX_PER_M, ROBOT_HEIGHT_M, STOREY_H_M, m } from '../sim/units';
 import { createCamera, type DioramaCamera } from './camera';
 import { FIRE_LEAF_H, FIRE_LEAF_T, fireDoorDraw } from './fire-door';
 import { buildKeypad, type KeypadModel } from './keypad';
+import { buildCrates, type CratesModel } from './crates';
+import { CRATE_ROW } from '../sim/opening';
 import { createLightLayer, type LightLayer } from './lighting';
 import { PANEL_H_M, PANEL_LIFT_M, buildReleasePanel, type ReleasePanelModel } from './release-panel';
 import { createRobot, measureBounds, updateRobot, yawFromSimHeading, EXCLUDE_FROM_BOUNDS, type RobotRig } from './robots';
@@ -841,6 +843,19 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   dressing.add(keypad.root);
   /** The venue's own static keypad, which chapter 1 takes over. See `floor1.ts`. */
   const venueKeypad = venue.floor1.getObjectByName('fire-keypad') ?? null;
+
+  /* ------------------------------------------------------------ the opening
+   *
+   * The three shipping crates the robots arrive in. Built once and hidden; the
+   * sim's own clock (`GameSnapshot.opening`, from `src/sim/opening.ts`) says
+   * when each lamp comes up and each front panel comes off. Nothing here decides
+   * anything — this is the same contract every prop in this file has.
+   *
+   * Built lazily, on the first frame that actually has an opening: it is three
+   * painted canvases and ~5 MB, and every test, probe and `?chapter=N` URL in
+   * the repo starts past it.
+   */
+  let crates: CratesModel | null = null;
 
   /* ------------------------------------------- the door override, chapter 1
    *
@@ -2296,6 +2311,41 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     mat.color.setHex(hex);
   }
 
+  /**
+   * The crates, while the opening is running.
+   *
+   * `CRATE_ROW` in `src/sim/opening.ts` is where the row stands and the sim puts
+   * the robots on the same marks, so the two cannot disagree about where a robot
+   * is standing versus where its crate is. The row's FACE line is what is placed
+   * — the three faces are coplanar so the stencil spanning them reads, and it is
+   * the face line rather than the centroid that has to land on the mark.
+   */
+  function drawOpening(snap: GameSnapshot, floorY: number): void {
+    const o = snap.opening;
+    if (o === null) {
+      if (crates) crates.root.visible = false;
+      return;
+    }
+    if (!crates) {
+      crates = buildCrates({
+        baseY: floorY,
+        centre: { x: m(CRATE_ROW.x), z: m(CRATE_ROW.y) },
+        seed: 7,
+      });
+      dressing.add(crates.root);
+    }
+    crates.root.visible = true;
+    // The work light comes up with the first lamp and stays: it is what makes the
+    // stencils readable in a corridor that has no power. It fades out over the
+    // pull-back, so the crates are back to being scenery by the time the chapter
+    // owns the screen.
+    crates.setLit(Math.max(o.lamp.voxxy, o.lamp.droid, o.lamp.biggy));
+    for (const c of crates.crates) {
+      c.setLamp(o.lamp[c.kind]);
+      c.setOpen(o.open[c.kind]);
+    }
+  }
+
   function drawDressing(snap: GameSnapshot, floorY: number): void {
     propPool.begin();
     peoplePool.begin();
@@ -2309,6 +2359,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     fireDoor.visible = false;
     rollerDoor.visible = false;
     keypad.root.visible = false;
+    drawOpening(snap, floorY);
     releasePanel.root.visible = false;
     // Handed back to the venue unless a chapter claims it again this frame.
     if (venueFireLeaf) venueFireLeaf.visible = true;
@@ -2623,6 +2674,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       fireMat.dispose();
       fireBarMat.dispose();
       keypad.dispose();
+      crates?.dispose();
       releasePanel.dispose();
       cableGeo.dispose();
       cableMat.dispose();
