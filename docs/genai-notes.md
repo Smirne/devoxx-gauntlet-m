@@ -2994,3 +2994,193 @@ drawing it twice. Cinema E's chapter seats are **not** raked: the venue's rake i
 decoration with no plate behind it, and adding one under rects that are colliders in the 0.15..0.6 m
 band is a different round's change. The 14 px seat pitch is about twice a real cinema seat; it is the
 venue's own choice and the brief was explicit about not inventing a new one.
+
+## 24 Sep 2026 — the opening sequence's crates (`src/render/crates.ts`)
+
+**Human decisions this round.** Michele asked for an opening beat before chapter 1: the three robots
+stand frontal on pallets, *imballati*, they light up, get down, and play begins. He approved the
+lettering in his own words — *"Yes put the crates with 'Devoxx' 'For Stephan' 'Highly Fragile'
+'Bulky' and stuff like that"*, then *"crate labels are good. Highly fragile on Biggy is good."*, then
+*"the antwerpen sticker could strech between the 3 crates instead of being repeated?"*, then *"keep
+both bulky and highly fragile on biggy"*. The settled spec is `docs/playtest-notes.md`, "Crate
+stencils — agreed 24 Sep". The agent built the crates only; the choreography, camera move and
+instructions panel are a parallel piece.
+
+**What the agent did.** A self-contained renderer module: `buildCrates()` returns a group of three
+crates, each with a named removable front panel, a stand anchor, `setLamp(0..1)` and `setOpen(0..1)`.
+Rough sawn timber — plank walls with depth jitter and roll, a darker sawn frame of corner battens and
+rails, a pallet under each — built through `mergeSimple` and the venue palette (`venueSpec('wood')`
+mixed toward deal) rather than a fourth parallel set of helpers. The stencils are painted through the
+existing `SignPainter`, not a new text facility. No game logic, no colliders, no lights, no external
+assets, and no frozen constant touched.
+
+**The finding worth keeping.** Michele's "exactly two letters per crate" has a geometric consequence
+nobody had written down. A word reads as one word when its tracking is constant; two letters per
+crate at constant pitch puts the pair centres `2p` apart, so the crate centres must be `2p` apart
+too, so `2p = (wᵢ + wᵢ₊₁)/2 + GAP` for **every** adjacent pair. Solve them and (1) adjacent crates
+must be equal width, and (2) the tightest reachable tracking is exactly `GAP + 2·INK_MARGIN`. So
+Voxxy's and Droid's crates share a width and differ in height and depth, and Biggy's is the oversize
+one with its pair pushed to its left margin so the surplus falls at the end of the word where nobody
+can see it. `tests/crates.test.ts` asserts the constant tracking rather than just the seam
+clearances, because constant tracking is the formal statement of "the word does not skew" and it is
+the thing that breaks first if someone re-sizes a crate.
+
+**Rejected, and why.** Justifying the second line by character count — eight glyphs of `N · T.A.`,
+five of them punctuation, filled the same 1.28 m as eight letters of `ANTWERPE` and the middle crate
+came out spaced like a ransom note; it is split by width now, off a Helvetica advance table.
+Bridging every stencil glyph — the two X's came back looking like hazard chevrons, so only letters
+with a counter are tied. Stretching every glyph to its cell — an `E` as wide as a `D`; a stencil is
+monospaced in its cells, not in its letterforms. `ZAAL 8` stays dropped.
+
+**Two bugs the screenshots caught that the tests could not.** The crates were centred on z, so each
+front face stood at its own `+depth/2` and Biggy's was 0.31 m nearer the camera than Droid's — at the
+diorama's 14 deg azimuth that ate 0.44 m of his neighbour's face and hid half the letters the
+spanning word exists for. The notes say **coplanar**; that is now a number and a test. And the small
+type used the big band's ink margin, which is narrower than the corner battens, so the first and last
+character of every small line was drawn under a batten.
+
+**Legibility, measured.** Front-on, screen px per metre: `DEVOXX` reads from 14 and is comfortable at
+20; `ANTWERPEN · T.A.V. STEPHAN` needs 34 and is comfortable at 45; the per-crate corner blocks need
+46 and are comfortable at 60. At the diorama's own pitch add about 15 %. Chapter 1's play zoom is
+about 44 px/m, so at play zoom the two spanning bands read and the corner blocks do not; ~65 px/m
+reads everything.
+
+**Tests.** `tests/crates.test.ts`, 26 cases, green. The suite as a whole had 4 reds this round in
+`geometry`, `staircase-clear`, `chapters` and `ch2-chain` — all in a parallel agent's in-flight
+staircase and chapter rewrite, none reachable from this module, which nothing in `src/` imports yet.
+
+---
+
+## 24 Sep 2026 — the green cube that opens the door
+
+**Michele's note.** A screenshot of chapter 1's mount beat, Droid up on Biggy's shoulders in the
+blacked-out corridor: *"the part that needs a shape is the green Cube that opens the door"*. The
+`projector-panel` prop — cinema B's door override, the payoff of the whole climb — was a `PROPS`
+table entry drawn by the generic `drawProp`: one lit cuboid, amber on `idle` and green on `done`.
+
+**What the agent did.** Modelled it in its own module, `src/render/release-panel.ts`, posed from the
+prop the way `src/render/keypad.ts` and `src/render/fire-door.ts` are: a back plate on four standoffs
+with a shadow gap, a hooded housing 0.24 m deep with a lit face plate, a pull lever, a mushroom
+release under a guard ring, a key switch, an engraved Dutch plate (`DEURONTGRENDELING · ZAAL B ·
+ZAALVERLICHTING`) with a hazard flash, a lamp with a `VERGRENDELD` / `ONTGRENDELD` legend, a cable
+tray with a conduit drop, and two stays up to the corridor vault. Four things answer `Prop.state`,
+not one: the lever stands up, the key turns, the mushroom goes in, the lamp and its legend go from
+red-held to green-released. `scene.ts` gets six small hunks — an import, the `PROPS` entry reading
+`PANEL_H_M`/`PANEL_LIFT_M` off the module, the build, `drawReleasePanel`, the dispatch and the
+dispose. `tests/prop-geometry.ts` imports the same two constants instead of retyping them, which is
+the `KEYPAD_TOP_M` pattern.
+
+**The measurement that explains the note.** The diorama camera looks along (0.210, 0.500, 0.840). Of
+a solid box on the published rect it sees 1.44 × 0.840 = 1.21 m² of front and 3.07 × 0.500 =
+**1.54 m² of lid**: the largest surface on screen was the top of the box. "A big flat cube" is not a
+figure of speech, it is that ratio. `tests/release-panel.test.ts` asserts face ÷ lid > 2 and reads
+**0.79** against the old renderer.
+
+**The fault the model uncovered.** Two corridor columns (`corridorColumns()`, sim x 365..385,
+y 288..304, 3.3 m shafts) stand across the back half of that rect. The box only cleared them by
+being 1.92 m deep — its lid stuck out past them, which is *why* the lid was what the player saw. A
+unit drawn at the honest depth at the rect's rear is 70 % hidden and partly inside a column
+(`scratchpad/panel-round/dbg-close.png`, magenta-face probe). So `mountZ` slides the unit forward
+inside its own rect until it is clear of any column in its x range and no further — the move
+`venue/projector.ts` already makes with `bayOffsetPx`, a drawing position computed from the geometry
+it has to stand clear of. Nothing the sim owns moves.
+
+**A human decision is pending.** The rect patch is written and **not applied**:
+`scratchpad/panel-round/panel-rect.patch`. It cuts the depth from 24 px to 6 px and takes `panelAt`
+off its hard-coded half-extents; starting the rect at `CY0 + 19` keeps its centre at (367, 307)
+exactly, so `PANEL_REACH` and the mount beat are unmoved and the unit lands within 2 cm of where it
+draws today. It is the sim and a collider, so it goes to Michele.
+
+**Rejected, and why.** Pushing the rect back against the wall — `floor1.ts` springs the corridor
+vault off the far wall head at 2.95 m and rakes it at 0.75 rad, which is why `signage.ts` caps the
+far wall's readable band at `FAR_Y1 = 2.6 m`; a unit at 2.5–3.4 m hard against `CY0` is behind the
+soffit and invisible. The rect's distance from the wall was right; only its depth was wrong. A
+polished trim hood — the first cut made it 0.36 m deep in the same metal that carries the standby
+glow, and photographed at play zoom it was a gold awning over a dark box, the cube's own mistake one
+tenth the size; the hood and sill are dark shelves with one bright lip now, and the brightest thing
+on the unit is its face. Bright stays — 1.2 m of amber-glowing trim read as brass poles, so they got
+their own cold steel. Raising the release out of reach to match the dialogue's *"about a metre above
+my reach"*: measured off the rigs, Droid's hand tops out at ~2.80 m and `mountLift` is 0.30 m, so the
+mount buys 3.10 m and the controls sit at 3.10 m — the metre is rhetoric, the sign of it is not.
+
+**A false comment corrected.** `src/render/venue/projector.ts`'s header asserted that the
+`projector-panel` prop *"is the door override, a different object, and it already has one"* — a
+shape. It did not. The note now says so and points at the new module.
+
+**Tests.** `tests/release-panel.test.ts`, 10 cases, green; 9 of the 10 fail against the pre-change
+renderer, reconstructed in a worktree at 82ca20b with the old `drawProp` box as a stand-in module.
+Full suite at hand-off: **513 tests, 29 files, green**, `npx tsc --noEmit` clean. Mid-round it
+carried 4 reds in `geometry`, `staircase-clear`, `chapters` and `ch2-chain` from a parallel agent's
+in-flight staircase rewrite in `src/sim/geometry.ts` — they passed at committed HEAD throughout,
+nothing in this change reaches them, and that agent's work went green before the end of the round.
+
+---
+
+## 24 Sep 2026 (evening) — the secondary staircases, read off the drawings a second time
+
+**The human decision.** Michele sent three images back (`plans/michele-notes/`): the plan symbol
+for a secondary staircase enlarged, a photo of the real stair with the balustrade ringed in red,
+and a crop of the ground-floor shaft with its direction arrow. His words, in full, are the whole
+brief for this round:
+
+> the stairs are not yet fine. But i can understand the error here. This makes it look like there's
+> a center, and 2 descent. I think it's a mid plane between two ramps of stairs. In this picture
+> stairs go south to north. There's a protection on West and North, as you can see on the second
+> picture. / stair entrance is where the arrow is, going down North. / On ground floor, your stairs
+> are good. Floor 1 is directly above, so they should match. / Just a correction: you put the
+> opening north, but it's on the sides (WEST, EAST). Worth a fix.
+
+Four separate rulings, and the standing rule of 24 Sep — *"follow the devoxx plant, not the
+plan.md"* — meant each one had to be re-measured on the PNGs rather than taken from him or from a
+comment. All four checked out.
+
+**What the agent measured.** On `devoxx-rooms-plain.png`, the first-floor flight runs plain
+y 853..914 with its treads at a steady pitch and **one tread-free band at 879..887** — a
+half-landing at 13% of the run, not a landing you step onto. On `exhibition-floor-simple.png` the
+same object at that plan's scale: flights over ~199 px with a tread-free band 31 long. One
+staircase, two ramps, a mid-plane; the build had a walkable square in the middle with a run falling
+away either side, which is exactly the "center, and 2 descent" he named. The two drawings also
+agree on aspect ratio (3.2:1 against 3.36:1), which is what proves they are the same staircase seen
+from its two ends.
+
+The doors were counted rather than eyeballed: thresholding the drawing's green door symbols inside
+each shaft's own bands gives **0** on both short ends of both shafts and 200–280 px on all four
+long faces. Landing, first riser, half-landing and doors then came off the plan at
+y 165 / 170..205 / 234 / 276..292 / 323, mapped through this repo's existing calibration.
+
+**The thing the agent got wrong and the drawings corrected.** The coordinator's reading of
+"openings on the WEST and EAST faces" was that they are the shaft rect's two SHORT ends, since the
+rect is 226 × 45. It is the opposite: the module rotates the plan 90°, so the building's west and
+east faces are the rect's two LONG (±y) faces. Both statements describe the same two doors. That
+distinction is now written at the top of `stairDoors`, because it is the kind of thing that will be
+misread again.
+
+**What a driven test caught that no flood fill could.** Moving the first-floor way-on from the
+middle of the flight to its east end quietly removed the pinch that has kept Biggy off the
+secondary stairs since playtest note 18 — with walls on only one side, he drove straight onto the
+top step. Every existing test in the area asks whether a cell is walkable, and those cells were
+walkable before and after. `tests/stairs-driven.test.ts` drives a robot with the stick and reads
+where it stops; it caught this in one run. The fix is the balustrade Michele's photo already
+showed: `NICHE_RAIL` makes the guard a collider across the head, so the head is a 1.30 m pocket
+entered by turning in off the corridor. Droid rests 0.9 px from its centre, Biggy 14 px short.
+
+**Rejected.** Two attempts to give the first-floor well a full-height guard at its head were backed
+out. Room 9's numeral panel is 30.25 px of sign in 30.75 px of wall, clamped against that very
+edge, with its bottom 0.30 m off the floor; traced at every diorama pitch the sight line from its
+bottom corner crosses the guard's line between 0.63 m and 1.11 m, so **no** handrail height clears
+it. Moving the numeral was tried and backed out too: the wall on the other side of room 9's door is
+the same width and has a corridor column in front of its first 5 px, so the panel would overhang
+the door lintel. The head of each well carries a 0.40 m upstand and a newel instead, and that is
+logged as a compromise rather than a solution — the honest fix needs Michele to say whether the
+numeral may move.
+
+**Also found, not fixed:** the technical room's north wall leaves **15.8 px** between it and the
+bot shaft's south door. Biggy is 18 across, so he cannot use that door. `GF.tech` came from the
+prototype and has never been measured off the plan; flagged rather than moved.
+
+**Tests.** `tests/stairs-driven.test.ts` new (3 driven cases). `tests/geometry.test.ts` and
+`tests/staircase-clear.test.ts` had three cases rewritten onto the corrected geometry — none
+loosened: "one doorway in the west end" became "both short ends solid, a doorway in each long
+face", and the descent-waypoint check gained a second assertion that the middle of the flight is
+now wall. Suite at hand-off: **516 tests, 30 files, green**, `npx tsc --noEmit` clean,
+`document.title` = `After Dark · ERRORS:0` on every shot.

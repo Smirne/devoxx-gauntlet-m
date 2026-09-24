@@ -287,22 +287,37 @@ describe('the two secondary staircases upstairs are clear too', () => {
 
   /**
    * ...and the two who CAN take those stairs still fit through the mouth, while
-   * Biggy does not. Chapter 1 ends by walking all three onto that landing, so the
-   * landing has to be somewhere a robot can be.
+   * Biggy does not. Chapter 1 ends by walking all three onto the top step, so the
+   * top step has to be somewhere a robot can be.
+   *
+   * **The waypoint used to be the middle of the flight** — `r.x + r.w / 2` — back
+   * when the mouth was centred and a run fell away either side. Michele, 24 Sep
+   * 2026: *"This makes it look like there's a center, and 2 descent. I think it's
+   * a mid plane between two ramps of stairs."* It is one staircase, the centre is
+   * a ramp, and the way on is the east end (`nicheMouth`). The assertion moved
+   * onto the new head rather than being dropped, and `ch1-night.ts` derives its
+   * waypoint from `nicheMouth` so the two cannot drift apart again.
    */
-  it('lets Droid onto the landing and keeps Biggy off it', () => {
+  it('lets Droid onto the top step and keeps Biggy off it', () => {
     for (const { name, r } of shafts) {
       const mouth = nicheMouth(r);
       expect(mouth.w, `the ${name} mouth admits Biggy`).toBeLessThan(DEFS.biggy.r * 2);
       expect(mouth.w, `the ${name} mouth refuses Droid`).toBeGreaterThan(DEFS.droid.r * 2);
       expect(mouth.h).toBeGreaterThan(DEFS.droid.r * 2);
-      // Chapter 1's descent waypoint is the middle of the flight, which is the
-      // middle of that landing, and it is inside the corridor band.
-      const head = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+      // Chapter 1's descent waypoint is the centre of that top step, and it is
+      // inside the corridor band.
+      const head = { x: mouth.x + mouth.w / 2, y: mouth.y + mouth.h / 2 };
       expect(head.x).toBeGreaterThan(mouth.x);
       expect(head.x).toBeLessThan(mouth.x + mouth.w);
       expect(head.y).toBeGreaterThan(CY0);
       expect(head.y).toBeLessThan(CY1);
+      // ...and the middle of the flight, where it used to stand, is now wall.
+      const runs = floor1Walls().filter((w) => w.kind === 'stairwell' || w.kind === 'stairwell-near');
+      const centre = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+      expect(
+        runs.some((w) => centre.x > w.x && centre.x < w.x + w.w && centre.y > w.y && centre.y < w.y + w.h),
+        `the middle of the ${name} flight is still walkable`,
+      ).toBe(true);
     }
   });
 });

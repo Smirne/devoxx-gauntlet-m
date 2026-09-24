@@ -22,6 +22,7 @@
 
 import { FIRE_LEAF_H, fireDoorDraw } from '../src/render/fire-door';
 import { KEYPAD_TOP_M } from '../src/render/keypad';
+import { PANEL_H_M, PANEL_LIFT_M } from '../src/render/release-panel';
 import { GATE_H, LOCK_LEAF_H, gateDraw, lockDoorDraw } from '../src/render/doors';
 import { ROLLER_H, rollerDoorDraw, ROLLER_CLEAR_M } from '../src/render/roller-door';
 import { SEAT_TOP_M } from '../src/render/seats';
@@ -70,7 +71,14 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
    * stands, and it does.
    */
   keypad: { h: KEYPAD_TOP_M, tl: true },
-  'projector-panel': { h: 0.9, tl: true, lift: 2.5 },
+  /*
+   * The door override is a modelled unit too (`src/render/release-panel.ts`),
+   * and its two numbers are read off that module rather than retyped here — the
+   * `KEYPAD_TOP_M` pattern, for the reason this file's header gives. They are
+   * the same 0.9 m and 2.5 m the table always carried: the change was the SHAPE
+   * inside them, not the band, so nothing the collider sweep measures moves.
+   */
+  'projector-panel': { h: PANEL_H_M, tl: true, lift: PANEL_LIFT_M },
   screen: { h: 5.2, tl: true },
   alcove: { h: 0.05, tl: true, flat: true },
   /*

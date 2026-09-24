@@ -9,8 +9,15 @@
  * projector window"*, cinema C's joke is *"projector says NO SIGNAL"*, and the
  * README opens on *"the projectors are cold"* — and until now the venue drew no
  * projector at all. Not a crude one: none. Michele, after his playtest: **"The
- * projector still needs a shape."** (The `projector-panel` prop beside cinema B's
- * door is the door override, a different object, and it already has one.)
+ * projector still needs a shape."**
+ *
+ * (The `projector-panel` prop beside cinema B's door is the door override, a
+ * different object. This header used to add *"and it already has one"* — a
+ * shape, that is — and **that was false**: it was a `PROPS` table entry drawn by
+ * the generic `drawProp` as a single lit cuboid, which is what Michele filed
+ * next: *"the part that needs a shape is the green Cube that opens the door"*.
+ * It has one now, in `src/render/release-panel.ts`, and this note is corrected
+ * so the next reader is not sent past it.)
  *
  * ## What is modelled, and why each piece is there
  *

@@ -106,7 +106,7 @@ import {
   TRAVEL_TIME_SCALE,
 } from '../constants';
 import { m } from '../units';
-import { GF, VIEW_GROUND, groundWallsFor, stairDoor } from '../geometry';
+import { GF, VIEW_GROUND, groundWallsFor, stairLanding } from '../geometry';
 import { dist, inRect, speed } from '../bot';
 import { buildLights, litBy } from '../lights';
 import type { Bot, LightSource, Mirror, Prop, TextPrompt, Vec2, Wall } from '../types';
@@ -346,19 +346,33 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setView(VIEW_GROUND);
   ctx.setWalls(groundWallsFor(2));
   /*
-   * Out of the secondary stairwell's doors, into the hall.
+   * At the foot of the secondary stairs, on the landing, doors ahead of them.
    *
    * They used to stand at x 372, off the EAST end of the staircase, because the
-   * staircase was an open flight that climbed westward. It is an enclosed shaft now
-   * with its doors in the west face and the flight climbing away from them, which
-   * is what `plans/exhibition-floor-simple.png` draws (see `GF.stairs`) — so the
-   * three of them come out on the west side. The old spot has also stopped being
-   * empty floor: one of the hall's roof columns stands at 380,480, and it is a
-   * collider now.
+   * staircase was an open flight that climbed westward; then west of a single
+   * doorway in the shaft's short west end. Both are gone. Michele, 24 Sep 2026:
+   * *"you put the opening north, but it's on the sides (WEST, EAST)"* — the plan
+   * puts a pair of double doors in each of the shaft's two LONG faces, near the
+   * foot, and nothing at all in either short end (`stairDoors` in
+   * `src/sim/geometry.ts` counts the door symbols face by face).
+   *
+   * So there is no "outside the door" that is both roomy and in shot any more: the
+   * north door faces away from the diorama camera behind a full-height flank, and
+   * the strip south of the south door is 15.8 px of floor — the technical room's
+   * north wall runs at y 554 and this shaft's south face at 538.2 — and Biggy is
+   * 18 across, so he cannot use that door at all. The landing itself is 92.9
+   * x 32.1 of walkable floor, it is where three robots who have just come down a
+   * flight would actually be, and the near flank is cut to `NEAR_CUT_H` so the
+   * camera reads straight over it. They start there, at the foot of the flight,
+   * with the doors beside them.
    */
   const shaft = GF.stairs[1];
-  const mouth = stairDoor({ x: shaft.x, y: shaft.y, w: shaft.w, h: shaft.h });
-  ctx.place([mouth.x - 20, mouth.y + 4], [mouth.x - 34, mouth.y + mouth.h / 2], [mouth.x - 20, mouth.y + mouth.h - 4]);
+  const landing = stairLanding({ x: shaft.x, y: shaft.y, w: shaft.w, h: shaft.h });
+  const foot = landing.x + landing.w;
+  const cy = landing.y + landing.h / 2;
+  // Voxxy nearest the foot of the flight — she came down it first — then Droid,
+  // then Biggy back toward the doors, which is the order they will go out in.
+  ctx.place([foot - 14, cy - 8], [foot - 30, cy], [foot - 50, cy + 6]);
 
   let power = false;
   /**
