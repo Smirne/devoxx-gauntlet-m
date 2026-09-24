@@ -34,11 +34,11 @@ import { JAM_LEAF_H, JAM_SKEW, JAM_SKID, JAM_TIP } from '../sim/chapters/ch1-nig
 import type { GameSnapshot, Person, Plate, Prop, RobotKind, ViewRect } from '../sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M, STOREY_H_M, m } from '../sim/units';
 
-import { createCamera, type DioramaCamera } from './camera';
+import { createCamera, OPENING_AZIMUTH_RAD, type DioramaCamera } from './camera';
 import { FIRE_LEAF_H, FIRE_LEAF_T, fireDoorDraw } from './fire-door';
 import { buildKeypad, type KeypadModel } from './keypad';
 import { buildCrates, type CratesModel } from './crates';
-import { CRATE_ROW } from '../sim/opening';
+import { CRATE_ROW, PULL_BACK, WALK_AT } from '../sim/opening';
 
 /**
  * How lit the crates stay once the opening is over. Not zero: they are timber in
@@ -49,7 +49,15 @@ import { CRATE_ROW } from '../sim/opening';
 const OPEN_CRATE_LIT = 0.16;
 import { createLightLayer, type LightLayer } from './lighting';
 import { PANEL_H_M, PANEL_LIFT_M, buildReleasePanel, type ReleasePanelModel } from './release-panel';
-import { createRobot, measureBounds, updateRobot, yawFromSimHeading, EXCLUDE_FROM_BOUNDS, type RobotRig } from './robots';
+import {
+  createRobot,
+  measureBounds,
+  presentationLight,
+  updateRobot,
+  yawFromSimHeading,
+  EXCLUDE_FROM_BOUNDS,
+  type RobotRig,
+} from './robots';
 import { ROLLER_SLATS, rollerDoorDraw } from './roller-door';
 import { SEAT_KINDS, SEAT_TOP_M, createSeatField } from './seats';
 import {
@@ -274,6 +282,18 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
    * `drawTerminal` takes the screen further — a waiting terminal blinks.
    */
   terminal: { h: 0.34, color: 0x101820, tl: true, lift: 1.25, glow: 0x6b4406 },
+  /*
+   * THE ROUTER CABINET'S PILOT LAMP — the one entry in this table that deliberately
+   * carries NO `glow`.
+   *
+   * Every other kind above is given a standby glow because the thing a player is
+   * hunting is idle by definition. This one is the opposite case: the sim keys its
+   * `state` to the SUPPLY (`ch2-expo.ts`), so 'idle' means there is not a volt in
+   * the cabinet, and a standby glow would be the lamp claiming otherwise. Dark is
+   * the truth, and it is what makes the amber mean something when it arrives.
+   * `drawPilot` takes it further — a live lamp breathes.
+   */
+  pilot: { h: 0.1, color: 0x14181d, tl: true, lift: 1.78 },
   poster: { h: 0.62, color: 0xe9e4d6, tl: true, lift: 0.95, glow: 0x2a3a52 },
   printer: { h: 0.95, color: 0xb9bec6, tl: true },
   /*
@@ -456,6 +476,16 @@ export interface DioramaScene {
    * speech bubble over that robot instead of in a text row at the bottom edge.
    */
   project(simX: number, simY: number, heightM?: number): { x: number; y: number } | null;
+  /**
+   * The three.js scene root, for a headless probe and nothing else.
+   *
+   * Twice now the only way to find out what a dark shape in a screenshot
+   * actually IS has been to sweep the scene graph's bounding boxes — the
+   * corridor column standing inside Voxxy's crate was found that way — and both
+   * times the hook had to be improvised into `crates.ts` and then taken out
+   * again. It costs one line to keep. Nothing in the game reads it.
+   */
+  debugRoot(): THREE.Object3D;
   dispose(): void;
 }
 
@@ -575,6 +605,8 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   const BREAKER_OFF = 0.7;
   const BREAKER_ON = -0.2;
 
+  /** What an arc across a contact looks like: the colour the supply lamp flares to. */
+  const WHITE_ARC = new THREE.Color(0xfff4e0);
   const breakerHandleMat = new THREE.MeshStandardMaterial({ color: 0xd8d4cc, roughness: 0.5, metalness: 0.1 });
   const breakerLampMat = new THREE.MeshStandardMaterial({
     color: 0x2a2018,
@@ -1797,6 +1829,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   let portrait: RobotKind | null = null;
   /** Frames left of "re-fit the portrait while the rig settles into its stance". */
   let portraitSettle = 0;
+  let lastAzimuth: number | undefined;
   let lastChapter = -1;
 
   /** Put the scene graph into whatever the current mode needs. */
@@ -1961,6 +1994,63 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const on = p.state === 'done';
     breakerLampMat.emissive.setHex(on ? 0x2fd17a : 0xb06a10);
     breakerHandleMat.color.setHex(on ? 0xdfe6df : 0xd8d4cc);
+    /*
+     * THE STRIKE — Michele, 26 Sep 2026: *"the braker activation seems to do
+     * nothing, apart from the message."*
+     *
+     * `p.progress` is the sim's own clock (`BREAKER_STRIKE_TIME` in `ch2-expo.ts`),
+     * 1 on the frame a handle goes up and out over the next half second. A board
+     * taking load arcs across the contacts, so the lamp flares white-hot and the
+     * handles catch the light with it — and it happens on all three handles, not
+     * only the one that closes the supply, because all three are the player doing
+     * something. Nothing is decided here: the sim says when, this says what it
+     * looks like.
+     */
+    const strike = Math.min(1, Math.max(0, p.progress ?? 0));
+    breakerLampMat.emissiveIntensity = 1 + 5 * strike;
+    if (strike > 0) breakerLampMat.emissive.lerp(WHITE_ARC, 0.8 * strike);
+    breakerHandleMat.emissive.setHex(0xffd9a0);
+    breakerHandleMat.emissiveIntensity = 0.9 * strike;
+  }
+
+  /**
+   * The router cabinet's pilot lamp — Michele, 26 Sep 2026: *"a light on a cabinet
+   * to signal you should go there?"*
+   *
+   * An annunciator strip across the top of the carcass, above both leaves, so it
+   * reads with the doors shut and with them standing open. Three states, and the
+   * sim decides every one of them (`ch2-expo.ts` keys the prop to the SUPPLY):
+   *
+   *   'idle'   dark. No emissive at all — not a dim standby, nothing. A cabinet
+   *            with no volts in it must not be advertising itself, and the kind
+   *            carries no `glow` in `PROPS` for exactly that reason.
+   *   'active' amber, breathing about once a second. A thing is running behind
+   *            this door. This is the "come here", and it arrives on the frame
+   *            the third breaker lands, four metres from where Droid is standing.
+   *   'done'   green, steady and bright. Nothing left to come for.
+   *
+   * The breath is the same idea as `drawTerminal`'s cursor: a lamp that pulses is
+   * a lamp that is doing something, and a room this dark needs the movement more
+   * than it needs the brightness.
+   */
+  function drawPilot(p: Prop, floorY: number, t: number): void {
+    const spec = PROPS.pilot ?? PROP_FALLBACK;
+    const wM = m(p.w ?? 64);
+    const dM = m(p.h ?? 3);
+    const mesh = propPool.get();
+    mesh.scale.set(Math.max(wM, 0.06), spec.h, Math.max(dM, 0.06));
+    mesh.position.set(m(p.x) + wM / 2, surfaceY(floorY, p.x, p.y) + (spec.lift ?? 1.78) + spec.h / 2, m(p.y) + dM / 2);
+    mesh.castShadow = false;
+    mesh.receiveShadow = true;
+
+    const mat = mesh.material as THREE.MeshStandardMaterial;
+    mat.transparent = false;
+    mat.opacity = 1;
+    mat.color.setHex(spec.color);
+    const live = p.state === 'active';
+    const done = p.state === 'done';
+    mat.emissive.setHex(done ? 0x2fd17a : live ? 0xff8a1a : 0x000000);
+    mat.emissiveIntensity = done ? 1.8 : live ? 1.1 + 0.7 * (0.5 + 0.5 * Math.sin(t * 2.4)) : 0;
   }
 
   /**
@@ -2345,6 +2435,25 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       crates = buildCrates({
         baseY: floorY,
         centre: { x: m(CRATE_ROW.x), z: m(CRATE_ROW.y) },
+        // Quarter-turned with the row: the crates back onto the corridor's WEST
+        // wall and look east.
+        //
+        // The sign matters and only one of the two works. A quarter-turn maps
+        // the model's local +x — the row direction, the order that spells the
+        // word — and its local -z — the direction the faces look — TOGETHER.
+        // At -PI/2 the row lands in `CRATE_RECTS`' order but the crates stand
+        // out in the corridor with their faces into the wall; at +PI/2 they back
+        // onto the wall and look east, which is the shot, and the ROW runs the
+        // other way. So the row order is mirrored in `src/sim/opening.ts` to
+        // match, and this stays +PI/2.
+        //
+        // Getting it wrong is not subtle and does not look like a row order: the
+        // sim opens Voxxy's crate while the renderer has Biggy's in that slot,
+        // so an unlit robot is left standing in a box the sim has emptied — a
+        // black shape in an open crate. Found by sweeping the scene graph's
+        // bounding boxes over Voxxy's own rect (`DioramaScene.debugRoot`), which
+        // is why that hook is kept.
+        yaw: Math.PI / 2,
         seed: 7,
       });
       dressing.add(crates.root);
@@ -2399,6 +2508,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       else if (p.kind === 'jammed') drawJammed(p, floorY);
       else if (p.kind === 'breaker') drawBreaker(p, floorY);
       else if (p.kind === 'terminal') drawTerminal(p, floorY, snap.t);
+      else if (p.kind === 'pilot') drawPilot(p, floorY, snap.t);
       else if (p.kind === 'cabinet') drawCabinet(p, floorY);
       else if (p.kind === 'lock') drawLock(p, floorY, snap.walls);
       else if (p.kind === 'gate') drawGate(p, floorY, snap.walls);
@@ -2443,6 +2553,23 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       if (!rig) continue;
       rig.root.visible = show;
       if (!show) continue;
+      /*
+       * THE PRESENTATION LIGHT. Michele: *"Robots are still black. In the intro
+       * I'll show them fully, even if it's dark. It's their presentation."*
+       *
+       * Chapter 1's corridor is a blackout and a robot still in its crate is lit
+       * by nothing, so each panel is re-exposed IN ITS OWN COLOUR — no
+       * `THREE.Light` anywhere, which is the rule the crates already follow. It
+       * comes up with that robot's own crate lamp and is handed back to the
+       * game's lighting across the camera pull-back, so nothing pops on the
+       * transition frame.
+       */
+      const op = snap.opening;
+      if (op === null) presentationLight(rig, 0);
+      else {
+        const u = Math.min(1, Math.max(0, (op.t - WALK_AT) / PULL_BACK));
+        presentationLight(rig, op.lamp[b.kind] * (1 - u * u * (3 - 2 * u)));
+      }
       // Droid rides on Biggy: the sim keeps both at the same footprint, so the
       // renderer is the only place that knows how far up "on his shoulders" is.
       //
@@ -2614,6 +2741,24 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       diorama.setChapter(snap.chapter);
     }
 
+    /*
+     * THE OPENING GETS ITS OWN ANGLE. Michele: *"Transition to the corridor,
+     * different camera angle, robots ready to start."*
+     *
+     * At the play azimuth the crate row stands edge-on and `DEVOXX` is three
+     * slivers, which is the whole reason this override exists. At 68 degrees all
+     * six stencil letters, the ANTWERPEN band, both red corner blocks and
+     * Biggy's stove-in corner read, and every crate still keeps a flank and a
+     * lid, so the row reads as three boxes stepping up in size — small, tall,
+     * huge, which is the presentation order. Handing it back re-frames the rect
+     * the camera already has, so the start of play is a swing rather than a cut.
+     */
+    const wantAzimuth = snap.opening !== null ? OPENING_AZIMUTH_RAD : undefined;
+    if (wantAzimuth !== lastAzimuth) {
+      lastAzimuth = wantAzimuth;
+      diorama.setAzimuth(wantAzimuth);
+    }
+
     placeRobots(snap, dt, floorY);
     drawDressing(snap, floorY);
     updateActiveRing(snap, floorY);
@@ -2640,6 +2785,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
 
   return {
     render,
+    debugRoot: (): THREE.Object3D => scene,
     project(simX: number, simY: number, heightM = 0): { x: number; y: number } | null {
       if (portrait !== null || topDown) return null;
       projV.set(m(simX), lastFloorY + heightM, m(simY));

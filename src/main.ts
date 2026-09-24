@@ -566,12 +566,15 @@ export interface AfterDarkHandle {
   portrait(kind: RobotKind | null): void;
   /** Every line the error reporter has caught, live. `document.title` carries the count. */
   errors: string[];
+  /** The three.js scene root. A probe hook — see `DioramaScene.debugRoot`. */
+  debugRoot(): unknown;
   dispose(): void;
 }
 
 const handle: AfterDarkHandle = {
   game,
   snapshot: () => game.snapshot(),
+  debugRoot: () => scene.debugRoot(),
   startChapter: (n: number) => game.startChapter(n),
   topDown: (on: boolean) => scene.setTopDown(on),
   fog: (on: boolean) => scene.setFogEnabled(on),

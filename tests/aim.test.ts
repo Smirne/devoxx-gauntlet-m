@@ -151,6 +151,21 @@ describe('aim — after the stick lets go', () => {
     for (const [name, ix, iy] of DIRS) {
       const g = createGame({ seed: 20260930, chapter: 1, cards: false }) as DebugGame;
       g.debug.select('voxxy');
+      /*
+       * THE OTHER TWO GO AWAY FIRST, and that is not a weakening.
+       *
+       * This case is about the WALLS: "a wall bounce reverses the normal
+       * component of the velocity" is the bug it was written for, and it drives
+       * all eight directions across the real room to catch it. Since the crate
+       * row moved to the west wall the three start marks are a north-south line
+       * at x 46, so driving north is Voxxy shoving Biggy up the corridor — and a
+       * shoved robot facing the way it is actually travelling is `stepAim`'s
+       * documented rule ("a body that speeds up while nobody is steering it is
+       * being towed, shoved or knocked"), not a bug in it. Leaving them in the
+       * lane would have this case quietly asserting the opposite of the design.
+       */
+      g.debug.place('droid', 900, 650, 0);
+      g.debug.place('biggy', 960, 650, 0);
       g.debug.place('voxxy', start.x, start.y, 0);
       g.setStick(ix, iy);
       for (let i = 0; i < 91; i++) g.update(DT_MAX);

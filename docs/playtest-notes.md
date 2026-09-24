@@ -385,6 +385,104 @@ and the venue is one of the two things `CLAUDE.md` says may not drift.
 | *"Robots light should go off when light is on."* | Once the hall is lit, the lamps are pointless and the mixing puzzle is over. |
 | *"this element before reception is not needed."* | The dark slab in front of the counter in his screenshot. |
 
+## Michele, 24 Sep late — the night list
+
+| his note | state |
+| --- | --- |
+| *"sometimes the toast are multiple and not all are visible. Assure they do not superimpose."* | **Done** (`0f72c59`). Two faults: the shared `ad-rise` keyframe ended on `transform:none` with `fill-mode: both`, which permanently cancelled a bubble's `translate(-50%,-100%)` anchor — every bubble jumped half its width right and its whole height down once it settled — and nothing separated two bubbles whose boxes crossed. Bubbles now have their own keyframes, and `placeBubbles` lifts each box clear of the ones already placed, lowest first. |
+| *"the stair, reception and wardrobe appearence still need fix"* | Reception and wardrobe **done** (`e4c1abe`); see below. Staircase **deferred**, with the measurement settled — see "the main staircase faces the wrong way". |
+| *"where is the wifi password graffiti? It should be visible!"* | **Done** (`1366d1f`). It was sim-only: chapter 2 publishes it as a `poster` prop and the prop style draws every poster as a pale cream lightbox, so no paint existed. The venue paints it now, at the prop's own x, low-glow orange on a dark ground. Found on the way: the printed WiFi notice hung at y 371, **inside `GF.coatroom`** (262..384) — a sign nailed up in a closed room. Moved onto the reception counter's west run. |
+| *"when all actions are done, chapter 2 ends abruptly. I just finished the biggy run, i expected to see the animation and the inside of the gadget room. Since u can finish in different orders, give some seconds for animation / see what happens before the chap 3 screen."* | **Queued.** `ch2-expo.ts` is held by another agent this round. The fix is a hold between "last task done" and the end card, long enough for the roller to finish its lift and the camera to see inside the store, whichever task finished last. |
+| *"some flickering lights (hard to show on screenshot)"* | **Queued**, not yet reproduced. Two known causes in this repo are coplanar surfaces (the entrance flicker, `lobby()`) and dashed arcs that crawl; a third to check is the new `riseForBody` blend at a plate seam. |
+| *"Am I putting too much thing together on the backlog?"* | Fairly asked, and the honest answer was yes: fifteen items open, and the session before this one went on crates, the intro and bubbles — none of them on his stated priority 1. |
+
+### The main staircase faces the wrong way — measured, deferred
+
+Michele: *"Stairs should be facing the entrance. As i enter i see stairs going straight up."*
+`plans/exhibition-floor-stairs-annotated.png` settles it: the main staircase is drawn **directly
+inside the main entrance**, its treads running across the width of the block and one arrow climbing
+**away** from the doors, with reception above-left of it and the BOF rooms to its right. Both of
+those we already have right — reception IS west of the staircase in our plot, which is what his
+*"Reception signal points the wrong way"* note is about (the sign, not the block).
+
+What is wrong is the face you enter from. Ours climbs **north over its 197 px length**, entered
+through a 112 px gate on its SOUTH face. The plan has it entered from the **entrance side — world
+EAST** — climbing **west** over its 112 px depth, 197 px wide. So the footprint stays exactly where
+it is; the flight's axis and its open face turn 90 degrees.
+
+Deferred rather than done because the change does not stop at geometry: `GF.gate` becomes a
+north–south rect, and `ch3-breakfast.ts` hinges Stephan's gate on `gate.w` with a constant `gateY`
+(`gateHingeX`, `gateLen`), so the swing, Stephan's post and the visitor queue all move with it —
+and `ch2-expo.ts` was held by another agent this round. It is one change, in one commit, when the
+chapter files are free.
+
+### The reception block, done (`e4c1abe`)
+
+- The counter is **two `COUNTER`-deep runs** closing the west and south faces, hollow in the middle,
+  entered from the north-east corner beside the stairs — the only corner that can open, with BOF
+  north and the staircase east. It was one solid 126x75 slab, which is exactly why it read as *"a
+  wood panel longer than the room"*.
+- The **printer sits on the south run**, so chapter 2's cable ends somewhere a robot reaches from
+  the concourse and nobody walks behind the desk.
+- The **wardrobe hands out over its west face**. It used to hand out SOUTH, into the back of the
+  reception desk, where nobody can stand. Its dressing turned with it: the wood-slat back wall is
+  the east face now and the rails run north-south, down the length of the view rather than end-on.
+- `tests/reception.test.ts` holds both shapes, interior included.
+
+Still open on that block from the 24 Sep list: the sign direction, and *"this element before
+reception is not needed"* — the dark slab in front of the counter, which I could not identify from
+the note alone and will ask about rather than guess at.
+
+### The intro, restaged against the west wall
+
+Michele's own proposal, taken whole: *"Why not placing the crates on the west wall and using a single
+transition? Start: cinematic on the crate, light on robots, each one exits and is presented.
+Transition to the corridor, different camera angle, robots ready to start."*
+
+It also turned out to be the only position that works, which the *"the left crate is half black"*
+complaint was pointing at without either of us knowing. **Voxxy's crate was standing inside
+`corridor-column`** (x 59..75, y 288..304): 9.1 px of a 17.25 px crate — 53% of it — of 3.3 m of
+`#1b1e24` with a black emissive, i.e. exactly black in a blackout, standing in front of the boarding
+and filling the interior the moment her panel dropped. Droid's and Biggy's fouled nothing, which is
+why only hers showed it. Ruled out by measurement, not argument: the crate materials (probed live,
+all three identical), a shadow (the black is pure 0,0,0 and survives `?nofog=1`), the visibility
+polygon, the fallen panel, winding.
+
+**And it could not be slid clear.** A pixel-by-pixel scan of x 40..400 against both the columns and
+the auditorium door leaves found NO row centre where all three crates clear everything — the row is
+4.82 m, the two usable column gaps are 75..169 and 245..365, and each has a door in the middle of
+it. (Sliding it 26 px east, the obvious first try, puts Biggy's crate inside `cinema-door-leaf`.)
+
+So: face line **x 29**, row centre **y 350** — the corridor's own centre line — backs to the west
+wall, faces east, Biggy's 1.78 m depth reaching back to x 6.75 against the wall's inner face at
+`T` = 6. Measured with slack: any face line 29..120 on any centre 316..384 clears.
+`crateRowFouls()` in `src/render/crates.ts` re-checks a candidate before it is committed.
+
+Three things fall out of it for free, and they are why this is better than a fix:
+- The robots' start marks are the crate row, so they begin at the **west end facing east** — already
+  pointed down the corridor, with the crates behind them instead of beside the lane.
+- **One transition**, as he asked: the presentation and the cut to play are the same pull-back.
+- The crates stay as scenery with colliders for the rest of the chapter.
+
+**The presentation light** answers *"Robots are still black. In the intro I'll show them fully, even
+if it's dark. It's their presentation."* Each panel is re-exposed in its OWN colour — no
+`THREE.Light` anywhere, the rule the crates already follow — to `0.1 + 0.44 * sqrt(lum)`, so Droid's
+graphite comes up a long way and Voxxy's orange shell hardly moves and they stay three different
+robots rather than three grey ghosts. It rises with each robot's own crate lamp and is handed back
+across the camera pull-back so nothing pops on the transition frame. Two traps recorded: the eye and
+visor emissives are skipped (lifting one gives a robot two white holes in its face), and a material
+carrying its colour in a canvas texture is lifted through its `emissiveMap` — lifting `mat.color`
+works in node and painted Biggy's whole belly flat white in a browser.
+
+**The intro's camera angle is 68 degrees** (`OPENING_AZIMUTH_RAD`), against the play azimuth's 14.
+At 14 the row is edge-on and `DEVOXX` is three slivers, which is why the override exists at all; at
+68 all six stencil letters, the ANTWERPEN band, both red corner blocks and Biggy's stove-in corner
+read, and every crate still keeps a flank and a lid so the row reads as three boxes stepping up in
+size — small, tall, huge, which is the presentation order. 90 degrees is a flat elevation: three
+painted boards, no diorama. The override is per-shot and `dioramaToCamera()` deliberately still
+reads the constant, so no signage facing rule moves with it; a shot at 68 will show some signs from
+behind, which is harmless in an empty corridor and is the reason this is not a second setting.
+
 ## Chapter 2, second pass — Michele, 24 Sep
 
 | his note | decision |
