@@ -233,13 +233,12 @@ export interface Materials {
   sets: Record<string, TextureSet>;
 }
 
-function fromSet(set: TextureSet, repeat = 1, extra: THREE.MeshPhysicalMaterialParameters = {}): THREE.MeshPhysicalMaterial {
-  const maps = [set.map, set.orm, set.normal].map((t) => {
-    const c = t.clone();
-    c.repeat.set(repeat, repeat);
-    c.needsUpdate = true;
-    return c;
-  });
+function fromSet(set: TextureSet, extra: THREE.MeshPhysicalMaterialParameters = {}): THREE.MeshPhysicalMaterial {
+  // The baked maps are render-target textures: used as they are, never cloned.
+  // A clone is a new Texture with no image behind it, and three uploads it as
+  // black — for a day every material here had black albedo, zero roughness and
+  // a garbage normal, and the venue was lit by its specular alone.
+  const maps = [set.map, set.orm, set.normal];
   return new THREE.MeshPhysicalMaterial({
     map: maps[0],
     roughnessMap: maps[1],
@@ -266,16 +265,16 @@ export function createMaterials(renderer: THREE.WebGLRenderer): Materials {
   };
   const m: Materials = {
     // One terrazzo texture repeat = 2.4 m (four 60 cm slabs), set by worldUV tile.
-    terrazzo: fromSet(sets.terrazzo, 1, { normalScale: new THREE.Vector2(0.6, 0.6) }),
-    carpet: fromSet(sets.carpet, 1),
-    carpetRed: fromSet(sets.carpetRed, 1),
-    plaster: fromSet(sets.plaster, 1, { normalScale: new THREE.Vector2(0.35, 0.35) }),
-    acoustic: fromSet(sets.acoustic, 1),
-    ceiling: fromSet(sets.ceiling, 1),
-    steel: fromSet(sets.steel, 1),
-    enamel: fromSet(sets.enamel, 1, { color: new THREE.Color(0.55, 0.06, 0.05), clearcoat: 0.4, clearcoatRoughness: 0.35 }),
-    velvet: fromSet(sets.velvet, 1, { sheen: 1, sheenColor: new THREE.Color(0.8, 0.2, 0.25), sheenRoughness: 0.4 }),
-    counter: fromSet(sets.counter, 1, { clearcoat: 1, clearcoatRoughness: 0.08 }),
+    terrazzo: fromSet(sets.terrazzo, { normalScale: new THREE.Vector2(0.6, 0.6) }),
+    carpet: fromSet(sets.carpet),
+    carpetRed: fromSet(sets.carpetRed),
+    plaster: fromSet(sets.plaster, { normalScale: new THREE.Vector2(0.35, 0.35) }),
+    acoustic: fromSet(sets.acoustic),
+    ceiling: fromSet(sets.ceiling),
+    steel: fromSet(sets.steel),
+    enamel: fromSet(sets.enamel, { color: new THREE.Color(0.55, 0.06, 0.05), clearcoat: 0.4, clearcoatRoughness: 0.35 }),
+    velvet: fromSet(sets.velvet, { sheen: 1, sheenColor: new THREE.Color(0.8, 0.2, 0.25), sheenRoughness: 0.4 }),
+    counter: fromSet(sets.counter, { clearcoat: 1, clearcoatRoughness: 0.08 }),
     darkMetal: new THREE.MeshPhysicalMaterial({ color: 0x15171b, roughness: 0.35, metalness: 0.9 }),
     blackGloss: new THREE.MeshPhysicalMaterial({ color: 0x050506, roughness: 0.08, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.05 }),
     glass: new THREE.MeshPhysicalMaterial({

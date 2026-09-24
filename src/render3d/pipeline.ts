@@ -92,7 +92,8 @@ export interface Grade {
 
 export function defaultGrade(): Grade {
   return {
-    exposure: 1.35,
+    // Tuned with real albedo; the old 1.35 compensated for the black-map bug.
+    exposure: 0.32,
     bloomStrength: 0.035,
     dirtStrength: 0.12,
     streakStrength: 0.05,
@@ -101,12 +102,12 @@ export function defaultGrade(): Grade {
     vignette: 0.55,
     grain: 0.045,
     saturation: 1.15,
-    contrast: 1.18,
+    contrast: 1.25,
     shadowTint: new THREE.Color(0.82, 1.0, 1.12),
     highlightTint: new THREE.Color(1.08, 0.97, 0.92),
     aoStrength: 0.9,
     volStrength: 1.0,
-    fogDensity: 0.035,
+    fogDensity: 0.028,
     fogHeightFalloff: 0.18,
     fogBase: 0,
     fogNoise: 0.7,

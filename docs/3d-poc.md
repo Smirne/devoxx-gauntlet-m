@@ -75,15 +75,15 @@ host tried (`www.nvidia.com`, `store.steampowered.com` and the Steam CDNs, `uplo
 look — deep blacks with saturated coloured light, wet reflective floors doubling every neon, haze
 with visible shafts, bloom and lens artefacts, animated signage, dense surface detail, a
 yellow/cyan/coral UI — and each round was a screenshot set (corridor, foyer, cinema E, fire door)
-judged against it. Allowing one of those hosts in the environment's network settings would let the
-next round compare side by side.
+judged against it. Access was allowed on 24 Sep, but the change had not reached the running
+container; a fresh session should be able to fetch them.
 
 ## Where it stands against that bar
 
 Close on: the lighting language (coloured practicals, visible beams, reflections, bloom, grade),
 signage and screens, the cinema interiors. Still clearly short on: **surface detail density** (walls
-and props are mostly bevel-less boxes; no decals, clutter, cables, graffiti), **indirect light**
-(big areas go to pure black where a path-traced game would bounce the neon around), and **character
+and props are mostly bevel-less boxes, with some decals, clutter and cables), **indirect light**
+(a hemisphere and an environment capture stand in for bounce), and **character
 detail** (the robots are the sheets' clean primitives). No browser renderer gets to Cyberpunk's
 path-traced Overdrive mode; the honest target is its rasterised look, and the gap there is mostly
 content, not pipeline.
@@ -101,6 +101,10 @@ content, not pipeline.
   him white); the pool on the floor keeps the sim's radius.
 
 ## Known gaps
+
+- Until 24 Sep every procedural material rendered with black albedo (see `docs/genai-notes.md`).
+  The look was re-graded after the fix, but lights placed during the black-albedo night may still
+  be hotter than they need to be.
 
 - Chapter 1 only; the walk-out cutscene ends at the top of the 3|4 staircase and cuts to the card.
 - Performance is untested on real GPUs (developed on a software renderer, ~10 s a frame at
