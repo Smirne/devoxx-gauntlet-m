@@ -28,6 +28,16 @@ export type SoundId =
   | 'door'
   /** A door that does break: the jammed cinema door, the store's roller door. */
   | 'crash'
+  /**
+   * A door that opens because it was asked nicely: chapter 1's fire door.
+   *
+   * The counterpart to `crash`, and deliberately its opposite in shape. `crash` is
+   * an impact with debris falling away from it; this starts with the hard snap of
+   * a magnetic lock letting go, opens into a long slow breath of air round a heavy
+   * leaf, and lands on the leaf meeting its stop about a second later — which is
+   * `FIRE_SWING_TIME` in `ch1-night.ts`, because the sim owns that clock.
+   */
+  | 'door-open'
   /** One keypad digit. `semitones` gives each digit its own pitch. */
   | 'keypad'
   /** UI tick: switching robot, selecting something. */
@@ -333,6 +343,40 @@ export function createAudio(): Audio {
         playAt('door', t0, g, 1, undefined);
         noise({ t0: t0 + 0.02, dur: 0.5, peak: 0.09 * g, attack: 0.006, filter: { type: 'bandpass', f: 1900, q: 0.9 } });
         noise({ t0: t0 + 0.08, dur: 0.9, peak: 0.055 * g, attack: 0.02, filter: { type: 'lowpass', f: 900, f1: 260 } });
+        break;
+      }
+      case 'door-open': {
+        // 1. The magnetic lock releases: a dry contact snap over a short thud. It
+        //    has to be the first thing you hear, because it is the thing the four
+        //    digits actually did.
+        noise({ t0, dur: 0.045, peak: 0.2 * g, attack: 0.002, filter: { type: 'highpass', f: 2400 } });
+        tone({ type: 'sine', f0: 150, f1: 72, t0: t0 + 0.004, dur: 0.15, peak: 0.19 * g, attack: 0.002 });
+        // 2. The leaf swings. Air round a heavy door is a band that opens and
+        //    falls as the gap widens, so the filter sweeps down while the envelope
+        //    takes a fifth of a second to come up — nothing about this is a hit.
+        noise({
+          t0: t0 + 0.06,
+          dur: 0.86,
+          peak: 0.08 * g,
+          attack: 0.24,
+          filter: { type: 'bandpass', f: 940, f1: 250, q: 1.3 },
+        });
+        // 3. The hinge, under it: a thin metallic glide, kept quiet and narrow so
+        //    it reads as a pin turning in a barrel rather than as a note.
+        tone({
+          type: 'sawtooth',
+          f0: 436,
+          f1: 268,
+          t0: t0 + 0.1,
+          dur: 0.72,
+          peak: 0.026 * g,
+          attack: 0.2,
+          filter: { type: 'bandpass', f: 1500, q: 9 },
+        });
+        // 4. The leaf reaching its stop, a second in: the full swing has a *shape*,
+        //    and a door that only opens never sounds as if it arrived anywhere.
+        tone({ type: 'sine', f0: 98, f1: 50, t0: t0 + 0.92, dur: 0.3, peak: 0.12 * g, attack: 0.003 });
+        noise({ t0: t0 + 0.92, dur: 0.17, peak: 0.055 * g, filter: { type: 'lowpass', f: 720, q: 0.9 } });
         break;
       }
       case 'keypad': {

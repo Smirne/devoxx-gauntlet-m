@@ -288,6 +288,8 @@ let ambientChapter = -1;
 let lastPhase = '';
 /** Last frame's fall progress on chapter 1's jammed door, so the crash plays once. */
 let lastBreak = 0;
+/** Last frame's swing on chapter 1's fire door, so the opening plays once. */
+let lastFireSwing = 0;
 /**
  * How many clues were solved last frame, and who was being driven, and who was
  * riding — the three edges below.
@@ -314,6 +316,14 @@ function updateAudio(snap: GameSnapshot, dt: number): void {
   const breaking = snap.props.find((p) => p.kind === 'jammed')?.progress ?? 0;
   if (breaking > 0 && lastBreak <= 0) audio.play('crash', { intensity: 1 });
   lastBreak = breaking;
+
+  // The keypad's payoff. `Prop.progress` leaving zero is the sim saying the magnetic
+  // lock has just let go, and the cue runs about as long as `FIRE_SWING_TIME`. The
+  // chapter deliberately holds the corridor for the swing before the cutscene takes
+  // over, so this is heard over the thing it describes rather than under a fade.
+  const swinging = snap.props.find((p) => p.kind === 'firedoor')?.progress ?? 0;
+  if (swinging > 0 && lastFireSwing <= 0) audio.play('door-open');
+  lastFireSwing = swinging;
 
   /*
    * A hint solved: the digit's own cue, and — when it was the LAST one — the

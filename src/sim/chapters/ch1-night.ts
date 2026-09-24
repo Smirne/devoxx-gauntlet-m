@@ -94,6 +94,48 @@ const JAM_MIN_TALK = 20 * SPEED_SCALE;
 const JAM_FALL_TIME = 0.55;
 
 /**
+ * THE FIRE DOOR IS A SCREEN WITH A DOUBLE DOOR IN IT, not a slab across the corridor.
+ *
+ * Michele, with a screenshot of Biggy standing squarely in the doorway: *"still a
+ * walkthrough object on the doorway, add an animation + sound when it opens."* The
+ * chapter used to seal the whole 130 px corridor cross-section with one wall and
+ * then delete it outright when the code went in, while `props()` went on publishing
+ * a `firedoor` at that same full-width rect — so the renderer drew a 2.1 m leaf
+ * across an opening that had stopped being solid. You walked through it.
+ *
+ * A fire screen across a 10.4 m corridor has a pair of leaves in the middle of it
+ * and fixed panels either side, and that is now what this is. `FIRE_OPENING` is the
+ * clear width the leaves fill: 4.48 m, wide enough that the exit cutscene's loose
+ * diagonal of three robots goes through it without brushing either leaf, and
+ * narrow enough that the screen still reads as a wall with a door in it.
+ */
+const FIRE_OPENING = 56;
+/**
+ * How long the leaves take to swing clear, seconds.
+ *
+ * The same shape as `JAM_FALL_TIME` above: the sim owns the clock, the collider
+ * changes on the frame the code is accepted, and this only feeds `Prop.progress`
+ * for `src/render/fire-door.ts` to pose the leaves from. A duration, not a speed,
+ * so the physics rescale leaves it alone. The player keeps the stick while it runs
+ * — see `FIRE_CUT_DELAY` — and the opening is already free, so a swing that is
+ * still moving can only ever be behind where the robots already are.
+ */
+const FIRE_SWING_TIME = 1;
+/**
+ * How long the chapter stays on the corridor after the leaves have settled, before
+ * the exit cutscene fades it out.
+ *
+ * `CUT_FADE` is 0.35 s, so a cutscene started on the frame the code is accepted
+ * takes the screen to black before the door has moved: the animation would exist
+ * and nobody would ever see it. The chapter now holds — still in `play`, still
+ * driveable — for the swing plus this, and only then hands over. Michele asked for
+ * an animation when it opens; an animation nobody watches is not one.
+ */
+const FIRE_CUT_DELAY = 0.45;
+/** The leaf's own thickness. Matches `FIRE_LEAF_T` in `src/render/fire-door.ts`. */
+const FIRE_LEAF_T = 4;
+
+/**
  * The leaf the renderer draws in a doorway, from the doorway's own collider.
  *
  * `roomDoor()` returns a 12 px band because a door has to seal a 6 px wall from
@@ -125,6 +167,8 @@ export interface NightState {
   /** 0..1, how far the smashed door has got through falling. See `JAM_FALL_TIME`. */
   jamFall: number;
   fireOpen: boolean;
+  /** 0..1, how far the two fire-door leaves have swung. See `FIRE_SWING_TIME`. */
+  fireSwing: number;
   jokes: Readonly<Record<string, string>>;
 }
 
@@ -160,6 +204,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /** 0..1, the smashed door's own fall. Started by the hit, ticked in `update`. */
   let jamFall = 0;
   let fireOpen = false;
+  /** The leaves' own swing, 0 -> 1 once the code is in. Ticked in `update`. */
+  let fireSwing = 0;
+  /** Sim time the exit cutscene starts, once the code is in. -1 until then. */
+  let leaveAt = -1;
   /** Biggy says "my light is coming off the screen" once, the first time it does. */
   let mirrorHinted = false;
 
@@ -167,11 +215,14 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   /* ------------------------------------------------------------ the fire door */
 
+  /** The corridor's middle, which is where the pair of leaves is centred. */
+  const fireMid = (CY0 + CY1) / 2;
+  /** The leaves. This is the part that opens, and the only part that ever did. */
   const fire: Wall = {
     x: F1.fireX,
-    y: CY0,
+    y: fireMid - FIRE_OPENING / 2,
     w: 14,
-    h: CY1 - CY0,
+    h: FIRE_OPENING,
     kind: 'firedoor',
     // One line per robot, in that robot's voice (CLAUDE.md): Voxxy chirpy, Droid
     // dry and deliberate, Biggy blunt. The old single sentence with the name
@@ -184,6 +235,49 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           : 'Biggy: fire door. I could hit it. I would lose. Find the four digits',
   };
   ctx.walls.push(fire);
+  /*
+   * The fixed screen either side of the opening. It never opens, so it is pushed
+   * once and never removed — and it is what keeps the corridor sealed everywhere
+   * except through the doorway, before AND after the code goes in.
+   */
+  for (const y of [CY0, fireMid + FIRE_OPENING / 2]) {
+    ctx.walls.push({
+      x: F1.fireX,
+      y,
+      w: 14,
+      h: y === CY0 ? fireMid - FIRE_OPENING / 2 - CY0 : CY1 - y,
+      kind: 'firescreen',
+      why: (b) =>
+        b.kind === 'voxxy'
+          ? 'Voxxy: that is the screen, not the door. The door is the pair in the middle, with the keypad on it'
+          : b.kind === 'droid'
+            ? 'Droid: fixed panel. The leaves are in the middle of the screen, and so is the keypad'
+            : 'Biggy: wall. Door is in the middle',
+    });
+  }
+  /**
+   * Where each leaf STANDS once it has swung clear — a quarter turn west, out of
+   * the opening and back along the corridor.
+   *
+   * They are pushed when the door opens, not before, because until then the leaves
+   * are in the opening and `fire` is the collider. An open door has to be a solid
+   * somewhere: this is the half of the fix that stops the leaf being drawn in a
+   * place the player can walk. The rects are the ones `fireDoorDraw` poses at
+   * `progress = 1` (`src/render/fire-door.ts`), hinge to tip plus the leaf's own
+   * thickness, so the picture and the collider are the same rectangle.
+   */
+  const leafLen = FIRE_OPENING / 2;
+  const leafX = F1.fireX + 7 - leafLen - FIRE_LEAF_T / 2;
+  const swungLeaves: Wall[] = [fireMid - FIRE_OPENING / 2, fireMid + FIRE_OPENING / 2].map(
+    (y): Wall => ({
+      x: leafX,
+      y: y - FIRE_LEAF_T / 2,
+      w: leafLen + FIRE_LEAF_T,
+      h: FIRE_LEAF_T,
+      kind: 'fireleaf',
+      why: (b) => `${b.name}: that is the fire door itself, standing open. Go round it — the way through is the middle`,
+    }),
+  );
   /**
    * The keypad: a panel ON the fire door, and a collider like everything else you
    * can see.
@@ -473,8 +567,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     fireOpen = true;
     ctx.removeWall(fire);
     ctx.removeWall(beyond);
+    // The leaves do not vanish, they move: the opening is free from this frame and
+    // each leaf is solid where it comes to rest. `fireSwing` is only the picture.
+    for (const l of swungLeaves) ctx.walls.push(l);
     ctx.score.nightT = Math.round(ctx.t);
     ctx.flash('Code accepted — the fire door swings open. Down the secondary stairs, to the exhibition hall', 4000);
+    // Watch it open first. See `FIRE_CUT_DELAY`.
+    leaveAt = ctx.t + FIRE_SWING_TIME + FIRE_CUT_DELAY;
+  }
+
+  /** The exit: out of the closed section, down the secondary staircase. */
+  function leave(): void {
     // Out of the closed section and down the secondary staircase between 3 and 4 —
     // the one the plans put exactly there (GAUNTLET.md Stage 1).
     const nb = F1.nicheBot;
@@ -545,11 +648,30 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         ctx.flash('Droid: too high, even for me. If I stood on Biggy…');
         return true;
       }
-      if (b.kind === 'droid' || (b.kind === 'biggy' && d.mounted)) {
+      /*
+       * `E` ON DROID IS THE CLIMB **NEAR BIGGY**, AND HIS OWN VERB EVERYWHERE ELSE.
+       *
+       * It used to be the climb unconditionally, which made chapter 1 the one room
+       * where Droid could not do the thing Michele asked every robot for on 24 Sep
+       * (*"Could we add a basic action to each robot on E? Voxxy jumps, Biggy rolls,
+       * Droid? Stretches?"*). Nothing was silently swallowed — `toggleMount` answers
+       * in his voice — but "15.0 m of daylight" is a measurement, not advice, and it
+       * was all he ever did with the key.
+       *
+       * The bubble is **one Biggy of daylight** past the reach, not a tuned number:
+       * inside `2 * bg.r` of the gap that lets him climb, a player pressing `E` is
+       * plainly going for the climb and the gap readout is the useful answer.
+       * Outside it they are not, and he stretches. A dismount is always the climb,
+       * whatever the distance, because he is already up there.
+       */
+      const climbGap = dist(d, bg) - d.r - bg.r;
+      const goingForTheClimb = d.mounted || climbGap < MOUNT_REACH + 2 * bg.r;
+      if ((b.kind === 'droid' && goingForTheClimb) || (b.kind === 'biggy' && d.mounted)) {
         ctx.toggleMount();
         return true;
       }
-      // Nothing in this room for that robot's `E`. Hand it back.
+      // Nothing in this room for that robot's `E`. Hand it back — `spareE` in
+      // `game.ts` spends it on taking hold of Biggy, or on the party trick.
       return false;
     }
 
@@ -595,6 +717,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     ctx.stepAll(dt);
     ctx.pushBiggy(dt);
     if (jamBroken && jamFall < 1) jamFall = Math.min(1, jamFall + dt / JAM_FALL_TIME);
+    if (fireOpen && fireSwing < 1) fireSwing = Math.min(1, fireSwing + dt / FIRE_SWING_TIME);
+    if (leaveAt >= 0 && ctx.t >= leaveAt) {
+      leaveAt = -1;
+      leave();
+    }
     lights = buildLights(ctx.bots, ctx.walls, mirrors);
     /*
      * The one line that tells the player the mirror exists.
@@ -622,7 +749,18 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   function props(): Prop[] {
     const out: Prop[] = [
-      { kind: 'firedoor', x: fire.x, y: fire.y, w: fire.w, h: fire.h, state: fireOpen ? 'open' : 'shut' },
+      // The rect is the clear OPENING; `progress` is how far the leaves have swung
+      // across it. `src/render/fire-door.ts` poses them from those two facts and
+      // from the `firescreen` walls above, and draws nothing the sim has no wall for.
+      {
+        kind: 'firedoor',
+        x: fire.x,
+        y: fire.y,
+        w: fire.w,
+        h: fire.h,
+        state: fireOpen ? 'open' : 'shut',
+        progress: fireSwing,
+      },
       { kind: 'keypad', ...keypad, state: fireOpen ? 'done' : 'idle', label: entered.padEnd(4, '_') },
       { kind: 'projector-panel', ...panel, state: panelOn ? 'done' : 'idle', label: 'projector panel' },
       // No `screen` prop: `buildVenue()` draws cinema E's screen from
@@ -706,6 +844,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       jamBroken,
       jamFall,
       fireOpen,
+      fireSwing,
       jokes: CLOSED_JOKES,
     }),
   };

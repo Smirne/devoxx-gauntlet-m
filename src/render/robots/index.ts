@@ -68,6 +68,19 @@ export interface RobotState {
    * thrown up and out at the top.
    */
   hop?: number;
+  /**
+   * The other two robots' party trick: **0 when standing, 0 to 1 across it.**
+   *
+   * Pass `flairPhase(bot)` from `src/sim/bot.ts`, exactly as `hop` takes
+   * `hopPhase(bot)`. Biggy rocks his whole gut over and back; Droid stretches both
+   * long arms overhead. The rig picks which by its own kind — there is only ever
+   * one flourish a given robot can be doing.
+   *
+   * Nothing here moves the body: a flourish is cosmetic (Michele: *"not needed for
+   * gameplay"*), so unlike the hop there is no height for the caller to own.
+   * Omitting it, or passing 0, is a robot not showing off.
+   */
+  flair?: number;
 }
 
 const BUILDERS: Record<RobotKind, () => RobotRig> = {
@@ -135,5 +148,6 @@ export function updateRobot(rig: RobotRig, state: RobotState): void {
     mounted: state.mounted ?? false,
     pose: state.pose ?? null,
     hop: state.hop ?? 0,
+    flair: state.flair ?? 0,
   });
 }

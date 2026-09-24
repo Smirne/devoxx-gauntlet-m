@@ -24,6 +24,7 @@
 
 import * as THREE from 'three';
 import type { RobotKind } from '../../sim/types';
+import { BIGGY_ROLL_ROCKS } from '../../sim/constants';
 import { clamp, lerp, smoothstep, type RobotRig } from './rig';
 
 const TAU = Math.PI * 2;
@@ -104,6 +105,18 @@ export interface GaitParams {
    * `JUMP_RISE_M * 4u(1 - u)`; this is what the robot DOES while it is up there.
    */
   hop?: number;
+  /**
+   * Where a party trick is: **0 when standing, 0..1 across the flourish.**
+   *
+   * This is `flairPhase(bot)` from `src/sim/bot.ts` and nothing else — the same
+   * arrangement as `hop`, one number off the sim's clock. WHICH flourish plays is
+   * the rig's own business (Biggy rolls, Droid stretches), because which robot it
+   * is is not a thing the sim should have to tell the renderer twice.
+   *
+   * Unlike the hop, nothing outside this file reads it: a flourish is cosmetic,
+   * and the body does not move a millimetre.
+   */
+  flair?: number;
 }
 
 /**
@@ -490,6 +503,18 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
   const tuck = hopping ? smoothstep(0, 0.16, u) * (1 - smoothstep(0.55, 0.96, u)) : 0;
   const land = hopping ? smoothstep(0.5, 1, u) : 0;
 
+  /*
+   * THE PARTY TRICK. Biggy's roll and Droid's stretch, the two flourishes that
+   * are not the hop — same deal as `u` above: the sim's own phase, 0 to 1, and
+   * the shape of the move belongs to this file.
+   *
+   * A mounted robot is refused one by the sim, and a flourish and a hop cannot
+   * overlap either (one `hopRest` gates all three), so like the hop this never
+   * has to blend against anything but the walk it interrupts.
+   */
+  const f = params.mounted ? 0 : clamp(params.flair ?? 0, 0, 1);
+  const flairing = f > 0;
+
   /* ------------------------------------------------------------ speed */
   const v = Math.max(0, params.speedMps || 0);
   const accelRaw = dt > 0 ? (v - st.prevSpeed) / dt : 0;
@@ -587,6 +612,10 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
 
   if (idleAmt > 0.01) applyIdlePelvis(rig, st, idleAmt);
   if (poseName) applyPosePelvis(rig, poseName, e, scale);
+  // Droid's stretch lifts the pelvis BEFORE the legs, so the IK straightens them
+  // under him and his feet stay where they were planted — the same arrangement the
+  // 'reach' pose uses. Biggy's roll is the opposite case and waits until after.
+  if (flairing) applyFlairPelvis(rig, f, scale);
   if (hopping) {
     // The pelvis rides a little higher with the knees up and drops as she folds
     // to absorb the landing. The bob and the lean are already in; this is on top,
@@ -713,6 +742,7 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
   if (idleAmt > 0.01) applyIdleUpper(rig, st, idleAmt, dt);
   if (poseName) applyPoseUpper(rig, poseName, e, st);
   if (hopping) applyHopUpper(rig, tuck, land);
+  if (flairing) applyFlairBody(rig, st, f, standH);
 
   /* --------------------------------------------------------- antenna */
   const ant = bones.antenna;
@@ -871,6 +901,119 @@ function applyHopUpper(rig: RobotRig, tuck: number, land: number): void {
   b.neck.rotation.x -= 0.1 * tuck - 0.08 * land;
   // Looks up at the top of the arc and down at what she is about to land on.
   b.head.rotation.x -= 0.2 * tuck - 0.16 * land;
+}
+
+/* ------------------------------------------------------------ party tricks */
+
+/**
+ * How far into the move a flourish is, as an amplitude rather than a clock.
+ *
+ * Droid's stretch: up over the first third, held, released into the settle. Every
+ * term of his pose is scaled by this one number, so the whole thing starts and
+ * ends at exactly the pose he was already standing in and there is nothing to
+ * blend.
+ */
+const stretchE = (f: number): number => smoothstep(0, 0.33, f) * (1 - smoothstep(0.64, 1, f));
+
+/**
+ * How far Biggy goes over at the top of a rock, in radians.
+ *
+ * 0.62 is 36 degrees of gut, and it is bigger than it needs to be in the abstract
+ * on purpose. This game has one camera and it is a high isometric, which
+ * foreshortens a roll about the forward axis badly: at the 0.5 rad this started on,
+ * a strip of frames through the whole move read as a lean rather than a rock. What
+ * the camera sees is what the number is set to.
+ */
+const BIGGY_ROLL_RAD = 0.62;
+
+/** Biggy's rock, in radians: a decaying weeble, zero at both ends. */
+const rollRad = (f: number): number =>
+  BIGGY_ROLL_RAD *
+  smoothstep(0, 0.1, f) *
+  (1 - smoothstep(0.76, 1, f)) *
+  Math.sin(TAU * BIGGY_ROLL_ROCKS * f);
+
+/**
+ * Droid's stretch — the half that has to happen before the legs.
+ *
+ * He comes up out of his own standing crouch, which is the "small rise and settle"
+ * of somebody who has been at a desk for four hours. Doing it here means the IK
+ * straightens his legs under him and his feet stay planted, exactly as the 'reach'
+ * pose does it; doing it afterwards would have lifted him off the floor.
+ */
+function applyFlairPelvis(rig: RobotRig, f: number, scale: number): void {
+  if (rig.kind !== 'droid') return;
+  const e = stretchE(f);
+  rig.bones.pelvis.position.y += 0.075 * e * scale;
+  // Positive pelvis.rotation.x is a forward lean (see the walk's own lean), so the
+  // arch through the back is negative.
+  rig.bones.pelvis.rotation.x -= 0.11 * e;
+}
+
+/**
+ * The other two robots' answer to `E`, from the waist up — and, for Biggy, from
+ * the boots up.
+ *
+ * Michele, 25 Sep 2026: *"Voxxy jumps, Biggy rolls, Droid? Stretches? Not needed
+ * for gameplay."* Neither of these moves the robot: the sim's flourish writes a
+ * clock and nothing else (`partyTrick`, `src/sim/bot.ts`), and everything here is
+ * a bone rotation about the body's own axis.
+ *
+ * **Biggy rocks, he does not travel.** The read the model sheet gives us is one
+ * thing — a huge round gut with a tin lid on it — so his roll is that ball going
+ * over its own edge and coming back, a turn and a half of it, with the stubby arms
+ * trailing a beat behind the body and the lid trying to stay level. It is applied
+ * AFTER the IK rather than before, because the whole robot tips as one piece: a
+ * roll fed to the legs first would be a man standing still and swaying his hips,
+ * which is what a weeble is not. The pivot is moved down to the floor between his
+ * boots (that is the `standH` pair of terms), and the rise on `|sin|` is what
+ * tipping a wide flat base up onto its edge actually costs you — it also keeps
+ * the low boot from going through the floor at the top of each rock.
+ */
+function applyFlairBody(rig: RobotRig, st: GaitState, f: number, standH: number): void {
+  const b = rig.bones;
+  if (rig.kind === 'droid') {
+    const e = stretchE(f);
+    for (const side of [1, -1] as const) {
+      const L = side > 0 ? 'L' : 'R';
+      // Negative on a shoulder lifts the arm forward and up; both go, and they go
+      // OUT as well, because the long arms are what makes this Droid and not a
+      // generic humanoid saluting.
+      b[`shoulder${L}`].rotation.x -= 2.5 * e;
+      b[`shoulder${L}`].rotation.z += side * 0.34 * e;
+      b[`upperArm${L}`].rotation.x -= 0.18 * e;
+      // The forearms fold back a little at the top: hands over the crown, not a
+      // pair of flagpoles.
+      b[`forearm${L}`].rotation.x += 0.4 * e;
+      // Up on the toes, like the 'reach' pose.
+      b[`foot${L}`].rotation.x += 0.22 * e;
+    }
+    b.torso.rotation.x -= 0.24 * e;
+    b.neck.rotation.x -= 0.12 * e;
+    b.head.rotation.x -= 0.26 * e;
+    return;
+  }
+  if (rig.kind !== 'biggy') return;
+
+  const roll = rollRad(f);
+  const s = Math.sin(roll);
+  const c = Math.cos(roll);
+  const pelvis = b.pelvis;
+  pelvis.rotation.z += roll;
+  pelvis.position.x -= standH * s;
+  pelvis.position.y += standH * (c - 1) + Math.abs(st.footRest[0].x * s);
+  for (const L of ['L', 'R'] as const) {
+    // The body has already taken the arms round with it; this takes them back past
+    // neutral, so they swing counter to the gut instead of riding on it.
+    b[`shoulder${L}`].rotation.z -= 1.4 * roll;
+    b[`upperArm${L}`].rotation.z -= 0.25 * roll;
+  }
+  // The lid tries to stay level, and fails by about half.
+  b.head.rotation.z -= 0.45 * roll;
+  b.torso.rotation.z -= 0.12 * roll;
+  // Nothing is standing on anything: no footstep, no scuff (`footContact`).
+  st.contact[0] = false;
+  st.contact[1] = false;
 }
 
 /* ------------------------------------------------------------------ poses */

@@ -43,6 +43,41 @@ export const ROOM_D = 224;
 export const DOOR = 46;
 
 /**
+ * Clear width of the mouth a secondary staircase opens onto the corridor through.
+ *
+ * **17.7 sim px, not the well's own 40.** Michele, playtesting chapter 1
+ * (`docs/playtest-notes.md`, note 18): *"they seem fit for biggy to pass, make the
+ * passage more narrow"* — and he was right that they were, because 40 px is wider
+ * than any robot in the game. The plan decides how narrow.
+ *
+ * Measured on `plans/devoxx-rooms-stairs-annotated.png` (996 x 1498):
+ *
+ * | what | plan px |
+ * |---|---|
+ * | corridor, clear between the room walls | x 503..650 = **147** |
+ * | left flight, hard against the left wall | x 507..527 = **20** deep |
+ * | right flight, hard against the right wall | x 627..647 = **20** deep |
+ * | both flights, along the corridor | y 884..947 = **64** |
+ *
+ * The flight is 20/147 = 0.136 of the corridor's width. The corridor is 130 sim px
+ * wide (`CY0`..`CY1`), so the flight is 0.136 x 130 = **17.7 sim px = 1.41 m** at
+ * `PX_PER_M`. That ratio is the one measurement that survives this floor's
+ * anisotropy: lengths along the corridor are stretched ~1.93x against lengths
+ * across it (`docs/scale-and-units.md`), so converting the flight's *width* on the
+ * along-corridor scale would give 34 px and mean nothing physical. A robot's radius
+ * is isotropic; the corridor's own width is the ruler that matches it.
+ *
+ * Biggy is r 9, so **1.44 m across: he does not fit, by a centimetre**, which is
+ * what note 18 asked for and what the real stair says. Droid (1.00 m) and Voxxy
+ * (0.76 m) do. `tests/geometry.test.ts` pins the relationship, not just the number.
+ *
+ * The well behind the mouth stays 40 px wide — a stair landing is wider than the
+ * door onto it, exactly as the ground-floor shafts already are (`SHAFT_DOOR` 24 in
+ * a 45 px shaft).
+ */
+export const NICHE_MOUTH = 17.7;
+
+/**
  * Per-room depth, sim px.
  *
  * The plan's outer envelope is **stepped**, and that silhouette is what makes the
@@ -158,10 +193,31 @@ export const F1 = {
   barStools: [0, 1, 2].map((i): Rect => ({ x: BAR.x + 12 + i * 22 - 2.5, y: BAR.y + 30 - 2.5, w: 5, h: 5 })),
   /** Glass kiosk in the foyer, with a Voxxy-sized hatch. */
   kiosk: { x: 110, y: 412, w: 56, h: 56 },
-  /** Secondary-staircase niche in the top corridor wall, between rooms 10 and 9. */
-  nicheTop: { x: 858, y: CY0 - 60, w: 40, h: 60 },
-  /** Secondary-staircase niche in the bottom corridor wall, between rooms 3 and 4. */
-  nicheBot: { x: 858, y: CY1, w: 40, h: 60 },
+  /**
+   * Secondary-staircase well in the top corridor wall, between rooms 10 and 9.
+   *
+   * **Depth 57, not the prototype's 60.** Measured on
+   * `plans/devoxx-rooms-stairs-annotated.png` the flight is a rectangle
+   * **20 x 64 plan px** (left flight plan x 507..527, right flight plan x 627..647,
+   * both plan y 884..947 — see `NICHE_MOUTH` for the full read). The well is that
+   * flight stood on end, so its depth is the flight's 64 plan px of *run*, carried
+   * across the corridor at this module's corridor-band scale 130/147 = 0.8844:
+   * 64 x 0.8844 = **56.6**.
+   *
+   * The along-corridor position — x 858, in the 40 px the layout leaves between
+   * rooms 10 and 9 — is the one CLAUDE.md and GAUNTLET.md Stage 1 both name. The
+   * plan does **not** agree with them and it is not a builder's call to break a tie
+   * between two things Michele wrote: measured, the plan puts both flights at plan
+   * y 884..947, which is 63..126 plan px into room **4/9**'s own 174 of length, not
+   * in the 3|4 or 10|9 gap at all. In world x that is 1006..1113, about 150 px
+   * further along the corridor than here. See `docs/playtest-notes.md` and this
+   * round's entry in `docs/genai-notes.md`: it is escalated, not silently applied,
+   * because moving it there puts the well through rooms 4 and 9's centred doorways
+   * and past the descent waypoint chapter 1's closing cutscene hard-codes.
+   */
+  nicheTop: { x: 858, y: CY0 - 57, w: 40, h: 57 },
+  /** Secondary-staircase well in the bottom corridor wall, between rooms 3 and 4. */
+  nicheBot: { x: 858, y: CY1, w: 40, h: 57 },
   /**
    * Main staircase, corridor's end between rooms 6 and 7.
    *
@@ -348,6 +404,17 @@ export function cinemaEExit(): Rect {
   return { x: r.x + r.w - 44, y: r.y + 97, w: 40, h: 52 };
 }
 
+/**
+ * The doorway a secondary-staircase well opens onto the corridor through.
+ *
+ * Centred on the well, so the middle of the mouth is the middle of the well and
+ * anything aiming at `niche.x + niche.w / 2` still aims at the opening.
+ */
+export function nicheMouth(niche: Rect): Rect {
+  const x = niche.x + (niche.w - NICHE_MOUTH) / 2;
+  return { x, y: niche.y, w: NICHE_MOUTH, h: niche.h };
+}
+
 /** Square corridor column, sim px. */
 export const CORRIDOR_COLUMN = 16;
 /** How far a corridor column stands off the wall it belongs to. */
@@ -397,7 +464,10 @@ export function floor1Walls(): Wall[] {
       return [d.x, d.x + d.w];
     });
     const niche = side < 0 ? F1.nicheTop : F1.nicheBot;
-    gaps.push([niche.x, niche.x + niche.w]);
+    // Only the MOUTH is a hole in the corridor wall, not the whole well: the two
+    // stubs left either side of it are the jambs that keep Biggy out (`NICHE_MOUTH`).
+    const mouth = nicheMouth(niche);
+    gaps.push([mouth.x, mouth.x + mouth.w]);
     // The foyer opens straight onto the corridor.
     if (side > 0) gaps.push([F1.foyer.x, F1.foyer.x + F1.foyer.w]);
     gaps.sort((a, b) => a[0] - b[0]);
@@ -618,10 +688,44 @@ export const GF = {
    * module's header: plan top -> world left), so the doors are in the `x` face and
    * the flight climbs eastward. `stairDoor` and `stairFlightRect` below cut the
    * rect up; `groundWalls` builds the shell.
+   *
+   * ## Where they are — measured, 24 Sep 2026
+   *
+   * Michele circled both of them on `plans/exhibition-floor-stairs-annotated.png`
+   * and the shafts were still in the prototype's places. Read off that PNG
+   * (900 x 1141; the unannotated `exhibition-floor.jpg` is the same drawing
+   * pixel-for-pixel, which is what makes the lobby mapping below reusable):
+   *
+   * | | plan px |
+   * |---|---|
+   * | both shafts, plan-north wall (the head) | y = **165** |
+   * | both shafts, plan-south wall (the foot) | y = **323** |
+   * | west shaft, across | x 222..269 = **47** |
+   * | east shaft, across | x 421..469 = **48** |
+   *
+   * Through `docs/ground-floor-lobby-fix.md`'s mapping — Michele's own calibration
+   * of this floor, checked here against the small staircase (world x 952..1045,
+   * y 285..568 lands on the long steps the plan draws at plan y 729..794,
+   * x 190..492) and against the toilets:
+   *
+   * ```
+   * world_x = 30 + (plan_y -  85) * 1.4326
+   * world_y = 90 + (700 - plan_x) * 0.9375
+   * ```
+   *
+   *  - plan y 165 -> world x **144.6**; plan y 323 -> world x **370.0** (w 225.4)
+   *  - east shaft (world **top**): plan x 469..421 -> world y **306.6..351.6**
+   *  - west shaft (world **bot**): plan x 269..222 -> world y **494.1..538.1**
+   *
+   * Against the prototype's `{150, 300, 200, 60}` / `{150, 430, 200, 60}`:
+   * the **top** shaft was very nearly right on centre (329 measured against 330)
+   * but 15 px too deep and 25 px too short; the **bot** shaft was **64 px too far
+   * toward the middle of the hall**, which halved the gap between the two — the
+   * plan leaves 142 px of hall between them and the build left 70.
    */
   stairs: [
-    { x: 150, y: 300, w: 200, h: 60, to: 'top' as const },
-    { x: 150, y: 430, w: 200, h: 60, to: 'bot' as const },
+    { x: 144.6, y: 306.6, w: 226.4, h: 45.0, to: 'top' as const },
+    { x: 144.6, y: 494.1, w: 226.4, h: 44.1, to: 'bot' as const },
   ],
   tech: { x: 30, y: 560, w: 170, h: 130 },
   panel: { x: 50, y: 568, w: 26, h: 16 },
@@ -678,8 +782,16 @@ export const GF = {
    * come in here rather than through the whole wall or off the canvas edge.
    */
   entrance: { x: 1472, y: 422, w: 33, h: 136 },
-  /** Visitor lane grid for chapter 3. */
-  laneX: [370, 530, 690, 850, 1010],
+  /**
+   * Visitor lane grid for chapter 3.
+   *
+   * The west lane was 370, which was 20 px clear of the stair shafts while they
+   * were 200 px long. At their measured 226.4 they end at x 371, so a lane node at
+   * 370 would have sat *inside* the shaft wall and a visitor snapped to it could
+   * never arrive. 385 is the middle of the 29 px the plan leaves between the foot
+   * of the shafts (371) and the west edge of the booth grid (400).
+   */
+  laneX: [385, 530, 690, 850, 1010],
   laneY: [215, 355, 495, 645],
 } as const;
 
@@ -726,8 +838,22 @@ export function groundRiseM(x: number): number {
 
 /** Sim px of stairwell wall the shaft's shell is built from. */
 const SHAFT_T = T;
-/** Clear width of the double doors in a shaft's west end, sim px. */
-const SHAFT_DOOR = 34;
+/**
+ * Clear width of the double doors in a shaft's west end, sim px.
+ *
+ * **24, down from 34, because the shaft itself came down from 60 to its measured
+ * 45** (see `GF.stairs`). 45 less two `SHAFT_T` walls is 33 px of clear internal
+ * width — 2.64 m — and a 34 px door in it would have left jambs of negative
+ * height. 24 px is 1.92 m of double door with a 0.36 m jamb either side, and it is
+ * still nearly three times Biggy's 0.72 m radius, so chapter 2 still starts with
+ * all three of them coming out of it.
+ *
+ * Note for a later round, not fixed here: the plan puts a pair of doors in **each
+ * long face** of the shaft at its north end, not one pair in the short west end.
+ * Moving them moves where chapter 2 places the three robots, so it is a chapter
+ * change rather than a geometry one.
+ */
+const SHAFT_DOOR = 24;
 /**
  * Depth of the landing inside the doors, before the first riser, sim px.
  *

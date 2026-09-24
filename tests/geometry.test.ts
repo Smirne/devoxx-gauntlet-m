@@ -25,12 +25,14 @@ import {
   LOBBY_COLUMNS,
   LOBBY_PLANTERS,
   LOBBY_RISE_M,
+  NICHE_MOUTH,
   R,
   ROOM_D,
   SPONSORS,
   floor1Walls,
   groundRiseM,
   groundWalls,
+  nicheMouth,
   rooms,
   roomDoor,
   stairDoor,
@@ -264,13 +266,21 @@ describe('doorways', () => {
     }
   });
 
-  it('the only gaps that are not doorways are the stair niches and the foyer mouth', () => {
+  it('the only gaps that are not doorways are the stair mouths and the foyer mouth', () => {
     const top = corridorGaps(-1);
     const bottom = corridorGaps(1);
     expect(top).toHaveLength(rooms.filter((r) => r.side === -1).length + 1);
     expect(bottom).toHaveLength(rooms.filter((r) => r.side === 1).length + 2);
-    expect(top).toContainEqual([F1.nicheTop.x, F1.nicheTop.x + F1.nicheTop.w]);
-    expect(bottom).toContainEqual([F1.nicheBot.x, F1.nicheBot.x + F1.nicheBot.w]);
+    // The gap is the staircase MOUTH, not the whole well behind it: the jambs
+    // either side of it are what stops Biggy going down there (`NICHE_MOUTH`).
+    for (const [niche, gaps] of [
+      [F1.nicheTop, top],
+      [F1.nicheBot, bottom],
+    ] as const) {
+      const m = nicheMouth(niche);
+      expect(gaps).toContainEqual([m.x, m.x + m.w]);
+      expect(gaps).not.toContainEqual([niche.x, niche.x + niche.w]);
+    }
     expect(bottom).toContainEqual([F1.foyer.x, F1.foyer.x + F1.foyer.w]);
   });
 
@@ -339,6 +349,136 @@ describe('the staircases — both of them, exactly where the plan puts them', ()
     expect(tagged(1)).toHaveLength(1); // bottom niche
     expect(tagged(0)).toHaveLength(1); // main staircase
     expect(tagged(0)[0].x).toBe(F1.mainStair.x + F1.mainStair.w);
+  });
+});
+
+/*
+ * THE STAIRCASES, PINNED TO THE PLAN PIXELS THEY WERE MEASURED FROM.
+ *
+ * Michele has now reported the secondary staircases three times — "in the wrong
+ * place... lateral in the real hallway", "they seem fit for biggy to pass, make the
+ * passage more narrow" and "the stairs position on the upper wall haven't been
+ * fixed". The tests above assert the staircases against each OTHER and against the
+ * rooms, which is why the build kept passing them while being wrong. These assert
+ * them against the plan's own pixels, so the arithmetic in `geometry.ts`'s doc
+ * comments is executable rather than decorative.
+ *
+ * Every number below carries the plan measurement that produced it. Change one only
+ * by re-measuring the PNG.
+ */
+describe('the staircases against the plan pixels', () => {
+  /*
+   * `plans/devoxx-rooms-stairs-annotated.png`, 996 x 1498:
+   *   corridor, clear between the room walls  plan x 503..650  = 147
+   *   both secondary flights, along the corridor  plan y 884..947 = 64
+   *   both secondary flights, deep into the corridor  20 (x 507..527 and 627..647)
+   *   rooms 4 and 9, along the corridor  plan y 821..995 = 174
+   */
+  const PLAN = {
+    corridorW: 147,
+    flightDeep: 20,
+    flightLong: 64,
+    room49Long: 174,
+  } as const;
+
+  it('the corridor is the plan\'s 147 plan px wide, which is the ruler for the rest', () => {
+    // 130 sim px across 147 plan px: the one scale on this floor that is not
+    // stretched, and therefore the only honest way to turn a plan px into a metre.
+    expect(CY1 - CY0).toBe(130);
+  });
+
+  it('the secondary-staircase mouth is the plan\'s flight width, and Biggy does not fit', () => {
+    // 20/147 of a 130 px corridor.
+    const measured = (PLAN.flightDeep / PLAN.corridorW) * (CY1 - CY0);
+    expect(NICHE_MOUTH).toBeCloseTo(measured, 1);
+    // 1.41 m at PX_PER_M, against Biggy's 1.44 m. The relationship, not the number:
+    // this is note 18 in docs/playtest-notes.md, and it is the whole point of the
+    // mouth being narrower than the well behind it.
+    expect(NICHE_MOUTH).toBeLessThan(DEFS.biggy.r * 2);
+    expect(NICHE_MOUTH).toBeGreaterThan(DEFS.droid.r * 2);
+  });
+
+  it('the well is the plan\'s flight run, stood on end', () => {
+    // 64 plan px of run, carried across the corridor at 130/147.
+    const measured = PLAN.flightLong * ((CY1 - CY0) / PLAN.corridorW);
+    for (const n of [F1.nicheTop, F1.nicheBot]) expect(n.h).toBeCloseTo(measured, 0);
+    // Deep enough that chapter 1's closing cutscene still walks INTO it.
+    for (const n of [F1.nicheTop, F1.nicheBot]) expect(n.h).toBeGreaterThan(30);
+  });
+
+  it('the two secondary staircases are exactly opposite each other, as the plan draws them', () => {
+    // Plan y 884..947 on BOTH corridor walls — identical, not merely similar.
+    expect(F1.nicheTop.x).toBe(F1.nicheBot.x);
+    expect(F1.nicheTop.w).toBe(F1.nicheBot.w);
+    expect(F1.nicheTop.h).toBe(F1.nicheBot.h);
+    expect(nicheMouth(F1.nicheTop).x).toBe(nicheMouth(F1.nicheBot).x);
+  });
+
+  /*
+   * `plans/exhibition-floor-stairs-annotated.png`, 900 x 1141, the two shafts
+   * Michele circled. Head wall plan y 165, foot wall plan y 323; west shaft
+   * plan x 222..269, east shaft plan x 421..469. Through the calibrated mapping in
+   * docs/ground-floor-lobby-fix.md:
+   *     world_x = 30 + (plan_y -  85) * 1.4326
+   *     world_y = 90 + (700 - plan_x) * 0.9375
+   */
+  const gx = (planY: number): number => 30 + (planY - 85) * 1.4326;
+  const gy = (planX: number): number => 90 + (700 - planX) * 0.9375;
+
+  it('puts both exhibition-hall shafts where the plan draws them', () => {
+    const [top, bot] = GF.stairs;
+    expect(top.to).toBe('top');
+    expect(bot.to).toBe('bot');
+
+    // Both run from the head wall to the foot wall, the same length, the same x.
+    for (const s of GF.stairs) {
+      expect(s.x).toBeCloseTo(gx(165), 0); // 144.6
+      expect(s.x + s.w).toBeCloseTo(gx(323), 0); // 370.0
+    }
+
+    // East shaft on the plan is the world-TOP one: plan x 469..421.
+    expect(top.y).toBeCloseTo(gy(469), 0); // 306.6
+    expect(top.y + top.h).toBeCloseTo(gy(421), 0); // 351.6
+    // West shaft on the plan is the world-BOT one: plan x 269..222.
+    expect(bot.y).toBeCloseTo(gy(269), 0); // 494.1
+    expect(bot.y + bot.h).toBeCloseTo(gy(222), 0); // 538.1
+  });
+
+  it('leaves the plan\'s hall between the two shafts, not half of it', () => {
+    const [top, bot] = GF.stairs;
+    // Plan x 269..421 of clear hall between the east shaft and the west one.
+    expect(bot.y - (top.y + top.h)).toBeCloseTo((421 - 269) * 0.9375, 0); // 142.5
+    // The prototype left 70. Anything near that is the bug coming back.
+    expect(bot.y - (top.y + top.h)).toBeGreaterThan(120);
+  });
+
+  it('keeps both shafts clear of the sponsor stands and the technical room', () => {
+    for (const s of GF.stairs) {
+      const shaft: Rect = { x: s.x, y: s.y, w: s.w, h: s.h };
+      for (const b of GF.booths) {
+        const hit = shaft.x < b.x + b.w && shaft.x + shaft.w > b.x && shaft.y < b.y + b.h && shaft.y + shaft.h > b.y;
+        expect(hit, `booth ${b.name} is inside the ${s.to} staircase`).toBe(false);
+      }
+      for (const [name, b] of [
+        ['technical room', GF.tech],
+        ['catering court', GF.food.court],
+        ['small staircase', GF.smallStairs],
+      ] as const) {
+        const hit = shaft.x < b.x + b.w && shaft.x + shaft.w > b.x && shaft.y < b.y + b.h && shaft.y + shaft.h > b.y;
+        expect(hit, `${name} is inside the ${s.to} staircase`).toBe(false);
+      }
+      // ...and inside the hall that holds them.
+      expect(s.x).toBeGreaterThanOrEqual(GF.hall.x);
+      expect(s.y).toBeGreaterThanOrEqual(GF.hall.y);
+      expect(s.y + s.h).toBeLessThanOrEqual(GF.hall.y + GF.hall.h);
+    }
+  });
+
+  it('keeps chapter 3\'s west visitor lane out of the shafts', () => {
+    const lane = GF.laneX[0];
+    for (const s of GF.stairs) expect(lane, `lane ${lane} is inside the ${s.to} staircase`).toBeGreaterThan(s.x + s.w + 8);
+    // ...and still west of the booth grid it serves.
+    expect(lane + 8).toBeLessThan(Math.min(...GF.booths.map((b) => b.x)));
   });
 });
 

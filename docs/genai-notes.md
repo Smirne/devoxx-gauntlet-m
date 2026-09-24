@@ -2378,3 +2378,222 @@ The rig's own arc clears `st.contact` for the whole hop, which stops `main.ts` f
 audio at a robot 30 cm off the floor — a bug that only exists once the feature does.
 
 All four chapters are taught. 364 passed, 19 files, 0 failed.
+
+## "This hint is flickering" — the clue plate was lying *in* the kiosk floor
+
+Michele, chapter 1, with a screenshot: the marker's rings read as dashed arcs. The obvious
+suspects were all wrong. The breathing pulse is smooth (`0.78 + 0.22 * pulse`, a 3 s sine), the
+markers are drawn at renderOrder 19-21 above the fog mask and above every additive light pool so
+nothing composites over them, the orthographic camera's depth range (0.5 .. 420 m) has 2.5e-5 m of
+resolution to spare, and `surfaceY` is flat 0 on the first floor, so no stair steps under the
+plate either.
+
+The cause was measured off the built scene graph rather than guessed. The marker root sat at
+`surfaceY + 0.02`, and `src/render/venue/floor1.ts` builds the glass kiosk's own floor as
+`floorSlab(F1.kiosk, 0.02, …)` — an opaque, depth-writing box whose **top face is at y = 0.0200**,
+4.48 m square. Chapter 1's clue 2 is at the kiosk's centre, so the dark backing disc and all three
+slot rings, 2.16 m across, were *exactly coplanar* with it, to the last bit. Which of the ring's
+pixels pass the depth test is then decided by float rounding in the rasteriser — and re-decided
+every frame, because `updateFocus` eases the framing and slides the camera by a fraction of a
+pixel. Arcs that break, and breaks that crawl.
+
+Reproduced in a headless build, robot parked on the clue, nothing in the world moving but a
+quarter-of-a-sim-pixel camera crawl between frames. Pixels of the marker's blue slot ring, six
+consecutive frames: **292, 199, 268, 158, 219, 0** — the ring loses up to all of itself. The foyer
+clue in the same frame, whose floor tops out at y = 0.0000 and which therefore has 20 mm of
+clearance, renders whole throughout.
+
+The same 0.02 had also buried clue 4 outright: the exit alcove is a `flat` prop, and `drawProp`
+puts a flat prop's top face at `surface + h + 0.01` = 0.06 — four centimetres **above** the plate,
+covering all of it. Same capture at that clue: **0, 0, 0** ring pixels on the old build against
+**258, 258, 253** on the fixed one. That marker was not dashed, it was gone, and nobody had
+reported it because a marker you have never seen is not a marker you miss.
+
+Fix: one constant, `CLUE_PLATE_LIFT_M = 0.09`, which clears the kiosk plate by 70 mm and the
+tallest flat prop plate by 30 mm. Same capture on the fixed build: **278, 286, 278, 285, 285,
+284** — spread 8 px against 292, and the residual is the approved pulse's own edge antialiasing.
+The plate is still a decal (70 mm is about two screen pixels at the diorama's 30° pitch) and it
+still depth-tests, so a robot standing on a clue still hides the part he is standing on.
+
+Rejected: switching the plate's materials to `depthTest: false`, which would have fixed the
+flicker and thrown away the robot occlusion that an earlier round specifically added; and
+`polygonOffset`, which fixes exact coplanarity but does nothing about the alcove plate four
+centimetres overhead. One lift fixes both.
+
+`tests/clue-plate.test.ts` is the acceptance criterion and it measures rather than restates: it
+builds the real venue, asks the real sim for chapter 1's clues, finds the highest opaque floor
+surface under each one, and reads the lift **off the call site** in `updateClues` so a named
+constant nothing uses cannot pass. Against the old code it fails with
+`clue "orange + blue" at sim(138, 440) lies on "kiosk", top y=0.0200; a plate at 0.02 is 0.0000 m
+clear and needs 0.02`. Full suite at the time of the change: 398 passed, 20 files, 0 failed.
+
+## "Still a walkthrough object on the doorway" — the fire door, and the state no sweep had ever looked at
+
+Michele, playtesting chapter 1, with a screenshot: **"still a walkthrough object on the doorway,
+add an animation + sound when it opens."** Biggy standing squarely in the fire doorway, his blue
+flood pooled under him, a flat slab through his chest running from the left wall to him.
+
+**Identified by reproduction, not by reading.** The HEAD bundle was built into a throwaway
+worktree, served, and driven through CDP: park Biggy at the keypad, read the chapter's own code
+out of `debug.chapter()`, type it, then put him at **607,350** — the middle of the drawn leaf.
+He stayed there, `vx = vy = 0`, and the live wall list had **nothing** covering
+`600..614 x 285..415`. The top-down shot shows the rust slab still spanning the whole corridor
+with the robots standing in it. It is chapter 1's `firedoor`: `done()` called
+`ctx.removeWall(fire)` on the whole 14 x 130 px corridor cross-section while `props()` went on
+publishing a `firedoor` prop at that same rect, which `scene.ts` drew from its `PROPS` table as a
+2.1 m solid whatever `state` said. Under Biggy's cyan flood its 0x8d3b2a rust reads grey, which is
+why the screenshot looked like the chapter 2 roller.
+
+**Why `tests/colliders.test.ts` came back green through all of it.** Its chapter sweep ticks
+**four frames from the chapter's start**. At frame four the fire door is shut and its wall is
+there, so the only state that sweep has ever measured is the state that was right. Every gate in
+the game has the same shape — a drawn thing whose collider changes when the player solves
+something — and that whole half of every chapter was invisible to it. (The venue's own static
+`fire-door` slab in `src/render/venue/floor1.ts` was the same slab a second time, and was excused
+for the same reason.)
+
+**The fix is the rule CLAUDE.md already has.** `src/render/fire-door.ts` poses the door from the
+chapter's live wall list and the sim's own swing clock, and `scene.ts` draws what it returns:
+a leaf is only ever drawn where the sim has something solid, and a leaf the sim has no wall for is
+not drawn at all. Walk-through stops being a bug that can come back and becomes a shape the code
+cannot express. The venue's static slab is handed over to the chapter for as long as the chapter
+publishes the prop (chapter 4, which seals the section again and publishes none, keeps it).
+
+**Human decision (Michele, this round):** the sim half is his patch, in `src/sim/chapters/
+ch1-night.ts` — the agent was told not to touch that file and handed the patch as text instead.
+It turns the door from a slab across the corridor into what a fire screen across a 10.4 m corridor
+actually is: a fixed `firescreen` panel either side, a 4.48 m clear opening with a pair of leaves
+in it, and two `fireleaf` walls pushed where the leaves come to rest a quarter turn west. The
+opening is free from the frame the code is accepted; the leaves are solid where they end up.
+
+**One thing the round found by building it.** The first version started the swing and the exit
+cutscene on the same frame — and `CUT_FADE` is 0.35 s, so the screen was black before the door had
+moved. The animation existed and nobody would ever have seen it. The chapter now holds the
+corridor, in `play`, for `FIRE_SWING_TIME + FIRE_CUT_DELAY` and hands over afterwards: you type the
+last digit, the magnetic lock lets go, the leaves swing in front of you, and then the camera takes
+over.
+
+**Sound:** one new `SoundId`, `door-open`, synthesised like everything else — a highpassed noise
+snap plus a short sine thud for the magnetic lock releasing, a slow band sweeping 940 -> 250 Hz for
+the air round a heavy leaf, a narrow high-Q sawtooth glide for the hinge pin, and a low knock at
+0.92 s for the leaf reaching its stop. Deliberately the opposite shape to `crash`: `crash` is an
+impact with debris falling away from it, this arrives somewhere.
+
+**Rejected:** dropping the prop from `props()` when the door opens, which is what cinema B's
+`lock` does and what the jammed door used to do — it fixes walk-through by making the biggest
+thing the player has just achieved cease to exist, the exact complaint that put `progress` on the
+jammed door in the first place. Also rejected: keeping the leaf drawn and giving the *whole*
+cross-section a collider again, which would have left the corridor sealed after the code went in.
+
+`tests/fire-door.test.ts` is the acceptance criterion and it measures the renderer's own geometry
+rather than restating it. Against HEAD's rendering rule it fails with `the OPEN fire door is drawn
+at 600,285 14x130 px and a robot can stand at 600,322`.
+
+## 25 Sep 2026 — three robots, one key: Biggy rolls and Droid stretches
+
+**Michele asked:** *"Could we add a basic action to each robot on E? Voxxy jumps, Biggy rolls,
+Droid? Stretches? Not needed for gameplay."* Until this round `E` with nothing else on it was
+Voxxy's hop, and the other two were handed a line of flavour text and nothing happened.
+
+**What the agent built.** Both flourishes go through the hop's own machinery rather than a second
+one: a cosmetic clock on `Bot` (`flair`, `flairDur`), a phase accessor `flairPhase` sitting next to
+`hopPhase`, one number 0..1 passed to the rig as `flair` beside `hop`, and the pose itself in
+`gait.ts` — Biggy rocking his whole gut over and back a turn and a half like a weeble, arms
+trailing counter to the body and the tin lid trying to stay level; Droid coming up out of his
+standing crouch with both long arms overhead and an arch through the back, the way somebody stands
+up after four hours at a desk. The rest (`hopRest`) is the same pocket all three tricks come out
+of, so `E` cannot be mashed, and it was already zeroed in the two places a robot's history stops
+mattering.
+
+**The specification was the last clause.** *"Not needed for gameplay"* is enforced rather than
+trusted: the flourish writes a clock and nothing else — no position, no velocity, no heading — and
+the test asserts **zero** displacement against a wall placed one pixel away, not "a small amount".
+A roll that moved Biggy would be gameplay: it would push whatever it reached, and the speed it
+pushed at would have to be a frozen number. Reaching for the stick cancels a flourish, which is
+what makes "it never moves anything" a property of the trick and not of the frames nobody steered
+through. New constants (`BIGGY_ROLL_DUR`, `BIGGY_ROLL_ROCKS`, `DROID_STRETCH_DUR`,
+`FLAIR_REST_FACTOR`) are documented as cosmetic timings and are deliberately NOT in
+`tests/frozen-constants.test.ts`: a future round may retime a flourish because it reads badly on
+screen, which is exactly the argument that may never be made about a physics constant.
+
+**Every refusal speaks.** Five gates, each a true sentence in that robot's own voice: carried,
+planted, already performing, still catching its breath, and — Biggy only — with Droid on his
+shoulders, which is the one thing a robot cannot check about itself and the reason `partyTrick`
+takes the whole cast. The old *"I go up by climbing, not by leaping"* and *"I could. The floor
+would rather I did not"* survive inside the two new success lines.
+
+**Chapters had to hand the key back.** With one trick, one dead end per chapter was enough; with
+three it was not. Chapter 2 answered Droid with "nothing to reach here" and Biggy with "I don't do
+buttons, I do doors", and chapter 3 answered Droid with the same — all three written when the only
+thing behind them was *a refusal to jump*, which those lines beat. Against a robot rocking his own
+gut they do not, so those three dead ends now return `false`. Every refusal that names a REASON
+still claims the key.
+
+**Left open, for the human who owns that file:** chapter 1 spends every Droid `E` on
+`ctx.toggleMount()`, so he is the one robot with a room he cannot show off in. Nothing is
+swallowed — he gets the climb's refusal in his own voice — but closing it is a one-line change in
+`ch1-night.ts`, which the agent was told not to touch.
+
+**Rejected:** moving Biggy — a displacing roll is gameplay by definition, and the frozen constants
+would have had to grow a speed for it. Also rejected: letting `game.ts` fall through to the party
+trick when a mount is refused, which would have reached chapter 1's Droid but killed the
+"X m of daylight — come round beside him" line that exists because Michele could not climb on Biggy.
+
+`tests/jump.test.ts` is now `tests/party-tricks.test.ts`, because the choreographies that were
+about the hop are about a family. Every new expectation in it fails against HEAD.
+
+## Round — the secondary staircases, measured off the plans (24 Sep 2026)
+
+**What Michele reported:** *"The stairs position on the upper wall haven't been fixed."* — the
+third time he has filed these. The first two are still open in `docs/playtest-notes.md`: *"The
+secondary staircases are in the wrong place... they are lateral in the real hallway"* and note 18,
+*"they seem fit for biggy to pass, make the passage more narrow"*. "Upper wall" is ambiguous
+between the first floor's top corridor wall and the exhibition hall's two shafts, so both were
+measured.
+
+**What the agent did:** read the plan PNGs as pixels rather than by eye, and put every measurement
+that produced a number into the doc comment beside it, as the rest of `src/sim/geometry.ts`
+already does.
+
+*Ground floor — wrong, and fixed.* On `plans/exhibition-floor-stairs-annotated.png` (900 x 1141)
+both shafts run from a head wall at plan y **165** to a foot wall at plan y **323**; the west one
+is plan x 222..269, the east one plan x 421..469. Through Michele's own calibrated mapping in
+`docs/ground-floor-lobby-fix.md` (re-checked here against the small staircase and the toilets) that
+is world `{144.6, 306.6, 226.4, 45.0}` and `{144.6, 494.1, 226.4, 44.1}`. The build had
+`{150, 300, 200, 60}` and `{150, 430, 200, 60}`: the **top** shaft was almost exactly on centre
+(329 against 330) but 15 px too deep and 25 px too short, and the **bot** shaft was **64 px too far
+toward the middle of the hall**, which halved the gap between them — 70 px of hall where the plan
+leaves 142. Michele's own rough read in the brief (y 262..331 and y 469..533) is **half right**:
+the gap-halving and the bottom shaft are confirmed, the top shaft's centre is refuted.
+
+*First floor — note 18 fixed, the position ESCALATED.* Measured on
+`plans/devoxx-rooms-stairs-annotated.png`: the corridor is plan x 503..650 (147 px) and each flight
+is a 20 x 64 plan-px rectangle hard against a corridor wall — left x 507..527, right x 627..647,
+**both** at plan y 884..947, so the plan does put them exactly opposite each other. 20/147 of a
+130 px corridor is **17.7 sim px = 1.41 m**, and Biggy is 1.44 m across: the real stair excludes
+him by a centimetre, which is exactly what note 18 asked for. The mouth is now that, the well
+behind it stays 40 px (a landing is wider than its door, as the ground-floor shafts already are),
+and the renderer draws a 17.7 px flight with landings either side instead of steps the full width
+of the well.
+
+**What was NOT done, and why it is a human decision.** Plan y 884..947 is **63..126 plan px into
+room 4/9's own 174 of length** — world x 1006..1113, about 150 px further along the corridor than
+the build puts it, and not in the 3|4 or 10|9 gap at all. CLAUDE.md and GAUNTLET.md Stage 1 both
+say *"secondary staircases between rooms 3|4 and 10|9"* and call it non-negotiable; Michele's own
+`plans/README.md` says the same. So two things Michele wrote disagree, and a builder does not break
+that tie. Moving the stairs to the plan's station also costs two things no measurement settles:
+the well lands across rooms 4 and 9's **centred doorways** (the plan draws their doors flanking the
+stair instead, world x ~976 and ~1135), and it walks past the descent waypoint chapter 1's closing
+cutscene hard-codes as `nicheBot.x + 20, nicheBot.y + 30` — in a round where `ch1-night.ts` belongs
+to another agent. Escalated to Michele with the numbers rather than shipped on the agent's reading.
+
+**Also moved, as a consequence:** `SHAFT_DOOR` 34 -> 24, because a 45 px shaft less two 6 px walls
+is 33 px of clear width and a 34 px door in it produced negative-height jambs; and `GF.laneX[0]`
+370 -> 385, because at their measured length the shafts now end at x 371 and a chapter-3 visitor
+snapped to a lane node inside a wall could never arrive.
+
+**Tests.** `tests/geometry.test.ts` gains *"the staircases against the plan pixels"*: eight
+choreographies that pin both floors to the plan measurements rather than to each other, which is
+why the old ones kept passing while the build was wrong. Four of the eight fail against the
+previous numbers, checked by putting them back. Nothing was loosened; the corridor-gap assertion
+was rewritten to assert the narrowed mouth, which is the stronger claim.

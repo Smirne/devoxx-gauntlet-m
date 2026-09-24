@@ -20,6 +20,7 @@
  * another builder was writing in the same tree, so it is flagged, not made.
  */
 
+import { FIRE_LEAF_H, fireDoorDraw } from '../src/render/fire-door';
 import type { Prop, Rect } from '../src/sim/types';
 import { PX_PER_M } from '../src/sim/units';
 
@@ -40,7 +41,19 @@ export interface PropDraw {
 /** `PROPS` in `src/render/scene.ts`, kind for kind. */
 export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
   /* chapter 1 */
-  firedoor: { h: 2.1, tl: true },
+  /*
+   * The fire door is the one kind this table no longer describes.
+   *
+   * It used to be `{ h: 2.1, tl: true }`, and that entry was true of the shut door
+   * and a lie about the open one: `ch1-night.ts` removes the wall when the code is
+   * accepted and goes on publishing the prop, so the renderer kept drawing a 2.1 m
+   * slab across an opening that was no longer solid — Michele, with a screenshot of
+   * Biggy standing inside it, *"still a walkthrough object on the doorway"*. The
+   * entry stays so the kind is still classified, and `propBox` below asks
+   * `src/render/fire-door.ts` — the module `scene.ts` itself draws from — where the
+   * leaves actually are.
+   */
+  firedoor: { h: FIRE_LEAF_H, tl: true },
   keypad: { h: 1.25, tl: true },
   'projector-panel': { h: 0.9, tl: true, lift: 2.5 },
   screen: { h: 5.2, tl: true },
@@ -105,6 +118,28 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
 export function propBox(p: Prop): { rect: Rect; lo: number; hi: number } | null {
   const spec = PROP_DRAW[p.kind];
   if (spec === undefined) return null;
+  /*
+   * The fire door comes from the renderer's own module, not from the table: see
+   * its entry above. Shut, that is the pair of leaves filling the opening and the
+   * answer is the same as the old one. Open, the leaves have swung clear and the
+   * opening is drawn as what it is — an opening — so there is no box at all, and a
+   * zero-height one reads to the sweeps as "nothing in the robot band".
+   */
+  if (p.kind === 'firedoor') {
+    const d = fireDoorDraw(p, []);
+    // Shut, the two leaves together ARE the opening, and one box describes them.
+    // Once they are swinging they are two separate things in two separate places,
+    // which a single box cannot say without claiming the gap between them as
+    // solid — the very claim that made this prop walk-through. `tests/fire-door.
+    // test.ts` takes the leaves one at a time; here they are simply not a box.
+    if (d.u !== 0 || d.leaves.length === 0) return { rect: { x: p.x, y: p.y, w: 0, h: 0 }, lo: 0, hi: 0 };
+    const rs = d.leaves.map((l) => l.rect);
+    const x0 = Math.min(...rs.map((r) => r.x));
+    const y0 = Math.min(...rs.map((r) => r.y));
+    const x1 = Math.max(...rs.map((r) => r.x + r.w));
+    const y1 = Math.max(...rs.map((r) => r.y + r.h));
+    return { rect: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, lo: 0, hi: spec.h };
+  }
   const wPx = p.w !== undefined ? p.w : (spec.fw ?? 0.8) * PX_PER_M;
   const dPx = p.h !== undefined ? p.h : (spec.fd ?? 0.8) * PX_PER_M;
   const rect: Rect = spec.tl

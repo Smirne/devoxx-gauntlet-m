@@ -15,11 +15,14 @@
 import {
   AIM_SETTLE,
   ANIM_DIV,
+  BIGGY_ROLL_DUR,
   BOOST_CAP_FACTOR,
   BOOST_DECAY,
   BRACED_MASS,
   DEFS,
+  DROID_STRETCH_DUR,
   FACE_MIN_SPEED,
+  FLAIR_REST_FACTOR,
   JUMP_AIR,
   JUMP_COOLDOWN,
   MOUNT_BIGGY_MAX_SPEED,
@@ -269,6 +272,17 @@ export function stepBot(b: Bot, dt: number, walls: Wall[], onBlocked?: (b: Bot, 
   if (b.air) b.air = Math.max(0, b.air - dt);
   if (b.hopRest) b.hopRest = Math.max(0, b.hopRest - dt);
   const il = Math.hypot(b.ix, b.iy);
+  /*
+   * The flourish's clock, and the one thing that can cut it short.
+   *
+   * It is spent here so the sim owns it exactly as it owns the airtime, and it
+   * is spent WITHOUT touching a position or a velocity: a party trick is a pose
+   * over time and nothing else (see `partyTrick`). Reaching for the stick ends
+   * it, because a robot that is being driven has stopped showing off — and that
+   * is also what makes "zero displacement" true of the trick rather than merely
+   * true of the frames nobody steered through.
+   */
+  if (b.flair) b.flair = il > 0 ? 0 : Math.max(0, b.flair - dt);
   if (il > 0) {
     // Exponential approach to the stick's target velocity: frame-rate independent.
     const tx = (b.ix / il) * b.max;
@@ -403,10 +417,16 @@ export function pushBiggy(bots: Bot[], dt: number, t: number, flash: (s: string)
   }
 }
 
-/* ---------------------------------------------------------------- Voxxy hops */
+/* --------------------------------------------------------------- party tricks */
 
 /** True while this body is off the floor. */
 export const airborne = (b: Bot): boolean => (b.air ?? 0) > 0;
+
+/** True while this body is in the middle of a cosmetic flourish. */
+export const flourishing = (b: Bot): boolean => (b.flair ?? 0) > 0;
+
+/** True while this body is doing any of the three party tricks. */
+export const showingOff = (b: Bot): boolean => airborne(b) || flourishing(b);
 
 /**
  * Where a hop is in its arc, 0 on take-off to 1 on landing. 0 on the ground.
@@ -418,6 +438,46 @@ export const airborne = (b: Bot): boolean => (b.air ?? 0) > 0;
 export const hopPhase = (b: Bot): number => (b.air ? 1 - b.air / JUMP_AIR : 0);
 
 /**
+ * Where a flourish is, 0 at the first move to 1 at the settle. 0 when standing.
+ *
+ * The renderer's only input for drawing Biggy's roll and Droid's stretch, and the
+ * exact counterpart of `hopPhase`: one number off the sim's own clock, with the
+ * shape of the pose left to `gait.ts` the way the hop's parabola is. Nothing on
+ * the drawing side has to know how long a flourish lasts, or which robot is doing
+ * which one.
+ */
+export const flairPhase = (b: Bot): number =>
+  b.flair && b.flairDur ? 1 - b.flair / b.flairDur : 0;
+
+/**
+ * What a flourish is refused with, per robot, per reason.
+ *
+ * A gate that silently does nothing is the worst kind (CLAUDE.md), and these are
+ * the five ways `E` can land on a robot that cannot perform. Every one of them is
+ * a true sentence about that robot at that moment, in its own voice.
+ */
+const NO_TRICK: Record<RobotKind, { mounted: string; braced: string; busy: string; rest: string }> = {
+  voxxy: {
+    mounted: 'Voxxy: "Somebody is carrying me. Hopping now would be rude, and brief."',
+    braced: 'Voxxy: "Feet planted. Pick one — planted, or bouncing."',
+    busy: 'Voxxy: "I am ALREADY in the air. Look up."',
+    rest: 'Voxxy: "Landing gear. Half a second."',
+  },
+  droid: {
+    mounted: 'Droid: "Stretch, up here? I would come off his shoulders like a deckchair."',
+    braced: 'Droid: "Both feet planted, holding him still. One thing at a time."',
+    busy: 'Droid: "I am mid-stretch. It takes as long as it takes."',
+    rest: 'Droid: "Twice in a row is not a stretch, it is a fault."',
+  },
+  biggy: {
+    mounted: 'Biggy: "Not with Droid up there. Funny. But not with Droid up there."',
+    braced: 'Biggy: "I am planted. A planted thing does not roll. That is the whole idea."',
+    busy: 'Biggy: "Still going. A thing this round takes a while to stop."',
+    rest: 'Biggy: "Let the floor recover."',
+  },
+};
+
+/**
  * Voxxy leaves the ground.
  *
  * Her verb, next to Droid's climb and Biggy's charge, and the one Michele asked for
@@ -426,28 +486,92 @@ export const hopPhase = (b: Bot): number => (b.air ? 1 - b.air / JUMP_AIR : 0);
  * A foot on the furniture and over it, rather than a clean leap above it: see
  * `JUMP_RISE_M` for why that distinction is the honest one at her size.
  *
- * The other two say why not, in their own voices, because a gate that just does
- * nothing is the worst kind (CLAUDE.md, and the mount's own history). Their reasons
- * are also true: Droid is the one with the reach and the one thing he is no good at
- * is leaving the floor, and Biggy at 7 relative mass coming back down is an event.
+ * The other two used to be told why not here, in their own voices — Droid goes up
+ * by climbing, and Biggy at 7 relative mass coming back down is an event. Both are
+ * still true and neither is a refusal any more: since 25 Sep 2026 they answer `E`
+ * with a flourish of their own (`partyTrick`), and their old lines survive inside
+ * the two new ones.
  *
- * Returns true if she actually left the ground.
+ * Returns true if she actually left the ground — which is always, the gates having
+ * been checked by the caller.
  */
-export function jump(b: Bot, flash: (s: string) => void): boolean {
-  if (b.kind === 'droid') {
-    flash('Droid: "I go up by climbing, not by leaping. Ask the small one."');
-    return false;
-  }
-  if (b.kind === 'biggy') {
-    flash('Biggy: "I could. The floor would rather I did not."');
-    return false;
-  }
-  if (b.mounted || b.braced) return false;
-  if (airborne(b)) return false;
-  if ((b.hopRest ?? 0) > 0) return false;
+function hop(b: Bot): boolean {
   b.air = JUMP_AIR;
   // Counted from take-off, so the gap on the ground is one airtime, not two.
   b.hopRest = JUMP_AIR + JUMP_COOLDOWN;
+  return true;
+}
+
+/**
+ * Start a cosmetic flourish of `dur` seconds. No position, no velocity, no heading.
+ *
+ * The rest is charged from the START of the performance, exactly as the hop charges
+ * it from take-off, so `FLAIR_REST_FACTOR` reads as "this long again on the floor".
+ */
+function flourish(b: Bot, dur: number): boolean {
+  b.flair = dur;
+  b.flairDur = dur;
+  b.hopRest = dur * (1 + FLAIR_REST_FACTOR);
+  return true;
+}
+
+/**
+ * `E`, when the chapter has no use for it and Biggy is not within reach: the
+ * robot's party trick.
+ *
+ * Michele, 25 Sep 2026: *"Could we add a basic action to each robot on E? Voxxy
+ * jumps, Biggy rolls, Droid? Stretches? Not needed for gameplay."* So there are
+ * three verbs on one key now instead of one verb and two apologies:
+ *
+ *   - **Voxxy hops.** Unchanged, physics and all — see `hop` and `JUMP_RISE_M`.
+ *     Hers is the one flourish that is not cosmetic: it crosses a seat row.
+ *   - **Biggy rolls.** Not a displacement — a huge round gut with a tin lid on it
+ *     (`src/render/robots/biggy.ts`) rocking side to side like a weeble, a turn
+ *     and a half, and settling. Michele said it is not needed for gameplay, and a
+ *     roll that MOVED him would be gameplay: it would push whatever it reached,
+ *     and the speed it reached it with would have to be a frozen number. This one
+ *     cannot touch anything, because it writes nothing but a clock.
+ *   - **Droid stretches.** Four hours at a desk, both long arms overhead. Same
+ *     deal: a pose over time, no metres.
+ *
+ * Every refusal speaks, in that robot's own voice (`NO_TRICK`). The five gates are
+ * the true ones: carried, planted, already performing, still catching its breath,
+ * and — Biggy only — with a passenger on his shoulders, which is the one case a
+ * robot cannot see about itself and the reason this takes the whole cast.
+ *
+ * Returns true if something actually happened.
+ */
+export function partyTrick(bots: Bot[], b: Bot, flash: (s: string) => void): boolean {
+  const voice = NO_TRICK[b.kind];
+  if (b.mounted) {
+    flash(voice.mounted);
+    return false;
+  }
+  if (b.braced) {
+    flash(voice.braced);
+    return false;
+  }
+  if (showingOff(b)) {
+    flash(voice.busy);
+    return false;
+  }
+  if ((b.hopRest ?? 0) > 0) {
+    flash(voice.rest);
+    return false;
+  }
+  if (b.kind === 'voxxy') return hop(b);
+  if (b.kind === 'droid') {
+    flourish(b, DROID_STRETCH_DUR);
+    flash('Droid: "I do not leap. I unfold." — both arms overhead, and something in the back of him clicks');
+    return true;
+  }
+  // Biggy, and the one gate he cannot check for himself.
+  if (bots.some((o) => o.kind === 'droid' && o.mounted)) {
+    flash(voice.mounted);
+    return false;
+  }
+  flourish(b, BIGGY_ROLL_DUR);
+  flash('Biggy: "Jump? The floor and I have an understanding." — the whole gut goes over, and back, and settles');
   return true;
 }
 
@@ -516,6 +640,11 @@ export function toggleMount(bots: Bot[], flash: (s: string) => void): boolean {
     return false;
   }
   d.mounted = true;
+  // The climb ends both robots' party tricks: a mounted Droid's clock would freeze
+  // (`stepBot` returns early for him) and a Biggy who rocks with a passenger aboard
+  // is the one thing `partyTrick` refuses outright.
+  d.flair = 0;
+  bg.flair = 0;
   flash('Droid climbs onto Biggy — taller lamp, wider pool, higher reach');
   return true;
 }

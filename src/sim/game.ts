@@ -27,8 +27,8 @@ import { VIEW_CLOSED } from './geometry';
 import {
   botsCollide,
   circleRect,
-  jump as leaveTheFloor,
   mkBot,
+  partyTrick as showOff,
   pushBiggy as leanOnBiggy,
   stepBot,
   syncMount,
@@ -323,13 +323,18 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   }
 
   /**
-   * `E` with nothing else on it: take hold of Biggy, let go of him, or hop.
+   * `E` with nothing else on it: take hold of Biggy, let go of him, or show off.
    *
    * The order is intent, not convenience. A robot already on the bar means to let
    * go; one standing against Biggy means to take hold, because that is the reason
-   * to be standing there; anything else is Voxxy's hop. She can always step away
-   * from Biggy to jump, and there is nothing she could want to hop over while
-   * touching him.
+   * to be standing there; anything else is that robot's party trick — Voxxy's hop,
+   * Biggy's roll, Droid's stretch. A robot can always step away from Biggy to
+   * perform, and there is nothing any of them could want to hop over, rock on or
+   * stretch out of while touching him.
+   *
+   * That ordering is also the whole of the "towing" gate: a robot on the bar never
+   * reaches `partyTrick`, because on the bar `E` already means something, and
+   * letting go says so out loud.
    */
   function spareE(): void {
     const b = bots[cur];
@@ -337,7 +342,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       towToggle();
       return;
     }
-    leaveTheFloor(b, flash);
+    showOff(bots, b, flash);
   }
 
   function release(why: string): void {
@@ -414,6 +419,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       o.vy = 0;
       o.boostCap = 0;
       o.air = 0;
+      o.flair = 0;
       o.hopRest = 0;
     }
   }
@@ -619,6 +625,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       b.drag = def.drag;
       b.mass = def.mass;
       b.air = 0;
+      b.flair = 0;
       b.hopRest = 0;
     }
   }

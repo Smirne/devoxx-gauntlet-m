@@ -302,6 +302,50 @@ export const JUMP_AIR = 2 * Math.sqrt((2 * JUMP_RISE_M) / GRAVITY);
  */
 export const JUMP_COOLDOWN = JUMP_AIR;
 
+/* ------------------------------------------------------------ party tricks */
+
+/**
+ * COSMETIC TIMINGS — the other two robots' answer to `E`, and **not physics.**
+ *
+ * Michele, 25 Sep 2026: *"Could we add a basic action to each robot on E? Voxxy
+ * jumps, Biggy rolls, Droid? Stretches? **Not needed for gameplay.**"* That last
+ * clause is the specification, so these numbers are held to a different standard
+ * than everything above them in this file:
+ *
+ *   - nothing in the game is DECIDED by one. No wall, door, clue, reach, mount or
+ *     score reads them; no robot moves a pixel while one is running (see
+ *     `partyTrick` in `bot.ts`, and the flourish writes no `x`, `y`, `vx` or `vy`
+ *     at all). They are the length of a performance, like `TOAST_MS` is the length
+ *     of a toast.
+ *   - they are therefore NOT frozen and `tests/frozen-constants.test.ts` does not
+ *     pin them. A future round may retime a flourish because it reads badly on
+ *     screen, which is exactly the argument that may never be made about a number
+ *     above this line.
+ *
+ * What they DO share with the hop is the clock's ownership: the sim counts the
+ * seconds down and the renderer reads a 0..1 phase off it (`flairPhase`), so there
+ * is one timeline and the pose cannot drift from it.
+ */
+
+/** Biggy's roll: seconds from the first rock to standing still again. */
+export const BIGGY_ROLL_DUR = 1.6;
+/**
+ * How many times Biggy rocks from side to side across `BIGGY_ROLL_DUR` — "a turn
+ * and a half", which is what makes it a weeble settling rather than a metronome.
+ * Read by `gait.ts`, which owns the amplitude the way it owns the hop's parabola.
+ */
+export const BIGGY_ROLL_ROCKS = 1.5;
+/** Droid's stretch: seconds from the first reach to the settle. Four hours at a desk. */
+export const DROID_STRETCH_DUR = 2.2;
+/**
+ * Seconds of rest after a flourish, as a multiple of that flourish's own length.
+ *
+ * 1, so the duty cycle is 50% and `E` held down gets a performance and then a
+ * pause — exactly the rule `JUMP_COOLDOWN` sets for the hop, and for the same
+ * reason: a robot that is always mid-flourish is not showing off, it is broken.
+ */
+export const FLAIR_REST_FACTOR = 1;
+
 /* ---------------------------------------------------------------- doors */
 
 /** Chapter 1: room E's jammed door. Speed *into* the door, not total speed. */
