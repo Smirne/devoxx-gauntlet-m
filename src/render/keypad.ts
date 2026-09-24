@@ -74,7 +74,7 @@ const PLATE_GAP = 0.05;
 /** How far the housing stands proud of the plate. */
 const CASE_D = 0.26;
 /** Margin between the housing and the ends of the plate. */
-const CASE_INSET = 0.16;
+const CASE_INSET = 0.1;
 
 /** The readout window: the part that has to read at play zoom. */
 const READ_H = 0.3;
@@ -283,6 +283,21 @@ export function buildKeypad(): KeypadModel {
   lampMat.emissive = new THREE.Color(0xd8452f);
   lampMat.emissiveIntensity = 1.4;
   lampMat.toneMapped = false;
+  /*
+   * A STANDBY GLOW ON THE BEZEL, for the reason `PROPS['projector-panel']` and
+   * `PROPS.terminal` carry one in `scene.ts`: the thing the player is looking FOR
+   * is by definition still idle, and chapter 1 is a blackout. Measured in the
+   * running build, an unlit housing in that corridor is a silhouette until a robot
+   * happens to point a lamp at it — Michele has filed *"there should be something
+   * visible"* against exactly this failure twice, on two other props. The lock is
+   * powered (it is a MAGNETIC lock; that is the whole fiction), so its own trim
+   * having current in it is the honest reading as well as the findable one.
+   */
+  trim.emissive = new THREE.Color(0x4a3a18);
+  trim.emissiveIntensity = 0.6;
+  trim.toneMapped = false;
+  shell.emissive = new THREE.Color(0x12171e);
+  shell.emissiveIntensity = 1;
   const owned: THREE.Material[] = [shell, plate, foot, trim, lampMat];
 
   const plinth = box(foot);
