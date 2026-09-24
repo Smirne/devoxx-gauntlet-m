@@ -152,6 +152,16 @@ const ROLLER_TALK_COOLDOWN = 3;
  * while it runs.
  */
 const ROLLER_RISE_TIME = 0.42;
+
+/**
+ * How long chapter 2 stays live after its last task lands, seconds.
+ *
+ * Long enough for the shutter's own 0.42 s lift to finish and then some — the
+ * point is not the animation alone but being left standing in a hall that is
+ * lit, with a store that is open, for a beat before the card. Play is not taken
+ * away: this is a curtain, not a cutscene.
+ */
+const CURTAIN = 3;
 /**
  * How long Biggy takes to walk the router cabinet's doors open, seconds.
  *
@@ -425,6 +435,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /** 1 on the frame a handle goes up, decaying to 0. See `BREAKER_STRIKE_TIME`. */
   let breakerStrike = 0;
   let rollerBroken = false;
+  /** When both tasks were first done, sim seconds — see `CURTAIN`. Null until then. */
+  let curtainAt: number | null = null;
+  /** Whether the shutter was the LAST of the two, so the curtain line names it. */
+  let rollerLast = false;
   /** 0..1, how far the smashed shutter has torn up. See `ROLLER_RISE_TIME`. */
   let rollerRise = 0;
   /** 0..1, how far the cabinet doors have been walked open. See `CABINET_SWING_TIME`. */
@@ -471,6 +485,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       if (b.kind !== 'biggy') return false;
       if (b.vx > ROLLER_DOOR_SPEED) {
         rollerBroken = true;
+        // Which task finished the chapter decides what the curtain says. Read
+        // here rather than in `update`, because by the next frame both are true
+        // and the order is gone.
+        rollerLast = printerOnline();
         ctx.removeWall(roller);
         ctx.flash(
           `CRASH — Biggy rolls through at ${m(b.vx).toFixed(1)} m/s. The Devoxx crew and 3,000 badges are free`,
@@ -1326,10 +1344,41 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     lights = cast;
     stepPoster(cast);
 
+    /*
+     * THE CURTAIN. Michele: *"when all actions are done, chapter 2 ends
+     * abruptly. I just finished the biggy run, i expected to see the animation
+     * and the inside of the gadget room. Since u can finish in different orders,
+     * give some seconds for animation / see what happens before the chap 3
+     * screen."*
+     *
+     * It called `startChapter(3)` on the exact frame the second of the two
+     * conditions flipped, so the shutter — `ROLLER_RISE_TIME`, 0.42 s of it —
+     * was still on its way up when the chapter card came down over it. Whichever
+     * task you finish last, you never saw it finish.
+     *
+     * So the chapter stays live for `CURTAIN` seconds after the last one lands.
+     * Play is not taken away during it: the robots keep their keys, the shutter
+     * finishes its lift, the hall is up, the store is open and standing there —
+     * which is the half of his note that a fade could not have answered, because
+     * *"see the inside of the gadget room"* means being allowed to look.
+     *
+     * The clock starts on the frame BOTH are true rather than on either one, so
+     * it is the same three seconds in either finishing order.
+     */
     if (printerOnline() && rollerBroken) {
-      ctx.score.expoT = Math.round(ctx.t);
-      ctx.score.cable = Math.trunc(cable.len);
-      ctx.startChapter(3);
+      if (curtainAt === null) {
+        curtainAt = ctx.t;
+        ctx.flash(
+          rollerLast
+            ? 'The shutter goes up on three thousand Devoxx shirts. The printer is already chattering next door'
+            : 'The printer wakes up next door. Behind you the store is open, and the shirts are in there',
+          Math.round(CURTAIN * 1000),
+        );
+      } else if (ctx.t - curtainAt >= CURTAIN) {
+        ctx.score.expoT = Math.round(curtainAt);
+        ctx.score.cable = Math.trunc(cable.len);
+        ctx.startChapter(3);
+      }
     }
   }
 
