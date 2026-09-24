@@ -90,7 +90,7 @@ export interface KeynoteState {
   spare: number;
 }
 
-const KEYS = '1/2/3/Tab: switch · WASD · E: use · Space: take hold of Biggy · R: restart';
+const KEYS = '1/2/3/Tab: switch · WASD · E: use / hold Biggy / Voxxy jumps · R: restart';
 const READY_OBJECTIVE =
   'Chapter 4 · <b>Keynote</b>. Stage ready. <b>Get all three robots on the stage</b> — Stephan and the speaker are waiting.';
 
@@ -283,15 +283,25 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   /* --------------------------------------------------------------------- keys */
 
-  function key(code: string): void {
+  /**
+   * The banner hooks — and the first chapter to hand `E` back.
+   *
+   * Returning `false` is not "nothing happened", it is this chapter saying `E`
+   * means nothing where the player is standing, so `game.ts` may spend it on a
+   * hop or on taking hold of Biggy (see `ChapterRuntime.key`). Everything this
+   * room wants `E` for is one Droid at one of two hooks; the rest of it — a room
+   * with two aisles, three blocks of seats and a crowd arriving — is exactly the
+   * place to be jumping around in.
+   */
+  function key(code: string): boolean {
     const b = ctx.bots[ctx.cur];
     ctx.switchKey(code);
-    if (code !== 'KeyE' || b.kind !== 'droid') return;
+    if (code !== 'KeyE' || b.kind !== 'droid') return false;
     const h = hooks.find((o) => !o.done && dist(o, b) < HOOK_REACH);
-    if (h) {
-      h.done = true;
-      ctx.flash(hooks.every((o) => o.done) ? 'Banner up!' : 'One hook done — now the other end');
-    }
+    if (!h) return false;
+    h.done = true;
+    ctx.flash(hooks.every((o) => o.done) ? 'Banner up!' : 'One hook done — now the other end');
+    return true;
   }
 
   /* ------------------------------------------------------------------- update */

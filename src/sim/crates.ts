@@ -136,3 +136,33 @@ export function loadBiggy(bg: Bot, n: number): void {
   bg.mass = crateLoadMass(n);
   bg.accel = crateLoadAccel(n);
 }
+
+/**
+ * WHAT IS ACTUALLY IN THE CRATES.
+ *
+ * Michele, approving the beat: *"Of course they'll need to look like beer crates,
+ * with funny names."* Six crates, six breweries, in the same register as the
+ * sponsor list next door in `geometry.ts` — "NullPointer Insurance", "Async
+ * Airlines", "Monolith GmbH" — which is to say: a real-sounding Belgian brewery
+ * with a Java joke wearing its coat.
+ *
+ * Every one of them is INVENTED. `Dubbel`, `Tripel`, `Lambiek`, `Gueuze`, `Saison`
+ * and `Abdij` are Belgian beer *styles* and ordinary Dutch words, not anybody's
+ * trademark, which is the whole reason the list is built out of them: the rule for
+ * this project is "nothing that needs permission" (CLAUDE.md), and a real brewery
+ * on a crate in a competition entry would need it.
+ *
+ * The order is the order they sit on the pallet, so `crates[3]` is always the
+ * Gueuze Collector and a test can say so.
+ */
+export const CRATE_BREWS: readonly string[] = [
+  'Brouwerij Dubbel-Checked',
+  'Lambiek Lambda',
+  'Tripel Equals',
+  'Gueuze Collector',
+  'Saison Stacktrace',
+  'Abdij van de Heap',
+];
+
+/** The brewery on crate `i`, wrapping if a future delivery is bigger than the list. */
+export const crateBrew = (i: number): string => CRATE_BREWS[i % CRATE_BREWS.length];

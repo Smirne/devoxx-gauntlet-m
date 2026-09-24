@@ -155,20 +155,55 @@ describe('the eight Devoxx rooms', () => {
 });
 
 describe('both staircases, which is what the overlay check fails rounds over', () => {
-  it('puts the secondary staircases between rooms 10|9 and 3|4', () => {
-    const top = worldXZ('stair-niche-top');
-    const bot = worldXZ('stair-niche-bot');
+  /*
+   * MOVED 24 Sep 2026: *"follow the devoxx plant, not the plan.md"*.
+   *
+   * This test used to assert the prose — the staircases in the gap between rooms
+   * 10|9 and 3|4 — and passed all the way through Michele reporting the position
+   * three times. The plan draws them level with rooms 4 and 9, standing in the
+   * corridor. The sim-side pixel measurement is in `tests/geometry.test.ts`; this
+   * is the same claim made of the thing actually on screen.
+   */
+  it('stands the secondary staircases in the corridor, level with rooms 4 and 9', () => {
+    for (const [name, rect, roomN] of [
+      ['stair-niche-top', F1.nicheTop, 9],
+      ['stair-niche-bot', F1.nicheBot, 4],
+    ] as const) {
+      const o = venue.group.getObjectByName(name);
+      expect(o, `missing object "${name}"`).toBeDefined();
+      const box = new THREE.Box3().setFromObject(o as THREE.Object3D);
+      // On the flight's own footprint, along the corridor and across it. The
+      // slack is the nosings and the shell that closes the well.
+      expect(box.min.x).toBeGreaterThan(m(rect.x) - 0.3);
+      expect(box.max.x).toBeLessThan(m(rect.x + rect.w) + 0.3);
+      expect(box.min.z).toBeGreaterThan(m(rect.y) - 0.3);
+      expect(box.max.z).toBeLessThan(m(rect.y + rect.h) + 0.3);
+      // Which is inside room 4/9's frontage, and nowhere near the 3|4 or 10|9 gap.
+      expect(box.min.x).toBeGreaterThan(simToWorld(R(roomN).x, 0, 'up').x);
+      expect(box.max.x).toBeLessThan(simToWorld(R(roomN).x + R(roomN).w, 0, 'up').x);
+      const before = R(roomN === 9 ? 10 : 3);
+      expect(box.min.x).toBeGreaterThan(simToWorld(before.x + before.w + 100, 0, 'up').x);
+      // It goes DOWN: the flight's lowest tread is below the corridor floor.
+      expect(box.min.y).toBeLessThan(-1);
+    }
+    // ...and the two of them face each other across the corridor.
+    const top = new THREE.Box3().setFromObject(venue.group.getObjectByName('stair-niche-top') as THREE.Object3D);
+    const bot = new THREE.Box3().setFromObject(venue.group.getObjectByName('stair-niche-bot') as THREE.Object3D);
+    expect(top.max.z).toBeLessThan(bot.min.z);
+    expect(top.getCenter(new THREE.Vector3()).x).toBeCloseTo(bot.getCenter(new THREE.Vector3()).x, 5);
+  });
 
-    // Room 10 ends and room 9 starts on either side of the top niche.
-    expect(top.x).toBeGreaterThan(simToWorld(R(10).x + R(10).w, 0, 'up').x);
-    expect(top.x).toBeLessThan(simToWorld(R(9).x, 0, 'up').x);
-    // Same gap on the bottom row, between rooms 3 and 4.
-    expect(bot.x).toBeGreaterThan(simToWorld(R(3).x + R(3).w, 0, 'up').x);
-    expect(bot.x).toBeLessThan(simToWorld(R(4).x, 0, 'up').x);
-
-    // The niches face each other across the corridor.
-    expect(top.z).toBeLessThan(bot.z);
-    expect(top.x).toBeCloseTo(bot.x, 5);
+  it('leaves rooms 4 and 9 a doorway and a numeral beside the staircase, not behind it', () => {
+    for (const n of [4, 9] as const) {
+      const shaft = R(n).side < 0 ? F1.nicheTop : F1.nicheBot;
+      const x0 = simToWorld(shaft.x, 0, 'up').x;
+      const x1 = simToWorld(shaft.x + shaft.w, 0, 'up').x;
+      for (const what of [`zaal-sign-${n}`, `poster-box-${n}`]) {
+        const box = new THREE.Box3().setFromObject(venue.group.getObjectByName(what) as THREE.Object3D);
+        const over = box.min.x < x1 && box.max.x > x0;
+        expect(over, `${what} hangs over the stairwell`).toBe(false);
+      }
+    }
   });
 
   it('puts the main staircase beyond rooms 6 and 7, at the corridor\'s end', () => {

@@ -258,6 +258,94 @@ export const MOUNT_POOL_SCALE = 1.6;
 /** Droid sits this far above Biggy's centre while mounted. */
 export const MOUNT_OFFSET_Y = 6;
 
+/* ---------------------------------------------------------------- Voxxy jumps */
+
+/**
+ * The hop, and the one moment this game leaves the floor plane.
+ *
+ * Michele asked for it twice — first scoped down to *"just for one quiz. And for
+ * jumping around for fun"*, then approved outright: *"Voxxy jump: let's make it.
+ * I'd keep E, when no other action is available."*
+ *
+ * These are NOT tuned numbers and they are not frozen-by-decree either: the airtime
+ * is derived, so there is exactly one thing to argue about. Pick a hop height, and
+ * projectile motion fixes everything else — a body that leaves the ground at
+ * `v0 = sqrt(2 g H)` is back on it after `2 v0 / g`, and its height through the hop
+ * is the parabola `4 H u (1 - u)` over `u` in 0..1, which is what the renderer
+ * draws. Change `JUMP_RISE_M` and the whole arc stays honest.
+ *
+ * 0.3 m is a knee-high robot getting a foot up onto something. It buys 0.49 s of
+ * air, which at her top speed is 2.9 m of ground, and from a standstill it is a hop
+ * on the spot — the half of it he asked for for its own sake.
+ *
+ * **It is a vault, not a clearance.** Every `low` wall in this game is drawn 0.78 m
+ * tall (`LOW_H`, `src/render/venue/props.ts`) — seat rows, sponsor tables, the
+ * reception counter — and 0.3 m of air does not carry a 0.38 m robot over 0.78 m of
+ * furniture. What it does is what a small fast thing actually does to a seat row:
+ * a foot on it and over. So the rule the sim enforces is "one hop crosses one piece
+ * of low furniture, if she covers its depth", which is why chapter 1's 0.72 m-deep
+ * rows go and chapter 4's 7.2 m-deep seat BLOCKS do not, and why the one thing that
+ * is taller than 0.78 m — chapter 2's 1.06 m pallets of t-shirts — is not `low` at
+ * all and is not hers to cross.
+ */
+export const GRAVITY = 9.81;
+/** Hop height, metres. The only free number in the jump. */
+export const JUMP_RISE_M = 0.3;
+/** Airtime, seconds — ballistic, derived, not chosen: 2*sqrt(2H/g). */
+export const JUMP_AIR = 2 * Math.sqrt((2 * JUMP_RISE_M) / GRAVITY);
+/**
+ * Seconds on the ground between hops, counted from take-off.
+ *
+ * One airtime, so the duty cycle is 50%: holding E down gets her a run of hops with
+ * a footfall between each, never a permanent hover. Legs push off from the floor,
+ * and the floor is where she has to be to do it.
+ */
+export const JUMP_COOLDOWN = JUMP_AIR;
+
+/* ------------------------------------------------------------ party tricks */
+
+/**
+ * COSMETIC TIMINGS — the other two robots' answer to `E`, and **not physics.**
+ *
+ * Michele, 25 Sep 2026: *"Could we add a basic action to each robot on E? Voxxy
+ * jumps, Biggy rolls, Droid? Stretches? **Not needed for gameplay.**"* That last
+ * clause is the specification, so these numbers are held to a different standard
+ * than everything above them in this file:
+ *
+ *   - nothing in the game is DECIDED by one. No wall, door, clue, reach, mount or
+ *     score reads them; no robot moves a pixel while one is running (see
+ *     `partyTrick` in `bot.ts`, and the flourish writes no `x`, `y`, `vx` or `vy`
+ *     at all). They are the length of a performance, like `TOAST_MS` is the length
+ *     of a toast.
+ *   - they are therefore NOT frozen and `tests/frozen-constants.test.ts` does not
+ *     pin them. A future round may retime a flourish because it reads badly on
+ *     screen, which is exactly the argument that may never be made about a number
+ *     above this line.
+ *
+ * What they DO share with the hop is the clock's ownership: the sim counts the
+ * seconds down and the renderer reads a 0..1 phase off it (`flairPhase`), so there
+ * is one timeline and the pose cannot drift from it.
+ */
+
+/** Biggy's roll: seconds from the first rock to standing still again. */
+export const BIGGY_ROLL_DUR = 1.6;
+/**
+ * How many times Biggy rocks from side to side across `BIGGY_ROLL_DUR` — "a turn
+ * and a half", which is what makes it a weeble settling rather than a metronome.
+ * Read by `gait.ts`, which owns the amplitude the way it owns the hop's parabola.
+ */
+export const BIGGY_ROLL_ROCKS = 1.5;
+/** Droid's stretch: seconds from the first reach to the settle. Four hours at a desk. */
+export const DROID_STRETCH_DUR = 2.2;
+/**
+ * Seconds of rest after a flourish, as a multiple of that flourish's own length.
+ *
+ * 1, so the duty cycle is 50% and `E` held down gets a performance and then a
+ * pause — exactly the rule `JUMP_COOLDOWN` sets for the hop, and for the same
+ * reason: a robot that is always mid-flourish is not showing off, it is broken.
+ */
+export const FLAIR_REST_FACTOR = 1;
+
 /* ---------------------------------------------------------------- doors */
 
 /** Chapter 1: room E's jammed door. Speed *into* the door, not total speed. */

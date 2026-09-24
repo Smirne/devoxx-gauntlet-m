@@ -136,6 +136,38 @@ const CABLE_TALK_COOLDOWN = 4;
 const ROLLER_MIN_TALK = 40 * SPEED_SCALE;
 /** Seconds between the roller door's "not fast enough" readouts. */
 const ROLLER_TALK_COOLDOWN = 3;
+/**
+ * How long the smashed shutter takes to tear up into its housing, seconds.
+ *
+ * The same shape as chapter 1's `JAM_FALL_TIME` and `FIRE_SWING_TIME`: the sim
+ * owns the clock, the collider is gone on the frame Biggy goes through, and this
+ * only feeds `Prop.progress` for `src/render/roller-door.ts` to pose the curtain
+ * from and for `main.ts` to fire the `shutter` cue off. A duration, not a speed,
+ * so the 2026-09-23 rescale leaves it alone.
+ *
+ * Short, and deliberately: Michele's complaint was that the door was *"still a
+ * walkthrough object on the doorway"* with no animation and no sound, and the
+ * answer for a shutter hit at 5.7 m/s is a fast ugly yank, not the fire door's
+ * controlled second-long arrival. Biggy is through the opening and still moving
+ * while it runs.
+ */
+const ROLLER_RISE_TIME = 0.42;
+/**
+ * How long Biggy takes to walk the router cabinet's doors open, seconds.
+ *
+ * The third clock of this shape in the game and the slowest of them, on purpose.
+ * The fire door arrives (`FIRE_SWING_TIME`, 1 s), the shutter is torn up
+ * (`ROLLER_RISE_TIME`, 0.42 s) and this is neither: Droid's line is *"the hinges
+ * have not moved since 2019"* and the narration is that Biggy *"sets his shoulder
+ * against the cabinet door and walks it open"*. It should take a beat longer than
+ * a door that is simply let go of, and it should not look like anything gave way.
+ *
+ * `drawCabinet` used to cut straight to a leaf standing at 58° with no collider
+ * under it — the third door in the game that changed between two frames, and the
+ * one Michele had not caught yet. A duration, not a speed, so the rescale leaves
+ * it alone; it only ever feeds `Prop.progress`.
+ */
+const CABINET_SWING_TIME = 1.2;
 
 /* ------------------------------------------------------------- the network closet
  *
@@ -203,6 +235,8 @@ const POSTER_READ = 70;
 const STORE_HAIL = 150;
 /** ...and how close before reception says which desk the cable is looking for. */
 const RECEPTION_HAIL = 150;
+/** ...and how close to the technical room's door before it says what is inside. */
+const TECH_DOOR_HAIL = 120;
 /** Seconds between the terminal's "that is not it" readouts, so a mashed key is not a wall of toast. */
 const TYPO_COOLDOWN = 1.2;
 const BREAKERS = 3;
@@ -214,10 +248,20 @@ const NO_MIRRORS: Mirror[] = [];
  * Four pallets of crated Devoxx t-shirts, inside the pickup store.
  *
  * Michele: *"Gadgets must be ready... (and put crates, shirts and gadgets inside)...
- * But the devoxx shirt is a tradition."* They are dressing — no collider, no state —
- * and they exist so that what is behind the roller door is worth breaking it for.
- * Laid out clear of the door's swing so the crash reveals them rather than clipping
- * through them.
+ * But the devoxx shirt is a tradition."* They exist so that what is behind the roller
+ * door is worth breaking it for, and they are laid out clear of the door's swing so
+ * the crash reveals them rather than clipping through them.
+ *
+ * **They have colliders**, which they did not when they were first written ("dressing
+ * — no collider, no state"). `tests/colliders.test.ts` caught it the same night: a
+ * pallet of crated t-shirts finishes at 1.06 m and a robot could stand in the
+ * middle of it. There is no such thing as scenery you can walk through — that is
+ * exactly the bug the sweep was written to find — and Biggy coming through the
+ * shutter at 5.4 m/s and gliding through four pallets would undo the one moment the
+ * chapter builds to. The two rows leave a 28 px lane between them at y 127..155, so
+ * he can still get into the room: wider than he is, narrow enough that he has to
+ * come off the throttle first. The tall pallets finish at 1.06 m, so they are solid
+ * rather than `low` — see the note on the wall itself.
  */
 const STORE_PALLETS: readonly Vec2[] = [
   { x: GF.store.x + 34, y: GF.store.y + 30 },
@@ -240,10 +284,14 @@ export interface ExpoState {
   breakersLeft: number;
   cable: { carrying: boolean; connected: boolean; len: number; snapped: boolean; taut: boolean };
   rollerBroken: boolean;
+  /** 0..1, how far the smashed shutter has torn up into its housing. */
+  rollerRise: number;
   /** The router cabinet, its terminal, and the WiFi password. */
   router: {
     /** Biggy has shouldered the cabinet door open. Nothing else in here starts until he has. */
     cabinetOpen: boolean;
+    /** 0..1, how far the two cabinet doors have swung. See `CABINET_SWING_TIME`. */
+    cabinetSwing: number;
     /**
      * LINK 2: the unit in the cabinet has a supply, so its lamps are up and the
      * terminal is awake. Dead — and it says so — until the breakers are in.
@@ -291,7 +339,7 @@ const OBJECTIVE =
   'the <b>store</b> open. <b>Droid</b> reaches what is too high, <b>Biggy</b> moves what is too ' +
   'heavy, <b>Voxxy</b> goes where nothing else fits.';
 const KEYS =
-  '1/2/3/Tab: switch · WASD · E: use / climb / terminal · Space: take hold of Biggy · R: restart';
+  '1/2/3/Tab: switch · WASD · E: use / climb / terminal / hold Biggy / Voxxy jumps · R: restart';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');
@@ -324,6 +372,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let lights: LightSource[] = [];
   let breakersLeft = BREAKERS;
   let rollerBroken = false;
+  /** 0..1, how far the smashed shutter has torn up. See `ROLLER_RISE_TIME`. */
+  let rollerRise = 0;
+  /** 0..1, how far the cabinet doors have been walked open. See `CABINET_SWING_TIME`. */
+  let cabinetSwing = 0;
   let hintedTech = false;
   let rollerTalk = -9;
 
@@ -386,11 +438,55 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   };
   ctx.walls.push(roller);
 
+  // The pallets, as colliders: `drawCrate` centres its box on the prop, so these are
+  // the boxes the renderer draws, to the pixel.
+  for (const pt of STORE_PALLETS) {
+    ctx.walls.push({
+      x: pt.x - 8,
+      y: pt.y - 7,
+      w: 16,
+      h: 14,
+      kind: 'crate',
+      /*
+       * NOT `low`, which is the category Voxxy vaults and light crosses. `LOW_H` in
+       * the renderer is 0.78 m for every low wall in the game — seat rows, tables,
+       * counters — and `drawCrate` stacks these two crates high, so the tall pallets
+       * finish at 1.06 m. A 0.38 m robot does not get over that, and a metre of
+       * crated cotton does not pass a torch beam either.
+       */
+      why: (b) =>
+        b.kind === 'biggy'
+          ? 'Biggy: a pallet of t-shirts. Three thousand of them, and they do not slide'
+          : b.kind === 'droid'
+            ? 'Droid: crated shirts, stacked past my chest. Round it, not through it'
+            : 'Voxxy: a wall of Devoxx t-shirts, taller than I am. Going round',
+    });
+  }
+
   const printerAt: Vec2 = { x: GF.printer.x + 10, y: GF.printer.y + 6 };
   const rackAt: Vec2 = { x: GF.rack.x + 10, y: GF.rack.y + 12 };
   const panelAt: Vec2 = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
   /** The middle of the roller door, on its hall side — what the halo is drawn around. */
   const storeAt: Vec2 = { x: GF.roller.x, y: GF.roller.y + GF.roller.h / 2 };
+  /**
+   * The technical room's doorway, on the hall side — `groundWallsFor` leaves the
+   * gap at x `tech.x + tech.w`, y 600..650.
+   *
+   * Michele: *"Biggy reaching the room is a bit sawkward and not much visible, so
+   * it seems he's passing through a wall."* Driven and photographed: the doorway is
+   * 50 sim px (4 m) wide against Biggy's 18 px, so he is not grinding on a jamb —
+   * what he cannot see is the opening. The technical room sits in the bottom-left
+   * corner of a blacked-out hall, and from the diorama camera the room's own east
+   * wall below the door, plus the 3.8 m building shell along the hall's south edge,
+   * stand between the camera and the gap. Biggy walks west, disappears behind that
+   * wall for a second and reappears inside the room.
+   *
+   * The occlusion is the renderer's to fix and it is in the handover report. What
+   * the chapter can do is make the OPENING legible: a lit threshold plate lying in
+   * the gap and a name panel beside it, the same two props the store shutter gets,
+   * so a dark wall with a hole in it reads as a dark wall with a door in it.
+   */
+  const techDoorAt: Vec2 = { x: GF.tech.x + GF.tech.w + 4, y: 625 };
 
   /* ------------------------------------------------------------ the network closet */
 
@@ -478,6 +574,39 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
             : null,
   };
   ctx.walls.push(cabinet);
+  /**
+   * Where the two cabinet doors come to rest, once Biggy has walked them open.
+   *
+   * The rects `cabinetDoorDraw` poses at `progress = 1` (`src/render/doors.ts`):
+   * each leaf hinged on its own outer stile, 58° out of the face, hinge to tip plus
+   * the leaf's own thickness. Same rectangles drawn and collided — the rule chapter
+   * 1's fire door already follows, applied to the door that had no collider at all.
+   *
+   * They leave the middle of the bay clear, which is where the terminal is and
+   * which is why the pair is two 1.4 m doors rather than the single 4.3 m slab
+   * that used to be drawn across the whole carcass: that one, open, lay 3.7 m out
+   * across the technical room and would have taken the terminal's own approach
+   * with it.
+   */
+  const CAB_LEAF_T = 3;
+  const CAB_LEAF_W = 17.5;
+  const CAB_BAY_W = CAB_LEAF_W * 2;
+  const CAB_BAY_X = GF.cabinet.x + (GF.cabinet.w - CAB_BAY_W) / 2;
+  const CAB_FACE_Y = GF.cabinet.y + GF.cabinet.h;
+  const CAB_OPEN = (58 * Math.PI) / 180;
+  const cabinetLeaves: Wall[] = [0, 1].map((i): Wall => {
+    const hx = CAB_BAY_X + i * CAB_BAY_W;
+    const tipX = hx + (i === 0 ? 1 : -1) * CAB_LEAF_W * Math.cos(CAB_OPEN);
+    const tipY = CAB_FACE_Y + CAB_LEAF_W * Math.sin(CAB_OPEN);
+    return {
+      x: Math.min(hx, tipX) - CAB_LEAF_T / 2,
+      y: CAB_FACE_Y - CAB_LEAF_T / 2,
+      w: Math.abs(tipX - hx) + CAB_LEAF_T,
+      h: tipY - CAB_FACE_Y + CAB_LEAF_T,
+      kind: 'cabinetleaf',
+      why: (b) => `${b.name}: that is the cabinet door, standing open. The terminal is between the two of them`,
+    };
+  });
 
   ctx.objective(OBJECTIVE, KEYS);
   /*
@@ -490,15 +619,21 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * What is left is the run sheet with that line **torn off** — which is a better
    * joke than the password was, tells the player there IS a password without
    * telling them what it is, and points at the wall the crew sprayed it on. It also
-   * carries the two things he asked the intro to carry: the store by name, and the
-   * reason it is shut, which is the same pair of keys Stephan lost on the title
-   * card.
+   * carries the three things he asked the intro to carry: the store by name, the
+   * reason it is shut — the same ring of keys Stephan lost on the title card — and,
+   * since 24 Sep (*"In the intro to chapter 2 mention the printer too"*), the badge
+   * printer. The printer was named in the HUD objective and nowhere in the fiction,
+   * so half the chapter's goal arrived as a task line with no stake attached. The
+   * card gives it the stake (no network, no badges, three thousand people at the
+   * door) and still names no route to it, which is the rule this card is under.
    */
   ctx.card(
     '<b>Down the secondary staircase.</b><br>' +
       '<span class="sub">The exhibition hall: twelve sponsor booths, no power, no network, and the whole ' +
       'of <b>SHIRTS &amp; GADGETS</b> — three thousand t-shirts, crated and ready — behind the pickup ' +
       'store\'s roller door. The shutter key is on the ring Stephan lost.<br><br>' +
+      'At the far end, reception: the <b>badge printer</b> is dark, and with no network behind it ' +
+      'nobody who walks through that door in an hour gets a badge.<br><br>' +
       'Taped to the technical room door, the crew\'s run sheet, in biro. The top line has been torn ' +
       'off. Under the gap, in a different hand: <b>\u201cwifi\u2019s on the wall, Bart did it in orange\u201d</b>.</span>' +
       '<small>Press any key</small>',
@@ -624,7 +759,26 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     );
   }
 
-  function key(code: string): void {
+  /**
+   * This chapter's keys — and what it hands back.
+   *
+   * `false` means "`E` means nothing where you are standing", and `game.ts` then
+   * spends the key on that robot's party trick or on taking hold of Biggy (see
+   * `ChapterRuntime.key`) — which is Michele's *"Why space and not e for catching?
+   * I'd keep it to one key"*, answered here rather than by a second key.
+   *
+   * **All three dead ends hand it back now.** This used to be Voxxy's alone, on
+   * the grounds that "nothing to reach here" and "I don't do buttons, I do doors"
+   * said more in this room than *a refusal to jump* would — and that was right,
+   * because the fall-through only had a hop in it and the other two could only be
+   * told no. Since 25 Sep 2026 it has one for each of them (Michele: *"Could we
+   * add a basic action to each robot on E? Voxxy jumps, Biggy rolls, Droid?
+   * Stretches?"*), so the trade is no longer "a line of character against a
+   * refusal" — it is a line of character against Biggy rocking his whole gut over
+   * and back. Their last words lost that one. Every refusal that names a REASON is
+   * untouched and still claims the key.
+   */
+  function key(code: string): boolean {
     const b = ctx.bots[ctx.cur];
     const d = ctx.byKind('droid');
     const bg = ctx.byKind('biggy');
@@ -641,23 +795,23 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       if (code === 'Escape' || code === 'Enter') {
         router.prompting = false;
         ctx.flash(`${b.name} steps back from the terminal`);
-        return;
+        return true;
       }
       if (code === 'Backspace') {
         router.typed = router.typed.slice(0, -1);
-        return;
+        return true;
       }
       const letter = /^Key([A-Z])$/.exec(code);
       if (letter) {
         typeLetter(letter[1]);
-        return;
+        return true;
       }
       // Anything else (Tab, a digit) falls through and means what it always means;
       // taking a robot that is not at the terminal closes the prompt in `update`.
     }
 
     ctx.switchKey(code);
-    if (code !== 'KeyE') return;
+    if (code !== 'KeyE') return true;
 
     const atCabinet = dist(b, cabinetAt) < CABINET_REACH;
     const atTerminal = router.cabinetOpen && dist(b, cabinetAt) < TERMINAL_REACH;
@@ -669,7 +823,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       // whichever check happens to be written first.
       if (atTerminal && (!atPanel || dist(b, cabinetAt) <= dist(b, panelAt))) {
         useTerminal(b);
-        return;
+        return true;
       }
       if (atPanel) {
         breakersLeft--;
@@ -689,20 +843,20 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         } else {
           ctx.flash(`Droid flips a breaker (${BREAKERS - breakersLeft}/${BREAKERS})`);
         }
-        return;
+        return true;
       }
       // Route 3 starts here rather than at the cabinet: he climbs on wherever Biggy
       // happens to be standing, and the tower walks over afterwards.
       if (dist(d, bg) < d.r + bg.r + MOUNT_REACH && speed(bg) < MOUNT_BIGGY_MAX_SPEED) {
         ctx.toggleMount();
-        return;
+        return true;
       }
       if (atCabinet) {
         ctx.flash(
           'Droid: shut, and seized. Weight opens this, not leverage — and the label is inside the lid ' +
             'anyway, up at the top. One of those is a Biggy problem, the other one is both of us',
         );
-        return;
+        return true;
       }
       if (dist(b, posterAt) < POSTER_READ) {
         ctx.flash(
@@ -712,10 +866,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
                 'thirteen letters of orange fog. My eyes are for reaching things, not for reading them. Voxxy',
           4000,
         );
-        return;
+        return true;
       }
-      ctx.flash('Droid: nothing to reach here');
-      return;
+      // His dead end, handed back: at Biggy it becomes a grab, anywhere else the
+      // stretch. "Nothing to reach here" is what the stretch says, without words.
+      return false;
     }
 
     if (b.kind === 'voxxy') {
@@ -732,7 +887,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
             'under the sponsor tables',
           4600,
         );
-        return;
+        return true;
       }
       if (cable.carrying && dist(b, printerAt) < PLUG_REACH) {
         cable.carrying = false;
@@ -743,7 +898,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
             'The printer has its wire. Now it wants the other end of it to be awake',
           3000,
         );
-        return;
+        return true;
       }
       /*
        * THE LINE MICHELE COULD NOT PARSE — *"I still don't get where / how to
@@ -764,15 +919,15 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
             'steps in the hall\'s right-hand wall (the blue sign), then the lit pad on the counter. E there',
           4200,
         );
-        return;
+        return true;
       }
       if (atTerminal) {
         useTerminal(b);
-        return;
+        return true;
       }
       if (atCabinet) {
         ctx.flash('Voxxy: shut. I can see the seam and I cannot do one thing about it. Biggy opens this one');
-        return;
+        return true;
       }
       if (dist(b, posterAt) < POSTER_READ) {
         ctx.flash(
@@ -782,10 +937,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
                 'poking job — hold the beam on it',
           3600,
         );
-        return;
+        return true;
       }
-      ctx.flash('Voxxy: nothing to plug in here');
-      return;
+      // Her dead end, handed back: at Biggy it becomes a grab, anywhere else a hop.
+      return false;
     }
 
     /*
@@ -800,18 +955,21 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
             '<b>WiFi: DevoxxForever</b>. Of course it is. Now the terminal',
           3800,
         );
-        return;
+        return true;
       }
       if (router.cabinetOpen && !router.known && dist(bg, cabinetAt) < TERMINAL_REACH + 40) {
         ctx.flash('Droid: the tape is inside the lid, right at the top. Closer, Biggy — up against it');
-        return;
+        return true;
       }
       ctx.toggleMount();
-      return;
+      return true;
     }
 
     if (!router.cabinetOpen && atCabinet) {
       router.cabinetOpen = true;
+      // The leaves are solid where they come to rest from this frame on;
+      // `cabinetSwing` is only the picture. See `CABINET_SWING_TIME`.
+      for (const l of cabinetLeaves) ctx.walls.push(l);
       /*
        * LINK 2 — and what is behind the door depends on whether link 1 has landed,
        * which is the whole of Michele's chain in one sentence of narration.
@@ -826,13 +984,15 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
               'Nothing in this cabinet has a supply',
         4400,
       );
-      return;
+      return true;
     }
     if (atTerminal) {
       useTerminal(b);
-      return;
+      return true;
     }
-    ctx.flash("Biggy: I don't do buttons. I do doors.");
+    // His dead end, handed back. He does not do buttons; he does doors, and — with
+    // no door in reach and nobody on his shoulders — a roll.
+    return false;
   }
 
   /* ------------------------------------------------------------------- update */
@@ -977,6 +1137,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
     ctx.stepAll(dt);
     ctx.pushBiggy(dt);
+    // The shutter tearing up into its housing. The opening is already free — the
+    // wall went on the frame of the hit — so this is only the picture and the cue.
+    if (rollerBroken && rollerRise < 1) rollerRise = Math.min(1, rollerRise + dt / ROLLER_RISE_TIME);
+    if (router.cabinetOpen && cabinetSwing < 1) cabinetSwing = Math.min(1, cabinetSwing + dt / CABINET_SWING_TIME);
 
     if (typeAnchor !== null && typing()) {
       driven.x = typeAnchor.x;
@@ -1005,7 +1169,15 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      * the first robot through the door is told both are in here, and the terminal
      * carries its own standby glow in the renderer the way the breaker panel does.
      */
-    if (!hintedTech && (inRect(v, GF.tech) || inRect(ctx.byKind('biggy'), GF.tech) || inRect(ctx.byKind('droid'), GF.tech))) {
+    /*
+     * ...and it fires at the DOOR rather than once a robot is already inside, which
+     * is a second or two earlier and, in a blackout, the difference between being
+     * told what a room is and being told what a room was.
+     */
+    if (
+      !hintedTech &&
+      (ctx.bots.some((b) => inRect(b, GF.tech)) || ctx.bots.some((b) => dist(b, techDoorAt) < TECH_DOOR_HAIL))
+    ) {
       hintedTech = true;
       ctx.flash(
         (power ? '' : 'Breakers — way up on the wall, Droid. ') +
@@ -1131,6 +1303,35 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
        *     floor plate chapter 3 uses for its delivery drop zone, which is the
        *     vocabulary this game already teaches.
        */
+      /*
+       * THE TECHNICAL ROOM'S DOORWAY — a lit threshold and a name, for the reason
+       * the store shutter has them. See `techDoorAt`: the gap is four metres wide
+       * and Michele still could not see it, because in an unlit hall an opening in
+       * a dark wall and a dark wall are the same picture.
+       *
+       * The plate lies IN the gap (`groundWallsFor` leaves x 200..200+T free
+       * between y 600 and 650), so it is light on the floor a robot walks over
+       * rather than a marker beside the thing it is marking. Red while there is
+       * still a job in there, green when the room is done with.
+       */
+      {
+        kind: 'lane',
+        x: GF.tech.x + GF.tech.w - 8,
+        y: 600,
+        w: 20,
+        h: 50,
+        state: hallLit() ? 'done' : 'broken',
+        label: 'technical room — breakers & router cabinet',
+      },
+      {
+        kind: 'sign',
+        x: GF.tech.x + GF.tech.w + 3,
+        y: 592,
+        w: 5,
+        h: 18,
+        state: hallLit() ? 'done' : 'idle',
+        label: 'TECHNISCHE RUIMTE · TECHNICAL',
+      },
       {
         kind: 'sign',
         x: GF.smallStairs.x - 26,
@@ -1169,6 +1370,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         kind: 'cabinet',
         ...GF.cabinet,
         state: router.cabinetOpen ? 'open' : 'shut',
+        // The sim's own swing clock — `src/render/doors.ts` poses the two leaves
+        // from it, and `main.ts` fires the `cabinet` cue off its leading edge.
+        progress: cabinetSwing,
         label: router.cabinetOpen ? 'router cabinet — open' : 'router cabinet — shut (Biggy)',
       },
       /*
@@ -1295,11 +1499,25 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         state: rollerBroken ? 'done' : 'idle',
         label: 'SHIRTS & GADGETS',
       },
+      /*
+       * The shutter. The rect is the OPENING it fills and `progress` is the sim's
+       * own rise clock; `src/render/roller-door.ts` poses the curtain from those
+       * two facts and from the `roller` wall above, and draws nothing in a doorway
+       * the sim has given back. It used to be drawn as one 2.6 m box from the
+       * renderer's `PROPS` table whatever the state said, which is how a smashed
+       * shutter stayed standing across its own opening with Biggy inside it.
+       *
+       * The label said `roller door — down` AFTER it had been smashed open, which
+       * was the same mistake in words.
+       */
       {
         kind: 'roller',
         ...GF.roller,
         state: rollerBroken ? 'broken' : 'shut',
-        label: rollerBroken ? 'roller door — down' : 'roller door — shirts & gadgets, shut',
+        progress: rollerRise,
+        label: rollerBroken
+          ? 'roller door — torn up, jammed in its housing'
+          : 'roller door — shirts & gadgets, shut',
       },
       ...STORE_PALLETS.map((pt, i): Prop => ({
         kind: 'crate',
@@ -1356,29 +1574,29 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     const breakers = power
       ? hallLit()
         ? 'power ✓'
-        : 'power ✓ (hall still dark)'
-      : `breakers ${BREAKERS - breakersLeft}/${BREAKERS} — Droid, high on the wall (E)`;
+        : 'power ✓ — hall still dark'
+      : `breakers ${BREAKERS - breakersLeft}/${BREAKERS} (Droid, high)`;
     const net2 = router.online
-      ? 'router ✓ — the hall is lit'
+      ? 'router ✓'
       : !router.cabinetOpen
-        ? 'router: cabinet shut — Biggy shoulders it open (E)'
+        ? 'router: cabinet shut — Biggy opens it (E)'
         : !power
-          ? 'router: open, and dead. No supply until the breakers are in'
+          ? 'router: open and dead — no supply'
           : router.prompting
-            ? `AUTHORISATION ${maskedPassword()} · Backspace · Esc`
+            ? `AUTHORISATION ${maskedPassword()} · Esc`
             : router.known
-              ? 'router: powered, password known — E at the terminal'
-              : 'router: powered, waiting for the WiFi password — E at the terminal';
+              ? 'router: password known — E at the terminal'
+              : 'router: powered, wants the WiFi password (E)';
     const net = cable.connected
       ? 'cable ✓'
       : cable.snapped
         ? 'cable snapped — back to the rack'
         : cable.carrying
           ? `cable ${Math.round(cable.len)}/${CABLE_MAX} px${cable.taut ? ' — TAUT' : ''} → reception`
-          : 'cable: on the reel at the rack (Voxxy, E)';
+          : 'cable: on the reel at the rack';
     const store = rollerBroken
       ? 'shirts & gadgets ✓'
-      : `store shutter: shut (needs ${m(ROLLER_DOOR_SPEED).toFixed(1)} m/s)`;
+      : `roller door: shut (needs ${m(ROLLER_DOOR_SPEED).toFixed(1)} m/s)`;
     return `${breakers} · ${net2} · ${net} · ${store}`;
   }
 
@@ -1428,8 +1646,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         taut: cable.taut,
       },
       rollerBroken,
+      rollerRise,
       router: {
         cabinetOpen: router.cabinetOpen,
+        cabinetSwing,
         powered: power,
         known: router.known,
         prompting: router.prompting,

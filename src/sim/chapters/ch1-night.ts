@@ -30,10 +30,10 @@ import {
   roomScreen,
 } from '../geometry';
 import { JAMMED_DOOR_SPEED, MOUNT_BIGGY_MAX_SPEED, MOUNT_REACH, SPEED_SCALE, T, W } from '../constants';
-import { m } from '../units';
+import { PX_PER_M, m } from '../units';
 import { buildLights, clueLit, litBy } from '../lights';
 import { dist, speed } from '../bot';
-import type { Clue, LightSource, Mirror, Prop, Rect, Wall } from '../types';
+import type { Clue, LightSource, Mirror, Plate, Prop, Rect, Wall } from '../types';
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 
 /* ---------------------------------------------------------------- tuning that is
@@ -94,6 +94,148 @@ const JAM_MIN_TALK = 20 * SPEED_SCALE;
 const JAM_FALL_TIME = 0.55;
 
 /**
+ * THE FIRE DOOR IS A SCREEN WITH A DOUBLE DOOR IN IT, not a slab across the corridor.
+ *
+ * Michele, with a screenshot of Biggy standing squarely in the doorway: *"still a
+ * walkthrough object on the doorway, add an animation + sound when it opens."* The
+ * chapter used to seal the whole 130 px corridor cross-section with one wall and
+ * then delete it outright when the code went in, while `props()` went on publishing
+ * a `firedoor` at that same full-width rect — so the renderer drew a 2.1 m leaf
+ * across an opening that had stopped being solid. You walked through it.
+ *
+ * A fire screen across a 10.4 m corridor has a pair of leaves in the middle of it
+ * and fixed panels either side, and that is now what this is. `FIRE_OPENING` is the
+ * clear width the leaves fill: 4.48 m, wide enough that the exit cutscene's loose
+ * diagonal of three robots goes through it without brushing either leaf, and
+ * narrow enough that the screen still reads as a wall with a door in it.
+ */
+const FIRE_OPENING = 56;
+/**
+ * How long the leaves take to swing clear, seconds.
+ *
+ * The same shape as `JAM_FALL_TIME` above: the sim owns the clock, the collider
+ * changes on the frame the code is accepted, and this only feeds `Prop.progress`
+ * for `src/render/fire-door.ts` to pose the leaves from. A duration, not a speed,
+ * so the physics rescale leaves it alone. The player keeps the stick while it runs
+ * — see `FIRE_CUT_DELAY` — and the opening is already free, so a swing that is
+ * still moving can only ever be behind where the robots already are.
+ */
+const FIRE_SWING_TIME = 1;
+/**
+ * How long the chapter stays on the corridor after the leaves have settled, before
+ * the exit cutscene fades it out.
+ *
+ * `CUT_FADE` is 0.35 s, so a cutscene started on the frame the code is accepted
+ * takes the screen to black before the door has moved: the animation would exist
+ * and nobody would ever see it. The chapter now holds — still in `play`, still
+ * driveable — for the swing plus this, and only then hands over. Michele asked for
+ * an animation when it opens; an animation nobody watches is not one.
+ */
+const FIRE_CUT_DELAY = 0.45;
+/** The leaf's own thickness. Matches `FIRE_LEAF_T` in `src/render/fire-door.ts`. */
+const FIRE_LEAF_T = 4;
+
+/**
+ * How long cinema B's magnetic lock takes to let its leaf swing clear, seconds.
+ *
+ * The third door in this chapter, and until now the only one that simply ceased to
+ * exist: `key` removed the `lock` wall on the frame Droid reached the projector
+ * panel and `props()` stopped publishing the prop in the same frame, so the biggest
+ * thing the mount beat achieves — a door opening — happened between two frames with
+ * nothing on screen and nothing in the speakers.
+ *
+ * Shorter than `FIRE_SWING_TIME`, and that is the point of having two: the fire door
+ * is a night-sealed pair of leaves on a magnetic hold-open, and this is one light
+ * auditorium door on an electric strike. Same shape as every other clock in this
+ * file — a duration, not a speed, so the rescale leaves it alone — and it only ever
+ * feeds `Prop.progress`.
+ */
+const LOCK_SWING_TIME = 0.7;
+/** Cinema B's leaf, drawn and collided at its own thickness rather than the band's. */
+const LOCK_LEAF_T = 4;
+
+/* ------------------------------------------------- the door Biggy puts on the floor
+ *
+ * Michele, with a screenshot of Biggy and Droid standing inside the fallen leaf of
+ * cinema E's jammed door: *"we are still walking through the crashed door. The shape
+ * is fine, as long as robot walk on it, not through."*
+ *
+ * Both halves matter. He does NOT want it turned back into a blocker — the whole
+ * beat is that Biggy went through it — he wants a robot standing over it to stand on
+ * TOP of it, the way you stand on a fallen door. That is a walking surface, not a
+ * wall, and `src/sim/surface.ts` is where the sim answers that question for the
+ * lobby plate and the flights as well.
+ *
+ * The three numbers below are the leaf's resting pose. They were `JAM_TIP`,
+ * `JAM_SKID` and `JAM_SKEW` inside `src/render/scene.ts`, which is where the shape
+ * Michele approved was tuned; they move here because the sim now has to know where
+ * the leaf ends up in order to say how high the floor is there, and two copies of a
+ * pose is how a drawn thing and its collider drift apart. `scene.ts` imports them
+ * and draws from them, so the picture and the plate are one fact.
+ */
+
+/** How far past upright the leaf goes: flat on the floor. */
+export const JAM_TIP = Math.PI / 2;
+/** How far it slides on, metres, from the doorway it came out of. */
+export const JAM_SKID = 0.55;
+/**
+ * How far off square it lands, radians.
+ *
+ * Applied as a YAW of the leaf lying on the floor (`YXZ` order in `scene.ts`), not
+ * as a tilt of it: a door that has come off its hinges lands askew in plan, and the
+ * version that tipped it after yawing left one long edge 0.78 m in the air, propped
+ * on nothing, with a walking surface that ran downhill by 0.62 m across its width.
+ * The silhouette from the fixed camera is all but identical and the leaf is now
+ * something a robot can be ON.
+ */
+export const JAM_SKEW = 0.17;
+/** The leaf's own height when it was standing, metres — its thickness once down. */
+export const JAM_LEAF_H = 2.1;
+
+/**
+ * Where the smashed leaf comes to rest, as a surface a robot stands on.
+ *
+ * `p` is the chapter's `jammed` prop — the doorway band's own leaf rect — and this
+ * is the same rigid motion `scene.ts` applies to the mesh, written out in plan: tip
+ * it flat about the bottom edge nearest the camera, slide it `JAM_SKID` on, yaw it
+ * `JAM_SKEW`. Flat, so the plate is a plate and not a ramp: its surface is the
+ * leaf's own thickness off the floor, everywhere.
+ *
+ * `null` until the door is actually broken — a shut door is a wall, and the wall is
+ * what the chapter already has.
+ */
+export function jammedLeafPlate(p: Prop): Plate | null {
+  if (p.state !== 'broken') return null;
+  const thickPx = p.h ?? 6;
+  const widthPx = p.w ?? 46;
+  /*
+   * The same rigid motion the mesh gets, in plan.
+   *
+   * `scene.ts` hangs the leaf off a group whose origin is the bottom edge of the
+   * doorway, tips it flat about that edge (so the leaf's own height becomes its
+   * run into the room) and then yaws the whole group by `JAM_SKEW`. A yaw about
+   * the hinge edge is a yaw about the leaf's own centre PLUS a shift of that
+   * centre, which is what the two lines below are; a `Plate` carries its yaw about
+   * its own centre, because that is the only form a footprint test can use.
+   */
+  const runPx = JAM_LEAF_H * PX_PER_M;
+  const originX = p.x + widthPx / 2;
+  const originY = p.y + thickPx + JAM_SKID * PX_PER_M;
+  const cx = originX - (runPx / 2) * Math.sin(JAM_SKEW);
+  const cy = originY + (runPx / 2) * Math.cos(JAM_SKEW);
+  return {
+    kind: 'jammed-leaf',
+    x: cx - widthPx / 2,
+    y: cy - runPx / 2,
+    w: widthPx,
+    h: runPx,
+    rot: JAM_SKEW,
+    // Flat on the floor, so the surface is the leaf's own thickness, everywhere.
+    lo: thickPx / PX_PER_M,
+  };
+}
+
+/**
  * The leaf the renderer draws in a doorway, from the doorway's own collider.
  *
  * `roomDoor()` returns a 12 px band because a door has to seal a 6 px wall from
@@ -121,10 +263,14 @@ export interface NightState {
   entered: string;
   /** The projector-panel release that unlocks cinema B. */
   panelOn: boolean;
+  /** 0..1, how far cinema B's leaf has swung clear. See `LOCK_SWING_TIME`. */
+  lockSwing: number;
   jamBroken: boolean;
   /** 0..1, how far the smashed door has got through falling. See `JAM_FALL_TIME`. */
   jamFall: number;
   fireOpen: boolean;
+  /** 0..1, how far the two fire-door leaves have swung. See `FIRE_SWING_TIME`. */
+  fireSwing: number;
   jokes: Readonly<Record<string, string>>;
 }
 
@@ -134,7 +280,7 @@ const OBJECTIVE =
   'rooms has a keypad: find the <b>4 digits</b>, each visible only under the right <b>mix of lights</b>. ' +
   'Droid can climb on Biggy (E). Biggy can smash the jammed door with a straight run across the corridor. ' +
   'In the last cinema the <b>screen is a mirror</b>: light that hits it comes back into the room.';
-const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb · Space: take hold of Biggy · 4-9 at the keypad (Backspace) · R: restart';
+const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb / hold Biggy / Voxxy jumps · 4-9 at the keypad (Backspace) · R: restart';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('up');
@@ -156,10 +302,16 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let lights: LightSource[] = [];
   let entered = '';
   let panelOn = false;
+  /** Cinema B's leaf, 0 -> 1 once the release is pressed. Ticked in `update`. */
+  let lockSwing = 0;
   let jamBroken = false;
   /** 0..1, the smashed door's own fall. Started by the hit, ticked in `update`. */
   let jamFall = 0;
   let fireOpen = false;
+  /** The leaves' own swing, 0 -> 1 once the code is in. Ticked in `update`. */
+  let fireSwing = 0;
+  /** Sim time the exit cutscene starts, once the code is in. -1 until then. */
+  let leaveAt = -1;
   /** Biggy says "my light is coming off the screen" once, the first time it does. */
   let mirrorHinted = false;
 
@@ -167,11 +319,14 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   /* ------------------------------------------------------------ the fire door */
 
+  /** The corridor's middle, which is where the pair of leaves is centred. */
+  const fireMid = (CY0 + CY1) / 2;
+  /** The leaves. This is the part that opens, and the only part that ever did. */
   const fire: Wall = {
     x: F1.fireX,
-    y: CY0,
+    y: fireMid - FIRE_OPENING / 2,
     w: 14,
-    h: CY1 - CY0,
+    h: FIRE_OPENING,
     kind: 'firedoor',
     // One line per robot, in that robot's voice (CLAUDE.md): Voxxy chirpy, Droid
     // dry and deliberate, Biggy blunt. The old single sentence with the name
@@ -184,6 +339,49 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           : 'Biggy: fire door. I could hit it. I would lose. Find the four digits',
   };
   ctx.walls.push(fire);
+  /*
+   * The fixed screen either side of the opening. It never opens, so it is pushed
+   * once and never removed — and it is what keeps the corridor sealed everywhere
+   * except through the doorway, before AND after the code goes in.
+   */
+  for (const y of [CY0, fireMid + FIRE_OPENING / 2]) {
+    ctx.walls.push({
+      x: F1.fireX,
+      y,
+      w: 14,
+      h: y === CY0 ? fireMid - FIRE_OPENING / 2 - CY0 : CY1 - y,
+      kind: 'firescreen',
+      why: (b) =>
+        b.kind === 'voxxy'
+          ? 'Voxxy: that is the screen, not the door. The door is the pair in the middle, with the keypad on it'
+          : b.kind === 'droid'
+            ? 'Droid: fixed panel. The leaves are in the middle of the screen, and so is the keypad'
+            : 'Biggy: wall. Door is in the middle',
+    });
+  }
+  /**
+   * Where each leaf STANDS once it has swung clear — a quarter turn west, out of
+   * the opening and back along the corridor.
+   *
+   * They are pushed when the door opens, not before, because until then the leaves
+   * are in the opening and `fire` is the collider. An open door has to be a solid
+   * somewhere: this is the half of the fix that stops the leaf being drawn in a
+   * place the player can walk. The rects are the ones `fireDoorDraw` poses at
+   * `progress = 1` (`src/render/fire-door.ts`), hinge to tip plus the leaf's own
+   * thickness, so the picture and the collider are the same rectangle.
+   */
+  const leafLen = FIRE_OPENING / 2;
+  const leafX = F1.fireX + 7 - leafLen - FIRE_LEAF_T / 2;
+  const swungLeaves: Wall[] = [fireMid - FIRE_OPENING / 2, fireMid + FIRE_OPENING / 2].map(
+    (y): Wall => ({
+      x: leafX,
+      y: y - FIRE_LEAF_T / 2,
+      w: leafLen + FIRE_LEAF_T,
+      h: FIRE_LEAF_T,
+      kind: 'fireleaf',
+      why: (b) => `${b.name}: that is the fire door itself, standing open. Go round it — the way through is the middle`,
+    }),
+  );
   /**
    * The keypad: a panel ON the fire door, and a collider like everything else you
    * can see.
@@ -259,6 +457,33 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           : 'Biggy: locked. Release is up there. I am not up there. Droid could be, if he stood on me',
   };
   ctx.walls.push(lock);
+  /*
+   * WHERE CINEMA B'S LEAF ENDS UP.
+   *
+   * The rule this chapter's fire door already follows, applied to the door that
+   * never got it: a leaf that opens is a collider where it comes to REST, never a
+   * slab across the hole it has just made and never nothing at all. Cinema B is a
+   * north room, so the leaf swings a quarter turn into the auditorium and lies
+   * flat against the inside of the wall it is hung on — hinged on the WEST jamb,
+   * which is the one the fixed camera looks past rather than through.
+   *
+   * It takes 4 px of the 46 px doorway's width away from the room side. Biggy is
+   * 18 px across and still has 24 px of clear opening, which is what makes this a
+   * door that has opened rather than a door that has been half-blocked by its own
+   * leaf.
+   */
+  const lockLeaf: Wall = {
+    // The rect `lockDoorDraw` poses at `progress = 1` (`src/render/doors.ts`):
+    // hinge on the west jamb, a quarter turn into the room, hinge to tip plus the
+    // leaf's own thickness. Same rectangle drawn and collided, as with the fire
+    // door's `swungLeaves` above.
+    x: dB.x,
+    y: CY0 - dB.w - LOCK_LEAF_T / 2,
+    w: LOCK_LEAF_T,
+    h: dB.w + LOCK_LEAF_T,
+    kind: 'lockleaf',
+    why: (b) => `${b.name}: that is the door itself, standing open against the wall`,
+  };
   const panel: Rect = { x: dB.x + dB.w + 14, y: CY0 + 10, w: 20, h: 24 };
   const panelAt = { x: panel.x + 10, y: panel.y + 12 };
   clues.push({
@@ -275,8 +500,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   const rE = R('E');
   /**
-   * One aisle up the left of the room. Biggy does not fit in it, but his flood
-   * does clear the seat backs, which is the hint the seats themselves give him.
+   * One aisle, and Biggy does not fit in it — but his flood does clear the seat
+   * backs, which is the hint the seats themselves give him.
    *
    * WIDTH IS THE GATE, AND IT HAD STOPPED BEING ONE. Michele: *"Biggy can now
    * walk the aisle. I think the whole point was he cannot."* He was right, and it
@@ -336,14 +561,25 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    */
   const seatRects: Rect[] = [];
   const ROW_H = 9;
-  for (let y = rE.y + 58; y <= rE.y + 180; y += 24) {
+  const rowY: number[] = [];
+  for (let y = rE.y + 58; y <= rE.y + 180; y += 24) rowY.push(y);
+  const lastRow = rowY[rowY.length - 1];
+  for (const y of rowY) {
     const left: Rect = { x: rE.x, y, w: aisle[0] - rE.x, h: ROW_H };
     ctx.walls.push({ ...left, low: true, kind: 'seatrow', why: whySeats });
     seatRects.push(left);
-    // Right of the aisle there is only room for seats ABOVE the alcove: below its
-    // top wall the whole strip is the alcove and the bay in front of it, which is
-    // what makes the aisle the only way in.
-    if (y + ROW_H <= alcove.y - T) {
+    /*
+     * Right of the aisle: seats down to the alcove, nothing beside it, and then
+     * the FRONT ROW again.
+     *
+     * The front row is the load-bearing one. Without it the bay in front of the
+     * alcove opens straight into the front of house, and the front of house is
+     * open across the full width of the room — so Biggy strolls round the seating
+     * and into the alcove, and cinema E stops being a puzzle. With it, the 15 px
+     * aisle is the only way in or out of that bay, which is the gate, stated once
+     * in geometry instead of asserted in a comment.
+     */
+    if (y + ROW_H <= alcove.y - T || y === lastRow) {
       const right: Rect = { x: aisle[1], y, w: rE.x + rE.w - aisle[1], h: ROW_H };
       ctx.walls.push({ ...right, low: true, kind: 'seatrow', why: whySeats });
       seatRects.push(right);
@@ -403,7 +639,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   clues.push({
     x: alcove.x + alcove.w / 2,
-    y: alcove.y + 18,
+    // Just inside the MOUTH of the alcove, not at the back of it: that is where
+    // the bounce off the screen arrives, and it is the part of the pocket the
+    // camera looks straight into.
+    y: alcove.y + alcove.h - 18,
     need: ['voxxy', 'droid', 'biggy'],
     slot: 4,
     digit: digits[3],
@@ -459,10 +698,28 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     fireOpen = true;
     ctx.removeWall(fire);
     ctx.removeWall(beyond);
+    // The leaves do not vanish, they move: the opening is free from this frame and
+    // each leaf is solid where it comes to rest. `fireSwing` is only the picture.
+    for (const l of swungLeaves) ctx.walls.push(l);
     ctx.score.nightT = Math.round(ctx.t);
     ctx.flash('Code accepted — the fire door swings open. Down the secondary stairs, to the exhibition hall', 4000);
-    // Out of the closed section and down the secondary staircase between 3 and 4 —
-    // the one the plans put exactly there (GAUNTLET.md Stage 1).
+    // Watch it open first. See `FIRE_CUT_DELAY`.
+    leaveAt = ctx.t + FIRE_SWING_TIME + FIRE_CUT_DELAY;
+  }
+
+  /** The exit: out of the closed section, down the secondary staircase. */
+  function leave(): void {
+    // Out of the closed section and down the secondary staircase on the near wall
+    // — the one the plan puts level with room 4, standing in the corridor rather
+    // than recessed behind it (`F1.nicheBot`, and Michele's 24 Sep ruling in
+    // `src/sim/geometry.ts`'s header).
+    //
+    // The descent waypoint is the CENTRE of that flight, which is the centre of
+    // its mouth, which is where the plan draws the only part of it at corridor
+    // level. It used to be `nicheBot.x + 20, nicheBot.y + 30`: measured against a
+    // 17.7-deep shaft standing IN the corridor, +30 lands 12 px through the
+    // corridor wall and the chapter would have ended with all three robots inside
+    // it. Derived, it cannot go stale the next time the flight moves.
     const nb = F1.nicheBot;
     /*
      * A loose diagonal, not a column.
@@ -473,10 +730,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      * Staggered in x as well they read as three, Voxxy out in front because she is
      * the quick one, and they converge on the stairwell mouth for the descent.
      */
+    const head = { x: nb.x + nb.w / 2, y: nb.y + nb.h / 2 };
     const route = (dx: number, dy: number): Array<{ x: number; y: number }> => [
       { x: F1.fireX + 30 + dx, y: 350 + dy },
-      { x: nb.x + 20 + dx, y: 350 + dy },
-      { x: nb.x + 20, y: nb.y + 30 },
+      { x: head.x + dx, y: 350 + dy },
+      { ...head },
     ];
     ctx.startCut(
       [
@@ -491,7 +749,21 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   /* --------------------------------------------------------------------- keys */
 
-  function key(input: string): void {
+  /**
+   * This chapter's keys — and what it hands back.
+   *
+   * A `false` return means "`E` means nothing where you are standing", and
+   * `game.ts` then spends the key on Voxxy's hop or on taking hold of Biggy (see
+   * `ChapterRuntime.key`). It matters most here: the cinema seat rows are `low`
+   * walls 0.72 m deep, which is exactly what one hop crosses, and this is the
+   * room Michele was thinking of when he asked for the jump.
+   *
+   * The two robots who CAN use `E` here are Droid and a Biggy carrying him, and
+   * only for the climb and the projector panel. Everything else about this room
+   * is typed at a keypad, so Voxxy's `E` was a dead key in the darkest chapter in
+   * the game.
+   */
+  function key(input: string): boolean {
     const b = ctx.bots[ctx.cur];
     const d = ctx.byKind('droid');
     const bg = ctx.byKind('biggy');
@@ -509,22 +781,50 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         !d.mounted && b.kind === 'droid' && dist(d, bg) < d.r + bg.r + MOUNT_REACH && speed(bg) < MOUNT_BIGGY_MAX_SPEED;
       if (!panelOn && d.mounted && dist(bg, panelAt) < PANEL_REACH) {
         panelOn = true;
+        // The collider goes NOW and the leaf's own one goes in with it: the opening
+        // is earned on the frame the release is pressed, and the leaf is solid where
+        // it comes to rest. `lockSwing` is only the picture — see `LOCK_SWING_TIME`.
         ctx.removeWall(lock);
-        ctx.flash("Droid reaches the projector panel from Biggy's shoulders — the middle cinema unlocks");
-        return;
+        ctx.walls.push(lockLeaf);
+        ctx.flash("Droid reaches the projector panel from Biggy's shoulders — the magnetic lock lets go and the middle cinema's door swings open");
+        return true;
       }
       if (!panelOn && !canMount && !d.mounted && b.kind === 'droid' && dist(b, panelAt) < PANEL_REACH) {
         ctx.flash('Droid: too high, even for me. If I stood on Biggy…');
-        return;
+        return true;
       }
-      if (b.kind === 'droid' || (b.kind === 'biggy' && d.mounted)) ctx.toggleMount();
+      /*
+       * `E` ON DROID IS THE CLIMB **NEAR BIGGY**, AND HIS OWN VERB EVERYWHERE ELSE.
+       *
+       * It used to be the climb unconditionally, which made chapter 1 the one room
+       * where Droid could not do the thing Michele asked every robot for on 24 Sep
+       * (*"Could we add a basic action to each robot on E? Voxxy jumps, Biggy rolls,
+       * Droid? Stretches?"*). Nothing was silently swallowed — `toggleMount` answers
+       * in his voice — but "15.0 m of daylight" is a measurement, not advice, and it
+       * was all he ever did with the key.
+       *
+       * The bubble is **one Biggy of daylight** past the reach, not a tuned number:
+       * inside `2 * bg.r` of the gap that lets him climb, a player pressing `E` is
+       * plainly going for the climb and the gap readout is the useful answer.
+       * Outside it they are not, and he stretches. A dismount is always the climb,
+       * whatever the distance, because he is already up there.
+       */
+      const climbGap = dist(d, bg) - d.r - bg.r;
+      const goingForTheClimb = d.mounted || climbGap < MOUNT_REACH + 2 * bg.r;
+      if ((b.kind === 'droid' && goingForTheClimb) || (b.kind === 'biggy' && d.mounted)) {
+        ctx.toggleMount();
+        return true;
+      }
+      // Nothing in this room for that robot's `E`. Hand it back — `spareE` in
+      // `game.ts` spends it on taking hold of Biggy, or on the party trick.
+      return false;
     }
 
     // Backspace takes one back. A four-digit field with no way to correct a
     // fat-fingered press makes the player wait for it to fill up and be wrong.
     if (nearPad && input === 'Backspace' && entered.length > 0) {
       entered = entered.slice(0, -1);
-      return;
+      return true;
     }
 
     if (nearPad && /^Digit\d$/.test(input)) {
@@ -533,7 +833,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       // would fill the field with keys they never meant for it.
       if (!/^Digit[4-9]$/.test(input)) {
         ctx.flash(`${b.name}: this keypad is 4 to 9. ${input[5]} is a robot, not a digit`);
-        return;
+        return true;
       }
       entered += input[5];
       if (entered.length === 4) {
@@ -551,7 +851,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           entered = '';
         }
       }
+      return true;
     }
+    return false;
   }
 
   /* ------------------------------------------------------------------- update */
@@ -560,6 +862,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     ctx.stepAll(dt);
     ctx.pushBiggy(dt);
     if (jamBroken && jamFall < 1) jamFall = Math.min(1, jamFall + dt / JAM_FALL_TIME);
+    if (fireOpen && fireSwing < 1) fireSwing = Math.min(1, fireSwing + dt / FIRE_SWING_TIME);
+    if (panelOn && lockSwing < 1) lockSwing = Math.min(1, lockSwing + dt / LOCK_SWING_TIME);
+    if (leaveAt >= 0 && ctx.t >= leaveAt) {
+      leaveAt = -1;
+      leave();
+    }
     lights = buildLights(ctx.bots, ctx.walls, mirrors);
     /*
      * The one line that tells the player the mirror exists.
@@ -587,7 +895,18 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   function props(): Prop[] {
     const out: Prop[] = [
-      { kind: 'firedoor', x: fire.x, y: fire.y, w: fire.w, h: fire.h, state: fireOpen ? 'open' : 'shut' },
+      // The rect is the clear OPENING; `progress` is how far the leaves have swung
+      // across it. `src/render/fire-door.ts` poses them from those two facts and
+      // from the `firescreen` walls above, and draws nothing the sim has no wall for.
+      {
+        kind: 'firedoor',
+        x: fire.x,
+        y: fire.y,
+        w: fire.w,
+        h: fire.h,
+        state: fireOpen ? 'open' : 'shut',
+        progress: fireSwing,
+      },
       { kind: 'keypad', ...keypad, state: fireOpen ? 'done' : 'idle', label: entered.padEnd(4, '_') },
       { kind: 'projector-panel', ...panel, state: panelOn ? 'done' : 'idle', label: 'projector panel' },
       // No `screen` prop: `buildVenue()` draws cinema E's screen from
@@ -599,7 +918,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     // The scenery cinemas' doors, so the wall behind each joke is something you
     // can see rather than something you bump into.
     for (const n of Object.keys(SHUT_VOICES)) out.push({ kind: 'lock', ...leaf(roomDoor(R(n))), state: 'shut' });
-    if (!panelOn) out.push({ kind: 'lock', ...leaf(dB), state: 'shut' });
+    /*
+     * CINEMA B'S DOOR IS EMITTED WHATEVER STATE IT IS IN.
+     *
+     * It used to vanish from this list on the frame the release was pressed —
+     * `if (!panelOn)` — so the payoff of the whole mount beat was a door that did
+     * not open, it ceased to exist, between two frames, in silence. It keeps its
+     * place now and carries `progress`; `src/render/doors.ts` poses the leaf from
+     * that clock and from the chapter's LIVE wall list, so a leaf is only ever
+     * drawn where the sim has something solid.
+     */
+    out.push({ kind: 'lock', ...leaf(dB), state: panelOn ? 'open' : 'shut', progress: lockSwing });
     /*
      * The jammed door is emitted whatever state it is in.
      *
@@ -636,7 +965,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   /** The live bottom-of-screen line: clues found, then what the keypad is waiting for. */
   function progress(): string {
-    if (fireOpen) return 'fire door open · down the secondary stairs between 3 and 4';
+    if (fireOpen) return 'fire door open · down the secondary stairs, the ones outside zaal 4';
     const found = clues.filter((c) => c.found).length;
     const left = clues
       .filter((c) => !c.found)
@@ -662,15 +991,25 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       lights = buildLights(ctx.bots, ctx.walls, mirrors);
     },
     entered: () => entered,
+    /*
+     * The one thing in this chapter a robot stands ON: the leaf Biggy put on the
+     * floor of cinema E. See `jammedLeafPlate` and `src/sim/surface.ts`.
+     */
+    plates: (): Plate[] => {
+      const leafPlate = jammedLeafPlate({ kind: 'jammed', ...leaf(dE), state: jamBroken ? 'broken' : 'shut' });
+      return leafPlate ? [leafPlate] : [];
+    },
     state: (): NightState => ({
       chapter: 1,
       clues,
       code,
       entered,
       panelOn,
+      lockSwing,
       jamBroken,
       jamFall,
       fireOpen,
+      fireSwing,
       jokes: CLOSED_JOKES,
     }),
   };

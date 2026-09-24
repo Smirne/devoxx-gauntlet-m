@@ -30,7 +30,7 @@ right-hand column — sometimes with a small change beside it, sometimes with no
 | 15 | "reduce the black block, make it into a glass wall or something to show the circle better" · and again: "the black bench(?) has to go, for a glass wall as suggested before" | done | Not a bench. The kiosk's own **fascia**: `floor1.ts` drew it as a 60 x 60 px plate laid flat at 2.15 m — a LID over the whole kiosk, 4.8 m square, and unlit from a 30 deg camera that is exactly what a black block looks like. It does not stand between the camera and the clue, it **shades** it: A/B on one build, the ring's box measures mean 39.1 with the lid and 43.5 without, brightest arc pixels 128.8 against 174.1. The counter he guessed at costs 43.8 vs 43.5 — nothing — and is gone anyway because he asked for it. Four 3 px fascia bands now, top open. The glazing was already `glass: true` in the sim and needed no change. **Not all of the ring's improvement is this change**: his build measured 5.8 mean in that box, and most of the climb from there is the concurrent clue-and-lighting work in the same tree, not the kiosk. |
 | 16 | "those two are maybe too near to each other?" | open | Two clue spots. |
 | 17 | "I put all three robots in the room... needed different tries before finding the number" | waiting | His call: try the new arc markers first before adding more help. |
-| 18 | "they seem fit for biggy to pass, make the passage more narrow" | open | The secondary-staircase niche is 3.2 m wide. Must be sized *after* the radius rescale, which halves Biggy's sim width. |
+| 18 | "they seem fit for biggy to pass, make the passage more narrow" | done | The plan decided how narrow. `plans/devoxx-rooms-stairs-annotated.png` draws the flight 20 plan px wide against the corridor's 147, i.e. 17.7 sim px = **1.41 m** (`NICHE_MOUTH`). Biggy is 1.44 m across, so the real stair excludes him by a centimetre. The well behind the mouth stays 40 px: a landing is wider than the door onto it, exactly as the ground-floor shafts already are. |
 
 ## Chapter 2
 
@@ -276,9 +276,23 @@ so anything marked *looks* waits behind anything marked *plays*.
 
 | item | who raised it | note |
 | --- | --- | --- |
-| Voxxy's jump | Michele's idea, scoped down by him to *"just for one quiz. And for jumping around for fun"* | Natural home: hopping the cinema-E seat rows, which are `low` walls light already crosses. Gives her a verb of her own next to Droid's climb and Biggy's charge. |
+| Voxxy's jump | Michele's idea, scoped down by him to *"just for one quiz. And for jumping around for fun"*, then approved outright on 24 Sep: *"Voxxy jump: let's make it. I'd keep E, when no other action is available."* | Natural home: hopping the cinema-E seat rows, which are `low` walls light already crosses. Gives her a verb of her own next to Droid's climb and Biggy's charge. His `E` ruling settles the other open key question too — *"Why space and not e for catching? I'd keep it to one key"* — because both the jump and the tow grab become the same fallback: the chapter's own `key()` gets first refusal, and what it does not consume falls through to grab-or-jump. |
+| Biggy should roll | Michele, 24 Sep — *"ah Another thing to handle later. Biggy should really roll, at least when he's pushed!"* | **Explicitly deferred by him**, recorded here so it does not live in the chat only. He is right on the physics: Biggy is drawn with wheels and moves like a crate on ice. The narrow read — wheel spin in the rig keyed off his own speed while a tow or a push is driving him — is a render change and cheap. The wide read, rolling resistance instead of the flat `drag` he shares with the others, is a frozen constant and therefore his call a second time. Start narrow. |
 | Chapter 1's mirror puzzle plays off camera | Michele — *"since the 3 color room mechanic is reflecting on the screen, but the screen is not visible in this angulation, could we move the puzzle on the upper line?"* | **This was living in chat only and was nearly lost.** The bounce off cinema E's screen is the feedback for the whole puzzle and the fixed camera does not show the screen. Moving the puzzle to a top-row room turns the screen toward the camera; the alternative is re-pitching that one room's camera. His suggestion is the cheaper of the two. |
 | Robots do not stand on the ground floor's raised lobby or its stairs | agent, cutscene round | `groundRiseM(x)` exists in `geometry.ts` *for this*, its own doc says the renderer reads it, and **nothing reads it** — so a robot on the lobby plate stands half a metre inside it and one on the main flight is swallowed. This is why chapter 3's transition walks into a staircase. |
+
+## Measured, and waiting on Michele
+
+Two findings from the beer-bar round, 24 Sep. Both are measurements rather than opinions, and
+both change something he has already ruled on, so neither was acted on.
+
+| finding | the measurement | why it was not fixed |
+| --- | --- | --- |
+| **Chapter 3's catering gate leaks.** He said of the queue blocking Biggy from the soup: *"That is a good gate and it stays."* It stays — but it is not the gate the chapter's own text describes. | Flood fill at Biggy's frozen `r = 9`, every queue person a solid disc: the catering doorway is 44 px, so his centre may be anywhere in a 26 px band. The two files of the queue stand 10 px apart, leaving **11 px of clear centre line beside them with the queue shut** — enough for him to drive straight in. Clearing a queue widens that to 27 px. Nearest reachable floor to the soup station with the queues standing: **25 px, against a `POT_REACH` of 70**. He can fill the pot without Voxxy saying a word. | The one-line fix is to stand the queue's two files across the doorway's width instead of 10 px apart. That changes the soup's difficulty, which is his call, and the chapter-3 choreography in `chapters.test.ts` is tuned around the current spacing. `tests/beer-bar.test.ts` asserts the true thing — clearing a queue *widens* the doorway — and says in a comment why it does not assert the sealing a reader expects. |
+| **`beerDone` needs all six crates.** | A heap error scatters the crates 12–15 px, so in every driven run they have all been recoverable. Nothing prevents one ending up shoved under a booth, and then the chapter cannot be finished without finding it. | Either the gate drops to five, or a stranded crate gets a way back. Both are design choices. |
+| **Chapter 1's clue-4 marker, in cinema E's alcove, is invisible on screen.** Only the floating pip shows. | Checked against the pre-change baseline: it was already invisible, so this is pre-existing and not a regression from the halo round. The marker rings are occluded by the alcove's own geometry, and the skirt does not rescue it either — Voxxy wedged in a 3.2 m pocket has nearly every ray clipped, so the halo collapses. The sim's light still reaches the clue; only the feedback is missing. | This is **the one clue Michele said he could not solve**. It wants a round of its own, not a patch. |
+| **The clue marker is now 2.16 m across**, up from 1.24 m. | It fits the alcove with 0.36 m of clearance and reads well at distance and at play zoom in the frames taken. | It is a noticeably bigger piece of floor UI and a human should look at it before it is called done. |
+| **Droid's halo is 25% brighter** in the 10–22 px band. | A side effect of his skirt finally drawing at all — his lamp is a pool, so he was the only robot who had a halo before, and now he has both. | He had blessed the previous look. `SKIRT_PEAK` is the single knob if it now reads as too much. |
 
 ## Plays — closed since this list was written
 
@@ -387,6 +401,7 @@ and the venue is one of the two things `CLAUDE.md` says may not drift.
 
 | item | who | note |
 | --- | --- | --- |
+| **Player-controlled zoom, IN ONLY** — one or two fixed steps, clamped, never wider than the chapter's own framing | Michele, 24 Sep 2026 — *"ok keep this as a note for possible future feat"* | He asked whether player zoom should be an addition or avoided. **Avoided, with this one exception.** Free zoom-OUT is the part that cannot ship: `updateFocus` in `scene.ts` deliberately clamps the framed window inside the chapter's own `ViewRect` so the camera can never show something the chapter has not revealed yet, and the fog of war is what is supposed to open the world up. Let a player widen it and chapter 2's whole exhibition hall is visible without exploring it, and the fixed diorama camera — a design pillar, GAUNTLET.md §1 — stops being fixed. Zooming *in* leaks nothing and helps a judge on a laptop see a robot. Build it only if a playtest asks for it; pre-emptive is how a camera system grows. |
 | Climbing and descending animations | Michele — *"keep them for next rounds / if we have time"* | |
 | Door opening animation when the code is entered, then the transition | Michele — *"this also can wait, but keep track"* | The jammed door already falls; this is the fire door. |
 | A better-looking breaker enclosure | Michele — *"fine for now... Maybe with red halo to signal it's interactive"* | His idea generalises: **one visual language for interactive props** would replace the projector panel, the duck target, the cam-lock and the keypad all being individually hacked into visibility. |
@@ -394,7 +409,7 @@ and the venue is one of the two things `CLAUDE.md` says may not drift.
 | Droid sitting on Biggy reads well only from some angles | Michele | |
 | Voxxy's arms are frenetic at speed | Michele | Gait amplitude, not speed — she is at the speed he approved. |
 | The HUD stays up through cutscenes | agent | The objective paragraph, three robot chips and a live speed meter sit over a shot meant to be a beat. |
-| The secondary staircases are in the wrong place | Michele, with drone footage | They are lateral in the real hallway; he marked the descent direction on the photo. |
+| The secondary staircases are in the wrong place | Michele, with drone footage — and again, 24 Sep: *"The stairs position on the upper wall haven't been fixed"* | **Escalated to him, measured.** Ground floor: fixed — both shafts were wrong (the bot one 64 px toward the hall's centre, halving the gap), now on the plan's own pixels. First floor: the plan measurably puts both flights at plan y 884..947, which is *inside room 4/9's length* (world x 1006..1113), not in the 3|4 or 10|9 gap that CLAUDE.md, GAUNTLET.md Stage 1 and `plans/README.md` all call non-negotiable. Two things he wrote disagree, so a builder cannot settle it; moving them there also crosses rooms 4 and 9's centred doorways and the descent waypoint chapter 1's closing cutscene hard-codes. **His call.** The mouth width (note 18) was measured and fixed in the meantime. |
 
 ## Structural — nobody asked, but they will bite
 
@@ -412,3 +427,53 @@ and the venue is one of the two things `CLAUDE.md` says may not drift.
 | `E` precedence at the Sticker Mine | The minigames' key handler runs before the chapter's own, so Droid standing at the sticker takes it before anything else can happen there — and that booth shares the grid with the keynote speaker's hiding places. The chapter-3 end-to-end test already works around it by clearing the sticker first. |
 | Chapter 4 runs about six minutes | Correct preservation of its difficulty through the rescale, possibly the wrong *shot*. The fix if playtesting says so is a run key or a smaller room, not re-tuning the clock back. |
 | `tools/progress/shots/` is 50+ MB | Prune before submission. |
+
+---
+
+## 24 Sep, evening — seven notes in one sitting
+
+He played while the round was running and filed these one at a time.
+
+| his note | what it was, measured | outcome |
+| --- | --- | --- |
+| *"this hint is flickering"* (screenshot of a clue plate reading as broken arcs) | The marker's backing disc and all three slot rings sat at **y = 0.0200**, and `floor1.ts` builds the kiosk's floor plate with `floorSlab(F1.kiosk, 0.02, …)` — an opaque, depth-writing box whose top face is at exactly 0.0200. Chapter 1's clue 2 is at the kiosk's centre, so a 2.16 m marker was **exactly coplanar** with a 4.48 m slab that contains it. Which pixels survive is then decided by rasteriser rounding, and re-decided every frame as `updateFocus` eases the camera by a fraction of a pixel. That is the flicker. | Markers lift to `CLUE_PLATE_LIFT_M = 0.09`. `tests/clue-plate.test.ts` measures the clearance instead of trusting the comment. |
+| *"you didn't move the room to the upper aisle as i suggested. The hint must be visible, it's unsolvable this way"* | Same root cause, worse symptom. The exit alcove publishes a `flat` prop, and `drawProp` puts a flat prop's top at `surface + h + 0.01` = **0.06** — four centimetres above the 0.02 marker, covering all of it. Clue 4 was not dashed, it was **gone**, which is why only the floating pip showed and why this was the one clue he could not solve. Fixed by the same lift; screenshotted in play view, fog on, and the three-colour ring now reads plainly in the alcove. | **The room did not move, and here is why.** Swept every floor cell Biggy can actually reach in cinema E (flood fill from the broken door, 3 px grid, 16 headings per cell): from the alcove mouth he lights the clue **directly from 0 poses and via the screen bounce from 893**. Move it anywhere in the aisle or the back cross-aisle — the "upper aisle" — and direct rises to **1000–1190**, which deletes the mirror puzzle outright. The whole bay east of the aisle is Biggy-proof only because the alcove's two solid walls blind him; the seat rows are `low` and pass light. So the complaint was legible, not geometric, and the geometry that answers it is the alcove. Michele's call if he still wants it moved. |
+| *"Add sound effect when a Hint is solved"* | `audio.ts` has carried a written, tuned `clue` cue since the day it was added, and it had **never been played** — nor had `chime`, `switch` or `mount`. The sim knew an enigma had resolved, the marker drew its digit, and the room stayed silent. | Wired in `updateAudio`: `clue` on every solve, `chime` a beat later when the last one lands, plus `switch` on the robot switcher and `mount` when Droid goes up. |
+| *"Could we add a basic action to each robot on E? Voxxy jumps, Biggy rolls, Droid? Stretches? Not needed for gameplay"* | Voxxy's hop already existed; the other two answered E with a line of flavour text and nothing else. | Built. The sim owns the clock, the rig reads a 0→1 phase, no displacement, and the same `hopRest` stops E being mashed. |
+| *"still a walkthrough object on the doorway, add an animation + sound when it opens"* | | In flight. |
+| *"The stairs position on the upper wall haven't been fixed"* | Re-files the open item below: the secondary staircases are lateral in the real hallway. Ambiguous between the first floor's `nicheTop` and the ground floor's two shafts, so both are being measured against `plans/`. | In flight. |
+| *"The projector still needs a shape"* | | In flight. |
+| *"In the intro to chapter 2 mention the printer too"* | The printer was named in the HUD objective and nowhere in the fiction, so half the chapter's goal arrived as a task line with no stake attached. | The card now carries it, with the stake and no route. |
+
+### Measured and NOT changed
+
+The 15 px aisle is **not** the needle it reads as. Droid's clearance is 1.25 px a side (10 cm) and
+Voxxy's 2.75, which looks impossible written down. Driven — hold S from the back cross-aisle, entry
+offset 0 to ±4 px — **both robots get through on every single entry offset**, because the collision
+resolver slides them off the wall rather than stopping them. Widening it would cost the gate (Biggy
+is 18 px across against the aisle's 15) and buy nothing.
+
+### Crate stencils — agreed 24 Sep (not yet built)
+
+Michele: *"the antwerpen sticker could stretch between the 3 crates instead of being repeated?"* — yes,
+and it is the better read. One shipping stencil spans all three crates in the opening shot; the word
+only exists while they stand in a row, and it breaks apart the moment the robots step down and the
+crates are left behind. That is a beat the repeated label does not have.
+
+Layout, decided by legibility rather than taste. At the intro's tight framing a crate face is about
+520 px wide, so a letter can be ~150 px tall spanning three crates against ~45 px repeated per crate.
+
+| band | text | placement |
+| --- | --- | --- |
+| big, spanning | `DEVOXX` | exactly two letters per crate (`DE` `VO` `XX`), so the two crate seams fall **between** letters and no glyph is ever cut by a gap |
+| small, spanning | `ANTWERPEN · T.A.V. STEPHAN` | second line under it, also continuous across the three faces |
+| per crate | Voxxy `FRAGILE · THIS WAY UP` (arrow upside down), Droid `DO NOT BEND`, Biggy **both** `BULKY` and `HIGHLY FRAGILE` + a stoved-in corner | each in its own crate's lower corner, unaffected by the span |
+
+Biggy carries two contradictory stencils on purpose (Michele: *"keep both bulky and highly fragile
+on biggy"*): the heaviest robot in the game is the one the shippers warned twice about, and the
+stoved-in corner says how well that went. They stack, `BULKY` over `HIGHLY FRAGILE`, so the pair
+reads as one block rather than two labels competing for the corner.
+
+Consequences to honour when it is built: crate order is load-bearing (Voxxy, Droid, Biggy, left to
+right) and the three faces must be coplanar and evenly gapped, or the word skews. `ZAAL 8` is dropped
+— three bands on one face is one too many at this size.

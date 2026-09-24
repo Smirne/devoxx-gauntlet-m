@@ -1,14 +1,14 @@
 /**
  * floor1.ts — the cinema level: corridor, both rows of auditoriums, the curved
- * foyer with its bar and glass kiosk, the fire door, both secondary-staircase
- * niches and the main staircase.
+ * foyer with its bar and glass kiosk, the fire door, both secondary staircases
+ * and the main staircase.
  *
  * **Every** coordinate comes from `src/sim/geometry.ts`. Nothing in this file
  * invents a plan position, because that module is what makes the Stage 1 overlay
  * check a property of the data rather than of the drawing code: rooms 3, 4, 5, 6
- * along the bottom and 10, 9, 8, 7 along the top, the secondary staircases in the
- * corridor walls between 3|4 and 10|9, and the main staircase at the corridor's
- * end between 6 and 7.
+ * along the bottom and 10, 9, 8, 7 along the top, the two secondary staircases
+ * standing in the corridor against its walls level with rooms 4 and 9, and the
+ * main staircase at the corridor's end between 6 and 7.
  *
  * Materials and dressing follow `media/other-images/CAPTIONS.md`: dark navy
  * carpet, charcoal walls, square dark columns with pale vaults springing off them,
@@ -28,6 +28,7 @@ import {
   SEAT_BLOCK_MIN_PX,
   SEAT_PITCH_PX,
   floor1Walls,
+  nicheMouth,
   roomDoor,
   roomScreen,
   roomSeating,
@@ -36,6 +37,7 @@ import {
 import type { Rect, RoomDef, Wall } from '../../sim/types';
 import { m } from '../../sim/units';
 import type { VenuePalette } from './materials';
+import { projectionBooth } from './projector';
 import {
   DOOR_H,
   GLASS_H,
@@ -54,7 +56,7 @@ import {
   stairFlight,
   tensileTree,
 } from './props';
-import { zaalPosterX } from './signage';
+import { POSTER_W_PX, zaalPosterX } from './signage';
 
 /* ------------------------------------------------------- auditorium layout */
 
@@ -96,6 +98,11 @@ function wallStyle(
   // Drawn by their own builders: the seat blocks become rows of modelled seats on
   // a raked floor, the screen is lit, the stools are turned, the bar is dressed.
   if (w.kind === 'seats' || w.kind === 'screen' || w.kind === 'stool' || w.kind === 'bar') return null;
+  // The two runs of a secondary staircase. `secondaryStairs` draws them as real
+  // steps falling away from the landing; a slab here would stand a solid block on
+  // top of that, and on the near wall it would stand it between the fixed camera
+  // and the corridor.
+  if (w.kind === 'stairwell' || w.kind === 'stairwell-near') return null;
   // The corridor's square columns. The FAR side gets the full shaft; the NEAR side
   // a knee-high plinth, because a full shaft there stands between the fixed camera
   // and the corridor floor (see `corridorDressing`).
@@ -317,32 +324,83 @@ function kiosk(p: VenuePalette): THREE.Group {
   return g;
 }
 
+/**
+ * `r` with `hole` taken out of it, as up to four rectangles.
+ *
+ * Axis-aligned, so this is four strips and no geometry library: the piece west of
+ * the hole, the piece east of it, and the two remaining stubs above and below.
+ * Used to cut the stairwells out of the corridor floor.
+ */
+function minus(r: Rect, hole: Rect): Rect[] {
+  const x0 = Math.max(r.x, hole.x);
+  const x1 = Math.min(r.x + r.w, hole.x + hole.w);
+  const y0 = Math.max(r.y, hole.y);
+  const y1 = Math.min(r.y + r.h, hole.y + hole.h);
+  if (x1 <= x0 || y1 <= y0) return [r];
+  return [
+    { x: r.x, y: r.y, w: x0 - r.x, h: r.h },
+    { x: x1, y: r.y, w: r.x + r.w - x1, h: r.h },
+    { x: x0, y: r.y, w: x1 - x0, h: y0 - r.y },
+    { x: x0, y: y1, w: x1 - x0, h: r.y + r.h - y1 },
+  ].filter((q) => q.w > 0.01 && q.h > 0.01);
+}
+
 /* ----------------------------------------------------------------- staircases */
 
-/** Both secondary-staircase niches, with real steps disappearing down the well. */
+/**
+ * Both secondary staircases, with real steps disappearing down them.
+ *
+ * They **stand in the corridor** against its two walls, level with rooms 4 and 9,
+ * because that is where `plans/devoxx-rooms-stairs-annotated.png` draws them — see
+ * `F1.nicheTop` for the measurement and for Michele's 24 Sep ruling that the
+ * drawing outranks the prose. Until this round they were 40 x 57 pockets cut into
+ * the wall 148 px back along the corridor, which is the fault he reported three
+ * times.
+ *
+ * The plan's own section is what is drawn here: a flight **1.41 m wide**
+ * (`NICHE_MOUTH`, 20 plan px of the corridor's 147) hard against the room wall,
+ * **109 px long** along the corridor, with a landing halfway down its run. The
+ * landing is the mouth — the one square of the flight at corridor level — and the
+ * two runs fall away from it. At 1.41 m Biggy cannot take it, which is the sim's
+ * rule and note 18 in `docs/playtest-notes.md`; this is the picture agreeing.
+ */
 function secondaryStairs(p: VenuePalette): THREE.Group {
   const g = new THREE.Group();
   g.name = 'secondary-stairs';
-  const flights: Array<{ name: string; rect: Rect; dir: '+z' | '-z' }> = [
-    { name: 'stair-niche-top', rect: F1.nicheTop, dir: '-z' },
-    { name: 'stair-niche-bot', rect: F1.nicheBot, dir: '+z' },
+  const flights: Array<{ name: string; rect: Rect }> = [
+    { name: 'stair-niche-top', rect: F1.nicheTop },
+    { name: 'stair-niche-bot', rect: F1.nicheBot },
   ];
   for (const f of flights) {
-    const flight = stairFlight({
-      rect: f.rect,
-      topY: 0,
-      bottomY: -2.6,
-      dir: f.dir,
-      steps: 8,
-      tread: p.stairTreadDark,
-      nosing: p.stairNosing,
-      runs: 2,
-      rail: p.steelRail,
-    });
-    flight.name = f.name;
-    g.add(flight);
-    // Close the well so the camera does not look straight through to nothing.
-    g.add(slab(f.rect, -3.3, 0.55, p.shell));
+    const mouth = nicheMouth(f.rect);
+    const well = new THREE.Group();
+    well.name = f.name;
+    // The two runs, dropping away along the corridor from the landing between
+    // them: west of the mouth descending west, east of it descending east.
+    for (const [x0, x1, dir] of [
+      [f.rect.x, mouth.x, '-x'],
+      [mouth.x + mouth.w, f.rect.x + f.rect.w, '+x'],
+    ] as const) {
+      if (x1 - x0 < 1) continue;
+      well.add(
+        stairFlight({
+          rect: { x: x0, y: f.rect.y, w: x1 - x0, h: f.rect.h },
+          topY: 0,
+          bottomY: -2.6,
+          dir,
+          steps: 7,
+          tread: p.stairTreadDark,
+          nosing: p.stairNosing,
+          runs: 1,
+          rail: p.steelRail,
+        }),
+      );
+    }
+    // Close the well so the camera does not look straight through to nothing...
+    well.add(slab(f.rect, -3.3, 0.55, p.shell));
+    // ...and floor the landing, which is the part a robot may stand on.
+    well.add(floorSlab(mouth, -0.02, p.stairTreadDark, 0.08));
+    g.add(well);
   }
   return g;
 }
@@ -447,7 +505,7 @@ function corridorDressing(p: VenuePalette, overhead: THREE.Group): THREE.Group {
     // rendered complete while the numeral panel beside it was clipped made the
     // poster the dominant colour block on the wall — the reverse of the Kinepolis
     // photograph, where the numeral panel is what you read from 60 m away.
-    const box = slab({ x: zaalPosterX(Number(r.n)) - 9, y, w: 18, h: 2 }, 0.55, 1.2, p.posterGlow);
+    const box = slab({ x: zaalPosterX(Number(r.n)) - POSTER_W_PX / 2, y, w: POSTER_W_PX, h: 2 }, 0.55, 1.2, p.posterGlow);
     box.name = `poster-box-${r.n}`;
     g.add(box);
   }
@@ -500,11 +558,25 @@ export function buildFloor1(p: VenuePalette): Floor1Build {
   overhead.name = 'overhead';
   const anchors = new Map<number | string, THREE.Object3D>();
 
+  /*
+   * The floor, with the two stairwells cut out of it.
+   *
+   * A staircase down is a HOLE in the floor it leaves, and until the flights moved
+   * into the corridor this floor never had to know that: they were pockets outside
+   * the corridor band, so the band's carpet simply stopped short of them. Laid
+   * whole over the new footprints, the carpet and the base plate roofed both
+   * flights over — measured in the top-down debug shot, every pixel of both
+   * stairwells came back the corridor's own [47,51,66], which is the Stage 1
+   * overlay check failing on the one thing it exists to look at.
+   */
+  const wells: Rect[] = [F1.nicheTop, F1.nicheBot];
+  const cut = (r: Rect): Rect[] => wells.reduce<Rect[]>((acc, hole) => acc.flatMap((q) => minus(q, hole)), [r]);
   // A base plate under everything, so voids between rooms read as building, not sky.
-  group.add(floorSlab({ x: 0, y: 0, w: W, h: H }, -0.02, p.shell, 0.4));
+  for (const r of cut({ x: 0, y: 0, w: W, h: H })) group.add(floorSlab(r, -0.02, p.shell, 0.4));
   // The corridor itself: dark navy carpet running the full length of the level.
-  const carpet = floorSlab({ x: 0, y: CY0, w: W, h: CY1 - CY0 }, 0, p.corridorCarpet);
+  const carpet = new THREE.Group();
   carpet.name = 'corridor-carpet';
+  for (const r of cut({ x: 0, y: CY0, w: W, h: CY1 - CY0 })) carpet.add(floorSlab(r, 0, p.corridorCarpet));
   group.add(carpet);
 
   for (const r of rooms) {
@@ -521,6 +593,11 @@ export function buildFloor1(p: VenuePalette): Floor1Build {
     // walls, exactly as the prototype does; everywhere else the seats are set.
     if (r.n !== 'E') for (const o of seating(r, p)) room.add(o);
     room.add(doorway(r, p, overhead));
+    // The projection booth over the door, and the machine in it — Michele: "the
+    // projector still needs a shape". See `projector.ts` for what it is made of
+    // and why it sits beside the doorway rather than over it.
+    const booth = projectionBooth(r, p);
+    if (booth) room.add(booth);
     group.add(room);
 
     const anchor = anchorAt(`anchor-${r.n}`, r.x + r.w / 2, r.y + r.h / 2);
@@ -553,7 +630,14 @@ export function buildFloor1(p: VenuePalette): Floor1Build {
   // so the chapter can hide it once the code is entered.
   const fire = new THREE.Group();
   fire.name = 'fire-door';
-  fire.add(slab({ x: F1.fireX, y: CY0, w: 14, h: CY1 - CY0 }, 0, WALL_H, p.fireDoor));
+  // Named, because chapter 1 takes it over: once that chapter publishes a
+  // `firedoor` prop the door is a moving thing with a swing clock on it, and
+  // `scene.ts` hides this static leaf and draws the sim's own screen and leaves
+  // instead (`src/render/fire-door.ts`). Chapter 4 publishes no such prop — the
+  // cinema section is simply sealed again — so there this stays the door.
+  const fireLeaf = slab({ x: F1.fireX, y: CY0, w: 14, h: CY1 - CY0 }, 0, WALL_H, p.fireDoor);
+  fireLeaf.name = 'fire-leaf';
+  fire.add(fireLeaf);
   const keypad = slab({ x: F1.fireX - 18, y: CY0 + 8, w: 16, h: 6 }, 1.0, 0.42, p.keypad);
   keypad.name = 'fire-keypad';
   fire.add(keypad);

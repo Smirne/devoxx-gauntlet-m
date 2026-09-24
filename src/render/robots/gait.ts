@@ -24,7 +24,8 @@
 
 import * as THREE from 'three';
 import type { RobotKind } from '../../sim/types';
-import { clamp, smoothstep, type RobotRig } from './rig';
+import { BIGGY_ROLL_ROCKS } from '../../sim/constants';
+import { clamp, lerp, smoothstep, type RobotRig } from './rig';
 
 const TAU = Math.PI * 2;
 
@@ -53,6 +54,31 @@ export const IDLE_SPEED_MPS = 0.05;
 /** A gait never runs faster than this, however arcade the sim speed gets. */
 const MAX_STEP_FREQ = 6.5;
 
+/**
+ * How fast a shoulder is allowed to swing, radians per second.
+ *
+ * Michele, on the chapter-1 build: *"Voxxy's arms are frenetic at speed."* He is
+ * right and the number is worse than it looks. Her profile asks for 0.85 rad of
+ * swing, and at her top speed the cycle is 0.179 s, so the shoulder was being
+ * driven at **30.3 rad/s — 1735 degrees per second**, measured off the bone. A
+ * servo does not do that, and on screen it is a propeller.
+ *
+ * The cause is amplitude, not speed: she is at the speed he approved and
+ * `src/sim` is not involved. The cadence is already bounded (by `MAX_STEP_FREQ`
+ * and by the over-striding rule below, which is what stops her legs blurring);
+ * nothing bounded the SWING, so the faster the cycle ran the faster the same
+ * 0.85 rad had to be covered.
+ *
+ * So the arm gets the limit an actuator has: a peak angular rate. The requested
+ * amplitude is scaled down by whatever factor keeps `A * 2pi / cycle` under this,
+ * which is a statement about the arm rather than about the speed — and because
+ * it is a rate, it only ever binds on the robot that was actually breaking it.
+ * Measured at each robot's top speed with this in place: Voxxy 30.3 -> 12.0
+ * rad/s (her swing at 5.8 m/s falls 0.85 -> 0.34 rad), **Droid 3.4 and Biggy 6.4,
+ * both untouched**, and Voxxy's own walk at 1 m/s untouched at 9.3.
+ */
+const ARM_MAX_RATE = 12;
+
 export type PoseName = 'nope' | 'reach' | 'squeeze';
 
 const POSE_DURATION: Record<PoseName, number> = { nope: 0.6, reach: 1.15, squeeze: 0.95 };
@@ -71,6 +97,26 @@ export interface GaitParams {
   mounted?: boolean;
   /** Set to fire a one-shot pose. Edge triggered: hold it or clear it, either works. */
   pose?: PoseName | null;
+  /**
+   * Where a hop is in its arc: **0 on the ground, 0..1 across the airtime.**
+   *
+   * This is `hopPhase(bot)` from `src/sim/bot.ts` and nothing else — the sim owns
+   * the jump, the renderer reads its clock. The caller lifts the rig by
+   * `JUMP_RISE_M * 4u(1 - u)`; this is what the robot DOES while it is up there.
+   */
+  hop?: number;
+  /**
+   * Where a party trick is: **0 when standing, 0..1 across the flourish.**
+   *
+   * This is `flairPhase(bot)` from `src/sim/bot.ts` and nothing else — the same
+   * arrangement as `hop`, one number off the sim's clock. WHICH flourish plays is
+   * the rig's own business (Biggy rolls, Droid stretches), because which robot it
+   * is is not a thing the sim should have to tell the renderer twice.
+   *
+   * Unlike the hop, nothing outside this file reads it: a flourish is cosmetic,
+   * and the body does not move a millimetre.
+   */
+  flair?: number;
 }
 
 /**
@@ -438,6 +484,37 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
   const head = bones.head;
   const scale = rig.height / 1.45;
 
+  /*
+   * THE HOP. Voxxy's verb, and the only robot that has one.
+   *
+   * `u` is the sim's own `hopPhase`, 0 at take-off and 1 at landing. Everything
+   * below is built from two shapes of it, so the pose is continuous at both ends
+   * without a blend parameter to keep in step:
+   *
+   *   `tuck`  climbs fast out of the floor, holds through the apex, and unwinds
+   *           into the landing — the knees coming up.
+   *   `land`  is zero until past the apex and 1 at touchdown — the legs reaching
+   *           for the floor and the arms coming down to catch.
+   *
+   * A mounted robot cannot hop (the sim will not let one), so the two never mix.
+   */
+  const u = params.mounted ? 0 : clamp(params.hop ?? 0, 0, 1);
+  const hopping = u > 0;
+  const tuck = hopping ? smoothstep(0, 0.16, u) * (1 - smoothstep(0.55, 0.96, u)) : 0;
+  const land = hopping ? smoothstep(0.5, 1, u) : 0;
+
+  /*
+   * THE PARTY TRICK. Biggy's roll and Droid's stretch, the two flourishes that
+   * are not the hop — same deal as `u` above: the sim's own phase, 0 to 1, and
+   * the shape of the move belongs to this file.
+   *
+   * A mounted robot is refused one by the sim, and a flourish and a hop cannot
+   * overlap either (one `hopRest` gates all three), so like the hop this never
+   * has to blend against anything but the walk it interrupts.
+   */
+  const f = params.mounted ? 0 : clamp(params.flair ?? 0, 0, 1);
+  const flairing = f > 0;
+
   /* ------------------------------------------------------------ speed */
   const v = Math.max(0, params.speedMps || 0);
   const accelRaw = dt > 0 ? (v - st.prevSpeed) / dt : 0;
@@ -535,6 +612,17 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
 
   if (idleAmt > 0.01) applyIdlePelvis(rig, st, idleAmt);
   if (poseName) applyPosePelvis(rig, poseName, e, scale);
+  // Droid's stretch lifts the pelvis BEFORE the legs, so the IK straightens them
+  // under him and his feet stay where they were planted — the same arrangement the
+  // 'reach' pose uses. Biggy's roll is the opposite case and waits until after.
+  if (flairing) applyFlairPelvis(rig, f, scale);
+  if (hopping) {
+    // The pelvis rides a little higher with the knees up and drops as she folds
+    // to absorb the landing. The bob and the lean are already in; this is on top,
+    // and it is BEFORE the legs so the IK blend below sees the real hip height.
+    pelvis.position.y += (0.035 * tuck - 0.045 * land) * scale;
+    pelvis.rotation.x += 0.16 * tuck - 0.1 * land;
+  }
 
   /* ------------------------------------------------------------- legs */
   if (params.mounted) {
@@ -542,15 +630,34 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
     //
     // This was knees-up and feet-tucked, which reads as a crouching jump and,
     // together with a lift that assumed his soles touched down, left him hovering
-    // over the helmet. He now straddles it: hips rolled well out so the thighs
-    // pass either side of a dome nearly a metre and a half across, shins hanging
-    // down its flanks, feet level.
+    // over the helmet. He straddles it now.
+    //
+    // ROUND TWO, on Michele's *"Droid sitting on Biggy reads well only from some
+    // angles."* This game has one camera, so "some angles" means the one that
+    // matters, sometimes. Shot from it (chapter 1, the pair about 100 px tall),
+    // the failure is specific: **nothing of his legs appears outside Biggy's
+    // outline**. The hips rolled 0.58 and the thighs 0.52 forward put both knees
+    // inside a dome 0.88 m across, so what the camera got was a torso and a head
+    // standing out of a ball, with two blue flecks where his shins surfaced
+    // through the shell — a bust on a plinth, not a rider.
+    //
+    // A silhouette is the only thing that reads at that size, so the legs are
+    // posed to make one: hips rolled to 0.92 takes each knee past the dome's
+    // 0.44 m flank, the thigh comes further forward so the knee breaks his
+    // outline toward the camera, and the shin folds back hard so the foot tucks
+    // against the helmet instead of hanging into the gut below it. Knees up
+    // round his ears on a beach ball is also the funnier read, which is the
+    // tie-breaker Michele has already given us: *"I vote funny, robots must be
+    // recognizable."*
     for (const L of ['L', 'R'] as const) {
-      bones[`thigh${L}`].rotation.x = -0.52;
-      bones[`shin${L}`].rotation.x = 0.92;
-      bones[`foot${L}`].rotation.x = 0.12;
-      bones[`hip${L}`].rotation.z = L === 'L' ? 0.58 : -0.58;
+      bones[`thigh${L}`].rotation.x = -0.86;
+      bones[`shin${L}`].rotation.x = 1.62;
+      bones[`foot${L}`].rotation.x = -0.15;
+      bones[`hip${L}`].rotation.z = L === 'L' ? 0.92 : -0.92;
     }
+    // Leaning forward over the crown, which is what a rider does and what stops
+    // his own head reading as the top of a totem pole.
+    pelvis.rotation.x += 0.2;
     st.contact[0] = false;
     st.contact[1] = false;
   } else {
@@ -580,10 +687,20 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
       }
       solveLeg(rig, st, side, z, y, pelvis.rotation.x, ankle);
     }
+    if (hopping) applyHopLegs(rig, st, tuck, land);
   }
 
   /* ------------------------------------------------------------- arms */
-  const swing = p.armSwing * amp;
+  /*
+   * The slew limit (see `ARM_MAX_RATE`). `upper.rotation.x` traces
+   * `A cos(2pi t / cycle)`, whose peak rate is `A * 2pi / cycle`; hold that under
+   * the limit and the whole arm — elbow included, or the forearm would outrun the
+   * upper arm it hangs off — is scaled by the same factor.
+   */
+  const wanted = p.armSwing * amp;
+  const armRate = (wanted * TAU) / Math.max(1e-4, cycle);
+  const armScale = armRate > ARM_MAX_RATE ? ARM_MAX_RATE / armRate : 1;
+  const swing = wanted * armScale;
   for (const side of [0, 1] as const) {
     const L = side === 0 ? 'L' : 'R';
     const shoulder = bones[`shoulder${L}`];
@@ -593,17 +710,25 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
     // +1 when this side's leg is forward; the arm counter-swings it.
     const fwd = Math.cos(u * TAU);
     upper.rotation.x += swing * fwd;
-    fore.rotation.x -= p.elbow * amp * Math.max(0, -fwd) + 0.06 * amp;
+    fore.rotation.x -= p.elbow * amp * armScale * Math.max(0, -fwd) + 0.06 * amp;
     // A little outward flare with speed, and a lag behind the turn.
     shoulder.rotation.z += (side === 0 ? 1 : -1) * 0.06 * amp;
     shoulder.rotation.y += clamp(-st.turn * 0.04, -0.2, 0.2);
   }
   if (params.mounted) {
+    /*
+     * Both hands down on the crown. They were held straight out to the sides,
+     * which from the diorama camera is a scarecrow; a rider holding on is the
+     * one arm pose that reads at 100 px, and it clears the knees, which are now
+     * up round his ears.
+     */
     for (const L of ['L', 'R'] as const) {
-      bones[`upperArm${L}`].rotation.x = -0.75;
-      bones[`forearm${L}`].rotation.x = -0.9;
-      bones[`shoulder${L}`].rotation.z = (L === 'L' ? 1 : -1) * 0.25;
+      bones[`shoulder${L}`].rotation.x = -0.45;
+      bones[`shoulder${L}`].rotation.z = (L === 'L' ? 1 : -1) * 0.34;
+      bones[`upperArm${L}`].rotation.x = -0.35;
+      bones[`forearm${L}`].rotation.x = -0.8;
     }
+    bones.torso.rotation.x += 0.1;
   }
 
   /* ------------------------------------------------------ torso + head */
@@ -616,13 +741,17 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
 
   if (idleAmt > 0.01) applyIdleUpper(rig, st, idleAmt, dt);
   if (poseName) applyPoseUpper(rig, poseName, e, st);
+  if (hopping) applyHopUpper(rig, tuck, land);
+  if (flairing) applyFlairBody(rig, st, f, standH);
 
   /* --------------------------------------------------------- antenna */
   const ant = bones.antenna;
   if (ant) {
     // A damped spring whipped by acceleration and by turning. Biggy's is slack
     // and wobbles for ages; Voxxy's nub is stiff and barely moves.
-    const driveX = -clamp(st.accel, -30, 30) * 0.012 - Math.sin(st.t * 2.1) * 0.04 * idleAmt;
+    // The hop whips it too: she goes up, the nub stays behind, and it is still
+    // catching up when she lands. `tuck - land` is +1 rising and -1 falling.
+    const driveX = -clamp(st.accel, -30, 30) * 0.012 - Math.sin(st.t * 2.1) * 0.04 * idleAmt - 0.22 * (tuck - land);
     const driveZ = clamp(st.turn, -8, 8) * 0.06 + Math.sin(st.t * 1.5 + 1.1) * 0.03 * idleAmt;
     st.antXV += (-p.antK * st.antX - p.antC * st.antXV + driveX * p.antK) * dt;
     st.antZV += (-p.antK * st.antZ - p.antC * st.antZV + driveZ * p.antK) * dt;
@@ -707,6 +836,184 @@ function applyIdleUpper(rig: RobotRig, st: GaitState, w: number, dt: number): vo
       }
       break;
   }
+}
+
+/* -------------------------------------------------------------------- hop */
+
+/**
+ * The legs, while she is in the air.
+ *
+ * `solveLeg` has already run and planted both feet on a floor that is no longer
+ * under them, so this **blends over** its answer rather than adding to it: at
+ * the apex the leg is entirely the tuck, and at both ends of the arc it is
+ * entirely the walk, which is what makes take-off and landing continuous with
+ * whatever she was doing before she pressed the key.
+ *
+ * `contact` is cleared as well. A foot that is 30 cm off the floor is not
+ * planted, and `main.ts` fires a footstep off exactly this flag — without it she
+ * clattered across the whole arc.
+ */
+function applyHopLegs(rig: RobotRig, st: GaitState, tuck: number, land: number): void {
+  const b = rig.bones;
+  // Knees up and heels back on the way up; the leg straightens and the toes come
+  // up to meet the floor on the way down.
+  const thighT = -1.15 * tuck + 0.16 * land;
+  const shinT = 1.5 * tuck * (1 - 0.65 * land);
+  const footT = 0.34 * tuck - 0.5 * land;
+  const w = clamp(tuck + land * 0.85, 0, 1);
+  for (const L of ['L', 'R'] as const) {
+    const thigh = b[`thigh${L}`];
+    const shin = b[`shin${L}`];
+    const foot = b[`foot${L}`];
+    thigh.rotation.x = lerp(thigh.rotation.x, thighT, w);
+    shin.rotation.x = lerp(shin.rotation.x, shinT, w);
+    foot.rotation.x = lerp(foot.rotation.x, footT, w);
+    // A small splay, so the tuck is a frog and not a pair of scissors.
+    b[`hip${L}`].rotation.z += (L === 'L' ? 1 : -1) * 0.2 * tuck;
+  }
+  st.contact[0] = false;
+  st.contact[1] = false;
+}
+
+/**
+ * The arms, the torso and the head, while she is in the air.
+ *
+ * Voxxy's arms are the longest thing on her — the model sheet's own "very long
+ * tapered arms with a white band near the wrist" — so they are what has to carry
+ * the jump. Both go up and OUT on the way up (a small robot with a big reach,
+ * which is the read Michele keeps asking for: *"I vote funny, robots must be
+ * recognizable"*), then swing forward and down to catch the landing. It is
+ * written for any rig rather than for Voxxy alone, because only the sim decides
+ * who may leave the floor and this file should not have a second opinion.
+ */
+function applyHopUpper(rig: RobotRig, tuck: number, land: number): void {
+  const b = rig.bones;
+  for (const side of [1, -1] as const) {
+    const L = side > 0 ? 'L' : 'R';
+    // Negative rotation.x on a shoulder lifts the arm forward and up (see the
+    // 'reach' pose, which is the same sign).
+    b[`shoulder${L}`].rotation.x -= 1.55 * tuck - 0.6 * land;
+    b[`shoulder${L}`].rotation.z += side * (0.5 * tuck + 0.16 * land);
+    b[`upperArm${L}`].rotation.x -= 0.25 * tuck;
+    b[`forearm${L}`].rotation.x -= 0.5 * tuck + 0.3 * land;
+  }
+  b.torso.rotation.x -= 0.14 * tuck - 0.2 * land;
+  b.neck.rotation.x -= 0.1 * tuck - 0.08 * land;
+  // Looks up at the top of the arc and down at what she is about to land on.
+  b.head.rotation.x -= 0.2 * tuck - 0.16 * land;
+}
+
+/* ------------------------------------------------------------ party tricks */
+
+/**
+ * How far into the move a flourish is, as an amplitude rather than a clock.
+ *
+ * Droid's stretch: up over the first third, held, released into the settle. Every
+ * term of his pose is scaled by this one number, so the whole thing starts and
+ * ends at exactly the pose he was already standing in and there is nothing to
+ * blend.
+ */
+const stretchE = (f: number): number => smoothstep(0, 0.33, f) * (1 - smoothstep(0.64, 1, f));
+
+/**
+ * How far Biggy goes over at the top of a rock, in radians.
+ *
+ * 0.62 is 36 degrees of gut, and it is bigger than it needs to be in the abstract
+ * on purpose. This game has one camera and it is a high isometric, which
+ * foreshortens a roll about the forward axis badly: at the 0.5 rad this started on,
+ * a strip of frames through the whole move read as a lean rather than a rock. What
+ * the camera sees is what the number is set to.
+ */
+const BIGGY_ROLL_RAD = 0.62;
+
+/** Biggy's rock, in radians: a decaying weeble, zero at both ends. */
+const rollRad = (f: number): number =>
+  BIGGY_ROLL_RAD *
+  smoothstep(0, 0.1, f) *
+  (1 - smoothstep(0.76, 1, f)) *
+  Math.sin(TAU * BIGGY_ROLL_ROCKS * f);
+
+/**
+ * Droid's stretch — the half that has to happen before the legs.
+ *
+ * He comes up out of his own standing crouch, which is the "small rise and settle"
+ * of somebody who has been at a desk for four hours. Doing it here means the IK
+ * straightens his legs under him and his feet stay planted, exactly as the 'reach'
+ * pose does it; doing it afterwards would have lifted him off the floor.
+ */
+function applyFlairPelvis(rig: RobotRig, f: number, scale: number): void {
+  if (rig.kind !== 'droid') return;
+  const e = stretchE(f);
+  rig.bones.pelvis.position.y += 0.075 * e * scale;
+  // Positive pelvis.rotation.x is a forward lean (see the walk's own lean), so the
+  // arch through the back is negative.
+  rig.bones.pelvis.rotation.x -= 0.11 * e;
+}
+
+/**
+ * The other two robots' answer to `E`, from the waist up — and, for Biggy, from
+ * the boots up.
+ *
+ * Michele, 25 Sep 2026: *"Voxxy jumps, Biggy rolls, Droid? Stretches? Not needed
+ * for gameplay."* Neither of these moves the robot: the sim's flourish writes a
+ * clock and nothing else (`partyTrick`, `src/sim/bot.ts`), and everything here is
+ * a bone rotation about the body's own axis.
+ *
+ * **Biggy rocks, he does not travel.** The read the model sheet gives us is one
+ * thing — a huge round gut with a tin lid on it — so his roll is that ball going
+ * over its own edge and coming back, a turn and a half of it, with the stubby arms
+ * trailing a beat behind the body and the lid trying to stay level. It is applied
+ * AFTER the IK rather than before, because the whole robot tips as one piece: a
+ * roll fed to the legs first would be a man standing still and swaying his hips,
+ * which is what a weeble is not. The pivot is moved down to the floor between his
+ * boots (that is the `standH` pair of terms), and the rise on `|sin|` is what
+ * tipping a wide flat base up onto its edge actually costs you — it also keeps
+ * the low boot from going through the floor at the top of each rock.
+ */
+function applyFlairBody(rig: RobotRig, st: GaitState, f: number, standH: number): void {
+  const b = rig.bones;
+  if (rig.kind === 'droid') {
+    const e = stretchE(f);
+    for (const side of [1, -1] as const) {
+      const L = side > 0 ? 'L' : 'R';
+      // Negative on a shoulder lifts the arm forward and up; both go, and they go
+      // OUT as well, because the long arms are what makes this Droid and not a
+      // generic humanoid saluting.
+      b[`shoulder${L}`].rotation.x -= 2.5 * e;
+      b[`shoulder${L}`].rotation.z += side * 0.34 * e;
+      b[`upperArm${L}`].rotation.x -= 0.18 * e;
+      // The forearms fold back a little at the top: hands over the crown, not a
+      // pair of flagpoles.
+      b[`forearm${L}`].rotation.x += 0.4 * e;
+      // Up on the toes, like the 'reach' pose.
+      b[`foot${L}`].rotation.x += 0.22 * e;
+    }
+    b.torso.rotation.x -= 0.24 * e;
+    b.neck.rotation.x -= 0.12 * e;
+    b.head.rotation.x -= 0.26 * e;
+    return;
+  }
+  if (rig.kind !== 'biggy') return;
+
+  const roll = rollRad(f);
+  const s = Math.sin(roll);
+  const c = Math.cos(roll);
+  const pelvis = b.pelvis;
+  pelvis.rotation.z += roll;
+  pelvis.position.x -= standH * s;
+  pelvis.position.y += standH * (c - 1) + Math.abs(st.footRest[0].x * s);
+  for (const L of ['L', 'R'] as const) {
+    // The body has already taken the arms round with it; this takes them back past
+    // neutral, so they swing counter to the gut instead of riding on it.
+    b[`shoulder${L}`].rotation.z -= 1.4 * roll;
+    b[`upperArm${L}`].rotation.z -= 0.25 * roll;
+  }
+  // The lid tries to stay level, and fails by about half.
+  b.head.rotation.z -= 0.45 * roll;
+  b.torso.rotation.z -= 0.12 * roll;
+  // Nothing is standing on anything: no footstep, no scuff (`footContact`).
+  st.contact[0] = false;
+  st.contact[1] = false;
 }
 
 /* ------------------------------------------------------------------ poses */

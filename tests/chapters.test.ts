@@ -27,6 +27,9 @@ import { describe, expect, it } from 'vitest';
 import {
   CABLE_MAX,
   CRATE_DELIVERY,
+  CY0,
+  CY1,
+  F1,
   CRATE_STACK_LIMIT,
   DEFS,
   DT_MAX,
@@ -37,10 +40,9 @@ import {
   JAMMED_DOOR_SPEED,
   R,
   ROLLER_DOOR_SPEED,
+  nicheMouth,
   roomDoor,
-  circleRect,
   createGame,
-  type Bot,
   type DebugGame,
   type ExpoState,
   type KeynoteState,
@@ -58,12 +60,6 @@ const SEED = 20260930;
 /** Headless: no chapter cards, so `update` never waits on a keypress. */
 const mk = (chapter: number): DebugGame => createGame({ seed: SEED, chapter, cards: false });
 
-const bot = (g: DebugGame, kind: RobotKind): Bot => {
-  const b = g.snapshot().bots.find((o) => o.kind === kind);
-  if (!b) throw new Error(`no ${kind}`);
-  return b;
-};
-
 function steps(g: DebugGame, n: number): void {
   for (let i = 0; i < n; i++) g.update(DT_MAX);
 }
@@ -77,150 +73,8 @@ function until(g: DebugGame, done: () => boolean, budget = 600): boolean {
   return done();
 }
 
-/* --------------------------------------------------------------- a test pilot
- *
- * The prototype's Playwright run held arrow keys down along a route. A headless
- * test has no browser to hold keys in, so this is the same thing: an eight-way
- * stick aimed at the next waypoint, and a grid router that only ever proposes
- * waypoints the robot can actually walk to — including under the sponsor tables
- * that Voxxy, and only Voxxy, fits beneath.
- */
+import { bot, driveTo, walkTo } from './pilot';
 
-const GRID = 10;
-
-function passable(walls: Wall[], b: Bot, x: number, y: number): boolean {
-  const c = { x, y, r: b.r + 1 };
-  for (const w of walls) {
-    if (w.skipFor && w.skipFor(b)) continue;
-    if (circleRect(c, w)) return false;
-  }
-  return true;
-}
-
-/** Eight-way A* on a `GRID`-pixel lattice, no corner cutting. */
-function findPath(g: DebugGame, kind: RobotKind, target: Vec2): Vec2[] {
-  const b = bot(g, kind);
-  const walls = g.debug.walls();
-  const free = new Map<number, boolean>();
-  const key = (ix: number, iy: number): number => iy * 1000 + ix;
-  const ok = (ix: number, iy: number): boolean => {
-    if (ix < 0 || iy < 0 || ix * GRID > 1900 || iy * GRID > 700) return false;
-    const k = key(ix, iy);
-    let v = free.get(k);
-    if (v === undefined) {
-      v = passable(walls, b, ix * GRID, iy * GRID);
-      free.set(k, v);
-    }
-    return v;
-  };
-
-  const sx = Math.round(b.x / GRID);
-  const sy = Math.round(b.y / GRID);
-  const gx = Math.round(target.x / GRID);
-  const gy = Math.round(target.y / GRID);
-  const h = (ix: number, iy: number): number => {
-    const dx = Math.abs(ix - gx);
-    const dy = Math.abs(iy - gy);
-    return Math.max(dx, dy) + (Math.SQRT2 - 1) * Math.min(dx, dy);
-  };
-
-  const gScore = new Map<number, number>();
-  const came = new Map<number, number>();
-  const open: Array<{ k: number; ix: number; iy: number; f: number }> = [];
-  gScore.set(key(sx, sy), 0);
-  open.push({ k: key(sx, sy), ix: sx, iy: sy, f: h(sx, sy) });
-
-  const DIRS: Array<[number, number]> = [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-    [1, 1],
-    [1, -1],
-    [-1, 1],
-    [-1, -1],
-  ];
-
-  let goalKey = -1;
-  while (open.length) {
-    let bi = 0;
-    for (let i = 1; i < open.length; i++) if (open[i].f < open[bi].f) bi = i;
-    const cur = open.splice(bi, 1)[0];
-    if (cur.ix === gx && cur.iy === gy) {
-      goalKey = cur.k;
-      break;
-    }
-    const gc = gScore.get(cur.k) ?? Infinity;
-    for (const [dx, dy] of DIRS) {
-      const nx = cur.ix + dx;
-      const ny = cur.iy + dy;
-      if (!ok(nx, ny)) continue;
-      // No slipping through the diagonal gap between two wall corners.
-      if (dx && dy && (!ok(cur.ix + dx, cur.iy) || !ok(cur.ix, cur.iy + dy))) continue;
-      const step = dx && dy ? Math.SQRT2 : 1;
-      const k = key(nx, ny);
-      if (gc + step >= (gScore.get(k) ?? Infinity)) continue;
-      gScore.set(k, gc + step);
-      came.set(k, cur.k);
-      open.push({ k, ix: nx, iy: ny, f: gc + step + h(nx, ny) });
-    }
-  }
-  if (goalKey < 0) return [];
-
-  const back: Vec2[] = [];
-  let k: number | undefined = goalKey;
-  while (k !== undefined) {
-    back.push({ x: (k % 1000) * GRID, y: Math.floor(k / 1000) * GRID });
-    k = came.get(k);
-  }
-  back.reverse();
-  // Collapse straight runs: the pilot only needs the corners.
-  const pts: Vec2[] = [];
-  for (let i = 0; i < back.length; i++) {
-    const p = back[i];
-    const prev = back[i - 1];
-    const next = back[i + 1];
-    if (!prev || !next) {
-      pts.push(p);
-      continue;
-    }
-    if ((p.x - prev.x) * (next.y - p.y) !== (p.y - prev.y) * (next.x - p.x)) pts.push(p);
-  }
-  pts.push(target);
-  return pts;
-}
-
-/** Hold the stick at the next waypoint until it is reached, or give up. */
-function driveTo(g: DebugGame, kind: RobotKind, pts: Vec2[], tol = 7, budget = 400): boolean {
-  g.debug.select(kind);
-  for (const p of pts) {
-    let arrived = false;
-    for (let i = 0; i < budget && !arrived; i++) {
-      const b = bot(g, kind);
-      const dx = p.x - b.x;
-      const dy = p.y - b.y;
-      if (Math.hypot(dx, dy) <= tol) {
-        arrived = true;
-        break;
-      }
-      g.setStick(Math.abs(dx) > 3 ? Math.sign(dx) : 0, Math.abs(dy) > 3 ? Math.sign(dy) : 0);
-      g.update(DT_MAX);
-    }
-    if (!arrived) {
-      g.setStick(0, 0);
-      return false;
-    }
-  }
-  g.setStick(0, 0);
-  return true;
-}
-
-/** Walk a robot to a point, routing round whatever it cannot walk through. */
-function walkTo(g: DebugGame, kind: RobotKind, target: Vec2, tol = 7): boolean {
-  const pts = findPath(g, kind, target);
-  if (!pts.length) return false;
-  return driveTo(g, kind, pts, tol);
-}
 
 /* --------------------------------------------- the chapter-2 network closet
  *
@@ -234,12 +88,14 @@ function walkTo(g: DebugGame, kind: RobotKind, target: Vec2, tol = 7): boolean {
 
 /** The cabinet's south face, from `GF` — the same point `ch2-expo.ts` measures from. */
 const HUB: Vec2 = { x: GF.cabinet.x + GF.cabinet.w / 2, y: GF.cabinet.y + GF.cabinet.h + 2 };
-/** The Cloudy Bank booth's south face, where the sponsor banner hangs. */
-const POSTER: Vec2 = (() => {
-  const bo = GF.booths.find((o) => o.name === 'Cloudy Bank');
-  if (!bo) throw new Error('no Cloudy Bank booth');
-  return { x: bo.x + bo.w / 2, y: bo.y + bo.h + 2 };
-})();
+/**
+ * The spray tag on the hall's top wall — Michele's placement, 25 Sep 2026, in
+ * place of the small print on the Cloudy Bank booth's banner. Same point
+ * `ch2-expo.ts` measures from.
+ */
+const POSTER: Vec2 = { x: 400, y: GF.hall.y + 8 };
+/** The three breakers, on the technical room's high panel. */
+const PANEL: Vec2 = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
 
 const expo = (g: DebugGame): ExpoState => g.debug.chapter() as ExpoState;
 
@@ -253,6 +109,21 @@ function openCabinet(g: DebugGame): boolean {
   g.debug.place('biggy', HUB.x, HUB.y + 30);
   g.key('KeyE');
   return expo(g).router.cabinetOpen;
+}
+
+/**
+ * LINK 1 OF THE CHAIN: Droid throws the three breakers.
+ *
+ * It is a helper rather than three lines at every call site because after
+ * Michele's 25 Sep note the terminal is DEAD without it, so every choreography
+ * that ends at the terminal has to come through here first. That is the chain,
+ * and the fact that this helper is now unavoidable is the test of it.
+ */
+function powerUp(g: DebugGame): boolean {
+  g.debug.select('droid');
+  g.debug.place('droid', PANEL.x + 20, PANEL.y + 30);
+  for (let i = 0; i < 3; i++) g.key('KeyE');
+  return expo(g).power;
 }
 
 /** Type a string at the terminal, one `KeyX` at a time, exactly as the shell does. */
@@ -359,9 +230,48 @@ describe('chapter 1 — night', () => {
 
     for (const d of code) g.key(`Digit${d}`);
     expect((g.debug.chapter() as NightState).fireOpen).toBe(true);
-    expect(g.snapshot().phase).toBe('cut');
+    /*
+     * The chapter HOLDS the corridor while the leaves swing, and hands over after.
+     *
+     * It used to call `startCut` on this frame, and `CUT_FADE` is 0.35 s: the
+     * screen was black before the door had moved. Michele asked for an animation
+     * when it opens, and an animation nobody watches is not one — so the phase is
+     * still `play` here, the swing runs in front of the player, and the cutscene
+     * follows it (`FIRE_SWING_TIME` + `FIRE_CUT_DELAY` in `ch1-night.ts`).
+     */
+    expect(g.snapshot().phase).toBe('play');
+    expect((g.debug.chapter() as NightState).fireSwing).toBe(0);
+    expect(until(g, () => (g.debug.chapter() as NightState).fireSwing >= 1, 120)).toBe(true);
+    expect(g.snapshot().phase).toBe('play');
+    expect(until(g, () => g.snapshot().phase === 'cut', 120)).toBe(true);
 
-    expect(until(g, () => g.snapshot().chapter === 2, 500)).toBe(true);
+    /*
+     * ...and the descent ends ON the stairs, which stopped being free when the
+     * staircase moved onto the plan's pixels (`F1.nicheBot`, 24 Sep 2026).
+     *
+     * The waypoint used to be `nicheBot.x + 20, nicheBot.y + 30`, written for a
+     * 57-deep pocket cut into the wall. The plan's flight is 17.7 deep and stands
+     * IN the corridor, so +30 is 12 px through the corridor wall and this chapter
+     * would have ended with all three robots inside it. The last frame of the walk
+     * is captured rather than the first, because the whole point is where they
+     * stop.
+     */
+    let parked: Array<{ kind: string; x: number; y: number }> = [];
+    expect(
+      until(g, () => {
+        const s = g.snapshot();
+        if (s.phase === 'cut') parked = s.bots.map((b) => ({ kind: b.kind, x: b.x, y: b.y }));
+        return s.chapter === 2;
+      }, 500),
+    ).toBe(true);
+    expect(parked).toHaveLength(3);
+    const mouth = nicheMouth(F1.nicheBot);
+    for (const b of parked) {
+      expect(b.y, `${b.kind} ends outside the corridor`).toBeGreaterThan(CY0);
+      expect(b.y, `${b.kind} ends through the corridor wall`).toBeLessThan(CY1);
+      expect(b.x, `${b.kind} misses the stair mouth`).toBeGreaterThan(mouth.x - 2);
+      expect(b.x, `${b.kind} misses the stair mouth`).toBeLessThan(mouth.x + mouth.w + 2);
+    }
     expect(g.snapshot().floor).toBe('down');
   });
 
@@ -571,6 +481,7 @@ describe('chapter 2 — expo', () => {
     // Voxxy and Droid, right up against the door, pressing E: it does not move.
     for (const kind of ['voxxy', 'droid'] as const) {
       const g = mk(2);
+      powerUp(g);
       g.debug.select(kind);
       g.debug.place(kind, HUB.x, HUB.y + 20);
       g.key('KeyE');
@@ -616,6 +527,7 @@ describe('chapter 2 — expo', () => {
    */
   it('takes the WiFi password typed at the terminal, and forgives a wrong key and a slip', () => {
     const g = mk(2);
+    expect(powerUp(g)).toBe(true);
     expect(openCabinet(g)).toBe(true);
 
     // Biggy is standing right at it and cannot type a word of it.
@@ -650,7 +562,7 @@ describe('chapter 2 — expo', () => {
     expect(expo(g).router.typed).toBe('DE');
 
     // The live readout shows what is in and what is left, so it is never a guess.
-    expect(g.snapshot().progress).toContain('WIFI PASSWORD');
+    expect(g.snapshot().progress).toContain('AUTHORISATION');
     expect(g.snapshot().progress).toContain('(2/13)');
 
     typeAt(g, 'VOXXFOREVER');
@@ -670,6 +582,7 @@ describe('chapter 2 — expo', () => {
   it('gives the keyboard to the terminal only while its prompt is open', () => {
     const g = mk(2);
     expect(g.snapshot().typing).toBe(false);
+    expect(powerUp(g)).toBe(true);
     expect(openCabinet(g)).toBe(true);
 
     // No prompt: R is restart, and a restart drops the whole run back to chapter 1.
@@ -677,6 +590,7 @@ describe('chapter 2 — expo', () => {
     expect(g.snapshot().chapter).toBe(1);
 
     g.startChapter(2);
+    expect(powerUp(g)).toBe(true);
     expect(openCabinet(g)).toBe(true);
     g.debug.select('voxxy');
     g.debug.place('voxxy', HUB.x, HUB.y + 20);
@@ -708,7 +622,7 @@ describe('chapter 2 — expo', () => {
    * The skirt each robot throws round its own feet is excluded on purpose, or
    * standing next to the banner in the dark would BE reading it.
    */
-  it("reads the poster under Voxxy's narrow beam, and not by standing near it", () => {
+  it("reads the spray tag under Voxxy's narrow beam, and not by standing near it", () => {
     const park = (g: DebugGame, kinds: RobotKind[]): void => {
       kinds.forEach((k, i) => g.debug.place(k, 560 + 30 * i, 660));
     };
@@ -759,6 +673,7 @@ describe('chapter 2 — expo', () => {
    */
   it('lets Droid read the label inside the lid only from Biggy\'s shoulders', () => {
     const g = mk(2);
+    expect(powerUp(g)).toBe(true);
     expect(openCabinet(g)).toBe(true);
 
     // Droid on his own feet at the cabinet gets the terminal, never the label.
@@ -897,7 +812,8 @@ describe('chapter 2 — expo', () => {
     steps_(noRouter, 2);
     expect(noRouter.snapshot().chapter).toBe(2);
 
-    // Now the router: Biggy opens the cabinet, Voxxy types the password.
+    // Now the router: Biggy opens the cabinet, Voxxy types the password. The
+    // breakers went in at the top of this test, so the terminal is awake.
     expect(openCabinet(g)).toBe(true);
     expect(expo(g).printerOnline, 'an open cabinet alone brought the printer up').toBe(false);
     g.debug.select('voxxy');
@@ -916,10 +832,19 @@ describe('chapter 2 — expo', () => {
     const rack = { x: GF.rack.x + 10, y: GF.rack.y + 12 };
     const printer = { x: GF.printer.x + 10, y: GF.printer.y + 6 };
 
-    // 1. the router cabinet and its terminal, everyone still in the technical room.
-    //    Played the long way round on purpose — Biggy's shoulder, then Droid up on
-    //    Biggy for the label, then Droid typing it in — so the end-to-end run
-    //    exercises the route with the most moving parts rather than the shortest.
+    /*
+     * 1. THE CHAIN, in the order Michele designed it: the breakers give energy,
+     *    Biggy opens the cabinet, the unit inside wakes up, and only then is there
+     *    a terminal to type at. Played the long way round on purpose — Droid up on
+     *    Biggy for the label, then Droid typing it in — so the end-to-end run
+     *    exercises the route with the most moving parts rather than the shortest.
+     */
+    g.debug.select('droid');
+    g.debug.place('droid', panel.x + 20, panel.y + 30);
+    for (let i = 0; i < 3; i++) g.key('KeyE');
+    expect(expo(g).power).toBe(true);
+    expect(expo(g).hallLit, 'the breakers lit the hall on their own').toBe(false);
+
     expect(openCabinet(g)).toBe(true);
     g.debug.place('biggy', 300, 640);
     g.debug.place('droid', 284, 640);
@@ -937,12 +862,8 @@ describe('chapter 2 — expo', () => {
     g.debug.place('droid', HUB.x, HUB.y + 20);
     g.key('KeyE');
     expect(expo(g).router.online).toBe(true);
-
-    // 2. the breakers
-    g.debug.select('droid');
-    g.debug.place('droid', panel.x + 20, panel.y + 30);
-    for (let i = 0; i < 3; i++) g.key('KeyE');
-    expect(expo(g).power).toBe(true);
+    // ...and THAT is what lights the hall.
+    expect(expo(g).hallLit).toBe(true);
 
     // 3. the cable
     expect(walkTo(g, 'voxxy', { x: rack.x, y: rack.y - 24 })).toBe(true);
@@ -1118,10 +1039,17 @@ describe('chapter 3 — breakfast', () => {
     expect(breakfast().beer.oom).toBe(0);
     steps(g, 2);
 
-    // All three delivered: the gate goes up and the cutscene runs.
+    // All three delivered: Stephan walks the barrier back, and the chapter STAYS on
+    // the hall while he does it — `GATE_SWING_TIME + GATE_CUT_DELAY` in
+    // `ch3-breakfast.ts`, the same hold chapter 1 keeps for its fire door. Starting
+    // the cutscene on this frame would take the screen to black in `CUT_FADE`
+    // (0.35 s) and the animation would exist with nobody able to see it.
     expect(breakfast().gateOpen).toBe(true);
     expect(gateWall()).toBeUndefined();
-    expect(g.snapshot().phase).toBe('cut');
+    expect(g.snapshot().phase).toBe('play');
+    expect(until(g, () => g.snapshot().phase === 'cut', 200)).toBe(true);
+    // ...and by the time it hands over, the barrier has finished swinging.
+    expect(breakfast().gateSwing).toBe(1);
     expect(until(g, () => g.snapshot().chapter === 4, 600)).toBe(true);
     expect(g.snapshot().floor).toBe('up');
   });
@@ -1326,10 +1254,13 @@ describe('chapter 3 — breakfast', () => {
     for (const p of crowd) expect(p.x).toBeLessThan(edge);
     expect(new Set(crowd.map((p) => Math.round(p.y / 70))).size).toBeGreaterThan(3);
     // 5,600 simulated frames of a 36-body crowd is a wall-clock budget, not a
-    // behaviour: it runs in a couple of seconds on a laptop and takes six in a
-    // container, and vitest's default 5 s cut it off there long before anything
-    // in this file was about beer crates.
-  }, 30000);
+    // behaviour, and this test is the most expensive in the suite: 13.1 s on an
+    // idle box and 38.9 s with four agents on it. The per-test 30 000 that used to
+    // sit here was the whole bug — it was written when the global was vitest's 5 s
+    // default, and once the global went to 30 s it stopped raising anything and
+    // started PINNING this test to 30 s while the rest of the suite got more. The
+    // budget belongs in `vitest.config.ts`, once, for everything.
+  });
 
   /* ----------------------------------------------------- the booth games
    *
