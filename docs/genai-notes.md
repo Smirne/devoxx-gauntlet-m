@@ -2052,3 +2052,158 @@ and the projection is computed from the recorded position rather than the reques
 projection itself is derived from `camera.ts` — azimuth, elevation, the focus rect clamped to the
 view, the reserved HUD band — and checked on every frame against the clue marker's own pixel
 centroid: **1.0 to 1.2 px** of error.
+
+## 2026-09-24 — the robots themselves: Biggy's lower body, a wear bug, frenetic arms, a jump pose (agent)
+
+Michele, tonight: *"Polishing the graphic, making people and stands real etc."* Two other agents had
+the venue stands and the crowd; this half was `src/render/robots/` and nothing else. Everything
+below is off `docs/playtest-notes.md`'s "Looks — deferred by him" and "Structural" tables, and every
+number in it is measured rather than asserted. **`src/sim` was not touched.**
+
+### 1. `weather()` was clamping per channel, so rust on a dark panel came out pale
+
+The function writes vertex colour as a *ratio* against the material's own colour and clamped each
+channel at 6 independently. Clamping channels one at a time throws the tint's **hue** away — the
+channel carrying the rust saturates first — so what came out on a near-black panel was a brightened
+copy of the base colour: the "white flakes" the structural table had been carrying.
+
+Measured before the change, on the brightest vertex of every mesh, as a gain over that mesh's own
+panel luminance:
+
+| robot | meshes over 1.05x | over 2.5x | 4x or more | peak | vertices pinned at the channel clamp |
+| --- | --- | --- | --- | --- | --- |
+| Voxxy | 0 | 0 | 0 | 1.00x | 0 |
+| Droid | 82 | 28 | 15 | 6.00x | 53, in 11 meshes |
+| Biggy | 41 | 7 | 0 | 3.33x | 18, in 3 meshes |
+
+So the backlog's guess — *"Voxxy and Droid almost certainly have it"* — is **half right, and the
+wrong half was the one everyone had been looking at.** Droid has it badly; Voxxy does not have it at
+all, because every one of her wear calls lands on orange or white.
+
+Fixed in the function, not with a third local workaround: cap the patch's linear luminance at 2x the
+panel's own and scale all three channels by the same factor, so the tint keeps its hue exactly and
+only its brightness is held down. After: peak 2.00x on both, nothing pinned, and every mid-tone
+panel (all under 1.5x) untouched. `tests/robot-motion-and-wear.test.ts` asserts both halves.
+
+Biggy's local `darkWear` stays and is re-documented as what it now is: an art choice (rubber and
+work gloves collect soot, not the rust that eats painted steel), not a patch over this bug.
+
+### 2. Biggy's lower body — *"a bit better, but still squarish"*
+
+Three separate things, and only one of them was the one in the note.
+
+**The belt plate** was a `roundedBox` pinned at a constant z. Fine while the trousers were a box; on
+a sweep that runs from 0.42 m of radius at the waist to 0.30 m at the hem, its flat back face stood
+**70 mm off the shell at its bottom edge**. It is a `revolvePatch` now — new in `rig.ts`,
+`ovalPatch`'s sibling for a lathe — generated ON the profile, so it cannot have that failure by
+construction.
+
+**The sawtooth where the undercut meets the right leg** is not the undercut and not one leg. Found
+by bisection: a temporary global handle on Biggy's root, then hiding one mesh at a time in a live
+headless build and shooting each. `bellows()` opens on a *waist*, so the concertina's top ring is
+0.089 while the plain cylinder above it ended at 0.104 — a 15 mm annulus of that cylinder's own
+**downward-facing** cap showing all round the top of each leg, unlit, with a 20-gon on one edge and
+a 28-gon on the other. The dark band's width beat between the two facet counts and drew a row of
+black triangles. The cylinder now closes on the bellows' own radius at the bellows' own segment
+count.
+
+**The proportions were inverted**, which is most of why it read as a grey mass with a skirt under
+it. On the FRONT VIEW panel at 283 px/m: gut lip 0.417 m, orange from 0.353, hem 0.223 — a **64 mm**
+dark band over a **130 mm** orange one, and a block that narrows 5% from waist to hem. Ours was
+**137 over 85**, with a hem at 0.68 of the waist. Two causes: the undercut's 60 mm skirt was 5 mm
+*wider* than the trousers, so it stood in front of the orange rather than behind it; and the trouser
+profile took a third of the width out over 0.145 m. After: 77 over 145, and a barrel with a rolled
+hem.
+
+The hem at the sheet's width also fixed something nobody had connected to it: the legs used to leave
+through the *side* of the sweep and through the flat side faces of the old dark slab, at
+x = ±0.275 against legs at ±0.255. They now leave through a flat bottom cap — one circle at one
+height per leg, nothing to alias.
+
+His widest point about his own axis is **0.7220 m at y = 0.326, before and after to four decimals**,
+so `DEFS.biggy.r` is untouched. Cost: +1 mesh and +1544 triangles on Biggy alone.
+
+### 3. *"Voxxy's arms are frenetic at speed"* — and the tanh behind it went too
+
+Measured off the bone: her shoulder was running at **30.3 rad/s, 1735 degrees per second**, because
+0.85 rad of swing has to be covered inside a 0.179 s cycle. The cadence was already bounded and the
+swing was not. Arms now carry the limit an actuator has — a peak angular rate, 12 rad/s — and
+because it is a *rate* it binds only on the robot that was breaking it: Voxxy 30.3 → 12.0 at
+5.8 m/s, **Droid 3.4 and Biggy 6.4 untouched**, and Voxxy's own walk at 1 m/s untouched at 9.3.
+
+The brief asked whether `gaitSpeed`'s `tanh` compression still does anything and to delete it if not.
+Measured with and without, driving each rig at a steady speed for 5 s at 480 Hz:
+
+| case | leg cadence | arm peak rate | knee fold | stance foot travel |
+| --- | --- | --- | --- | --- |
+| Voxxy 5.8 m/s, on | 5.60 Hz | 30.3 rad/s | 2.36 rad | **2.69 m/s** |
+| Voxxy 5.8 m/s, off | 5.60 Hz | 30.3 rad/s | 2.35 rad | **5.80 m/s** |
+| Biggy 4.7, on / off | 5.00 / 5.60 Hz | 5.7 / 6.4 | 1.86 / 1.83 | 2.67 / 4.74 |
+| Droid 2.3, on / off | 2.00 / 2.60 Hz | 2.7 / 3.4 | 1.31 / 1.30 | 1.94 / 2.37 |
+
+**It was not preventing the thing it existed to prevent.** At Voxxy's top speed the cadence, the arm
+rate and the knee angle are identical either way, because `MAX_STEP_FREQ` and the over-striding rule
+bind first and bind the same way. What it *was* doing is breaking the promise `gait.ts`'s own header
+makes: a planted stance foot travels backward at exactly the body's speed. With it, Voxxy's foot
+travelled at 2.69 m/s while she moved at 5.80 — she skated forward at 3.1 m/s, and so did the other
+two. Without it, foot travel equals body speed on all three. Deleted. One fewer fudge in a
+submission scored on physics realism.
+
+### 4. Voxxy's hop has a pose
+
+`updateRobot`'s options take an optional **`hop?: number`** — 0 on the ground, 0..1 across the
+airtime, i.e. exactly `hopPhase(bot)` from `src/sim/bot.ts`. It defaults to 0, so every existing call
+site is byte-identical (asserted). The pose is built from two shapes of that one number, so it is
+continuous at take-off and landing with no blend parameter to keep in step: knees up and heels back
+on the way up, the leg straightening and the toes coming up on the way down, **both long arms thrown
+up and out at the top** — the arms are the longest thing on her and the part of the sheet that makes
+her *her* — then swung forward to catch. The antenna nub is whipped by the same term. Contact is
+cleared for the whole arc, so `src/main.ts` stops firing footstep audio at a robot 30 cm off the
+floor. `src/render/scene.ts` still owns the height and was not edited — it is another agent's file
+this round.
+
+### 5. Droid on Biggy, and `boltRing`'s rivets
+
+*"Droid sitting on Biggy reads well only from some angles."* This game has one camera, so that means
+the one that matters, sometimes. Shot from it, the failure is specific: **nothing of his legs
+appeared outside Biggy's outline.** Hips rolled 0.58 and thighs 0.52 forward put both knees inside a
+dome 0.88 m across, so what the camera got was a torso and a head standing out of a ball with two
+blue flecks where his shins surfaced through the shell. The legs are posed to make a silhouette now
+— hips to 0.92 takes each knee past the dome's 0.44 m flank, the thigh comes further forward, the
+shin folds back hard so the foot tucks against the helmet rather than hanging into the gut below it
+— and both hands come down onto the crown instead of being held out sideways like a scarecrow.
+*Partly* fixed: his thighs still pass through the dome shell rather than over it, which is a
+`mountLift` question as much as a pose one.
+
+`boltRing`'s `aimFrom` is a sphere's normal. On Biggy's dome ring the helmet's own profile runs at
+dr/dy = −0.56, so the true normal stands **29 degrees** above horizontal while `aimFrom` pointed the
+rivets at **41**. New `aimSlope` takes the profile's dr/dy and is exact for any surface of
+revolution.
+
+### What was rejected, and why
+
+- **Deleting `gaitSpeed` outright.** It is the identity now, but `src/main.ts` derives footstep
+  audio from it and that file belongs to another agent this round. It stays as `max(0, mps)` with
+  the measurement written into its doc comment, and the note that the call site can inline it.
+- **A third local workaround for `weather()`.** The brief asked for the function to be fixed and it
+  was; Biggy's `darkWear` survives only because it turned out to be a defensible art choice.
+- **Promoting the other three helper sets into `rig.ts`.** `voxxy.ts` carries twelve of them —
+  `profileSampler`, `onRevolve`, `revolveLoop`, `revolveArc`, `seam`, `revolveStud`,
+  `ellipsoidMount`, `bandRing`, `revolveMount`, `uvPatch`, `squirclePatch`, `glossMaterial`. The
+  move is mechanical and would be a real reduction, but it is only allowed if it changes no
+  silhouette and that has to be proved frame by frame, which is a round of its own. `revolvePatch`
+  and `boltRing`'s `aimSlope` are the two pieces of it that this round's own work needed.
+- **Re-tuning anything in `src/sim`.** Nothing did. The frozen constants and the collision radii are
+  untouched, and Biggy's widest point is unchanged to four decimals.
+
+### One thing worth knowing for the next round
+
+**`revolvePatch`'s winding is silent when it is wrong.** The first cut of Biggy's belt plate and dark
+centre shipped completely invisible, and the build reported no errors: the index order was
+backwards, `computeVertexNormals` flipped the normals with it, and back-face culling threw both
+patches away. It cost a full build-and-shoot cycle to notice, on a machine where that is four
+minutes. The winding rule is now written out in the function.
+
+**The mount-pose change is in the `fix(biggy)` commit** rather than in the gait commit before it —
+it was made after the gait commit and swept up by the next `git add`. The commit message does not
+mention it; this entry is the record.
