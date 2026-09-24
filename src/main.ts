@@ -293,6 +293,23 @@ let lastBreak = 0;
 let lastFireSwing = 0;
 /** Last frame's rise on chapter 2's roller door, so the shutter plays once. */
 let lastRollerRise = 0;
+/**
+ * What chapter 1's keypad was showing last frame.
+ *
+ * `audio.ts` has carried a written, tuned `keypad` cue — with `semitones`, so the
+ * digits are not all one note — since the day it was added, and it had never been
+ * played: the one object in the game you type into answered in silence. The prop's
+ * `label` is `entered.padEnd(4, '_')`, so the digits are the label with the
+ * underscores taken off, and every edge below is a change in THAT string. The sim
+ * owns the code and the entry; nothing here decides anything.
+ */
+let lastEntered = '';
+/**
+ * A whole-tone ladder, one rung per digit, `4` at the base — chapter 1 accepts 4
+ * to 9 and nothing else, so those six are the ones that have to be told apart by
+ * ear. The others are mapped anyway rather than left to collapse onto one pitch.
+ */
+const KEY_SEMIS = [-8, -6, -4, -2, 0, 2, 4, 6, 8, 10];
 /** Last frame's swing on chapter 1's cinema-B door, so the maglock plays once. */
 let lastLockSwing = 0;
 /** Last frame's swing on chapter 2's router cabinet, so the hinges play once. */
@@ -341,6 +358,35 @@ function updateAudio(snap: GameSnapshot, dt: number): void {
   const rising = snap.props.find((p) => p.kind === 'roller')?.progress ?? 0;
   if (rising > 0 && lastRollerRise <= 0) audio.play('shutter');
   lastRollerRise = rising;
+
+  /*
+   * The keypad, one cue per keystroke.
+   *
+   * Three different things can happen to the entry and they have to sound
+   * different, because the player cannot see the object closely while driving:
+   * a digit lands (pitched off the digit itself), a digit is taken back, and a
+   * wrong code clears the whole entry — which is the only one that must not be
+   * mistakable for progress, so it answers low and twice.
+   */
+  const pad = snap.props.find((p) => p.kind === 'keypad');
+  const entered = (pad?.label ?? '').replace(/_/g, '');
+  if (entered.length > lastEntered.length) {
+    const digit = Number(entered[entered.length - 1]);
+    audio.play('keypad', { semitones: KEY_SEMIS[digit] ?? 0 });
+  } else if (entered.length < lastEntered.length) {
+    /*
+     * Backspace, or the whole entry cleared by a wrong code. `state` is still
+     * 'idle' either way, so the LENGTH is what tells them apart — and it is 3,
+     * not 4: `ch1-night.ts:861` tests the code and clears `entered` inside the
+     * same key press, so a wrong fourth digit never reaches a snapshot and the
+     * entry goes 3 to 0 in one frame. That is also why a rejected fourth digit
+     * has no keystroke cue of its own: the rejection is the answer to it.
+     */
+    const wrong = entered.length === 0 && lastEntered.length === 3;
+    audio.play('keypad', { semitones: -14, gain: 0.9 });
+    if (wrong) audio.play('keypad', { semitones: -17, gain: 0.9, delay: 0.11 });
+  }
+  lastEntered = entered;
 
   // Cinema B's magnetic lock, released from the projector panel. The prop is
   // published in BOTH states now — it used to stop existing the moment it opened,
@@ -414,6 +460,7 @@ function updateAudio(snap: GameSnapshot, dt: number): void {
     lastBreak = 0;
     lastFireSwing = 0;
     lastRollerRise = 0;
+    lastEntered = '';
     lastLockSwing = 0;
     lastCabinetSwing = 0;
     lastGateSwing = 0;
