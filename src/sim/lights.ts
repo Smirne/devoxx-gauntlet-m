@@ -328,8 +328,12 @@ export const litBy = (lights: LightSource[], kind: RobotKind, p: Vec2): boolean 
  * 5 px is 0.4 m, smaller than any robot. It does not make a clue findable from
  * somewhere you would not think to stand; it stops a solution failing because
  * the beam's edge fell a handspan short of a mathematical point.
+ *
+ * Raised to 10 px (0.8 m) on 24 Sep by Michele, playing the 3D build: a lamp
+ * visibly on the clue did not count ("I would be more generous with the light /
+ * hint match"). The 3D ring is drawn at exactly this radius.
  */
-export const CLUE_SPOT = 5;
+export const CLUE_SPOT = 10;
 
 /** The centre and four cardinal points of a clue's patch. */
 const clueSamples = (c: Vec2): Vec2[] => [

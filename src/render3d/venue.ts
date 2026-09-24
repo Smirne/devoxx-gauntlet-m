@@ -254,7 +254,11 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
 
   const win = foyerWindow();
   for (const w of walls) {
-    if (w.hidden || w.low || w.glass || w.kind) continue;
+    // Kinded walls are drawn by their own code below — except the ones that are
+    // just walls. Cinema E's exit alcove gained `kind: 'alcove'` in the sim and
+    // this line then skipped it: solid in the sim, invisible here, and the
+    // player walked into thin air at clue 4 (playtest, 24 Sep).
+    if (w.hidden || w.low || w.glass || (w.kind && w.kind !== 'alcove')) continue;
     const r = clipX(w);
     if (!r) continue;
     if (r.x === F1.foyer.x - T && r.y === F1.foyer.y && r.w === T) {
