@@ -37,6 +37,7 @@
 
 import './style.css';
 
+import { flairPhase } from './sim/bot';
 import { DT_MAX } from './sim/constants';
 import { createGame, type DebugGame } from './sim/game';
 import type { GameSnapshot, RobotKind } from './sim/types';
@@ -290,6 +291,10 @@ let lastPhase = '';
 let lastBreak = 0;
 /** Last frame's swing on chapter 1's fire door, so the opening plays once. */
 let lastFireSwing = 0;
+/** Last frame's rise on chapter 2's roller door, so the shutter plays once. */
+let lastRollerRise = 0;
+/** Last frame's flourish per robot, so a party trick's cue plays once. */
+const lastFlair: Record<RobotKind, number> = { voxxy: 0, droid: 0, biggy: 0 };
 /**
  * How many clues were solved last frame, and who was being driven, and who was
  * riding — the three edges below.
@@ -324,6 +329,29 @@ function updateAudio(snap: GameSnapshot, dt: number): void {
   const swinging = snap.props.find((p) => p.kind === 'firedoor')?.progress ?? 0;
   if (swinging > 0 && lastFireSwing <= 0) audio.play('door-open');
   lastFireSwing = swinging;
+
+  // The store's shutter, on the same edge. `shutter` carries its own impact, so the
+  // roller break does NOT also play `crash` — that stays on chapter 1's jammed door.
+  const rising = snap.props.find((p) => p.kind === 'roller')?.progress ?? 0;
+  if (rising > 0 && lastRollerRise <= 0) audio.play('shutter');
+  lastRollerRise = rising;
+
+  /*
+   * The party tricks on `E`.
+   *
+   * `flairPhase` is the sim's own clock (`src/sim/bot.ts`), the same number the rig
+   * poses from — so the cue rides the edge of a value the sim already owns and
+   * nothing here schedules an animation. Voxxy's hop is not in this list: she lands
+   * with a footstep, which is the right sound for a hop and is already playing.
+   */
+  for (const b of snap.bots) {
+    const f = flairPhase(b);
+    if (f > 0 && lastFlair[b.kind] <= 0) {
+      if (b.kind === 'biggy') audio.play('roll');
+      else if (b.kind === 'droid') audio.play('stretch');
+    }
+    lastFlair[b.kind] = f;
+  }
 
   /*
    * A hint solved: the digit's own cue, and — when it was the LAST one — the

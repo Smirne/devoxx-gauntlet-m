@@ -37,6 +37,7 @@ import { createCamera, type DioramaCamera } from './camera';
 import { FIRE_LEAF_H, FIRE_LEAF_T, fireDoorDraw } from './fire-door';
 import { createLightLayer, type LightLayer } from './lighting';
 import { createRobot, measureBounds, updateRobot, EXCLUDE_FROM_BOUNDS, type RobotRig } from './robots';
+import { ROLLER_SLATS, rollerDoorDraw } from './roller-door';
 import { BREAKER_H, BREAKER_Y, WALL_H, buildVenue, type Venue } from './venue';
 
 const KINDS: readonly RobotKind[] = ['voxxy', 'droid', 'biggy'];
@@ -226,6 +227,15 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
   terminal: { h: 0.34, color: 0x101820, tl: true, lift: 1.25, glow: 0x6b4406 },
   poster: { h: 0.62, color: 0xe9e4d6, tl: true, lift: 0.95, glow: 0x2a3a52 },
   printer: { h: 0.95, color: 0xb9bec6, tl: true },
+  /*
+   * The store's shutter is NOT drawn from this entry any more — `drawRollerDoor`
+   * poses it from `src/render/roller-door.ts`, which reads the chapter's own wall
+   * list. Drawn from here it was a 2.6 m box at the prop's rect whatever the state
+   * said, so a shutter Biggy had just gone through was still a slab across its own
+   * opening: Michele, with a screenshot of it through Biggy's chest, *"still a
+   * walkthrough object on the doorway"*. What survives is the colour, which
+   * `rollerMat` takes, and the kind staying classified in `tests/prop-geometry.ts`.
+   */
   roller: { h: 2.6, color: 0x7d8792, tl: true },
   gate: { h: 1.1, color: 0x2b3542, tl: true },
   lane: { h: 0.04, color: 0x6a5a2a, tl: true, flat: true },
@@ -660,6 +670,40 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   const venueFireLeaf = venue.floor1.getObjectByName('fire-leaf') ?? null;
   /** Height of the panic bar above the floor, metres. */
   const FIRE_BAR_Y = 1.02;
+
+  /* ------------------------------------------------- the roller door, chapter 2
+   *
+   * The same story as the fire door above, in the store's doorway: `ch2-expo.ts`
+   * removes the `roller` wall on the frame Biggy goes through it and goes on
+   * publishing the prop, and this drew a 2.6 m box there from the `PROPS` table —
+   * tinted dark red for `broken` and otherwise a slab through Biggy's chest.
+   *
+   * `src/render/roller-door.ts` poses the curtain from the chapter's live wall
+   * list and the sim's own rise clock, so a slat is only ever drawn across the
+   * opening while the sim has a wall there. Here there is only the geometry: one
+   * pivot per slat, so a torn slat can sit out of square in its guides.
+   */
+  const rollerDoor = new THREE.Group();
+  rollerDoor.name = 'roller-door-live';
+  // The one thing the `PROPS` entry is still good for: the shutter's own grey.
+  const rollerMat = new THREE.MeshStandardMaterial({
+    color: PROPS.roller.color,
+    roughness: 0.55,
+    metalness: 0.6,
+  });
+  const rollerSlats: THREE.Group[] = [];
+  for (let i = 0; i < ROLLER_SLATS; i++) {
+    const pivot = new THREE.Group();
+    const slat = new THREE.Mesh(boxGeo, rollerMat);
+    slat.castShadow = true;
+    slat.receiveShadow = true;
+    pivot.add(slat);
+    rollerDoor.add(pivot);
+    rollerSlats.push(pivot);
+  }
+  dressing.add(rollerDoor);
+  /** The venue's own static shutter, which chapter 2 takes over. See `ground.ts`. */
+  const venueRoller = venue.ground.getObjectByName('roller-door') ?? null;
 
   /**
    * The ground ring under the robot being driven. Nothing else in the frame says
@@ -1851,6 +1895,56 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     }
   }
 
+  /**
+   * Chapter 2's roller door: seven slats, down, tearing up, or jammed in the box.
+   *
+   * Every number here comes out of `rollerDoorDraw`, which reads the chapter's own
+   * walls and the sim's rise clock — so a slat is only ever drawn across the
+   * opening while the sim has a wall there, and the shutter cannot go back to
+   * being a slab across a doorway Biggy has already gone through. See
+   * `src/render/roller-door.ts`.
+   *
+   * The static shutter `buildVenue()` puts in this doorway is hidden for as long
+   * as a chapter publishes this prop: two doors in one doorway is exactly the
+   * duplicate the breaker panel and cinema E's screen were each caught doing, and
+   * here it was literally true — the venue's leaf and this one, both standing.
+   */
+  function drawRollerDoor(p: Prop, floorY: number, walls: GameSnapshot['walls']): void {
+    if (venueRoller) venueRoller.visible = false;
+    const d = rollerDoorDraw(p, walls);
+    rollerDoor.visible = true;
+
+    for (let i = 0; i < rollerSlats.length; i++) {
+      const s = d.slats[i];
+      const pivot = rollerSlats[i];
+      pivot.visible = s !== undefined;
+      if (!s) continue;
+      const wM = Math.max(m(s.rect.w), 0.04);
+      const dM = Math.max(m(s.rect.h), 0.04);
+      const base = surfaceY(floorY, s.rect.x);
+      pivot.position.set(m(s.rect.x) + wM / 2, base + s.lo + s.h / 2, m(s.rect.y) + dM / 2);
+      // Sim +y is world +z, so the door's width axis is Z and a slat bent out of
+      // its guides leans about it. See `RollerSlat.tilt`.
+      pivot.rotation.z = s.tilt;
+      const slat = pivot.children[0] as THREE.Mesh;
+      slat.scale.set(wM, s.h, dM);
+    }
+
+    /*
+     * Hot torn steel, cooling as it goes up and dead by the time it jams.
+     *
+     * The same licence `drawJammed` takes with the splintered leaf, and the same
+     * reason, only more so: chapter 2's hall is in a blackout and the robots' own
+     * lamps are at floor level, so a curtain travelling up past head height leaves
+     * the only light in the room. Without this the animation happens in the dark
+     * and the shutter reads as having simply vanished. It is off at `u = 0` and
+     * off again at `u = 1`, so nothing glows that is not moving.
+     */
+    const heat = Math.max(0, 1 - d.u * 1.6) * (d.u > 0 ? 1 : 0);
+    rollerMat.emissive.setRGB(heat * 0.22, heat * 0.085, heat * 0.025);
+    rollerMat.emissiveIntensity = heat > 0 ? 1 : 0;
+  }
+
   /** The swung door leaf and the lit interior, once the cam has let go. */
   function drawCabinet(p: Prop, floorY: number): void {
     if (p.state !== 'open') {
@@ -1907,11 +2001,14 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     cabinetOpen.visible = false;
     jammedLeaf.visible = false;
     fireDoor.visible = false;
+    rollerDoor.visible = false;
     // Handed back to the venue unless a chapter claims it again this frame.
     if (venueFireLeaf) venueFireLeaf.visible = true;
+    if (venueRoller) venueRoller.visible = true;
     for (const p of snap.props) {
       if (p.kind === 'cable') drawCable(p, floorY);
       else if (p.kind === 'firedoor') drawFireDoor(p, floorY, snap.walls);
+      else if (p.kind === 'roller') drawRollerDoor(p, floorY, snap.walls);
       else if (p.kind === 'jammed') drawJammed(p, floorY);
       else if (p.kind === 'breaker') drawBreaker(p, floorY);
       else if (p.kind === 'terminal') drawTerminal(p, floorY, snap.t);
