@@ -1604,3 +1604,28 @@ all given the brief's "a sharp 2D game beats a vague 3D one", and which GPU to j
 **Verification.** `tsc --noEmit` clean; `vite build` clean; the test suite at 275/282 with the same
 seven failures as the fork point (chapter 2 was mid-change there); headless runs with zero console
 errors; a scripted playtest of movement, strafing, robot switching and camera follow.
+
+**Later rounds, same night.** Each of these was found by looking at a frame, not by reading code:
+- Coloured blobs floating on every glossy surface were the one environment capture reflected as if
+  infinitely far away. The fix is the one shipped games use: box-projected (parallax-corrected)
+  reflections inside the corridor, and the capture's specular turned down outside it.
+- Two "magenta rectangles" chased through the foyer screenshots were the canonical camera standing
+  inside the glass kiosk, then inside a wall. A raycast from the pixel settled it. The camera moved;
+  no rendering code changed.
+- The robots were ~600 of the scene's ~900 meshes and every mesh is drawn up to six times a frame.
+  Merging static geometry per material, and each rig per bone, halved the draw calls; a pool of 14
+  real point lights serving the venue's 28 halved the forward shader's light loop. Both measured
+  with `renderer.info`, since frame times from a software renderer mean nothing.
+- The scripted finale run (type the real code at the keypad, watch the shutter, the walk-out and
+  the end card) was first invalidated by the dev server hot-reloading under it. Long checks now run
+  against a frozen production build.
+- ANGLE rejected three's empty shadow texture whenever cinema E's mirror bounces pushed a shadowed
+  lamp out of the fog's light list, and skipped the draw. Unused slots now get a real depth texture.
+- `pkill -f <script>` twice killed the agent's own shell, whose command line contained the pattern.
+  Noted so the next session matches on `^node <script>` instead.
+
+**Added on the way:** a title over a camera dolly with rack focus, photo-mode depth of field, the
+corridor carried past the fire door to both secondary staircases (the Devoxx half lit, carpeted as
+in the photos), the foyer back bar, lacquered wall panels, headlamp glare, and cinema E's screen as
+a real mirror, which makes the puzzle's key object explain itself. Six hero screenshots are in
+`docs/3d-poc/`. The playable build was republished to the same private artifact after each round.
