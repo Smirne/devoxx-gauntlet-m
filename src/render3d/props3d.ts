@@ -10,7 +10,7 @@
 
 import * as THREE from 'three';
 
-import { CY0, CY1 } from '../sim/geometry';
+import { CY0, CY1, floor1Walls } from '../sim/geometry';
 import { clueLitBy } from '../sim/lights';
 import { DEFS } from '../sim/constants';
 import type { Clue, GameSnapshot, Prop, RobotKind } from '../sim/types';
@@ -19,7 +19,7 @@ import { m } from '../sim/units';
 import type { Materials } from './materials';
 import { box } from './materials';
 import type { VolumePoint } from './pipeline';
-import { clueStencil, digitMask, emitter, exitSign, lcd, notice } from './signs';
+import { clueStencil, digitMask, emitter, exitSign, haloFrame, lcd, notice, parkStencil } from './signs';
 import { HEIGHTS, addSeats } from './venue';
 
 export interface Props3D {
@@ -217,7 +217,8 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
   let jamLast = 0;
   const shutterLift = { v: 0 };
   const panelLed = new THREE.MeshBasicMaterial({ color: 0xff0000, toneMapped: false });
-  const clueObjs = new Map<number, { root: THREE.Group; digit: THREE.Mesh; leds: THREE.Mesh[]; light: THREE.PointLight; mix: THREE.Color }>();
+  type ClueObj = { root: THREE.Group; digit: THREE.Mesh; leds: THREE.Mesh[]; light: THREE.PointLight; mix: THREE.Color; decal: THREE.Mesh; digitText: string; solved: boolean };
+  const clueObjs = new Map<number, ClueObj>();
   const stencil = clueStencil();
 
   function key(p: Prop): string {
@@ -268,10 +269,32 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
         lever.position.set(-0.2, 0, 0.1);
         const conduit = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 3.4, 8), mats.steel);
         conduit.position.set(0.3, -2.0, 0.02);
-        g.add(housing, led, lever, conduit);
+        // The panel has to read as the goal from across the corridor: a
+        // pulsing frame round it and a parking ring on the floor below, amber
+        // until it is thrown, then green (playtest: "I don't know where I
+        // should reach").
+        const halo = emitter(haloFrame(), 1.5, 1.2, 6, 0xffa020);
+        halo.position.z = 0.09;
+        const ring = new THREE.Mesh(
+          new THREE.PlaneGeometry(2.6, 2.6),
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.6, 0.12).multiplyScalar(1.4), alphaMap: parkStencil(), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, toneMapped: false }),
+        );
+        ring.rotation.x = -Math.PI / 2;
+        // Arrow toward the wall (north, -z): texture "up" is -z once laid flat.
+        ring.position.set(0, -3.35 + 0.013, m(p.y + (p.h ?? 24) / 2) - m(CY0) - 0.08);
+        g.add(housing, led, lever, conduit, halo, ring);
         g.userData.led = led;
         g.userData.lever = lever;
-        g.position.set(m(p.x + (p.w ?? 20) / 2), 3.35, m(CY0) + 0.08);
+        g.userData.halo = halo;
+        g.userData.ring = ring;
+        // On the corridor face of the column it shares a spot with: flat on
+        // the wall it sat inside the column and could not be seen at all.
+        let face = CY0;
+        for (const w of floor1Walls()) {
+          if (w.kind === 'corridor-column' && w.y < CY0 + 40 && w.x < p.x + (p.w ?? 20) && w.x + w.w > p.x) face = Math.max(face, w.y + w.h);
+        }
+        g.position.set(m(p.x + (p.w ?? 20) / 2), 3.35, m(face) + 0.08);
+        ring.position.z = Math.max(1.4, m(p.y + (p.h ?? 24) / 2) - m(face) - 0.08);
         return g;
       }
       case 'alcove': {
@@ -295,11 +318,15 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
       }
       case 'poster': {
         const top = p.y < MID;
-        const n = emitter(notice(p.label ?? ''), 0.42, 0.52, 1, 0xffffff, false);
+        const n = emitter(notice(p.label ?? ''), 0.6, 0.75, 1, 0xffffff, false);
         (n.material as THREE.MeshBasicMaterial).color.setScalar(0.08);
         // A sheet of paper is lit, not an emitter: swap for a lit material.
-        n.material = new THREE.MeshStandardMaterial({ map: (n.material as THREE.MeshBasicMaterial).map, roughness: 0.85, emissive: new THREE.Color(0.02, 0.02, 0.02) });
-        n.position.set(m(p.x + (p.w ?? 26) / 2) + 0.55, 1.55, top ? m(p.y + 9) + 0.07 : m(p.y + 3) - 0.07);
+        // A faint self-glow (map-driven) keeps it readable in the dark, like
+        // paper catching the corridor's spill.
+        const map = (n.material as THREE.MeshBasicMaterial).map;
+        n.material = new THREE.MeshStandardMaterial({ map, roughness: 0.85, emissive: new THREE.Color(0.35, 0.34, 0.3), emissiveMap: map });
+        n.userData.notice = true;
+        n.position.set(m(p.x + (p.w ?? 26) / 2) + 0.55, 1.45, top ? m(p.y + 9) + 0.07 : m(p.y + 3) - 0.07);
         n.rotation.y = top ? 0 : Math.PI;
         n.rotation.z = 0.04;
         return n;
@@ -326,7 +353,7 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
     addSeats(parent, mats, placements);
   }
 
-  function clueObj(c: Clue): { root: THREE.Group; digit: THREE.Mesh; leds: THREE.Mesh[]; light: THREE.PointLight; mix: THREE.Color } {
+  function clueObj(c: Clue): ClueObj {
     const root = new THREE.Group();
     root.position.set(m(c.x), 0, m(c.y));
     const decal = new THREE.Mesh(
@@ -360,7 +387,7 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
     light.position.y = 1.2;
     root.add(light);
     parent.add(root);
-    return { root, digit, leds, light, mix };
+    return { root, digit, leds, light, mix, decal, digitText: String(c.digit), solved: false };
   }
 
   const _cam = new THREE.Vector3();
@@ -407,10 +434,25 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
             const blink = done ? 1 : Math.sin(t * 5) > 0 ? 1 : 0.15;
             (led.material as THREE.MeshBasicMaterial).color.setRGB(done ? 0.1 : 1, done ? 1 : 0.05, 0.05).multiplyScalar(14 * blink);
             (o.userData.lever as THREE.Object3D).rotation.z = done ? -0.9 : 0;
+            const pulse = done ? 0.5 : 0.55 + 0.45 * Math.sin(t * 3);
+            const hm = (o.userData.halo as THREE.Mesh).material as THREE.MeshBasicMaterial;
+            hm.color.setRGB(done ? 0.15 : 1, done ? 1 : 0.62, done ? 0.35 : 0.12).multiplyScalar(6 * pulse);
+            const rm = (o.userData.ring as THREE.Mesh).material as THREE.MeshBasicMaterial;
+            rm.color.setRGB(done ? 0.15 : 1, done ? 1 : 0.6, done ? 0.35 : 0.12).multiplyScalar(done ? 0.4 : 0.9 + 0.6 * pulse);
             break;
           }
           case 'jammed': {
             const prog = p.progress ?? 0;
+            // The note taped to the door falls with it (it used to stay hanging
+            // in mid-air): re-parent it to the leaf, keeping where it is.
+            if (!o.userData.noteTaken) {
+              for (const other of byKey.values()) {
+                if (other.userData.notice && other.parent !== o && Math.hypot(other.position.x - o.position.x, other.position.z - o.position.z) < 2) {
+                  o.attach(other);
+                  o.userData.noteTaken = true;
+                }
+              }
+            }
             if (prog > 0 && jamLast <= 0) {
               sparks.burst(o.position.clone().setY(0.4), V(0, 0, 1));
             }
@@ -444,6 +486,15 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
           (led.material as THREE.MeshBasicMaterial).color.copy(base).multiplyScalar(c.found ? 10 : lit ? 16 : 0.6 + 0.3 * Math.sin(t * 3 + c.slot));
         }
         co.digit.visible = c.found;
+        if (c.found && !co.solved) {
+          co.solved = true;
+          const dm = co.decal.material as THREE.MeshStandardMaterial;
+          dm.alphaMap = clueStencil(co.digitText);
+          dm.color.copy(co.mix).lerp(new THREE.Color(1, 1, 1), 0.35);
+          dm.emissive.copy(co.mix);
+          dm.emissiveIntensity = 1.6;
+          dm.needsUpdate = true;
+        }
         if (c.found) {
           co.light.visible = true;
           // Billboard around Y toward the camera.
@@ -451,6 +502,11 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
           if (cam) {
             cam.getWorldPosition(_cam);
             co.digit.rotation.y = Math.atan2(_cam.x - co.root.position.x, _cam.z - co.root.position.z);
+            // The painted digit on the floor turns to read upright from the
+            // camera (it lay sideways from most angles).
+            const dx = co.root.position.x - _cam.x;
+            const dz = co.root.position.z - _cam.z;
+            co.decal.rotation.set(-Math.PI / 2, 0, Math.atan2(-dx, -dz));
           }
           co.digit.position.y = 1.35 + Math.sin(t * 1.5 + c.slot) * 0.05;
           volumePoints.push({ position: co.root.position.clone().setY(1.3), color: co.mix.clone().multiplyScalar(1.2), range: 3.5 });

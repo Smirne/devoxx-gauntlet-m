@@ -23,6 +23,7 @@ import type { Rect, RoomDef, Wall } from '../sim/types';
 import { m } from '../sim/units';
 
 import type { Materials } from './materials';
+import { freeSpans } from './details';
 import { box, withReflection, worldUV } from './materials';
 import type { VolumePoint } from './pipeline';
 import { mergeStatic, noMerge } from './merge';
@@ -60,6 +61,8 @@ export interface Venue3D {
   group: THREE.Group;
   /** Floors that reflect: hidden while the reflection is rendered. */
   reflectors: THREE.Object3D[];
+  /** Where the ad screen went (px span, side), for the sticker pass to avoid. */
+  adSpan: [number, number, 1 | -1];
   /** Solid geometry for the camera's collision rays. */
   colliders: THREE.Object3D[];
   /** Static emitters the fog should glow around. */
@@ -111,6 +114,17 @@ function quad(p0: THREE.Vector3, p1: THREE.Vector3, p2: THREE.Vector3, p3: THREE
 }
 
 const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z);
+
+/** Wall spans (px, side) already used by posters and signs. */
+export const SIGN_SPANS: ReadonlyArray<[number, number, 1 | -1]> = [
+  [189, 209, -1],
+  [529, 549, -1],
+  [320, 340, 1],
+  [520, 540, 1],
+  [88, 102, -1],
+  [253, 267, -1],
+  [553, 567, 1],
+];
 
 /**
  * A failing tube: steady almost all the time, then a short stutter every
@@ -194,6 +208,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   const group = new THREE.Group();
   group.name = 'venue-ch1';
   const reflectors: THREE.Object3D[] = [];
+  let adSpan: [number, number, 1 | -1] = [355, 383, -1];
   const colliders: THREE.Object3D[] = [];
   const volumePoints: VolumePoint[] = [];
   const volumeSpots: Array<{ light: THREE.SpotLight; fog: number }> = [];
@@ -647,8 +662,10 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     ]) g.add(mats.steel, box(0.1, H, 0.1, V(m(px), H / 2, m(pz))));
     // Counter inside, along the east glass.
     g.add(mats.counter, box(0.7, 1.0, kd - 0.6, V(cx + kw / 2 - 0.5, 0.5, cz)));
-    // Hatch frame on the west side (Voxxy-sized: 0.9 m tall).
-    g.add(mats.steel, box(0.12, 0.08, m(24), V(m(k.x), 0.9, m(k.y + 28))));
+    // Hatch frame on the west side, Voxxy-sized: she is 1.15 m tall, so the
+    // opening is 1.3 m (it was 0.9 and she walked through the frame).
+    const HATCH = 1.3;
+    g.add(mats.steel, box(0.12, 0.08, m(24), V(m(k.x), HATCH, m(k.y + 28))));
     const meshes = g.build(group);
     colliders.push(...meshes);
     // Glass walls from the sim's glass slabs.
@@ -670,11 +687,11 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     }
     // The hatch: a hinged flap above a Voxxy-sized gap (the sim's hidden wall).
     const flap = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.8, m(24) - 0.1), mats.glass);
-    flap.position.set(m(k.x) - 0.2, 1.3, m(k.y + 28));
+    flap.position.set(m(k.x) - 0.2, HATCH + 0.4, m(k.y + 28));
     flap.rotation.z = -0.5;
     group.add(flap);
-    const glassAbove = new THREE.Mesh(new THREE.BoxGeometry(0.02, H - 0.9, m(24)), mats.glass);
-    glassAbove.position.set(m(k.x), 0.9 + (H - 0.9) / 2, m(k.y + 28));
+    const glassAbove = new THREE.Mesh(new THREE.BoxGeometry(0.02, H - HATCH, m(24)), mats.glass);
+    glassAbove.position.set(m(k.x), HATCH + (H - HATCH) / 2, m(k.y + 28));
     group.add(glassAbove);
     // Popcorn machine: a glass cabinet on a red enamel stand, lit from inside,
     // heaped with popcorn (a bumpy instanced pile, not a light box).
@@ -773,15 +790,36 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   // A tall animated ad between cinemas B and C: the conference, the keynote
   // speaker still TBA, tomato soup.
   {
+    // In the widest stretch of wall clear of doors, Zaal panels, columns and
+    // the other signs (it stood on a column at x=369, then beside Zaal B).
+    const signs: Array<[number, number, 1 | -1]> = [...SIGN_SPANS];
+    let adX = 369;
+    let adSide: 1 | -1 = -1;
+    let best = 0;
+    for (const side of [-1, 1] as const) {
+      for (const [a, b] of freeSpans(side, signs)) {
+        const lo = Math.max(a, 120);
+        const hi = Math.min(b, 700);
+        if (hi - lo > best) {
+          best = hi - lo;
+          adX = (lo + hi) / 2;
+          adSide = side;
+        }
+      }
+    }
+    adSpan = [adX - 14, adX + 14, adSide];
+    const faceZ = adSide < 0 ? m(CY0) : m(CY1);
+    const out = adSide < 0 ? 1 : -1;
     const ad = adScreen(1.7, 3.3);
-    ad.position.set(m(369), 2.15, m(CY0) + 0.07);
+    ad.position.set(m(adX), 2.15, faceZ + out * 0.07);
+    if (adSide > 0) ad.rotation.y = Math.PI;
     group.add(ad);
     updaters.push((t) => (ad.userData.tick as (t: number) => void)(t));
     const frame = new THREE.Mesh(box(1.9, 3.5, 0.12, V(0, 0, 0)), mats.darkMetal);
-    frame.position.set(m(369), 2.15, m(CY0) + 0.0);
+    frame.position.set(m(adX), 2.15, faceZ);
     group.add(frame);
     const pl = new THREE.PointLight(0xb040ff, 26, 7, 2);
-    pl.position.set(m(369), 1.8, m(CY0) + 1.2);
+    pl.position.set(m(adX), 1.8, faceZ + out * 1.2);
     group.add(pl);
     volumePoints.push({ position: pl.position.clone(), color: new THREE.Color(0.6, 0.3, 1).multiplyScalar(0.8), range: 3 });
   }
@@ -814,6 +852,9 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
 
   // Holo plinths on the near side: the sim's knee-high column feet project a
   // turning hologram — light passes through it, as the sim says it does.
+  // Only every third plinth keeps a hologram, and none near the fire door
+  // (one stood in the shutter's face): a corridor full of them was noise.
+  let plinthN = 0;
   for (const w of walls) {
     if (w.kind !== 'corridor-plinth' || w.x >= X_END) continue;
     const cx = m(w.x + w.w / 2);
@@ -823,6 +864,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     plinth.receiveShadow = true;
     group.add(plinth);
     colliders.push(plinth);
+    if (plinthN++ % 3 !== 1 || Math.abs(w.x + w.w / 2 - F1.fireX) < 60) continue;
     const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.4, 0.04, 32), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.2, 0.9, 1).multiplyScalar(10), toneMapped: false }));
     lens.position.set(cx, 0.77, cz);
     group.add(lens);
@@ -866,7 +908,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
       // Point lights, not RectAreaLights: a 47 m x 0.12 m area light breaks the
       // LTC fit into sparkle noise on every lit surface (seen, 2026-09-23).
       for (let x = 6; x < xEnd; x += 14) {
-        const pl = new THREE.PointLight(colour, 16, 9, 2);
+        const pl = new THREE.PointLight(colour, 8, 9, 2);
         pl.position.set(x, HEIGHTS.cove - 0.25, z + (side < 0 ? 0.5 : -0.5));
         group.add(pl);
       }
@@ -885,7 +927,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
       if (i + 1 >= bays.length) continue;
       const x = m((bays[i] + bays[i + 1]) / 2);
       const z = (c0 + c1) / 2 + (i % 2 ? -1.2 : 1.2);
-      const spot = new THREE.SpotLight(0xdfe8ff, 380, 11, 0.42, 0.55, 2);
+      const spot = new THREE.SpotLight(0xdfe8ff, 220, 11, 0.42, 0.55, 2);
       spot.position.set(x, HEIGHTS.corridor - 0.08, z);
       spot.target.position.set(x, 0, z);
       group.add(spot, spot.target);
@@ -1123,6 +1165,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   return {
     group,
     reflectors,
+    adSpan,
     colliders,
     volumePoints,
     volumeSpots,

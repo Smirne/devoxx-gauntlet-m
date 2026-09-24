@@ -14,7 +14,7 @@
 
 import * as THREE from 'three';
 
-import { CY0, CY1, F1, roomDoor, rooms } from '../sim/geometry';
+import { CY0, CY1, F1, floor1Walls, roomDoor, rooms } from '../sim/geometry';
 import { m } from '../sim/units';
 
 import type { Materials } from './materials';
@@ -33,7 +33,14 @@ export function freeSpans(side: Side, taken: Array<[number, number, Side]> = [])
     const d = roomDoor(r);
     blocked.push([d.x - 6, d.x + d.w + 6]);
     blocked.push([d.x - 26, d.x - 10]); // the Zaal panel
-    blocked.push([r.x - 12, r.x + 12], [r.x + r.w - 12, r.x + r.w + 12]); // columns
+  }
+  // The real corridor columns from the plan (the old guess, "one at each room
+  // edge", left an ad screen half behind one), with a margin for their plinths.
+  const mid = (CY0 + CY1) / 2;
+  for (const c of floor1Walls()) {
+    if (c.kind !== 'corridor-column') continue;
+    if ((c.y + c.h / 2 < mid ? -1 : 1) !== side) continue;
+    blocked.push([c.x - 8, c.x + c.w + 8]);
   }
   if (side > 0) blocked.push([F1.foyer.x - 6, F1.foyer.x + F1.foyer.w + 6]);
   const n = side < 0 ? F1.nicheTop : F1.nicheBot;
@@ -364,7 +371,9 @@ export function buildDetails(mats: Materials, refl: PlanarReflection, taken: Arr
     map,
     emissiveMap: glow,
     emissive: new THREE.Color(1, 1, 1),
-    emissiveIntensity: 2.2,
+    // Kept low: a glowing tag reads as a puzzle hint (playtest asked what the
+    // red arrow was for).
+    emissiveIntensity: 0.25,
     roughness: 0.55,
     transparent: true,
     alphaTest: 0.02,
@@ -386,7 +395,8 @@ export function buildDetails(mats: Materials, refl: PlanarReflection, taken: Arr
     for (const [a, b] of freeSpans(side, taken)) {
       const n = Math.floor((b - a) / 14);
       for (let k = 0; k < n; k++) {
-        const idx = Math.floor(rnd() * STICKERS);
+        let idx = Math.floor(rnd() * STICKERS);
+        if (idx === 9) idx = 8; // no arrows: an arrow on a puzzle map is a hint
         const size = 0.18 + rnd() * (idx % 4 === 0 ? 0.6 : 0.25);
         const sx = m(a + 3 + rnd() * (b - a - 6));
         const sy = 0.5 + rnd() * 1.9;

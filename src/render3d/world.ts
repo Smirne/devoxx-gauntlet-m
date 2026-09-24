@@ -18,8 +18,8 @@ import { createMaterials } from './materials';
 import { Pipeline, QUALITY, type QualityName, type VolumeSpot } from './pipeline';
 import { createProps, type Props3D } from './props3d';
 import { createRobots, updateGlare, updateRobots, type Robot3D } from './robots3d';
-import { HEIGHTS, X_END, buildVenue, type Venue3D } from './venue';
-import { CY0, CY1, F1 } from '../sim/geometry';
+import { HEIGHTS, SIGN_SPANS, X_END, buildVenue, type Venue3D } from './venue';
+import { CY0, CY1, F1, rooms } from '../sim/geometry';
 
 export interface World3D {
   readonly renderer: THREE.WebGLRenderer;
@@ -68,7 +68,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   // The faintest night fill: sky-blue from above, a bruise of magenta from the
   // floor, so a silhouette in an unlit corner still reads against the dark.
   // Bounce stand-in: the floor and the neons throw warm magenta up at the ceiling.
-  scene.add(new THREE.HemisphereLight(0x2a3a6a, 0x3a1636, 0.18));
+  scene.add(new THREE.HemisphereLight(0x2a3a6a, 0x3a1636, 0.1));
   const pipeline = new Pipeline(renderer, scene, cam.camera, quality);
   const venue: Venue3D = buildVenue(mats, pipeline.reflection);
   scene.add(venue.group);
@@ -76,16 +76,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   pipeline.setFogBox(new THREE.Vector3(m(8), -1, m(6)), new THREE.Vector3(m(X_END + 8), 9, m(694)));
   // Wall furniture keeps clear of what the venue already hung: posters, the ad,
   // the extinguisher cabinets (sim x ranges, per wall side).
-  const details = buildDetails(mats, pipeline.reflection, [
-    [189, 209, -1],
-    [529, 549, -1],
-    [320, 340, 1],
-    [520, 540, 1],
-    [355, 383, -1],
-    [88, 102, -1],
-    [253, 267, -1],
-    [553, 567, 1],
-  ]);
+  const details = buildDetails(mats, pipeline.reflection, [...SIGN_SPANS, venue.adSpan]);
   scene.add(details.group);
   pipeline.reflectors = [...venue.reflectors, ...details.reflectors];
   const robots: Map<RobotKind, Robot3D> = createRobots(scene, quality.shadowSize);
@@ -102,8 +93,10 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   // unshadowed spots from the point on the screen they leave.
   const mirrorSpots: THREE.SpotLight[] = [];
   for (let i = 0; i < 3; i++) {
+    // Always in the scene, switched by intensity: toggling `visible` changes
+    // three's light count, which recompiles every material — a multi-second
+    // freeze the moment Biggy's smash let light reach the mirror (24 Sep).
     const s = new THREE.SpotLight(0xffffff, 0, 20, 0.5, 0.6, 2);
-    s.visible = false;
     scene.add(s, s.target);
     mirrorSpots.push(s);
   }
@@ -140,7 +133,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     }
     const envRT = pmrem.fromScene(scene, 0.02, 0.1, 80, { size: 256, position: PROBE });
     scene.environment = envRT.texture;
-    scene.environmentIntensity = 0.5;
+    scene.environmentIntensity = 0.35;
     for (const o of hidden) o.visible = true;
     for (const r of robots.values()) r.lamp.visible = true;
     envBaked = true;
@@ -226,7 +219,9 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       }
       _pos.copy(rob.rig.root.position);
       const speed = Math.hypot(active.vx, active.vy) / PX_PER_M;
-      cam.update(dt, active.kind, _pos, active.face, speed, [...venue.colliders, ...props.colliders]);
+      const inRoom = rooms.find((r) => active.x > r.x && active.x < r.x + r.w && active.y > r.y && active.y < r.y + r.h);
+      const roomM: [number, number, number, number] | undefined = inRoom ? [m(inRoom.x), m(inRoom.y), m(inRoom.x + inRoom.w), m(inRoom.y + inRoom.h)] : undefined;
+      cam.update(dt, active.kind, _pos, active.face, speed, [...venue.colliders, ...props.colliders], roomM);
     }
 
     // Mirror bounces from the sim.
@@ -234,7 +229,6 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     for (const L of snap.lights) {
       if (L.primary || mi >= mirrorSpots.length) continue;
       const s = mirrorSpots[mi++];
-      s.visible = true;
       s.color.setRGB(L.c[0] / 255, L.c[1] / 255, L.c[2] / 255);
       s.intensity = 140;
       s.angle = Math.min(1.1, L.ang ?? 0.8);
@@ -243,7 +237,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       s.target.position.set(m(L.x) + Math.cos(L.face) * 5, 1.0, m(L.y) + Math.sin(L.face) * 5);
       s.target.updateMatrixWorld();
     }
-    for (; mi < mirrorSpots.length; mi++) mirrorSpots[mi].visible = false;
+    for (; mi < mirrorSpots.length; mi++) mirrorSpots[mi].intensity = 0;
 
     pool.update(cam.camera.position);
     updateGlare(robots, cam.camera);
@@ -255,7 +249,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     volSpots.length = 0;
     for (const r of robots.values()) if (r.fog > 0) volSpots.push({ light: r.lamp, fog: r.fog });
     const others: VolumeSpot[] = [...venue.volumeSpots];
-    for (const s of mirrorSpots) if (s.visible) others.push({ light: s, fog: 0.03 });
+    for (const s of mirrorSpots) if (s.intensity > 0) others.push({ light: s, fog: 0.03 });
     others.sort((a, b) => a.light.position.distanceToSquared(eye) - b.light.position.distanceToSquared(eye));
     volSpots.push(...others);
     const pts = [...venue.volumePoints, ...props.volumePoints];

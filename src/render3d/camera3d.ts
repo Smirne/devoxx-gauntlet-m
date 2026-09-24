@@ -81,7 +81,13 @@ export class ThirdPersonCamera {
     return [fx * fwd + rx * strafe, fz * fwd + rz * strafe];
   }
 
-  update(dt: number, kind: RobotKind, robotPos: THREE.Vector3, heading: number, speed: number, colliders: THREE.Object3D[]): void {
+  /**
+   * `room`, in metres (x0, z0, x1, z1), keeps the camera inside the room the
+   * robot is in. The collision ray alone let it sit in the corridor whenever
+   * the robot-to-camera line went out through the doorway, and the wall round
+   * the door came back between the player and the robot.
+   */
+  update(dt: number, kind: RobotKind, robotPos: THREE.Vector3, heading: number, speed: number, colliders: THREE.Object3D[], room?: [number, number, number, number]): void {
     this.time += dt;
     const cam = this.camera;
     if (this.pose) {
@@ -123,6 +129,11 @@ export class ThirdPersonCamera {
     const kd = this.snapNext ? 1 : d < this.dist ? 1 - Math.exp(-dt * 25) : 1 - Math.exp(-dt * 3);
     this.dist += (d - this.dist) * kd;
     this.want.copy(this.pivot).addScaledVector(dir, this.dist);
+    if (room) {
+      const pad = 0.45;
+      this.want.x = THREE.MathUtils.clamp(this.want.x, room[0] + pad, room[2] - pad);
+      this.want.z = THREE.MathUtils.clamp(this.want.z, room[1] + pad, room[3] - pad);
+    }
     cam.position.copy(this.want);
     cam.lookAt(this.pivot);
     cam.updateMatrixWorld();

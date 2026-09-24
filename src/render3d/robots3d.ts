@@ -20,7 +20,7 @@
 
 import * as THREE from 'three';
 
-import { DEFS, MOUNT_OFFSET_Y } from '../sim/constants';
+import { DEFS } from '../sim/constants';
 import type { Bot, GameSnapshot, RobotKind } from '../sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
 import { createRobot, updateRobot, type RobotRig } from '../render/robots';
@@ -43,10 +43,16 @@ export interface Robot3D {
   fog: number;
 }
 
-const LAMP: Record<RobotKind, { intensity: number; fog: number; tilt: number }> = {
-  voxxy: { intensity: 420, fog: 0.16, tilt: 0.16 },
-  droid: { intensity: 420, fog: 0.0, tilt: 0 },
-  biggy: { intensity: 520, fog: 0.1, tilt: 0.2 },
+// Beam lamps fall off linearly (decay 1), not with the inverse square: the sim
+// lights a clue anywhere inside its cone out to 22-24 m, and a physical lamp
+// was invisible past ~5 m, so a clue could be lit with nothing on screen to
+// show it (playtest, 24 Sep: "Biggy's light not reaching?"). Tilted only
+// slightly down, so the beam travels down the room instead of pooling at the
+// robot's feet.
+const LAMP: Record<RobotKind, { intensity: number; fog: number; tilt: number; decay: number }> = {
+  voxxy: { intensity: 380, fog: 0.2, tilt: 0.05, decay: 1 },
+  droid: { intensity: 420, fog: 0.0, tilt: 0, decay: 2 },
+  biggy: { intensity: 420, fog: 0.13, tilt: 0.07, decay: 1 },
 };
 
 /* --------------------------------------------------------- material upgrade */
@@ -159,7 +165,7 @@ export function createRobots(parent: THREE.Object3D, shadowSize: number): Map<Ro
     const L = LAMP[kind];
     const range = m(def.range) * (kind === 'droid' ? 1 : 1.1);
     const angle = def.type === 'cone' ? Math.min(1.2, def.ang ?? 0.5) : 1.2;
-    const lamp = new THREE.SpotLight(col, L.intensity, kind === 'droid' ? 12 : range, angle, kind === 'voxxy' ? 0.35 : 0.6, 2);
+    const lamp = new THREE.SpotLight(col, L.intensity, kind === 'droid' ? 12 : range, angle, kind === 'voxxy' ? 0.35 : 0.6, L.decay);
     lamp.castShadow = true;
     lamp.shadow.mapSize.set(shadowSize, shadowSize);
     lamp.shadow.bias = -0.0006;
@@ -211,8 +217,11 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
     if (!r) continue;
     const rider = b.kind === 'droid' && b.mounted;
     const lift = rider && droid ? mountLift(droid.rig) : 0;
-    const ry = rider ? b.y + MOUNT_OFFSET_Y : b.y;
-    r.rig.root.position.set(m(b.x), lift, m(ry));
+    // The sim's MOUNT_OFFSET_Y is a 2.5D picture offset ("up" on screen). In
+    // 3D it pushed Droid half a metre off-centre and his legs into Biggy's
+    // dome, so the rider sits on Biggy's own centre instead.
+    const mount = rider ? snap.bots.find((o) => o.kind === 'biggy') : undefined;
+    r.rig.root.position.set(m(mount ? mount.x : b.x), lift, m(mount ? mount.y : b.y));
     updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: b.face, dt, mounted: b.mounted });
     aimLamp(r, b);
   }
