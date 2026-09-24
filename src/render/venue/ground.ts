@@ -52,9 +52,10 @@ import {
   boothTotem,
   entranceLeaves,
   groundWalls,
-  stairDoor,
-  stairFlightRect,
+  stairDoors,
   stairLanding,
+  stairMidLanding,
+  stairRamps,
 } from '../../sim/geometry';
 import type { Rect, Wall } from '../../sim/types';
 import { m } from '../../sim/units';
@@ -843,11 +844,25 @@ function reception(p: VenuePalette, overhead: THREE.Group): THREE.Group {
  *
  * Michele, on chapter 2: *"In devoxx the stairs are not open but look like rooms."*
  * They are rooms. `plans/exhibition-floor-simple.png` draws each secondary stair as
- * a walled shaft with a pair of doors in its plan-north end — world WEST, by this
- * module's rotation — and the ascent arrow running away from them, so the flight
- * climbs eastward and the landing is behind the doors. The shell is `groundWalls()`'
- * job now (it has to be a collider, which was the other half of the same report);
- * what is built here is the flight inside it, the landing floor and the doors.
+ * a walled shaft with the ascent arrow running away down the middle, a deep landing
+ * at the plan-north end — world WEST, by this module's rotation — and **a pair of
+ * double doors in each of the shaft's two LONG faces** beside that landing. The
+ * shell is `groundWalls()`' job now (it has to be a collider, which was the other
+ * half of the same report); what is built here is the flight inside it, the landing
+ * floor and both doors.
+ *
+ * ## Two corrections, 24 Sep 2026
+ *
+ * *"Just a correction: you put the opening north, but it's on the sides (WEST,
+ * EAST). Worth a fix."* — there was one doorway, in the shaft's short west end.
+ * There are two now, one per long face (`stairDoors`); counted on the drawing, the
+ * short ends carry no door symbol at all. The building's west and east ARE these
+ * long faces: the whole floor is rotated 90° (see `src/sim/geometry.ts`'s header).
+ *
+ * *"I think it's a mid plane between two ramps of stairs"* — the flight is drawn
+ * as two ramps with a half-landing between them (`stairRamps`, `stairMidLanding`),
+ * not as one unbroken run. The drop is split between the ramps in proportion to
+ * their runs so the half-landing comes out level.
  */
 function staircases(p: VenuePalette, anchors: Map<number | string, THREE.Object3D>): THREE.Group {
   const g = new THREE.Group();
@@ -855,35 +870,60 @@ function staircases(p: VenuePalette, anchors: Map<number | string, THREE.Object3
 
   for (const s of GF.stairs) {
     const rect: Rect = { x: s.x, y: s.y, w: s.w, h: s.h };
-    const flight = stairFlight({
-      rect: stairFlightRect(rect),
-      topY: STAIR_RISE,
-      bottomY: 0,
-      // Top of the flight at its EAST end: you come down heading west, and step
-      // out of the doors in the west face.
-      dir: '-x',
-      steps: 12,
-      tread: p.stairTreadDark,
-      nosing: p.stairNosing,
-      runs: 2,
-      rail: p.steelRail,
-    });
+    const mid = stairMidLanding(rect);
+    const [lower, upper] = stairRamps(rect);
+    const flight = new THREE.Group();
+    /*
+     * Split the climb by run length so the half-landing comes out level, and hang
+     * the group's own origin ON that half-landing: `ground-stair-*` is the handle
+     * `tests/venue.smoke.test.ts` takes the flight's height by, and a wrapper
+     * sitting at local zero would report the exhibition floor rather than the
+     * stair. So the ramps are built relative to `midY` and the group carries it.
+     */
+    const midY = (STAIR_RISE * lower.w) / (lower.w + upper.w);
+    flight.position.y = midY;
+    for (const [r, y0, y1] of [
+      [lower, 0, -midY],
+      [upper, STAIR_RISE - midY, 0],
+    ] as const) {
+      flight.add(
+        stairFlight({
+          rect: r,
+          topY: y0,
+          bottomY: y1,
+          // Top of each ramp at its EAST end: you come down heading west, toward
+          // the landing and the doors beside it.
+          dir: '-x',
+          steps: Math.max(3, Math.round((r.w / (lower.w + upper.w)) * 12)),
+          tread: p.stairTreadDark,
+          nosing: p.stairNosing,
+          runs: 2,
+          rail: p.steelRail,
+        }),
+      );
+    }
+    // The mid plane between the two ramps — Michele's own words for it.
+    flight.add(floorSlab(mid, 0, p.stairTreadDark, 0.1));
     flight.name = `ground-stair-${s.to}`;
     g.add(flight);
 
-    // The landing behind the doors, and a lintel over them so the mouth reads as a
-    // doorway rather than as a hole in a wall.
-    const d = stairDoor(rect);
+    // The landing at the foot, and then BOTH doorways: a lintel over each so the
+    // mouth reads as a doorway rather than as a hole in a wall, two leaves stood
+    // open against the jambs, and the green running-man plate — this is a fire
+    // stair. Held 0.4 px off the jamb face: two coplanar surfaces is how the
+    // entrance got its flicker (see `lobby()`), and one costs nothing to avoid.
     g.add(floorSlab(stairLanding(rect), 0.02, p.stairTreadDark, 0.1));
-    g.add(slab({ x: d.x, y: d.y, w: d.w, h: d.h }, DOOR_H, WALL_H - DOOR_H, p.hallWall));
-    // Two leaves standing open against the jambs, pushed back into the shaft.
-    for (const ly of [d.y + 1, d.y + d.h - 6]) {
-      g.add(slab({ x: d.x + T, y: ly, w: 15, h: 5 }, 0, DOOR_H, p.doorLeaf));
+    const [north, south] = stairDoors(rect);
+    for (const [d, out] of [
+      [north, -1],
+      [south, 1],
+    ] as const) {
+      g.add(slab({ x: d.x, y: d.y, w: d.w, h: d.h }, DOOR_H, WALL_H - DOOR_H, p.hallWall));
+      for (const lx of [d.x + 1, d.x + d.w - 16]) {
+        g.add(slab({ x: lx, y: d.y - out * T, w: 15, h: 5 }, 0, DOOR_H, p.doorLeaf));
+      }
+      g.add(slab({ x: d.x + d.w / 2 - 7, y: d.y + (out < 0 ? -2.4 : d.h + 0.4), w: 14, h: 2 }, DOOR_H + 0.12, 0.34, p.signGreen));
     }
-    // The green running-man plate over the doors — this is a fire stair.
-    // Held 0.4 px off the jamb face: two coplanar surfaces is how the entrance
-    // got its flicker (see `lobby()`), and one costs nothing to avoid here.
-    g.add(slab({ x: d.x - 2.4, y: d.y + d.h / 2 - 7, w: 2, h: 14 }, DOOR_H + 0.12, 0.34, p.signGreen));
 
     const a = anchorAt(`anchor-stair-${s.to}`, s.x + s.w / 2, s.y + s.h / 2);
     anchors.set(`stair-${s.to}`, a);

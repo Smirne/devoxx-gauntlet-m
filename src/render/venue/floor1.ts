@@ -27,8 +27,11 @@ import {
   ROW_PITCH_PX,
   SEAT_BLOCK_MIN_PX,
   SEAT_PITCH_PX,
+  NICHE_RAIL,
   floor1Walls,
+  nicheMidLanding,
   nicheMouth,
+  nicheRamps,
   roomDoor,
   roomScreen,
   roomSeating,
@@ -103,6 +106,10 @@ function wallStyle(
   // top of that, and on the near wall it would stand it between the fixed camera
   // and the corridor.
   if (w.kind === 'stairwell' || w.kind === 'stairwell-near') return null;
+  // ...and the balustrade across the head of each flight, which `secondaryStairs`
+  // draws as a handrail on posts. A slab here would build a second, solid one on
+  // top of it — and on the near flight, one between the camera and the corridor.
+  if (w.kind === 'stair-rail' || w.kind === 'stair-rail-near') return null;
   // The corridor's square columns. The FAR side gets the full shaft; the NEAR side
   // a knee-high plinth, because a full shaft there stands between the fixed camera
   // and the corridor floor (see `corridorDressing`).
@@ -373,47 +380,116 @@ function minus(r: Rect, hole: Rect): Rect[] {
  *
  * The plan's own section is what is drawn here: a flight **1.41 m wide**
  * (`NICHE_MOUTH`, 20 plan px of the corridor's 147) hard against the room wall,
- * **109 px long** along the corridor, with a landing halfway down its run. The
- * landing is the mouth — the one square of the flight at corridor level — and the
- * two runs fall away from it. At 1.41 m Biggy cannot take it, which is the sim's
- * rule and note 18 in `docs/playtest-notes.md`; this is the picture agreeing.
+ * **109 px long** along the corridor. At 1.41 m Biggy cannot take it, which is the
+ * sim's rule and note 18 in `docs/playtest-notes.md`; this is the picture agreeing.
+ *
+ * ## ONE staircase, not two — 24 Sep 2026
+ *
+ * It used to be drawn as a square landing in the middle of the run with a flight
+ * falling away either side, and that is exactly what Michele sent back, with the
+ * plan symbol enlarged: *"This makes it look like there's a center, and 2 descent.
+ * I think it's a mid plane between two ramps of stairs. In this picture stairs go
+ * south to north."*
+ *
+ * So: the head is the **top step at the east end** (`nicheMouth`), one ramp falls
+ * west from it to a **half-landing** (`nicheMidLanding`), and a second ramp falls
+ * west from that to the foot of the well — one staircase, and the drop is split
+ * between the ramps in proportion to their runs so the half-landing lands level.
+ *
+ * The balustrade is where the photo puts it — *"There's a protection on West and
+ * North, as you can see on the second picture"* — on the flight's open long face,
+ * the one toward the corridor, and across its far (world-west) end. The head is
+ * the one side left open, because it is the way on.
  */
 function secondaryStairs(p: VenuePalette): THREE.Group {
   const g = new THREE.Group();
   g.name = 'secondary-stairs';
-  const flights: Array<{ name: string; rect: Rect }> = [
-    { name: 'stair-niche-top', rect: F1.nicheTop },
-    { name: 'stair-niche-bot', rect: F1.nicheBot },
+  const flights: Array<{ name: string; rect: Rect; side: -1 | 1 }> = [
+    { name: 'stair-niche-top', rect: F1.nicheTop, side: -1 },
+    { name: 'stair-niche-bot', rect: F1.nicheBot, side: 1 },
   ];
+  /** How far the well drops before the diorama stops drawing it, metres. */
+  const DROP = 2.6;
   for (const f of flights) {
     const mouth = nicheMouth(f.rect);
+    const mid = nicheMidLanding(f.rect);
+    const [upper, lower] = nicheRamps(f.rect);
     const well = new THREE.Group();
     well.name = f.name;
-    // The two runs, dropping away along the corridor from the landing between
-    // them: west of the mouth descending west, east of it descending east.
-    for (const [x0, x1, dir] of [
-      [f.rect.x, mouth.x, '-x'],
-      [mouth.x + mouth.w, f.rect.x + f.rect.w, '+x'],
+
+    // Split the drop by run length, so the half-landing is flat at the height
+    // both ramps agree on.
+    const run = upper.w + lower.w;
+    const midY = -DROP * (upper.w / run);
+    for (const [rect, y0, y1] of [
+      [upper, 0, midY],
+      [lower, midY, -DROP],
     ] as const) {
-      if (x1 - x0 < 1) continue;
+      if (rect.w < 1) continue;
       well.add(
         stairFlight({
-          rect: { x: x0, y: f.rect.y, w: x1 - x0, h: f.rect.h },
-          topY: 0,
-          bottomY: -2.6,
-          dir,
-          steps: 7,
+          rect,
+          topY: y0,
+          bottomY: y1,
+          // Top at the east edge, descending west: the plan's south-to-north.
+          dir: '-x',
+          steps: Math.max(3, Math.round(rect.w / 4.5)),
           tread: p.stairTreadDark,
           nosing: p.stairNosing,
           runs: 1,
-          rail: p.steelRail,
         }),
       );
     }
+    // The half-landing between the two ramps — the "mid plane".
+    well.add(floorSlab(mid, midY, p.stairTreadDark, 0.1));
     // Close the well so the camera does not look straight through to nothing...
     well.add(slab(f.rect, -3.3, 0.55, p.shell));
-    // ...and floor the landing, which is the part a robot may stand on.
+    // ...and floor the top step, which is the part a robot may stand on.
     well.add(floorSlab(mouth, -0.02, p.stairTreadDark, 0.08));
+
+    /*
+     * The protection. `open` is the corridor-facing long face of this flight —
+     * the top niche hugs the far wall so its open edge is its +y side, the bottom
+     * one the mirror — and `far` is the west end, where the well bottoms out.
+     * Kept 1.5 px thin so it reads as a balustrade rather than as another wall,
+     * and so the near one does not mask the corridor it stands in.
+     *
+     * ## Why the head of the well gets an upstand and not a handrail
+     *
+     * Room 9's numeral panel is 30.25 px of sign in 30.75 px of wall, clamped by
+     * `signage.ts` to the end of room 9's frontage — which is this flight's own
+     * west edge, 0.12 m away — with its bottom corner 0.30 m off the floor.
+     * Traced from that corner at every diorama pitch (`DIORAMA_ELEVATIONS_DEG`),
+     * the sight line to the camera crosses the head-of-well line between 0.63 m
+     * and 1.11 m, so there is NO handrail height there that leaves the numeral
+     * clear, and neither run of wall beside room 9's door is long enough to slide
+     * the panel out of the way (the west one has a corridor column in front of
+     * its first 5 px). Legible Zaal numerals are a Stage 1 pass condition and
+     * `tests/venue.smoke.test.ts` enforces them, so the head of the well carries
+     * a 0.40 m upstand and a newel instead of a full guard.
+     *
+     * **That is a compromise and it is logged as one** — the honest fix is to move
+     * rooms 4 and 9's numerals off the wall beside the stair, which moves signage
+     * the plan does place there. Flagged for Michele.
+     *
+     * The open face, which is where his photo puts the protection people actually
+     * hold, gets the real thing: a rail at 0.95..0.99 m on posts. That band is the
+     * gap between the sight cones at 24° (0.86..0.92) and 30° (1.03..1.10); it is
+     * checked by the same test, not by this comment.
+     */
+    const RAIL_0 = 0.95;
+    const RAIL_1 = 0.99;
+    const UPSTAND = 0.4;
+    // `NICHE_RAIL` and this y come from the sim, which stands the same rail
+    // across the mouth as a collider — the picture and the wall are one object.
+    const openY = f.side < 0 ? f.rect.y + f.rect.h - NICHE_RAIL : f.rect.y;
+    well.add(slab({ x: f.rect.x, y: openY, w: f.rect.w, h: NICHE_RAIL }, RAIL_0, RAIL_1 - RAIL_0, p.steelRail));
+    for (let i = 0; i <= 5; i++) {
+      well.add(postAt(f.rect.x + (i * f.rect.w) / 5, openY + 0.75, 0.05, RAIL_1, 0, p.steelRail, 8));
+    }
+    // The head of the well: upstand across the full depth, newel at the corner.
+    well.add(slab({ x: f.rect.x, y: f.rect.y, w: NICHE_RAIL, h: f.rect.h }, 0, UPSTAND, p.shell));
+    well.add(postAt(f.rect.x + 0.75, f.rect.y + f.rect.h / 2, 0.05, UPSTAND, 0, p.steelRail, 8));
     g.add(well);
   }
   return g;
@@ -565,7 +641,9 @@ function corridorVault(p: VenuePalette): THREE.Mesh {
 
 /**
  * The underside of the corridor vault at one distance into the corridor, metres,
- * or `null` out past the plate's far edge where there is no vault overhead.
+ * or `null` out past the plate's far edge where there is no vault overhead;
+ * `corridorSoffit` gives the plate's own span, for anything that has to reach
+ * BACK to it from further out in the corridor.
  *
  * Exported because anything HUNG in the closed section's corridor has to know
  * where the soffit is, and the alternative is a second copy of the four numbers
@@ -575,11 +653,16 @@ function corridorVault(p: VenuePalette): THREE.Mesh {
  * fact, from the other end) and one out in the corridor is not — which is why
  * that prop's rect stands clear of the wall, and what its hangers reach up to.
  */
-export function corridorSoffitY(zM: number): number | null {
+export function corridorSoffit(): { z0: number; z1: number; y0: number; y1: number } {
   const z0 = m(CY0 + VAULT_SPRING_PX);
   const z1 = z0 + VAULT_DEPTH_M * Math.cos(VAULT_RAKE_RAD);
-  if (zM < z0 || zM > z1) return null;
-  return VAULT_SPRING_Y + (zM - z0) * Math.tan(VAULT_RAKE_RAD);
+  return { z0, z1, y0: VAULT_SPRING_Y, y1: VAULT_SPRING_Y + VAULT_DEPTH_M * Math.sin(VAULT_RAKE_RAD) };
+}
+
+export function corridorSoffitY(zM: number): number | null {
+  const s = corridorSoffit();
+  if (zM < s.z0 || zM > s.z1) return null;
+  return s.y0 + (zM - s.z0) * Math.tan(VAULT_RAKE_RAD);
 }
 
 /* --------------------------------------------------------------------- build */

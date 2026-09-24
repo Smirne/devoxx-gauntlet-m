@@ -26,6 +26,7 @@ import {
   VIEW_F1,
   cinemaEExit,
   floor1Walls,
+  nicheMouth,
   roomDoor,
   roomScreen,
 } from '../geometry';
@@ -506,8 +507,34 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     kind: 'lockleaf',
     why: (b) => `${b.name}: that is the door itself, standing open against the wall`,
   };
-  const panel: Rect = { x: dB.x + dB.w + 14, y: CY0 + 10, w: 20, h: 24 };
-  const panelAt = { x: panel.x + 10, y: panel.y + 12 };
+  /*
+   * THE DOOR OVERRIDE, AND THE 1.92 METRES OF DEPTH IT DID NOT NEED.
+   *
+   * Michele, with a screenshot of the mount beat: *"the part that needs a shape
+   * is the green Cube that opens the door"*. It has a shape now
+   * (`src/render/release-panel.ts`), and modelling it showed the rect was two
+   * things at once: a control 1.6 m wide, and 1.92 m of corridor behind it.
+   *
+   * That depth was not free. The diorama camera looks along (0.210, 0.500,
+   * 0.840), so of a solid box on this rect it sees 1.44 x 0.840 = 1.21 m2 of
+   * front and 3.07 x 0.500 = **1.54 m2 of lid** — the largest thing on screen
+   * was the top of the box, which is what "a big flat cube" means. And the
+   * depth was hiding a second fault: two corridor columns (`corridorColumns()`,
+   * sim x 365..385, y 288..304, 3.3 m tall) stand across the back half of this
+   * rect. The box only cleared them by sticking its lid out past them.
+   *
+   * 6 px of depth is what the unit actually is: 0.48 m, hung on stays off the
+   * corridor vault, standing clear of the columns in front of them rather than
+   * inside them. Starting it at CY0 + 19 keeps the rect's CENTRE exactly where
+   * it was, so `panelAt` and the whole mount beat are unmoved — see below.
+   *
+   * `panelAt` takes the rect's own half-extents rather than the 10 and 12 that
+   * were the half-extents of the 20 x 24 rect. Same latent bug
+   * `tests/keypad.test.ts` records for the pad: a hard-coded centre survives one
+   * reshape by luck and not the next.
+   */
+  const panel: Rect = { x: dB.x + dB.w + 14, y: CY0 + 19, w: 20, h: 6 };
+  const panelAt = { x: panel.x + panel.w / 2, y: panel.y + panel.h / 2 };
   clues.push({
     x: rB.x + rB.w / 2,
     y: rB.y + 40,
@@ -736,12 +763,16 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     // than recessed behind it (`F1.nicheBot`, and Michele's 24 Sep ruling in
     // `src/sim/geometry.ts`'s header).
     //
-    // The descent waypoint is the CENTRE of that flight, which is the centre of
-    // its mouth, which is where the plan draws the only part of it at corridor
-    // level. It used to be `nicheBot.x + 20, nicheBot.y + 30`: measured against a
-    // 17.7-deep shaft standing IN the corridor, +30 lands 12 px through the
-    // corridor wall and the chapter would have ended with all three robots inside
-    // it. Derived, it cannot go stale the next time the flight moves.
+    // The descent waypoint is the HEAD of that flight — `nicheMouth`, the top step
+    // at its world-east end, which is the only part of it at corridor level.
+    //
+    // It was the centre of the flight until 24 Sep 2026, when Michele read the
+    // plan symbol back to us: *"This makes it look like there's a center, and 2
+    // descent. I think it's a mid plane between two ramps of stairs."* It is one
+    // staircase with a half-landing, so the centre is now a wall and the way on is
+    // an end (`nicheMouth` in `src/sim/geometry.ts` has the measurement). Derived
+    // from the geometry, so it cannot go stale the next time the flight moves —
+    // which is the third time it has moved in two days.
     const nb = F1.nicheBot;
     /*
      * A loose diagonal, not a column.
@@ -752,7 +783,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      * Staggered in x as well they read as three, Voxxy out in front because she is
      * the quick one, and they converge on the stairwell mouth for the descent.
      */
-    const head = { x: nb.x + nb.w / 2, y: nb.y + nb.h / 2 };
+    const top = nicheMouth(nb);
+    const head = { x: top.x + top.w / 2, y: top.y + top.h / 2 };
     const route = (dx: number, dy: number): Array<{ x: number; y: number }> => [
       { x: F1.fireX + 30 + dx, y: 350 + dy },
       { x: head.x + dx, y: 350 + dy },

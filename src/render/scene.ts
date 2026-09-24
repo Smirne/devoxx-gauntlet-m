@@ -38,6 +38,7 @@ import { createCamera, type DioramaCamera } from './camera';
 import { FIRE_LEAF_H, FIRE_LEAF_T, fireDoorDraw } from './fire-door';
 import { buildKeypad, type KeypadModel } from './keypad';
 import { createLightLayer, type LightLayer } from './lighting';
+import { PANEL_H_M, PANEL_LIFT_M, buildReleasePanel, type ReleasePanelModel } from './release-panel';
 import { createRobot, measureBounds, updateRobot, yawFromSimHeading, EXCLUDE_FROM_BOUNDS, type RobotRig } from './robots';
 import { ROLLER_SLATS, rollerDoorDraw } from './roller-door';
 import { SEAT_KINDS, SEAT_TOP_M, createSeatField } from './seats';
@@ -231,8 +232,16 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
    * the fiction says is a metre above Droid's reach. Now it is a lit panel at
    * 2.5 m: tall, standing proud of the wall, with its own amber standby lamp so
    * it reads as powered equipment long before you work out what it does.
+   *
+   * And then: *"the part that needs a shape is the green Cube that opens the
+   * door"*. A lit box is still a box, and this one was 1.92 m DEEP, so the face
+   * the camera saw most of was its lid. `drawReleasePanel` poses the modelled
+   * unit from `src/render/release-panel.ts`; what survives here is the colour a
+   * robot's lamp finds it with, the standby glow, and the two numbers the
+   * collider sweep asks for — read off the model rather than retyped, the way
+   * `keypad` reads `KEYPAD_TOP_M`.
    */
-  'projector-panel': { h: 0.9, color: 0x39414f, tl: true, lift: 2.5, glow: 0x6b4406 },
+  'projector-panel': { h: PANEL_H_M, color: 0x39414f, tl: true, lift: PANEL_LIFT_M, glow: 0x6b4406 },
   screen: { h: 5.2, color: 0xcfd6dd, tl: true },
   alcove: { h: 0.05, color: 0x2f7d4f, tl: true, flat: true },
   lock: { h: 2.1, color: 0x4a4038, tl: true },
@@ -832,6 +841,22 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   dressing.add(keypad.root);
   /** The venue's own static keypad, which chapter 1 takes over. See `floor1.ts`. */
   const venueKeypad = venue.floor1.getObjectByName('fire-keypad') ?? null;
+
+  /* ------------------------------------------- the door override, chapter 1
+   *
+   * Michele: *"the part that needs a shape is the green Cube that opens the
+   * door"* — cinema B's release, the payoff of the mount beat, drawn from the
+   * `PROPS` table as one lit cuboid. `src/render/release-panel.ts` builds the
+   * unit and poses it from the prop, including `state`, which goes `idle` to
+   * `done` when Droid reaches it off Biggy's shoulders.
+   *
+   * There is no static twin to hide, unlike the keypad, the fire leaf, the gate
+   * and the shutter: `buildVenue()` puts a projection BOOTH over every
+   * auditorium door (`venue/projector.ts`), and that is inside the room behind
+   * this wall, not a second copy of this control.
+   */
+  const releasePanel: ReleasePanelModel = buildReleasePanel();
+  dressing.add(releasePanel.root);
 
   /**
    * The ground ring under the robot being driven. Nothing else in the frame says
@@ -2075,6 +2100,20 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   }
 
   /**
+   * Chapter 1's door override — the release Droid reaches from Biggy's shoulders.
+   *
+   * Everything it shows comes out of the prop: the rect it hangs in and `state`,
+   * which goes `idle` to `done` on the frame the magnetic lock lets go. See
+   * `src/render/release-panel.ts` for the model, for the camera geometry that
+   * decides which way it faces, and for why the rect's DEPTH is the part of it
+   * that is wrong.
+   */
+  function drawReleasePanel(p: Prop, floorY: number): void {
+    releasePanel.root.visible = true;
+    releasePanel.pose(p, surfaceY(floorY, p.x, p.y));
+  }
+
+  /**
    * Chapter 2's roller door: seven slats, down, tearing up, or jammed in the box.
    *
    * Every number here comes out of `rollerDoorDraw`, which reads the chapter's own
@@ -2270,6 +2309,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     fireDoor.visible = false;
     rollerDoor.visible = false;
     keypad.root.visible = false;
+    releasePanel.root.visible = false;
     // Handed back to the venue unless a chapter claims it again this frame.
     if (venueFireLeaf) venueFireLeaf.visible = true;
     if (venueRoller) venueRoller.visible = true;
@@ -2287,6 +2327,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       else if (p.kind === 'gate') drawGate(p, floorY, snap.walls);
       else if (p.kind === 'crate') drawCrate(p, floorY);
       else if (p.kind === 'keypad') drawKeypad(p, floorY);
+      else if (p.kind === 'projector-panel') drawReleasePanel(p, floorY);
       else if (SEAT_KINDS.has(p.kind)) drawSeats(p, floorY);
       else drawProp(p, floorY);
     }
@@ -2582,6 +2623,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       fireMat.dispose();
       fireBarMat.dispose();
       keypad.dispose();
+      releasePanel.dispose();
       cableGeo.dispose();
       cableMat.dispose();
       contactGeo.dispose();
