@@ -20,7 +20,15 @@ import { applyGait, type PoseName } from './gait';
 import type { RobotRig } from './rig';
 
 export type { RobotRig, WeatherOpts } from './rig';
-export { measureBounds, disposeTree, BONE_NAMES, EXCLUDE_FROM_BOUNDS } from './rig';
+export {
+  measureBounds,
+  disposeTree,
+  presentationLight,
+  BONE_NAMES,
+  EXCLUDE_FROM_BOUNDS,
+  PRESENT_FLOOR,
+  PRESENT_RANGE,
+} from './rig';
 export type { PoseName, GaitParams } from './gait';
 export {
   applyGait,

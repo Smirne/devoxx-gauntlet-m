@@ -492,3 +492,12 @@ Still open, not asked because he has already said the ground floor is right: the
 ground-floor shaft's south end is not cleanly terminated on the drawing — treads
 run past the bold wall at plan y 323 down to about y 709. `GF.stairs`' rect ends
 at the bold line. If he ever wants the shaft's full length, that is the number.
+
+### Chapter 1's ending — two filed 24 Sep, queued behind the intro
+
+| his note | what it is | the fix, when it comes |
+| --- | --- | --- |
+| *"The door opens through Voxxy. What about vertical opening? shutter door?"* | The fire door swings on `FIRE_SWING_TIME` and its leaves become colliders where they END UP (`src/render/fire-door.ts`, `ch1-night.ts`), but nothing sweeps a robot out of the arc on the way. A robot parked in front of the door — which is exactly where the player leaves Voxxy, because she has just typed the code — is passed through by the leaf. | **Not a shutter.** A fire door swings, chapter 2 already owns the one roller shutter in the game, and a second one would spend a distinct object twice. The honest fix is the arc: the swinging leaf pushes anything in it, the way the door in a real corridor does. It is also funnier — Voxxy gets shoved aside by the door she just opened — and it is a physics win rather than a dodge. If he wants it gone rather than solved, the cheap version is opening the leaf the other way, away from the keypad. |
+| *"The robots enter the stair when an handrail is, passing through it. They should walk around it."* | The exit cutscene walks straight lines between waypoints and asks no wall a question — which was harmless until `NICHE_RAIL` made the balustrade at the head of the stair a real collider this same day. So the route now crosses a wall the player cannot cross. | One waypoint, not a pathfinder: the route enters the well by turning in off the corridor at the east end, which is the pocket the rail leaves (16.2 px, 1.30 m). `tests/stairs-driven.test.ts` already drives that entry, so the number to aim at is measured. Worth also asserting that no cutscene leg crosses a wall — the class of bug is "a route written before a collider existed", and it will happen again. |
+
+Both queued behind the opening sequence at his instruction: *"Fix this after the animation preview."*

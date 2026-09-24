@@ -328,6 +328,124 @@ export function glowMaterial(
   });
 }
 
+/* ------------------------------------------- the presentation light (intro) */
+
+/**
+ * THE INTRO'S PRESENTATION LIGHT — a robot readable in a room with no light in it.
+ *
+ * Michele, having played the opening: *"Robots are still black. In the intro
+ * I'll show them fully, even if it's dark. It's their presentation."* He is
+ * right and the cause is not a bug: chapter 1's corridor is a blackout, the only
+ * lamps in the venue are the robots' own, and those are outside the crate while
+ * the robot is still in it. A robot standing in a crate is lit by nothing, so it
+ * renders as its own silhouette.
+ *
+ * ## Why this is not a light
+ *
+ * The venue's lighting is the sim's visibility polygons (`src/sim/lights.ts`),
+ * drawn by `src/render/lighting.ts`. A `THREE.Light` parked in a crate would be
+ * a second lighting model that the sim does not know about — and the crates are
+ * asserted to contain no light at all (`tests/crates.test.ts`). So this is a
+ * DRAWING change and nothing else: it raises each panel material's own emissive
+ * and restores it exactly on the way down.
+ *
+ * ## Why it raises each panel's OWN colour
+ *
+ * A flat white lift turns three robots into three grey ghosts, and the one thing
+ * the beat exists for is that Voxxy is orange, Droid is graphite and Biggy is
+ * rusted orange under a blue-grey dome. So the lift is the material's own colour,
+ * re-exposed: each panel is scaled to the linear luminance
+ * `PRESENT_FLOOR + PRESENT_RANGE * sqrt(lum)` of its own. The square root is what
+ * keeps the robot's internal tonal range — Droid's near-black panels come up a
+ * long way, Voxxy's orange shell hardly moves, and the two are still plainly
+ * different materials rather than the same mid-grey.
+ *
+ * ## The trap this deliberately avoids
+ *
+ * `weather()` writes vertex colours as a RATIO against the material's own colour,
+ * which is why a light "wear" tint on a near-black panel came out as white flakes
+ * (`docs/playtest-notes.md`, and `MAX_WEAR_LUM_GAIN` above). Nothing here touches
+ * a vertex colour, and in three's standard shader `vColor` multiplies the diffuse
+ * term only — `totalEmissiveRadiance` is not touched by it. So the lift lands
+ * evenly on a weathered part instead of multiplying its blotches, and the flake
+ * bug cannot come back through this door.
+ *
+ * Eyes, visors and status ports are left alone: they are already emissive at
+ * `emissiveIntensity` up to 1.8 with `toneMapped: false`, and lifting those is
+ * how you get a robot with two white holes in its face. Everything in
+ * `rig.glow` is skipped.
+ */
+
+/** Linear luminance the darkest panel is lifted to at `v = 1`. */
+export const PRESENT_FLOOR = 0.1;
+/** ...plus this much, by the square root of the panel's own luminance. */
+export const PRESENT_RANGE = 0.44;
+
+interface PresentEntry {
+  mat: THREE.MeshStandardMaterial;
+  /** The emissive the material was built with — restored exactly at `v = 0`. */
+  base: THREE.Color;
+  /** What is added at `v = 1`. */
+  lift: THREE.Color;
+}
+
+const PRESENT_KEY = 'presentationLight';
+
+/** Build (once) the list of panel materials this rig presents with. */
+function presentEntries(rig: RobotRig): PresentEntry[] {
+  const cached = rig.root.userData[PRESENT_KEY] as PresentEntry[] | undefined;
+  if (cached) return cached;
+  const skip = new Set<THREE.Material>(rig.glow);
+  const seen = new Set<THREE.Material>();
+  const out: PresentEntry[] = [];
+  rig.root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const raw of mats) {
+      const mat = raw as THREE.MeshStandardMaterial;
+      if (!mat || !mat.isMeshStandardMaterial || skip.has(mat) || seen.has(mat)) continue;
+      seen.add(mat);
+      const c = mat.color;
+      const lum = Math.max(1e-5, relLum(c.r, c.g, c.b));
+      const want = PRESENT_FLOOR + PRESENT_RANGE * Math.sqrt(clamp(lum, 0, 1));
+      const k = want / lum;
+      out.push({
+        mat,
+        base: mat.emissive.clone(),
+        // Held at 1 per channel: emissive above 1 is just clipping, and on a
+        // saturated shell (Voxxy's orange is at the red primary already) it
+        // would drag the hue toward white instead of making it brighter.
+        lift: new THREE.Color(clamp(c.r * k, 0, 1), clamp(c.g * k, 0, 1), clamp(c.b * k, 0, 1)),
+      });
+    }
+  });
+  rig.root.userData[PRESENT_KEY] = out;
+  return out;
+}
+
+/**
+ * Light a robot for its presentation. `v` is 0..1: **0 is the robot exactly as
+ * built** — every emissive back to the colour its builder set — and 1 is fully
+ * readable in a blacked-out corridor.
+ *
+ *     import { presentationLight } from './robots';
+ *     presentationLight(rig, 1);   // for its slot in the opening
+ *     presentationLight(rig, 0);   // back to the game's own lighting
+ *
+ * Idempotent and cheap: the material list is built on the first call and cached
+ * on the rig, and after that each call writes one colour per panel material (26
+ * to 40 of them, depending on the robot). Safe to call every frame, and safe to
+ * call in node — it touches no WebGL object.
+ */
+export function presentationLight(rig: RobotRig, v: number): void {
+  const k = clamp(v, 0, 1);
+  for (const e of presentEntries(rig)) {
+    if (k <= 0) e.mat.emissive.copy(e.base);
+    else e.mat.emissive.setRGB(e.base.r + e.lift.r * k, e.base.g + e.lift.g * k, e.base.b + e.lift.b * k);
+  }
+}
+
 /* ------------------------------------------------------------------ meshes */
 
 /**
