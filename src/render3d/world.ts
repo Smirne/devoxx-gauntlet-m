@@ -31,6 +31,8 @@ export interface World3D {
   render(snap: GameSnapshot, dt: number, intro?: boolean): void;
   /** Photo mode: depth of field focused on the driven robot. */
   photo: boolean;
+  /** Debug: refresh cinema E's mirror (on by default). */
+  mirrorOn: boolean;
   resize(w: number, h: number): void;
   /** Sim px (x, y) at `hM` metres up -> canvas CSS px, or null behind the camera. */
   project(x: number, y: number, hM: number): { x: number; y: number } | null;
@@ -255,7 +257,22 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     const pts = [...venue.volumePoints, ...props.volumePoints];
     pts.sort((a, b) => a.position.distanceToSquared(eye) - b.position.distanceToSquared(eye));
     pipeline.setVolumeLights(volSpots, pts);
+
     pipeline.render(dt);
+
+    // Cinema E's mirror: re-rendered only while the camera is in the room or
+    // at its door, since that is the only place it can be seen from. After the
+    // frame, so the shadow maps it samples exist and are this frame's.
+    const mir = venue.mirror;
+    if (mir && world.mirrorOn) {
+      const e = mir.room;
+      const cx = eye.x * PX_PER_M;
+      const cz = eye.z * PX_PER_M;
+      if (cx > e.x - 20 && cx < e.x + e.w + 20 && cz > e.y - 40 && cz < e.y + e.h + 10) {
+        mir.render(renderer, scene, cam.camera);
+      }
+    }
+
   }
 
   const _v = new THREE.Vector3();
@@ -270,6 +287,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     scene,
     pipeline,
     photo: false,
+    mirrorOn: true,
     cam,
     render,
     resize,
