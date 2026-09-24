@@ -700,7 +700,7 @@ function paintStoveIn(ctx: CanvasRenderingContext2D, w: number, h: number, s: nu
  * places a packed robot's lamp can show, and that is exactly the shot: dark, then
  * three cases with something awake inside them.
  */
-function paintGlowMask(layout: CrateLayout, crate: CrateGeom, seed: number): Paint {
+function paintGlowMask(crate: CrateGeom, seed: number): Paint {
   return (ctx, w, h) => {
     const s = w / crate.width;
     const toY = (ym: number): number => (crate.height - ym) * s;
@@ -1107,7 +1107,7 @@ export function buildCrates(opts: CratesOptions = {}): CratesModel {
       texW,
       texH,
       '#000000',
-      paintGlowMask(layout, c, seed + i * 977),
+      paintGlowMask(c, seed + i * 977),
       0,
     );
     const faceGlowMat = glowMat.clone();

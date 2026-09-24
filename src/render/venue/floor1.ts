@@ -563,6 +563,25 @@ function corridorVault(p: VenuePalette): THREE.Mesh {
   return mesh;
 }
 
+/**
+ * The underside of the corridor vault at one distance into the corridor, metres,
+ * or `null` out past the plate's far edge where there is no vault overhead.
+ *
+ * Exported because anything HUNG in the closed section's corridor has to know
+ * where the soffit is, and the alternative is a second copy of the four numbers
+ * above. `src/render/release-panel.ts` hangs chapter 1's door override off it:
+ * the vault springs from the far wall head and rakes up steeply, so a control
+ * high on that wall is behind the soffit (`FAR_Y1` in `signage.ts` is the same
+ * fact, from the other end) and one out in the corridor is not — which is why
+ * that prop's rect stands clear of the wall, and what its hangers reach up to.
+ */
+export function corridorSoffitY(zM: number): number | null {
+  const z0 = m(CY0 + VAULT_SPRING_PX);
+  const z1 = z0 + VAULT_DEPTH_M * Math.cos(VAULT_RAKE_RAD);
+  if (zM < z0 || zM > z1) return null;
+  return VAULT_SPRING_Y + (zM - z0) * Math.tan(VAULT_RAKE_RAD);
+}
+
 /* --------------------------------------------------------------------- build */
 
 export function buildFloor1(p: VenuePalette): Floor1Build {
