@@ -2953,3 +2953,36 @@ screenshots. What each report turned out to be:
 **Human decision:** he keeps polishing gameplay on the 2.5D branch. The 3D renderer only reads the
 sim, so his work is merged into this branch rather than ported. The first merge (46 commits)
 conflicted only in this file, typechecked, and brought the suite to 460/460.
+
+**Playtest of version 9 (Michele, 24 Sep, evening).** Most of it turned out to be the 3D renderer
+not yet reading what the merged 2.5D sim now says:
+- *Actions on E showed a toast and no animation.* The 3D side never passed the sim's `hopPhase`
+  and `flairPhase` to the rigs. It does now, as the 2.5D renderer does. Droid's climb on and off
+  Biggy is eased over 0.55 s instead of snapping. A reach gesture plays when Droid throws the
+  projector panel and when a digit goes into the keypad.
+- *Cinema B's door did not open and could be walked through.* The sim now keeps the door in its
+  prop list with `state: 'open'` and a `progress` clock; the 3D side ignored both. The leaves were
+  also hinged at the middle of the doorway. They now hinge at the frame and swing on the sim's
+  clock, and the door's notice goes with its leaf.
+- *"A passage you can't go through" beside the fire door.* The sim's fire door is now an opening
+  with fixed `firescreen` walls either side, and 3D drew only the opening. The screens are drawn.
+- *Clue 4 would not light.* A headless search placed Biggy at every spot he can actually reach in
+  cinema E. Many work, all just inside the smashed door with his flood aimed at the screen's
+  right-hand end. In 3D, though, the seat rows cast shadows from his lamp, so the alcove looked
+  unlit when the sim counted it lit. The seats no longer cast shadows, matching the sim, where
+  seat rows are `low` and light crosses them.
+- *"The keynote poster is still flickering."* It z-fought with its own frame: the poster plane sat
+  on the frame's front face. It now sits 3.5 cm off the wall. The ad screen also lost a 600-line
+  scanline pattern that shimmered at a distance.
+- Also: switching robot resets the camera behind the new one; Droid's camera looks up (his
+  puzzles are high); cinema E's screen is a white screen again (the bounce stays, drawn from the
+  sim's secondary lights); wall battens skip the Zaal panels and posters.
+
+**Human decisions:** the misplaced staircases get fixed in 2.5D first, then merged. A demo comes
+later. After that, on Michele's go, a parity pass on the 3D side against everything the 2.5D build
+has gained, reading the logs of the merge.
+
+**Not reproduced:** "Droid can't walk in the hint zone" (clue 3, cinema B). Driven headlessly, the
+sim lets him walk up the aisle and across the clue, and the 3D seats are built from the same
+`roomSeating()` as the sim's walls. The message the game shows when he stops would identify the
+wall.

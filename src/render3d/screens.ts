@@ -108,7 +108,6 @@ export function adScreen(w: number, h: number): THREE.Mesh {
         float txt = texture2D(tText, uv).r;
         float txtR = texture2D(tText, uv + vec2(.004 * burst, 0.)).r;
         vec3 col = bg + vec3(txtR, txt, txt) * 1.4;
-        col *= .85 + .15 * sin(uv.y * 600.);
         col += .25 * smoothstep(.02, 0., abs(fract(uv.y * .5 - time * .12) - .5));
         gl_FragColor = vec4(col * 6., 1.);
       }`,

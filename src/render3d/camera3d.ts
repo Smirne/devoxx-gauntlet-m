@@ -18,6 +18,14 @@ import { ROBOT_HEIGHT_M } from '../sim/units';
 
 const DIST: Record<RobotKind, number> = { voxxy: 3.1, droid: 4.4, biggy: 4.2 };
 const PIVOT: Record<RobotKind, number> = { voxxy: 0.85, droid: 0.8, biggy: 0.8 };
+/** Pitch each robot's camera starts from after a switch. */
+const PITCH: Record<RobotKind, number> = { voxxy: 0.22, droid: 0.02, biggy: 0.22 };
+/**
+ * Metres above the pivot the camera looks at. Droid is the tall one and his
+ * puzzles are high (the projector panel sits 3.35 m up): his camera looks up
+ * past his head instead of down at his shoulders.
+ */
+const LOOK_UP: Record<RobotKind, number> = { voxxy: 0, droid: 1.1, biggy: 0 };
 
 export class ThirdPersonCamera {
   readonly camera: THREE.PerspectiveCamera;
@@ -29,6 +37,7 @@ export class ThirdPersonCamera {
 
   private readonly pivot = new THREE.Vector3();
   private readonly want = new THREE.Vector3();
+  private readonly look = new THREE.Vector3();
   private readonly ray = new THREE.Raycaster();
   private lastUser = -10;
   private time = 0;
@@ -98,6 +107,13 @@ export class ThirdPersonCamera {
     }
     const switched = kind !== this.kind;
     this.kind = kind;
+    // A switch puts you behind the new robot, looking where it looks, at its
+    // own pitch — no hunting for an angle after every 1/2/3 (playtest).
+    if (switched) {
+      this.yaw = Math.atan2(-Math.cos(heading), -Math.sin(heading));
+      this.pitch = PITCH[kind];
+      this.lastUser = -10;
+    }
     const target = new THREE.Vector3(robotPos.x, robotPos.y + ROBOT_HEIGHT_M[kind] * PIVOT[kind], robotPos.z);
     const k = this.snapNext ? 1 : 1 - Math.exp(-dt * (switched ? 3 : 9));
     this.pivot.lerp(target, k);
@@ -135,7 +151,9 @@ export class ThirdPersonCamera {
       this.want.z = THREE.MathUtils.clamp(this.want.z, room[1] + pad, room[3] - pad);
     }
     cam.position.copy(this.want);
-    cam.lookAt(this.pivot);
+    this.look.copy(this.pivot);
+    this.look.y += LOOK_UP[kind];
+    cam.lookAt(this.look);
     cam.updateMatrixWorld();
     this.snapNext = false;
   }
