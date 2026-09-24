@@ -15,6 +15,7 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
 
 import { T } from '../sim/constants';
 import { CY0, CY1, F1, roomDoor, rooms, roomSeating, floor1Walls } from '../sim/geometry';
@@ -67,6 +68,11 @@ export interface Venue3D {
   volumeSpots: Array<{ light: THREE.SpotLight; fog: number }>;
   /** Per-frame: flicker, the beacon, the holograms. */
   update(t: number, dt: number): void;
+  /**
+   * Cinema E's screen, which the chapter makes a mirror: a real planar mirror
+   * whose image the world refreshes only while the camera is near the room.
+   */
+  mirror: { mesh: Reflector; render: (r: THREE.WebGLRenderer, s: THREE.Scene, c: THREE.Camera) => void; room: Rect } | null;
 }
 
 /* ---------------------------------------------------------------- builders */
@@ -181,6 +187,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   const volumePoints: VolumePoint[] = [];
   const volumeSpots: Array<{ light: THREE.SpotLight; fog: number }> = [];
   const updaters: Array<(t: number, dt: number) => void> = [];
+  let mirror: Venue3D['mirror'] = null;
 
   const walls: Wall[] = floor1Walls();
   const shell = new Buckets();
@@ -353,10 +360,26 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     const sw = m(r.w) * 0.6;
     const sh = sw / 2.39;
     const sy = 1.6 + sh / 2;
-    const scr = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), r.n === 'E' ? mats.screen : new THREE.MeshPhysicalMaterial({ color: 0x9a9da3, roughness: 0.55, metalness: 0 }));
+    let scr: THREE.Mesh;
+    if (r.n === 'E') {
+      const refl = new Reflector(new THREE.PlaneGeometry(sw, sh), {
+        textureWidth: 1024,
+        textureHeight: Math.round(1024 / 2.39),
+        clipBias: 0.003,
+        color: new THREE.Color(0.85, 0.87, 0.9),
+        multisample: 0,
+      });
+      const render = refl.onBeforeRender.bind(refl) as unknown as (r2: THREE.WebGLRenderer, s2: THREE.Scene, c2: THREE.Camera) => void;
+      refl.onBeforeRender = () => {};
+      noMerge(refl);
+      scr = refl;
+      mirror = { mesh: refl, render, room: { x: r.x, y: r.y, w: r.w, h: r.h } };
+    } else {
+      scr = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), new THREE.MeshPhysicalMaterial({ color: 0x9a9da3, roughness: 0.55, metalness: 0 }));
+      scr.receiveShadow = true;
+    }
     scr.position.set(m(r.x + r.w / 2), sy, far + inward * 0.42);
     scr.rotation.y = inward > 0 ? 0 : Math.PI;
-    scr.receiveShadow = true;
     group.add(scr);
     const mask = new THREE.Mesh(box(sw + 1.2, sh + 1.0, 0.1, V(0, 0, -0.06)), mats.rubber);
     mask.position.copy(scr.position);
@@ -1053,6 +1076,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     colliders,
     volumePoints,
     volumeSpots,
+    mirror,
     update(t: number, dt: number): void {
       for (const u of updaters) u(t, dt);
     },

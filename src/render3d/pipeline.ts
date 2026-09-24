@@ -194,6 +194,15 @@ export class Pipeline {
   private readonly fxaaMat: THREE.ShaderMaterial;
   private readonly quad = new FullScreenQuad();
 
+  /**
+   * A real, cleared depth texture in shadow-compare mode for the fog's unused
+   * shadow slots. Left null, three binds its own empty shadow texture there,
+   * which ANGLE rejects as a sampler/format mismatch and skips the draw —
+   * seen whenever cinema E's mirror bounces pushed a shadowed lamp out of the
+   * fog's light list.
+   */
+  private readonly blankShadow: THREE.WebGLRenderTarget;
+  private blankReady = false;
   private spots: VolumeSpot[] = [];
   private points: VolumePoint[] = [];
   private readonly prevViewProj = new THREE.Matrix4();
@@ -215,6 +224,12 @@ export class Pipeline {
       depthTexture,
       depthBuffer: true,
     });
+    const bd = new THREE.DepthTexture(4, 4, THREE.UnsignedIntType);
+    bd.format = THREE.DepthFormat;
+    bd.compareFunction = THREE.LessEqualCompare;
+    bd.minFilter = THREE.LinearFilter;
+    bd.magFilter = THREE.LinearFilter;
+    this.blankShadow = new THREE.WebGLRenderTarget(4, 4, { depthTexture: bd, depthBuffer: true });
     this.whiteTex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
     this.whiteTex.needsUpdate = true;
     this.volRT = hdrTarget(4, 4);
@@ -474,6 +489,14 @@ export class Pipeline {
       u.spotCone.value[n].set(Math.cos(L.angle), Math.cos(L.angle * (1 - L.penumbra)), L.distance > 0 ? L.distance : 30, sl);
       n++;
     }
+    if (!this.blankReady) {
+      const prev = this.renderer.getRenderTarget();
+      this.renderer.setRenderTarget(this.blankShadow);
+      this.renderer.clear(true, true, false);
+      this.renderer.setRenderTarget(prev);
+      this.blankReady = true;
+    }
+    for (let i = 0; i < maps.length; i++) if (!maps[i]) maps[i] = this.blankShadow.depthTexture;
     u.nSpots.value = n;
     u.shadowMap0.value = maps[0];
     u.shadowMap1.value = maps[1];
@@ -640,6 +663,7 @@ export class Pipeline {
     this.streakA.dispose();
     this.dofA.dispose();
     this.dofB.dispose();
+    this.blankShadow.dispose();
     this.streakB.dispose();
     this.ldrRT.dispose();
     this.reflection.dispose();
