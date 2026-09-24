@@ -429,6 +429,15 @@ function presentEntries(rig: RobotRig): PresentEntry[] {
       if (!mat || !mat.isMeshStandardMaterial || skip.has(mat) || seen.has(mat)) continue;
       seen.add(mat);
       const c = mat.color;
+      /*
+       * A material with no colour of its own has nothing to expose. Voxxy's
+       * glass highlights are exactly this — `#000000` with a pale emissive,
+       * deliberately kept out of `rig.glow` (`voxxy.ts`: *"The glass highlights.
+       * Not a glow"*) — and scaling a black colour by any gain is still black.
+       * Skipping them rather than writing black over black keeps `v = 0` an
+       * exact restore and keeps the lift monotonic on everything it does touch.
+       */
+      if (!mat.map && relLum(c.r, c.g, c.b) < 1e-4) continue;
       if (mat.map) {
         /*
          * A painted panel lights itself THROUGH ITS OWN ART. Set once, here:
