@@ -451,6 +451,63 @@ const NEAR_Y1 = 3.5;
 const BODY_BACK_PX = 7;
 const BODY_PROUD_PX = 0.5;
 
+/* ------------------------------------------------- what makes a panel a panel
+ *
+ * Michele, with a screenshot of one of these: *"This orange thing. I don't know
+ * if it's supposed to be a projector or what, but it misses a shape."*
+ *
+ * He is right, and it is worth saying exactly what was wrong, because the
+ * floor-to-ceiling height was NOT: `image-1790032674926.webp` shows the real
+ * thing as a full-height orange panel beside the auditorium entrance with the
+ * numeral high on it. Measured off the built scene graph, ours was
+ *
+ *     zaal-sign-3   x 761..791  y 414..422   h 0.00..3.62 m   <- one bare box
+ *     zaal-face-3   x 763..789  y 422..422   h 1.30..3.50 m   <- one textured quad
+ *
+ * — a solid `signOrange` block from floor to 3.62 m carrying a single quad on its
+ * corridor face. Everything else (the whole top, both flanks, the bottom 1.3 m of
+ * the front) was bare orange, and the game's camera is a high isometric, so the
+ * naked lid was prominently in frame. A box, where the photograph shows a panel.
+ *
+ * Four things separate the two, and all four are in the photograph:
+ *
+ *  1. a **coping** — the top band is a lighter orange than the face and stands a
+ *     few centimetres proud of it, because it catches light the face does not;
+ *  2. a **returned edge** — the flanks are the same orange turned away from the
+ *     light, a plane darker, so the slab reads as having thickness;
+ *  3. a **shadow gap** — the panel does not grow out of the floor. It stops short
+ *     of it on a dark recessed foot the block overhangs. (A reveal all *round*
+ *     the panel was drawn first and then taken out: the corridor wall behind it
+ *     is charcoal already, so a dark line against it changes nothing you can see,
+ *     and the coping's proud step is what actually separates panel from wall.)
+ *  4. a **header return** — the panel's top runs on along the wall as a fascia
+ *     over the entrance, which is the "T" the photograph makes of it and the
+ *     thing that stops the top being a stray edge.
+ *
+ * The numbers below are read off that photograph at the panel's own width (the
+ * real one is about 2 m across, ours is `ZAAL_W_M`), rounded to the centimetre.
+ */
+
+/** The coping band across the panel's top, metres. */
+const CAP_H = 0.22;
+/** How far the coping stands proud of the face and of both flanks, metres. */
+const CAP_PROUD = 0.04;
+/** The fillet on top of the coping — the step that stops the lid being one plane. */
+const CAP_FILLET_H = 0.04;
+/** The shadow gap at the panel's foot. */
+const BASE_H = 0.11;
+/**
+ * How far the header fascia runs along the wall from the panel, metres.
+ *
+ * It runs **back toward the doorway** — never the other way — for the reason
+ * `onFrontage` exists: on rooms 4 and 9 the other way is the secondary
+ * staircase, and `tests/venue.smoke.test.ts` checks that nothing of this sign
+ * hangs over that stairwell. One metre is as far as the photograph's own fascia
+ * reads before the wall takes over, and it keeps the header inside the panel's
+ * own room frontage at every room.
+ */
+const HEADER_RUN_M = 1.0;
+
 /**
  * Corridor-facing geometry for one auditorium's frontage.
  *
@@ -550,6 +607,141 @@ export function zaalPosterX(n: number): number {
 }
 
 /**
+ * A `slab()` with a material per face, in `BoxGeometry`'s own group order:
+ * +x, -x, +y (top), -y, +z, -z.
+ *
+ * The Zaal panel needs this and nothing else does. One box with six faces and
+ * three materials is a cheaper way to give a slab a coping and a returned edge
+ * than three boxes, and — the part that matters at this camera — it is the only
+ * way to make the TOP a different colour from the front without the seam between
+ * them depending on where a light happens to be.
+ */
+function facedSlab(
+  r: { x: number; y: number; w: number; h: number },
+  base: number,
+  height: number,
+  mats: readonly THREE.Material[],
+): THREE.Mesh {
+  const h = Math.max(height, 0.01);
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(m(r.w), h, m(r.h)), mats as THREE.Material[]);
+  mesh.position.set(m(r.x + r.w / 2), base + h / 2, m(r.y + r.h / 2));
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+/**
+ * The Zaal numeral panel's carcass: everything except the numeral itself.
+ *
+ * See "what makes a panel a panel" above for the photograph this is measured
+ * against and for what each piece is doing. The overall height is unchanged —
+ * `f.y1 + 0.12`, the same block the build has always drawn, because the
+ * floor-to-ceiling proportion was right and only the edges were missing.
+ *
+ * `doorX` is the doorway's centre, and the only thing it decides is which way the
+ * header fascia runs: back toward the entrance, never out across whatever else is
+ * on that wall.
+ */
+function zaalPanelBody(
+  p: VenuePalette,
+  panelX: number,
+  bodyPx: number,
+  f: Frontage,
+  doorX: number,
+): THREE.Object3D[] {
+  const top = f.y1 + CAP_H + 0.02;
+  const capY = top - CAP_H;
+  const proudPx = CAP_PROUD * PX_PER_M;
+  const span = { y: f.bodyY, h: f.bodyH };
+  // BoxGeometry group order: +x, -x, +y, -y, +z, -z. The corridor-facing side is
+  // +z for every panel in the building (module header), so that is the one that
+  // gets the flat block orange; the flanks are the returned edge and the lid is
+  // the coping.
+  const ret = p.signOrangeReturn;
+  const bodyMats = [ret, ret, p.signOrangeCap, p.signReveal, p.signOrange, p.signOrange];
+  const capMats = [
+    p.signOrangeCap,
+    p.signOrangeCap,
+    p.signOrangeCap,
+    p.signReveal,
+    p.signOrangeCap,
+    p.signOrangeCap,
+  ];
+
+  const out: THREE.Object3D[] = [];
+  /*
+   * The coping is proud on the FLANKS and nowhere else, and the block is the one
+   * that gives ground.
+   *
+   * `bodyPx` stays the panel's outside width and `f.bodyH` its outside depth, so
+   * the whole assembly still occupies exactly the envelope the old single slab
+   * did. That is not tidiness: `tests/venue.smoke.test.ts` measures this group's
+   * bounding box twice — against the corridor soffit, and against the stairwell
+   * in front of rooms 4 and 9, where `onFrontage` leaves the panel `REVEAL_PX`
+   * (3 cm) of daylight at each end. A coping that grew 4 cm past the block put
+   * room 4's panel over the stairs, which is the fault that test was written for.
+   */
+  const bodyW = bodyPx - proudPx * 2;
+
+  // The shadow gap at the foot: the block overhangs it on both flanks and at the
+  // front, so from a high camera the panel stops short of the floor instead of
+  // growing out of it.
+  const footInset = 0.05 * PX_PER_M;
+  out.push(
+    slab(
+      { x: panelX - bodyW / 2 + footInset, y: span.y, w: bodyW - footInset * 2, h: span.h - 0.5 },
+      0,
+      BASE_H,
+      p.signReveal,
+    ),
+  );
+
+  // The block itself, from the shadow gap up to the underside of the coping.
+  out.push(facedSlab({ x: panelX - bodyW / 2, y: span.y, w: bodyW, h: span.h }, BASE_H, capY - BASE_H, bodyMats));
+
+  // The coping: a thin dark reveal, then the light band that is the panel's own
+  // top edge. The dark line is UNDER the band, not over it — the photograph's
+  // edge is the lightest thing on the panel, and a dark fillet laid on top of it
+  // gave the lid back exactly the flat dark plane this is meant to remove.
+  out.push(slab({ x: panelX - bodyW / 2, y: span.y, w: bodyW, h: span.h }, capY, CAP_FILLET_H, p.signReveal));
+  out.push(
+    facedSlab(
+      { x: panelX - bodyPx / 2, y: span.y, w: bodyPx, h: span.h },
+      capY + CAP_FILLET_H,
+      top - capY - CAP_FILLET_H,
+      capMats,
+    ),
+  );
+
+  /*
+   * The header fascia — the photograph's "T".
+   *
+   * It runs from the panel back toward the doorway at the coping's own height,
+   * flush with the body rather than proud of it, so the coping still reads as the
+   * panel's own edge and the fascia as the wall's. Clamped to the run of wall
+   * between the panel and the door so it never reaches past the opening.
+   */
+  const dir = Math.sign(doorX - panelX) || 1;
+  const gap = Math.abs(doorX - panelX) - bodyPx / 2 - DOOR / 2;
+  const runPx = Math.min(HEADER_RUN_M * PX_PER_M, Math.max(0, gap));
+  if (runPx > 1) {
+    const x0 = dir > 0 ? panelX + bodyW / 2 : panelX - bodyW / 2 - runPx;
+    out.push(
+      facedSlab({ x: x0, y: span.y, w: runPx, h: span.h }, capY, top - capY, [
+        ret,
+        ret,
+        p.signOrangeCap,
+        p.signReveal,
+        p.signOrange,
+        p.signOrange,
+      ]),
+    );
+  }
+
+  return out;
+}
+
+/**
  * Build every sign in the venue.
  *
  * Room signage is `attach`ed to the room anchors from `buildFloor1`, which is what
@@ -593,9 +785,7 @@ export function buildSignage(
     // box across the door from it. At Kinepolis the numeral panel is the dominant
     // colour mass on the wall; ours used to lose that contest to a blank poster.
     const bodyPx = ZAAL_W_M * PX_PER_M + 4;
-    panel.add(
-      slab({ x: panelX - bodyPx / 2, y: f.bodyY, w: bodyPx, h: f.bodyH }, 0, f.y1 + 0.12, p.signOrange),
-    );
+    for (const part of zaalPanelBody(p, panelX, bodyPx, f, d.cx)) panel.add(part);
     panel.add(
       signFace(
         panelX,

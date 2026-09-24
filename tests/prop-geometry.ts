@@ -21,6 +21,8 @@
  */
 
 import { FIRE_LEAF_H, fireDoorDraw } from '../src/render/fire-door';
+import { KEYPAD_TOP_M } from '../src/render/keypad';
+import { GATE_H, LOCK_LEAF_H, gateDraw, lockDoorDraw } from '../src/render/doors';
 import { ROLLER_H, rollerDoorDraw, ROLLER_CLEAR_M } from '../src/render/roller-door';
 import type { Prop, Rect } from '../src/sim/types';
 import { PX_PER_M } from '../src/sim/units';
@@ -55,11 +57,31 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
    * leaves actually are.
    */
   firedoor: { h: FIRE_LEAF_H, tl: true },
-  keypad: { h: 1.25, tl: true },
+  /*
+   * The keypad is taller than it was, and that is a real change, not a fudge.
+   *
+   * It used to be `{ h: 1.25 }`, a table entry drawn as one box. It is now a
+   * modelled unit (`src/render/keypad.ts`) whose mounting plate tops out at
+   * `KEYPAD_TOP_M` — the height is read from that module rather than re-typed, so
+   * this transcription cannot drift from it the way the header warns about. The
+   * FOOTPRINT is unchanged and is still the sim's own rect, which is the only
+   * thing the collider sweep asks about: a drawn solid must stand where a wall
+   * stands, and it does.
+   */
+  keypad: { h: KEYPAD_TOP_M, tl: true },
   'projector-panel': { h: 0.9, tl: true, lift: 2.5 },
   screen: { h: 5.2, tl: true },
   alcove: { h: 0.05, tl: true, flat: true },
-  lock: { h: 2.1, tl: true },
+  /*
+   * A cinema door is no longer a box at the prop's own rect either.
+   *
+   * It was `{ h: 2.1, tl: true }`, which was true of the four that never open and a
+   * lie about cinema B's, which `ch1-night.ts` used to stop publishing altogether on
+   * the frame the projector-panel release was pressed — a door that did not open,
+   * it ceased to exist. It swings now, and `propBox` asks `src/render/doors.ts`,
+   * the module `scene.ts` itself draws from, where the leaf actually is.
+   */
+  lock: { h: LOCK_LEAF_H, tl: true },
   jammed: { h: 2.1, tl: true },
   /* chapter 2 */
   rack: { h: 0.3, tl: true, lift: 1.55 },
@@ -76,7 +98,21 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
    * `src/render/roller-door.ts`, the module `scene.ts` itself draws from.
    */
   roller: { h: ROLLER_H, tl: true },
-  gate: { h: 1.1, tl: true },
+  /*
+   * And the registration gate, for the same reason and with the same history:
+   * `ch3-breakfast.ts` removes the `gate` wall in `done()` and goes on publishing
+   * the prop, so a 1.1 m box at that rect was a barrier standing across a stair
+   * foot the sim had already opened. It swings back along the flight's west cheek
+   * now, and `propBox` asks `gateDraw`.
+   *
+   * The box below is the LEAF. The gate's two posts do not move and are separately
+   * covered — by the `gate` wall while it is shut, and by `gateleaf`/`gatepost`
+   * once it is open — and a single box round leaf AND far post would claim the
+   * whole 8 m stair mouth as solid, which is the opposite of what this sweep is
+   * for. `tests/doors.test.ts` checks every rect `gateSolids` returns, posts
+   * included, against the wall list in both states.
+   */
+  gate: { h: GATE_H, tl: true },
   lane: { h: 0.04, tl: true, flat: true },
   duck: { h: 0.3 },
   'duck-target': { h: 0.03, flat: true },
@@ -171,6 +207,19 @@ export function propBox(p: Prop): { rect: Rect; lo: number; hi: number } | null 
       lo: Math.min(...low.map((s) => s.lo)),
       hi: Math.max(...low.map((s) => s.lo + s.h)),
     };
+  }
+  /*
+   * A cinema door, from `src/render/doors.ts`. Shut, the leaf fills the doorway and
+   * the answer is the box it always was. Open, it stands against the inside of the
+   * auditorium wall, where `ch1-night.ts` pushes a `lockleaf` wall under it — a
+   * real footprint in a real place, which is the whole point of the change.
+   */
+  if (p.kind === 'lock') {
+    return { rect: lockDoorDraw(p, []).leaf.rect, lo: 0, hi: spec.h };
+  }
+  /* ...and the stair gate's leaf. See its entry above for why the posts are not in here. */
+  if (p.kind === 'gate') {
+    return { rect: gateDraw(p, []).leaf.rect, lo: 0, hi: spec.h };
   }
   const wPx = p.w !== undefined ? p.w : (spec.fw ?? 0.8) * PX_PER_M;
   const dPx = p.h !== undefined ? p.h : (spec.fd ?? 0.8) * PX_PER_M;

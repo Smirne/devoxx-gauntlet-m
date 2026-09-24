@@ -116,6 +116,7 @@ import type { Bot, Rect, Wall } from '../src/sim/types';
 import { PX_PER_M, STOREY_H_M } from '../src/sim/units';
 import { buildVenue, type Venue } from '../src/render/venue/index';
 import { PROP_DRAW, propBox } from './prop-geometry';
+import { playToStairGate } from './pilot';
 
 /** Grid pitch, sim px. 2 px is 16 cm — finer than any gap a robot could use. */
 const STEP = 2;
@@ -432,17 +433,30 @@ const GATE_RUNS: Readonly<Record<number, ((g: DebugGame) => void) | null>> = {
     expect((g.debug.chapter() as ExpoState).rollerBroken, 'chapter 2s gate did not open').toBe(true);
     for (let i = 0; i < 60; i++) g.update(DT_MAX);
   },
-  /*
-   * Chapter 3's registration gate opens in `done()` — soup delivered, speaker on
-   * stage, beer stacked — and `done()` starts the cutscene that ENDS the chapter,
-   * so the open state lasts a second and costs a full playthrough to reach. It is
-   * also the next instance of this exact bug waiting to happen: `ch3-breakfast.ts`
-   * calls `ctx.removeWall(gate)` and goes on publishing a `gate` prop, which
-   * `PROPS.gate` draws as a 1.1 m box across the foot of the main staircase. It
-   * wants the treatment `src/render/fire-door.ts` and `src/render/roller-door.ts`
-   * had; that is a change in somebody else's chapter, so it is flagged, not made.
+  /**
+   * Chapter 3: the whole of Stephan's list, because that is what opens his gate.
+   *
+   * This slot said `null` for a round — *"it is also the next instance of this
+   * exact bug waiting to happen"* — and it was right: `ch3-breakfast.ts` removed
+   * the `gate` wall in `done()` and went on publishing a `gate` prop, which
+   * `PROPS.gate` drew as a 1.1 m box across the foot of the main staircase, with a
+   * second static one drawn there by `buildVenue()` underneath it. Both are fixed
+   * (`src/render/doors.ts`), so the write-off comes off and the post-gate sweep
+   * actually covers the chapter.
+   *
+   * It costs a full playthrough, which is the reason it was written off, and there
+   * is no way round that: soup, speaker and the beer delivery are three separate
+   * errands and the gate is gated on all three. The moves are the ones
+   * `tests/chapters.test.ts` uses — `debug.place` to the prop the sim itself
+   * publishes, then `E` — so nothing here knows a coordinate the game does not
+   * already say out loud.
+   *
+   * The chapter now HOLDS the hall for `GATE_SWING_TIME + GATE_CUT_DELAY` after
+   * `done()` before the exit cutscene, so this run stops while the props are still
+   * chapter 3's. That hold is what makes the state measurable at all: before it,
+   * the open gate lasted one frame and then the screen faded.
    */
-  3: null,
+  3: playToStairGate,
   /** Chapter 4 removes no walls at all: nothing it draws changes its collider. */
   4: null,
 };
@@ -575,9 +589,17 @@ describe('every solid a CHAPTER draws is a collider', () => {
   const KNOWN_WALKTHROUGH_OPEN: Readonly<Record<number, readonly string[]>> = Object.freeze({
     1: [],
     2: [],
+    /*
+     * Chapter 3 is measured here for the first time — `GATE_RUNS[3]` used to be a
+     * written-off `null`. It comes back with the same four kinds its frame-four
+     * sweep already carries in `KNOWN_WALKTHROUGH`, and nothing extra: the gate
+     * itself is off the list, in both states, which is the whole point of adding
+     * the run.
+     */
+    3: ['ladle', 'crate', 'duck', 'race-marker'],
   });
 
-  for (const n of [1, 2]) {
+  for (const n of [1, 2, 3]) {
     it(`chapter ${n}: nothing it draws can be walked through AFTER its gate opens`, () => {
       const run = chapterSolids(n, true);
       const { free, reach } = gridsFor(run.game);

@@ -54,14 +54,14 @@ const MIN_CLEARANCE_M = 0.02;
 /**
  * The lift `updateClues` actually applies, read off the one line that applies it:
  *
- *     mark.root.position.set(m(clue.x), surfaceY(floorY, clue.x) + <lift>, m(clue.y));
+ *     mark.root.position.set(m(clue.x), surfaceY(floorY, clue.x, clue.y) + <lift>, m(clue.y));
  *
  * `<lift>` may be a literal or a named constant; a name is resolved to its
  * declaration. Taking it from the call site rather than from a constant is the
  * point — a named constant that nothing uses would otherwise pass.
  */
 function clueLiftFromSource(): number {
-  const call = /mark\.root\.position\.set\(\s*m\(clue\.x\)\s*,\s*surfaceY\(floorY,\s*clue\.x\)\s*\+\s*([A-Za-z0-9_$.]+)\s*,/.exec(
+  const call = /mark\.root\.position\.set\(\s*m\(clue\.x\)\s*,\s*surfaceY\(floorY,\s*clue\.x,\s*clue\.y\)\s*\+\s*([A-Za-z0-9_$.]+)\s*,/.exec(
     SCENE_SRC,
   );
   expect(call, 'updateClues no longer lifts the marker root off surfaceY()').not.toBeNull();

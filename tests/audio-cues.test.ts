@@ -122,6 +122,9 @@ const IDS: readonly SoundId[] = [
   'crash',
   'door-open',
   'shutter',
+  'maglock',
+  'cabinet',
+  'gate',
   'roll',
   'stretch',
   'keypad',
@@ -196,6 +199,96 @@ describe('the synthesised cues', () => {
     expect(voices.some((v) => Math.abs(v.start - t0 - 0.42) < 0.06), 'the curtain never arrives').toBe(true);
     const end = Math.max(...voices.map((v) => v.stop));
     expect(end - t0).toBeLessThan(1.3);
+
+    audio.dispose();
+    restore();
+  });
+
+  /**
+   * The three doors that used to open in silence, and each one has to sound like
+   * the thing it is: *"a gate and a cabinet door do not sound like a fire door."*
+   *
+   * They are the same contract `door-open` and `shutter` are under — a beginning
+   * and an arrival, landing on the sim's own clock — at three different sizes.
+   */
+  it("releases cinema B's maglock and lands the leaf inside the swing", () => {
+    const { voices, restore } = stubAudio();
+    const audio = createAudio();
+    audio.play('maglock');
+    const t0 = Math.min(...voices.map((v) => v.start));
+    const end = Math.max(...voices.map((v) => v.stop));
+    // The strike is the first thing: the projector panel did this, from across the
+    // room, and the buzz is what says electric rather than mechanical.
+    expect(voices.some((v) => v.start - t0 < 0.005), 'the strike is not the first thing').toBe(true);
+    // `LOCK_SWING_TIME` is 0.7 s in `ch1-night.ts` — smaller than the fire door's
+    // second, which is the whole reason this is a separate cue.
+    expect(voices.some((v) => Math.abs(v.start - t0 - 0.7) < 0.12), 'the leaf never arrives').toBe(true);
+    expect(end - t0, 'it is still talking long after the door has stopped').toBeLessThan(1.1);
+
+    audio.dispose();
+    restore();
+  });
+
+  it('grinds the cabinet open, loudest in the middle, and stops twice', () => {
+    const { voices, restore } = stubAudio();
+    const audio = createAudio();
+    audio.play('cabinet');
+    const t0 = Math.min(...voices.map((v) => v.start));
+    const end = Math.max(...voices.map((v) => v.stop));
+    // `CABINET_SWING_TIME` is 1.2 s in `ch2-expo.ts`: the longest of the three
+    // swings, because nothing about it is being let go of.
+    expect(end - t0).toBeGreaterThan(1.2);
+    expect(end - t0).toBeLessThan(1.9);
+    // The hinges sound THROUGH the swing — a door being forced, not one arriving.
+    const during = voices.filter((v) => v.start - t0 > 0.05 && v.start - t0 < 0.6);
+    expect(during.length, 'the cabinet opens in silence between its ends').toBeGreaterThanOrEqual(3);
+    // Two leaves, so two stops, a breath apart rather than one object landing.
+    const stops = voices.filter((v) => v.start - t0 > 1.0).map((v) => v.start - t0).sort((a, b) => a - b);
+    expect(stops.length, 'the pair of doors arrives as one').toBeGreaterThanOrEqual(4);
+    expect(stops[stops.length - 1] - stops[0], 'both leaves stop on the same instant').toBeGreaterThan(0.05);
+
+    audio.dispose();
+    restore();
+  });
+
+  it("opens the stair gate for the day rather than breaking it", () => {
+    const { voices, restore } = stubAudio();
+    const audio = createAudio();
+    audio.play('gate');
+    const t0 = Math.min(...voices.map((v) => v.start));
+    // `GATE_SWING_TIME` is 1.5 s in `ch3-breakfast.ts`, and it is pinned back
+    // against the wall at the end of it.
+    expect(voices.some((v) => Math.abs(v.start - t0 - 1.5) < 0.12), 'the barrier never gets there').toBe(true);
+    /*
+     * And the thing that makes it Stephan rather than Biggy: NOTHING HITS.
+     *
+     * `crash` and `shutter` both open on a full-weight impact — a quarter- to
+     * third-of-a-second body of low sine under the transient — and that shape is
+     * what "a door giving way" sounds like. This one opens on a hook coming off an
+     * eye, so everything in its first fiftieth of a second is a tap: short enough
+     * that it cannot be carrying a weight.
+     */
+    const opening = voices.filter((v) => v.start - t0 < 0.02);
+    expect(opening.length, 'the gate starts with nothing at all').toBeGreaterThan(0);
+    for (const v of opening) {
+      expect(
+        v.stop - v.start,
+        'the gate opens on a body blow — it is being smashed, not unhooked',
+      ).toBeLessThan(0.12);
+    }
+    // ...which is exactly what the two doors that ARE hit do, measured the same way.
+    for (const hit of ['crash', 'shutter'] as const) {
+      const other = stubAudio();
+      const a2 = createAudio();
+      a2.play(hit);
+      const h0 = Math.min(...other.voices.map((v) => v.start));
+      expect(
+        other.voices.some((v) => v.start - h0 < 0.02 && v.stop - v.start >= 0.12),
+        `\`${hit}\` no longer opens on an impact, so this comparison says nothing`,
+      ).toBe(true);
+      a2.dispose();
+      other.restore();
+    }
 
     audio.dispose();
     restore();

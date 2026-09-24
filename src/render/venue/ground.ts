@@ -46,6 +46,7 @@ import {
   GF,
   LOBBY_PLANTERS,
   LOBBY_RISE_M,
+  MAIN_STAIR_TOP_M,
   LOBBY_STANCHIONS,
   bofTables,
   boothTotem,
@@ -88,8 +89,16 @@ import {
   wallPanel,
 } from './props';
 
-/** How far the visible part of a staircase climbs before the ceiling swallows it. */
-const STAIR_RISE = 5;
+/**
+ * How far the visible part of a staircase climbs before the ceiling swallows it.
+ *
+ * It is `MAIN_STAIR_TOP_M` in `src/sim/geometry.ts` now, not a number of this
+ * file's own: the sim publishes the main flight as a walking surface a robot
+ * stands on (`groundPlates`), and a flight drawn to one height while robots walk
+ * it at another is the bug that made chapter 3's transition climb through solid
+ * treads. One number, and the sim owns it.
+ */
+const STAIR_RISE = MAIN_STAIR_TOP_M;
 /** The lobby's walking surface, above the hall's. */
 const RISE = LOBBY_RISE_M;
 /** East of this the floor is the raised lobby plate; west of it, the hall. */

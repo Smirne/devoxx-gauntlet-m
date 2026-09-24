@@ -27,7 +27,7 @@
  */
 
 import { W, H, T } from './constants';
-import type { Booth, Bot, Rect, RoomDef, ViewRect, Wall } from './types';
+import type { Booth, Bot, Plate, Rect, RoomDef, ViewRect, Wall } from './types';
 
 /* ---------------------------------------------------------------- first floor */
 
@@ -940,6 +940,49 @@ export function groundRiseM(x: number): number {
   if (x <= s.x) return 0;
   if (x >= s.x + s.w) return LOBBY_RISE_M;
   return ((x - s.x) / s.w) * LOBBY_RISE_M;
+}
+
+/**
+ * The top of the main staircase above the hall floor, metres.
+ *
+ * It lived in `src/render/venue/ground.ts` as `STAIR_RISE` and it is what that
+ * file still builds the flight to — but it is also the height a robot walking
+ * chapter 3's transition is standing at, which makes it sim geometry. See
+ * `groundPlates`.
+ */
+export const MAIN_STAIR_TOP_M = 5;
+
+/**
+ * Every raised walking surface the ground floor has, as `Plate`s.
+ *
+ * Three, and each one is something the renderer has drawn correctly since the
+ * beginning and nothing has ever stood on:
+ *
+ *  - **the lobby**, half a metre up, flat, east of the small staircase;
+ *  - **the small staircase**, six long steps ramping from the hall to the lobby —
+ *    the same interpolation `groundRiseM` above does, which is asserted against
+ *    this list in `tests/surface.test.ts` so the two cannot drift;
+ *  - **the main flight**, climbing NORTH out of the lobby to the first floor.
+ *    `src/render/venue/ground.ts` builds it from `bottomY: LOBBY_RISE_M` at its
+ *    south edge to `topY: MAIN_STAIR_TOP_M` at its north, and until now chapter
+ *    3's transition walked the three of them straight through it at hall level —
+ *    which is the "walks into a staircase" note in `docs/playtest-notes.md`.
+ *
+ * A plate is not a wall (see `src/sim/surface.ts`): every cell of these stays
+ * walkable, and what stops a robot strolling up the main flight in play is the
+ * `gate` chapter 3 puts across its foot, exactly as before.
+ */
+export function groundPlates(): Plate[] {
+  const s = GF.smallStairs;
+  const ms = GF.mainStair;
+  return [
+    { kind: 'lobby', x: s.x + s.w, y: 0, w: W - (s.x + s.w), h: H, lo: LOBBY_RISE_M },
+    { kind: 'lobby-steps', ...s, lo: 0, hi: LOBBY_RISE_M, axis: 'x' },
+    // North edge is the top: `axis: 'y'` runs low-y to high-y, so `lo` is the TOP
+    // of the flight and `hi` is its foot. The names are the axis's ends, not the
+    // stair's.
+    { kind: 'main-flight', ...ms, lo: MAIN_STAIR_TOP_M, hi: LOBBY_RISE_M, axis: 'y' },
+  ];
 }
 
 /* ------------------------------------------------- what stands in the hall
