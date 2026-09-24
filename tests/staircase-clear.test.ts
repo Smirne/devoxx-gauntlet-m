@@ -116,3 +116,54 @@ describe('the small staircase is clear', () => {
     }
   });
 });
+
+/*
+ * ...and the same question of the two SECONDARY staircases, which moved this round
+ * onto the pixels `plans/exhibition-floor-stairs-annotated.png` draws them at (see
+ * `GF.stairs`). The west shaft moved 64 px and both grew 26 px longer, and the
+ * prior art here is exactly why that needs asking: a sponsor stand was found 28 px
+ * inside the small staircase the last time a rect in this hall moved.
+ */
+describe('the two secondary staircases are clear too', () => {
+  const shafts = GF.stairs.map((s) => ({ name: s.to, r: { x: s.x, y: s.y, w: s.w, h: s.h } as Rect }));
+
+  it('has no sponsor stand, totem or flight case standing in either shaft', () => {
+    const inside: string[] = [];
+    for (const { name, r } of shafts) {
+      for (const b of GF.booths) {
+        if (hits({ x: b.x, y: b.y, w: b.w, h: b.h }, r)) inside.push(`${b.name} in the ${name} shaft`);
+        const t = boothTotem(b);
+        if (t && hits(t, r)) inside.push(`${b.name}'s totem in the ${name} shaft`);
+        const c = boothCrate(b);
+        if (c && hits(c, r)) inside.push(`${b.name}'s flight case in the ${name} shaft`);
+      }
+    }
+    expect(inside, `booth fabric inside a secondary staircase:\n  ${inside.join('\n  ')}`).toEqual([]);
+  });
+
+  it('has no roof column standing in either shaft', () => {
+    for (const { name, r } of shafts) {
+      for (const c of HALL_COLUMNS) {
+        expect(hits(c, r), `a roof column at ${c.x},${c.y} stands inside the ${name} shaft`).toBe(false);
+      }
+    }
+  });
+
+  it('has nothing a chapter puts on the floor standing in either shaft', () => {
+    for (const chapter of [2, 3] as const) {
+      const g = createGame({ seed: 20260930, chapter, cards: false });
+      g.update(DT_MAX);
+      for (const p of g.snapshot().props) {
+        const w = p.w ?? 16;
+        const h = p.h ?? 16;
+        const r: Rect = { x: p.x - w / 2, y: p.y - h / 2, w, h };
+        for (const s of shafts) {
+          expect(
+            hits(r, s.r),
+            `chapter ${chapter}'s ${p.kind} is inside the ${s.name} staircase at ${Math.round(p.x)},${Math.round(p.y)}`,
+          ).toBe(false);
+        }
+      }
+    }
+  });
+});

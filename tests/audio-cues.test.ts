@@ -121,6 +121,9 @@ const IDS: readonly SoundId[] = [
   'door',
   'crash',
   'door-open',
+  'shutter',
+  'roll',
+  'stretch',
   'keypad',
   'switch',
   'clue',
@@ -165,6 +168,70 @@ describe('the synthesised cues', () => {
     // And something right at the start — the lock letting go.
     expect(voices.some((v) => v.start - t0 < 0.02), 'the lock release is not the first thing').toBe(true);
 
+    audio.dispose();
+    restore();
+  });
+
+  /**
+   * The shutter goes UP, and it is over in under half a second.
+   *
+   * `ROLLER_RISE_TIME` is 0.42 s in `ch2-expo.ts` and `src/render/roller-door.ts`
+   * poses the curtain against it, so the run-up has to land on the same number:
+   * the hit first, bursts through the middle, and the jam at the end. A cue that
+   * ran a second would still be talking while the curtain sat dead in its box.
+   */
+  it('tears the roller door up over about 0.42 s, and jams', () => {
+    const { voices, restore } = stubAudio();
+    const audio = createAudio();
+    audio.play('shutter');
+
+    expect(voices.length, 'the shutter is not built out of several voices').toBeGreaterThanOrEqual(8);
+    const t0 = Math.min(...voices.map((v) => v.start));
+    // The hit is the first thing, on the frame Biggy goes through.
+    expect(voices.some((v) => v.start - t0 < 0.005), 'the impact is not the first thing').toBe(true);
+    // The run-up: something sounding through the middle of the rise.
+    const rising = voices.filter((v) => v.start - t0 > 0.05 && v.start - t0 < 0.4);
+    expect(rising.length, 'nothing sounds while the curtain is rising').toBeGreaterThanOrEqual(3);
+    // And the jam, on `ROLLER_RISE_TIME` rather than whenever.
+    expect(voices.some((v) => Math.abs(v.start - t0 - 0.42) < 0.06), 'the curtain never arrives').toBe(true);
+    const end = Math.max(...voices.map((v) => v.stop));
+    expect(end - t0).toBeLessThan(1.3);
+
+    audio.dispose();
+    restore();
+  });
+
+  /**
+   * The two party tricks Michele asked for: *"Could we add a basic action to each
+   * robot on E? Voxxy jumps, Biggy rolls, Droid? Stretches?"* Both are driven off
+   * `flairPhase` in `src/sim/bot.ts` — one cue per flourish, fired when it starts —
+   * so the cue's own shape has to match the pose the gait is drawing.
+   */
+  it('knocks three times for Biggy s roll', () => {
+    const { voices, restore } = stubAudio();
+    const audio = createAudio();
+    audio.play('roll');
+    const t0 = Math.min(...voices.map((v) => v.start));
+    // A turn and a half: three apexes, at roughly 0.17 / 0.5 / 0.83 of the flourish.
+    const knocks = voices.filter((v) => v.kind === 'osc' && v.start - t0 > 0.05);
+    expect(knocks.length, 'the roll does not have three knocks in it').toBeGreaterThanOrEqual(3);
+    const last = Math.max(...voices.map((v) => v.start)) - t0;
+    expect(last).toBeGreaterThan(0.6);
+    expect(last).toBeLessThan(1.1);
+    audio.dispose();
+    restore();
+  });
+
+  it('holds Droid s stretch at the top and lets it down', () => {
+    const { voices, restore } = stubAudio();
+    const audio = createAudio();
+    audio.play('stretch');
+    const t0 = Math.min(...voices.map((v) => v.start));
+    // The whine starts immediately, the stop is around the top of the reach, and
+    // something happens on the settle — a stretch that only goes up is a wince.
+    expect(voices.some((v) => v.start - t0 < 0.005), 'the servo does not start the stretch').toBe(true);
+    expect(voices.some((v) => Math.abs(v.start - t0 - 0.64) < 0.12), 'nothing happens at the top').toBe(true);
+    expect(voices.some((v) => v.start - t0 > 0.9), 'the stretch never comes back down').toBe(true);
     audio.dispose();
     restore();
   });

@@ -2597,3 +2597,138 @@ choreographies that pin both floors to the plan measurements rather than to each
 why the old ones kept passing while the build was wrong. Four of the eight fail against the
 previous numbers, checked by putting them back. Nothing was loosened; the corridor-gap assertion
 was rewritten to assert the narrowed mouth, which is the stronger claim.
+
+## Round — the projector got a shape (24 Sep 2026)
+
+**Michele, after his playtest: *"The projector still needs a shape."*** He was right in the
+strongest possible way: chapter 1 names the projector in four places — cinema B's lock (*"the
+release is way up by the projector window"*), cinema C's joke (*"projector says NO SIGNAL"*), the
+`projector-panel` door override and the README's *"the projectors are cold"* — and the venue drew
+**no projector at all**. Not a crude one. None. `grep -ri projector src/render` returned the
+`PROPS` entry for the wall panel and nothing else.
+
+**What was built.** `src/render/venue/projector.ts`: a projection booth over each auditorium's
+door, carried on brackets off the corridor wall head, with a 35 mm machine standing on it — plinth,
+head with an access door and two handwheels, lamphouse with vents, rear door and a pilot lamp, a
+cooling stack with an elbow and a duct back into the wall, a stepped lens barrel with a brass focus
+ring looking through a glazed projection port, feed and take-up reels on a spindle arm, conduit and
+a sagging feed cable, and a rewind bench with a film can on it. It is venue fabric, not a chapter
+prop, so it is wired from `buildFloor1`'s room loop and needs nothing from the sim — every mesh
+sits above 1.24 m, which is why the collider sweep does not ask it for a collider.
+
+**Four measurements decided the geometry, and two of them corrected the first cut.**
+
+*The angle it is seen from.* The diorama camera looks along (0.21, 0.50, 0.84) and the machine
+looks at the screen, which in a near-row house is on the camera's side: the player sees it nearly
+down its own barrel, and the reels — the part that says "projector" — sit in a plane seen ~20 deg
+from edge-on. The first cut put the bay on the left of the door, which yaws the machine **+12 deg**
+and takes the dot product of a reel face with the camera from 0.21 to **0.03**: the reels rendered
+as bars, which the screenshot showed plainly. The bay moved to the other side of the door (yaw
+-12 to -21 deg, dot 0.38) and the reels became reels — a dark web, three spokes, a hub and a bright
+rim, because a rim is a circle from any angle.
+
+*Contrast, not colour.* Every chapter here is dark, and metals with no environment map go black
+under ambient and hemisphere light alone: in the first build the machine was `mullion` and
+`chafingSteel` and read as a black lump. The mass is now non-metallic mid-grey (`sectionCut`) with
+pale accents (`concrete`), which is what makes the silhouette against Biggy's blue flood in cinema
+D the shot that proves the round.
+
+*Where it can be seen at all.* Raycast from a booth-height point toward the camera at all four
+diorama pitches: over the **far** row the corridor vault swallows everything under 2.25-2.70 m, so
+those decks sit on the rear wall's own head at 2.45 m; the near row is clear from 2.0 m up.
+
+*What it must not stand in front of.* **This one failed a test first.** A bay 40 px left of the
+door landed inside the sight line to zaal 6's numeral — `tests/venue.smoke.test.ts`, "leaves a
+clear line from every Zaal numeral to the camera", the Stage 1 guarantee — because room 6 is the
+one near-row room whose numeral hangs on that side. The fix is not a side preference but a
+computation: `bayOffsetPx()` reads the numeral, poster box and talk strip spans out of
+`signage.ts`'s own exported positions and stands outboard of all of them, **plus the sideways drift
+of the sight line itself** — `tan(14 deg)` = 0.25 m of corridor per metre travelled toward the
+camera, which is a third of a metre over the bay's depth. Clearing the panel in plan is not
+clearing it on screen: the second attempt was 2 px clear of zaal 3's panel and still 30 cm inside
+its sight line. Both failures were caught by the test, not by eye.
+
+**Also renamed:** the bay's group was called `booth`, which is the word `geometry.ts` and
+`tests/booths.test.ts` already own for the twelve sponsor stands downstairs. It is
+`projection-room` now, so a failure message names the right object.
+
+**Not done, and left for a human:** nothing in the sim changed — no footprint, no collider, no new
+prop kind — so `src/sim/chapters/ch1-night.ts` was not touched. The far row's machines top out at
+4.01 m, 11 cm above the camera's guaranteed band, and are seen from behind; if that ever reads
+wrong the fix is to shorten the stack rather than to move the deck.
+
+## "Still a walkthrough object on the doorway" — the *other* door: chapter 2's roller shutter
+
+Michele's screenshot showed a mid-grey slab through a robot's chest. Chapter 1's fire door was
+fixed in the same session; this is the second object with the same shape of bug, and the grey is
+`PROPS.roller`'s own `0x7d8792`.
+
+**The agent reproduced it on the built page before changing anything**, driving the real chapter
+through the real break — Voxxy takes hold of Biggy on the top lane (`Space`) and runs him into the
+shutter above `ROLLER_DOOR_SPEED`:
+
+```
+roller prop after the break: {"kind":"roller","x":894,"y":130,"w":6,"h":60,"state":"broken"}
+walls still covering that rect: []
+biggy placed at 897,160 (r=9) -> settles at 897.0,160.0   <- dead centre of the drawn leaf
+```
+
+`ch2-expo.ts` removes the `roller` wall on the frame of the hit and goes on publishing the prop;
+`scene.ts` drew that rect from its `PROPS` table as a 2.6 m box whatever the state said. Worse than
+the fire door, in fact: `venue/ground.ts` builds a *static* slatted shutter at the same rect in
+every chapter, so after the break there were **two** doors standing in a doorway the sim had
+already given up. The label was the same mistake in words — it still read `roller door — down`
+about a door that had just been smashed open.
+
+**The fix is the shape the fire door got, because it is the shape CLAUDE.md already prescribes.**
+`src/render/roller-door.ts` poses the curtain from the chapter's live wall list and the sim's own
+rise clock. No `roller` wall across the opening means no slat is drawn in the opening — whatever
+the prop says, including a prop that has forgotten it was broken. Walk-through is not a bug that
+can come back here, it is a shape the code cannot express, and `tests/roller-door.test.ts`
+measures the module `scene.ts` itself draws from.
+
+**A shutter does not swing, it goes up.** The sim gained one duration, `ROLLER_RISE_TIME = 0.42 s`
+(a duration, not a speed, so the frozen rescale leaves it alone), published as `Prop.progress`. The
+curtain is torn upward front-loaded, rattles in its guides on the way, and jams bunched and bulged
+**into** the store — the way Biggy was going. It settles entirely above `ROLLER_CLEAR_M = 2.25 m`,
+clear of Droid at 2.1 m, so the honest answer to "what is in the doorway now" is *nothing* and the
+chapter needs no new collider. One new synthesised cue, `shutter`: the dead thud of the hit, five
+bursts accelerating over the 0.42 s, and an inharmonic clang as it jams.
+
+**Two decisions worth recording.** The glow is one: chapter 2's hall is in a blackout and the
+robots' lamps are at floor level, so a curtain travelling up past head height leaves the only light
+in the room — the first build's animation happened in the dark and read as the shutter simply
+vanishing. It is now hot torn steel, cooling to nothing by the time it jams, off at both ends of
+the clock. The other is that the venue's static shutter is hidden for as long as a chapter
+publishes the prop, the way `fire-door.ts` already does with the venue's fire leaf.
+
+### And the sweep that could not see either of them
+
+`tests/colliders.test.ts`'s chapter sweep ticked **four frames from the chapter's start**, so every
+gate in the game had its post-gate half unmeasured — the only state it ever measured was the one
+before anything had happened, which is always the one that is right. It also did
+`if (p.state === 'broken') continue;`, which is the exact line that excused this door twice over.
+
+The sweep now runs a second pass **after each chapter's gate has been opened by playing it** — the
+four digits typed at the keypad in chapter 1, the towed run-up into the shutter in chapter 2 — and
+`broken` is no longer a free pass: a smashed door that is drawn standing fails. The post-gate pass
+measures props against the *same* game's walls, which is also the first time anything has measured
+the inside of the store, because the store is only reachable once Biggy has been through the door.
+Both chapters come back clean and neither known-walk-through list grew.
+
+**Flagged, not fixed:** chapter 3's registration gate is the next instance of this exact bug.
+`ch3-breakfast.ts` calls `ctx.removeWall(gate)` in `done()` and goes on publishing a `gate` prop,
+which `PROPS.gate` draws as a 1.1 m box across the foot of the main staircase. It is not driven by
+the sweep because `done()` opens it and immediately starts the cutscene that ends the chapter, so
+reaching it costs a full playthrough; `GATE_RUNS` in the sweep names every chapter and says why the
+two it does not drive are not driven, and a chapter added later fails rather than quietly getting
+the old half-measured treatment.
+
+### Two more cues, for the party tricks that shipped silent
+
+`roll` and `stretch`, specified by the agent that landed `E` and written here because `audio.ts`
+was in one pair of hands: a low hollow knock at each of Biggy's three rock apexes over a sub-bass
+groan, and a slow servo whine for Droid that rises, holds, clicks at the top and sighs on the
+settle. Both are executed by `tests/audio-cues.test.ts` — headless Chromium has no audio device, so
+being executed at all is the only check available before a human hears them — and both are fired
+from `flairPhase` in `main.ts`, which is the sim's own clock, never a timer in render code.

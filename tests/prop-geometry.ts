@@ -21,6 +21,7 @@
  */
 
 import { FIRE_LEAF_H, fireDoorDraw } from '../src/render/fire-door';
+import { ROLLER_H, rollerDoorDraw, ROLLER_CLEAR_M } from '../src/render/roller-door';
 import type { Prop, Rect } from '../src/sim/types';
 import { PX_PER_M } from '../src/sim/units';
 
@@ -65,7 +66,16 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
   terminal: { h: 0.34, tl: true, lift: 1.25 },
   poster: { h: 0.62, tl: true, lift: 0.95 },
   printer: { h: 0.95, tl: true },
-  roller: { h: 2.6, tl: true },
+  /*
+   * The shutter is the second kind this table no longer describes, for the same
+   * reason as `firedoor` above and with the same history: `ch2-expo.ts` removes
+   * the `roller` wall on the frame Biggy smashes through it and goes on publishing
+   * the prop, so a 2.6 m box at that rect was a lie about every frame after the
+   * break — and `chapterSolids` in `tests/colliders.test.ts` excused it anyway,
+   * because it skipped anything `broken`. `propBox` below asks
+   * `src/render/roller-door.ts`, the module `scene.ts` itself draws from.
+   */
+  roller: { h: ROLLER_H, tl: true },
   gate: { h: 1.1, tl: true },
   lane: { h: 0.04, tl: true, flat: true },
   duck: { h: 0.3 },
@@ -139,6 +149,28 @@ export function propBox(p: Prop): { rect: Rect; lo: number; hi: number } | null 
     const x1 = Math.max(...rs.map((r) => r.x + r.w));
     const y1 = Math.max(...rs.map((r) => r.y + r.h));
     return { rect: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, lo: 0, hi: spec.h };
+  }
+  /*
+   * And the roller door comes from `roller-door.ts` for the same reason. Down, the
+   * curtain fills the opening and one box describes it. Torn up, every slat is
+   * above `ROLLER_CLEAR_M` — over Droid's head, in the housing — so there is
+   * nothing in the doorway at all, and a zero-height box reads to the sweeps as
+   * "nothing in the robot band". Mid-rise the curtain is a moving solid the sim
+   * does not carry (see that module's header), and the union of the slats still
+   * below the clearance is the honest box for it.
+   */
+  if (p.kind === 'roller') {
+    const low = rollerDoorDraw(p, []).slats.filter((s) => s.lo < ROLLER_CLEAR_M - 1e-6);
+    if (low.length === 0) return { rect: { x: p.x, y: p.y, w: 0, h: 0 }, lo: 0, hi: 0 };
+    const x0 = Math.min(...low.map((s) => s.rect.x));
+    const y0 = Math.min(...low.map((s) => s.rect.y));
+    const x1 = Math.max(...low.map((s) => s.rect.x + s.rect.w));
+    const y1 = Math.max(...low.map((s) => s.rect.y + s.rect.h));
+    return {
+      rect: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 },
+      lo: Math.min(...low.map((s) => s.lo)),
+      hi: Math.max(...low.map((s) => s.lo + s.h)),
+    };
   }
   const wPx = p.w !== undefined ? p.w : (spec.fw ?? 0.8) * PX_PER_M;
   const dPx = p.h !== undefined ? p.h : (spec.fd ?? 0.8) * PX_PER_M;

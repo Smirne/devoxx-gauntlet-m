@@ -713,7 +713,7 @@ export const GF = {
    * world_y = 90 + (700 - plan_x) * 0.9375
    * ```
    *
-   *  - plan y 165 -> world x **144.6**; plan y 323 -> world x **370.0** (w 225.4)
+   *  - plan y 165 -> world x **144.6**; plan y 323 -> world x **371.0** (w 226.4)
    *  - east shaft (world **top**): plan x 469..421 -> world y **306.6..351.6**
    *  - west shaft (world **bot**): plan x 269..222 -> world y **494.1..538.1**
    *
@@ -845,8 +845,8 @@ const SHAFT_T = T;
  * 45** (see `GF.stairs`). 45 less two `SHAFT_T` walls is 33 px of clear internal
  * width — 2.64 m — and a 34 px door in it would have left jambs of negative
  * height. 24 px is 1.92 m of double door with a 0.36 m jamb either side, and it is
- * still nearly three times Biggy's 0.72 m radius, so chapter 2 still starts with
- * all three of them coming out of it.
+ * still a third wider than Biggy's 1.44 m, so chapter 2 still starts with all
+ * three of them coming out of it.
  *
  * Note for a later round, not fixed here: the plan puts a pair of doors in **each
  * long face** of the shaft at its north end, not one pair in the short west end.

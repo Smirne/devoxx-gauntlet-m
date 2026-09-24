@@ -136,6 +136,22 @@ const CABLE_TALK_COOLDOWN = 4;
 const ROLLER_MIN_TALK = 40 * SPEED_SCALE;
 /** Seconds between the roller door's "not fast enough" readouts. */
 const ROLLER_TALK_COOLDOWN = 3;
+/**
+ * How long the smashed shutter takes to tear up into its housing, seconds.
+ *
+ * The same shape as chapter 1's `JAM_FALL_TIME` and `FIRE_SWING_TIME`: the sim
+ * owns the clock, the collider is gone on the frame Biggy goes through, and this
+ * only feeds `Prop.progress` for `src/render/roller-door.ts` to pose the curtain
+ * from and for `main.ts` to fire the `shutter` cue off. A duration, not a speed,
+ * so the 2026-09-23 rescale leaves it alone.
+ *
+ * Short, and deliberately: Michele's complaint was that the door was *"still a
+ * walkthrough object on the doorway"* with no animation and no sound, and the
+ * answer for a shutter hit at 5.7 m/s is a fast ugly yank, not the fire door's
+ * controlled second-long arrival. Biggy is through the opening and still moving
+ * while it runs.
+ */
+const ROLLER_RISE_TIME = 0.42;
 
 /* ------------------------------------------------------------- the network closet
  *
@@ -252,6 +268,8 @@ export interface ExpoState {
   breakersLeft: number;
   cable: { carrying: boolean; connected: boolean; len: number; snapped: boolean; taut: boolean };
   rollerBroken: boolean;
+  /** 0..1, how far the smashed shutter has torn up into its housing. */
+  rollerRise: number;
   /** The router cabinet, its terminal, and the WiFi password. */
   router: {
     /** Biggy has shouldered the cabinet door open. Nothing else in here starts until he has. */
@@ -336,6 +354,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let lights: LightSource[] = [];
   let breakersLeft = BREAKERS;
   let rollerBroken = false;
+  /** 0..1, how far the smashed shutter has torn up. See `ROLLER_RISE_TIME`. */
+  let rollerRise = 0;
   let hintedTech = false;
   let rollerTalk = -9;
 
@@ -1061,6 +1081,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
     ctx.stepAll(dt);
     ctx.pushBiggy(dt);
+    // The shutter tearing up into its housing. The opening is already free — the
+    // wall went on the frame of the hit — so this is only the picture and the cue.
+    if (rollerBroken && rollerRise < 1) rollerRise = Math.min(1, rollerRise + dt / ROLLER_RISE_TIME);
 
     if (typeAnchor !== null && typing()) {
       driven.x = typeAnchor.x;
@@ -1416,11 +1439,25 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         state: rollerBroken ? 'done' : 'idle',
         label: 'SHIRTS & GADGETS',
       },
+      /*
+       * The shutter. The rect is the OPENING it fills and `progress` is the sim's
+       * own rise clock; `src/render/roller-door.ts` poses the curtain from those
+       * two facts and from the `roller` wall above, and draws nothing in a doorway
+       * the sim has given back. It used to be drawn as one 2.6 m box from the
+       * renderer's `PROPS` table whatever the state said, which is how a smashed
+       * shutter stayed standing across its own opening with Biggy inside it.
+       *
+       * The label said `roller door — down` AFTER it had been smashed open, which
+       * was the same mistake in words.
+       */
       {
         kind: 'roller',
         ...GF.roller,
         state: rollerBroken ? 'broken' : 'shut',
-        label: rollerBroken ? 'roller door — down' : 'roller door — shirts & gadgets, shut',
+        progress: rollerRise,
+        label: rollerBroken
+          ? 'roller door — torn up, jammed in its housing'
+          : 'roller door — shirts & gadgets, shut',
       },
       ...STORE_PALLETS.map((pt, i): Prop => ({
         kind: 'crate',
@@ -1549,6 +1586,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         taut: cable.taut,
       },
       rollerBroken,
+      rollerRise,
       router: {
         cabinetOpen: router.cabinetOpen,
         powered: power,

@@ -80,13 +80,37 @@
  * Chapters 2 to 4 are held at a frozen list of offending kinds: their props are
  * other people's files tonight, and a list that may not GROW is worth more than a
  * sweep that is switched off.
+ *
+ * ## The half of every CHAPTER this file could not see either
+ *
+ * That second sweep used to tick **four frames from the chapter's start** and
+ * measure only that. Every gate in the game is a drawn thing whose collider
+ * changes when the player solves something, so the only state it ever measured
+ * was the one before anything had happened — and that is the state that is always
+ * right. It also did `if (p.state === 'broken') continue;`, which handed a free
+ * pass to precisely the props that change.
+ *
+ * Both of Michele's *"still a walkthrough object on the doorway"* reports lived in
+ * that gap, and neither of them could have been caught here:
+ *
+ *  - chapter 1's fire door — `ch1-night.ts` removed the corridor wall when the
+ *    code went in and went on publishing the prop (`src/render/fire-door.ts`);
+ *  - chapter 2's roller door — `ch2-expo.ts` removes the wall on the frame Biggy
+ *    goes through it and goes on publishing the prop, *and* it was `broken`, so it
+ *    was skipped twice over (`src/render/roller-door.ts`).
+ *
+ * So the chapter sweep now runs **twice**: once at the start, and once after the
+ * chapter's own gate has been opened by playing it — the code typed at the keypad
+ * in chapter 1, the towed run-up into the shutter in chapter 2. `GATE_RUNS` below says
+ * which chapters can be driven here and why the other two cannot. `broken` is no
+ * longer a free pass: a smashed door that is still drawn standing fails.
  */
 
 import * as THREE from 'three';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { H, T, W } from '../src/sim/constants';
-import { circleRect, createGame } from '../src/sim';
+import { DT_MAX, H, T, W } from '../src/sim/constants';
+import { circleRect, createGame, type DebugGame, type ExpoState } from '../src/sim';
 import { F1, GF, LOBBY_RISE_M, LOBBY_STANCHIONS } from '../src/sim/geometry';
 import type { Bot, Rect, Wall } from '../src/sim/types';
 import { PX_PER_M, STOREY_H_M } from '../src/sim/units';
@@ -374,12 +398,65 @@ const KNOWN_WALKTHROUGH: Readonly<Record<number, readonly string[]>> = Object.fr
   4: ['cake', 'stage', 'banner-hook', 'spotlight'],
 });
 
+/**
+ * Play a chapter as far as the gate that changes what is drawn, or `null`.
+ *
+ * These are the chapters' own choreographies, the ones their tests use, because
+ * the point is to reach the state a PLAYER reaches — gates and all — rather than
+ * to teleport into it. `null` is a chapter this file cannot drive tonight, and it
+ * says why; that is a gap in the sweep and it is written down rather than hidden.
+ */
+const GATE_RUNS: Readonly<Record<number, ((g: DebugGame) => void) | null>> = {
+  /** Type the four digits at the keypad and let the leaves swing. */
+  1: (g) => {
+    g.debug.select('biggy');
+    g.debug.place('biggy', 575, 305);
+    g.update(DT_MAX);
+    const st = g.debug.chapter() as { code: string };
+    for (const d of st.code) g.key(`Digit${d}`);
+    expect((g.debug.chapter() as { fireOpen: boolean }).fireOpen, 'chapter 1s gate did not open').toBe(true);
+    for (let i = 0; i < 90; i++) g.update(DT_MAX);
+  },
+  /** Voxxy takes hold of Biggy and runs him into the shutter down the top lane. */
+  2: (g) => {
+    g.debug.select('voxxy');
+    g.debug.place('biggy', 400, 160);
+    g.debug.place('voxxy', 386, 160);
+    g.key('Space');
+    g.setStick(1, 0);
+    for (let i = 0; i < 400; i++) {
+      if ((g.debug.chapter() as ExpoState).rollerBroken) break;
+      g.update(DT_MAX);
+    }
+    g.setStick(0, 0);
+    expect((g.debug.chapter() as ExpoState).rollerBroken, 'chapter 2s gate did not open').toBe(true);
+    for (let i = 0; i < 60; i++) g.update(DT_MAX);
+  },
+  /*
+   * Chapter 3's registration gate opens in `done()` — soup delivered, speaker on
+   * stage, beer stacked — and `done()` starts the cutscene that ENDS the chapter,
+   * so the open state lasts a second and costs a full playthrough to reach. It is
+   * also the next instance of this exact bug waiting to happen: `ch3-breakfast.ts`
+   * calls `ctx.removeWall(gate)` and goes on publishing a `gate` prop, which
+   * `PROPS.gate` draws as a 1.1 m box across the foot of the main staircase. It
+   * wants the treatment `src/render/fire-door.ts` and `src/render/roller-door.ts`
+   * had; that is a change in somebody else's chapter, so it is flagged, not made.
+   */
+  3: null,
+  /** Chapter 4 removes no walls at all: nothing it draws changes its collider. */
+  4: null,
+};
+
 /** Which chapter props are drawn solid on the floor, and where. */
-function chapterSolids(n: number): { solids: Solid[]; kinds: string[]; unknown: string[] } {
+function chapterSolids(
+  n: number,
+  open = false,
+): { solids: Solid[]; kinds: string[]; unknown: string[]; game: DebugGame } {
   const g = createGame({ seed: 20260930, chapter: n, cards: false });
   // A few frames, so anything whose footprint is live (a door mid-fall, a prop a
   // chapter only publishes once it has ticked) is in the list.
   for (let i = 0; i < 4; i++) g.update(0.033);
+  if (open) GATE_RUNS[n]?.(g);
   const solids: Solid[] = [];
   const kinds = new Set<string>();
   const unknown: string[] = [];
@@ -390,19 +467,35 @@ function chapterSolids(n: number): { solids: Solid[]; kinds: string[]; unknown: 
       unknown.push(p.kind);
       continue;
     }
-    // A door that Biggy has already put through the wall is lying on the floor
-    // on purpose; a flat decal and a hung fitting are not obstacles at all.
-    if (p.state === 'broken') continue;
+    /*
+     * `broken` is NOT a free pass any more.
+     *
+     * It used to be one — "a door Biggy has already put through the wall is lying
+     * on the floor on purpose" — and that one line is what excused chapter 2's
+     * roller door, which was not lying on the floor at all: it was standing
+     * upright across its own opening with Biggy inside it. A prop that is drawn
+     * lying down has to SAY so through its own geometry, the way the fire door and
+     * the shutter now do, and then this sweep reads it as clear of the band on the
+     * numbers rather than on the word.
+     */
     if (PROP_DRAW[p.kind].flat === true || box.lo >= BAND_HI || box.hi <= BAND_LO) continue;
     solids.push({ ...box.rect, name: `${p.kind}${p.state !== undefined ? `(${p.state})` : ''}`, lo: box.lo, hi: box.hi });
   }
-  return { solids, kinds: [...kinds], unknown };
+  return { solids, kinds: [...kinds], unknown, game: g };
 }
 
 describe('every solid a CHAPTER draws is a collider', () => {
-  /** The grids a chapter is measured against — the same rule as the venue sweep. */
-  function gridsFor(n: number): { free: Uint8Array; reach: Uint8Array } {
-    const snap = createGame({ seed: 20260930, chapter: n, cards: false }).snapshot();
+  /**
+   * The grids a chapter is measured against — the same rule as the venue sweep.
+   *
+   * Taken off the SAME game that produced the props, which is the whole point of
+   * the post-gate pass: a chapter that has opened a door has a different wall list
+   * and a bigger reachable set (chapter 2's store is only walkable once Biggy has
+   * been through the shutter), and measuring frame-four walls against post-gate
+   * props would be two different chapters compared with each other.
+   */
+  function gridsFor(g: DebugGame): { free: Uint8Array; reach: Uint8Array } {
+    const snap = g.snapshot();
     const walls = snap.walls as Wall[];
     const starts = snap.bots.map((b): [number, number] => [b.x, b.y]);
     const free = freeGrid(walls);
@@ -416,7 +509,12 @@ describe('every solid a CHAPTER draws is a collider', () => {
 
   it('classifies every kind all four chapters draw', () => {
     const missing = new Set<string>();
-    for (const { n } of CHAPTERS) for (const k of chapterSolids(n).unknown) missing.add(k);
+    for (const { n } of CHAPTERS) {
+      for (const k of chapterSolids(n).unknown) missing.add(k);
+      // And the kinds a chapter only publishes once its gate is open — which is
+      // exactly where a new, unclassified prop would be least likely to be noticed.
+      if (GATE_RUNS[n]) for (const k of chapterSolids(n, true).unknown) missing.add(k);
+    }
     expect(
       [...missing],
       'a chapter is drawing a prop kind `tests/prop-geometry.ts` has never heard of. ' +
@@ -426,9 +524,10 @@ describe('every solid a CHAPTER draws is a collider', () => {
   });
 
   it('chapter 1: nothing the night chapter draws can be walked through', () => {
-    const { free, reach } = gridsFor(1);
+    const one = chapterSolids(1);
+    const { free, reach } = gridsFor(one.game);
     const bad: string[] = [];
-    for (const s of chapterSolids(1).solids) {
+    for (const s of one.solids) {
       const cell = standableCell(s, free, reach);
       if (cell) {
         bad.push(
@@ -446,9 +545,10 @@ describe('every solid a CHAPTER draws is a collider', () => {
 
   for (const n of [2, 3, 4]) {
     it(`chapter ${n}: the list of walk-through props does not grow`, () => {
-      const { free, reach } = gridsFor(n);
+      const run = chapterSolids(n);
+      const { free, reach } = gridsFor(run.game);
       const kinds = new Set<string>();
-      for (const s of chapterSolids(n).solids) {
+      for (const s of run.solids) {
         if (standableCell(s, free, reach)) kinds.add(s.name.replace(/\(.*\)$/, ''));
       }
       const known = new Set(KNOWN_WALKTHROUGH[n] ?? []);
@@ -460,4 +560,67 @@ describe('every solid a CHAPTER draws is a collider', () => {
       expect(stale, `KNOWN_WALKTHROUGH[${n}] still lists ${stale.join(', ')}, which now has a collider`).toEqual([]);
     });
   }
+
+  /* ------------------------------------------------- and after the doors open */
+
+  /**
+   * The offending prop kinds once a chapter's gate is OPEN, frozen — same
+   * contract as `KNOWN_WALKTHROUGH` above and, for now, the same contents.
+   *
+   * There is nothing extra in either list: chapter 1 comes back clean with its
+   * fire door swung open, and chapter 2 comes back clean with its shutter torn
+   * up — including the store behind it, which is measured here for the first time
+   * because it is only reachable once Biggy has been through the door.
+   */
+  const KNOWN_WALKTHROUGH_OPEN: Readonly<Record<number, readonly string[]>> = Object.freeze({
+    1: [],
+    2: [],
+  });
+
+  for (const n of [1, 2]) {
+    it(`chapter ${n}: nothing it draws can be walked through AFTER its gate opens`, () => {
+      const run = chapterSolids(n, true);
+      const { free, reach } = gridsFor(run.game);
+      const bad: string[] = [];
+      const kinds = new Set<string>();
+      for (const s of run.solids) {
+        const cell = standableCell(s, free, reach);
+        if (!cell) continue;
+        kinds.add(s.name.replace(/\(.*\)$/, ''));
+        bad.push(
+          `${s.name} — drawn at ${s.x.toFixed(0)},${s.y.toFixed(0)} ${s.w.toFixed(0)}x${s.h.toFixed(0)} px, ` +
+            `standing ${s.lo.toFixed(2)}..${s.hi.toFixed(2)} m, and a robot can stand at ${cell[0]},${cell[1]}`,
+        );
+      }
+      const known = new Set(KNOWN_WALKTHROUGH_OPEN[n] ?? []);
+      const fresh = bad.filter((line) => !known.has(line.split(' ')[0].replace(/\(.*\)$/, '')));
+      expect(
+        fresh,
+        `${fresh.length} prop(s) chapter ${n} draws with no collider once its door is open. This is the half ` +
+          'of the chapter the sweep could not see, and it is where both of Michele\'s "still a walkthrough ' +
+          'object on the doorway" reports lived. Either the chapter pushes a wall where the thing ENDS UP, or ' +
+          'the renderer stops drawing it there — see src/render/fire-door.ts and src/render/roller-door.ts:\n  ' +
+          fresh.join('\n  '),
+      ).toEqual([]);
+      // And the other way round, so the list cannot quietly stop describing the build.
+      const stale = [...known].filter((k) => !kinds.has(k));
+      expect(stale, `KNOWN_WALKTHROUGH_OPEN[${n}] still lists ${stale.join(', ')}, which now has a collider`).toEqual(
+        [],
+      );
+    });
+  }
+
+  /**
+   * The gap, asserted: every chapter is either driven past its gate here or
+   * listed in `GATE_RUNS` with a reason. A chapter added later shows up as `undefined`
+   * and fails, rather than silently getting the old half-measured treatment.
+   */
+  it('says, for every chapter, whether its post-gate half is measured', () => {
+    for (const { n } of CHAPTERS) {
+      expect(
+        GATE_RUNS[n],
+        `chapter ${n} is neither driven past its gate nor written off in GATE_RUNS`,
+      ).not.toBe(undefined);
+    }
+  });
 });
