@@ -2803,3 +2803,78 @@ nothing — corridor column, doorway, chapter prop — stands in either flight, 
 the length of the corridor past both of them (flood fill, not arithmetic), and Droid fits on the
 landing where Biggy does not. `venue.smoke.test.ts` asserts the same of the thing on screen and
 adds that neither the numeral panel nor the poster box hangs over a stairwell. 435 green.
+
+---
+
+## 2026-09-25 — every door in the game opens, and the floor has a height
+
+**Michele, mid-playtest, for the second time: "And an animation for the door opening."** The fire
+door and the store shutter had already been done that night, so the first job was an honest audit
+rather than another fix: every `removeWall` in `src/sim/chapters`, every door-ish kind in
+`PROPS`. Seven doors, three of them still popping from shut to open in a single frame.
+
+**Cinema B's magnetic lock** (`ch1-night.ts`) was the worst of the three and the least visible:
+`key` removed the `lock` wall on the frame Droid reached the projector panel and `props()` stopped
+publishing the prop in the same frame, so the payoff of the whole mount beat was a door that did
+not open — it ceased to exist, silently. **The router cabinet** (`ch2-expo.ts`) cut straight to a
+single 4.32 m leaf standing at 58°, which is not a door anybody has opened and which lay 3.7 m out
+across the technical room with no collider under a square centimetre of it. **The registration gate
+at the foot of the main staircase** (`ch3-breakfast.ts`) was known bad and had been left for
+somebody else during the roller round: un-animated, walk-through, AND drawn twice, because
+`buildVenue()` builds a static gate in the same doorway.
+
+All three now follow the shape `src/render/fire-door.ts` and `src/render/roller-door.ts` settled,
+and `src/render/doors.ts` says so at the top so the next one does not invent a fourth: the sim owns
+the clock (`LOCK_SWING_TIME` 0.7 s, `CABINET_SWING_TIME` 1.2 s, `GATE_SWING_TIME` 1.5 s — durations,
+never speeds, so the 23 Sep rescale leaves them alone), the leaf is posed from the chapter's LIVE
+wall list plus that clock, and an open door is a collider where it ENDS UP. Cinema B's leaf lies
+against the inside of its auditorium wall; the cabinet's two doors — two, now, because a 5 m
+equipment cabinet has a pair and because a single 4.3 m leaf sealed off its own terminal — stop at
+58° with a wall under each; the gate swings back along the flight's west cheek, where a stair gate
+is pinned back when a building is open. Three new synthesised cues in the house idiom: `maglock`
+(an electric strike, not a hold-open magnet), `cabinet` (the only cue in the game whose middle is
+louder than its ends — hinges that have not moved since 2019), `gate` (a hook off an eye; nothing
+in it hits, asserted against `crash` and `shutter` in `tests/audio-cues.test.ts`).
+
+**The trap that had already cost a round, caught again.** Chapter 3's `done()` opened the gate and
+started the cutscene that ends the chapter in the same statement, and `CUT_FADE` is 0.35 s — the
+screen would have been black before the barrier moved a degree. It now holds the hall for
+`GATE_SWING_TIME + GATE_CUT_DELAY`, the way `FIRE_CUT_DELAY` made chapter 1 do. Driven on the built
+page, the swing runs 0 → 1 with `phase: 'play'` and `fade: 0` the whole way.
+
+**"We are still walking through the crashed door. The shape is fine, as long as robot walk on it,
+not through."** Michele's second note, about the leaf Biggy knocks off cinema E. Not a wall — the
+whole beat is that he went through that doorway — a **surface**. That is the same question
+`docs/playtest-notes.md` has carried for three rounds about the raised lobby and the main flight:
+`groundRiseM` existed for it, said in its own doc that the renderer read it, and nothing read it.
+So one answer, in the sim: `Plate`, `GameSnapshot.plates`, `riseAt` (`src/sim/surface.ts`), and
+`surfaceY` in `scene.ts` as the one line of drawing code that asks. The ground floor publishes the
+lobby, its six steps and the main flight; chapter 1 publishes the fallen leaf. **Michele's "the
+shape is fine" is kept**: the only change to the leaf is `rotation.order = 'YXZ'`, so the skew is a
+yaw of a leaf lying down instead of a roll of one still standing — under the old `XYZ` it came to
+rest propped on nothing, one edge 0.78 m in the air and its face running downhill by 0.62 m, which
+is a thing you cannot stand on. Flat, it is a 0.48 m plate, and a robot stands on it; Droid's mount
+lift composes on top of it. Closing the logged item also un-blocked chapter 3's transition, which
+used to walk the three of them *through* a flight climbing to 5 m over their heads, so it gets the
+close `CUT_FRAME` chapter 1 has.
+
+**A physics-realism bug, filed as a pacing note.** *"The walk is long and they are running a bit
+too fast."* Measured frame by frame through chapter 1's transition: Voxxy 109.2 px/s (151% of her
+max), **Droid 263% of his**, Biggy 176%. The gait is driven by that speed, so his legs were being
+run at a rate the rig was never tuned for. The cause was arithmetic — `pace = routeLength /
+CUT_WALK_TIME`, and the 24 Sep staircase move made chapter 1's route 180 px longer. The route is
+what shrinks, not the clock and not the pace: `trimRoute` in `game.ts` cuts the run-up back from the
+destination until the leg fits `CUT_WALK_FRACTION` of the **slowest robot's own max**, so the shot
+re-sizes itself the next time a waypoint moves. Both transitions now walk at 28.2 px/s (2.26 m/s);
+chapter 3's was over too, at 112% of Droid's max, and nobody had measured it.
+
+**Tests: 435 → 460, and every new one was run against the old code first.** Putting `trimRoute`
+back out reproduces Michele's own numbers to the decimal (109.2 px/s, 151%). `tests/doors.test.ts`
+measures all three new doors in both settled states; `tests/surface.test.ts` reads the fallen leaf's
+Euler order out of `scene.ts` itself, so the picture and the plate cannot part company;
+`tests/cutscene-pace.test.ts` asserts no robot is ever moved faster than its own `max` during a
+cutscene, and names which chapters run one so a new transition cannot arrive unmeasured. And
+`GATE_RUNS[3]` in `tests/colliders.test.ts` — written off last round as costing a full playthrough
+— is now that playthrough: soup, speaker and the beer delivery, shared with `tests/doors.test.ts`
+through the new `tests/pilot.ts`, so chapter 3's post-gate half is swept for the first time.
+Frame strips captured through all three openings and through a robot standing on the leaf.
