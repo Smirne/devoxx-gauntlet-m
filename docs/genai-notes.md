@@ -3024,3 +3024,8 @@ wall.
   so it lives in the sim; only the 3D build calls it, and the 2.5D controls are unchanged unless
   Michele wires it in there. In 3D, A/D alone from standing turn in place, and the camera swings
   behind so that W then goes the way the robot faces. Under way, A/D steer as before.
+- *"Going straight with W, then reversing with S, the camera still faces W."* The original camera
+  only follows a robot running away from it, and S is "towards the camera", so a camera that
+  followed would have turned S round again. S is now an about-face: the first S frame locks the
+  direction away from the camera, the robot walks it, and the camera swings behind. Scripted
+  W → S → W: 180° turn, camera behind (0°), W continues the new way.
