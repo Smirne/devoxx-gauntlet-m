@@ -27,6 +27,9 @@ import { describe, expect, it } from 'vitest';
 import {
   CABLE_MAX,
   CRATE_DELIVERY,
+  CY0,
+  CY1,
+  F1,
   CRATE_STACK_LIMIT,
   DEFS,
   DT_MAX,
@@ -37,6 +40,7 @@ import {
   JAMMED_DOOR_SPEED,
   R,
   ROLLER_DOOR_SPEED,
+  nicheMouth,
   roomDoor,
   circleRect,
   createGame,
@@ -391,7 +395,33 @@ describe('chapter 1 — night', () => {
     expect(g.snapshot().phase).toBe('play');
     expect(until(g, () => g.snapshot().phase === 'cut', 120)).toBe(true);
 
-    expect(until(g, () => g.snapshot().chapter === 2, 500)).toBe(true);
+    /*
+     * ...and the descent ends ON the stairs, which stopped being free when the
+     * staircase moved onto the plan's pixels (`F1.nicheBot`, 24 Sep 2026).
+     *
+     * The waypoint used to be `nicheBot.x + 20, nicheBot.y + 30`, written for a
+     * 57-deep pocket cut into the wall. The plan's flight is 17.7 deep and stands
+     * IN the corridor, so +30 is 12 px through the corridor wall and this chapter
+     * would have ended with all three robots inside it. The last frame of the walk
+     * is captured rather than the first, because the whole point is where they
+     * stop.
+     */
+    let parked: Array<{ kind: string; x: number; y: number }> = [];
+    expect(
+      until(g, () => {
+        const s = g.snapshot();
+        if (s.phase === 'cut') parked = s.bots.map((b) => ({ kind: b.kind, x: b.x, y: b.y }));
+        return s.chapter === 2;
+      }, 500),
+    ).toBe(true);
+    expect(parked).toHaveLength(3);
+    const mouth = nicheMouth(F1.nicheBot);
+    for (const b of parked) {
+      expect(b.y, `${b.kind} ends outside the corridor`).toBeGreaterThan(CY0);
+      expect(b.y, `${b.kind} ends through the corridor wall`).toBeLessThan(CY1);
+      expect(b.x, `${b.kind} misses the stair mouth`).toBeGreaterThan(mouth.x - 2);
+      expect(b.x, `${b.kind} misses the stair mouth`).toBeLessThan(mouth.x + mouth.w + 2);
+    }
     expect(g.snapshot().floor).toBe('down');
   });
 

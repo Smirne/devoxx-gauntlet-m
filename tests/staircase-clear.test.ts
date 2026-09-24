@@ -25,13 +25,24 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CY0,
+  CY1,
+  DEFS,
   DT_MAX,
+  F1,
   GF,
+  H,
   HALL_COLUMNS,
+  R,
+  W,
   boothCrate,
   boothTotem,
+  corridorColumns,
   createGame,
+  floor1Walls,
   groundWallsFor,
+  nicheMouth,
+  roomDoor,
   type Rect,
 } from '../src/sim';
 
@@ -164,6 +175,134 @@ describe('the two secondary staircases are clear too', () => {
           ).toBe(false);
         }
       }
+    }
+  });
+});
+
+/*
+ * ...and the same question of the two staircases UPSTAIRS, which moved this round
+ * onto the pixels `plans/devoxx-rooms-stairs-annotated.png` draws them at (see
+ * `NICHE_MOUTH` and `F1.nicheTop`). They moved ~148 px along the corridor and
+ * stopped being pockets in the wall: they now stand IN the corridor, which is a
+ * new way for this venue to put something inside a staircase. The prior art is
+ * two rounds old and on the floor below — a sponsor stand 28 px inside the small
+ * stairwell, and a chapter-3 lane node inside a relocated shaft.
+ */
+describe('the two secondary staircases upstairs are clear too', () => {
+  const shafts = [
+    { name: 'top', r: F1.nicheTop as Rect },
+    { name: 'bot', r: F1.nicheBot as Rect },
+  ];
+
+  it('has no corridor column standing in either flight', () => {
+    const cols = corridorColumns();
+    for (const { name, r } of shafts) {
+      for (const c of [...cols.far, ...cols.near]) {
+        expect(hits(c, r), `a corridor column at ${c.x},${c.y} stands in the ${name} flight`).toBe(false);
+      }
+    }
+  });
+
+  it('opens rooms 4 and 9 beside their flight rather than into it', () => {
+    for (const n of [4, 9] as const) {
+      const d = roomDoor(R(n));
+      for (const { name, r } of shafts) {
+        expect(hits({ x: d.x, y: d.y, w: d.w, h: d.h }, r), `room ${n}'s doorway is in the ${name} flight`).toBe(false);
+      }
+    }
+  });
+
+  it('has nothing a first-floor chapter puts on the floor standing in either flight', () => {
+    for (const chapter of [1, 4] as const) {
+      const g = createGame({ seed: 20260930, chapter, cards: false });
+      g.update(DT_MAX);
+      for (const p of g.snapshot().props) {
+        const w = p.w ?? 16;
+        const h = p.h ?? 16;
+        const r: Rect = { x: p.x - w / 2, y: p.y - h / 2, w, h };
+        for (const s of shafts) {
+          expect(
+            hits(r, s.r),
+            `chapter ${chapter}'s ${p.kind} is inside the ${s.name} staircase at ${Math.round(p.x)},${Math.round(p.y)}`,
+          ).toBe(false);
+        }
+      }
+    }
+  });
+
+  /**
+   * The flight stands in the corridor now, so the corridor has to still BE a
+   * corridor: 130 px wide less the 17.7 the flight takes is 112.3, and Biggy is
+   * 18 across. A flood fill says it rather than arithmetic, because what matters
+   * is that he can get from the fire door to the main staircase past both of them.
+   */
+  it('leaves Biggy the length of the corridor to drive, past both flights', () => {
+    const walls = floor1Walls().filter((w) => !w.hidden);
+    const STEP = 4;
+    const r = DEFS.biggy.r;
+    const cols = Math.ceil(W / STEP);
+    const rows = Math.ceil(H / STEP);
+    const blocked = new Uint8Array(cols * rows);
+    const idx = (i: number, j: number): number => j * cols + i;
+    for (const w of walls) {
+      for (let i = Math.max(0, Math.floor((w.x - r) / STEP)); i <= Math.min(cols - 1, Math.ceil((w.x + w.w + r) / STEP)); i++) {
+        for (let j = Math.max(0, Math.floor((w.y - r) / STEP)); j <= Math.min(rows - 1, Math.ceil((w.y + w.h + r) / STEP)); j++) {
+          const x = i * STEP;
+          const y = j * STEP;
+          const cx = Math.max(w.x, Math.min(x, w.x + w.w));
+          const cy = Math.max(w.y, Math.min(y, w.y + w.h));
+          if ((x - cx) ** 2 + (y - cy) ** 2 < r * r) blocked[idx(i, j)] = 1;
+        }
+      }
+    }
+    const from: [number, number] = [Math.round((F1.fireX + 30) / STEP), Math.round(350 / STEP)];
+    const to: [number, number] = [Math.round((F1.mainStair.x - 20) / STEP), Math.round(350 / STEP)];
+    expect(blocked[idx(from[0], from[1])], 'the corridor start is walled in').toBe(0);
+    expect(blocked[idx(to[0], to[1])], 'the corridor end is walled in').toBe(0);
+    const seen = new Uint8Array(cols * rows);
+    const q: Array<[number, number]> = [from];
+    seen[idx(from[0], from[1])] = 1;
+    let reached = false;
+    while (q.length) {
+      const [i, j] = q.pop() as [number, number];
+      if (i === to[0] && j === to[1]) {
+        reached = true;
+        break;
+      }
+      for (const [di, dj] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as Array<[number, number]>) {
+        const a = i + di;
+        const b = j + dj;
+        if (a < 0 || b < 0 || a >= cols || b >= rows || seen[idx(a, b)] || blocked[idx(a, b)]) continue;
+        seen[idx(a, b)] = 1;
+        q.push([a, b]);
+      }
+    }
+    expect(reached, 'Biggy cannot drive the corridor past the staircases').toBe(true);
+  });
+
+  /**
+   * ...and the two who CAN take those stairs still fit through the mouth, while
+   * Biggy does not. Chapter 1 ends by walking all three onto that landing, so the
+   * landing has to be somewhere a robot can be.
+   */
+  it('lets Droid onto the landing and keeps Biggy off it', () => {
+    for (const { name, r } of shafts) {
+      const mouth = nicheMouth(r);
+      expect(mouth.w, `the ${name} mouth admits Biggy`).toBeLessThan(DEFS.biggy.r * 2);
+      expect(mouth.w, `the ${name} mouth refuses Droid`).toBeGreaterThan(DEFS.droid.r * 2);
+      expect(mouth.h).toBeGreaterThan(DEFS.droid.r * 2);
+      // Chapter 1's descent waypoint is the middle of the flight, which is the
+      // middle of that landing, and it is inside the corridor band.
+      const head = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+      expect(head.x).toBeGreaterThan(mouth.x);
+      expect(head.x).toBeLessThan(mouth.x + mouth.w);
+      expect(head.y).toBeGreaterThan(CY0);
+      expect(head.y).toBeLessThan(CY1);
     }
   });
 });

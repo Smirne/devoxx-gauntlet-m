@@ -578,8 +578,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   /** The exit: out of the closed section, down the secondary staircase. */
   function leave(): void {
-    // Out of the closed section and down the secondary staircase between 3 and 4 —
-    // the one the plans put exactly there (GAUNTLET.md Stage 1).
+    // Out of the closed section and down the secondary staircase on the near wall
+    // — the one the plan puts level with room 4, standing in the corridor rather
+    // than recessed behind it (`F1.nicheBot`, and Michele's 24 Sep ruling in
+    // `src/sim/geometry.ts`'s header).
+    //
+    // The descent waypoint is the CENTRE of that flight, which is the centre of
+    // its mouth, which is where the plan draws the only part of it at corridor
+    // level. It used to be `nicheBot.x + 20, nicheBot.y + 30`: measured against a
+    // 17.7-deep shaft standing IN the corridor, +30 lands 12 px through the
+    // corridor wall and the chapter would have ended with all three robots inside
+    // it. Derived, it cannot go stale the next time the flight moves.
     const nb = F1.nicheBot;
     /*
      * A loose diagonal, not a column.
@@ -590,10 +599,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      * Staggered in x as well they read as three, Voxxy out in front because she is
      * the quick one, and they converge on the stairwell mouth for the descent.
      */
+    const head = { x: nb.x + nb.w / 2, y: nb.y + nb.h / 2 };
     const route = (dx: number, dy: number): Array<{ x: number; y: number }> => [
       { x: F1.fireX + 30 + dx, y: 350 + dy },
-      { x: nb.x + 20 + dx, y: 350 + dy },
-      { x: nb.x + 20, y: nb.y + 30 },
+      { x: head.x + dx, y: 350 + dy },
+      { ...head },
     ];
     ctx.startCut(
       [
@@ -809,7 +819,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   /** The live bottom-of-screen line: clues found, then what the keypad is waiting for. */
   function progress(): string {
-    if (fireOpen) return 'fire door open · down the secondary stairs between 3 and 4';
+    if (fireOpen) return 'fire door open · down the secondary stairs, the ones outside zaal 4';
     const found = clues.filter((c) => c.found).length;
     const left = clues
       .filter((c) => !c.found)

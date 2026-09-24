@@ -80,8 +80,10 @@ is heavy and can get up to speed in a corridor — not because the script says s
 
 An entry for the [Devoxx Belgium Robot Games](https://game.devoxx.be/), using the organisers' three
 robots and the real Kinepolis Antwerp floor plans. Room adjacency, the corridor, both secondary
-staircases (between rooms 3|4 and 10|9) and the main staircase (between 6 and 7) are placed from the
-published plans; the Zaal numerals and the blue Dutch wayfinding signs are the venue's own.
+staircases (standing in the corridor against its two walls, level with rooms 4 and 9) and the main
+staircase (at the corridor's end between 6 and 7) are placed from the published plans, measured in
+plan pixels and asserted in `tests/geometry.test.ts`; the Zaal numerals and the blue Dutch
+wayfinding signs are the venue's own.
 
 ## Technologies
 

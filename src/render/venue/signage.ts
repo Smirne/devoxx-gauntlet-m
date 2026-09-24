@@ -46,7 +46,7 @@
 
 import * as THREE from 'three';
 
-import { CY0, CY1, DOOR, F1, GF, R, TALKS, rooms, roomDoor } from '../../sim/geometry';
+import { CY0, CY1, DOOR, F1, GF, R, TALKS, roomFrontage, rooms, roomDoor } from '../../sim/geometry';
 import { T, W } from '../../sim/constants';
 import type { RoomDef } from '../../sim/types';
 import { PX_PER_M, m } from '../../sim/units';
@@ -507,10 +507,46 @@ function zaalSignSide(r: RoomDef): 1 | -1 {
   return ahead > s.x - 12 ? -1 : 1;
 }
 
+/** Width of the backlit poster box, sim px. `floor1.ts` builds it. */
+export const POSTER_W_PX = 18;
+
+/**
+ * Keep a sign on real wall: on its own room's frontage, beside the doorway rather
+ * than over it, and never behind the secondary staircase standing in front of
+ * rooms 4 and 9.
+ *
+ * `zaalSignSide` already exists because room 7's panel landed inside the main
+ * staircase's opening. This is the same problem one door along: the flight the
+ * plan draws in the corridor takes 109 px out of the middle of rooms 4 and 9's
+ * 297 of frontage (`roomFrontage`), and at the default 42 px the numeral panel
+ * would hang over the stairwell. Flipping the side does not help there — the
+ * other offset lands over the flight instead — so the offset gives, not the side.
+ *
+ * Rooms 4 and 9 leave 30.75 px of wall between the doorway and the head of the
+ * stairs, and the numeral panel's body is 30.25 wide. It therefore fills that
+ * wall, which is exactly what the Kinepolis corridor looks like beside a stair,
+ * and `REVEAL_PX` is the daylight it keeps at each end — enough that the panel is
+ * measurably clear of the lintel over the door and of the flight beside it, which
+ * `tests/venue.smoke.test.ts` checks two different ways.
+ */
+const REVEAL_PX = 0.4;
+
+function onFrontage(r: RoomDef, x: number, halfW: number): number {
+  const [lo, hi] = roomFrontage(r);
+  const d = roomDoor(r);
+  // The run of wall on the side of the doorway the sign was asked for.
+  const [a, b] = x < d.cx ? [lo, d.x] : [d.x + d.w, hi];
+  const min = a + halfW + REVEAL_PX;
+  const max = b - halfW - REVEAL_PX;
+  // A panel as wide as the wall it is given centres on it rather than choosing an
+  // end to overhang. This is the rooms 4 and 9 case, and only that case.
+  return min > max ? (a + b) / 2 : Math.min(Math.max(x, min), max);
+}
+
 /** Where the backlit poster box goes: always the other side of the door. */
 export function zaalPosterX(n: number): number {
   const r = R(n);
-  return roomDoor(r).cx - zaalSignSide(r) * (DOOR / 2 + 20);
+  return onFrontage(r, roomDoor(r).cx - zaalSignSide(r) * (DOOR / 2 + 20), POSTER_W_PX / 2);
 }
 
 /**
@@ -549,7 +585,7 @@ export function buildSignage(
 
     // The large orange numeral panel, beside the entrance: a colour block first,
     // a numeral second, exactly as the corridor reads at Kinepolis.
-    const panelX = d.cx + zaalSignSide(r) * SIGN_OFFSET_PX;
+    const panelX = zaalSignX(Number(r.n));
     const panelH = f.y1 - f.y0;
     const panel = new THREE.Group();
     panel.name = `zaal-sign-${r.n}`;
@@ -729,7 +765,7 @@ export function buildSignage(
  */
 export function zaalSignX(n: number): number {
   const r = R(n);
-  return roomDoor(r).cx + zaalSignSide(r) * SIGN_OFFSET_PX;
+  return onFrontage(r, roomDoor(r).cx + zaalSignSide(r) * SIGN_OFFSET_PX, (ZAAL_W_M * PX_PER_M + 4) / 2);
 }
 
 /* ======================================================= sponsor stand art ==
