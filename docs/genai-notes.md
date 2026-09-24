@@ -2732,3 +2732,74 @@ groan, and a slow servo whine for Droid that rises, holds, clicks at the top and
 settle. Both are executed by `tests/audio-cues.test.ts` — headless Chromium has no audio device, so
 being executed at all is the only check available before a human hears them — and both are fired
 from `flairPhase` in `main.ts`, which is the sim's own clock, never a timer in render code.
+
+## Round — the staircases moved, because the drawing outranks the prose (24 Sep 2026)
+
+**The human decision, and it is the durable half of this round.** The previous round measured the
+first-floor flights, found that the plan and the prose disagreed about where they are, and
+escalated rather than shipping its own reading. Michele answered twice: **"Follow the plan — move
+them"**, then, in his own words, **"follow the devoxx plant, not the plan.md"**. So the annotated
+Devoxx drawing beats CLAUDE.md, GAUNTLET.md and `plans/README.md`, all three of which called the
+old position non-negotiable, and all three of which are now corrected — along with `README.md`,
+`docs/after-dark-full-design.md`, `docs/brief-and-references.md`, chapter 1's own progress line and
+two module headers. The rule is written down where the next builder will hit it: *where a drawing
+in `plans/` and a `.md` disagree, re-measure the PNG, move the geometry, and fix the prose in the
+same change.*
+
+**The measurement, re-done rather than trusted.** `plans/devoxx-rooms-stairs-annotated.png`
+(996 x 1498), read as pixels: the corridor's two wall lines are plan x 504..505 and 649 (clear span
+503..650 = 147); each flight is mid-grey (RGB 150,150,152) against the corridor's 209, the left one
+plan x 506..527 and the right one 627..647, and **both** run plan y **884..947** — 64 rows, with a
+seven-row gap at 912..918 that the unannotated `devoxx-rooms-plain.png` shows is a **landing
+halfway down the flight**, not the annotation arrow lying across it. The plain drawing (1142 x 1420,
+`plain_y = annot_y * 0.9943 - 26.3`) agrees to a pixel and adds what the black annotation hides:
+the treads run *along* the corridor, so a flight is 1.41 m wide and 109 sim px long, and rooms 4
+and 9 have a single-leaf door at plan y 925..933 (world x ~1137) with the vestibule they share with
+rooms 3 and 5 at either end. The plan's "doors at ~976 and ~1135" from last round is half right:
+1135 is a real door, 976 is a free-standing rectangle in the corridor, not an opening.
+
+**What moved.** `F1.nicheTop/nicheBot` go from `{858, CY0-57, 40, 57}` — a pocket cut into the
+corridor wall in the gap between rooms 10|9 and 3|4 — to `{1005.5, CY0, 109.2, 17.7}` and
+`{1005.5, CY1-17.7, 109.2, 17.7}`: **148 px along the corridor, and out of the wall into the
+corridor**, which is where the drawing puts them and the second half of the fault Michele reported
+three times. `world_x = 898 + (plan_y - 821) * 297/174` is the whole arithmetic, anchored on room
+4/9 exactly as the rest of the module is. Depth into the corridor is the flight's own width —
+20/147 of the corridor, 17.7 sim px — so `NICHE_MOUTH` is now used twice from one measurement, and
+Biggy still misses the stairs by a centimetre. The corridor wall behind the flight is now unbroken
+(the staircase is not a hole in it any more); the mouth is the landing the plan draws dead centre;
+the two runs either side are walls, in the robots' own voices, like the ground floor's `stair-foot`.
+
+**The two consequences the last round declined to ship, both now done.** Rooms 4 and 9's centred
+doorway would have opened into the flight, so `roomDoor` now centres a door on `roomFrontage(r)` —
+the part of a room's frontage no staircase is standing across. For six of the eight Devoxx rooms
+that is the whole room and nothing moves; for 4 and 9 it is the 107.5 px west of the flight, so
+their door is at world x 951.8 instead of 1046.5. And chapter 1's closing descent, hard-coded as
+`nicheBot.x + 20, nicheBot.y + 30`, lands 12 px through the corridor wall against a 17.7-deep
+flight: it is now `nicheBot` centre, which is the middle of the mouth, derived so it cannot go
+stale the next time the flight moves. All three robots finish the cutscene on the landing, and
+`tests/chapters.test.ts` measures the last frame of the walk rather than the first.
+
+**One ripple worth naming.** The numeral panel is 30.25 px wide and rooms 4/9 leave exactly 30.75
+px of wall between the doorway and the head of the stairs, so at the standard 42 px offset room 4's
+`zaal 4` hung over the stairwell. `signage.ts` already had `zaalSignSide` for the same problem at
+the main staircase; it now also has `onFrontage`, which keeps a sign beside its doorway and off the
+flight, and lets a panel as wide as the wall it is given centre on that wall rather than pick an
+end to overhang. That is what the Kinepolis corridor looks like beside a stair anyway.
+
+**What was NOT done, and is flagged rather than hidden.** The layout still leaves 40 px of dead
+frontage between rooms 3|4 and 10|9, reserved for the staircases back when they were believed to
+live there. Closing it means redistributing all four room pairs across 1270 px instead of 1230,
+which moves every Devoxx room, all its signage and chapter 4's stage — a round of its own, not a
+rider on this one. It is not meaningless in the meantime: the plan's own vestibule between rooms 3
+and 4 lands inside it, at world x ~882. The doc comment beside the widths says so.
+
+**Tests.** Nine new assertions, and all of them fail against the old numbers (checked by putting
+`{858, CY0-57, 40, 57}` back in a scratch copy and running: 8 failures across four files, including
+*"voxxy ends through the corridor wall: expected 439.9 to be less than 415"*). `geometry.test.ts`
+pins the along-corridor position against the plan's own pixels through the room-4 anchor — the one
+thing nothing asserted before, which is exactly why the build kept passing while being 148 px
+wrong. `staircase-clear.test.ts` gains the first-floor half of the question it was written for:
+nothing — corridor column, doorway, chapter prop — stands in either flight, Biggy can still drive
+the length of the corridor past both of them (flood fill, not arithmetic), and Droid fits on the
+landing where Biggy does not. `venue.smoke.test.ts` asserts the same of the thing on screen and
+adds that neither the numeral panel nor the poster box hangs over a stairwell. 435 green.

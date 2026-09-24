@@ -5,14 +5,25 @@
  * Both floors are rotated 90° counter-clockwise relative to the plans, so the
  * corridor runs left->right: **plan top -> world left**, plan left column -> world
  * bottom row. That puts the closed cinema section at x 0..600, Devoxx rooms 3, 4, 5, 6
- * along the bottom and 10, 9, 8, 7 along the top, the secondary staircases in the
- * corridor walls between 3|4 and 10|9, and the main staircase at the corridor's end
- * between 6 and 7 — exactly the annotations in
- * `plans/devoxx-rooms-stairs-annotated.png`.
+ * along the bottom and 10, 9, 8, 7 along the top, the two secondary staircases
+ * standing IN the corridor against its two walls, level with rooms 4 and 9, and the
+ * main staircase at the corridor's end between 6 and 7 — exactly what
+ * `plans/devoxx-rooms-stairs-annotated.png` draws.
  *
- * These positions are NON-NEGOTIABLE (CLAUDE.md, GAUNTLET.md Stage 1). The renderer
- * builds its environment from this module, so the floor-plan overlay check is a
- * property of the data, not of the drawing code.
+ * ## The drawing wins
+ *
+ * CLAUDE.md, GAUNTLET.md and `plans/README.md` used to say the secondary staircases
+ * were "between rooms 3|4 and 10|9" and called it non-negotiable. Measured, the
+ * drawing does not put them there — it puts them level with the 4 and 9 numerals,
+ * about 150 sim px further along the corridor (`F1.nicheTop`). Michele was asked
+ * which to follow and answered twice, 24 Sep 2026: *"Follow the plan — move them"*,
+ * then *"follow the devoxx plant, not the plan.md"*. So: **when the drawing and the
+ * prose disagree, the drawing is the authority.** The prose has been corrected.
+ *
+ * The positions are still non-negotiable (CLAUDE.md, GAUNTLET.md Stage 1); what
+ * changed is which document states them. The renderer builds its environment from
+ * this module, so the floor-plan overlay check is a property of the data, not of
+ * the drawing code.
  */
 
 import { W, H, T } from './constants';
@@ -43,37 +54,50 @@ export const ROOM_D = 224;
 export const DOOR = 46;
 
 /**
- * Clear width of the mouth a secondary staircase opens onto the corridor through.
+ * THE SECONDARY STAIRCASES, RE-MEASURED OFF THE PLAN — 24 Sep 2026.
  *
- * **17.7 sim px, not the well's own 40.** Michele, playtesting chapter 1
- * (`docs/playtest-notes.md`, note 18): *"they seem fit for biggy to pass, make the
- * passage more narrow"* — and he was right that they were, because 40 px is wider
- * than any robot in the game. The plan decides how narrow.
+ * Michele: *"The stairs position on the upper wall haven't been fixed"*, and then,
+ * when the drawing and the prose were put to him side by side, *"Follow the plan —
+ * move them"* / *"follow the devoxx plant, not the plan.md"*.
  *
- * Measured on `plans/devoxx-rooms-stairs-annotated.png` (996 x 1498):
+ * Measured on `plans/devoxx-rooms-stairs-annotated.png` (996 x 1498), and
+ * cross-checked on the unannotated `plans/devoxx-rooms-plain.png` (1142 x 1420),
+ * whose big black annotation-free copy of the same drawing maps onto it by
+ * `plain_y = annot_y * 0.9943 - 26.3` — the two agree to a pixel:
  *
- * | what | plan px |
- * |---|---|
- * | corridor, clear between the room walls | x 503..650 = **147** |
- * | left flight, hard against the left wall | x 507..527 = **20** deep |
- * | right flight, hard against the right wall | x 627..647 = **20** deep |
- * | both flights, along the corridor | y 884..947 = **64** |
+ * | what | plan px | how it was found |
+ * |---|---|---|
+ * | corridor walls | x 504..505 and x 649 | the two long dark verticals |
+ * | corridor, clear between the room walls | x 503..650 = **147** | outer faces |
+ * | left flight, hard against the left wall | x **506..527** = 20-22 deep | mid-grey (RGB 150,150,152) against the corridor's 209 |
+ * | right flight, hard against the right wall | x **627..647** = 21 deep | same |
+ * | both flights, along the corridor | y **884..947** = **64** | full-width rows, identical on both walls |
+ * | rooms 4 and 9, along the corridor | y 821..995 = **174** | the teal fills, 826..993, plus their wall lines |
  *
- * The flight is 20/147 = 0.136 of the corridor's width. The corridor is 130 sim px
- * wide (`CY0`..`CY1`), so the flight is 0.136 x 130 = **17.7 sim px = 1.41 m** at
- * `PX_PER_M`. That ratio is the one measurement that survives this floor's
- * anisotropy: lengths along the corridor are stretched ~1.93x against lengths
- * across it (`docs/scale-and-units.md`), so converting the flight's *width* on the
- * along-corridor scale would give 34 px and mean nothing physical. A robot's radius
- * is isotropic; the corridor's own width is the ruler that matches it.
+ * Two things follow, and the second is what Michele had reported three times:
  *
+ *  1. the flights are **20 plan px deep** — 20/147 = 0.136 of the corridor — and
+ *     the corridor is 130 sim px wide (`CY0`..`CY1`), so a flight is 0.136 x 130 =
+ *     **17.7 sim px = 1.41 m**. That ratio is the one measurement that survives
+ *     this floor's anisotropy: lengths along the corridor are stretched ~1.93x
+ *     against lengths across it (`docs/scale-and-units.md`), so reading the
+ *     flight's width on the along-corridor scale would give 34 px and mean nothing
+ *     physical. A robot's radius is isotropic; the corridor's own width is the
+ *     ruler that matches it;
+ *  2. the flights run **y 884..947**, which is 63..126 plan px into room **4/9**'s
+ *     own 174 of length — level with the 4 and 9 numerals, **not** in the 3|4 or
+ *     10|9 gap. See `F1.nicheTop` for that arithmetic.
+ *
+ * `NICHE_MOUTH` is (1): the clear width of the opening onto a flight, which is the
+ * flight's own width. Michele asked for it in chapter 1 (`docs/playtest-notes.md`,
+ * note 18): *"they seem fit for biggy to pass, make the passage more narrow"*.
  * Biggy is r 9, so **1.44 m across: he does not fit, by a centimetre**, which is
  * what note 18 asked for and what the real stair says. Droid (1.00 m) and Voxxy
  * (0.76 m) do. `tests/geometry.test.ts` pins the relationship, not just the number.
  *
- * The well behind the mouth stays 40 px wide — a stair landing is wider than the
- * door onto it, exactly as the ground-floor shafts already are (`SHAFT_DOOR` 24 in
- * a 45 px shaft).
+ * The same 17.7 is the shaft's **depth into the corridor**, and that is not a
+ * coincidence: a flight's width is how far it reaches out from the wall it hugs.
+ * One measurement, used twice.
  */
 export const NICHE_MOUTH = 17.7;
 
@@ -130,9 +154,17 @@ export const rooms: RoomDef[] = [];
    * 4/9 = 174, 5/8 = 224, 6/7 = 177 — so 6/7 is the plan's SECOND BIGGEST pair,
    * effectively equal to 4/9. The prototype had it at 263 against 4/9's 320, which
    * made the venue's second-largest auditorium read as its second-smallest. The
-   * 1230 px between the fire door and the corridor's end (1270 less the 40 px
-   * secondary-staircase niche) are redistributed by the plan's own ratios
-   * 0.2014 / 0.2417 / 0.3111 / 0.2458.
+   * 1230 px between the fire door and the corridor's end are redistributed by the
+   * plan's own ratios 0.2014 / 0.2417 / 0.3111 / 0.2458.
+   *
+   * 1230 and not 1270 because 40 px were reserved between 3|4 and 10|9 for the
+   * secondary staircases, back when they were believed to live in that gap. They
+   * do not (`NICHE_MOUTH`, `F1.nicheTop`), and the gap has been left where it is
+   * rather than redistributing every room on this floor in the same round that
+   * moves the staircases. It is not empty of meaning: the plan draws a vestibule
+   * with a pair of double doors at each party wall, and room 3/4's lands at world
+   * x ~882, inside this very gap. Closing it is a later round's change, and it
+   * moves every Devoxx room, its signage and chapter 4's stage.
    */
   add(10, 610, 248, -1);
   add(9, 898, 297, -1);
@@ -163,9 +195,47 @@ export interface DoorRect {
   r: RoomDef;
 }
 
-/** The doorway a room opens onto the corridor through. */
+/**
+ * The clear stretch of a room's corridor frontage: the part of it a secondary
+ * staircase is not standing across.
+ *
+ * Seven of the eight Devoxx rooms have their whole frontage. Rooms **4 and 9** do
+ * not: the staircase stands in the corridor from world x 1005.5 to 1114.7, and
+ * their frontage runs 898..1195, so the flight takes 109 px out of the middle of
+ * their 297 and leaves 107.5 west of it and 80.3 east of it. The plan draws it
+ * exactly so — see `F1.nicheTop` — and it draws room 4's doors on both sides of
+ * the stair, never behind it.
+ */
+export function roomFrontage(r: RoomDef): [number, number] {
+  const n = r.side < 0 ? F1.nicheTop : F1.nicheBot;
+  const lo = r.x;
+  const hi = r.x + r.w;
+  if (n.x + n.w <= lo || n.x >= hi) return [lo, hi];
+  return n.x - lo >= hi - (n.x + n.w) ? [lo, n.x] : [n.x + n.w, hi];
+}
+
+/**
+ * The doorway a room opens onto the corridor through.
+ *
+ * Centred on the room's frontage — except where a staircase stands across the
+ * middle of it, which is rooms 4 and 9, where it is centred on the frontage the
+ * staircase leaves (`roomFrontage`): world x **951.8**, spanning 928.8..974.8.
+ *
+ * The plan has two ways into room 4 and the stair is between them: a single-leaf
+ * door at plan y 925..933 on `devoxx-rooms-plain.png` (world x ~1137, past the
+ * east end of the flight) and the double doors of the vestibule it shares with
+ * room 3 at plan y 772..788 (world x ~882, back past the west end). The game
+ * models one door per room, so it takes the western of the two and puts it where
+ * a 46 px opening, a numeral panel and a poster box all fit on real wall: the
+ * eastern stretch is 80 px, which is not enough for the signage this venue hangs
+ * beside a door (`src/render/venue/signage.ts`).
+ *
+ * A centred door would be at 1046.5 — **inside the flight**, which is how the
+ * staircase move surfaced this at all.
+ */
 export function roomDoor(r: RoomDef): DoorRect {
-  const cx = r.x + r.w / 2;
+  const [lo, hi] = roomFrontage(r);
+  const cx = (lo + hi) / 2;
   return r.side < 0
     ? { x: cx - DOOR / 2, y: CY0 - T, w: DOOR, h: 12, cx, cy: CY0, side: -1, r }
     : { x: cx - DOOR / 2, y: CY1 - T, w: DOOR, h: 12, cx, cy: CY1, side: 1, r };
@@ -194,30 +264,44 @@ export const F1 = {
   /** Glass kiosk in the foyer, with a Voxxy-sized hatch. */
   kiosk: { x: 110, y: 412, w: 56, h: 56 },
   /**
-   * Secondary-staircase well in the top corridor wall, between rooms 10 and 9.
+   * The secondary staircase against the **top** corridor wall, level with room 9.
    *
-   * **Depth 57, not the prototype's 60.** Measured on
-   * `plans/devoxx-rooms-stairs-annotated.png` the flight is a rectangle
-   * **20 x 64 plan px** (left flight plan x 507..527, right flight plan x 627..647,
-   * both plan y 884..947 — see `NICHE_MOUTH` for the full read). The well is that
-   * flight stood on end, so its depth is the flight's 64 plan px of *run*, carried
-   * across the corridor at this module's corridor-band scale 130/147 = 0.8844:
-   * 64 x 0.8844 = **56.6**.
+   * A flight standing IN the corridor, not a pocket cut into the wall behind it:
+   * `plans/devoxx-rooms-stairs-annotated.png` draws both flights hard against the
+   * room walls with the corridor running unbroken past them, and
+   * `plans/devoxx-rooms-plain.png` shows the treads, a landing halfway down and a
+   * wall line closing each end. `NICHE_MOUTH` has the full measurement; this is
+   * the arithmetic that turns it into a rect.
    *
-   * The along-corridor position — x 858, in the 40 px the layout leaves between
-   * rooms 10 and 9 — is the one CLAUDE.md and GAUNTLET.md Stage 1 both name. The
-   * plan does **not** agree with them and it is not a builder's call to break a tie
-   * between two things Michele wrote: measured, the plan puts both flights at plan
-   * y 884..947, which is 63..126 plan px into room **4/9**'s own 174 of length, not
-   * in the 3|4 or 10|9 gap at all. In world x that is 1006..1113, about 150 px
-   * further along the corridor than here. See `docs/playtest-notes.md` and this
-   * round's entry in `docs/genai-notes.md`: it is escalated, not silently applied,
-   * because moving it there puts the well through rooms 4 and 9's centred doorways
-   * and past the descent waypoint chapter 1's closing cutscene hard-codes.
+   * **Depth into the corridor** — the flight's own width, 20 plan px of the
+   * corridor's 147, carried at the corridor-band scale 130/147 = 0.8844:
+   * 20 x 0.8844 = **17.7**, which is `NICHE_MOUTH`.
+   *
+   * **Position and length along the corridor** — room 4/9 is this module's anchor
+   * (plan y 821..995 = 174 plan px, world x 898..1195 = 297 sim px), so the
+   * along-corridor scale is 297/174 = **1.70690** sim px per plan px:
+   *
+   * ```
+   * world_x = 898 + (plan_y - 821) * 1.70690
+   *   flight starts  plan y 884  ->  898 +  63 * 1.70690 = 1005.5
+   *   flight ends    plan y 948  ->  898 + 127 * 1.70690 = 1114.7
+   *   length             64 plan px  ->  64 * 1.70690 =  109.2
+   * ```
+   *
+   * That is **~148 px further along the corridor than the build had it** (x 858,
+   * in the gap between rooms 10 and 9), and it is the fault Michele reported three
+   * times: *"in the wrong place... lateral in the real hallway"*, *"they seem fit
+   * for biggy to pass"*, *"the stairs position on the upper wall haven't been
+   * fixed"*. The first two were fixed; this is the third.
+   *
+   * Two things move with it, and both are in `git log` beside this line: rooms 4
+   * and 9's doorways, which were centred and are now inside the flight
+   * (`roomDoor`), and chapter 1's closing descent, which walked to a point that is
+   * now 12 px through the corridor wall (`ch1-night.ts`).
    */
-  nicheTop: { x: 858, y: CY0 - 57, w: 40, h: 57 },
-  /** Secondary-staircase well in the bottom corridor wall, between rooms 3 and 4. */
-  nicheBot: { x: 858, y: CY1, w: 40, h: 57 },
+  nicheTop: { x: 1005.5, y: CY0, w: 109.2, h: NICHE_MOUTH },
+  /** The same flight against the **bottom** corridor wall, level with room 4. */
+  nicheBot: { x: 1005.5, y: CY1 - NICHE_MOUTH, w: 109.2, h: NICHE_MOUTH },
   /**
    * Main staircase, corridor's end between rooms 6 and 7.
    *
@@ -405,10 +489,18 @@ export function cinemaEExit(): Rect {
 }
 
 /**
- * The doorway a secondary-staircase well opens onto the corridor through.
+ * The way onto a secondary staircase: the one square of it at corridor level.
  *
- * Centred on the well, so the middle of the mouth is the middle of the well and
- * anything aiming at `niche.x + niche.w / 2` still aims at the opening.
+ * Centred on the flight, so the middle of the mouth is the middle of the well and
+ * anything aiming at `niche.x + niche.w / 2` — chapter 1's descent, the stairwell
+ * lights — still aims at the opening.
+ *
+ * Centred is also where the plan puts the only part of that flight you could step
+ * onto: `devoxx-rooms-plain.png` draws a **landing halfway down**, plan y 881..887
+ * of the flight's 853..914, which is world x 1063..1074 against this mouth's
+ * 1051..1069. The two runs either side of it drop away, and they are walls,
+ * because nothing in this game climbs (the same rule as the ground floor's
+ * `stair-foot`).
  */
 export function nicheMouth(niche: Rect): Rect {
   const x = niche.x + (niche.w - NICHE_MOUTH) / 2;
@@ -464,9 +556,11 @@ export function floor1Walls(): Wall[] {
       return [d.x, d.x + d.w];
     });
     const niche = side < 0 ? F1.nicheTop : F1.nicheBot;
-    // Only the MOUTH is a hole in the corridor wall, not the whole well: the two
-    // stubs left either side of it are the jambs that keep Biggy out (`NICHE_MOUTH`).
     const mouth = nicheMouth(niche);
+    // The corridor wall runs UNBROKEN behind the staircase — the flight stands in
+    // the corridor, it is not a pocket cut into the wall (`F1.nicheTop`). The one
+    // segment behind the mouth is cut out of the run here and pushed back below
+    // as its own wall, so the renderer has something tagged to hang the stair on.
     gaps.push([mouth.x, mouth.x + mouth.w]);
     // The foyer opens straight onto the corridor.
     if (side > 0) gaps.push([F1.foyer.x, F1.foyer.x + F1.foyer.w]);
@@ -481,11 +575,38 @@ export function floor1Walls(): Wall[] {
       const by = side < 0 ? r.y - T : r.y + r.h;
       w.push({ x: r.x - T, y: by, w: r.w + 2 * T, h: T });
     }
-    w.push(
-      { x: niche.x - T, y: niche.y, w: T, h: niche.h },
-      { x: niche.x + niche.w, y: niche.y, w: T, h: niche.h },
-      { x: niche.x - T, y: side < 0 ? niche.y - T : niche.y + niche.h, w: niche.w + 2 * T, h: T, stair: side },
-    );
+    /*
+     * The staircase itself, as three rects standing in the corridor.
+     *
+     * The head wall first: the piece of corridor wall the mouth backs onto, which
+     * is what you face when you step onto the landing, and the one thing on this
+     * floor tagged `stair: ±1` for the renderer.
+     */
+    w.push({
+      x: mouth.x,
+      y: yy,
+      w: mouth.w,
+      h: T,
+      stair: side,
+      kind: 'stair-head',
+      why: (b) => `${b.name}: that is the wall at the head of the stairs. The way down is the step in front of it`,
+    });
+    // Then the two runs either side of the landing. A flight is a wall: you can
+    // come down one (chapter 1 does, in the closing cutscene) and nothing in this
+    // game goes up one. The near-side pair is tagged separately so the renderer
+    // can cut it to a balustrade instead of standing a full-height block between
+    // the fixed camera and the corridor — the same cut the near corridor wall gets.
+    const runKind = side < 0 ? 'stairwell' : 'stairwell-near';
+    const runWhy = (b: Bot): string =>
+      b.kind === 'biggy'
+        ? 'Biggy: that flight is 1.41 m wide and I am 1.44. The other stairs, then'
+        : `${b.name}: the flight down to the exhibition hall. One way on, and it is the step in the middle`;
+    for (const [x0, x1] of [
+      [niche.x, mouth.x],
+      [mouth.x + mouth.w, niche.x + niche.w],
+    ] as const) {
+      if (x1 - x0 > 0.5) w.push({ x: x0, y: niche.y, w: x1 - x0, h: niche.h, kind: runKind, why: runWhy });
+    }
   }
   const f = F1.foyer;
   w.push({ x: f.x - T, y: f.y, w: T, h: f.h }, { x: f.x + f.w, y: f.y, w: T, h: f.h }, { x: f.x - T, y: f.y + f.h, w: f.w + 2 * T, h: T });

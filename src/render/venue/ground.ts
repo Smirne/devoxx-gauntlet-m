@@ -822,7 +822,7 @@ function reception(p: VenuePalette, overhead: THREE.Group): THREE.Group {
 
 /**
  * The staircases up to the cinema level: the two secondary flights inside the hall
- * (`GF.stairs`, which land in the corridor niches between 3|4 and 10|9) and the
+ * (`GF.stairs`, which come up beside rooms 4 and 9 — see `F1.nicheTop`) and the
  * main staircase beside reception, which is gated until Stephan opens it.
  *
  * The main flight climbs NORTH out of the lobby, so its gate — the only side of it
