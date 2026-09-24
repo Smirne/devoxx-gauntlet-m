@@ -249,6 +249,19 @@ const SPECS = {
 
 export type VenueMaterialName = keyof typeof SPECS;
 
+/**
+ * One spec, by name, for a builder that draws venue fabric from **outside** the
+ * venue and must not drift from it.
+ *
+ * The one caller is `src/render/seats.ts`: a chapter's own seat rows are drawn
+ * with the same geometry and the same colour as the auditorium seating this
+ * palette dresses rooms 3..10 with, and the whole point of that change was that
+ * the game stopped having two different answers to "what does a seat look like".
+ * A copied `'#2b2735'` would have re-opened it the first time one of them was
+ * re-graded, so the colour is read from here instead.
+ */
+export const venueSpec = (name: VenueMaterialName): MaterialSpec => SPECS[name];
+
 export type VenuePalette = Readonly<Record<VenueMaterialName, THREE.MeshStandardMaterial>> & {
   /** Every material in the palette, for the teardown path. */
   readonly all: readonly THREE.MeshStandardMaterial[];

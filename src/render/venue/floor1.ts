@@ -134,6 +134,20 @@ function wallStyle(
 /* ------------------------------------------------------------------- rooms */
 
 /**
+ * Does the venue seat this auditorium itself?
+ *
+ * Every house but cinema E. Room E dresses itself in chapter 1 — seat rows, one
+ * aisle and the exit alcove, on a plan of its own — and seating it twice would
+ * put a flat block of seats through the raked one.
+ *
+ * Exported because `src/render/seats.ts` has to ask: the chapters publish
+ * `seatrow`/`seatblock` props, and chapter 4's keynote republishes room 8's own
+ * seat blocks, which this module has already set. One answer to the question, in
+ * one place, so the two drawers cannot both think the floor is theirs.
+ */
+export const venueSeatsRoom = (r: RoomDef): boolean => r.n !== 'E';
+
+/**
  * One auditorium's raked seating: a stepped floor and a block of seats, both
  * drawn as a single `InstancedMesh` so a 1900-seat venue costs 26 draw calls
  * rather than hundreds of meshes.
@@ -591,7 +605,7 @@ export function buildFloor1(p: VenuePalette): Floor1Build {
 
     // Room E dresses itself in chapter 1 (seat rows, aisle, exit alcove) from sim
     // walls, exactly as the prototype does; everywhere else the seats are set.
-    if (r.n !== 'E') for (const o of seating(r, p)) room.add(o);
+    if (venueSeatsRoom(r)) for (const o of seating(r, p)) room.add(o);
     room.add(doorway(r, p, overhead));
     // The projection booth over the door, and the machine in it — Michele: "the
     // projector still needs a shape". See `projector.ts` for what it is made of

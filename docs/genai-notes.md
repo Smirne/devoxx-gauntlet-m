@@ -2937,3 +2937,60 @@ either way, so both pictures are honest.
 **Tests.** 460 green. `tests/prop-geometry.ts` now reads the keypad's height from
 `KEYPAD_TOP_M` in the renderer's own module rather than re-typing it, so that transcription cannot
 drift; the footprint it reports is unchanged, which is the only thing the collider sweep asks about.
+
+## 24 Sep 2026 — "this still needs a shape": the seat rows
+
+**Michele's note.** A screenshot of chapter 1's cinema — Droid up on Biggy, his green pool across
+the rows behind them — and one line: *"This still needs a shape."*
+
+**The diagnosis, measured before anything was written.** `src/render/scene.ts` registered
+`seatrow` and `seatblock` in `PROPS` as `{ h: 0.55, color: 0x3c2f3a, tl: true }`, and the generic
+`drawProp` path drew exactly that: **one flat-topped cuboid per published rect**. Cinema E's six
+rows were six anthracite slabs, the longest of them 10 m. Meanwhile the game already knew how to
+draw a seat — `seatGeometry()` in `src/render/venue/props.ts` (cushion, back, legs, facing +z) —
+and `seating()` in `src/render/venue/floor1.ts` lays a whole auditorium out as a single
+`InstancedMesh`, 1900 seats in 26 draw calls. So the venue's cinema D, one wall away, had modelled
+seats in it and cinema E did not: two answers to "what does a seat row look like", and the chapters
+had the bad one. `scratchpad/seats-round/before-crop.png` is Michele's shot reproduced; the small
+blue grid at its top-left is cinema D's proper seating, for scale.
+
+**What was built.** `src/render/seats.ts`: one `InstancedMesh` for every seat every chapter
+publishes, built from the venue's own `seatGeometry` at the **sim's** own `SEAT_PITCH_PX` (14) and
+`ROW_PITCH_PX` (18), facing the room's screen via the sim's `screenEdge()`. Cinema E is 57 seats in
+one draw call. Two rules it is built around: nothing is drawn outside the published rect (a row
+shallower than the row pitch — chapter 1's are 9 px — gets shallower seats, not seats that overhang
+the gap a robot walks down), and the pitch is read from `src/sim/geometry.ts` rather than invented.
+
+**No sim change.** The rects, the `low` walls under them and the light that crosses them are
+untouched; `tests/aisle.test.ts` still reads the same `seatrow` props and `tests/colliders.test.ts`
+still finds a collider under every drawn solid. `SEAT_TOP_M` (0.87 m, the top of the seat back) is
+exported from the seat model and **imported** by both `PROPS` and `tests/prop-geometry.ts`, so that
+transcription cannot drift from what is drawn — the same cure the keypad's `KEYPAD_TOP_M` got.
+
+**What the round found and fixed on the evidence, not on a hunch.** Chapter 4 publishes `seatrow`
+props over room 8's seat blocks, and `buildVenue()` has *already* seated room 8 from the same
+`roomSeating()` plan — with a rake under it that the sim has no plate for, so the chapter's rects
+sit flat beneath it. As slabs that did not show; as seats it did. The before/after strip
+`scratchpad/seats-round/ch4-ab-front.png` caught a **second, half-height row of seats coming up
+through the gap between every raked row**. So `venueAlreadySeats()` stands the chapter's copy down
+wherever the venue's seating already covers the rect — by overlap, not by room name, so a chapter
+that seats a corner the venue's plan does not reach still gets seats. `venueSeatsRoom()` is now
+exported from `floor1.ts` and used by both drawers: one answer to "whose floor is this".
+
+**The clue case, checked rather than eyeballed.** A seat back is 32 cm taller than the slab it
+replaces, and chapter 1's clue 4 sits in cinema E's exit alcove with seating between it and the
+camera. `tests/seats.test.ts` casts a ray from every chapter-1 clue along `dioramaToCameraAtDeg(30)`
+and fails if it passes through any seat box. At a 30 deg pitch a 0.87 m back only occludes within
+1.46 m of depth behind it, and the nearest row is 3.76 m away.
+
+**Tests.** 472 green in 27 files (was 461 in 26). New `tests/seats.test.ts`, 11 cases. Two of them
+fail against the old plain-box renderer, and were run against it to prove it:
+`PROPS.seatrow is a 0.55 m box, not a seat: expected 0.55 to be close to 0.87` and
+`seat props still fall through to drawProp: expected 'function drawDressing…' to match /SEAT_KINDS\.has\(p\.kind\)/`.
+
+**Deliberately not changed.** Chapter 4 goes on publishing seat props over a room the venue already
+seats — that is a sim-side duplicate and a human's call, not a builder's; the renderer just stops
+drawing it twice. Cinema E's chapter seats are **not** raked: the venue's rake is renderer-only
+decoration with no plate behind it, and adding one under rects that are colliders in the 0.15..0.6 m
+band is a different round's change. The 14 px seat pitch is about twice a real cinema seat; it is the
+venue's own choice and the brief was explicit about not inventing a new one.

@@ -40,6 +40,7 @@ import { buildKeypad, type KeypadModel } from './keypad';
 import { createLightLayer, type LightLayer } from './lighting';
 import { createRobot, measureBounds, updateRobot, yawFromSimHeading, EXCLUDE_FROM_BOUNDS, type RobotRig } from './robots';
 import { ROLLER_SLATS, rollerDoorDraw } from './roller-door';
+import { SEAT_KINDS, SEAT_TOP_M, createSeatField } from './seats';
 import {
   CABINET_LEAF_H,
   CABINET_LEAF_LIFT,
@@ -309,8 +310,24 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
   'banner-hook': { h: 0.25, color: 0xb0b6bd },
   banner: { h: 1.1, color: 0xff7a1a, tl: true },
   spotlight: { h: 0.35, color: 0xffd9a0 },
-  seatrow: { h: 0.55, color: 0x3c2f3a, tl: true },
-  seatblock: { h: 0.55, color: 0x3c2f3a, tl: true },
+  /*
+   * SEATING IS NOT DRAWN FROM THIS TABLE.
+   *
+   * Both entries used to be `{ h: 0.55, color: 0x3c2f3a, tl: true }` and `drawProp`
+   * drew them literally: one flat-topped cuboid per published rect, so cinema E's
+   * six rows were six anthracite slabs and the room next door — dressed by
+   * `floor1.ts` out of the same sim plan — had modelled seats in it. Michele, with
+   * the shot of Droid up on Biggy under his own green pool: *"This still needs a
+   * shape."*
+   *
+   * `src/render/seats.ts` draws them now, from `seatGeometry` and the sim's own
+   * `SEAT_PITCH_PX`/`ROW_PITCH_PX`, as one `InstancedMesh` for the whole frame.
+   * The entries stay because every drawn kind must be classified — the footprint
+   * is still the sim's own rect, and the height is read off the seat model rather
+   * than retyped, so `tests/prop-geometry.ts` cannot drift from it.
+   */
+  seatrow: { h: SEAT_TOP_M, color: 0x3c2f3a, tl: true },
+  seatblock: { h: SEAT_TOP_M, color: 0x3c2f3a, tl: true },
 };
 
 const PROP_FALLBACK: PropSpec = { h: 0.7, color: 0x5a6069 };
@@ -456,6 +473,12 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     mesh.receiveShadow = true;
     return mesh;
   });
+
+  /**
+   * Every seat a chapter publishes, in one instanced draw. See `src/render/seats.ts`
+   * for why the seat rows are not in `propPool` with everything else.
+   */
+  const seatField = createSeatField(dressing);
 
   /** The contact shadow under a visitor — a soft dark disc, not a cast shadow. */
   const contactGeo = new THREE.CircleGeometry(1, 18);
@@ -1768,6 +1791,21 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   }
 
   /**
+   * A published seat row or seat block, as a row of modelled seats.
+   *
+   * The rect is the sim's, untouched: `src/render/seats.ts` subdivides it on the
+   * sim's own `SEAT_PITCH_PX`/`ROW_PITCH_PX` and faces the seats at the room's
+   * screen, and every seat stands inside the rect the collider is on.
+   */
+  function drawSeats(p: Prop, floorY: number): void {
+    const w = p.w ?? 0;
+    const d = p.h ?? 0;
+    if (w <= 0 || d <= 0) return;
+    // Seat kinds are `tl`: the prop reports the rect's top-left corner.
+    seatField.add({ x: p.x, y: p.y, w, h: d }, (sx, sy) => surfaceY(floorY, sx, sy));
+  }
+
+  /**
    * A beer crate — chapter 3's delivery (`src/sim/crates.ts`).
    *
    * Not a `PROPS` entry, because a crate's height off the floor is live state:
@@ -2204,6 +2242,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     propPool.begin();
     peoplePool.begin();
     lockPool.begin();
+    seatField.begin();
     gateGroup.visible = false;
     cableLine.visible = false;
     breakerPanel.visible = false;
@@ -2229,12 +2268,14 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       else if (p.kind === 'gate') drawGate(p, floorY, snap.walls);
       else if (p.kind === 'crate') drawCrate(p, floorY);
       else if (p.kind === 'keypad') drawKeypad(p, floorY);
+      else if (SEAT_KINDS.has(p.kind)) drawSeats(p, floorY);
       else drawProp(p, floorY);
     }
     for (const person of snap.people) drawPerson(person, floorY);
     propPool.end();
     peoplePool.end();
     lockPool.end();
+    seatField.end();
   }
 
   /* ---------------------------------------------------------------- robots */
@@ -2510,6 +2551,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
         (mark.digit.material as THREE.Material).dispose();
       }
       propPool.dispose();
+      seatField.dispose();
       peoplePool.dispose();
       lockPool.dispose();
       gateMat.dispose();
