@@ -467,7 +467,12 @@ Layout, decided by legibility rather than taste. At the intro's tight framing a 
 | --- | --- | --- |
 | big, spanning | `DEVOXX` | exactly two letters per crate (`DE` `VO` `XX`), so the two crate seams fall **between** letters and no glyph is ever cut by a gap |
 | small, spanning | `ANTWERPEN · T.A.V. STEPHAN` | second line under it, also continuous across the three faces |
-| per crate | Voxxy `FRAGILE · THIS WAY UP` (arrow upside down), Droid `DO NOT BEND`, Biggy `HIGHLY FRAGILE` + a stoved-in corner | each in its own crate's lower corner, unaffected by the span |
+| per crate | Voxxy `FRAGILE · THIS WAY UP` (arrow upside down), Droid `DO NOT BEND`, Biggy **both** `BULKY` and `HIGHLY FRAGILE` + a stoved-in corner | each in its own crate's lower corner, unaffected by the span |
+
+Biggy carries two contradictory stencils on purpose (Michele: *"keep both bulky and highly fragile
+on biggy"*): the heaviest robot in the game is the one the shippers warned twice about, and the
+stoved-in corner says how well that went. They stack, `BULKY` over `HIGHLY FRAGILE`, so the pair
+reads as one block rather than two labels competing for the corner.
 
 Consequences to honour when it is built: crate order is load-bearing (Voxxy, Droid, Biggy, left to
 right) and the three faces must be coplanar and evenly gapped, or the word skews. `ZAAL 8` is dropped
