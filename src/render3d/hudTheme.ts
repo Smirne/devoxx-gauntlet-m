@@ -17,7 +17,14 @@ const CSS = `
 body.ad3d{background:#000}
 body.ad3d .ad-hud{font-family:"Bahnschrift","DIN Alternate","Roboto Condensed","Arial Narrow",sans-serif;letter-spacing:.02em}
 body.ad3d .ad-vig{display:none}
-body.ad3d .ad-top{background:linear-gradient(180deg,rgba(6,2,6,.82),rgba(6,2,6,0));border:0;padding:12px 18px 26px}
+body.ad3d .ad-top{background:linear-gradient(180deg,rgba(6,2,6,.7),rgba(6,2,6,0));border:0;padding:12px 18px 26px;align-items:flex-start}
+body.ad3d .ad-brand{order:0}
+body.ad3d .ad-chapter{order:1}
+body.ad3d .ad-swag{order:2}
+body.ad3d .ad-skip{order:6;margin-left:auto}
+body.ad3d .ad-obj{order:4;flex:0 0 100%;max-width:min(440px,60vw);margin-left:auto;font-size:12.5px;line-height:1.5;
+  padding:8px 12px;background:rgba(10,4,8,.55);border-left:2px solid ${RED}}
+body.ad3d .ad-keys{order:5;flex:0 0 100%;text-align:right}
 body.ad3d .ad-brand{color:${YELLOW};font-size:14px;letter-spacing:.32em;text-shadow:0 0 12px rgba(243,230,0,.45)}
 body.ad3d .ad-chapter{color:${CYAN};text-transform:uppercase;letter-spacing:.14em}
 body.ad3d .ad-obj{color:#e9dcd6;font-size:13px}

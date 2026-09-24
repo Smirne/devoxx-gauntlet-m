@@ -85,7 +85,7 @@ function storedQuality(): QualityName | null {
 const qParam = params.get('q') as QualityName | null;
 const quality: QualityName = qParam && Q.includes(qParam) ? qParam : storedQuality() ?? 'high';
 const shotMode = flag('shot');
-const hideHud = flag('nohud') || shotMode;
+const hideHud = flag('nohud') || (shotMode && !flag('hud'));
 const warm = Math.max(0, Math.min(int('warm') ?? 0, 20000));
 
 /* =============================================================== the app === */

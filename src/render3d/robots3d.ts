@@ -25,6 +25,7 @@ import type { Bot, GameSnapshot, RobotKind } from '../sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
 import { createRobot, updateRobot, type RobotRig } from '../render/robots';
 import { WORLD_NOISE_GLSL } from './materials';
+import { mergeUnderAnchors } from './merge';
 
 export interface Robot3D {
   kind: RobotKind;
@@ -149,6 +150,7 @@ export function createRobots(parent: THREE.Object3D, shadowSize: number): Map<Ro
   for (const kind of ['voxxy', 'droid', 'biggy'] as RobotKind[]) {
     const rig = createRobot(kind);
     upgradeRig(rig);
+    mergeUnderAnchors(rig.root, new Set<THREE.Object3D>([...Object.values(rig.parts), ...Object.values(rig.bones), rig.lampAnchor]));
     parent.add(rig.root);
     const def = DEFS[kind].light;
     const col = new THREE.Color(def.c[0] / 255, def.c[1] / 255, def.c[2] / 255);
