@@ -229,7 +229,7 @@ void surface(vec2 uv, out vec3 alb, out float rough, out float metal, out float 
   // Polish: glossy with broad dull patches (grime, old wax), plus scratches.
   float dull = smoothstep(.45, .75, fbmT(uv * 3. + 1.7, vec2(3.), 5));
   float scr = scratchesT(uv, 24., 1.);
-  rough = .09 + .3 * dull + .25 * scr + .08 * chip;
+  rough = .13 + .3 * dull + .25 * scr + .08 * chip;
   rough = mix(rough, .35, joint);
   metal = joint * .9;
   ao = 1. - .5 * joint;

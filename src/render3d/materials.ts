@@ -164,7 +164,8 @@ export function withGrime(mat: THREE.MeshStandardMaterial, amount = 0.5, scale =
  * materials so the floor does not reflect twice.
  */
 export function withReflection(mat: THREE.MeshStandardMaterial, refl: PlanarReflection, strength = 1, distort = 0.04): void {
-  mat.envMapIntensity = 0;
+  // Read by boxproj's env chunk (envMapIntensity alone is overridden by three).
+  mat.defines = { ...mat.defines, NO_ENV_SPEC: '' };
   patch(
     mat,
     {
@@ -183,14 +184,23 @@ export function withReflection(mat: THREE.MeshStandardMaterial, refl: PlanarRefl
           // The normal map's tilt, in world XZ, wobbles the lookup.
           vec3 wn = inverseTransformDirection(normal, viewMatrix);
           ruv += wn.xz * reflDistort;
-          vec3 sharp = texture2D(tRefl, ruv).rgb;
-          vec3 soft = texture2D(tReflBlur, ruv).rgb;
           float r = roughnessFactor;
-          vec3 rcol = mix(sharp, soft, smoothstep(.02, .22, r));
+          vec3 sharp = texture2D(tRefl, ruv).rgb;
+          // Rough floors smear what they reflect along the view direction: in
+          // the mirror target that is its vertical axis, so a neon over a
+          // corridor draws a long streak toward the camera, not a sharp copy.
+          float st = mix(.01, .05, smoothstep(0., .35, r));
+          vec3 soft = texture2D(tReflBlur, ruv).rgb * .22;
+          soft += (texture2D(tReflBlur, ruv + vec2(0., st)).rgb + texture2D(tReflBlur, ruv - vec2(0., st)).rgb) * .18;
+          soft += (texture2D(tReflBlur, ruv + vec2(0., st * 2.3)).rgb + texture2D(tReflBlur, ruv - vec2(0., st * 2.3)).rgb) * .13;
+          soft += (texture2D(tReflBlur, ruv + vec2(0., st * 4.)).rgb + texture2D(tReflBlur, ruv - vec2(0., st * 4.)).rgb) * .08;
+          vec3 rcol = mix(sharp, soft, smoothstep(.02, .14, r));
           vec3 V = normalize(cameraPosition - vWorldP);
           float NoV = clamp(dot(wn, V), 0., 1.);
           float F = .04 + .96 * pow(1. - NoV, 5.);
           float w = reflStrength * mix(.18, 1., F) * pow(1. - clamp(r * 1.6, 0., 1.), 2.);
+          // Patchy: freshly mopped lanes mirror, the rest has dried to a sheen.
+          w *= mix(.3, 1., smoothstep(.3, .72, wFbm(vWorldP * vec3(.22, 0., .5) + 7.)));
           // Fade at the screen edge of the reflection target, where it has no data.
           vec2 e = smoothstep(vec2(0.), vec2(.04), ruv) * smoothstep(vec2(0.), vec2(.04), 1. - ruv);
           outgoingLight += rcol * w * e.x * e.y * (1. - metalnessFactor * .3);
