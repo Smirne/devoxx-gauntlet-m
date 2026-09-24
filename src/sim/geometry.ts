@@ -883,7 +883,7 @@ const booths: Booth[] = [];
 }
 
 /** Depth of a service counter — the wardrobe's hand-in top. */
-const COUNTER = 10;
+export const COUNTER = 10;
 
 /**
  * THE LOBBY, AS MICHELE PLOTTED IT (`docs/ground-floor-lobby-fix.md`).
@@ -1016,8 +1016,14 @@ export const GF = {
   coatroom: { x: 1172, y: 262, w: 126, h: 122 },
   /** The reception desk itself — BELOW the coatroom, not beside it. */
   reception: { x: 1174, y: 388, w: 126, h: 75 },
-  /** The badge printer, on the reception counter (chapter 2's cable run ends here). */
-  printer: { x: 1262, y: 438, w: 20, h: 12 },
+  /**
+   * The badge printer, ON the reception counter's south run — not inside the desk.
+   *
+   * Michele: *"The printer might be on the reception counter, so no need to
+   * enter?"* Its y is `reception.y + reception.h - COUNTER` (453), so it stands on
+   * the run a robot can reach from the concourse rather than behind it.
+   */
+  printer: { x: 1262, y: 453, w: 20, h: 10 },
   /** The main staircase up to the Devoxx rooms, east of the reception block. */
   mainStair: { x: 1305, y: 263, w: 112, h: 197 },
   /**
@@ -1693,20 +1699,63 @@ export function groundWalls(): Wall[] {
     return out;
   };
 
-  // The reception desk: a counter, so light crosses it and the lamps on it read.
-  w.push({ ...GF.reception, low: true, kind: 'desk', why: (bb) => `${bb.name}: reception. Badges, lanyards, the printer` });
+  /*
+   * THE RECEPTION COUNTER IS AN L, AND IT IS HOLLOW.
+   *
+   * Michele, 24 Sep: *"Reception i don't get it. There's a wood panel longer than
+   * the room. If it's the counter it should be lower, a half square, two sides
+   * (west and south): and it should be hollow inside. The printer might be on the
+   * reception counter, so no need to enter?"*
+   *
+   * It was one solid 126 x 75 slab, which is why it read as a panel rather than a
+   * desk: no counter in any building is ten metres of solid block. Two runs of
+   * `COUNTER` depth now close the west and south faces and the middle is open
+   * floor — the staff side, entered from the north-east, beside the stairs. That
+   * is also the only corner you CAN enter it from: BOF closes the north, the main
+   * staircase the east, and the two runs the other two sides.
+   *
+   * The printer moves onto the south run (`GF.printer`), which settles the second
+   * half of his note: chapter 2's cable ends on top of the counter, reached from
+   * the concourse, and nobody has to walk behind the desk to plug it in.
+   */
+  const rc = GF.reception;
+  const deskWhy = (bb: Bot): string => `${bb.name}: reception. Badges, lanyards, the printer`;
+  w.push(
+    { x: rc.x, y: rc.y, w: COUNTER, h: rc.h, low: true, kind: 'desk', why: deskWhy },
+    {
+      x: rc.x + COUNTER,
+      y: rc.y + rc.h - COUNTER,
+      w: rc.w - COUNTER,
+      h: COUNTER,
+      low: true,
+      kind: 'desk',
+      why: deskWhy,
+    },
+  );
 
-  // The wardrobe: three walls and the hand-in counter along its south face.
+  /*
+   * THE WARDROBE OPENS WEST. Michele: *"Coat room / Wardrobe opening should be
+   * west."* And it is the only side that can open: BOF is north of it, the main
+   * staircase east, and the reception desk's own back south. It used to hand out
+   * over its SOUTH face, into the back of the reception desk, which nobody can
+   * stand in. So the shell closes north, east and south, and the hand-in counter
+   * runs down the west face where the concourse actually reaches it.
+   */
   const co = GF.coatroom;
-  w.push(...shellOf(co, 'coatroom'), {
-    x: co.x,
-    y: co.y + co.h - COUNTER,
-    w: co.w,
-    h: COUNTER,
-    low: true,
-    kind: 'coat-counter',
-    why: (bb) => `${bb.name}: the wardrobe counter. Three thousand coats tomorrow, not one tonight`,
-  });
+  w.push(
+    { x: co.x, y: co.y, w: co.w, h: T, kind: 'coatroom' },
+    { x: co.x + co.w - T, y: co.y + T, w: T, h: co.h - T, kind: 'coatroom' },
+    { x: co.x, y: co.y + co.h - T, w: co.w - T, h: T, kind: 'coatroom' },
+    {
+      x: co.x,
+      y: co.y + T,
+      w: COUNTER,
+      h: co.h - 2 * T,
+      low: true,
+      kind: 'coat-counter',
+      why: (bb) => `${bb.name}: the wardrobe counter. Three thousand coats tomorrow, not one tonight`,
+    },
+  );
 
   // The main staircase. Its south face is left open for the gate a chapter adds
   // there (`GF.gate`); the reception block closes its west side.
