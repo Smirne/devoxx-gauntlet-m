@@ -17,7 +17,7 @@ import { LightPool } from './lightpool';
 import { createMaterials } from './materials';
 import { Pipeline, QUALITY, type QualityName, type VolumeSpot } from './pipeline';
 import { createProps, type Props3D } from './props3d';
-import { createRobots, updateRobots, type Robot3D } from './robots3d';
+import { createRobots, updateGlare, updateRobots, type Robot3D } from './robots3d';
 import { HEIGHTS, X_END, buildVenue, type Venue3D } from './venue';
 import { CY0, CY1, F1 } from '../sim/geometry';
 
@@ -228,6 +228,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     for (; mi < mirrorSpots.length; mi++) mirrorSpots[mi].visible = false;
 
     pool.update(cam.camera.position);
+    updateGlare(robots, cam.camera);
 
     // The fog takes a fixed number of lights. The robots' lamps always, then
     // whatever else is nearest the camera — so the haze you can see is lit by

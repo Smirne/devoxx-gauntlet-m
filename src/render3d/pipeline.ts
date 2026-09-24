@@ -329,6 +329,21 @@ export class Pipeline {
       this.gtao.output = GTAOPass.OUTPUT.Off;
       this.gtao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.5, thickness: 1.5, scale: 1.1, samples: 16, distanceFallOff: 1, screenSpaceRadius: false });
       this.gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
+      // GTAOPass hides only points and lines from its normal/depth pass. Glass,
+      // neon planes, holograms and flares are transparent: drawn there, they
+      // occlude whatever is seen through them. Hide those too.
+      const pass = this.gtao as unknown as { _overrideVisibility: () => void; _visibilityCache: THREE.Object3D[] };
+      const base = pass._overrideVisibility.bind(pass);
+      pass._overrideVisibility = () => {
+        base();
+        scene.traverse((o) => {
+          const mesh = o as THREE.Mesh;
+          if (mesh.isMesh && mesh.visible && !Array.isArray(mesh.material) && mesh.material.transparent) {
+            mesh.visible = false;
+            pass._visibilityCache.push(mesh);
+          }
+        });
+      };
     }
   }
 
