@@ -381,6 +381,28 @@ export const PRESENT_FLOOR = 0.1;
 /** ...plus this much, by the square root of the panel's own luminance. */
 export const PRESENT_RANGE = 0.44;
 
+/** The exposure a panel of luminance `lum` is lifted to at `v = 1`. */
+const presentLum = (lum: number): number => PRESENT_FLOOR + PRESENT_RANGE * Math.sqrt(clamp(lum, 0, 1));
+
+/**
+ * The luminance a PAINTED panel's average texel is taken to sit at.
+ *
+ * Biggy's belly and dome are the only two mapped materials on any of the three
+ * rigs, and in a browser both carry `color: '#ffffff'` with all of their colour
+ * in a canvas texture (`biggy.ts`). Lifting `mat.color` there would paint the
+ * whole gut flat white — which is exactly what the first cut of this did, and it
+ * is the same mistake `crates.ts` records on its own painted faces: the honest
+ * lift goes through the art's own map, so the orange glows orange and the
+ * worn-through grey stays grey.
+ *
+ * So a mapped material lifts its `emissiveMap` instead, by a scalar, and this is
+ * the texel luminance that scalar is calibrated against: 0.25 is the belly
+ * paint's own orange. It is a reference point, not a measurement of any one
+ * pixel — the map's darks come out darker than the target and its whites
+ * brighter, which is the whole point of lifting through it.
+ */
+const MAP_REF_LUM = 0.25;
+
 interface PresentEntry {
   mat: THREE.MeshStandardMaterial;
   /** The emissive the material was built with — restored exactly at `v = 0`. */
@@ -407,9 +429,24 @@ function presentEntries(rig: RobotRig): PresentEntry[] {
       if (!mat || !mat.isMeshStandardMaterial || skip.has(mat) || seen.has(mat)) continue;
       seen.add(mat);
       const c = mat.color;
+      if (mat.map) {
+        /*
+         * A painted panel lights itself THROUGH ITS OWN ART. Set once, here:
+         * swapping a material's maps per frame recompiles its shader, and this
+         * is the one call that has to pay for it.
+         */
+        if (mat.emissiveMap !== mat.map) {
+          mat.emissiveMap = mat.map;
+          mat.needsUpdate = true;
+        }
+        const k = presentLum(MAP_REF_LUM) / MAP_REF_LUM;
+        // Not clamped at 1: the hue lives in the texture, so this is an exposure
+        // on the art rather than a colour of its own.
+        out.push({ mat, base: mat.emissive.clone(), lift: new THREE.Color(c.r * k, c.g * k, c.b * k) });
+        continue;
+      }
       const lum = Math.max(1e-5, relLum(c.r, c.g, c.b));
-      const want = PRESENT_FLOOR + PRESENT_RANGE * Math.sqrt(clamp(lum, 0, 1));
-      const k = want / lum;
+      const k = presentLum(lum) / lum;
       out.push({
         mat,
         base: mat.emissive.clone(),
