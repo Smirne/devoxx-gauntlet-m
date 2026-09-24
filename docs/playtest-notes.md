@@ -426,3 +426,28 @@ and the venue is one of the two things `CLAUDE.md` says may not drift.
 | `E` precedence at the Sticker Mine | The minigames' key handler runs before the chapter's own, so Droid standing at the sticker takes it before anything else can happen there — and that booth shares the grid with the keynote speaker's hiding places. The chapter-3 end-to-end test already works around it by clearing the sticker first. |
 | Chapter 4 runs about six minutes | Correct preservation of its difficulty through the rescale, possibly the wrong *shot*. The fix if playtesting says so is a run key or a smaller room, not re-tuning the clock back. |
 | `tools/progress/shots/` is 50+ MB | Prune before submission. |
+
+---
+
+## 24 Sep, evening — seven notes in one sitting
+
+He played while the round was running and filed these one at a time.
+
+| his note | what it was, measured | outcome |
+| --- | --- | --- |
+| *"this hint is flickering"* (screenshot of a clue plate reading as broken arcs) | The marker's backing disc and all three slot rings sat at **y = 0.0200**, and `floor1.ts` builds the kiosk's floor plate with `floorSlab(F1.kiosk, 0.02, …)` — an opaque, depth-writing box whose top face is at exactly 0.0200. Chapter 1's clue 2 is at the kiosk's centre, so a 2.16 m marker was **exactly coplanar** with a 4.48 m slab that contains it. Which pixels survive is then decided by rasteriser rounding, and re-decided every frame as `updateFocus` eases the camera by a fraction of a pixel. That is the flicker. | Markers lift to `CLUE_PLATE_LIFT_M = 0.09`. `tests/clue-plate.test.ts` measures the clearance instead of trusting the comment. |
+| *"you didn't move the room to the upper aisle as i suggested. The hint must be visible, it's unsolvable this way"* | Same root cause, worse symptom. The exit alcove publishes a `flat` prop, and `drawProp` puts a flat prop's top at `surface + h + 0.01` = **0.06** — four centimetres above the 0.02 marker, covering all of it. Clue 4 was not dashed, it was **gone**, which is why only the floating pip showed and why this was the one clue he could not solve. Fixed by the same lift; screenshotted in play view, fog on, and the three-colour ring now reads plainly in the alcove. | **The room did not move, and here is why.** Swept every floor cell Biggy can actually reach in cinema E (flood fill from the broken door, 3 px grid, 16 headings per cell): from the alcove mouth he lights the clue **directly from 0 poses and via the screen bounce from 893**. Move it anywhere in the aisle or the back cross-aisle — the "upper aisle" — and direct rises to **1000–1190**, which deletes the mirror puzzle outright. The whole bay east of the aisle is Biggy-proof only because the alcove's two solid walls blind him; the seat rows are `low` and pass light. So the complaint was legible, not geometric, and the geometry that answers it is the alcove. Michele's call if he still wants it moved. |
+| *"Add sound effect when a Hint is solved"* | `audio.ts` has carried a written, tuned `clue` cue since the day it was added, and it had **never been played** — nor had `chime`, `switch` or `mount`. The sim knew an enigma had resolved, the marker drew its digit, and the room stayed silent. | Wired in `updateAudio`: `clue` on every solve, `chime` a beat later when the last one lands, plus `switch` on the robot switcher and `mount` when Droid goes up. |
+| *"Could we add a basic action to each robot on E? Voxxy jumps, Biggy rolls, Droid? Stretches? Not needed for gameplay"* | Voxxy's hop already existed; the other two answered E with a line of flavour text and nothing else. | Built. The sim owns the clock, the rig reads a 0→1 phase, no displacement, and the same `hopRest` stops E being mashed. |
+| *"still a walkthrough object on the doorway, add an animation + sound when it opens"* | | In flight. |
+| *"The stairs position on the upper wall haven't been fixed"* | Re-files the open item below: the secondary staircases are lateral in the real hallway. Ambiguous between the first floor's `nicheTop` and the ground floor's two shafts, so both are being measured against `plans/`. | In flight. |
+| *"The projector still needs a shape"* | | In flight. |
+| *"In the intro to chapter 2 mention the printer too"* | The printer was named in the HUD objective and nowhere in the fiction, so half the chapter's goal arrived as a task line with no stake attached. | The card now carries it, with the stake and no route. |
+
+### Measured and NOT changed
+
+The 15 px aisle is **not** the needle it reads as. Droid's clearance is 1.25 px a side (10 cm) and
+Voxxy's 2.75, which looks impossible written down. Driven — hold S from the back cross-aisle, entry
+offset 0 to ±4 px — **both robots get through on every single entry offset**, because the collision
+resolver slides them off the wall rather than stopping them. Widening it would cost the gate (Biggy
+is 18 px across against the aisle's 15) and buy nothing.
