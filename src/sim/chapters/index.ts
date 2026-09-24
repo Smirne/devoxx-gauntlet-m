@@ -51,7 +51,16 @@ export interface ChapterCtx {
   removeWall(w: Wall): void;
   byKind(kind: RobotKind): Bot;
   /** Teleport the three robots and stop them dead (the prototype's `place`). */
-  place(v: readonly [number, number], d: readonly [number, number], b: readonly [number, number]): void;
+  /**
+   * Put the three of them on their opening marks, `[x, y]` or `[x, y, face]`.
+   * The heading is optional: a chapter that does not say leaves them facing
+   * however they were.
+   */
+  place(
+    v: readonly [number, number, number?],
+    d: readonly [number, number, number?],
+    b: readonly [number, number, number?],
+  ): void;
   /** Sim seconds since the run started. */
   readonly t: number;
   /** Index into `bots` of the robot being driven. Chapters may hand over control. */

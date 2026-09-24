@@ -36,6 +36,7 @@ import { buildLights, clueLit, litBy } from '../lights';
 import { dist, speed } from '../bot';
 import type { Clue, LightSource, Mirror, Plate, Prop, Rect, Task, Wall } from '../types';
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
+import { CRATE_RECTS, STAND_AT, STAND_FACE } from '../opening';
 
 /* ---------------------------------------------------------------- tuning that is
  * chapter-local: reach distances for "use", not physics. The prototype spelled these
@@ -296,7 +297,26 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * are three. Spread left-to-right they all read from the first frame, which is
    * also the first thing a judge screenshots.
    */
-  ctx.place([40, 350], [92, 334], [148, 366]);
+  /*
+   * THE THREE OF THEM START WHERE THEIR CRATES ARE.
+   *
+   * The marks used to be spread down the corridor. They are now the row in
+   * front of the crates (`STAND_AT` in `src/sim/opening.ts`), facing east, and
+   * that is not decoration: it is what removes the beat Michele could not read.
+   * The opening used to walk them from the crates to marks 100 px away and then
+   * restart the chapter, so the sequence ended with a transition into a shot
+   * identical to the one before it. With the marks here, stepping out of the
+   * crate IS arriving at the mark.
+   *
+   * They still read as three from the first frame, which is what the old spread
+   * was for: the row is left-to-right across the camera, not along its depth
+   * axis, so the tallest never stands in front of the smallest.
+   */
+  ctx.place(
+    [STAND_AT.voxxy.x, STAND_AT.voxxy.y, STAND_FACE],
+    [STAND_AT.droid.x, STAND_AT.droid.y, STAND_FACE],
+    [STAND_AT.biggy.x, STAND_AT.biggy.y, STAND_FACE],
+  );
 
   const clues: Clue[] = [];
   const mirrors: Mirror[] = [];
@@ -340,6 +360,30 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           : 'Biggy: fire door. I could hit it. I would lose. Find the four digits',
   };
   ctx.walls.push(fire);
+
+  /*
+   * THE CRATES THEY ARRIVED IN, still standing against the corridor's north wall.
+   *
+   * Michele's option 2, taken alongside his option 1: *"crates remain after the
+   * transition, non interactive"*. They are scenery with a footprint — dropping
+   * them at the transition would be the same discontinuity as the walk, and
+   * drawing them without a collider would be the third walk-through object he
+   * has had to file. `why` is in the robot's own voice, like every other gate in
+   * this game.
+   */
+  for (const c of CRATE_RECTS) {
+    ctx.walls.push({
+      x: c.x,
+      y: c.y,
+      w: c.w,
+      h: c.h,
+      kind: 'crate',
+      why: (b) =>
+        b.kind === c.kind
+          ? `${b.name}: that is the crate I came in. I am not getting back in it`
+          : `${b.name}: ${c.kind}'s crate. Empty, heavy, and going nowhere`,
+    });
+  }
   /*
    * The fixed screen either side of the opening. It never opens, so it is pushed
    * once and never removed — and it is what keeps the corridor sealed everywhere
