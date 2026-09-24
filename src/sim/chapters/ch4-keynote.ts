@@ -18,7 +18,7 @@
 import { CY0, CY1, F1, R, VIEW_DEVOXX, floor1Walls, roomDoor } from '../geometry';
 import { PUSH_LEAN_MIN, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
 import { botsCollide, circleRect, dist, inRect, mkBody, speed, stepBot } from '../bot';
-import type { Bot, Person, Prop, Rect, Vec2 } from '../types';
+import type { Bot, Person, Prop, Rect, Task, Vec2 } from '../types';
 
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 
@@ -455,12 +455,82 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     );
   }
 
+  /* ------------------------------------------------------------------- tasks
+   *
+   * The four jobs of the room, and **not the clock.**
+   *
+   * The crowd arriving is a DEADLINE, not a thing to do: nobody can tick it off,
+   * doing it faster is not doing more of it, and a meter that counted it would
+   * read `3 of 5` for a stage that is finished and a room that is filling. It is
+   * already published where a countdown belongs — the `crowd` prop carries how far
+   * through the arrival the room is and how many are seated, and `progress()`
+   * writes the same clock as a line. A checklist row would be the one row in the
+   * game that the player cannot act on.
+   */
+  /**
+   * The same state as `progress()`, as a list — the one source behind the HUD's
+   * meter, the panel's checklist and every hint (`Task` in `src/sim/types.ts`).
+   *
+   * Three jobs that can be done in any order and by three different robots, and
+   * then the one that needs all of them. The two counted rows carry `n`/`of`
+   * because `banner 1/2` and `spotlights 3/4` are what the player is actually
+   * holding in their head; the arrow on each points at the NEXT one, which is the
+   * only one of them that does anything.
+   */
+  function tasks(): Task[] {
+    const hook = hooks.find((h) => !h.done) ?? hooks[0];
+    const spot = spots.find((s) => s.n === nextSpot) ?? spots[spots.length - 1];
+    const onStage = ctx.bots.filter((b) => inRect(b, stage)).length;
+    return [
+      {
+        id: 'cake',
+        text: 'push the cake crate onto its mark',
+        done: cakeOnMark(),
+        who: 'biggy',
+        at: { x: crateMark.x + crateMark.w / 2, y: crateMark.y + crateMark.h / 2 },
+        hint: 'Biggy: it only moves for me, and only if I lean into it rather than brush past it. Up an aisle — it does not go over the seats any more than I do',
+      },
+      {
+        id: 'banner',
+        text: 'hang the banner at both ends',
+        done: hooks.every((h) => h.done),
+        who: 'droid',
+        // The hook still to do: the other one is finished, and an arrow to it
+        // would be an arrow to a job that is over.
+        at: { x: hook.x, y: hook.y + 24 },
+        n: hooks.filter((h) => h.done).length,
+        of: hooks.length,
+        hint: 'Droid: a hook at each end of the stage wall, both of them over everybody else’s head. One end hung is a banner on the floor',
+      },
+      {
+        id: 'spots',
+        text: 'light the four spotlights in order',
+        done: spots.every((s) => s.on),
+        who: 'voxxy',
+        at: { x: spot.x, y: spot.y },
+        n: spots.filter((s) => s.on).length,
+        of: spots.length,
+        hint: 'Voxxy: they come on in order and only in order. Run over one and nothing happens, and you are at the wrong one — the one that is waiting is the one lit up',
+      },
+      {
+        id: 'stage',
+        text: 'get all three robots on the stage',
+        done: ready && allOnStage(),
+        at: { x: stage.x + stage.w / 2, y: stage.y + stage.h / 2 },
+        n: onStage,
+        of: ctx.bots.length,
+        hint: 'Biggy: all three of us on the boards at the same time — and Stephan is not starting until the cake, the banner and the lights are done either',
+      },
+    ];
+  }
+
   return {
     key,
     update,
     props,
     people,
     progress,
+    tasks,
     placeProp(kind: string, x: number, y: number): boolean {
       if (kind !== 'cake') return false;
       crate.x = x;

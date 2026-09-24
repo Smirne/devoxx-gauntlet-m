@@ -1190,6 +1190,12 @@ export interface CratesModel {
   byKind(kind: RobotKind): CrateModel;
   /** Convenience: the same lamp value on all three. */
   setLamp(v: number): void;
+  /**
+   * 0..1 work light on the boarding, so the stencils read where there is no
+   * light to read them by — the opening stages the crates in a blacked-out
+   * corridor. Emissive only; this adds no `THREE.Light`.
+   */
+  setLit(v: number): void;
   dispose(): void;
 }
 
@@ -1237,6 +1243,9 @@ export function buildCrates(opts: CratesOptions = {}): CratesModel {
   timberFrame.emissive = new THREE.Color(mix(timberSpec.color, '#000000', 0.84));
   timberFrame.emissiveIntensity = 1;
   owned.push(timberFrame);
+
+  /** Every painted face, so the work light can be raised on all three at once. */
+  const artFaces: THREE.MeshStandardMaterial[] = [];
 
   const root = new THREE.Group();
   root.name = 'crates';
@@ -1317,8 +1326,25 @@ export function buildCrates(opts: CratesOptions = {}): CratesModel {
     artMat.roughness = 0.95;
     artMat.metalness = 0;
     artMat.emissive = new THREE.Color(mix(timberSpec.color, '#000000', 0.78));
-    artMat.emissiveMap = null;
+    /*
+     * The painted face lights ITSELF, through its own art.
+     *
+     * The opening stages the crates in chapter 1's blacked-out corridor, where
+     * there is no light to read a stencil by: the first frame strip showed three
+     * black boxes with a little colour leaking out of the board gaps, and
+     * `DEVOXX` — the whole reason the three crates stand in a row — was not
+     * there at all. An emissive MAP rather than a flat emissive colour is what
+     * makes the lift honest: the timber glows and the ink stays dark, because
+     * the ink is dark in the map, so raising it reads as a work light on the
+     * boards instead of the whole face turning to fog.
+     *
+     * At rest it contributes almost nothing — `emissive` is a near-black brown —
+     * and `setLit` is what raises it. Set once, here: swapping a material's maps
+     * per frame recompiles its shader.
+     */
+    artMat.emissiveMap = artMat.map;
     artMat.emissiveIntensity = 1;
+    artFaces.push(artMat);
 
     const face = new THREE.Mesh(new THREE.PlaneGeometry(c.width, c.height), artMat);
     face.name = `crate-face-${c.kind}`;
@@ -1419,6 +1445,26 @@ export function buildCrates(opts: CratesOptions = {}): CratesModel {
     byKind,
     setLamp(v: number): void {
       for (const c of models) c.setLamp(v);
+    },
+    setLit(v: number): void {
+      /*
+       * The work light on the boards, 0..1 — what lets the stencils read in a
+       * blackout. It is not a light: no `THREE.Light` goes anywhere near these
+       * crates (a test asserts that), because the venue's lighting is the sim's
+       * visibility polygons and a stray point light would be a second lighting
+       * model. This raises the emissive the painted faces already carry.
+       *
+       * Ink stays dark as it rises, because the lift goes through the art's own
+       * map: the timber glows, the letters do not.
+       */
+      const k = Math.min(1, Math.max(0, v));
+      const rest = new THREE.Color(mix(timberSpec.color, '#000000', 0.78));
+      const lit = new THREE.Color('#d6c3a2');
+      for (const mat of artFaces) mat.emissive.copy(rest).lerp(lit, k);
+      // The sides and the frame come up with the face, or the crates read as three
+      // lit posters standing in the dark rather than as three boxes.
+      timber.emissive.copy(new THREE.Color(mix(timberSpec.color, '#000000', 0.78))).lerp(lit, k * 0.42);
+      timberFrame.emissive.copy(new THREE.Color(mix(timberSpec.color, '#000000', 0.84))).lerp(lit, k * 0.3);
     },
     dispose(): void {
       painter.dispose();

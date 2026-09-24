@@ -74,7 +74,7 @@ import {
 } from '../crates';
 import { GF, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
 import { botsCollide, circleRect, dist, inRect, mkBody, speed, stepBot } from '../bot';
-import type { Bot, Person, Prop, Rect, Vec2, Wall } from '../types';
+import type { Bot, Person, Prop, Rect, Task, Vec2, Wall } from '../types';
 
 import type { ChapterCtx, ChapterDef, ChapterRuntime, PrevVel } from './index';
 
@@ -1671,12 +1671,103 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     return `${beer} · ${soupLine} · ${spk}${sw}`;
   }
 
+  /* ------------------------------------------------------------------- tasks
+   *
+   * WHERE TO STAND, rather than where the thing sits: the ladle is on a shelf and
+   * the pot is on a counter, and both of those are furniture with a collider on
+   * it. Each address below is floor, inside the reach the chapter already enforces
+   * for that prop, so walking to the arrow is walking to the job.
+   */
+  /** Under the high shelf, inside `SHELF_REACH`. */
+  const shelfStand: Vec2 = { x: shelfAt.x, y: shelfAt.y + 26 };
+  /** In front of the soup counter, inside `POT_REACH`. */
+  const soupStand: Vec2 = { x: station.x, y: food.soup.y + food.soup.h + 22 };
+  /** The spot in front of Stephan the soup and the speaker both have to reach. */
+  const stageAt: Vec2 = { x: stage.x + stage.w / 2, y: stage.y + stage.h / 2 };
+  /** Stephan's own feet, at the foot of the flight he is not opening yet. */
+  const stephanAt: Vec2 = { x: stephan.x, y: stephan.y + 14 };
+
+  /**
+   * The same state as `progress()`, as a list — the one source behind the HUD's
+   * meter, the panel's checklist and every hint (`Task` in `src/sim/types.ts`).
+   *
+   * Five things, in the order the briefing puts them: soup, speaker, beer, and
+   * then the staircase all three of them are for. The ladle is a row of its own
+   * rather than a step inside the soup, because it is a different robot in a
+   * different place — one `who` cannot say "Droid, over there" and "Biggy, over
+   * here" at the same time, and the player who is stuck on the soup is almost
+   * always stuck on the ladle.
+   *
+   * **The booth games are not in here.** Three bits of swag are winnable and every
+   * one of them is optional (`OBJECTIVE`, and `progress()` refuses to let them
+   * lead), so counting them in a meter would tell the player the chapter is 3/8
+   * done when they have in fact done everything that is asked of them. They stay
+   * where they are: last in the progress line, and only once something has been won.
+   */
+  function tasks(): Task[] {
+    return [
+      {
+        id: 'ladle',
+        text: 'fetch the ladle off the high shelf',
+        done: ladle,
+        who: 'droid',
+        at: shelfStand,
+        hint: 'Droid: top shelf in the catering block, and nobody fills a pot without it. Voxxy cannot see over that shelf and Biggy cannot get an arm into it',
+      },
+      {
+        id: 'soup',
+        text: 'take Stephan his tomato soup',
+        done: delivered,
+        who: 'biggy',
+        at: carrying && !delivered ? stageAt : soupStand,
+        hint: carrying
+          ? 'Biggy: it goes cold while I walk and it comes out of the pot every time I hit something. Smooth lines — and let Voxxy open a queue before I am standing in it'
+          : 'Biggy: the pot is on the counter in the catering court, and I am not filling it with my hands. Ladle first',
+      },
+      {
+        id: 'speaker',
+        text: 'find the keynote speaker and walk them to Stephan',
+        done: speaker.onStage,
+        who: 'voxxy',
+        /*
+         * NO ARROW WHILE THEY ARE STILL HIDING.
+         *
+         * Which booth the speaker is behind is this errand's answer — the chapter
+         * picks it per run and does not even publish the person until Voxxy is
+         * close enough to have spotted them (`people()`). An arrow to it would
+         * hand over the search; once they are following her, where they have to
+         * END UP is not a secret at all.
+         */
+        at: speaker.following ? stageAt : undefined,
+        hint: 'Voxxy: they are hiding from the queues behind one of the booths with WALLS — you can see straight under the cloth tables, so it is none of those',
+      },
+      {
+        id: 'beer',
+        text: `stack tonight’s beer delivery at ${BAR_NAME}`,
+        done: beerDone,
+        who: 'biggy',
+        at: STACK_AT,
+        n: held('stacked').length,
+        of: CRATE_DELIVERY,
+        hint: 'Biggy: they are mine alone, and there are only so many of them I can hold. When the last safe one goes on, take that load to the lit mark by the taps before trying for another',
+      },
+      {
+        id: 'stairs',
+        text: 'get Stephan to open the main staircase',
+        done: gateOpen,
+        at: stephanAt,
+        hint: 'Voxxy: he is at the foot of the flight with his arms crossed and he is counting. Soup, speaker, beer — all three, and then he unhooks it himself',
+      },
+    ];
+  }
+
   return {
     key,
     update,
     props,
     people,
     progress,
+    tasks,
     /**
      * `crate` moves the first crate still on the floor; `crate3` moves that one
      * whatever state it is in, which is how a test takes a load off Biggy without

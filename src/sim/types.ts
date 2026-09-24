@@ -396,6 +396,8 @@ export interface Task {
   of?: number;
 }
 
+import type { OpeningView } from './opening';
+
 /** Everything the renderer reads for one frame. */
 export interface GameSnapshot {
   chapter: number;
@@ -440,6 +442,12 @@ export interface GameSnapshot {
    * "no meter", never as "nothing to do".
    */
   tasks: Task[];
+  /**
+   * The opening sequence's own clock while it is running, `null` once the player
+   * has the keyboard — `src/sim/opening.ts`. The renderer poses the three crates
+   * from it and decides nothing itself.
+   */
+  opening: OpeningView | null;
   /**
    * The tow bar, when somebody has hold of Biggy — `holder` is who, `aim` is the
    * bar's angle and `dir` its snapped eighth. `null` when nobody is holding on.

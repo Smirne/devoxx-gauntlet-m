@@ -109,7 +109,7 @@ import { m } from '../units';
 import { GF, VIEW_GROUND, groundWallsFor, stairLanding } from '../geometry';
 import { dist, inRect, speed } from '../bot';
 import { buildLights, litBy } from '../lights';
-import type { Bot, LightSource, Mirror, Prop, TextPrompt, Vec2, Wall } from '../types';
+import type { Bot, LightSource, Mirror, Prop, Task, TextPrompt, Vec2, Wall } from '../types';
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 
 /* ---------------------------------------------------------------- reach distances */
@@ -1614,6 +1614,105 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     return `${breakers} · ${net2} · ${net} · ${store}`;
   }
 
+  /* ------------------------------------------------------------------- tasks
+   *
+   * WHERE TO STAND, rather than where the thing is bolted.
+   *
+   * The four addresses below are the arrow's targets (`Task.at`), and every one
+   * of them is a piece of FLOOR: the rack is a 19-inch cabinet with its own
+   * collider, the breaker panel is up a wall, the shutter is a wall until Biggy
+   * is through it, and an arrow that lands inside furniture is an arrow pointing
+   * at somewhere nobody can go. Each is inside the reach the chapter already
+   * enforces for that prop, so walking to the arrow is walking to the thing.
+   */
+  /** In front of the breaker panel, well inside `PANEL_REACH`. */
+  const panelStand: Vec2 = { x: panelAt.x, y: panelAt.y + 18 };
+  /** Clear of the cabinet's south face by more than Biggy's radius, between the two leaves. */
+  const cabinetStand: Vec2 = { x: cabinetAt.x, y: cabinetAt.y + 14 };
+  /** North of the patch rack, off its collider and inside `PLUG_REACH`. */
+  const rackStand: Vec2 = { x: rackAt.x, y: GF.rack.y - 10 };
+  /** In front of the reception desk, under the lit pad, inside `PLUG_REACH`. */
+  const printerStand: Vec2 = { x: printerAt.x, y: GF.reception.y + GF.reception.h + 10 };
+  /** On the hall side of the shutter, on the lane Biggy has to come down. */
+  const storeStand: Vec2 = { x: GF.roller.x - 14, y: storeAt.y };
+
+  /**
+   * The same state as `progress()`, as a list — the one source behind the HUD's
+   * meter, the panel's checklist and every hint (`Task` in `src/sim/types.ts`).
+   *
+   * Four things, in the order of Michele's chain: a supply, then the router that
+   * the supply wakes, then the cable that the router feeds, and the store, which
+   * is the one errand in the hall that owes nothing to the other three.
+   *
+   * **The router is one task, not four.** Cabinet shut, open and dead, waiting on
+   * the password, online — those are four states of one object standing in one
+   * place, and four rows on a checklist would say the chapter has four times the
+   * network jobs it has. The row's tail says which step it is at instead, which is
+   * the sentence `progress()` already writes, set out as a list.
+   *
+   * No hint carries the password. Two of them name the two places it is written
+   * down, because a player who cannot find it is stuck on the search and not on
+   * the typing; none of them spells a letter of it, here or in `text`.
+   */
+  function tasks(): Task[] {
+    const step = router.online
+      ? ''
+      : !router.cabinetOpen
+        ? ' — the cabinet is shut'
+        : !power
+          ? ' — open, and not a volt in it'
+          : router.prompting
+            ? ' — it is asking for the venue WiFi password'
+            : router.known
+              ? ' — the password is known; back to the terminal'
+              : ' — it wants the venue WiFi password';
+    const routerHint = !router.cabinetOpen
+      ? 'Droid: the hinges have not moved since 2019 and there is no lever on a flush door. This one wants weight, and weight is Biggy'
+      : !power
+        ? 'Voxxy: no standby lamp, no fan, nothing humming. There is a supply to put on this wire before anybody starts pressing things'
+        : router.known
+          ? "Biggy: thirteen little keys, and these are not thirteen-little-key hands. Voxxy or Droid, at the terminal, and a wrong letter never goes in"
+          : 'Voxxy: nobody writes those down — except the crew, in orange, somewhere along a wall of this hall. And there is label tape inside the cabinet lid, up at the top, where only Droid on Biggy’s shoulders can read it';
+    return [
+      {
+        id: 'power',
+        text: 'get the power back on',
+        done: power,
+        who: 'droid',
+        at: panelStand,
+        n: BREAKERS - breakersLeft,
+        of: BREAKERS,
+        hint: 'Droid: the handles are on the technical room wall, above everybody else’s reach. All of them up, or nothing down here wakes at all',
+      },
+      {
+        id: 'router',
+        text: `get the router on the air${step}`,
+        done: router.online,
+        who: router.cabinetOpen ? undefined : 'biggy',
+        // Typed, not walked to: while the field is open the answer is not
+        // somewhere to go, and an arrow would be pointing at the robot's own feet.
+        at: router.prompting ? undefined : cabinetStand,
+        hint: routerHint,
+      },
+      {
+        id: 'cable',
+        text: `run the network cable to the badge printer${cable.snapped ? ' — the end is back on the rack' : ''}`,
+        done: cable.connected,
+        who: 'voxxy',
+        at: cable.carrying ? printerStand : rackStand,
+        hint: 'Voxxy: the reel is shorter than the scenic route — straight down the hall, under the sponsor tables where only I fit. If it goes tight, walk back along it rather than lean on it',
+      },
+      {
+        id: 'store',
+        text: 'get the pickup store open',
+        done: rollerBroken,
+        who: 'biggy',
+        at: storeStand,
+        hint: 'Voxxy: he cannot get up to what that shutter wants on his own. I take hold of him at the far end of the top lane and we run the whole length of it',
+      },
+    ];
+  }
+
   /**
    * THE FIELD ON SCREEN — `GameSnapshot.prompt`, and the other half of Michele's
    * *"I'd display an input text at center screen on e to make it easier."*
@@ -1645,6 +1744,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     update,
     props,
     progress,
+    tasks,
     typing,
     prompt,
     lights: () => lights,

@@ -237,6 +237,16 @@ const CSS = `
 .ad-card .ad-cardbox{max-width:min(760px,82vw);padding:20px 28px;border:1px solid ${ACCENT};border-radius:12px;
   background:rgba(10,11,14,.96);box-shadow:0 20px 70px rgba(0,0,0,.65);text-align:center;font-size:20px;line-height:1.35}
 .ad-card b{color:${ACCENT}}
+
+/* THE OPENING TITLE. Over the shot of the crates, not on a card over the game —
+   the point of staging the arrival in the corridor is that the player is looking
+   at the game from the first frame, and a modal in front of it would undo that. */
+.ad-titles{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;pointer-events:none;text-align:center;gap:10px}
+.ad-titles .ad-t1{font-size:min(9vw,74px);letter-spacing:.14em;font-weight:800;color:${ACCENT};
+  text-shadow:0 6px 40px rgba(0,0,0,.9),0 0 90px rgba(0,0,0,.8)}
+.ad-titles .ad-t2{font-size:min(2.6vw,18px);letter-spacing:.24em;color:#e9e6df;
+  text-shadow:0 3px 22px rgba(0,0,0,.95)}
 .ad-card small{display:block;font-size:13px;color:${MUTED};margin-top:8px}
 
 /* The objective wraps the top bar onto two or three lines at 1280x720, so nothing
@@ -587,6 +597,18 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   let lastToastKey = '';
 
   /* full-screen card */
+  /**
+   * The opening's title, drawn over the first shot and gone before the crates
+   * open — so the thing it names is what the player is looking at when it
+   * clears. Its alpha is the sim's (`GameSnapshot.opening.title`), like every
+   * other number in this file.
+   */
+  const titles = el('div', 'ad-titles ad-hide', root);
+  const titleMain = el('div', 'ad-t1', titles);
+  const titleSub = el('div', 'ad-t2', titles);
+  titleMain.textContent = 'AFTER DARK';
+  titleSub.textContent = 'KINEPOLIS ANTWERP · THE NIGHT BEFORE DEVOXX';
+
   const card = el('div', 'ad-card ad-hide', root);
   const cardBox = el('div', 'ad-cardbox', card);
 
@@ -642,7 +664,8 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     // The bottom-centre strip is every chapter's live progress readout; only
     // chapter 1 also carries the four keypad cells above it.
     const line = snap.progress;
-    const showPad = snap.chapter >= 1 && snap.phase !== 'done' && (line !== '' || snap.chapter === 1);
+    const showPad =
+      snap.opening === null && snap.chapter >= 1 && snap.phase !== 'done' && (line !== '' || snap.chapter === 1);
     pad.classList.toggle('ad-hide', !showPad);
     const show = snap.chapter === 1 && snap.phase !== 'done';
     cellsWrap.classList.toggle('ad-hide', !show);
@@ -837,6 +860,25 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     objEl.classList.toggle('ad-fold', fold);
     setText(keysEl, snap.keys, textCache);
     setText(swagEl, snap.swag.length > 0 ? `swag ${snap.swag.length}/3` : '', textCache);
+
+    /*
+     * THE OPENING OWNS THE SCREEN.
+     *
+     * While the crates are on, everything that belongs to driving a robot is
+     * off: the switcher, the speed gauge, the clue cells and the live progress
+     * line. None of it is true yet — nobody is driving — and a speed gauge
+     * reading 0.0 / 5.8 m/s over three crated robots is the kind of detail that
+     * makes an opening look like a paused game rather than an opening.
+     */
+    const opening = snap.opening !== null;
+    titles.classList.toggle('ad-hide', !opening || snap.opening!.title <= 0.001);
+    if (opening) titles.style.opacity = snap.opening!.title.toFixed(3);
+    left.classList.toggle('ad-hide', opening);
+    meters.classList.toggle('ad-hide', opening);
+    // The top bar keeps only the one thing that is true during the opening: that
+    // a key skips it. The chapter's name and briefing arrive when the chapter does.
+    chapterEl.classList.toggle('ad-hide', opening);
+    objEl.classList.toggle('ad-hide', opening);
 
     updateChips(snap);
     updateSpeed(snap);
