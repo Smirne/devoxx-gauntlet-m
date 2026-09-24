@@ -1662,3 +1662,16 @@ rounds were judged against the written checklist of Cyberpunk 2077's look again,
 **Rejected:** guessing at the flat, over-bright look with more grading before finding the cause.
 Two exposure passes (0.8, 0.62) barely moved it, because AgX compresses in log space. That was the
 hint that the scene itself was 2–3 stops too hot.
+
+**Third round, after Michele's look at version 7** ("better! still a bit offy and with some
+flickering light"; he asked for MAS and the Port House in the night view, with his own photos as
+reference):
+- Flicker had three sources. Two failing-tube effects blinked many times a second, all the time.
+  They now stay steady and stutter briefly every twenty-odd seconds. The light pool and the fog's
+  light list both cut at a fixed size, so a light losing its slot switched off in one frame. Both
+  now fade lights out as they approach the cut.
+- The window's skyline now has the Port House (glass ship with diagrid, white pedestal, the old
+  fire station under it) and MAS (red sandstone boxes, glass galleries swapping sides), both drawn
+  from his photos. They sit where they are from Kinepolis, south-west, and scaled as buildings
+  two kilometres off. At full size they filled the window.
+- "Offy" was not specific enough to act on beyond this, so it went back to him as a question.

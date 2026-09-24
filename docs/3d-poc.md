@@ -92,8 +92,8 @@ content, not pipeline.
 
 - **The closed section's floor is polished terrazzo**, not the Devoxx half's navy carpet: there is no
   photograph of the closed section, and the reflections carry most of the look. Cinemas keep carpet.
-- **The foyer's west wall is glazed** onto a night view of Antwerp (cathedral spire, Havenhuis,
-  port cranes, the Ring). Invented, for sense of place.
+- **The foyer's west wall is glazed** onto a night view of Antwerp (cathedral spire, the Port House
+  and MAS on the Eilandje, port cranes, the Ring). Invented, for sense of place.
 - **Emergency power**: cove LED lines, a few downlights, signage and holograms are on although the
   chapter says the power is out. The house lights are off; the rule the puzzle needs (clues only
   under the robots' lamps) is untouched, since the sim decides it.

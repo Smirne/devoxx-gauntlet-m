@@ -113,6 +113,17 @@ function quad(p0: THREE.Vector3, p1: THREE.Vector3, p2: THREE.Vector3, p3: THREE
 const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z);
 
 /**
+ * A failing tube: steady almost all the time, then a short stutter every
+ * twenty-odd seconds. The constant fast blink it replaced read as a render bug
+ * (playtest, 24 Sep), not as a bad ballast.
+ */
+function stutter(t: number, seed: number): number {
+  const window = Math.sin(t * 0.29 + seed * 1.7) * Math.sin(t * 0.113 + seed);
+  if (window < 0.88) return 1;
+  return Math.sin(t * 37 + seed) > 0.2 ? 0.35 : 1;
+}
+
+/**
  * A wall slab from the plan, as quads (no top, no bottom), each one given the
  * material of the space it faces. Long faces are classified in 10 px runs,
  * because one plan wall can face a corridor along one stretch and nothing at
@@ -848,8 +859,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
         if (seg % 5 === 1 && !dead) {
           const base = mat.color.clone();
           updaters.push((t) => {
-            const f = Math.sin(t * 31 + x0) * Math.sin(t * 5.3 + x0 * 2);
-            mat.color.copy(base).multiplyScalar(f > 0.6 ? 0.1 : 1);
+            mat.color.copy(base).multiplyScalar(stutter(t, x0));
           });
         }
       }
@@ -1100,9 +1110,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   });
   updaters.push((t) => {
     for (const f2 of flickers) {
-      const n = Math.sin(t * 23 + f2.seed) * Math.sin(t * 7.3 + f2.seed * 2);
-      const off = n > 0.93 ? 0.15 : 1;
-      f2.mat.color.copy(f2.base).multiplyScalar(off);
+      f2.mat.color.copy(f2.base).multiplyScalar(stutter(t, f2.seed + 3));
     }
   });
 

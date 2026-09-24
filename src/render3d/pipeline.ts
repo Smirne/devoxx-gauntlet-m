@@ -468,6 +468,14 @@ export class Pipeline {
     let n = 0;
     let slot = 0;
     const maps = [null, null, null, null] as Array<THREE.Texture | null>;
+    // The lists arrive sorted by distance and are cut at a fixed size; fade
+    // each light out as it nears the cut, so a light dropping off the list
+    // does not pop the haze (seen as flicker while walking, 24 Sep).
+    const eye = this.camera.position;
+    const cutAt = (list: Array<{ p: THREE.Vector3 }>, max: number): number => (list.length > max ? list[max].p.distanceTo(eye) : Infinity);
+    const spotCut = cutAt(this.spots.map((s) => ({ p: s.light.getWorldPosition(new THREE.Vector3()) })), MAX_SPOTS);
+    const ptCut = cutAt(this.points.map((q) => ({ p: q.position })), MAX_POINTS);
+    const near = (d: number, cut: number): number => 1 - THREE.MathUtils.smoothstep(d, cut - 4, cut);
     for (const s of this.spots) {
       if (n >= MAX_SPOTS) break;
       const L = s.light;
@@ -476,7 +484,7 @@ export class Pipeline {
       L.target.getWorldPosition(this._t);
       u.spotPos.value[n].copy(this._v);
       u.spotDir.value[n].subVectors(this._t, this._v).normalize();
-      this._c.copy(L.color).multiplyScalar(L.intensity * s.fog);
+      this._c.copy(L.color).multiplyScalar(L.intensity * s.fog * near(this._v.distanceTo(eye), spotCut));
       u.spotCol.value[n].set(this._c.r, this._c.g, this._c.b);
       let sl = -1;
       const depth = L.shadow.map?.depthTexture ?? null;
@@ -508,7 +516,8 @@ export class Pipeline {
     for (const pt of this.points) {
       if (p >= MAX_POINTS) break;
       u.ptPos.value[p].copy(pt.position);
-      u.ptCol.value[p].set(pt.color.r, pt.color.g, pt.color.b);
+      const w = near(pt.position.distanceTo(eye), ptCut);
+      u.ptCol.value[p].set(pt.color.r * w, pt.color.g * w, pt.color.b * w);
       u.ptRange.value[p] = pt.range;
       p++;
     }

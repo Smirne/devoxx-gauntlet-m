@@ -479,34 +479,184 @@ export function cityscape(): THREE.CanvasTexture {
     x.fillStyle = '#6b3f1c';
     x.fillRect(sx + 46, base - 130, 260, 130);
   }
-  // Havenhuis: a faceted glass diamond on an old stone block.
+  // Havenhuis (Zaha Hadid's Port House), from Michele's night photo: a long
+  // faceted glass ship, bow pointing west, lit white from inside behind a
+  // triangular diagrid, carried on a white concrete pedestal over the old
+  // brick fire station with its slate roof and rows of lit windows.
   {
-    const hx = W * 0.62;
+    const hx = W * 0.665;
     const base = HZ;
-    x.fillStyle = '#2a2c34';
-    x.fillRect(hx - 90, base - 120, 180, 120);
-    const pts: Array<[number, number]> = [[-150, -120], [-60, -230], [90, -250], [170, -150], [120, -120]];
+    // Drawn at full size about its foot, then scaled: both landmarks are a
+    // couple of kilometres off, and at full size they filled the window.
+    x.save();
+    x.translate(hx * 0.52, base * 0.52);
+    x.scale(0.48, 0.48);
+    // The fire station.
+    const fx0 = hx - 170;
+    const fx1 = hx + 240;
+    const fTop = base - 150;
+    x.fillStyle = '#3a2620';
+    x.fillRect(fx0, fTop, fx1 - fx0, 150);
+    x.fillStyle = '#1a1a20';
     x.beginPath();
-    x.moveTo(hx + pts[0][0], base + pts[0][1]);
-    for (const [px, py] of pts.slice(1)) x.lineTo(hx + px, base + py);
-    x.closePath();
-    const dg = x.createLinearGradient(hx - 150, base - 250, hx + 170, base - 120);
-    dg.addColorStop(0, '#7fd8ff');
-    dg.addColorStop(1, '#2a6aa8');
-    x.fillStyle = dg;
+    x.moveTo(fx0 - 6, fTop);
+    x.lineTo(fx0 + 20, fTop - 38);
+    x.lineTo(fx1 - 20, fTop - 38);
+    x.lineTo(fx1 + 6, fTop);
     x.fill();
-    x.strokeStyle = 'rgba(210,245,255,0.8)';
-    x.lineWidth = 2;
-    for (let k = 0; k < 9; k++) {
+    for (let d = fx0 + 30; d < fx1 - 30; d += 34) {
+      x.fillStyle = 'rgba(255,220,160,0.35)';
+      x.fillRect(d, fTop - 26, 8, 10);
+    }
+    for (let row = 0; row < 3; row++) {
+      for (let wx = fx0 + 12; wx < fx1 - 12; wx += 14) {
+        x.fillStyle = rnd() > 0.25 ? `rgba(255,${225 + rnd() * 30},${190 + rnd() * 40},${0.55 + rnd() * 0.4})` : 'rgba(30,20,20,0.9)';
+        x.fillRect(wx, fTop + 18 + row * 38, 6, row === 2 ? 22 : 16);
+      }
+    }
+    // Pedestal: a slanted white leg and the bridge that carries the ship.
+    const ped = x.createLinearGradient(hx - 120, base, hx - 20, base - 240);
+    ped.addColorStop(0, '#f2f4f2');
+    ped.addColorStop(1, '#9aa4a8');
+    x.fillStyle = ped;
+    x.beginPath();
+    x.moveTo(hx - 150, base - 250);
+    x.lineTo(hx - 20, base - 250);
+    x.lineTo(hx - 70, base);
+    x.lineTo(hx - 105, base);
+    x.closePath();
+    x.fill();
+    x.beginPath();
+    x.moveTo(hx - 190, base - 262);
+    x.lineTo(hx + 60, base - 262);
+    x.lineTo(hx + 40, base - 228);
+    x.lineTo(hx - 150, base - 222);
+    x.closePath();
+    x.fill();
+    // The ship.
+    const ship: Array<[number, number]> = [[-420, -400], [-200, -392], [60, -378], [250, -350], [310, -300], [270, -246], [60, -238], [-160, -250], [-320, -300]];
+    x.save();
+    x.beginPath();
+    ship.forEach(([px, py], i) => (i ? x.lineTo(hx + px, base + py) : x.moveTo(hx + px, base + py)));
+    x.closePath();
+    const sg = x.createLinearGradient(0, base - 392, 0, base - 250);
+    sg.addColorStop(0, '#f4fbff');
+    sg.addColorStop(1, '#8fb2c0');
+    x.fillStyle = sg;
+    x.fill();
+    x.clip();
+    // Diagrid: rows of triangles, some glazing dark, most lit.
+    const cell = 18;
+    for (let ry = base - 400; ry < base - 240; ry += cell) {
+      for (let rx = hx - 430; rx < hx + 310; rx += cell) {
+        for (const up of [0, 1]) {
+          const lit = rnd();
+          x.fillStyle = lit > 0.82 ? 'rgba(20,34,48,0.75)' : lit > 0.45 ? 'rgba(255,255,255,0.55)' : 'rgba(170,215,235,0.35)';
+          x.beginPath();
+          if (up) {
+            x.moveTo(rx, ry + cell);
+            x.lineTo(rx + cell / 2, ry);
+            x.lineTo(rx + cell, ry + cell);
+          } else {
+            x.moveTo(rx + cell / 2, ry);
+            x.lineTo(rx + cell * 1.5, ry);
+            x.lineTo(rx + cell, ry + cell);
+          }
+          x.fill();
+        }
+      }
+    }
+    x.strokeStyle = 'rgba(235,245,250,0.9)';
+    x.lineWidth = 1.5;
+    for (let k = -40; k < 60; k++) {
       x.beginPath();
-      x.moveTo(hx - 150 + k * 36, base - 120);
-      x.lineTo(hx - 60 + k * 26, base - 235);
+      x.moveTo(hx - 440 + k * cell, base - 240);
+      x.lineTo(hx - 440 + k * cell + 160 * 0.577, base - 400);
+      x.moveTo(hx - 440 + k * cell, base - 240);
+      x.lineTo(hx - 440 + k * cell - 160 * 0.577, base - 400);
       x.stroke();
     }
+    // Floor plates show as brighter bands through the glass.
+    for (let f = 0; f < 5; f++) {
+      x.fillStyle = 'rgba(255,255,255,0.25)';
+      x.fillRect(hx - 430, base - 372 + f * 24, 740, 3);
+    }
+    x.restore();
+    const halo = x.createRadialGradient(hx - 60, base - 320, 0, hx - 60, base - 320, 520);
+    halo.addColorStop(0, 'rgba(200,235,255,0.16)');
+    halo.addColorStop(1, 'rgba(200,235,255,0)');
+    x.fillStyle = halo;
+    x.fillRect(hx - 600, base - 860, 1100, 1000);
+    x.restore();
+  }
+  // MAS (Museum aan de Stroom): stacked boxes of red Indian sandstone, each
+  // turned a quarter on the one below, with a wavy glass gallery wrapping the
+  // corner between them, lit warm from inside.
+  {
+    const mx = W * 0.735;
+    const base = HZ;
+    x.save();
+    x.translate(mx * 0.58, base * 0.58);
+    x.scale(0.42, 0.42);
+    const w = 170;
+    const lvl = 5;
+    const boxH = 62;
+    const glassH = 26;
+    let y = base;
+    for (let k = 0; k < lvl; k++) {
+      // Stone box.
+      const top = y - boxH;
+      const stone = x.createLinearGradient(0, top, 0, y);
+      stone.addColorStop(0, '#5e2016');
+      stone.addColorStop(1, '#8a3222');
+      x.fillStyle = stone;
+      x.fillRect(mx - w / 2, top, w, boxH);
+      for (let i = 0; i < 90; i++) {
+        x.fillStyle = `rgba(${rnd() > 0.5 ? '30,8,4' : '160,70,50'},${0.15 + rnd() * 0.2})`;
+        x.fillRect(mx - w / 2 + rnd() * w, top + rnd() * boxH, 2 + rnd() * 5, 1 + rnd() * 2);
+      }
+      // A few narrow slit windows in the stone.
+      for (let i = 0; i < 3; i++) {
+        x.fillStyle = 'rgba(255,200,140,0.5)';
+        x.fillRect(mx - w / 2 + 20 + rnd() * (w - 40), top + 12 + rnd() * 30, 3, 10);
+      }
+      y = top;
+      if (k === lvl - 1) break;
+      // Glass gallery: the full width on one side, the stone overhanging on the other.
+      const gTop = y - glassH;
+      const left = k % 2 === 0;
+      const gx0 = left ? mx - w / 2 - 6 : mx - w / 2 + w * 0.35;
+      const gw = w * 0.65 + 6;
+      const gl = x.createLinearGradient(0, gTop, 0, y);
+      gl.addColorStop(0, '#fff4dc');
+      gl.addColorStop(1, '#c9e4f0');
+      x.fillStyle = '#2a0f0a';
+      x.fillRect(mx - w / 2, gTop, w, glassH);
+      x.fillStyle = gl;
+      x.fillRect(gx0, gTop + 2, gw, glassH - 4);
+      x.strokeStyle = 'rgba(80,120,140,0.6)';
+      x.lineWidth = 1;
+      for (let i = 0; i < gw; i += 7) {
+        x.beginPath();
+        x.moveTo(gx0 + i, gTop + 2);
+        x.lineTo(gx0 + i + 2 * Math.sin(i * 0.4), y - 2);
+        x.stroke();
+      }
+      const gg = x.createRadialGradient(gx0 + gw / 2, gTop + glassH / 2, 0, gx0 + gw / 2, gTop + glassH / 2, 140);
+      gg.addColorStop(0, 'rgba(255,230,190,0.18)');
+      gg.addColorStop(1, 'rgba(255,230,190,0)');
+      x.fillStyle = gg;
+      x.fillRect(gx0 - 140, gTop - 140, gw + 280, 300);
+      y = gTop;
+    }
+    // Roof terrace glass.
+    x.fillStyle = 'rgba(210,235,245,0.8)';
+    x.fillRect(mx - w / 2 + 8, y - 10, w - 16, 10);
+    x.restore();
   }
   // Port cranes, far right, with red aviation lights.
   for (let k = 0; k < 6; k++) {
-    const cx = W * (0.74 + k * 0.042);
+    const cx = W * (0.8 + k * 0.034);
     const base = HZ;
     const h = 220 + rnd() * 120;
     x.strokeStyle = '#1a1c24';
@@ -531,7 +681,8 @@ export function cityscape(): THREE.CanvasTexture {
   for (let bx = 60; bx < W; ) {
     const w = 60 + rnd() * 110;
     const h = 60 + rnd() * 200;
-    if (Math.abs(bx - W * 0.3) > 120 && Math.abs(bx - W * 0.62) > 200) {
+    const clear = (c: number, half: number): boolean => bx + w < c - half || bx > c + half;
+    if (clear(W * 0.3, 60) && clear(W * 0.665 - 40, 200) && clear(W * 0.735, 45)) {
       block(bx, w, h, 13, 0.18, HZ + 10);
       if (rnd() > 0.78) {
         const hue = [320, 190, 45, 12][Math.floor(rnd() * 4)];
