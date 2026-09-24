@@ -732,9 +732,22 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     }
   }
 
-  function startChapter(n: number): void {
+  /**
+   * A chapter gets its OWN seed, drawn from the run's stream when it first starts
+   * and kept so the same chapter can be played again exactly as it was.
+   *
+   * Without this, `R` re-rolled everything the chapter generates — chapter 1's
+   * four-digit code most visibly — so a player who restarted after finding three
+   * of the four digits was punished for restarting by having the three answers
+   * taken away. The seed is drawn from `rng` rather than from the options, so the
+   * run as a whole stays one deterministic stream from one seed.
+   */
+  let chapterSeed = 0;
+  function startChapter(n: number, seed?: number): void {
     const def = CHAPTERS[n - 1];
     if (!def) throw new Error(`no chapter ${n}`);
+    chapterSeed = seed ?? Math.floor(rng() * 2 ** 32);
+    rng = mulberry32(chapterSeed);
     chapter = n;
     phase = 'play';
     cur = 0;
@@ -792,6 +805,37 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       phase = 'done';
       finalCard();
     }
+  }
+
+  /**
+   * `R` — start THIS chapter again, not the whole run.
+   *
+   * Michele, listing the controls he wants the instructions panel to teach:
+   * *"R to restart the chapter (not the whole game!)"*. It restarted the whole
+   * game: `restart()` sets `chapter = 0`, `phase = 'intro'` and puts the title
+   * card back up, so a player stuck two chapters in lost both of them by pressing
+   * the key the HUD told them to press.
+   *
+   * What is reset is what one chapter owns — the clock it is scored on, the
+   * robots' per-chapter flags, the tow, the walls, anything it blocked — and what
+   * survives is the run: the score of the chapters already finished, the list of
+   * chapters skipped, and the seed's current position, so a replay of the same
+   * chapter is the same chapter rather than a differently-generated one.
+   *
+   * `defaultScore` already writes with `??=`, so a replayed chapter keeps the
+   * first run's figures rather than overwriting them with a second attempt's.
+   */
+  function restartChapter(): void {
+    const n = chapter;
+    for (const b of bots) {
+      b.mounted = false;
+      b.braced = false;
+      b.boostCap = 0;
+      b.pushFlash = undefined;
+    }
+    t = 0;
+    fade = 0;
+    startChapter(n, chapterSeed);
   }
 
   function restart(): void {
@@ -917,10 +961,16 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       card = null;
       if (chapter === 0) startChapter(1);
     }
-    // `R` is restart everywhere except inside a chapter's own text prompt, where it
-    // is the two Rs in `DevoxxForever` (`ChapterRuntime.typing`).
+    /*
+     * `R` restarts THE CHAPTER, except in the two places where there is no
+     * chapter to restart — the title card and the end card — where it still means
+     * "start the run again", which is what the end card's own "R to play again"
+     * offers. Inside a chapter's text prompt it is not a control at all: it is
+     * the two Rs of `DevoxxForever` (`ChapterRuntime.typing`).
+     */
     if (code === 'KeyR' && !(runtime?.typing?.() ?? false)) {
-      restart();
+      if (chapter >= 1 && phase === 'play') restartChapter();
+      else restart();
       return;
     }
     if (phase !== 'play' || !runtime) return;

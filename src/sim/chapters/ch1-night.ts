@@ -34,7 +34,7 @@ import { JAMMED_DOOR_SPEED, MOUNT_BIGGY_MAX_SPEED, MOUNT_REACH, SPEED_SCALE, T, 
 import { PX_PER_M, m } from '../units';
 import { buildLights, clueLit, litBy } from '../lights';
 import { dist, speed } from '../bot';
-import type { Clue, LightSource, Mirror, Plate, Prop, Rect, Wall } from '../types';
+import type { Clue, LightSource, Mirror, Plate, Prop, Rect, Task, Wall } from '../types';
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 
 /* ---------------------------------------------------------------- tuning that is
@@ -1017,6 +1017,49 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     return out;
   }
 
+  /**
+   * The same state as `progress()`, as a list — the one source behind the HUD's
+   * meter, the panel's checklist and every hint (`Task` in `src/sim/types.ts`).
+   *
+   * Five things, in the order a player meets them: the four light-mix enigmas,
+   * then the code. Each clue carries WHO it needs and WHERE it is, so the hint
+   * escalation has something true to say without this chapter writing any of the
+   * presentation: the panel decides how a task looks, the chapter decides what is
+   * true. The hints are nudges and never the answer — the digit is never in one,
+   * because a hint that hands over the digit deletes the enigma it is helping
+   * with.
+   */
+  function tasks(): Task[] {
+    const out: Task[] = clues
+      .slice()
+      .sort((a, b) => a.slot - b.slot)
+      .map((c) => ({
+        id: `clue${c.slot}`,
+        text: `light the ${c.label} mix`,
+        done: c.found,
+        // The first robot the mix needs. A two-colour mix needs both, and the
+        // panel says so from `need` — but an arrow can only point for one, and
+        // the one to fetch first is the one that is not already standing there.
+        who: c.need[0],
+        at: { x: c.x, y: c.y },
+        hint:
+          c.need.length === 3
+            ? 'Biggy: all three of us, and mine has to come off the screen. Back of the room, aim at the picture'
+            : `Voxxy: ${c.need.join(' and ')}, same spot, both lamps on it at once`,
+      }));
+    out.push({
+      id: 'code',
+      text: 'type the four digits at the fire door',
+      done: fireOpen,
+      who: 'voxxy',
+      at: { x: keypad.x + keypad.w / 2, y: keypad.y + keypad.h / 2 },
+      n: entered.length,
+      of: 4,
+      hint: 'Droid: drive right up to the pad first — from a step away the number keys take a robot instead',
+    });
+    return out;
+  }
+
   /** The live bottom-of-screen line: clues found, then what the keypad is waiting for. */
   function progress(): string {
     if (fireOpen) return 'fire door open · down the secondary stairs, the ones outside zaal 4';
@@ -1036,6 +1079,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     update,
     props,
     progress,
+    tasks,
     clues: () => clues,
     mirrors: () => mirrors,
     lights: () => lights,

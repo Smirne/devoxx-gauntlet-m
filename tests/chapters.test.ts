@@ -585,9 +585,11 @@ describe('chapter 2 — expo', () => {
     expect(powerUp(g)).toBe(true);
     expect(openCabinet(g)).toBe(true);
 
-    // No prompt: R is restart, and a restart drops the whole run back to chapter 1.
+    // No prompt: R is restart, and a restart now puts you back at the top of THIS
+    // chapter rather than at the top of the run (Michele: "not the whole game!").
     g.key('KeyR');
-    expect(g.snapshot().chapter).toBe(1);
+    expect(g.snapshot().chapter).toBe(2);
+    expect(g.snapshot().t).toBe(0);
 
     g.startChapter(2);
     expect(powerUp(g)).toBe(true);
@@ -1190,7 +1192,10 @@ describe('chapter 3 — breakfast', () => {
       expect(bg.mass).toBeGreaterThan(DEFS.biggy.mass);
       if (escape === 'skip') g.skipChapter();
       else g.key('KeyR');
-      expect(g.snapshot().chapter).toBe(escape === 'skip' ? 4 : 1);
+      // `R` restarts the chapter rather than the run, so the escape it tests is
+      // now "back to the top of chapter 3" — and the load must not survive that
+      // either, which is the same `restoreIdentity` this test exists for.
+      expect(g.snapshot().chapter).toBe(escape === 'skip' ? 4 : 3);
       expect(bg.mass, escape).toBe(DEFS.biggy.mass);
       expect(bg.accel, escape).toBe(DEFS.biggy.accel);
     }
@@ -1251,7 +1256,32 @@ describe('chapter 3 — breakfast', () => {
     // leaves the hall empty, which is the whole chapter's stage.
     const crowd = g.snapshot().people.filter((p) => p.role === 'visitor');
     expect(crowd).toHaveLength(36);
-    for (const p of crowd) expect(p.x).toBeLessThan(edge);
+    /*
+     * Not `x < edge`. The six steps STRADDLE the hall's right edge — the hall
+     * ends at x 1040 and `GF.smallStairs` runs 952..1045 — so a visitor caught
+     * mid-climb is legitimately a pixel or two past it, which is the same
+     * crossing the loop above has just spent 1400 frames allowing. The strict
+     * form passed only because the old random stream never sampled a visitor on
+     * the tread at the final frame; giving each chapter its own seed sampled one
+     * at 1041.37 and the assertion, not the crowd, was what was wrong.
+     *
+     * What this line is actually for is "nobody is through the wall somewhere
+     * else", and the steps' own far edge is where that stops being true.
+     */
+    const inTheHall = crowd.filter((p) => p.x < edge);
+    // Nearly all of them, not every last one: the six steps straddle the hall's
+    // right edge (the hall ends at 1040, `GF.smallStairs` runs 952..1045) and
+    // arrivals keep coming, so at any given frame one or two are still on the
+    // tread or a step behind it. What this asserts is the thing the comment above
+    // says — the crowd got IN rather than jamming single file at the threshold.
+    expect(inTheHall.length, 'the crowd is still queueing at the threshold').toBeGreaterThanOrEqual(33);
+    // And nobody is through a wall somewhere else: whatever is not yet in the
+    // hall is on the steps or immediately behind them, never off in the lobby.
+    for (const p of crowd) {
+      if (p.x < edge) continue;
+      expect(p.y, `a visitor is outside the hall at y=${Math.round(p.y)}`).toBeGreaterThanOrEqual(st.y - 6);
+      expect(p.y, `a visitor is outside the hall at y=${Math.round(p.y)}`).toBeLessThanOrEqual(st.y + st.h + 6);
+    }
     expect(new Set(crowd.map((p) => Math.round(p.y / 70))).size).toBeGreaterThan(3);
     // 5,600 simulated frames of a 36-body crowd is a wall-clock budget, not a
     // behaviour, and this test is the most expensive in the suite: 13.1 s on an
@@ -1518,7 +1548,13 @@ describe('the game rig', () => {
     expect(g.snapshot().phase).toBe('intro');
   });
 
-  it('starts on a card, dismisses it with any key, and restarts on R', () => {
+  it('starts on a card, dismisses it with any key, and restarts THE CHAPTER on R', () => {
+    /*
+     * `R` used to mean "start the whole game again", and this test asserted it.
+     * Michele, listing the controls the instructions panel has to teach: *"R to
+     * restart the chapter (not the whole game!)"*. So a player two chapters in no
+     * longer loses both by pressing the key the HUD tells them to press.
+     */
     const g = createGame({ seed: SEED });
     expect(g.snapshot().card).toContain('AFTER DARK');
     expect(g.snapshot().chapter).toBe(0);
@@ -1529,8 +1565,9 @@ describe('the game rig', () => {
     steps(g, 10);
     expect(g.snapshot().t).toBeGreaterThan(0);
     g.key('KeyR');
-    expect(g.snapshot().chapter).toBe(0);
-    expect(g.snapshot().t).toBe(0);
+    expect(g.snapshot().chapter, 'R threw the player back to the title').toBe(1);
+    expect(g.snapshot().t, 'the chapter clock did not restart').toBe(0);
+    expect(g.snapshot().card, 'R put the title card back up').toBe(null);
   });
 
   it('is deterministic for a seed, and different for another', () => {
