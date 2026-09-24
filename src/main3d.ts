@@ -101,7 +101,27 @@ app.appendChild(fadeEl);
 if (hideHud) document.body.classList.add('ad-nohud');
 installHudTheme();
 
-const game: DebugGame = createGame({ seed: int('seed'), chapter: 1, cards: !shotMode });
+const game: DebugGame = createGame({ seed: int('seed'), chapter: 1, cards: false });
+
+/*
+ * The title: the sim waits (chapter 1 is set up, so every door and the fire
+ * shutter are already in place) while the camera dollies down the corridor;
+ * any key starts play. This is shell, not game: the sim simply is not stepped.
+ */
+let titleUp = !shotMode || flag('cards');
+const titleEl = document.createElement('div');
+titleEl.className = 'ad3d-title';
+titleEl.innerHTML =
+  '<h1>AFTER DARK</h1><p class="ad3d-sub">Kinepolis Antwerp, the night before Devoxx. Stephan lost the keys; the humans are locked out until morning. ' +
+  'Three robots are already inside, and the power is out in the closed cinema section.</p>' +
+  '<p class="ad3d-poc">Full-3D proof of concept · chapter 1</p><p class="ad3d-press">Press any key</p>';
+if (titleUp) app.appendChild(titleEl);
+function dismissTitle(): void {
+  if (!titleUp) return;
+  titleUp = false;
+  titleEl.remove();
+  world.cam.cut();
+}
 const world: World3D = createWorld3D(canvas, { quality, preserveDrawingBuffer: shotMode });
 const hud: Hud = createHud(app, { onSkip: () => game.skipChapter() });
 const audio: Audio = createAudio();
@@ -153,6 +173,11 @@ let photo = false;
 
 window.addEventListener('keydown', (ev) => {
   const code = codeOf(ev);
+  if (titleUp) {
+    dismissTitle();
+    ev.preventDefault();
+    return;
+  }
   const axis = game.snapshot().typing ? undefined : MOVE[code];
   if (axis) {
     held[axis] = true;
@@ -196,6 +221,10 @@ window.addEventListener('blur', () => {
 // Mouse look: pointer lock on click, or a plain drag where lock is refused.
 let dragging = false;
 canvas.addEventListener('mousedown', (ev) => {
+  if (titleUp) {
+    dismissTitle();
+    return;
+  }
   dragging = true;
   if (ev.button === 0 && document.pointerLockElement !== canvas) canvas.requestPointerLock?.();
 });
@@ -261,6 +290,10 @@ const anchors: SpeakerAnchors = {};
 let lastFade = -1;
 
 function frame(dt: number): void {
+  if (titleUp) {
+    world.render(game.snapshot(), dt, true);
+    return;
+  }
   pushStick();
   game.update(dt);
   const snap = game.snapshot();

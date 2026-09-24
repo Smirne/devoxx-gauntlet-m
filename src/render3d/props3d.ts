@@ -353,7 +353,10 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
     digit.position.y = 1.35;
     digit.visible = false;
     root.add(digit);
-    const light = new THREE.PointLight(mix, 0, 5, 2);
+    // Invisible until the clue is found: an invisible light costs nothing in
+    // the forward shader, a zero-intensity one still costs a loop iteration.
+    const light = new THREE.PointLight(mix, 30, 5, 2);
+    light.visible = false;
     light.position.y = 1.2;
     root.add(light);
     parent.add(root);
@@ -442,7 +445,7 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
         }
         co.digit.visible = c.found;
         if (c.found) {
-          co.light.intensity = 30;
+          co.light.visible = true;
           // Billboard around Y toward the camera.
           const cam = (parent as THREE.Scene).userData.camera as THREE.Camera | undefined;
           if (cam) {
