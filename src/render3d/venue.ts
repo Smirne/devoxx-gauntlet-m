@@ -62,6 +62,8 @@ export interface Venue3D {
   reflectors: THREE.Object3D[];
   /** Where the ad screen went (px span, side), for the sticker pass to avoid. */
   adSpan: [number, number, 1 | -1];
+  /** Where the candy wall went, for the sticker pass to avoid (null if none fitted). */
+  candySpan: [number, number, 1 | -1] | null;
   /** Solid geometry for the camera's collision rays. */
   colliders: THREE.Object3D[];
   /** Static emitters the fog should glow around. */
@@ -208,6 +210,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   group.name = 'venue-ch1';
   const reflectors: THREE.Object3D[] = [];
   let adSpan: [number, number, 1 | -1] = [355, 383, -1];
+  let candySpan: [number, number, 1 | -1] | null = null;
   const colliders: THREE.Object3D[] = [];
   const volumePoints: VolumePoint[] = [];
   const volumeSpots: Array<{ light: THREE.SpotLight; fog: number }> = [];
@@ -815,6 +818,82 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     group.add(pl);
     volumePoints.push({ position: pl.position.clone(), color: new THREE.Color(0.6, 0.3, 1).multiplyScalar(0.8), range: 3 });
   }
+  // A pick-and-mix candy wall: a shallow self-service shelf of acrylic bins,
+  // flush to the wall on the next clear stretch after the ad (Michele's idea,
+  // 24 Sep: "in that corridor there is a candy shop, a self-service shelf").
+  // 0.3 m deep, so a robot brushing the wall is not visibly inside it.
+  {
+    const taken: Array<[number, number, 1 | -1]> = [...SIGN_SPANS, adSpan];
+    let cx = -1;
+    let cSide: 1 | -1 = -1;
+    let best = 0;
+    for (const side of [-1, 1] as const) {
+      for (const [a, b] of freeSpans(side, taken)) {
+        // In the closed section, before the fire door.
+        const lo = Math.max(a, 100);
+        const hi = Math.min(b, F1.fireX - 30);
+        if (hi - lo > best) {
+          best = hi - lo;
+          cx = (lo + hi) / 2;
+          cSide = side;
+        }
+      }
+    }
+    if (best >= 34) {
+      candySpan = [cx - 17, cx + 17, cSide];
+      const W = 2.6;
+      const D = 0.3;
+      const faceZ = cSide < 0 ? m(CY0) : m(CY1);
+      const out = cSide < 0 ? 1 : -1;
+      const g = new THREE.Group();
+      g.position.set(m(cx), 0, faceZ + out * (D / 2 + 0.02));
+      if (cSide > 0) g.rotation.y = Math.PI;
+      // Carcass and back panel.
+      g.add(new THREE.Mesh(box(W, 1.9, D, V(0, 0.95, 0)), mats.counter));
+      const backlight = new THREE.Mesh(new THREE.PlaneGeometry(W - 0.16, 1.5), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.85, 0.7).multiplyScalar(0.9), toneMapped: false }));
+      backlight.position.set(0, 1.05, D / 2 + 0.001);
+      g.add(backlight);
+      // Four rows of five acrylic bins, each filled with one colour.
+      const binGeo = new THREE.BoxGeometry(0.42, 0.26, 0.2);
+      const glass = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.05, transparent: true, opacity: 0.18, depthWrite: false });
+      const candy = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.022, 0), new THREE.MeshStandardMaterial({ roughness: 0.35, color: 0xffffff }), 4 * 5 * 40);
+      const colours = [0xff2a6d, 0xffd400, 0x3ddc84, 0x2aa8ff, 0xff7a1a, 0xb04dff, 0xffffff, 0xe8132c];
+      let n = 0;
+      let seed = 7;
+      const rnd = (): number => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+      for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 5; col++) {
+          const bx = -W / 2 + 0.3 + col * 0.5;
+          const by = 0.38 + row * 0.38;
+          const bin = new THREE.Mesh(binGeo, glass);
+          bin.position.set(bx, by, D / 2 + 0.1);
+          bin.rotation.x = -0.18;
+          g.add(bin);
+          const colour = new THREE.Color(colours[(row * 5 + col) % colours.length]);
+          for (let i = 0; i < 40; i++) {
+            candy.setMatrixAt(n, new THREE.Matrix4().makeTranslation(bx + (rnd() - 0.5) * 0.36, by - 0.1 + rnd() * 0.12, D / 2 + 0.05 + rnd() * 0.12));
+            candy.setColorAt(n, colour);
+            n++;
+          }
+        }
+      }
+      candy.count = n;
+      g.add(candy);
+      // Scoops and bags on the ledge, and the sign.
+      g.add(new THREE.Mesh(box(W, 0.05, 0.22, V(0, 0.16, D / 2 + 0.11)), mats.steel));
+      const sign = emitter(neonText('pick & mix', { w: 1024, h: 256 }), 1.6, 0.4, 14, 0xff4fa0);
+      sign.position.set(0, 2.2, D / 2 + 0.02);
+      g.add(sign);
+      noMerge(candy);
+      noMerge(backlight);
+      group.add(g);
+      const pl = new THREE.PointLight(0xffb0d0, 14, 5, 2);
+      pl.position.set(m(cx), 1.4, faceZ + out * 1.0);
+      group.add(pl);
+      volumePoints.push({ position: pl.position.clone(), color: new THREE.Color(1, 0.5, 0.7).multiplyScalar(0.5), range: 2.5 });
+    }
+  }
+
   // The dot-matrix sign over the fire shutter says what the chapter wants.
   {
     const tick = ledTicker('SECTION CLOSED  ·  FIRE DOOR SEALED  ·  ENTER THE 4-DIGIT CODE AT THE KEYPAD  ·  DEVOXX ROOMS 3–10 BEYOND', 7.6, 0.55, 0xff3a0a);
@@ -846,17 +925,39 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   // turning hologram — light passes through it, as the sim says it does.
   // Only every third plinth keeps a hologram, and none near the fire door
   // (one stood in the shutter's face): a corridor full of them was noise.
+  // The rest are lounge furniture — armchairs and coffee tables — in the
+  // same knee-high footprint the sim blocks (a bare black box read as odd:
+  // Michele, 24 Sep). The plan pairs some column feet 4 px apart; one piece
+  // per pair.
   let plinthN = 0;
+  const placed: number[] = [];
   for (const w of walls) {
     if (w.kind !== 'corridor-plinth' || w.x >= X_END) continue;
     const cx = m(w.x + w.w / 2);
     const cz = m(w.y + w.h / 2);
+    if (placed.some((x) => Math.abs(x - cx) < 1)) continue;
+    placed.push(cx);
+    const holoHere = plinthN++ % 3 === 1 && Math.abs(w.x + w.w / 2 - F1.fireX) >= 60;
+    if (!holoHere) {
+      const piece = plinthN % 2 === 0 ? armchair(mats, m(w.w), m(w.h)) : coffeeTable(mats, m(w.w), m(w.h));
+      piece.position.set(cx, 0, cz);
+      // Seats face into the corridor (the plinths stand against the south wall).
+      piece.rotation.y = Math.PI;
+      group.add(piece);
+      piece.traverse((o) => {
+        if ((o as THREE.Mesh).isMesh) {
+          o.castShadow = true;
+          o.receiveShadow = true;
+        }
+      });
+      colliders.push(piece);
+      continue;
+    }
     const plinth = new THREE.Mesh(box(m(w.w), 0.75, m(w.h), V(cx, 0.375, cz)), mats.darkMetal);
     plinth.castShadow = true;
     plinth.receiveShadow = true;
     group.add(plinth);
     colliders.push(plinth);
-    if (plinthN++ % 3 !== 1 || Math.abs(w.x + w.w / 2 - F1.fireX) < 60) continue;
     const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.4, 0.04, 32), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.2, 0.9, 1).multiplyScalar(10), toneMapped: false }));
     lens.position.set(cx, 0.77, cz);
     group.add(lens);
@@ -1005,7 +1106,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
       // (one ran straight down the middle of Zaal E's panel).
       const signs: Array<[number, number]> = [...spans];
       for (const r of rooms) if (inBuild(r) && r.side === side) signs.push([roomDoor(r).x - 28, roomDoor(r).x - 8]);
-      for (const [a, b, sd] of [...SIGN_SPANS, adSpan]) if (sd === side) signs.push([a - 4, b + 4]);
+      for (const [a, b, sd] of [...SIGN_SPANS, adSpan, ...(candySpan ? [candySpan] : [])]) if (sd === side) signs.push([a - 4, b + 4]);
       for (let x = 12; x < X_END - 4; x += 30) {
         if (blocked(x, signs)) continue;
         det.add(mats.darkMetal, box(0.09, HEIGHTS.cove - 0.2, 0.06, V(m(x), (HEIGHTS.cove - 0.2) / 2 + 0.16, zf + inset * 0.03)));
@@ -1163,6 +1264,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     group,
     reflectors,
     adSpan,
+    candySpan,
     colliders,
     volumePoints,
     volumeSpots,
@@ -1223,6 +1325,39 @@ function addStepLights(parent: THREE.Object3D, dots: THREE.Vector3[]): void {
   const im = new THREE.InstancedMesh(g, mat, dots.length);
   dots.forEach((p, i) => im.setMatrixAt(i, new THREE.Matrix4().makeTranslation(p.x, p.y, p.z)));
   parent.add(im);
+}
+
+/* ------------------------------------------------------- lounge furniture */
+
+/** A lounge armchair in the venue's red velvet, footprint w x d metres. */
+function armchair(mats: Materials, w: number, d: number): THREE.Group {
+  const g = new THREE.Group();
+  const cw = w * 0.86;
+  const cd = d * 0.8;
+  const seat = new THREE.Mesh(box(cw, 0.42, cd, V(0, 0.21, 0)), mats.velvet);
+  const back = new THREE.Mesh(box(cw, 0.5, 0.22, V(0, 0.62, -cd / 2 + 0.11)), mats.velvet);
+  const armL = new THREE.Mesh(box(0.18, 0.28, cd, V(-cw / 2 + 0.09, 0.56, 0)), mats.velvet);
+  const armR = new THREE.Mesh(box(0.18, 0.28, cd, V(cw / 2 - 0.09, 0.56, 0)), mats.velvet);
+  const plinth = new THREE.Mesh(box(cw - 0.06, 0.05, cd - 0.06, V(0, 0.025, 0)), mats.darkMetal);
+  g.add(seat, back, armL, armR, plinth);
+  return g;
+}
+
+/** A low coffee table with the evening's leftovers on it. */
+function coffeeTable(mats: Materials, w: number, d: number): THREE.Group {
+  const g = new THREE.Group();
+  const top = new THREE.Mesh(box(w * 0.9, 0.05, d * 0.7, V(0, 0.45, 0)), mats.blackGloss);
+  const base = new THREE.Mesh(box(w * 0.5, 0.42, d * 0.35, V(0, 0.21, 0)), mats.steel);
+  // A closed laptop with a sticker and two coffee cups: somebody's talk prep.
+  const laptop = new THREE.Mesh(box(0.34, 0.02, 0.24, V(-0.15, 0.485, 0.02)), mats.steel);
+  const sticker = new THREE.Mesh(box(0.07, 0.003, 0.07, V(-0.12, 0.497, 0.04)), new THREE.MeshStandardMaterial({ color: 0xf37021, roughness: 0.6 }));
+  const cupMat = new THREE.MeshStandardMaterial({ color: 0xece8df, roughness: 0.5 });
+  const cup1 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.1, 12), cupMat);
+  cup1.position.set(0.22, 0.525, -0.08);
+  const cup2 = cup1.clone();
+  cup2.position.set(0.3, 0.525, 0.1);
+  g.add(top, base, laptop, sticker, cup1, cup2);
+  return g;
 }
 
 /* -------------------------------------------------------------- hologram */

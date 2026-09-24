@@ -76,7 +76,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   pipeline.setFogBox(new THREE.Vector3(m(8), -1, m(6)), new THREE.Vector3(m(X_END + 8), 9, m(694)));
   // Wall furniture keeps clear of what the venue already hung: posters, the ad,
   // the extinguisher cabinets (sim x ranges, per wall side).
-  const details = buildDetails(mats, pipeline.reflection, [...SIGN_SPANS, venue.adSpan]);
+  const details = buildDetails(mats, pipeline.reflection, [...SIGN_SPANS, venue.adSpan, ...(venue.candySpan ? [venue.candySpan] : [])]);
   scene.add(details.group);
   pipeline.reflectors = [...venue.reflectors, ...details.reflectors];
   const robots: Map<RobotKind, Robot3D> = createRobots(scene, quality.shadowSize);
