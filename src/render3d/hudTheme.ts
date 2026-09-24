@@ -53,9 +53,10 @@ body.ad3d .ad-card b{color:${YELLOW}}
   background:radial-gradient(ellipse at center,rgba(40,6,12,.92),rgba(0,0,0,.97));color:#eee;text-align:center;padding:24px;
   font-family:"Bahnschrift","DIN Alternate","Roboto Condensed","Arial Narrow",sans-serif}
 .ad3d-end h1{color:${YELLOW};letter-spacing:.28em;font-size:24px;text-shadow:0 0 18px rgba(243,230,0,.5)}
-.ad3d-end a{color:${CYAN}}
+.ad3d-end button{font:inherit;letter-spacing:.16em;text-transform:uppercase;color:${CYAN};background:transparent;border:1px solid ${CYAN};padding:8px 18px;cursor:pointer}
+.ad3d-end button:focus-visible{outline:2px solid ${YELLOW};outline-offset:3px}
 
-.ad3d-help{position:fixed;right:16px;top:64px;z-index:6;pointer-events:none;color:#b79c96;font:11px/1.6 "Bahnschrift","Arial Narrow",sans-serif;
+.ad3d-help{position:fixed;right:16px;bottom:16px;z-index:6;pointer-events:none;color:#b79c96;font:11px/1.6 "Bahnschrift","Arial Narrow",sans-serif;
   text-transform:uppercase;letter-spacing:.14em;text-align:right;opacity:.8}
 .ad-nohud .ad3d-help{display:none}
 `;
@@ -69,6 +70,6 @@ export function installHudTheme(): void {
   queueMicrotask(() => document.head.appendChild(style));
   const help = document.createElement('div');
   help.className = 'ad3d-help';
-  help.innerHTML = 'mouse · look &nbsp;/&nbsp; click · lock<br>wheel · zoom<br>P · photo mode';
+  help.innerHTML = 'mouse · look &nbsp;/&nbsp; click · lock<br>wheel · zoom<br>P · photo mode<br>Q · quality';
   document.body.appendChild(help);
 }

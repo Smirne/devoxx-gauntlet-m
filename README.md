@@ -27,6 +27,9 @@ pnpm preview    # serve the production bundle
 No API keys, no asset downloads, no native build step: everything — geometry, robots, lighting and
 audio — is generated in code at startup.
 
+**Full-3D proof of concept (this branch):** open `http://localhost:5173/3d.html` for chapter 1 in
+third person with the night-city render pipeline. See `docs/3d-poc.md`.
+
 ## Controls
 
 | Key | What it does |

@@ -12,7 +12,7 @@ export default defineConfig({
       // Two pages: the 2.5D diorama (index.html) and the full-3D proof of concept (3d.html).
       input: {
         main: resolve(__dirname, 'index.html'),
-        three: resolve(__dirname, '3d.html'),
+        play3d: resolve(__dirname, '3d.html'),
       },
     },
   },

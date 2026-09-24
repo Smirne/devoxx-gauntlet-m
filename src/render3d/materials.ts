@@ -219,6 +219,7 @@ export interface Materials {
   glass: THREE.MeshPhysicalMaterial;
   screen: THREE.MeshPhysicalMaterial;
   rubber: THREE.MeshPhysicalMaterial;
+  drape: THREE.MeshPhysicalMaterial;
   sets: Record<string, TextureSet>;
 }
 
@@ -279,6 +280,7 @@ export function createMaterials(renderer: THREE.WebGLRenderer): Materials {
     }),
     screen: new THREE.MeshPhysicalMaterial({ color: 0x6f7276, roughness: 0.18, metalness: 0.85 }),
     rubber: new THREE.MeshPhysicalMaterial({ color: 0x0c0c0d, roughness: 0.85, metalness: 0 }),
+    drape: new THREE.MeshPhysicalMaterial({ color: 0x3a0610, roughness: 0.8, metalness: 0, sheen: 1, sheenColor: new THREE.Color(0.9, 0.25, 0.3), sheenRoughness: 0.35, side: THREE.DoubleSide }),
     sets,
   };
   withGrime(m.plaster, 0.6, 0.3);

@@ -79,14 +79,16 @@ export class ThirdPersonCamera {
     const k = this.snapNext ? 1 : 1 - Math.exp(-dt * (switched ? 3 : 9));
     this.pivot.lerp(target, k);
 
-    // Drift behind the robot when it moves and the mouse is idle — but not when
-    // it walks toward the camera, or the camera would chase its own tail.
+    // Drift behind the robot when it runs FORWARD and the mouse is idle. Not
+    // while it strafes or backs up: the stick is camera-relative, so a camera
+    // that swings behind a strafing robot turns "right" with it and the robot
+    // runs in circles (caught in the scripted playtest, 2026-09-23).
     if (speed > 0.3 && this.time - this.lastUser > 1.2) {
       const hx = Math.cos(heading);
       const hz = Math.sin(heading);
       const fx = -Math.sin(this.yaw);
       const fz = -Math.cos(this.yaw);
-      if (hx * fx + hz * fz > -0.25) {
+      if (hx * fx + hz * fz > 0.55) {
         const want = Math.atan2(-hx, -hz);
         let d = want - this.yaw;
         d = Math.atan2(Math.sin(d), Math.cos(d));
