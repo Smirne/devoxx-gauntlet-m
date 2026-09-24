@@ -44,8 +44,33 @@ import { STOREY_H_M, m } from '../sim/units';
 /**
  * Yaw off the plan axis, radians. Exported because anything that has to face the
  * camera — a billboarded label, a flat sign, a sprite — needs the same angle.
+ *
+ * This is the **play** azimuth and the one the set is built against: the Zaal
+ * panels, the keypad, the projector-bay ports and the seat/clue sight lines are
+ * all laid out so they read from here, and `tests/venue.smoke.test.ts` checks
+ * them at exactly this yaw. A shot may borrow a different one for its own
+ * duration (`DioramaCamera.setAzimuth`), but nothing in the set may be tuned to
+ * that borrowed angle: the moment the shot ends the camera is back here.
  */
 export const DIORAMA_AZIMUTH_RAD = (14 * Math.PI) / 180;
+
+/**
+ * The yaw the opening's presentation shot is staged at, radians.
+ *
+ * The crates stand in a row **against the corridor's west wall**, faces pointing
+ * east down the corridor, so the play azimuth sees all three edge-on — the
+ * stencil that spells `DEVOXX` across them would be three slivers. The camera
+ * therefore swings round to the east and looks back west along the corridor.
+ *
+ * 68 deg rather than a flat 90: at 90 the three faces are dead square to the
+ * lens, which is an elevation rather than a diorama and flattens the crates into
+ * painted boards. 22 deg off-square keeps a hand's width of the left-hand crate's
+ * flank in frame, so the row still reads as three boxes, and measured on the
+ * built page all six stencil letters stay legible (see this round's frame strip,
+ * `scratchpad/intro-light/az-*.png`). It also keeps the row running left-to-right
+ * across the screen, which is the direction the robots then walk.
+ */
+export const OPENING_AZIMUTH_RAD = (68 * Math.PI) / 180;
 
 /** Pitch above the floor plane, degrees, per chapter. Chapter 4 sits lower to see the stage. */
 export const CHAPTER_ELEVATION_DEG: Readonly<Record<number, number>> = Object.freeze({
@@ -148,6 +173,29 @@ export interface DioramaCamera {
   frame(view: ViewRect, aspect: number, floor?: 'up' | 'down'): void;
   /** Chapter 1-4. Nudges the pitch and re-frames the last rect. */
   setChapter(n: number): void;
+  /**
+   * Yaw the whole diorama for one shot, radians — and re-frame the last rect at
+   * the new angle, exactly as `setChapter` re-frames it at a new pitch.
+   *
+   * Call it with nothing (or with anything that is not a finite number) to put
+   * the camera back on `DIORAMA_AZIMUTH_RAD`. Until it is called at all, the
+   * camera is on `DIORAMA_AZIMUTH_RAD` and every framing is bit-for-bit what it
+   * was before this existed.
+   *
+   * **The set is not yawed with it.** `DIORAMA_AZIMUTH_RAD` is baked into the
+   * facing rule for the Zaal panels (`src/render/venue/signage.ts`), the keypad,
+   * the projector-bay ports (`src/render/venue/projector.ts`) and the sight-line
+   * checks in `tests/venue.smoke.test.ts`, `tests/seats.test.ts`,
+   * `tests/aisle.test.ts` and `tests/release-panel.test.ts`. A flat sign is
+   * readable when its normal has a positive dot product with the camera, so a
+   * shot staged far off the play azimuth will show some of them from behind.
+   * That is fine for a shot that frames its own subject — the opening frames
+   * three crates in an empty corridor — and it is the reason this is a shot
+   * override rather than a second setting.
+   */
+  setAzimuth(rad?: number): void;
+  /** The yaw in force right now, radians. `DIORAMA_AZIMUTH_RAD` unless a shot moved it. */
+  azimuth(): number;
   /** Kick the camera. `amount` is 0..1 and stacks; anything above 1 is clamped. */
   shake(amount: number): void;
   /** Advance the shake. Call once per frame with the frame's dt in seconds. */
@@ -176,6 +224,8 @@ export function createCamera(aspect: number): DioramaCamera {
   const centre = new THREE.Vector3();
 
   let elevation = (BASE_ELEVATION_DEG * Math.PI) / 180;
+  /** The yaw in force. The play azimuth until a shot borrows another one. */
+  let azimuth = DIORAMA_AZIMUTH_RAD;
   let lastView: ViewRect = { x: 0, y: 0, w: SIM_W, h: SIM_H };
   let lastAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
   let lastFloor: 'up' | 'down' = 'up';
@@ -189,7 +239,7 @@ export function createCamera(aspect: number): DioramaCamera {
   const now = (): number => (manualTime ? clock : wallClock());
 
   function rebuildBasis(): void {
-    const az = DIORAMA_AZIMUTH_RAD;
+    const az = azimuth;
     const ce = Math.cos(elevation);
     // Offset from the subject to the camera: +z side, yawed by `az`, pitched up.
     dirToCam.set(Math.sin(az) * ce, Math.sin(elevation), Math.cos(az) * ce).normalize();
@@ -284,6 +334,19 @@ export function createCamera(aspect: number): DioramaCamera {
       elevation = next;
       rebuildBasis();
       frame(lastView, lastAspect);
+    },
+    setAzimuth(rad?: number): void {
+      // Anything that is not a finite number means "back to the play azimuth",
+      // so a caller can clear the override with `setAzimuth()` and never has to
+      // import the constant to put it back.
+      const next = typeof rad === 'number' && Number.isFinite(rad) ? rad : DIORAMA_AZIMUTH_RAD;
+      if (next === azimuth) return;
+      azimuth = next;
+      rebuildBasis();
+      frame(lastView, lastAspect);
+    },
+    azimuth(): number {
+      return azimuth;
     },
     shake(amount: number): void {
       if (!(amount > 0)) return;
