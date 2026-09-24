@@ -203,6 +203,7 @@ window.addEventListener('keydown', (ev) => {
   }
   if (code === 'KeyP') {
     photo = !photo;
+    world.photo = photo;
     document.body.classList.toggle('ad-nohud', photo || hideHud);
   }
   game.key(code);

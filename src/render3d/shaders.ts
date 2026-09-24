@@ -328,6 +328,13 @@ uniform vec3 shadowTint;
 uniform vec3 highlightTint;
 uniform float fade;
 uniform float curve;
+uniform sampler2D tDof;
+uniform sampler2D tDepth;
+uniform float dofAmount;
+uniform float dofFocus;
+uniform float dofRange;
+uniform float near;
+uniform float far;
 
 const mat3 ACESIn = mat3(0.59719, 0.07600, 0.02840, 0.35458, 0.90834, 0.13383, 0.04823, 0.01566, 0.83777);
 const mat3 ACESOut = mat3(1.60475, -0.10208, -0.00327, -0.53108, 1.10813, -0.07276, -0.07367, -0.00605, 1.07602);
@@ -355,6 +362,14 @@ void main(){
   float r2 = dot(dc, dc);
   vec2 off = dc * ca * r2 * 4.;
   vec3 col = vec3(texture2D(tLit, vUv - off).r, texture2D(tLit, vUv).g, texture2D(tLit, vUv + off).b);
+  // Depth of field (title dolly, photo mode): blend toward a blurred copy by
+  // how far the pixel is from the focus plane.
+  if (dofAmount > 0.) {
+    float z = texture2D(tDepth, vUv).x * 2. - 1.;
+    float lin = 2. * near * far / (far + near - z * (far - near));
+    float coc = clamp(abs(lin - dofFocus) / dofRange, 0., 1.) * dofAmount;
+    col = mix(col, texture2D(tDof, vUv).rgb, smoothstep(0., 1., coc));
+  }
   vec3 bl = vec3(texture2D(tBloom, vUv - off * 2.).r, texture2D(tBloom, vUv).g, texture2D(tBloom, vUv + off * 2.).b);
   float dirt = texture2D(tDirt, vUv).r;
   col = mix(col, bl, bloomStrength) + bl * dirt * dirtStrength;
