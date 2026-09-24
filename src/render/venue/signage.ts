@@ -46,7 +46,7 @@
 
 import * as THREE from 'three';
 
-import { CY0, CY1, DOOR, F1, GF, R, TALKS, roomFrontage, rooms, roomDoor } from '../../sim/geometry';
+import { CY0, CY1, DOOR, F1, GF, LOBBY_RISE_M, R, TALKS, roomFrontage, rooms, roomDoor } from '../../sim/geometry';
 import { T, W } from '../../sim/constants';
 import type { RoomDef } from '../../sim/types';
 import { PX_PER_M, m } from '../../sim/units';
@@ -388,6 +388,73 @@ const poloSign: Paint = (ctx, w, h) => {
   ctx.fillText('DEVOXX POLO & BADGE', w / 2, h * 0.38);
   ctx.font = `500 ${Math.round(h * 0.2)}px ${FONT}`;
   ctx.fillText('pickup at breakfast', w / 2, h * 0.74);
+};
+
+/**
+ * THE WIFI TAG — Michele, tonight: *"where is the wifi password graffiti? It
+ * should be visible!"*
+ *
+ * It was in the sim and nowhere else. Chapter 2 publishes it as a `poster` prop
+ * at x 400 on the hall's top wall, so the beat worked — Voxxy reads it, Droid
+ * complains about it — but the prop style draws every poster as a cream lightbox,
+ * so what the player saw was one more pale strip among the booths, not paint.
+ *
+ * So the VENUE paints it, not the chapter: graffiti is part of the building, it
+ * does not appear on a Tuesday because a chapter needs it, and painting it here
+ * also means it is on the wall in chapter 3 when the hall is lit and everyone can
+ * finally see what Bart did.
+ *
+ * Deliberately low `glow`: the orange has to carry across a blacked-out hall as
+ * *somebody painted something over there* — the reason to walk down that lane at
+ * all — while the password under it still needs Voxxy's cone. Orange strokes on a
+ * dark ground do that for free, because the same art drives the emissive map and
+ * the ground contributes nothing.
+ */
+const wifiTag: Paint = (ctx, w, h) => {
+  ctx.fillStyle = '#14161a';
+  ctx.fillRect(0, 0, w, h);
+
+  // The wifi symbol: three arcs and a dot, sprayed freehand, so the arcs do not
+  // share a centre to the pixel.
+  const cx = w * 0.13;
+  const cy = h * 0.72;
+  ctx.strokeStyle = '#e2661c';
+  ctx.lineCap = 'round';
+  for (let k = 0; k < 3; k++) {
+    ctx.beginPath();
+    ctx.lineWidth = h * 0.075;
+    ctx.arc(cx + k * h * 0.012, cy, h * (0.17 + k * 0.155), Math.PI * 1.18, Math.PI * 1.82);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#e2661c';
+  ctx.beginPath();
+  ctx.arc(cx, cy - h * 0.03, h * 0.055, 0, Math.PI * 2);
+  ctx.fill();
+
+  // The password itself, in a hand that is plainly a can and not a sign shop:
+  // drawn twice at a slight offset for the overspray, and set on a baseline that
+  // drifts, because nobody writes level on a wall at arm's length.
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  const size = fitFont(ctx, 'DevoxxForever', w * 0.58, Math.round(h * 0.42), 800);
+  ctx.font = `800 ${size}px ${FONT}`;
+  const x0 = w * 0.24;
+  ctx.globalAlpha = 0.28;
+  ctx.fillText('DevoxxForever', x0 + size * 0.05, h * 0.6 + size * 0.06);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#f07a26';
+  ctx.save();
+  ctx.translate(x0, h * 0.6);
+  ctx.rotate(-0.02);
+  ctx.fillText('DevoxxForever', 0, 0);
+  ctx.restore();
+
+  // The joke, small, under it. Michele wrote this line: "(And no, you can't
+  // change it)". It is the half of the tag that is NOT the answer, which is why
+  // it is allowed to be this much smaller.
+  ctx.fillStyle = 'rgba(226,102,28,0.85)';
+  ctx.font = `600 ${Math.round(h * 0.15)}px ${FONT}`;
+  ctx.fillText('(and no, you can\u2019t change it)', x0 + 2, h * 0.82);
 };
 
 /* ------------------------------------------------------------------ placing */
@@ -895,16 +962,45 @@ export function buildSignage(
     ),
   );
 
+  /*
+   * The printed WiFi notice moved OUT OF THE WARDROBE.
+   *
+   * It hung at `GF.reception.y - 17`, which is y 371 — inside `GF.coatroom`
+   * (262..384). It was a sign nailed up inside a closed coat room. It goes on the
+   * reception counter's west run instead, facing the concourse, which is where a
+   * venue actually puts one and where somebody can read it.
+   */
   ground.add(
     signFace(
-      GF.reception.x + 42,
-      GF.reception.y - 17,
+      GF.reception.x - 1,
+      GF.reception.y + 30,
       1.7,
       0.58,
-      1.95,
-      0,
+      LOBBY_RISE_M + 1.35,
+      -Math.PI / 2,
       painter.material('wifi', 512, 175, '#1c4a96', wifiNotice),
       'wifi-sign',
+    ),
+  );
+
+  /*
+   * THE SPRAY TAG, on the hall's top wall at x 400 — the same place chapter 2
+   * publishes its `poster` prop, so the paint and the thing Voxxy reads are one
+   * object rather than two that nearly line up.
+   *
+   * 7.04 m of it (88 sim px, the prop's own width), centred 1.35 m up, on the
+   * wall's south face, which is the one the diorama camera sees.
+   */
+  ground.add(
+    signFace(
+      400,
+      GF.hall.y + T + 0.6,
+      88 / PX_PER_M,
+      1.7,
+      1.35,
+      0,
+      painter.material('wifi-tag', 1024, 198, '#14161a', wifiTag, 0.24),
+      'wifi-tag',
     ),
   );
 
