@@ -995,6 +995,10 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       objective,
       keys: keysLine,
       progress: r?.progress?.() ?? '',
+      // The list behind the meter, the panel's checklist and every hint. A
+      // chapter that publishes none gets an empty array, which the HUD reads as
+      // "no meter" rather than as "nothing left to do".
+      tasks: r?.tasks?.() ?? [],
       toast,
       fade,
       card,

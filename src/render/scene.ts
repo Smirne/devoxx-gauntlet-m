@@ -29,7 +29,7 @@ import * as THREE from 'three';
 
 import { flairPhase, hopPhase } from '../sim/bot';
 import { JUMP_RISE_M, MOUNT_OFFSET_Y, W as SIM_W, H as SIM_H } from '../sim/constants';
-import { riseAt } from '../sim/surface';
+import { riseAt, riseForBody } from '../sim/surface';
 import { JAM_LEAF_H, JAM_SKEW, JAM_SKID, JAM_TIP } from '../sim/chapters/ch1-night';
 import type { GameSnapshot, Person, Plate, Prop, RobotKind, ViewRect } from '../sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M, STOREY_H_M, m } from '../sim/units';
@@ -156,6 +156,19 @@ const CUT_FRAME: Readonly<Record<number, { w: number; h: number }>> = Object.fre
 let framePlates: readonly Plate[] = [];
 function surfaceY(floorY: number, x: number, y: number): number {
   return floorY + riseAt(x, y, framePlates);
+}
+
+/**
+ * The same, for something that has a WIDTH — a robot rather than a decal.
+ *
+ * A point crosses a step's edge in one frame; a body climbs it across its own
+ * radius. `riseForBody` is the sim's answer to that (`src/sim/surface.ts`), and
+ * it exists because Michele watched Biggy meet the fallen door leaf: *"walking on
+ * the door is fine, but starts a little too late IMHO. At first it looks like you
+ * are walking through it."*
+ */
+function bodySurfaceY(floorY: number, x: number, y: number, r: number): number {
+  return floorY + riseForBody(x, y, r, framePlates);
 }
 
 /** Exponential approach rate of the framing, s^-1. High enough not to read as drift. */
@@ -1668,7 +1681,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     activeRingGhost.visible = true;
     const r = m(bot.r);
     activeRing.scale.setScalar(Math.max(r / RING_OUTER, 0.6) * 1.25);
-    activeRing.position.set(m(bot.x), surfaceY(floorY, bot.x, bot.y) + 0.03, m(bot.y));
+    activeRing.position.set(m(bot.x), bodySurfaceY(floorY, bot.x, bot.y, bot.r) + 0.03, m(bot.y));
     activeRingGhost.scale.copy(activeRing.scale);
     activeRingGhost.position.copy(activeRing.position);
     const c = bot.light.c;
@@ -1703,7 +1716,13 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const hz = m(holder.y);
     const bx = m(big.x);
     const bz = m(big.y);
-    const barY = (surfaceY(floorY, holder.x, holder.y) + surfaceY(floorY, big.x, big.y)) / 2;
+    // Both ends read the BODY surface, like the robots they are attached to: a
+    // bar whose ends came off the point surface would stay on the floor while the
+    // robot holding it climbed a step.
+    const barY =
+      (bodySurfaceY(floorY, holder.x, holder.y, holder.r) +
+        bodySurfaceY(floorY, big.x, big.y, big.r)) /
+      2;
     towBar.position.set((hx + bx) / 2, barY + TOW_BAR_H, (hz + bz) / 2);
     towBar.rotation.y = -Math.atan2(bz - hz, bx - hx);
     towBar.scale.x = Math.max(Math.hypot(bx - hx, bz - hz), 0.2);
@@ -1714,7 +1733,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const az = Math.sin(tow.aim);
     const start = m(big.r);
     const mid = start + TOW_LANE_LEN / 2;
-    towLane.position.set(bx + ax * mid, surfaceY(floorY, big.x, big.y) + 0.02, bz + az * mid);
+    towLane.position.set(bx + ax * mid, bodySurfaceY(floorY, big.x, big.y, big.r) + 0.02, bz + az * mid);
     // Euler XYZ applies Z first, so `rotation.z` turns the plane inside its own
     // XY before `rotation.x` lays it flat: local +X lands on (cos z, 0, -sin z),
     // which is the sim axis for z = -aim. Feeding it `atan2(az, ax)` mirrors the
@@ -2365,7 +2384,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
        * ~30 screen pixels of a pool that is meant to be centred on him.
        */
       const ry = rider ? b.y + MOUNT_OFFSET_Y : b.y;
-      rig.root.position.set(m(b.x), surfaceY(floorY, b.x, b.y) + lift, m(ry));
+      rig.root.position.set(m(b.x), bodySurfaceY(floorY, b.x, b.y, b.r) + lift, m(ry));
       updateRobot(rig, {
         speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M,
         heading: b.face,

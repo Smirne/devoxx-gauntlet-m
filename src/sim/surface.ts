@@ -81,5 +81,67 @@ export function riseAt(x: number, y: number, plates: readonly Plate[]): number {
   return out;
 }
 
+/**
+ * How far `(x, y)` is INSIDE this plate, in sim px — negative outside, and then
+ * it is the distance to the nearest edge. Yaw is taken into account the same way
+ * `onPlate` takes it into account.
+ */
+function depthIn(p: Plate, x: number, y: number): number {
+  let px = x;
+  let py = y;
+  if (p.rot !== undefined && p.rot !== 0) {
+    const cx = p.x + p.w / 2;
+    const cy = p.y + p.h / 2;
+    const c = Math.cos(-p.rot);
+    const s = Math.sin(-p.rot);
+    const dx = x - cx;
+    const dy = y - cy;
+    px = cx + dx * c - dy * s;
+    py = cy + dx * s + dy * c;
+  }
+  // Distance outside the rect on each axis, 0 when the point is within its span.
+  const ox = Math.max(p.x - px, px - (p.x + p.w), 0);
+  const oy = Math.max(p.y - py, py - (p.y + p.h), 0);
+  if (ox > 0 || oy > 0) return -Math.hypot(ox, oy);
+  // Inside: the distance to the nearest edge.
+  return Math.min(px - p.x, p.x + p.w - px, py - p.y, p.y + p.h - py);
+}
+
+/**
+ * The height of the walking surface under a body of radius `r` at `(x, y)`.
+ *
+ * `riseAt` asks about a POINT, and for a robot that is the wrong question at the
+ * edge of a plate. Michele, on the fallen fire-door leaf: *"walking on the door
+ * is fine, but starts a little too late IMHO. At first it looks like you are
+ * walking through it."* He is right, and the amount is measurable: a robot is
+ * lifted when its CENTRE crosses the edge, so for its whole radius beforehand —
+ * 0.72 m of Biggy — it stands at floor height with the leaf's 0.48 m edge passing
+ * through its body.
+ *
+ * So the lift starts where the body touches and completes where the centre
+ * crosses: the leading edge of the robot meets the step, and it climbs across its
+ * own radius. This is also what a step looks like when you walk up one — you are
+ * at full height with your foot on the edge and half of you overhanging, not
+ * floating a moment before contact.
+ *
+ * Inside a plate the answer is the plate's own height, unblended, which is what
+ * keeps two plates that share a seam (the lobby and the flight that climbs to it)
+ * continuous: a robot standing on the join is inside one of them and gets the
+ * whole rise, never a dip between the two.
+ */
+export function riseForBody(x: number, y: number, r: number, plates: readonly Plate[]): number {
+  if (r <= 0) return riseAt(x, y, plates);
+  let out = 0;
+  for (const p of plates) {
+    const d = depthIn(p, x, y);
+    if (d <= -r) continue;
+    const h = plateRiseM(p, x, y);
+    // `d >= 0` is inside, and gets the whole rise; the ramp is only the approach.
+    const lift = d >= 0 ? h : h * (1 + d / r);
+    if (lift > out) out = lift;
+  }
+  return out;
+}
+
 /** The same question about a point that already exists as a `Vec2`. */
 export const riseAtPoint = (v: Vec2, plates: readonly Plate[]): number => riseAt(v.x, v.y, plates);

@@ -23,6 +23,7 @@ import type {
   Plate,
   Prop,
   RobotKind,
+  Task,
   TextPrompt,
   ViewRect,
   Wall,
@@ -161,6 +162,16 @@ export interface ChapterRuntime {
    * is actually left, which is the difference between a puzzle and a guess.
    */
   progress?(): string;
+  /**
+   * The same state as `progress()`, as a LIST rather than a sentence — see
+   * `Task` in `src/sim/types.ts`. The meter, the panel's checklist and the hints
+   * all read this and nothing else, so a chapter that changes what it wants
+   * changes it in exactly one place.
+   *
+   * Optional only so a chapter can be taught it one at a time; a chapter without
+   * one shows no meter.
+   */
+  tasks?(): Task[];
   /**
    * Move one of this chapter's loose bodies (the cake crate, the shuffleboard duck).
    * Tests and the debug overlay use it to set up a shove without driving halfway
