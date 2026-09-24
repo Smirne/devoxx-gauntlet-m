@@ -529,7 +529,27 @@ const booths: Booth[] = [];
     for (let col = 0; col < 4; col++) {
       const x = 400 + col * 160;
       const y = 250 + row * 140;
-      booths.push({ x, y, w: 100, h: 70, name: SPONSORS[k++], table: TABLES.has(row + ',' + col), col, row });
+      /*
+       * THE END-OF-ROW STANDS ARE NARROWER, AND THE STAIRCASE IS WHY.
+       *
+       * Michele, twice: *"the orange thing and the big black thing with halo (is
+       * it a booth? in the middle of the stairs?)"* and then *"staircase should be
+       * clear of booths in geenral"*. At w 100 column 3 ran 880..980 against
+       * `GF.smallStairs.x = 952` — **28 px inside the stairwell, three booths
+       * deep** — and `boothTotem()` put a lit 10 px totem at 967..977, entirely
+       * inside it. That totem is the orange thing in his screenshot, and once the
+       * stands were dressed it started carrying the words `Async Airlines`, so
+       * dressing them made the fault easier to see rather than harder.
+       *
+       * 60 px ends the column at 940 with 12 px to spare and puts the totem at
+       * 927..937. The 160 x 140 pitch does not move, which matters: `HALL_COLUMNS`
+       * is derived from these rects, and the column grid phases against the bays.
+       * Measured before and after — the grid is identical, 18 columns at the same
+       * eighteen positions, because the column feet sit in the aisles at x 853..867
+       * and never touched this column's footprint in the first place.
+       */
+      const w = col === 3 ? 60 : 100;
+      booths.push({ x, y, w, h: 70, name: SPONSORS[k++], table: TABLES.has(row + ',' + col), col, row });
     }
   }
 }

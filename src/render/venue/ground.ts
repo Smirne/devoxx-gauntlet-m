@@ -703,9 +703,18 @@ function booths(p: VenuePalette, art: SignPainter): THREE.Group {
         break;
       }
       case 'The Coffee Sponsor':
-        // The queue joke, in cups. `soupCup` is already the show's yellow-orange.
+        /*
+         * The queue joke, in cups. `soupCup` is already the show's yellow-orange.
+         *
+         * Anchored to the stand's RIGHT EDGE, not to a fixed 52 px from its left.
+         * This is an end-of-row stand, and end-of-row stands were narrowed from
+         * 100 px to 60 to get column 3 out of the small staircase — at which point
+         * a literal 52 put eight cups in mid-air over a walking lane, with no
+         * collider under them. `tests/booths.test.ts` caught it, which is the test
+         * doing exactly the job it was written for.
+         */
         for (let k = 0; k < 8; k++) {
-          g.add(boxAt(r.x + 52 + (k % 4) * 9, r.y + 30 + Math.floor(k / 4) * 10, 6, 6, LOW_H, 0.14, p.soupCup));
+          g.add(boxAt(r.x + r.w - 44 + (k % 4) * 9, r.y + 30 + Math.floor(k / 4) * 10, 6, 6, LOW_H, 0.14, p.soupCup));
         }
         break;
       case 'Legacy Systems SA':

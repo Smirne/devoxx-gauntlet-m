@@ -362,16 +362,48 @@ function setupMinigames(ctx: ChapterCtx): Minigames {
     return b;
   };
 
-  // Shuffleboard: shove the duck so it comes to rest inside the circle.
+  /*
+   * Shuffleboard: shove the duck so it comes to rest inside the circle.
+   *
+   * **The lane runs WEST of the stand, not east.** It used to be laid out from
+   * `duckB.x + duckB.w + 30`, which put the duck at (1010, 285) and the target at
+   * (1010, 380) — and `GF.smallStairs` is x 952..1045, y 285..568, so the whole
+   * minigame was played on the staircase, with the target decal drawn across the
+   * steps. Narrowing column 3 off the stairs does not rescue it: the lane would
+   * only move to x 970, still inside. It has to go the other way.
+   *
+   * It runs along the **aisle directly in front of the stand** instead, east to
+   * west: the duck sits under its own sponsor's name and slides 95 px into open
+   * floor.
+   *
+   * It took three goes, and the two failures are the interesting part.
+   *
+   *   1. The 60 px aisle immediately west of the stand: both ENDS of the lane
+   *      measured clear, and a roof column at x 853..867, y 333..347 sits squarely
+   *      in the middle of it. Checking a route's endpoints and calling it clear is
+   *      the exact mistake `aisle.test.ts` was rewritten to stop making, and it was
+   *      caught here the same way — by a test that walks the whole lane.
+   *   2. The aisle further north, at y 170: lane clear, target clear, and Voxxy
+   *      could not play it. She lines up 22 px BEHIND the duck, and behind it was
+   *      x 902 — inside `GF.store`, which is x 900..1040. She was pushed out of the
+   *      wall every shot and the duck never moved. A lane is not just where the
+   *      puck goes; it is also where the player has to stand to hit it.
+   *
+   * So the scan that produced this one requires all four: the shove spot at 22, 30
+   * and 40 px back, every point of the 95 px lane at 10 px of duck clearance, the
+   * 22 px target ring, and 30 px of run-off past it so a hard shove does not bury
+   * the duck in a wall. 91 positions survive that; this is the closest to the
+   * stand it belongs to.
+   */
   const duckB = booth('Rubber Duck Inc');
-  const duck = mkBody('duck', duckB.x + duckB.w + 30, duckB.y + 35, {
+  const duck = mkBody('duck', duckB.x + 10, duckB.y - 30, {
     r: 8,
     mass: 0.6,
     accel: 0,
     max: 500 * SPEED_SCALE,
     drag: 1.1,
   });
-  const duckTarget = { x: duckB.x + duckB.w + 30, y: duckB.y + 35 + 95, r: 22 };
+  const duckTarget = { x: duckB.x - 85, y: duckB.y - 30, r: 22 };
   // Swag already won stays won: `ctx.swag` outlives the chapter object, so a
   // replay of chapter 3 (R, or Skip back into it) does not re-award anything.
   let duckDone = ctx.swag.includes('duck');
