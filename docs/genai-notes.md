@@ -3236,3 +3236,145 @@ shared A* pilot and the existing choreographies, `n ≤ of`, every `at` reachabl
 as before, and no line containing the chapter's own generated secret (chapter 1's code read from
 `NightState`, chapter 2's password read from the terminal's own buffer, chapter 3's hiding booth).
 Suite at hand-off: **534 tests, 32 files, green**, `npx tsc --noEmit` clean.
+
+---
+
+## 24 Sep 2026 — the opening's three complaints (intro-light round)
+
+**What a human decided.** Michele, having played the opening: *"the left crate is half black.
+Robots are still black. In the intro I'll show them fully, even if it's dark. It's their
+presentation."* And, proposing a restaging: *"Why not placing the crates on the west wall and using
+a single transition? Start: cinematic on the crate, light on robots, each one exits and is
+presented. Transition to the corridor, **different camera angle**, robots ready to start."* He also
+ruled the boundary for the fix: no `THREE.Light` near the crates (the venue's lighting is the sim's
+visibility polygons and a second lighting model is not on the table), `src/sim` untouched, and the
+diagnosis before the change.
+
+**The half-black crate is not a rendering bug.** The agent reproduced it first and instrumented it
+rather than guessing: a run-time bounding-box sweep of everything in the scene that intersects
+Voxxy's crate found a `venue/corridorColumn` — 3.3 m of `#1b1e24` with no emissive, which in a
+blacked-out corridor is exactly black — at sim x 59..75, y 288..304, overlapping her crate's
+65.9..83.1 by **9.1 px of its 17.25 px width, 53%**. The confirming shot paints every corridor
+column magenta at run time and the magenta lands precisely on the black half
+(`scratchpad/intro-light/02-halfblack-diagnosis-magenta.png`). **Voxxy's crate is standing inside a
+structural column**, and because the crate footprints are published as walls, so is the sim.
+Candidates ruled out by that measurement, not by argument: the shared-vs-per-crate `setLit`
+materials, a shadow, the visibility polygon, the fallen panel and a winding problem.
+
+It cannot be fixed by sliding the row: scanning the corridor's west half a pixel at a time there is
+**no** row centre where all three crates clear both the columns and the auditorium door leaves (the
+two usable column gaps, 75..169 and 245..365, each have a door in the middle of them). Michele's own
+restaging is the fix — quarter-turned against the west wall, face line x 29, row centre y 350, the
+whole thing clears with room to spare. The row's position lives in `src/sim/opening.ts`, which was
+out of this agent's scope, so the change was handed back as a hunk and the geometry is guarded by
+`crateFootprints()` / `crateRowFouls()` in `src/render/crates.ts` and five cases in
+`tests/intro-light.test.ts`.
+
+**The presentation light** is `presentationLight(rig, v)` in `src/render/robots/rig.ts`: a per-rig
+emissive lift, 0..1, no light of any kind. Each panel is re-exposed in **its own colour**, to linear
+luminance `0.1 + 0.44 * sqrt(lum)` — the square root is what keeps Droid's graphite darker than
+Voxxy's orange instead of flattening all three to the same grey. Two things are deliberately left
+alone: everything in `rig.glow` (eyes, visors, ports are already emissive at 1.8 with tone mapping
+off, and lifting one gives a robot two white holes in its face) and any material whose own colour is
+black (Voxxy's glass highlights).
+
+**Rejected, twice over, and both by a shot.** First cut lifted `mat.color` for every material. In
+node that looks right; in a browser Biggy's belly and dome carry all of their colour in a canvas
+texture and sit on `color: '#ffffff'`, so his whole gut came out **flat white**. The fix is the rule
+`crates.ts` already records for its painted faces — a mapped material lifts its `emissiveMap`, so
+the orange glows orange and the worn-through grey stays grey. Also deliberately avoided: the
+`weather()` trap in `docs/playtest-notes.md`. Nothing here touches a vertex colour, and three's
+standard shader multiplies `vColor` into the diffuse term only, so the white-flake bug cannot come
+back through this door.
+
+**The second camera angle** is `DioramaCamera.setAzimuth(rad?)` beside `setChapter`, re-framing the
+last rect exactly as a pitch change does; calling it with nothing restores `DIORAMA_AZIMUTH_RAD`.
+Default behaviour is bit-for-bit unchanged, asserted by comparing the full camera state of an
+untouched camera against one that has been swung and given back. The recommended intro angle is
+**`OPENING_AZIMUTH_RAD = 68 deg`**, chosen off a six-shot strip (14/45/56/68/80/90) rather than
+guessed: 14 reads the spanning `DEVOXX` as three slivers, 90 is a flat elevation, and 68 keeps a
+visible flank on all three crates while every one of the six stencil letters and both red corner
+blocks stay legible.
+
+**Flagged, not changed.** `DIORAMA_AZIMUTH_RAD` is baked into the facing and occlusion rules in
+`src/render/venue/signage.ts`, `src/render/keypad.ts`, `src/render/venue/projector.ts` and
+`src/render/venue/floor1.ts`, and asserted at that one angle by `tests/venue.smoke.test.ts`,
+`tests/seats.test.ts`, `tests/aisle.test.ts` and `tests/release-panel.test.ts`. A shot staged far
+off the play azimuth will show some of the set from behind — fine for an opening that frames three
+crates in an empty corridor, and the reason this is a shot override rather than a second setting.
+
+**Tests.** `tests/intro-light.test.ts` new — 27 cases: the column overlap pinned with its own
+numbers against a frozen copy of the row as diagnosed, the "no clear x along the north wall" scan,
+the west-wall row clearing everything, coplanar faces at both yaws; per robot, an exact restore at
+`v = 0`, a lift on every panel with the glow materials untouched, hue preserved and monotonicity in
+`v`; the painted-panel rule; and the camera's default-identical framing, exact restore, re-frame on
+change and the untouched module-level sight-line vector. Suite at hand-off: **568 tests, 34 files,
+green**, `npx tsc --noEmit` clean, `document.title` `After Dark · ERRORS:0` on the opening and in
+play.
+
+## 26 Sep 2026 — chapter 2: the breakers land, the modem, and the cabinet's pilot lamp
+
+**Michele's note.** *"Some comments on chapter2: the braker activation seems to do nothing, apart
+from the message. A 56k like sound for the modem and a light on a cabinet to signal you should go
+there?"*
+
+**What was actually wrong.** Not the design. `ch2-expo.ts` already says beside the last breaker that
+*"a supply is not a lit room: what the player gets for the breakers is a noise behind a door, and a
+reason to go and open it"* — and the noise and the pointer had never been built. Throwing a handle
+set a flag, moved a lever a few pixels up a wall in a blacked-out room, and printed a toast. There
+was no sound at all: the `breaker` cue existed in `audio.ts` and was played in exactly one place,
+`setAmbient`, as a chapter-2 opening stinger, so the only time a player ever heard it was before
+touching anything.
+
+**Built (agent).** Three things, all of them decided in `src/sim` and only drawn in `src/render`.
+
+1. *The strike.* A new duration, `BREAKER_STRIKE_TIME = 0.45 s`, published as `Prop.progress` on the
+   breaker panel — 1 on the frame a handle goes up, decaying to 0. A count (`v`) has no edges in it;
+   this does, so every handle gets a flash and a cue, not just the third. `drawBreaker` flares the
+   supply lamp to white and catches the handles in it. Each handle also now names the circuit it
+   fed, and the middle one is **HALL LIGHTING** — fed, contactor still open, nothing to close it —
+   which answers in the fiction the question Michele asked in the first place (*"I thought they were
+   linked"*).
+2. *The modem.* A new cue, `modem`, ~2.0 s, synthesised like everything else: DTMF dialling
+   (697/770/941 × 1209/1336/1477), the 2100 Hz V.8 answer tone with a 3 Hz beat partner, the two
+   V.21 channels keyed against each other (980/1180 and 1650/1850) as **one oscillator per channel
+   stepping between its mark and space tone**, the scrambled training sequence as noise, and the
+   drop into the connected hiss. Everything inside the 300–3400 Hz telephone band, which is why a
+   modem sounds like a modem. A sibling cue `busbar` carries the supply landing: contactor,
+   overhead relay, and the board settling into a 100 Hz hum — twice the Belgian 50 Hz mains, which
+   is what a transformer core actually does — with nothing bright in it, because the hall stays
+   dark.
+3. *The pilot lamp.* A new `pilot` prop, an annunciator strip across the top of the cabinet, keyed
+   to the **supply** and nothing else: dark with no volts (shut or open — a lit lamp on a dead
+   cabinet is a lie a player only falls for once), amber and breathing once the board takes load,
+   green when the router is on the air. The technical room's threshold plate and name sign gained
+   the same middle state, so the supply landing is visible from out in the hall as well as from the
+   panel.
+
+**Human decisions carried.** The chain itself (Michele, 25 Sep) is untouched and re-guarded: the
+breakers still do not light the hall, and `tests/ch2-power.test.ts` restates that where the new lamp
+is. *Recognisable beats precise* decided the modem's dial tones — a venue router has no phone line,
+and the joke and the physics happen to agree, because a real handshake's frequencies are exactly
+what makes it recognisable.
+
+**Rejected.** A standby glow on the pilot lamp, the convention every other findable prop here
+follows (`projector-panel`, `terminal`, `keypad`, `poster`): those are idle objects, this one is an
+electrical indicator, and giving it a glow would have it claiming a supply it has not got. Also
+rejected: suppressing the two `terminal` props while the cabinet is shut. Their standby glow does
+read faintly through the shut doors, which is a real cosmetic bug, but a prop that stops existing
+mid-chapter is the exact failure this repo has already logged twice (cinema B's door, the roller
+door) — flagged for the renderer instead.
+
+**Found and fixed on the way.** `MAX_VOICES` was 14 and counts voices from creation, not from when
+they sound; a cue schedules its whole timeline up front, so `victory` alone books 11 slots for 2.5 s
+and a Biggy footstep landing on it (3 voices) was silently dropped. Raised to 24.
+
+**Tests.** `tests/ch2-power.test.ts` new — 7 cases: the strike on every handle and its decay, the
+circuits named, the pilot lamp's five-state table including both dead states, the hall staying dark,
+the threshold plate, and the new kind being classified for the collider sweep. `tests/audio-cues.ts`
+extended — the stub now records every oscillator frequency and every envelope peak, so the two new
+cues are asserted by their carriers (2100 / 980 / 1180 / 1650 / 1850, DTMF rows and columns), by the
+telephone band, by duration, and by a conservative rectangle bound on the summed envelope
+(`modem` 0.151, `busbar` 0.334 at the destination — nothing clips). All 9 new cases were written
+first and run red against the old code. Suite at hand-off: **586 tests, 36 files, green**,
+`npx tsc --noEmit` clean, `document.title` `After Dark · ERRORS:0` across seven chapter-2 probes.

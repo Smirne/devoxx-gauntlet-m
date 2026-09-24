@@ -240,6 +240,43 @@ const TECH_DOOR_HAIL = 120;
 /** Seconds between the terminal's "that is not it" readouts, so a mashed key is not a wall of toast. */
 const TYPO_COOLDOWN = 1.2;
 const BREAKERS = 3;
+/**
+ * How long the panel goes on striking after a handle is thrown, seconds.
+ *
+ * Michele, 26 Sep 2026: *"the braker activation seems to do nothing, apart from
+ * the message."* He was right, and the chapter's own comment beside the last
+ * breaker had already promised otherwise — *"what the player gets for the breakers
+ * is a noise behind a door, and a reason to go and open it"* — so what was missing
+ * was not the design, it was the feedback the design owes.
+ *
+ * This is the same shape as every other clock in the file (`ROLLER_RISE_TIME`,
+ * `CABINET_SWING_TIME`): the sim owns it, it only ever feeds `Prop.progress`, and
+ * a duration is not a speed so the 2026-09-23 rescale leaves it alone. It is a
+ * STRIKE and not a state — 1 on the frame the handle goes up, decaying to 0 — so
+ * that each of the three handles has a rising edge of its own for the renderer to
+ * flash the board off and for `main.ts` to fire a cue off. A flag that stayed true
+ * would fire once and then never again.
+ *
+ * Short, because it is an arc across a contact and not a lamp: long enough that a
+ * player looking at the robot rather than at the panel still catches it in the
+ * corner of the frame, short enough that mashing `E` reads as three distinct
+ * strikes rather than one long glow.
+ */
+const BREAKER_STRIKE_TIME = 0.45;
+/**
+ * What each handle feeds, in the order Droid throws them.
+ *
+ * Three handles that counted "1/3, 2/3, 3/3" said nothing about the room. Naming
+ * the circuits costs one array and buys the answer to the question Michele asked
+ * in the first place — *"The breaker lighted all up, with no need to activate the
+ * router. I thought they were linked"* — because the middle handle is the hall
+ * lighting, and the player watches it come up and the room stay black. The reason
+ * is in the sentence the panel says: a lighting circuit is fed through a
+ * contactor, and a contactor is held open until something closes it. That
+ * something is the router, four metres to the left, behind a door Biggy has to
+ * open. The whole chapter, explained by a switchboard being a switchboard.
+ */
+const BREAKER_CIRCUITS: readonly string[] = ['SOCKETS &amp; RACK', 'HALL LIGHTING', 'MAINS / TRANSFORMER'];
 
 /** The exhibition hall has no cinema screen to bounce a lamp off. */
 const NO_MIRRORS: Mirror[] = [];
@@ -385,6 +422,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    */
   let lights: LightSource[] = [];
   let breakersLeft = BREAKERS;
+  /** 1 on the frame a handle goes up, decaying to 0. See `BREAKER_STRIKE_TIME`. */
+  let breakerStrike = 0;
   let rollerBroken = false;
   /** 0..1, how far the smashed shutter has torn up. See `ROLLER_RISE_TIME`. */
   let rollerRise = 0;
@@ -841,6 +880,14 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       }
       if (atPanel) {
         breakersLeft--;
+        const n = BREAKERS - breakersLeft;
+        /*
+         * THE STRIKE, ON EVERY HANDLE. See `BREAKER_STRIKE_TIME`: this is the one
+         * fact the renderer and the audio need and the one the panel never
+         * published — that a handle went up on THIS frame. The count (`v`) says
+         * how many are up and a count has no edges in it.
+         */
+        breakerStrike = 1;
         if (breakersLeft <= 0) {
           power = true;
           /*
@@ -848,14 +895,34 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
            * on, booth by booth" and they did, which is precisely what made the
            * router optional. A supply is not a lit room: what the player gets for
            * the breakers is a noise behind a door, and a reason to go and open it.
+           *
+           * ...and as of 26 Sep 2026 he gets both of them, because neither had
+           * been built. The noise is `busbar` (`main.ts` rides the panel's own
+           * state) and the reason is the cabinet's pilot lamp, four metres to the
+           * left, coming up amber on the same frame.
            */
           ctx.flash(
-            'Droid throws the last breaker. The bars go live with a thump you feel through the floor — ' +
-              'and the hall stays black. Something behind that grey cabinet door starts spinning up',
-            4200,
+            `Droid throws <b>${BREAKER_CIRCUITS[2]}</b> (3/3). The bars take the load with a thump you ` +
+              'feel through the floor, the board settles into a hum — and the hall stays black. Over in ' +
+              'the grey cabinet a pilot lamp comes up amber, and something behind that door starts spinning up',
+            4600,
+          );
+        } else if (n === 2) {
+          /*
+           * THE HANDLE THAT EXPLAINS THE CHAPTER. See `BREAKER_CIRCUITS`.
+           */
+          ctx.flash(
+            `Droid throws <b>${BREAKER_CIRCUITS[1]}</b> (2/3). The board strikes, the handle stays up — ` +
+              'and the contactor above it does not pull in. The lighting circuit is fed and still open: ' +
+              'something has to tell it to close',
+            4000,
           );
         } else {
-          ctx.flash(`Droid flips a breaker (${BREAKERS - breakersLeft}/${BREAKERS})`);
+          ctx.flash(
+            `Droid throws <b>${BREAKER_CIRCUITS[0]}</b> (1/3). A crack off the contacts, a sting of ozone, ` +
+              'and the panel lamp kicks. Nothing else in this room so much as blinks. Two handles to go',
+            3600,
+          );
         }
         return true;
       }
@@ -1154,6 +1221,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     // The shutter tearing up into its housing. The opening is already free — the
     // wall went on the frame of the hit — so this is only the picture and the cue.
     if (rollerBroken && rollerRise < 1) rollerRise = Math.min(1, rollerRise + dt / ROLLER_RISE_TIME);
+    // The arc across the contacts going out. See `BREAKER_STRIKE_TIME`.
+    if (breakerStrike > 0) breakerStrike = Math.max(0, breakerStrike - dt / BREAKER_STRIKE_TIME);
     if (router.cabinetOpen && cabinetSwing < 1) cabinetSwing = Math.min(1, cabinetSwing + dt / CABINET_SWING_TIME);
 
     if (typeAnchor !== null && typing()) {
@@ -1285,6 +1354,13 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         kind: 'breaker',
         ...GF.panel,
         v: BREAKERS - breakersLeft,
+        /*
+         * THE STRIKE. `v` is a count and a count has no edges: `progress` is the
+         * arc, 1 on the frame a handle goes up and out over `BREAKER_STRIKE_TIME`,
+         * which is what `drawBreaker` flashes the board off. It is the same
+         * channel every other watchable change in this chapter uses.
+         */
+        progress: breakerStrike,
         state: hallLit() ? 'done' : power ? 'active' : 'idle',
         label: hallLit()
           ? 'power ON · hall lit'
@@ -1334,7 +1410,19 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         y: 600,
         w: 20,
         h: 50,
-        state: hallLit() ? 'done' : 'broken',
+        /*
+         * THREE STATES, NOT TWO — and the middle one is the breakers landing, seen
+         * from out in the hall.
+         *
+         * The cabinet's pilot lamp is four metres inside a doorway in a blacked-out
+         * room, behind the technical room's own east wall from the diorama camera
+         * (see `techDoorAt`), so it is the right light for a robot standing at the
+         * panel and no use at all to one still out among the booths. This plate
+         * lies IN the gap and is the one thing in the chain the hall can see: red
+         * while the room is dead, amber once there is a supply in it — work in
+         * progress, come in — and green when the room is finished with.
+         */
+        state: hallLit() ? 'done' : power ? 'active' : 'broken',
         label: 'technical room — breakers & router cabinet',
       },
       {
@@ -1343,7 +1431,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         y: 592,
         w: 5,
         h: 18,
-        state: hallLit() ? 'done' : 'idle',
+        state: hallLit() ? 'done' : power ? 'active' : 'idle',
         label: 'TECHNISCHE RUIMTE · TECHNICAL',
       },
       {
@@ -1388,6 +1476,46 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         // from it, and `main.ts` fires the `cabinet` cue off its leading edge.
         progress: cabinetSwing,
         label: router.cabinetOpen ? 'router cabinet — open' : 'router cabinet — shut (Biggy)',
+      },
+      /*
+       * THE PILOT LAMP, and the answer to *"a light on a cabinet to signal you
+       * should go there?"* (Michele, 26 Sep 2026).
+       *
+       * An annunciator strip across the top of the carcass, above the two leaves,
+       * so it reads whether the doors are shut or standing open. What makes it
+       * honest is WHAT IT IS KEYED TO: the supply, and nothing else.
+       *
+       *   - no supply        → 'idle', dark. Shut or open, it makes no difference:
+       *                        a lamp lit on a cabinet with no volts in it is a lie,
+       *                        and a player who walks the length of a black hall on
+       *                        the strength of it finds a dead grey box and learns
+       *                        not to trust the lights. Before the breakers the
+       *                        cabinet is found the way it always was — the run
+       *                        sheet, the technical room's hail, the task arrow.
+       *   - supply, not authorised → 'active', amber. This is the whole point: it
+       *                        comes up on the frame Droid throws the third handle,
+       *                        four metres from where he is standing, and it says
+       *                        exactly one true thing — *there is something running
+       *                        behind this door*.
+       *   - online           → 'done', green and steady. Nothing left to come for.
+       *
+       * The door's own state is NOT in here: `progress` on the `cabinet` prop above
+       * already says how far the leaves have swung, and one fact belongs in one
+       * place. It is also the edge `main.ts` fires `busbar` and `modem` off, which
+       * is why the two of them live on one prop rather than on three.
+       */
+      {
+        kind: 'pilot',
+        x: GF.cabinet.x,
+        y: GF.cabinet.y + GF.cabinet.h - 2,
+        w: GF.cabinet.w,
+        h: 3,
+        state: !power ? 'idle' : router.online ? 'done' : 'active',
+        label: !power
+          ? 'cabinet pilot lamp — dark, no supply on the cabinet'
+          : router.online
+            ? 'cabinet pilot lamp — green, the router is on the air'
+            : 'cabinet pilot lamp — amber, something in there is running',
       },
       /*
        * THE TRANSFORMER/ROUTER ITSELF, which Michele asked to SEE come up: *"Breaker
