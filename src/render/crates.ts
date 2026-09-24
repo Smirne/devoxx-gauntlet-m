@@ -59,6 +59,11 @@
  * numbers the canvas draws from. Nothing in the painting code re-derives a
  * position.
  *
+ * **Not to be confused with `src/sim/crates.ts`**, which is a different thing
+ * entirely: the beer crates Biggy stacks for the `OutOfMemoryError` joke in
+ * chapter 3. That one is game state; this one is scenery, and neither imports the
+ * other.
+ *
  * ## Using it
  *
  *     const crates = buildCrates({ centre: { x: 12, z: 4 }, baseY: 0 });
@@ -85,23 +90,41 @@ import { mergeSimple } from './venue/props';
 /*  Layout — pure arithmetic, no THREE, no DOM. The tests read this.          */
 /* ========================================================================== */
 
+/** Cap height of Helvetica/Arial at weight 800, as a fraction of the em. */
+const CAP_RATIO = 0.716;
+
 /** Sawn board thickness, metres. Everything is built out of this one board. */
 export const PLANK_T = 0.05;
 /** The pallet under each crate: three bearers and a deck. */
 export const PALLET_H = 0.135;
 /** Air between two crates' outer faces. Also the word's tracking, see the header. */
 export const CRATE_GAP = 0.08;
-/** How far any ink stays clear of a face edge, and therefore of a seam. */
+/**
+ * How far the **spanning word's cells** stay clear of a face edge, and therefore
+ * of a seam. Load-bearing: it sets the word's tracking (see the header), so it is
+ * as small as the layout will bear.
+ */
 export const INK_MARGIN = 0.05;
+/**
+ * The margin the two small bands use instead.
+ *
+ * They have no sidebearing to hide behind — a cell of `DEVOXX` is 12 % wider than
+ * the glyph in it, and the small type is set solid — so at `INK_MARGIN` the first
+ * and last characters of every small line ran under the 0.048 m corner battens
+ * and came back clipped. The big band is unaffected and must not move.
+ */
+export const SMALL_MARGIN = 0.08;
+/** Width of the battens on the face. Narrower than the body's: they sit over ink. */
+const FACE_BATTEN = 0.048;
 
 /** The big band: cap height and the top of the caps, metres above the crate floor. */
 const BAND_CAP_H = 0.52;
 const BAND_TOP = 1.4;
 /** The continuous second line under it. */
-const SUB_CAP_H = 0.125;
-const SUB_TOP = 0.775;
+const SUB_CAP_H = 0.17;
+const SUB_TOP = 0.8;
 /** The per-crate corner block's own band. */
-const CORNER_TOP = 0.56;
+const CORNER_TOP = 0.55;
 const CORNER_BOTTOM = 0.1;
 
 /** The spanning word. Six letters, two per crate — that is the whole constraint. */
@@ -154,8 +177,20 @@ export interface CrateGeom {
   readonly width: number;
   readonly depth: number;
   readonly height: number;
-  /** Centre of the footprint, assembly-local metres. `z` is always 0: the faces are coplanar. */
+  /** Centre of the footprint, assembly-local metres. */
   readonly centreX: number;
+  /**
+   * Centre of the footprint in z, assembly-local metres — always `-depth/2`.
+   *
+   * THE FACES ARE COPLANAR, which the notes call out and the first build got
+   * wrong. Centring every crate on z = 0 puts each front face at its own
+   * `+depth/2`, so Biggy's stood 0.31 m nearer the camera than Droid's and, at
+   * the diorama's 14 deg azimuth, ate 0.44 m of his neighbour's face — the `O` of
+   * `VO` and the `E` of `DE` were both half hidden in the very shot the spanning
+   * word exists for. Aligning the faces instead of the centres costs nothing and
+   * is what "coplanar" means.
+   */
+  readonly centreZ: number;
   /** Interior clear dimensions, and the height of its floor above the ground. */
   readonly interior: { width: number; depth: number; height: number; floorY: number };
   /** The two letters of `DEVOXX` this face carries. */
@@ -177,6 +212,19 @@ export interface CrateLayout {
   readonly cell: number;
   /** Total width of the three crates plus the two gaps. */
   readonly span: number;
+  /** Tracking of the continuous second line, metres. One value for all three faces. */
+  readonly subTrack: number;
+  /**
+   * What the whole second line measures, unset, at `band.subCapH` — metres.
+   *
+   * The painter compares it against what the browser's own font actually
+   * measures and scales the cap height by the ratio. `Helvetica Neue` is not
+   * installed in a headless Chromium and the fallback is materially wider, so a
+   * line laid out on Helvetica's metrics and drawn in the fallback overran every
+   * face by about a character. One measurement fixes all three at once and keeps
+   * the tracking the layout chose.
+   */
+  readonly subNatural: number;
   readonly band: {
     readonly capH: number;
     readonly top: number;
@@ -190,23 +238,63 @@ export interface CrateLayout {
 }
 
 /**
- * Split `n` characters across the three faces in proportion to their ink width.
+ * Helvetica/Arial advances, em units — the widths the canvas will actually use.
  *
- * The split points are what keep the second line from being cut mid-glyph: a
- * boundary always lands in a physical gap, exactly as the word's do. The last
- * face takes the remainder so the three counts always sum to the string length,
- * whatever the rounding does.
+ * They live here, in the pure layer, because **where** the continuous second line
+ * is cut has to be decided by width and not by character count. Counting
+ * characters is what the first build did, and it put eight glyphs of `N · T.A.`
+ * — five of them punctuation — across the same 1.28 m that eight letters of
+ * `ANTWERPE` filled, so the middle crate came out spaced like a ransom note. A
+ * table of eleven numbers is the cost of the two faces matching.
  */
-function shareChars(total: number, widths: readonly number[]): number[] {
+const ADV: Readonly<Record<string, number>> = Object.freeze({
+  A: 0.722, B: 0.722, C: 0.722, D: 0.722, E: 0.667, F: 0.611, G: 0.778, H: 0.722,
+  I: 0.278, J: 0.556, K: 0.722, L: 0.611, M: 0.833, N: 0.722, O: 0.778, P: 0.667,
+  Q: 0.778, R: 0.722, S: 0.667, T: 0.611, U: 0.722, V: 0.667, W: 0.944, X: 0.667,
+  Y: 0.667, Z: 0.611, '.': 0.278, ' ': 0.278, '\u00b7': 0.35,
+});
+const advance = (ch: string): number => ADV[ch] ?? 0.7;
+const runEm = (text: string): number => [...text].reduce((a, ch) => a + advance(ch), 0);
+
+/**
+ * Cut `text` into one run per face, in proportion to each face's ink width.
+ *
+ * The cut always lands on a character boundary, and a boundary always lands in a
+ * physical gap — so the second line is broken by the crates exactly as the word
+ * above it is, and never mid-glyph.
+ */
+function splitByWidth(text: string, widths: readonly number[]): string[] {
+  const total = runEm(text);
   const sum = widths.reduce((a, b) => a + b, 0);
-  const out: number[] = [];
-  let used = 0;
-  for (let i = 0; i < widths.length - 1; i++) {
-    const n = Math.max(1, Math.round((total * widths[i]) / sum));
-    out.push(n);
-    used += n;
+  const out: string[] = [];
+  let cut = 0;
+  let target = 0;
+  for (let f = 0; f < widths.length - 1; f++) {
+    target += (total * widths[f]) / sum;
+    // Walk to the boundary nearest this face's share of the whole string.
+    let run = runEm(text.slice(0, cut));
+    let best = cut;
+    let bestErr = Infinity;
+    for (let i = cut; i <= text.length; i++) {
+      const err = Math.abs(run - target);
+      if (err < bestErr) {
+        bestErr = err;
+        best = i;
+      }
+      if (i < text.length) run += advance(text[i]);
+    }
+    /*
+     * Never start the next face with a full stop or a space. The width-nearest
+     * boundary put `T.A` on the middle crate and `.V. STEPHAN` on Biggy's, which
+     * is a legal split and an unreadable one; stepping one character on costs
+     * 0.07 m of type and gives `PEN · T.A.` and `V. STEPHAN`.
+     */
+    while (best < text.length && (text[best] === '.' || text[best] === ' ')) best++;
+    out.push(text.slice(cut, Math.max(best, cut + 1)));
+    cut = Math.max(best, cut + 1);
+    target = runEm(text.slice(0, cut));
   }
-  out.push(Math.max(0, total - used));
+  out.push(text.slice(cut));
   return out;
 }
 
@@ -256,19 +344,26 @@ export function crateLayout(): CrateLayout {
   }
 
   // The second line: each face takes a share of the string sized by its ink width.
-  const inkWidths = boxes.map((b) => b.w - 2 * INK_MARGIN);
-  const counts = shareChars(SUBLINE.length, inkWidths);
-  let cut = 0;
+  const inkWidths = boxes.map((b) => b.w - 2 * SMALL_MARGIN);
+  const runs = splitByWidth(SUBLINE, inkWidths);
+  /*
+   * One tracking for the whole second line: the slack left once its natural width
+   * at `SUB_CAP_H` is taken out of the three faces' ink, shared over every gap.
+   * Same number on all three faces, so the line reads as one line.
+   */
+  const inkTotal = inkWidths.reduce((a, b) => a + b, 0);
+  const subNatural = (runEm(SUBLINE) * SUB_CAP_H) / CAP_RATIO;
+  const subTrack = Math.max(0, (inkTotal - subNatural) / Math.max(1, SUBLINE.length - 1));
 
   const crates: CrateGeom[] = boxes.map((b, i) => {
-    const sub = SUBLINE.slice(cut, cut + counts[i]);
-    cut += counts[i];
+    const sub = runs[i];
     return {
       kind: b.kind,
       width: b.w,
       depth: b.d,
       height: b.h,
       centreX: centres[i],
+      centreZ: -b.d / 2,
       interior: {
         width: b.w - 2 * PLANK_T,
         depth: b.d - 2 * PLANK_T,
@@ -287,6 +382,8 @@ export function crateLayout(): CrateLayout {
     pitch,
     cell,
     span,
+    subTrack,
+    subNatural,
     band: {
       capH: BAND_CAP_H,
       top: BAND_TOP,
@@ -326,13 +423,22 @@ const mix = (a: string, b: string, t: number): string => {
   return `#${ch(ar, br)}${ch(ag, bg)}${ch(ab, bb)}`;
 };
 
-const DEAL = mix(venueSpec('wood').color, '#e9d2a6', 0.62);
-const DEAL_DARK = mix(DEAL, '#2a1d10', 0.34);
-const DEAL_PALE = mix(DEAL, '#f4e6c8', 0.45);
+const DEAL = mix(venueSpec('wood').color, '#ddc39b', 0.46);
+const DEAL_DARK = mix(DEAL, '#24180c', 0.42);
+const DEAL_PALE = mix(DEAL, '#f0ddb8', 0.42);
 /** Stencil ink: bitumen black, never quite opaque over sawn grain. */
 const INK = '#1d1a16';
 /** The warning stencils. Faded oxide red, the colour a FRAGILE stamp actually is. */
 const INK_RED = '#9d3326';
+
+/**
+ * What `setLamp(1)` actually adds.
+ *
+ * Not 1: the decal is additive over a face that is already taking room light, and
+ * at full strength Biggy's blue came back white — the hue washed straight out of
+ * the one thing the beat is for, which is knowing WHICH robot just woke up.
+ */
+const LAMP_PEAK = 0.82;
 
 /** A robot's lamp colour, straight off the frozen light definition. */
 const lampColour = (kind: RobotKind): THREE.Color => {
@@ -346,8 +452,6 @@ const lampColour = (kind: RobotKind): THREE.Color => {
 
 /** Same stack `src/render/venue/signage.ts` paints every other sign with. */
 const FONT = '"Helvetica Neue", Helvetica, Arial, sans-serif';
-/** Cap height of Helvetica/Arial at weight 800, as a fraction of the em. */
-const CAP_RATIO = 0.716;
 
 /** A tiny deterministic PRNG, so a crate looks the same in every screenshot. */
 function rng(seed: number): () => number {
@@ -382,10 +486,16 @@ function sprayGlyph(
   const size = capPx / CAP_RATIO;
   ctx.font = `800 ${size}px ${FONT}`;
   const wide = ctx.measureText(ch).width || size * 0.6;
-  // Glyphs fill 0.88 of their cell: the rest is the sidebearing that keeps the
-  // outermost letter of a pair clear of the seam by the full INK_MARGIN.
+  /*
+   * Glyphs fill at most 0.88 of their cell — the rest is the sidebearing that
+   * keeps the outermost letter of a pair clear of the seam by the full margin —
+   * but they are never *stretched* to reach it. Forcing every glyph to one width
+   * is how the first build got an E as wide as a D: a stencil is monospaced in
+   * its cells, not in its letterforms.
+   */
   const target = cellPx * 0.88;
-  const sx = target / wide;
+  const sx = Math.min(1, target / wide);
+  const drawn = wide * sx;
 
   ctx.save();
   ctx.translate(cx, baseline);
@@ -395,37 +505,62 @@ function sprayGlyph(
   ctx.textBaseline = 'alphabetic';
   ctx.fillText(ch, 0, 0);
   // Overspray: the halo a rattle can leaves round a template's edge.
-  ctx.globalAlpha = 0.1;
+  ctx.globalAlpha = 0.09;
   for (let i = 0; i < 3; i++) {
-    ctx.fillText(ch, (r() - 0.5) * capPx * 0.1, (r() - 0.5) * capPx * 0.08);
+    ctx.fillText(ch, (r() - 0.5) * capPx * 0.09, (r() - 0.5) * capPx * 0.07);
   }
   ctx.globalAlpha = 1;
   ctx.restore();
 
-  // The bridges — the ties that hold a stencil's counters in. Two across the
-  // middle band of the glyph, which is where every real stencil font puts them.
   ctx.save();
   ctx.globalCompositeOperation = 'destination-out';
-  const bw = capPx * 0.075;
-  for (const f of [0.34, 0.66]) {
-    ctx.fillRect(cx - target * 0.62, baseline - capPx * f - bw / 2, target * 1.24, bw);
+  /*
+   * Bridges go only on letters that HAVE a counter to hold in. The first build
+   * bridged every glyph and the two X's came back looking like hazard chevrons —
+   * a real stencil ties nothing on an X, because there is nothing to fall out.
+   */
+  if (COUNTERED.has(ch)) {
+    const bw = capPx * 0.08;
+    for (const f of [0.32, 0.68]) {
+      ctx.fillRect(cx - drawn * 0.62, baseline - capPx * f - bw / 2, drawn * 1.24, bw);
+    }
   }
   // Ragged edge: a scatter of small bites out of the ink, so it is sprayed rather
   // than printed. Small enough never to break a stroke.
-  for (let i = 0; i < 26; i++) {
-    const px = cx + (r() - 0.5) * target * 1.15;
+  for (let i = 0; i < 16; i++) {
+    const px = cx + (r() - 0.5) * drawn * 1.1;
     const py = baseline - r() * capPx;
     ctx.beginPath();
-    ctx.arc(px, py, capPx * (0.012 + r() * 0.03), 0, Math.PI * 2);
+    ctx.arc(px, py, capPx * (0.01 + r() * 0.022), 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.restore();
 }
 
-/** Width, in px, that a run of glyphs at this cap height and tracking will take. */
+/** The letters with an enclosed counter — the only ones a stencil has to tie. */
+const COUNTERED: ReadonlySet<string> = new Set(['A', 'B', 'D', 'O', 'P', 'Q', 'R']);
+
+/** Natural width, in px, of a run of glyphs at this cap height and tracking. */
 function runWidth(ctx: CanvasRenderingContext2D, text: string, capPx: number, track: number): number {
   ctx.font = `800 ${capPx / CAP_RATIO}px ${FONT}`;
   return ctx.measureText(text).width + track * Math.max(0, text.length - 1);
+}
+
+/**
+ * The largest cap height at which `text` still fits `maxPx`, never above `start`.
+ *
+ * `DO NOT BEND` and `THIS WAY UP` both ran off the end of their faces in the
+ * first build, which is the one failure a stencil cannot survive — a label that
+ * is cut off says nothing at all. Fitting is cheap and it means the corner blocks
+ * cannot be broken by someone editing the words.
+ */
+function fitCap(ctx: CanvasRenderingContext2D, text: string, maxPx: number, start: number, trackFrac: number): number {
+  let cap = start;
+  for (let i = 0; i < 40 && cap > 4; i++) {
+    if (runWidth(ctx, text, cap, cap * trackFrac) <= maxPx) break;
+    cap *= 0.94;
+  }
+  return cap;
 }
 
 /**
@@ -502,11 +637,11 @@ function paintTimber(
     const y0 = edges[i] * s;
     const y1 = edges[i + 1] * s;
     // Every board is sawn off a different part of the log.
-    ctx.fillStyle = mix(DEAL, r() > 0.5 ? DEAL_PALE : DEAL_DARK, 0.1 + r() * 0.22);
+    ctx.fillStyle = mix(DEAL, r() > 0.48 ? DEAL_PALE : DEAL_DARK, 0.12 + r() * 0.4);
     ctx.fillRect(0, y0, w, y1 - y0);
 
     // Grain: long wandering strokes down the board's length.
-    ctx.strokeStyle = 'rgba(70,46,24,0.16)';
+    ctx.strokeStyle = 'rgba(56,36,18,0.15)';
     for (let k = 0; k < 10; k++) {
       const gy = y0 + (r() * (y1 - y0));
       const amp = (y1 - y0) * 0.09;
@@ -588,29 +723,41 @@ function paintFace(layout: CrateLayout, crate: CrateGeom, seed: number): Paint {
       sprayGlyph(lc, letter.char, toX(letter.x), baseline, capPx, letter.cell * s, INK, r);
     }
 
-    // --- band 2: this face's slice of the continuous second line, justified to
-    // the face's own ink width so the split always lands in a physical gap.
+    // --- band 2: this face's slice of the continuous second line. Centred on the
+    // face's own ink area at the layout's single tracking, so the three runs read
+    // as one line broken by the crates rather than as three justified blocks.
     if (crate.sub.length > 0) {
-      const subCap = layout.band.subCapH * s;
-      const inkW = (crate.width - 2 * INK_MARGIN) * s;
-      const bare = runWidth(lc, crate.sub, subCap, 0);
-      const track = crate.sub.length > 1 ? (inkW - bare) / (crate.sub.length - 1) : 0;
-      sprayLine(lc, crate.sub, INK_MARGIN * s, toY(layout.band.subTop - layout.band.subCapH), subCap, track, INK, r);
+      const track = layout.subTrack * s;
+      const inkW = (crate.width - 2 * SMALL_MARGIN) * s;
+      // Correct the cap height for whatever font this browser actually resolved.
+      const nominal = layout.band.subCapH * s;
+      const whole = runWidth(lc, layout.subline, nominal, 0);
+      let subCap = nominal * Math.min(1, (layout.subNatural * s) / Math.max(1, whole));
+      // ...then let a single face shrink a hair more if its own share still spills.
+      subCap *= Math.min(1, (inkW * 0.97) / Math.max(1, runWidth(lc, crate.sub, subCap, track)));
+      const used = runWidth(lc, crate.sub, subCap, track);
+      const x0 = SMALL_MARGIN * s + Math.max(0, (inkW - used) / 2);
+      sprayLine(lc, crate.sub, x0, toY(layout.band.subTop - layout.band.subCapH), subCap, track, INK, r);
     }
 
-    // --- band 3: the crate's own corner block, lower left.
-    const cornerCap = 0.115 * s;
-    const lead = cornerCap * 1.55;
-    const blockTop = toY(layout.band.cornerTop);
-    const red = crate.kind !== 'droid';
+    // --- band 3: the crate's own corner block, lower left. Biggy's stops well
+    // short of his right-hand end: that is where the crate is stoved in.
     const arrow = crate.kind === 'voxxy';
-    const textX = (arrow ? INK_MARGIN + 0.3 : INK_MARGIN) * s;
+    const red = crate.kind !== 'droid';
+    const textX = (arrow ? SMALL_MARGIN + 0.28 : SMALL_MARGIN) * s;
+    const room =
+      (crate.kind === 'biggy' ? crate.width * 0.56 : crate.width - 2 * SMALL_MARGIN) * s -
+      (textX - SMALL_MARGIN * s);
+    let cornerCap = 0.125 * s;
+    for (const line of crate.corner) cornerCap = Math.min(cornerCap, fitCap(lc, line, room, cornerCap, 0.07));
+    const lead = cornerCap * 1.62;
+    const blockTop = toY(layout.band.cornerTop);
     crate.corner.forEach((line, i) => {
-      sprayLine(lc, line, textX, blockTop + cornerCap + i * lead, cornerCap, cornerCap * 0.12, red ? INK_RED : INK, r);
+      sprayLine(lc, line, textX, blockTop + cornerCap + i * lead, cornerCap, cornerCap * 0.07, red ? INK_RED : INK, r);
     });
     if (arrow) {
       // "THIS WAY UP", and it is upside down. Michele's note, taken literally.
-      upsideDownArrow(lc, (INK_MARGIN + 0.115) * s, blockTop + lead * 0.75, 0.3 * s, INK_RED);
+      upsideDownArrow(lc, (SMALL_MARGIN + 0.105) * s, blockTop + lead * 0.8, 0.26 * s, INK_RED);
     }
 
     ctx.save();
@@ -629,6 +776,13 @@ function paintFace(layout: CrateLayout, crate: CrateGeom, seed: number): Paint {
     }
 
     if (crate.kind === 'biggy') paintStoveIn(ctx, w, h, s, r);
+
+    // Freight grime: the bottom of a case that has been dragged about.
+    const grime = ctx.createLinearGradient(0, h, 0, h * 0.78);
+    grime.addColorStop(0, 'rgba(22,16,9,0.42)');
+    grime.addColorStop(1, 'rgba(22,16,9,0)');
+    ctx.fillStyle = grime;
+    ctx.fillRect(0, h * 0.78, w, h * 0.22);
 
     // A soft shade down the two stiles: the battens standing proud of the face.
     const shade = ctx.createLinearGradient(0, 0, w, 0);
@@ -652,40 +806,69 @@ function paintFace(layout: CrateLayout, crate: CrateGeom, seed: number): Paint {
  */
 function paintStoveIn(ctx: CanvasRenderingContext2D, w: number, h: number, s: number, r: () => number): void {
   const cx = w * 0.82;
-  const cy = h * 0.83;
-  const rad = s * 0.42;
+  const cy = h * 0.84;
+  const rad = s * 0.38;
 
-  const crush = ctx.createRadialGradient(cx, cy, rad * 0.08, cx, cy, rad);
-  crush.addColorStop(0, 'rgba(14,9,4,0.8)');
-  crush.addColorStop(0.55, 'rgba(30,20,10,0.45)');
-  crush.addColorStop(1, 'rgba(30,20,10,0)');
-  ctx.fillStyle = crush;
+  // The shadow the caved-in boards sit in: an angular hollow, not a bruise.
+  ctx.save();
   ctx.beginPath();
-  ctx.ellipse(cx, cy, rad, rad * 0.8, 0, 0, Math.PI * 2);
+  const pts: Array<[number, number]> = [];
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2;
+    const rr = rad * (0.55 + r() * 0.5);
+    pts.push([cx + Math.cos(a) * rr, cy + Math.sin(a) * rr * 0.72]);
+  }
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (const [px, py] of pts.slice(1)) ctx.lineTo(px, py);
+  ctx.closePath();
+  const crush = ctx.createRadialGradient(cx, cy, rad * 0.05, cx, cy, rad);
+  crush.addColorStop(0, 'rgba(10,7,3,0.86)');
+  crush.addColorStop(1, 'rgba(36,24,12,0.35)');
+  ctx.fillStyle = crush;
   ctx.fill();
+  ctx.restore();
 
-  // Splintered fibres round the rim, and the pale broken wood inside it.
-  ctx.strokeStyle = 'rgba(245,226,190,0.5)';
-  for (let i = 0; i < 16; i++) {
+  // Broken board ends stepping back into the hollow: short, pale, and roughly
+  // level with the boarding they were torn out of. Four, not six, and only
+  // slightly off the horizontal — a scatter of little tilted rectangles reads as
+  // confetti rather than as timber.
+  for (let i = 0; i < 4; i++) {
+    const bx = cx + (r() - 0.5) * rad * 1.1;
+    const by = cy + (r() - 0.5) * rad * 0.95;
+    const bw = rad * (0.3 + r() * 0.3);
+    const bh = rad * (0.07 + r() * 0.05);
+    ctx.save();
+    ctx.translate(bx, by);
+    ctx.rotate((r() - 0.5) * 0.3);
+    ctx.fillStyle = `rgba(226,203,163,${0.3 + r() * 0.35})`;
+    ctx.fillRect(-bw / 2, -bh / 2, bw, bh);
+    ctx.fillStyle = 'rgba(20,13,6,0.55)';
+    ctx.fillRect(-bw / 2, bh / 2 - bh * 0.25, bw, bh * 0.3);
+    ctx.restore();
+  }
+
+  // A few short fibres still attached at the rim. Kept inside the hollow: run
+  // them out past it and they read as whiskers drawn on the crate.
+  ctx.strokeStyle = 'rgba(232,211,172,0.4)';
+  for (let i = 0; i < 5; i++) {
     const a = r() * Math.PI * 2;
-    const r0 = rad * (0.2 + r() * 0.35);
-    ctx.lineWidth = 1 + r() * 2;
+    ctx.lineWidth = 1 + r() * 1.4;
     ctx.beginPath();
-    ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0 * 0.8);
-    ctx.lineTo(cx + Math.cos(a) * rad * 0.85, cy + Math.sin(a) * rad * 0.7);
+    ctx.moveTo(cx + Math.cos(a) * rad * 0.45, cy + Math.sin(a) * rad * 0.36);
+    ctx.lineTo(cx + Math.cos(a) * rad * 0.72, cy + Math.sin(a) * rad * 0.58);
     ctx.stroke();
   }
 
   // The split that ran up out of the impact.
-  ctx.strokeStyle = 'rgba(16,10,5,0.75)';
-  ctx.lineWidth = s * 0.012;
+  ctx.strokeStyle = 'rgba(14,9,4,0.8)';
+  ctx.lineWidth = s * 0.014;
   ctx.beginPath();
-  ctx.moveTo(cx - rad * 0.15, cy - rad * 0.6);
-  let y = cy - rad * 0.6;
-  let x = cx - rad * 0.15;
-  while (y > h * 0.25) {
+  let y = cy - rad * 0.75;
+  let x = cx - rad * 0.2;
+  ctx.moveTo(x, y);
+  while (y > h * 0.44) {
     y -= s * 0.06;
-    x += (r() - 0.5) * s * 0.05;
+    x += (r() - 0.5) * s * 0.055;
     ctx.lineTo(x, y);
   }
   ctx.stroke();
@@ -715,7 +898,7 @@ function paintGlowMask(crate: CrateGeom, seed: number): Paint {
     for (const g of boardGaps(crate.height)) {
       const y = toY(g);
       const grad = ctx.createLinearGradient(0, 0, w, 0);
-      const heat = 0.45 + r() * 0.5;
+      const heat = 0.35 + r() * 0.4;
       grad.addColorStop(0, 'rgba(0,0,0,0)');
       grad.addColorStop(0.18, `rgba(255,255,255,${heat * 0.55})`);
       grad.addColorStop(0.5, `rgba(255,255,255,${heat})`);
@@ -744,12 +927,12 @@ function paintGlowMask(crate: CrateGeom, seed: number): Paint {
     if (crate.kind === 'biggy') {
       // The split above the damage is the widest opening on any of the three.
       const cx = w * 0.8;
-      const g3 = ctx.createLinearGradient(cx - s * 0.1, 0, cx + s * 0.1, 0);
+      const g3 = ctx.createLinearGradient(cx - s * 0.06, 0, cx + s * 0.06, 0);
       g3.addColorStop(0, 'rgba(0,0,0,0)');
-      g3.addColorStop(0.5, 'rgba(255,255,255,0.85)');
+      g3.addColorStop(0.5, 'rgba(255,255,255,0.5)');
       g3.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = g3;
-      ctx.fillRect(cx - s * 0.1, h * 0.25, s * 0.2, h * 0.5);
+      ctx.fillRect(cx - s * 0.06, h * 0.44, s * 0.12, h * 0.36);
     }
 
     // Nothing leaks where the lid and the pallet clamp the boards shut.
@@ -826,7 +1009,7 @@ function palletGeometry(w: number, d: number, r: () => number): THREE.BufferGeom
   return mergeSimple(parts);
 }
 
-/** A crate body: back, two sides, floor, lid and every batten — minus the front. */
+/** A crate body's BOARDS: back, two sides, floor and lid — minus the front. */
 function bodyGeometry(c: CrateGeom, r: () => number): THREE.BufferGeometry {
   const { width: w, depth: d, height: h } = c;
   const t = PLANK_T;
@@ -856,10 +1039,25 @@ function bodyGeometry(c: CrateGeom, r: () => number): THREE.BufferGeometry {
     parts.push(g);
   }
 
-  // Corner battens, and the rails that cap the lid and foot the case.
+  return mergeSimple(parts);
+}
+
+/**
+ * A crate's FRAME: the corner battens and the rails that cap the lid and foot the
+ * case, drawn in a darker timber than the boards they hold.
+ *
+ * Split off the boards on purpose. Built as one merged mesh in one colour the
+ * crate read as a smooth carton from any distance — it is the frame standing
+ * proud of the boarding, in a different tone, that says "made up out of sawn
+ * stuff" before a single stencil is legible.
+ */
+function frameGeometry(c: CrateGeom, front: boolean): THREE.BufferGeometry {
+  const { width: w, depth: d, height: h } = c;
+  const parts: THREE.BufferGeometry[] = [];
   const bs = 0.07;
+  const zs = front ? [-1, 1] : [-1];
   for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1]) {
+    for (const sz of zs) {
       parts.push(batten(bs, h, bs, sx * (w / 2 - bs / 2), h / 2, sz * (d / 2 - bs / 2)));
     }
   }
@@ -915,19 +1113,21 @@ function stoveInGeometry(c: CrateGeom, r: () => number): THREE.BufferGeometry {
   stub.translate(x + 0.02, 0.2, -0.03);
   parts.push(stub);
 
-  // Two board ends driven back past the face.
+  // Two board ends driven back past the face. Kept inboard of the corner: a
+  // splinter sticking out past the crate's own silhouette reads as loose debris
+  // in the frame rather than as damage to the case.
   for (let i = 0; i < 2; i++) {
-    const g = new THREE.BoxGeometry(0.3 + r() * 0.1, 0.16, PLANK_T);
-    g.rotateY(0.34 + r() * 0.16);
-    g.rotateZ(-0.08 - r() * 0.1);
-    g.translate(x - 0.12 - i * 0.05, 0.22 + i * 0.22, -0.055 - i * 0.02);
+    const g = new THREE.BoxGeometry(0.26 + r() * 0.08, 0.14, PLANK_T);
+    g.rotateY(0.3 + r() * 0.14);
+    g.rotateZ(-0.08 - r() * 0.08);
+    g.translate(x - 0.2 - i * 0.05, 0.2 + i * 0.2, -0.05 - i * 0.02);
     parts.push(g);
   }
 
   // One splinter hanging off it.
-  const sp = new THREE.BoxGeometry(0.22, 0.035, 0.02);
-  sp.rotateZ(0.5);
-  sp.translate(x - 0.16, 0.5, 0.03);
+  const sp = new THREE.BoxGeometry(0.16, 0.03, 0.02);
+  sp.rotateZ(0.45);
+  sp.translate(x - 0.24, 0.44, 0.02);
   parts.push(sp);
 
   return mergeSimple(parts);
@@ -946,7 +1146,14 @@ export interface CratesOptions {
   yaw?: number;
   /** Deterministic rough-sawn jitter and overspray. Same seed, same crates. */
   seed?: number;
-  /** Canvas resolution for the painted faces, px per metre. Default 420. */
+  /**
+   * Canvas resolution for the painted faces, px per metre. Default 320.
+   *
+   * 320 is about five times the density of the tightest framing the stencils are
+   * legible at (see the legibility note handed up with this module), and it keeps
+   * the three faces plus their glow masks inside ~5 MB. Raise it only for a shot
+   * that pushes in closer than a metre-and-a-half of crate across the frame.
+   */
   texelsPerM?: number;
 }
 
@@ -996,7 +1203,7 @@ export function buildCrates(opts: CratesOptions = {}): CratesModel {
   const baseY = opts.baseY ?? 0;
   const centre = opts.centre ?? { x: 0, z: 0 };
   const seed = opts.seed ?? 7;
-  const texels = opts.texelsPerM ?? 420;
+  const texels = opts.texelsPerM ?? 320;
 
   const painter = new SignPainter();
   const owned: THREE.Material[] = [];
@@ -1016,6 +1223,21 @@ export function buildCrates(opts: CratesOptions = {}): CratesModel {
   timber.emissiveIntensity = 1;
   owned.push(timber);
 
+  /*
+   * The frame, a shade darker and greyer than the boarding it holds. One material
+   * for three crates, so the whole row still costs two.
+   */
+  const timberFrame = new THREE.MeshStandardMaterial({
+    name: 'crate/frame',
+    color: new THREE.Color(mix(DEAL, '#3a2a17', 0.34)),
+    roughness: 0.98,
+    metalness: 0,
+    flatShading: true,
+  });
+  timberFrame.emissive = new THREE.Color(mix(timberSpec.color, '#000000', 0.84));
+  timberFrame.emissiveIntensity = 1;
+  owned.push(timberFrame);
+
   const root = new THREE.Group();
   root.name = 'crates';
   root.position.set(centre.x, baseY, centre.z);
@@ -1027,10 +1249,10 @@ export function buildCrates(opts: CratesOptions = {}): CratesModel {
 
     const group = new THREE.Group();
     group.name = `crate-${c.kind}`;
-    group.position.set(c.centreX, 0, 0);
+    group.position.set(c.centreX, 0, c.centreZ);
 
     // --- pallet and body
-    const pallet = new THREE.Mesh(palletGeometry(c.width * 1.02, c.depth * 1.04, r), timber);
+    const pallet = new THREE.Mesh(palletGeometry(c.width * 1.02, c.depth * 1.04, r), timberFrame);
     pallet.name = `crate-pallet-${c.kind}`;
     pallet.castShadow = true;
     pallet.receiveShadow = true;
@@ -1042,6 +1264,13 @@ export function buildCrates(opts: CratesOptions = {}): CratesModel {
     body.castShadow = true;
     body.receiveShadow = true;
     group.add(body);
+
+    const frame = new THREE.Mesh(frameGeometry(c, false), timberFrame);
+    frame.name = `crate-frame-${c.kind}`;
+    frame.position.y = PALLET_H;
+    frame.castShadow = true;
+    frame.receiveShadow = true;
+    group.add(frame);
 
     // --- the lamp: an unlit additive decal, so "lit" is an opacity and nothing
     //     in the scene's lighting rig has to know these crates exist.
@@ -1102,10 +1331,11 @@ export function buildCrates(opts: CratesOptions = {}): CratesModel {
      * bakes it as a material we never render — we only want its texture — which
      * keeps every canvas this module makes on the painter's own dispose list.
      */
+    // The mask is nothing but soft gradients, so it is baked at half density.
     const maskHolder = painter.material(
       `crate-glow-${c.kind}`,
-      texW,
-      texH,
+      Math.max(64, texW >> 1),
+      Math.max(64, texH >> 1),
       '#000000',
       paintGlowMask(c, seed + i * 977),
       0,
@@ -1121,11 +1351,11 @@ export function buildCrates(opts: CratesOptions = {}): CratesModel {
 
     // Battens on the face, and the damage on Biggy's.
     const cleats: THREE.BufferGeometry[] = [];
-    const bs = 0.07;
+    const bs = FACE_BATTEN;
     for (const sx of [-1, 1]) cleats.push(batten(bs, c.height, bs, sx * (c.width / 2 - bs / 2), c.height / 2, bs / 2));
     for (const y of [c.height - bs / 2, bs / 2]) cleats.push(batten(c.width - 2 * bs, bs, bs, 0, y, bs / 2));
     if (c.kind === 'biggy') cleats.push(stoveInGeometry(c, r));
-    const cleatMesh = new THREE.Mesh(mergeSimple(cleats), timber);
+    const cleatMesh = new THREE.Mesh(mergeSimple(cleats), timberFrame);
     cleatMesh.name = `crate-cleats-${c.kind}`;
     cleatMesh.castShadow = true;
     panel.add(cleatMesh);
@@ -1149,14 +1379,27 @@ export function buildCrates(opts: CratesOptions = {}): CratesModel {
         const k = Math.min(1, Math.max(0, v));
         // Squared, because a lamp coming up behind a plank gap reads as a ramp
         // rather than as a dimmer: nothing, nothing, then suddenly a robot.
-        glowMat.opacity = k * k * 1.0;
-        faceGlowMat.opacity = k * k * 1.0;
+        glowMat.opacity = k * k * LAMP_PEAK;
+        faceGlowMat.opacity = k * k * LAMP_PEAK;
       },
       setOpen(t: number): void {
         const k = Math.min(1, Math.max(0, t));
-        // Tips out about its bottom edge to just past flat, then settles onto the
-        // floor — the hinge is 0.185 m up, so the last of the move is the drop.
-        panel.rotation.x = k * (Math.PI / 2 + 0.06);
+        /*
+         * Tips out about its bottom edge to just past flat, then settles onto the
+         * floor — the hinge is at the crate's own floor, so the last of the move
+         * is a drop.
+         *
+         * And it turns over on the way down. A panel that simply falls forward
+         * lands stencil-side to the concrete, which throws away the best half of
+         * the beat: the notes have the spanning word breaking apart "the moment
+         * the robots step down and the crates are left behind", and a blank board
+         * on the floor does not break apart, it just disappears. Rolling it
+         * through 180 deg about its own upright in the last third of the move
+         * lands `DE` `VO` `XX` face up, upside down, in three pieces. It is also
+         * what a kicked-out crate front actually does.
+         */
+        const roll = Math.min(1, Math.max(0, (k - 0.62) / 0.38));
+        panel.rotation.set(k * (Math.PI / 2 + 0.06), roll * roll * (3 - 2 * roll) * Math.PI, 0);
         panel.position.set(0, PALLET_H * (1 - k), c.depth / 2 - PLANK_T / 2 + k * 0.06);
       },
     };
