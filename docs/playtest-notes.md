@@ -477,3 +477,18 @@ reads as one block rather than two labels competing for the corner.
 Consequences to honour when it is built: crate order is load-bearing (Voxxy, Droid, Biggy, left to
 right) and the three faces must be coplanar and evenly gapped, or the word skews. `ZAAL 8` is dropped
 — three bands on one face is one too many at this size.
+
+### Two staircase questions, decided 24 Sep
+
+Both came out of the switchback rebuild, and both are Michele's call rather than a
+measurement, so they are recorded here as decisions and not as open items.
+
+| question | his answer | what it means in the code |
+| --- | --- | --- |
+| A proper 0.95 m guard at the head of each first-floor well would hide rooms 4 and 9's Zaal numerals from the diorama camera — traced at every pitch, the sight line crosses the well between 0.63 m and 1.11 m, so **no** rail height clears it. Guard, or numerals? | **Keep the 0.40 m upstand.** | `NICHE_RAIL` stays an upstand at the head of the well and a full rail (0.95–0.99 m) on the open long face, where nothing is behind it. The numerals are untouched and `tests/venue.smoke.test.ts`'s legibility pass stays a real check rather than one with an exception in it. The compromise is deliberate and it is invisible at play zoom; the photo's guard is drawn where it can be. |
+| The technical room leaves 15.8 px of floor outside the bot shaft's south door and Biggy is 18 px across, so he cannot use that door at all. `GF.tech` came from the prototype and has never been measured against the plan. | **Leave it — Biggy uses the north door.** | Both long faces carry doors now, so he always has a way through; the south door is a Voxxy-and-Droid route. That is a gate, not a bug, and it costs nothing to leave `GF.tech` unmeasured until something else needs it. |
+
+Still open, not asked because he has already said the ground floor is right: the
+ground-floor shaft's south end is not cleanly terminated on the drawing — treads
+run past the bold wall at plan y 323 down to about y 709. `GF.stairs`' rect ends
+at the bold line. If he ever wants the shaft's full length, that is the number.
