@@ -24,6 +24,7 @@ import { m } from '../sim/units';
 import type { Materials } from './materials';
 import { box, withReflection, worldUV } from './materials';
 import type { VolumePoint } from './pipeline';
+import { mergeStatic, noMerge } from './merge';
 import type { PlanarReflection } from './reflector';
 import { adScreen, ledTicker } from './screens';
 import { POSTERS, cityscape, emitter, exitSign, menuBoard, neonText, poster, rainMask, wayfinding, zaalPanel } from './signs';
@@ -196,6 +197,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   const floor = new THREE.Mesh(mergeGeometries(floorGeo)!, floorMat);
   floor.receiveShadow = true;
   floor.name = 'floor-terrazzo';
+  noMerge(floor);
   group.add(floor);
   reflectors.push(floor);
 
@@ -763,7 +765,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.4, 0.04, 32), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.2, 0.9, 1).multiplyScalar(10), toneMapped: false }));
     lens.position.set(cx, 0.77, cz);
     group.add(lens);
-    const holo = hologram();
+    const holo = noMerge(hologram());
     holo.position.set(cx, 0.8, cz);
     group.add(holo);
     updaters.push((t) => {
@@ -953,6 +955,9 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
 
   shell.build(group).forEach((mesh) => colliders.push(mesh));
   colliders.push(...ceilings);
+  // Collapse everything static into one mesh per material. The collider list
+  // keeps its references: detached meshes still raycast where they were.
+  mergeStatic(group);
 
   return {
     group,

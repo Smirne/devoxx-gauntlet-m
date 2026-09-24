@@ -13,6 +13,7 @@ import { PX_PER_M, m } from '../sim/units';
 import { ThirdPersonCamera } from './camera3d';
 import { applyBoxProjection, type ProbeBox } from './boxproj';
 import { buildDetails } from './details';
+import { LightPool } from './lightpool';
 import { createMaterials } from './materials';
 import { Pipeline, QUALITY, type QualityName, type VolumeSpot } from './pipeline';
 import { createProps, type Props3D } from './props3d';
@@ -84,6 +85,9 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   pipeline.reflectors = [...venue.reflectors, ...details.reflectors];
   const robots: Map<RobotKind, Robot3D> = createRobots(scene, quality.shadowSize);
   const props: Props3D = createProps(scene, mats);
+  // Point lights beyond the robots' own spills go through a fixed pool.
+  const pool = new LightPool(scene, 14, [...robots.values()].map((r) => r.spill));
+  pool.collect(scene);
   for (const L of venue.volumeSpots) L.light.shadow.mapSize.set(quality.shadowSize, quality.shadowSize);
 
   // Mirror bounces: the sim's secondary lights (cinema E's screen), drawn as
@@ -117,6 +121,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   };
 
   function bakeEnv(): void {
+    pool.update(PROBE);
     const hidden: THREE.Object3D[] = [];
     for (const r of robots.values()) {
       if (r.rig.root.visible) hidden.push(r.rig.root);
@@ -189,6 +194,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     // Props are built lazily from the first snapshots; patch whatever exists.
     if (patchedFrames < 3) {
       applyBoxProjection(scene, probeBox);
+      pool.collect(scene);
       patchedFrames++;
     }
 
@@ -218,6 +224,8 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       s.target.updateMatrixWorld();
     }
     for (; mi < mirrorSpots.length; mi++) mirrorSpots[mi].visible = false;
+
+    pool.update(cam.camera.position);
 
     // The fog takes a fixed number of lights. The robots' lamps always, then
     // whatever else is nearest the camera — so the haze you can see is lit by

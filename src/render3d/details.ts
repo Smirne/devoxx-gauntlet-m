@@ -19,6 +19,7 @@ import { m } from '../sim/units';
 
 import type { Materials } from './materials';
 import { withReflection } from './materials';
+import { mergeStatic, noMerge } from './merge';
 import type { PlanarReflection } from './reflector';
 import { HEIGHTS, X_END } from './venue';
 
@@ -400,6 +401,7 @@ export function buildDetails(mats: Materials, refl: PlanarReflection, taken: Arr
     arm.position.z = side < 0 ? -0.15 : 0.15;
     const led = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 6), ledMat);
     led.position.set(0.16, -0.05, 0);
+    noMerge(led);
     cam.add(body, arm, led);
     cam.position.set(m(x), HEIGHTS.cove - 0.35, zf);
     cam.rotation.y = side < 0 ? -0.6 : 0.6 + Math.PI;
@@ -500,7 +502,7 @@ export function buildDetails(mats: Materials, refl: PlanarReflection, taken: Arr
       p.position.set(px, 0.003, pz);
       p.receiveShadow = true;
       group.add(p);
-      reflectors.push(p);
+      reflectors.push(noMerge(p));
     }
     // A cup on its side by the first spill.
     const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.04, 0.16, 16), new THREE.MeshPhysicalMaterial({ color: 0xc8102e, roughness: 0.4, clearcoat: 0.5 }));
@@ -528,6 +530,7 @@ export function buildDetails(mats: Materials, refl: PlanarReflection, taken: Arr
     }
   }
 
+  mergeStatic(group);
   return {
     group,
     reflectors,
