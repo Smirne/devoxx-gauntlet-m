@@ -154,7 +154,13 @@ const game: DebugGame = createGame({
 });
 
 const scene: DioramaScene = createScene(canvas);
-const hud: Hud = createHud(app, { onSkip: () => game.skipChapter() });
+const hud: Hud = createHud(app, {
+  onSkip: () => game.skipChapter(),
+  // The hint's ring is drawn at a sim point, which only the renderer can put on
+  // the canvas. Handing the HUD the projector rather than a screen position keeps
+  // the ring on the thing while the camera eases.
+  project: (x, y, h) => scene.project(x, y, h),
+});
 const audio: Audio = createAudio();
 
 scene.setFogEnabled(wantFog);
@@ -253,6 +259,18 @@ function onKeyDown(ev: KeyboardEvent): void {
   if (code === 'KeyM') {
     muted = !muted;
     audio.mute(muted);
+  }
+  /*
+   * `I` and `H` are the overlay's own keys and the sim never hears them.
+   *
+   * The run sheet and the nudge are both views of `GameSnapshot.tasks`, which the
+   * chapters already publish — no chapter decides anything about either, and
+   * nothing about them can change the run. `typing` guards them because both
+   * letters are in `DevoxxForever`.
+   */
+  if (!game.snapshot().typing) {
+    if (code === 'KeyI') hud.toggleTasks();
+    if (code === 'KeyH') hud.nudge();
   }
   // Everything the sim understands, plus whatever dismisses a card ("press any key").
   game.key(code);

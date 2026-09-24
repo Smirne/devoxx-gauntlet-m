@@ -282,7 +282,7 @@ const OBJECTIVE =
   'rooms has a keypad: find the <b>4 digits</b>, each visible only under the right <b>mix of lights</b>. ' +
   'Droid can climb on Biggy (E). Biggy can smash the jammed door with a straight run across the corridor. ' +
   'In the last cinema the <b>screen is a mirror</b>: light that hits it comes back into the room.';
-const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb / hold Biggy / Voxxy jumps · 4-9 at the keypad (Backspace) · R: restart';
+const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb / hold Biggy / Voxxy jumps · 4-9 at the keypad (Backspace) · R: restart \u00b7 I: run sheet \u00b7 H: hint';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('up');

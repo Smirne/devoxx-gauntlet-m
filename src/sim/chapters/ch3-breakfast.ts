@@ -611,7 +611,7 @@ const OBJECTIVE =
   'speaker at a built booth. The sponsor booths are open and running their games: three bits of ' +
   '<b>swag</b> to be won on the way, all optional.';
 const KEYS =
-  '1/2/3/Tab: switch · WASD · E: use / lift / ask / clear a queue / play a game / tow Biggy / Voxxy jumps · R: restart';
+  '1/2/3/Tab: switch · WASD · E: use / lift / ask / clear a queue / play a game / tow Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');

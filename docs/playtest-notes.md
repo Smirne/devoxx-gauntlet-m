@@ -483,6 +483,42 @@ painted boards, no diorama. The override is per-shot and `dioramaToCamera()` del
 reads the constant, so no signage facing rule moves with it; a shot at 68 will show some signs from
 behind, which is harmless in an empty corridor and is the reason this is not a second setting.
 
+### The run sheet, the meter and the nudge — `I` and `H`
+
+Built tonight, and the biggest single playability item on the list. A stuck player
+had two things: the briefing at the top, which says what the chapter is, once, and the
+progress line at the bottom, which says what is happening, now. Neither answers
+*what is left* or *what do I do about it*.
+
+All four chapters already published `GameSnapshot.tasks` and nothing read it.
+
+- **The meter** is one pip per task and a count, in the bottom strip **above** the progress
+  line rather than replacing it. Two different questions: the line says what is
+  happening right now (*"digits 2/4 · still dark: ..."*), the meter says how much of the
+  chapter is left. A chapter with no list gets no meter, never an empty one.
+- **`I` — the run sheet.** The whole list, struck through as it lands, with each task's
+  robot as a chip in that robot's own lamp colour and its sub-count where it has one.
+- **`H` — the nudge**, escalating, one step per press, and **never past what the chapter
+  published**: (1) whose job it is, in that robot's voice, naming the key to press —
+  most of being stuck in this game is having the wrong robot selected, so the cheapest
+  answer is usually the right one; (2) the chapter's own line of help, never the
+  answer; (3) a ring on the place. A task with no `who` has no step 1, one with no `at`
+  has no step 3. The count is per task id, so moving on starts again from nothing.
+
+The ring is drawn **at the target**, not from the robot: an arrow starting at the robot
+has to be re-aimed every frame and reads as a tether telling you the route. *Where* is
+what a stuck player is asking.
+
+`nudgeStep` is lifted out of the HUD closure and exported so the ladder can be tested
+without a DOM (the suite runs in node). `tests/tasks-panel.test.ts` also holds the
+contract the overlay leans on, per chapter: unique ids, something to read on every row,
+nothing done on the first frame, a complete sub-count or none, and every task
+answerable at least once.
+
+Verified in the browser at all four chapters: every task carries `who`, `at` and `hint`
+except chapter 3's speaker (no fixed place — correct, he is hiding) and the two
+"all three robots" rows, which have no single owner.
+
 ## Chapter 2, second pass — Michele, 24 Sep
 
 | his note | decision |
