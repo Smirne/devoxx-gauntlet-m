@@ -11,7 +11,7 @@
  * looks the cube up in the direction of that hit from the capture point, so a
  * reflection lands where the emitter actually is. Outside the box (cinemas,
  * foyer) the capture is simply wrong, so its specular is turned well down
- * there instead of pretending.
+ * there (to 6%) instead of pretending.
  */
 
 import * as THREE from 'three';
@@ -45,7 +45,14 @@ export function applyBoxProjection(root: THREE.Object3D, box: ProbeBox): void {
           bpOutside = 1.;
         }
       }`,
-  ).replace('return envMapColor.rgb * envMapIntensity;', 'return envMapColor.rgb * envMapIntensity * mix(1., .25, bpOutside);');
+  ).replace(
+    'return envMapColor.rgb * envMapIntensity;',
+    // Materials with their own planar reflection define NO_ENV_SPEC: three
+    // overrides envMapIntensity with scene.environmentIntensity whenever the
+    // env comes from scene.environment, so zeroing it on the material did
+    // nothing and the floor reflected the corridor twice, ghosts included.
+    '#ifdef NO_ENV_SPEC\n return vec3(0.);\n #endif\n return envMapColor.rgb * envMapIntensity * mix(1., .06, bpOutside);',
+  );
 
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;

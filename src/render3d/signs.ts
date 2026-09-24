@@ -68,15 +68,54 @@ export function neonText(text: string, opts: { font?: string; w?: number; h?: nu
   x.lineCap = 'round';
   const tube = opts.tube ?? h * 0.05;
   // Soft outer glow baked in (the bloom adds the big halo).
-  x.shadowColor = 'rgba(255,255,255,0.8)';
-  x.shadowBlur = tube * 2.5;
-  x.strokeStyle = 'rgba(255,255,255,0.55)';
-  x.lineWidth = tube * 1.6;
+  // Kept dim: at emitter intensity it still clears the bloom threshold, and a
+  // brighter halo swallowed the letters into one blown smear.
+  x.shadowColor = 'rgba(255,255,255,0.45)';
+  x.shadowBlur = tube * 3;
+  x.strokeStyle = 'rgba(255,255,255,0.16)';
+  x.lineWidth = tube * 2.2;
   x.strokeText(text, w / 2, h / 2);
   x.shadowBlur = 0;
-  x.strokeStyle = '#ffffff';
-  x.lineWidth = tube * 0.55;
+  // The tube, then its hot core: the core is what reads as the letter.
+  x.strokeStyle = 'rgba(255,255,255,0.55)';
+  x.lineWidth = tube;
   x.strokeText(text, w / 2, h / 2);
+  x.strokeStyle = '#ffffff';
+  x.lineWidth = tube * 0.45;
+  x.strokeText(text, w / 2, h / 2);
+  return tex(c, false);
+}
+
+/**
+ * Frosted backlit glass behind a back bar: one bright band per shelf that
+ * falls off toward the shelf above, streaks of frost, darker at the rim.
+ */
+export function backlitGlass(shelves: number): THREE.CanvasTexture {
+  const [c, x] = canvas(512, 256);
+  x.fillStyle = '#000';
+  x.fillRect(0, 0, 512, 256);
+  const band = 256 / shelves;
+  for (let k = 0; k < shelves; k++) {
+    const y0 = 256 - (k + 1) * band;
+    const g = x.createLinearGradient(0, y0 + band, 0, y0);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.35, 'rgba(255,255,255,0.55)');
+    g.addColorStop(1, 'rgba(255,255,255,0.08)');
+    x.fillStyle = g;
+    x.fillRect(0, y0 + 3, 512, band - 6);
+  }
+  // Frost streaks and a vignette toward the cabinet's ends.
+  for (let i = 0; i < 180; i++) {
+    x.fillStyle = `rgba(0,0,0,${0.05 + Math.random() * 0.12})`;
+    x.fillRect(Math.random() * 512, 0, 1 + Math.random() * 3, 256);
+  }
+  const v = x.createLinearGradient(0, 0, 512, 0);
+  v.addColorStop(0, 'rgba(0,0,0,0.7)');
+  v.addColorStop(0.18, 'rgba(0,0,0,0)');
+  v.addColorStop(0.82, 'rgba(0,0,0,0)');
+  v.addColorStop(1, 'rgba(0,0,0,0.7)');
+  x.fillStyle = v;
+  x.fillRect(0, 0, 512, 256);
   return tex(c, false);
 }
 

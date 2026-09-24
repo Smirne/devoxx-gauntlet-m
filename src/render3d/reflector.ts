@@ -154,8 +154,8 @@ export class PlanarReflection {
     };
     pass(this.rt.texture, this.blurA, 1, 0);
     pass(this.blurA.texture, this.blurB, 0, 1);
-    pass(this.blurB.texture, this.blurA, 2.5, 0);
-    pass(this.blurA.texture, this.blurB, 0, 2.5);
+    pass(this.blurB.texture, this.blurA, 3.5, 0);
+    pass(this.blurA.texture, this.blurB, 0, 3.5);
     renderer.setRenderTarget(prev);
   }
 

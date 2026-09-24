@@ -387,7 +387,11 @@ void main(){
   // Saturation and contrast after the curve, around mid-grey.
   float g = dot(col, vec3(.2126, .7152, .0722));
   col = max(mix(vec3(g), col, saturation), 0.);
-  col = clamp((col - .18) * contrast + .18, 0., 1.);
+  // Contrast as a power around mid-grey: a linear stretch clipped everything
+  // below ~0.03 to pure black, and the shadow detail went with it.
+  col = clamp(.18 * pow(col / .18, vec3(contrast)), 0., 1.);
+  // A breath of lift in the toe, tinted like the grade's shadows.
+  col += shadowTint * .004 * (1. - smoothstep(0., .05, col));
   col = toSRGB(col);
 
   float v = smoothstep(.95, .25, length(dc * vec2(res.x / res.y, 1.) * .9));

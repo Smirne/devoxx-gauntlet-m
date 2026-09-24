@@ -67,7 +67,8 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   const mats = createMaterials(renderer);
   // The faintest night fill: sky-blue from above, a bruise of magenta from the
   // floor, so a silhouette in an unlit corner still reads against the dark.
-  scene.add(new THREE.HemisphereLight(0x2a3a6a, 0x2a0f2a, 0.3));
+  // Bounce stand-in: the floor and the neons throw warm magenta up at the ceiling.
+  scene.add(new THREE.HemisphereLight(0x2a3a6a, 0x3a1636, 0.5));
   const pipeline = new Pipeline(renderer, scene, cam.camera, quality);
   const venue: Venue3D = buildVenue(mats, pipeline.reflection);
   scene.add(venue.group);
@@ -88,6 +89,9 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   scene.add(details.group);
   pipeline.reflectors = [...venue.reflectors, ...details.reflectors];
   const robots: Map<RobotKind, Robot3D> = createRobots(scene, quality.shadowSize);
+  // The lamp flares are aimed at the real camera; mirrored, they became big
+  // out-of-place blobs on the floor.
+  for (const r of robots.values()) if (r.glare) pipeline.reflectors.push(r.glare);
   const props: Props3D = createProps(scene, mats);
   // Point lights beyond the robots' own spills go through a fixed pool.
   const pool = new LightPool(scene, 14, [...robots.values()].map((r) => r.spill));

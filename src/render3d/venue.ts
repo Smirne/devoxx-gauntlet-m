@@ -28,7 +28,7 @@ import type { VolumePoint } from './pipeline';
 import { mergeStatic, noMerge } from './merge';
 import type { PlanarReflection } from './reflector';
 import { adScreen, ledTicker } from './screens';
-import { POSTERS, cityscape, emitter, exitSign, menuBoard, neonText, poster, rainMask, wayfinding, zaalPanel } from './signs';
+import { POSTERS, backlitGlass, cityscape, emitter, exitSign, menuBoard, neonText, poster, rainMask, wayfinding, zaalPanel } from './signs';
 
 /** Where chapter 1's geometry stops, sim px: just past the fire door. */
 export const X_END = 912;
@@ -465,25 +465,35 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     const barGlow = new THREE.PointLight(0xff1a8c, 60, 8, 2);
     barGlow.position.set(bx, 0.6, bz + bd / 2 + 0.6);
     group.add(barGlow);
-    // Bottles: glassy instanced cylinders, a few catching the neon.
-    const bottleGeo = new THREE.CylinderGeometry(0.045, 0.05, 0.3, 10);
-    bottleGeo.translate(0, 0.15, 0);
-    const bottleMat = new THREE.MeshPhysicalMaterial({ color: 0x2a5a3a, roughness: 0.05, metalness: 0, transmission: 0, clearcoat: 1, transparent: true, opacity: 0.85 });
-    const bottles = new THREE.InstancedMesh(bottleGeo, bottleMat, 36);
+    // Bottles: glassy instanced cylinders of mixed heights, packed tight so
+    // the shelves read as stock, not as a row of samples.
+    const bottleGeo = new THREE.CylinderGeometry(0.04, 0.045, 1, 10);
+    bottleGeo.translate(0, 0.5, 0);
+    const bottleMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.05, metalness: 0, clearcoat: 1, transparent: true, opacity: 0.9 });
+    const perShelf = 22;
+    const bottles = new THREE.InstancedMesh(bottleGeo, bottleMat, perShelf * 3);
+    const tints = [0x1e4a2a, 0x5a2a0a, 0x2a1a0a, 0x9aa8b0, 0x6a1020, 0x3a3a10];
     let bi = 0;
     for (let k = 0; k < 3; k++) {
-      for (let i = 0; i < 12; i++) {
-        const mm = new THREE.Matrix4().makeTranslation(shelfX, 1.32 + k * 0.55, shelfZ - 2.1 + i * 0.36 + (k % 2) * 0.1);
+      for (let i = 0; i < perShelf; i++) {
+        const hh = 0.24 + ((i * 7 + k * 3) % 5) * 0.035;
+        const mm = new THREE.Matrix4()
+          .makeTranslation(shelfX + 0.05 * ((i % 2) * 2 - 1), 1.32 + k * 0.55, shelfZ - 2.35 + i * 0.224)
+          .multiply(new THREE.Matrix4().makeScale(1, hh, 1));
         bottles.setMatrixAt(bi, mm);
-        bottles.setColorAt(bi, new THREE.Color().setHSL((i * 0.13 + k * 0.3) % 1, 0.6, 0.35));
+        bottles.setColorAt(bi, new THREE.Color(tints[(i * 5 + k) % tints.length]));
         bi++;
       }
     }
     group.add(bottles);
-    // Backlit amber glass behind the bottles: every bottle becomes a silhouette.
-    const backlight = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 1.9), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.55, 0.22).multiplyScalar(2.2), toneMapped: false }));
+    // Backlit frosted amber glass behind the bottles: a bright band under each
+    // shelf, so every bottle becomes a silhouette with a glowing rim.
+    const backlight = new THREE.Mesh(
+      new THREE.PlaneGeometry(5.2, 1.65),
+      new THREE.MeshBasicMaterial({ map: backlitGlass(3), color: new THREE.Color(1, 0.42, 0.12).multiplyScalar(2.4), toneMapped: false }),
+    );
     backlight.rotation.y = Math.PI / 2;
-    backlight.position.set(m(F1.foyer.x) + 0.07, 1.95, shelfZ);
+    backlight.position.set(m(F1.foyer.x) + 0.07, 1.3 + 0.825, shelfZ);
     group.add(backlight);
     const bl = new THREE.PointLight(0xff9040, 30, 6, 2);
     bl.position.set(shelfX + 1.2, 2.0, shelfZ);
