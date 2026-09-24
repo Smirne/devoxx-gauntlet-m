@@ -40,9 +40,21 @@ second renderer, `src/render3d/`, entered from `3d.html` / `src/main3d.ts`:
 | `camera3d.ts` | third-person orbit with wall collision; WASD made camera-relative |
 | `signs.ts`, `screens.ts` | canvas-drawn signage, posters, the city, an animated ad and a dot-matrix ticker |
 | `hudTheme.ts` | a night-city skin over the shared HUD (its DOM and logic unchanged) |
+| `details.ts` | wall furniture and floor clutter: lacquered panels, stickers and UV-reactive tags, extinguishers, CCTV, a cable tray, vents, popcorn, tickets, cola spills that mirror the room |
+| `boxproj.ts` | box-projected (parallax-corrected) reflections from the corridor's cube capture, so reflected neon lands where the neon is |
+| `lightpool.ts` | 28 venue point lights served by 14 real ones, nearest the camera, faded by distance |
+| `merge.ts` | static meshes merged per material; robot rigs merged per bone so the gait still drives them |
 
 It plays chapter 1 end to end — the clues, the keypad, Biggy through the jammed door — because the
-sim does; when the fire door opens and the sim moves on to chapter 2, an end card says so.
+sim does. It opens on a title over a slow dolly down the corridor (the sim waits until a key is
+pressed). The build runs past the fire door to both secondary staircases (10|9 and 3|4, where the
+plans put them), and the Devoxx half beyond has its lights on and its navy carpet, so the fire door
+rolls up onto light. When the sim moves on to chapter 2, an end card says so.
+
+**Performance.** Per frame: a planar reflection pass, up to five shadow maps, a GTAO normal pass, the
+main pass, then the post chain. After the merge and light-pool passes that is ~1800 draw calls (from
+~3600) and 17 real point lights (from 31) at 1280x720 "high". Adaptive resolution steps the pixel
+ratio down on a slow machine; **Q** cycles quality.
 
 ## What was measured against what
 
@@ -79,7 +91,7 @@ content, not pipeline.
 
 ## Known gaps
 
-- Chapter 1 only; the stair walk-out cutscene plays in the corridor and ends on the card.
+- Chapter 1 only; the walk-out cutscene ends at the top of the 3|4 staircase and cuts to the card.
 - Performance is untested on real GPUs (developed on a software renderer, ~10 s a frame at
   1280x720 "high"). Adaptive resolution steps the pixel ratio down on a slow machine; **Q** drops
   quality. Keyboard + mouse only.

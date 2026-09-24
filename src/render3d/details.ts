@@ -29,13 +29,16 @@ type Side = -1 | 1;
 export function freeSpans(side: Side, taken: Array<[number, number, Side]> = []): Array<[number, number]> {
   const blocked: Array<[number, number]> = [];
   for (const r of rooms) {
-    if (!r.closed || r.side !== side) continue;
+    if (r.x + r.w > X_END || r.side !== side) continue;
     const d = roomDoor(r);
     blocked.push([d.x - 6, d.x + d.w + 6]);
     blocked.push([d.x - 26, d.x - 10]); // the Zaal panel
     blocked.push([r.x - 12, r.x + 12], [r.x + r.w - 12, r.x + r.w + 12]); // columns
   }
   if (side > 0) blocked.push([F1.foyer.x - 6, F1.foyer.x + F1.foyer.w + 6]);
+  const n = side < 0 ? F1.nicheTop : F1.nicheBot;
+  blocked.push([n.x - 8, n.x + n.w + 8]);
+  blocked.push([F1.fireX - 30, F1.fireX + 30]);
   blocked.push([X_END - 30, X_END + 40]);
   for (const [a, b, s] of taken) if (s === side) blocked.push([a, b]);
   blocked.sort((a, b) => a[0] - b[0]);
@@ -310,6 +313,50 @@ export function buildDetails(mats: Materials, refl: PlanarReflection, taken: Arr
   const c0 = m(CY0);
   const c1 = m(CY1);
 
+  // Lacquered wall panels between the battens: dark, glossy, clear-coated, so
+  // every neon in the corridor streaks across them (the box-projected probe
+  // puts each reflection where its emitter really is).
+  {
+    const lacquer = new THREE.MeshPhysicalMaterial({
+      color: 0x0b0c10,
+      roughness: 0.32,
+      metalness: 0.1,
+      clearcoat: 1,
+      clearcoatRoughness: 0.12,
+      envMapIntensity: 1.6,
+    });
+    const quadsP: THREE.BufferGeometry[] = [];
+    const doorBlocked = (side: Side, x: number): boolean => {
+      for (const r of rooms) {
+        if (r.x + r.w > X_END || r.side !== side) continue;
+        const d = roomDoor(r);
+        if (x > d.x - 8 && x < d.x + d.w + 8) return true;
+      }
+      const n = side < 0 ? F1.nicheTop : F1.nicheBot;
+      if (x > n.x - 8 && x < n.x + n.w + 8) return true;
+      if (x > F1.fireX - 12 && x < F1.fireX + 26) return true;
+      if (side > 0 && x > F1.foyer.x - 6 && x < F1.foyer.x + F1.foyer.w + 6) return true;
+      return x > X_END - 20;
+    };
+    for (const side of [-1, 1] as Side[]) {
+      const z = side < 0 ? c0 + 0.018 : c1 - 0.018;
+      for (let x0 = 12; x0 + 30 <= X_END; x0 += 30) {
+        const a = x0 + 1;
+        const b2 = x0 + 29;
+        if (doorBlocked(side, a) || doorBlocked(side, b2) || doorBlocked(side, (a + b2) / 2)) continue;
+        const g = new THREE.PlaneGeometry(m(b2 - a), HEIGHTS.cove - 0.75);
+        if (side > 0) g.rotateY(Math.PI);
+        g.translate(m((a + b2) / 2), 0.3 + (HEIGHTS.cove - 0.75) / 2, z);
+        quadsP.push(g);
+      }
+    }
+    if (quadsP.length) {
+      const mesh = new THREE.Mesh(mergeAll(quadsP), lacquer);
+      mesh.receiveShadow = true;
+      group.add(mesh);
+    }
+  }
+
   // Stickers and graffiti on free wall spans: printed ones lit by the room,
   // the tags in UV-reactive paint glowing faintly on their own.
   const { map, glow } = stickerAtlas();
@@ -335,7 +382,7 @@ export function buildDetails(mats: Materials, refl: PlanarReflection, taken: Arr
   };
   const quads: THREE.BufferGeometry[] = [];
   for (const side of [-1, 1] as Side[]) {
-    const z = side < 0 ? c0 + 0.02 : c1 - 0.02;
+    const z = side < 0 ? c0 + 0.035 : c1 - 0.035;
     for (const [a, b] of freeSpans(side, taken)) {
       const n = Math.floor((b - a) / 14);
       for (let k = 0; k < n; k++) {
@@ -441,7 +488,7 @@ export function buildDetails(mats: Materials, refl: PlanarReflection, taken: Arr
     for (const [a, b] of freeSpans(side, taken)) {
       if (b - a < 30) continue;
       const x = m((a + b) / 2);
-      const z = side < 0 ? c0 + 0.03 : c1 - 0.03;
+      const z = side < 0 ? c0 + 0.045 : c1 - 0.045;
       const vent = new THREE.Group();
       const frame = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.45, 0.05), ventMat);
       vent.add(frame);

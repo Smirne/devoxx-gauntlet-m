@@ -19,7 +19,7 @@ import { Pipeline, QUALITY, type QualityName, type VolumeSpot } from './pipeline
 import { createProps, type Props3D } from './props3d';
 import { createRobots, updateRobots, type Robot3D } from './robots3d';
 import { HEIGHTS, X_END, buildVenue, type Venue3D } from './venue';
-import { CY0, CY1 } from '../sim/geometry';
+import { CY0, CY1, F1 } from '../sim/geometry';
 
 export interface World3D {
   readonly renderer: THREE.WebGLRenderer;
@@ -108,7 +108,9 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   const PROBE = new THREE.Vector3(m(300), 1.8, m(350));
   const probeBox: ProbeBox = {
     min: new THREE.Vector3(0, 0, m(CY0)),
-    max: new THREE.Vector3(m(X_END + 8), HEIGHTS.corridor, m(CY1)),
+    // The closed section only: east of the shutter the capture (taken west of
+    // it) would reflect the red shutter into every surface.
+    max: new THREE.Vector3(m(F1.fireX), HEIGHTS.corridor, m(CY1)),
     probe: PROBE,
   };
   let patchedFrames = 0;
