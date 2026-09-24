@@ -40,6 +40,7 @@ import * as THREE from 'three';
 
 import { H, T, W } from '../../sim/constants';
 import {
+  COUNTER,
   ENTRANCE_BAYS,
   FORECOURT_BOLLARDS,
   FORECOURT_PLANTERS,
@@ -795,29 +796,46 @@ function reception(p: VenuePalette, overhead: THREE.Group): THREE.Group {
   const r = GF.reception;
   const co = GF.coatroom;
 
-  // The wood-slat back wall: the wardrobe's own north face, seen over the counter
-  // and over the desk from the diorama camera.
-  g.add(slab({ x: co.x + T, y: co.y + T, w: co.w - 2 * T, h: 5 }, RISE, 2.6, p.wood));
-  for (let x = co.x + T + 5; x < co.x + co.w - T; x += 13) {
-    g.add(slab({ x, y: co.y + T - 2, w: 4, h: 2 }, RISE + 0.1, 2.4, p.blackMetal));
+  /*
+   * THE WARDROBE IS NOW READ FROM THE WEST, so its dressing turned with it.
+   *
+   * The hand-in counter moved to the west face (`groundWalls`), which is the only
+   * side of this block anybody can stand at. So the wood-slat back wall is the
+   * EAST face — the one you see across the room when you look in over the counter
+   * — and the coat rails run north-south, down the length of the view, instead of
+   * end-on across it.
+   */
+  g.add(slab({ x: co.x + co.w - T - 5, y: co.y + T, w: 5, h: co.h - 2 * T }, RISE, 2.6, p.wood));
+  for (let y = co.y + T + 5; y < co.y + co.h - T; y += 13) {
+    g.add(slab({ x: co.x + co.w - T - 2, y, w: 2, h: 4 }, RISE + 0.1, 2.4, p.blackMetal));
   }
 
   // Coat rails and a thin crowd of hangers, inside the wardrobe.
-  for (const ry of [co.y + 34, co.y + 74]) {
-    g.add(slab({ x: co.x + 14, y: ry, w: co.w - 28, h: 3 }, RISE + 1.5, 0.05, p.steelRail));
-    for (let x = co.x + 18; x < co.x + co.w - 18; x += 7) {
-      g.add(slab({ x, y: ry - 4, w: 5, h: 10 }, RISE + 0.72, 0.76, p.coatFabric));
+  for (const rx of [co.x + 40, co.x + 80]) {
+    g.add(slab({ x: rx, y: co.y + 14, w: 3, h: co.h - 28 }, RISE + 1.5, 0.05, p.steelRail));
+    for (let y = co.y + 18; y < co.y + co.h - 18; y += 7) {
+      g.add(slab({ x: rx - 4, y, w: 10, h: 5 }, RISE + 0.72, 0.76, p.coatFabric));
     }
   }
 
   const printer = slab(GF.printer, RISE + LOW_H, 0.28, p.printerWhite);
   printer.name = 'badge-printer';
   g.add(printer);
-  // Cream-shaded table lamps along the counter.
-  for (let k = 0; k < 3; k++) {
-    const lx = r.x + 22 + k * 42;
-    g.add(postAt(lx, r.y + 22, 0.03, 0.26, RISE + LOW_H, p.brass, 8));
-    g.add(boxAt(lx, r.y + 22, 9, 9, RISE + LOW_H + 0.26, 0.2, p.lampWarm));
+  /*
+   * Cream-shaded table lamps ALONG THE TWO RUNS, not floating in the middle.
+   *
+   * The counter is an L and hollow now, so a lamp at the old `r.y + 22` would have
+   * stood on open floor inside the desk. Two sit on the south run either side of
+   * the printer, one on the west run.
+   */
+  const southMid = r.y + r.h - COUNTER / 2;
+  for (const [lx, ly] of [
+    [r.x + 30, southMid],
+    [r.x + r.w - 14, southMid],
+    [r.x + COUNTER / 2, r.y + 26],
+  ] as const) {
+    g.add(postAt(lx, ly, 0.03, 0.26, RISE + LOW_H, p.brass, 8));
+    g.add(boxAt(lx, ly, 9, 9, RISE + LOW_H + 0.26, 0.2, p.lampWarm));
   }
 
   // The big white pendant disc and the orange ceiling soffit strip.
