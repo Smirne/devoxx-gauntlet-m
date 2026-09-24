@@ -452,3 +452,23 @@ Voxxy's 2.75, which looks impossible written down. Driven — hold S from the ba
 offset 0 to ±4 px — **both robots get through on every single entry offset**, because the collision
 resolver slides them off the wall rather than stopping them. Widening it would cost the gate (Biggy
 is 18 px across against the aisle's 15) and buy nothing.
+
+### Crate stencils — agreed 24 Sep (not yet built)
+
+Michele: *"the antwerpen sticker could stretch between the 3 crates instead of being repeated?"* — yes,
+and it is the better read. One shipping stencil spans all three crates in the opening shot; the word
+only exists while they stand in a row, and it breaks apart the moment the robots step down and the
+crates are left behind. That is a beat the repeated label does not have.
+
+Layout, decided by legibility rather than taste. At the intro's tight framing a crate face is about
+520 px wide, so a letter can be ~150 px tall spanning three crates against ~45 px repeated per crate.
+
+| band | text | placement |
+| --- | --- | --- |
+| big, spanning | `DEVOXX` | exactly two letters per crate (`DE` `VO` `XX`), so the two crate seams fall **between** letters and no glyph is ever cut by a gap |
+| small, spanning | `ANTWERPEN · T.A.V. STEPHAN` | second line under it, also continuous across the three faces |
+| per crate | Voxxy `FRAGILE · THIS WAY UP` (arrow upside down), Droid `DO NOT BEND`, Biggy `HIGHLY FRAGILE` + a stoved-in corner | each in its own crate's lower corner, unaffected by the span |
+
+Consequences to honour when it is built: crate order is load-bearing (Voxxy, Droid, Biggy, left to
+right) and the three faces must be coplanar and evenly gapped, or the word skews. `ZAAL 8` is dropped
+— three bands on one face is one too many at this size.
