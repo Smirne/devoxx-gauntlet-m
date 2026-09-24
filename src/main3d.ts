@@ -164,6 +164,7 @@ function pushStick(dt: number): void {
   const strafe = (held.right ? 1 : 0) - (held.left ? 1 : 0);
   if (fwd === 0 && strafe === 0) {
     spinning = false;
+    aboutYaw = null;
     game.setStick(0, 0);
     return;
   }
@@ -183,8 +184,30 @@ function pushStick(dt: number): void {
     return;
   }
   spinning = false;
+  // S is an about-face (Michele: "going straight with W, then reversing with S,
+  // the camera still faces W"). The first S frame locks the direction away from
+  // the camera's back; while S is held the robot walks THAT way as if it were
+  // W, and the camera swings round behind it. Locked, so the swinging camera
+  // cannot turn "back" round again under the player's thumb.
+  if (fwd < 0) {
+    if (aboutYaw === null) aboutYaw = world.cam.yaw + Math.PI;
+    let d = aboutYaw - world.cam.yaw;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    world.cam.yaw += d * Math.min(1, dt * 3.5);
+    game.setStick(...stickAt(aboutYaw, 1, strafe));
+    return;
+  }
+  aboutYaw = null;
   const [sx, sy] = world.cam.stick(fwd, strafe);
   game.setStick(sx, sy);
+}
+
+/** Held-S heading (camera yaw it is driven as), locked for the whole press. */
+let aboutYaw: number | null = null;
+
+/** `ThirdPersonCamera.stick` for a given yaw rather than the camera's own. */
+function stickAt(yaw: number, fwd: number, strafe: number): [number, number] {
+  return [-Math.sin(yaw) * fwd + Math.cos(yaw) * strafe, -Math.cos(yaw) * fwd - Math.sin(yaw) * strafe];
 }
 
 function codeOf(ev: KeyboardEvent): string {
