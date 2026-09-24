@@ -1032,5 +1032,17 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   else if (showCards) showCard(TITLE_CARD);
   else startChapter(1);
 
-  return { snapshot, update, key, setStick: (x, y) => { stickX = x; stickY = y; }, skipChapter, startChapter, debug };
+  /**
+   * See `Game.turn`. Standing only — under 8 px/s (0.64 m/s), a robot still
+   * settling after the stick let go — and never while carried or mid-cutscene.
+   * An input threshold, not physics: nothing it moves is a frozen constant.
+   */
+  function turn(rad: number): void {
+    if (phase !== 'play') return;
+    const b = bots[cur];
+    if (!b || b.mounted || Math.hypot(b.vx, b.vy) > 8) return;
+    b.face = Math.atan2(Math.sin(b.face + rad), Math.cos(b.face + rad));
+  }
+
+  return { snapshot, update, key, setStick: (x, y) => { stickX = x; stickY = y; }, turn, skipChapter, startChapter, debug };
 }
