@@ -1886,6 +1886,9 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
         heading: b.face,
         dt,
         mounted: b.mounted,
+        // The same `hopPhase` the lift above is drawn from, so the pose and the
+        // height are two readings of one number rather than two animations.
+        hop: u,
       });
     }
   }

@@ -609,7 +609,7 @@ const OBJECTIVE =
   'speaker at a built booth. The sponsor booths are open and running their games: three bits of ' +
   '<b>swag</b> to be won on the way, all optional.';
 const KEYS =
-  '1/2/3/Tab: switch · WASD · E: use / lift a crate / ask / clear a queue / play a booth game · Space: tow Biggy · R: restart';
+  '1/2/3/Tab: switch · WASD · E: use / lift / ask / clear a queue / play a game / tow Biggy / Voxxy jumps · R: restart';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');
@@ -1133,28 +1133,43 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   /* --------------------------------------------------------------------- keys */
 
-  function key(code: string): void {
+  /**
+   * This chapter's keys — and what it hands back.
+   *
+   * `false` means "`E` means nothing where you are standing", and `game.ts` then
+   * spends the key on Voxxy's hop or on taking hold of Biggy (see
+   * `ChapterRuntime.key`). Chapter 3 was the last of the four to be taught it, and
+   * the symptom was reported from the other end: the rig round found that Voxxy
+   * could not hop anywhere in this chapter at all, because everything here ends in
+   * a line of dialogue and a line of dialogue was claiming the key.
+   *
+   * Only the two dead ends hand it back — Voxxy with nobody to talk to, and Biggy
+   * with nothing to pick up. Every refusal that names a REASON keeps the key,
+   * because those are answers: "no ladle", "I am three crates deep", "that weighs
+   * more than I do". Hopping instead of saying one of those would be a worse game.
+   */
+  function key(code: string): boolean {
     const b = ctx.bots[ctx.cur];
     const d = ctx.byKind('droid');
     const bg = ctx.byKind('biggy');
     const v = ctx.byKind('voxxy');
     ctx.switchKey(code);
-    if (code !== 'KeyE') return;
-    if (mg.key(code, b)) return;
+    if (code !== 'KeyE') return true;
+    if (mg.key(code, b)) return true;
 
     if (b.kind === 'droid') {
       if (!ladle && dist(d, shelfAt) < SHELF_REACH) {
         ladle = true;
         ctx.flash('Droid reaches the high shelf — ladle secured');
-        return;
+        return true;
       }
       const dc = crateInReach(d);
       if (dc) {
         ctx.flash(`Droid: "${dc.name}. Half my own mass, all of it above the knee. This one is Biggy's."`);
-        return;
+        return true;
       }
       ctx.flash('Droid: nothing to reach here');
-      return;
+      return true;
     }
 
     if (b.kind === 'biggy') {
@@ -1165,21 +1180,21 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       // nothing to pick up here" is the worst kind of feedback: correct, useless.
       if (carriedCrates() > 0 && (inRect(bg, BEER_STACK) || dist(bg, STACK_AT) < STACK_REACH)) {
         stackCrates();
-        return;
+        return true;
       }
       if (!carrying && dist(bg, station) < POT_REACH) {
         if (!ladle) {
           ctx.flash('Biggy: no ladle. Droid, the shelf!');
-          return;
+          return true;
         }
         if (carriedCrates() > 0) {
           ctx.flash(`Biggy: "I am ${carriedCrates()} crates deep. The pot can wait, or the beer can."`);
-          return;
+          return true;
         }
         carrying = true;
         pickupT = ctx.t;
         ctx.flash("Biggy has the pot. Careful — it can't stop and the soup can't either.");
-        return;
+        return true;
       }
       if (carrying && !delivered && inRect(bg, stage)) {
         delivered = true;
@@ -1187,15 +1202,16 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           `Stephan: "${soup > 70 ? 'Finally! Still hot.' : soup > 35 ? "Half a bowl. It's… something." : 'Is this a bowl or a hint?'}"`,
           4000,
         );
-        return;
+        return true;
       }
-      if (takeCrate(bg)) return;
+      if (takeCrate(bg)) return true;
       if (carriedCrates() > 0) {
         ctx.flash(`Biggy: "I am not putting these down in the middle of the floor. They go to ${BAR_NAME}, by the taps."`);
-        return;
+        return true;
       }
-      ctx.flash('Biggy: nothing to pick up here');
-      return;
+      // His dead end. He cannot hop, but he can be taken hold of, and `spareE`
+      // has a better line for him than this one did.
+      return false;
     }
 
     // Voxxy: the one who talks to people.
@@ -1203,24 +1219,25 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     if (q && q.open <= 0) {
       q.open = QUEUE_OPEN;
       ctx.flash(`Voxxy: "Excuse me — soup coming through!" — the ${q.label} makes way for ${QUEUE_OPEN}s`);
-      return;
+      return true;
     }
     const n = npcs.find((o) => dist(o, v) < TALK_REACH);
     if (n) {
       ctx.flash(`${n.name}: "${n.line}"`, 4500);
-      return;
+      return true;
     }
     if (!speaker.following && dist(speaker, v) < TALK_REACH) {
       speaker.following = true;
       ctx.flash('Keynote speaker: "Oh! Is it time? Lead the way."');
-      return;
+      return true;
     }
     const vc = crateInReach(v);
     if (vc) {
       ctx.flash(`Voxxy: "${vc.name} weighs more than I do. Considerably more. BIGGY!"`);
-      return;
+      return true;
     }
-    ctx.flash('Voxxy: nobody to talk to here');
+    // Her dead end, handed back: at Biggy it becomes a grab, anywhere else a hop.
+    return false;
   }
 
   /* ------------------------------------------------------------------- update */
