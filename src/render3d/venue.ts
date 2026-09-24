@@ -30,7 +30,7 @@ import { adScreen, ledTicker } from './screens';
 import { POSTERS, cityscape, emitter, exitSign, menuBoard, neonText, poster, rainMask, wayfinding, zaalPanel } from './signs';
 
 /** Where chapter 1's geometry stops, sim px: just past the fire door. */
-export const X_END = 616;
+export const X_END = 912;
 
 export const HEIGHTS = Object.freeze({
   room: 7.2,
@@ -45,11 +45,15 @@ type Region = 'corridor' | 'foyer' | 'room' | 'void';
 
 function regionAt(sx: number, sy: number): Region {
   if (sx >= 0 && sx <= X_END + 20 && sy >= CY0 && sy <= CY1) return 'corridor';
+  for (const n of [F1.nicheTop, F1.nicheBot]) if (sx >= n.x && sx <= n.x + n.w && sy >= n.y && sy <= n.y + n.h) return 'corridor';
   const f = F1.foyer;
   if (sx >= f.x && sx <= f.x + f.w && sy >= f.y && sy <= f.y + f.h) return 'foyer';
   for (const r of rooms) if (sx >= r.x && sx <= r.x + r.w && sy >= r.y && sy <= r.y + r.h) return 'room';
   return 'void';
 }
+
+/** A room this build draws: the closed section, plus the sealed Devoxx rooms 10 and 3 up to the stairs. */
+const inBuild = (r: RoomDef): boolean => r.x + r.w <= X_END;
 
 export interface Venue3D {
   group: THREE.Group;
@@ -192,7 +196,9 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     const g = quad(V(m(r.x), 0, m(r.y + r.h)), V(m(r.x + r.w), 0, m(r.y + r.h)), V(m(r.x + r.w), 0, m(r.y)), V(m(r.x), 0, m(r.y)), 2.4);
     floorGeo.push(g);
   };
-  addFloor({ x: 0, y: CY0 - T, w: X_END + 40, h: CY1 - CY0 + 2 * T });
+  // Terrazzo up to the fire door; beyond it the Devoxx half has the navy
+  // carpet the venue photos show (CAPTIONS.md: "dark navy carpet").
+  addFloor({ x: 0, y: CY0 - T, w: F1.fireX + 7, h: CY1 - CY0 + 2 * T });
   addFloor({ x: F1.foyer.x - T, y: F1.foyer.y + T, w: F1.foyer.w + 2 * T, h: F1.foyer.h - T });
   const floor = new THREE.Mesh(mergeGeometries(floorGeo)!, floorMat);
   floor.receiveShadow = true;
@@ -202,6 +208,11 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   reflectors.push(floor);
 
   const carpet = new Buckets();
+  {
+    const x0 = F1.fireX + 7;
+    const x1 = X_END + 40;
+    carpet.add(mats.carpet, quad(V(m(x0), 0.002, m(CY1 + T)), V(m(x1), 0.002, m(CY1 + T)), V(m(x1), 0.002, m(CY0 - T)), V(m(x0), 0.002, m(CY0 - T)), 2.5));
+  }
   for (const r of rooms) {
     if (!r.closed) continue;
     carpet.add(mats.carpetRed, quad(V(m(r.x), 0.002, m(r.y + r.h)), V(m(r.x + r.w), 0.002, m(r.y + r.h)), V(m(r.x + r.w), 0.002, m(r.y)), V(m(r.x), 0.002, m(r.y)), 3));
@@ -223,11 +234,17 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
       wallSlab(shell, mats, { ...r, y: win.sy0, h: win.sy1 - win.sy0 }, win.y1, HEIGHTS.room, pick);
       continue;
     }
-    wallSlab(shell, mats, r, 0, HEIGHTS.room, pick);
+    // The stair niches' walls run on down the flight.
+    const niche = [F1.nicheTop, F1.nicheBot].some((n) => r.x >= n.x - T - 1 && r.x <= n.x + n.w + 1 && r.y >= n.y - T - 1 && r.y <= n.y + n.h + 1);
+    wallSlab(shell, mats, r, niche ? -3.6 : 0, HEIGHTS.room, pick);
+  }
+  for (const n of [F1.nicheTop, F1.nicheBot]) {
+    const y = n === F1.nicheTop ? CY0 - T : CY1;
+    wallSlab(shell, mats, { x: n.x, y, w: n.w, h: T }, 3.0, HEIGHTS.room, pick);
   }
   // Lintels over every doorway on the corridor, and over the foyer's wide mouth.
   for (const r of rooms) {
-    if (!r.closed) continue;
+    if (!inBuild(r)) continue;
     const d = roomDoor(r);
     const y = r.side < 0 ? CY0 - T : CY1;
     wallSlab(shell, mats, { x: d.x, y, w: d.w, h: T }, HEIGHTS.door, HEIGHTS.room, pick);
@@ -239,7 +256,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   // Door jamb trims (steel) so the openings read as doors.
   const trims = new Buckets();
   for (const r of rooms) {
-    if (!r.closed) continue;
+    if (!inBuild(r)) continue;
     const d = roomDoor(r);
     const zc = m(r.side < 0 ? CY0 - T / 2 : CY1 + T / 2);
     const depth = m(T) + 0.08;
@@ -667,7 +684,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
 
   // Orange Zaal panels beside each door (CAPTIONS.md #1), lettered as the sim names the rooms.
   for (const r of rooms) {
-    if (!r.closed) continue;
+    if (!inBuild(r)) continue;
     const d = roomDoor(r);
     const zFace = r.side < 0 ? m(CY0) + 0.03 : m(CY1) - 0.03;
     const panel = emitter(zaalPanel(String(r.n)), 1.1, 2.2, 3.2, 0xffffff, false);
@@ -738,11 +755,8 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     wf.rotation.y = Math.PI;
     group.add(wf);
   }
-  // EXIT signs: over the foyer mouth and by the fire door.
-  for (const [x, z, ry] of [
-    [F1.foyer.x + F1.foyer.w / 2, m(CY1) - 0.06, Math.PI],
-    [X_END - 2, m((CY0 + CY1) / 2) - 3.2, -Math.PI / 2],
-  ] as Array<[number, number, number]>) {
+  // EXIT sign over the foyer mouth.
+  for (const [x, z, ry] of [[F1.foyer.x + F1.foyer.w / 2, m(CY1) - 0.06, Math.PI]] as Array<[number, number, number]>) {
     const ex = emitter(exitSign(), 0.9, 0.34, 5, 0xffffff, false);
     ex.position.set(m(x), HEIGHTS.foyerOpening + 0.35, z);
     if (ry === -Math.PI / 2) ex.position.set(m(x) - 0.1, 3.4, z);
@@ -845,10 +859,12 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     const det = new Buckets();
     const doorSpans = (side: -1 | 1): Array<[number, number]> => {
       const spans: Array<[number, number]> = [];
-      for (const r of rooms) if (r.closed && r.side === side) {
+      for (const r of rooms) if (inBuild(r) && r.side === side) {
         const d = roomDoor(r);
         spans.push([d.x - 4, d.x + d.w + 4]);
       }
+      const n = side < 0 ? F1.nicheTop : F1.nicheBot;
+      spans.push([n.x - 4, n.x + n.w + 4]);
       if (side > 0) spans.push([F1.foyer.x, F1.foyer.x + F1.foyer.w]);
       return spans;
     };
@@ -900,6 +916,81 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     const fix = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.18, 0.5), mats.darkMetal);
     fix.position.copy(wash.position);
     group.add(fix);
+  }
+
+  /* ------------------------------------------- the secondary staircases */
+
+  // Between 10|9 (north) and 3|4 (south), exactly where the plans put them: a
+  // landing off the corridor, then a flight down toward the exhibition hall,
+  // amber nosing lights on every tread and a green sign over the mouth.
+  for (const [n, dir] of [
+    [F1.nicheTop, -1],
+    [F1.nicheBot, 1],
+  ] as Array<[Rect, number]>) {
+    const zEdge = dir > 0 ? m(n.y) : m(n.y + n.h);
+    const x0 = m(n.x);
+    const x1 = m(n.x + n.w);
+    const landing = 2.7;
+    const treads = 14;
+    const run = 0.3;
+    const rise = 0.19;
+    const st = new Buckets();
+    st.add(mats.carpet, quad(V(x0, 0.004, zEdge + dir * landing), V(x1, 0.004, zEdge + dir * landing), V(x1, 0.004, zEdge), V(x0, 0.004, zEdge), 2.4));
+    const noses: THREE.Vector3[] = [];
+    for (let i = 0; i < treads; i++) {
+      const zA = zEdge + dir * (landing + i * run);
+      const yTop = -(i + 1) * rise;
+      const zc = zA + (dir * run) / 2;
+      st.add(mats.carpet, box(x1 - x0, 0.06, run, V((x0 + x1) / 2, yTop - 0.03, zc), 1.5));
+      st.add(mats.darkMetal, box(x1 - x0, rise, 0.04, V((x0 + x1) / 2, yTop + rise / 2, zA), 1.5));
+      noses.push(V(x0 + 0.25, yTop + 0.01, zA + dir * 0.03), V(x1 - 0.25, yTop + 0.01, zA + dir * 0.03));
+    }
+    for (const x of [x0 + 0.12, x1 - 0.12]) {
+      const pts = [V(x, 0.95, zEdge + dir * (landing - 0.3)), V(x, 0.95 - treads * rise, zEdge + dir * (landing + treads * run))];
+      st.add(mats.steel, new THREE.TubeGeometry(new THREE.LineCurve3(pts[0], pts[1]), 8, 0.025, 8).toNonIndexed());
+    }
+    st.build(group);
+    addStepLights(group, noses);
+    const signTex = wayfinding([['↓', 'gelijkvloers'], ['', 'expo · hall']]);
+    const sign = emitter(signTex, 1.6, 0.8, 2.4, 0xffffff, false);
+    sign.position.set((x0 + x1) / 2, 3.45, (dir > 0 ? m(CY1) : m(CY0)) - dir * 0.06);
+    sign.rotation.y = dir > 0 ? Math.PI : 0;
+    group.add(sign);
+    volumePoints.push({ position: V((x0 + x1) / 2, 2.2, zEdge + dir * 1.2), color: new THREE.Color(1, 0.55, 0.2).multiplyScalar(0.35), range: 3 });
+  }
+
+  // The Devoxx half has power: warm downlights down its corridor. Cones point
+  // straight down and stop at the floor, so nothing leaks through the shutter
+  // while it is shut — and when it rolls up, the light is waiting.
+  for (const x of [668, 760, 840]) {
+    const spot = new THREE.SpotLight(0xffd7a8, 700, 9, 0.62, 0.5, 2);
+    spot.position.set(m(x), HEIGHTS.corridor - 0.1, m((CY0 + CY1) / 2));
+    spot.target.position.set(m(x), 0, m((CY0 + CY1) / 2));
+    group.add(spot, spot.target);
+    volumeSpots.push({ light: spot, fog: 0.06 });
+    const can = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.06, 24), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.85, 0.7).multiplyScalar(40), toneMapped: false }));
+    can.position.set(m(x), HEIGHTS.corridor - 0.03, m((CY0 + CY1) / 2));
+    group.add(can);
+  }
+
+  // Rooms 10 and 3 are Devoxx rooms and sealed tonight: their doors are shut
+  // (the sim never sends anyone in; this only closes the view).
+  for (const r of rooms) {
+    if (r.closed || !inBuild(r)) continue;
+    const d = roomDoor(r);
+    const leafZ = m(d.y + d.h / 2);
+    const g = new THREE.Group();
+    const H = HEIGHTS.door - 0.05;
+    for (const sgn of [-1, 1]) {
+      const leaf = new THREE.Mesh(new THREE.BoxGeometry(m(d.w) / 2 - 0.02, H, 0.09), mats.darkMetal);
+      leaf.position.set((sgn * m(d.w)) / 4, H / 2, 0);
+      const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, m(d.w) * 0.3, 10), mats.steel);
+      bar.rotation.z = Math.PI / 2;
+      bar.position.set((sgn * m(d.w)) / 4, 1.05, r.side < 0 ? 0.1 : -0.1);
+      g.add(leaf, bar);
+    }
+    g.position.set(m(d.cx), 0, leafZ);
+    group.add(g);
   }
 
   /* ------------------------------------------------------ emergency power */

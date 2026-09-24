@@ -91,7 +91,7 @@ export function zaalPanel(letter: string): THREE.CanvasTexture {
   x.fillStyle = g;
   x.fillRect(0, 0, 256, 512);
   x.fillStyle = '#fff';
-  x.font = 'bold 300px "Helvetica Neue", Arial, sans-serif';
+  x.font = `bold ${letter.length > 1 ? 190 : 300}px "Helvetica Neue", Arial, sans-serif`;
   x.textAlign = 'center';
   x.textBaseline = 'middle';
   x.fillText(letter, 128, 250);
