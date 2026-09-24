@@ -20,7 +20,8 @@
 
 import * as THREE from 'three';
 
-import { DEFS } from '../sim/constants';
+import { flairPhase, hopPhase } from '../sim/bot';
+import { DEFS, JUMP_RISE_M } from '../sim/constants';
 import type { Bot, GameSnapshot, RobotKind } from '../sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
 import { createRobot, updateRobot, type RobotRig } from '../render/robots';
@@ -47,12 +48,13 @@ export interface Robot3D {
 // lights a clue anywhere inside its cone out to 22-24 m, and a physical lamp
 // was invisible past ~5 m, so a clue could be lit with nothing on screen to
 // show it (playtest, 24 Sep: "Biggy's light not reaching?"). Tilted only
-// slightly down, so the beam travels down the room instead of pooling at the
-// robot's feet.
+// down enough that the beam's centre lands on the floor a few metres ahead
+// (clues are painted on the floor: "Voxxy light should point on the
+// pavement"), while the top of the cone still reaches down the room.
 const LAMP: Record<RobotKind, { intensity: number; fog: number; tilt: number; decay: number }> = {
-  voxxy: { intensity: 380, fog: 0.2, tilt: 0.05, decay: 1 },
+  voxxy: { intensity: 380, fog: 0.2, tilt: 0.25, decay: 1 },
   droid: { intensity: 420, fog: 0.0, tilt: 0, decay: 2 },
-  biggy: { intensity: 420, fog: 0.13, tilt: 0.07, decay: 1 },
+  biggy: { intensity: 420, fog: 0.13, tilt: 0.14, decay: 1 },
 };
 
 /* --------------------------------------------------------- material upgrade */
@@ -209,20 +211,72 @@ function mountLift(droid: RobotRig): number {
   return mountLiftM;
 }
 
+/** Droid's climb on and off Biggy, 0 on the floor .. 1 on top (renderer easing only). */
+let climb = 0;
+const climbFrom = new THREE.Vector3();
+let wasMounted = false;
+const CLIMB_TIME = 0.55;
+
+/** A gesture per robot, seconds left: the rig's own `reach` pose. */
+const gesture = new Map<RobotKind, number>();
+let lastPanel: string | undefined;
+let lastPad: string | undefined;
+
 /** Place and animate the robots from the snapshot, and aim their lamps. */
 export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot, dt: number): void {
   const droid = robots.get('droid');
+  const bg = snap.bots.find((o) => o.kind === 'biggy');
+  // The sim's state changes that a hand makes: Droid throwing the projector
+  // panel, a digit going into the keypad. Read off the props, drawn as a reach.
+  const panel = snap.props.find((q) => q.kind === 'projector-panel')?.state;
+  if (lastPanel !== undefined && panel !== lastPanel && panel === 'done') gesture.set('droid', 1.15);
+  lastPanel = panel;
+  const pad = snap.props.find((q) => q.kind === 'keypad')?.label;
+  const active = snap.bots[snap.active]?.kind;
+  if (lastPad !== undefined && pad !== lastPad && active) gesture.set(active, 0.7);
+  lastPad = pad;
+  for (const [k, v] of gesture) gesture.set(k, v - dt);
   for (const b of snap.bots) {
     const r = robots.get(b.kind);
     if (!r) continue;
-    const rider = b.kind === 'droid' && b.mounted;
-    const lift = rider && droid ? mountLift(droid.rig) : 0;
-    // The sim's MOUNT_OFFSET_Y is a 2.5D picture offset ("up" on screen). In
-    // 3D it pushed Droid half a metre off-centre and his legs into Biggy's
-    // dome, so the rider sits on Biggy's own centre instead.
-    const mount = rider ? snap.bots.find((o) => o.kind === 'biggy') : undefined;
-    r.rig.root.position.set(m(mount ? mount.x : b.x), lift, m(mount ? mount.y : b.y));
-    updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: b.face, dt, mounted: b.mounted });
+    // Voxxy's hop and every robot's party trick (E), off the sim's own clocks —
+    // the 2.5D renderer draws them the same way; the 3D one used to ignore
+    // both, so E did something in the sim and nothing on screen.
+    const u = hopPhase(b);
+    const hop = u > 0 ? JUMP_RISE_M * 4 * u * (1 - u) : 0;
+    let x = m(b.x);
+    let z = m(b.y);
+    let lift = hop;
+    let mounted = b.mounted;
+    if (b.kind === 'droid' && droid) {
+      // The sim snaps him on and off Biggy; the climb is eased here. While
+      // mounted he sits on Biggy's centre (MOUNT_OFFSET_Y is a 2.5D screen
+      // offset: in 3D it pushed his legs into the dome).
+      if (b.mounted !== wasMounted) {
+        climbFrom.copy(r.rig.root.position);
+        wasMounted = b.mounted;
+      }
+      climb = THREE.MathUtils.clamp(climb + (b.mounted ? dt : -dt) / CLIMB_TIME, 0, 1);
+      const top = b.mounted && bg ? new THREE.Vector3(m(bg.x), mountLift(droid.rig), m(bg.y)) : new THREE.Vector3(x, 0, z);
+      const e = climb * climb * (3 - 2 * climb);
+      const k = b.mounted ? e : 1 - e;
+      if (climb > 0 && climb < 1) {
+        // Between the two ends: from where he was toward where he is going,
+        // over a small arc — a step up, not a teleport.
+        // k runs 0 -> 1 from where he was to where he is going, either way.
+        const t = k;
+        x = THREE.MathUtils.lerp(climbFrom.x, top.x, t);
+        z = THREE.MathUtils.lerp(climbFrom.z, top.z, t);
+        lift = THREE.MathUtils.lerp(climbFrom.y, top.y, t) + Math.sin(Math.PI * t) * 0.35;
+        mounted = b.mounted ? t > 0.6 : t < 0.4;
+      } else if (b.mounted && bg) {
+        x = top.x;
+        z = top.z;
+        lift = top.y;
+      }
+    }
+    r.rig.root.position.set(x, lift, z);
+    updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: b.face, dt, mounted, hop: u, flair: flairPhase(b), pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null });
     aimLamp(r, b);
   }
 }

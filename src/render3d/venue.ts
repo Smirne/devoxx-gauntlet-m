@@ -15,7 +15,6 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
 
 import { T } from '../sim/constants';
 import { CY0, CY1, F1, roomDoor, rooms, roomSeating, floor1Walls } from '../sim/geometry';
@@ -75,7 +74,7 @@ export interface Venue3D {
    * Cinema E's screen, which the chapter makes a mirror: a real planar mirror
    * whose image the world refreshes only while the camera is near the room.
    */
-  mirror: { mesh: Reflector; render: (r: THREE.WebGLRenderer, s: THREE.Scene, c: THREE.Camera) => void; room: Rect } | null;
+  mirror: { mesh: THREE.Mesh; render: (r: THREE.WebGLRenderer, s: THREE.Scene, c: THREE.Camera) => void; room: Rect } | null;
 }
 
 /* ---------------------------------------------------------------- builders */
@@ -213,7 +212,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   const volumePoints: VolumePoint[] = [];
   const volumeSpots: Array<{ light: THREE.SpotLight; fog: number }> = [];
   const updaters: Array<(t: number, dt: number) => void> = [];
-  let mirror: Venue3D['mirror'] = null;
+  const mirror: Venue3D['mirror'] = null;
 
   const walls: Wall[] = floor1Walls();
   const shell = new Buckets();
@@ -386,24 +385,11 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     const sw = m(r.w) * 0.6;
     const sh = sw / 2.39;
     const sy = 1.6 + sh / 2;
-    let scr: THREE.Mesh;
-    if (r.n === 'E') {
-      const refl = new Reflector(new THREE.PlaneGeometry(sw, sh), {
-        textureWidth: 1024,
-        textureHeight: Math.round(1024 / 2.39),
-        clipBias: 0.003,
-        color: new THREE.Color(0.85, 0.87, 0.9),
-        multisample: 0,
-      });
-      const render = refl.onBeforeRender.bind(refl) as unknown as (r2: THREE.WebGLRenderer, s2: THREE.Scene, c2: THREE.Camera) => void;
-      refl.onBeforeRender = () => {};
-      noMerge(refl);
-      scr = refl;
-      mirror = { mesh: refl, render, room: { x: r.x, y: r.y, w: r.w, h: r.h } };
-    } else {
-      scr = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), new THREE.MeshPhysicalMaterial({ color: 0x9a9da3, roughness: 0.55, metalness: 0 }));
-      scr.receiveShadow = true;
-    }
+    // A projection screen is white, E's included. Its "mirror" is the sim's:
+    // the bounce spots world.ts draws from the sim's secondary lights. A real
+    // planar mirror here read as a window, not a screen (playtest, 24 Sep).
+    const scr = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), new THREE.MeshPhysicalMaterial({ color: 0xdfe2e6, roughness: 0.6, metalness: 0 }));
+    scr.receiveShadow = true;
     scr.position.set(m(r.x + r.w / 2), sy, far + inward * 0.42);
     scr.rotation.y = inward > 0 ? 0 : Math.PI;
     group.add(scr);
@@ -774,7 +760,9 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     const zFace = side < 0 ? m(CY0) + 0.08 : m(CY1) - 0.08;
     const tx = poster(POSTERS[i % POSTERS.length]);
     const p = emitter(tx, 1.3, 1.95, 2.6, 0xffffff, false);
-    p.position.set(m(x), 2.0, zFace + (side < 0 ? 0.02 : -0.02));
+    // 3.5 cm off the wall: at 2 cm it sat exactly on the frame's front face and
+    // the two z-fought (the flickering keynote poster).
+    p.position.set(m(x), 2.0, zFace + (side < 0 ? 0.035 : -0.035));
     p.rotation.y = side < 0 ? 0 : Math.PI;
     group.add(p);
     const frame = new THREE.Mesh(box(1.5, 2.15, 0.14, V(0, 0, 0)), mats.darkMetal);
@@ -1009,8 +997,13 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
           group.add(led);
         }
       }
+      // Battens never cross a sign: the Zaal panels, the posters and the ad
+      // (one ran straight down the middle of Zaal E's panel).
+      const signs: Array<[number, number]> = [...spans];
+      for (const r of rooms) if (inBuild(r) && r.side === side) signs.push([roomDoor(r).x - 28, roomDoor(r).x - 8]);
+      for (const [a, b, sd] of [...SIGN_SPANS, adSpan]) if (sd === side) signs.push([a - 4, b + 4]);
       for (let x = 12; x < X_END - 4; x += 30) {
-        if (blocked(x, spans)) continue;
+        if (blocked(x, signs)) continue;
         det.add(mats.darkMetal, box(0.09, HEIGHTS.cove - 0.2, 0.06, V(m(x), (HEIGHTS.cove - 0.2) / 2 + 0.16, zf + inset * 0.03)));
       }
     }
@@ -1211,7 +1204,9 @@ export function addSeats(parent: THREE.Object3D, mats: Materials, placements: TH
     b.setMatrixAt(i, mm);
   });
   for (const im of [a, b]) {
-    im.castShadow = true;
+    // Seat rows are `low` in the sim: light crosses them. Casting shadows they
+    // hid a lamp that the sim counts as reaching a clue (cinema E).
+    im.castShadow = false;
     im.receiveShadow = true;
     parent.add(im);
   }

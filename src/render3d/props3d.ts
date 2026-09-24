@@ -107,32 +107,34 @@ function doorPair(mats: Materials, width: number): THREE.Group {
   for (const s of [-1, 1]) {
     const leaf = new THREE.Group();
     const slab = new THREE.Mesh(new THREE.BoxGeometry(lw, H, 0.09), leafMat);
-    slab.position.set((s * lw) / 2, H / 2, 0);
+    slab.position.set(-(s * lw) / 2, H / 2, 0);
     // Tufted buttons: a grid of small studs on both faces.
     const studs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.018, 6, 4), mats.steel, 2 * 5 * 8);
     let k = 0;
     for (const face of [-1, 1]) {
       for (let i = 0; i < 5; i++) {
         for (let j = 0; j < 8; j++) {
-          studs.setMatrixAt(k++, new THREE.Matrix4().makeTranslation((s * lw) / 2 + (i - 2) * lw * 0.18, 0.35 + j * 0.28, face * 0.05));
+          studs.setMatrixAt(k++, new THREE.Matrix4().makeTranslation(-(s * lw) / 2 + (i - 2) * lw * 0.18, 0.35 + j * 0.28, face * 0.05));
         }
       }
     }
     const kick = new THREE.Mesh(new THREE.BoxGeometry(lw - 0.06, 0.3, 0.1), mats.steel);
-    kick.position.set((s * lw) / 2, 0.17, 0);
+    kick.position.set(-(s * lw) / 2, 0.17, 0);
     const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, lw * 0.7, 10), mats.steel);
     bar.rotation.z = Math.PI / 2;
-    bar.position.set((s * lw) / 2, 1.05, 0.1);
+    bar.position.set(-(s * lw) / 2, 1.05, 0.1);
     const bar2 = bar.clone();
     bar2.position.z = -0.1;
     const port = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.1, 24), mats.blackGloss);
     port.rotation.x = Math.PI / 2;
-    port.position.set((s * lw) / 2, 1.7, 0);
+    port.position.set(-(s * lw) / 2, 1.7, 0);
     leaf.add(slab, studs, kick, bar, bar2, port);
     leaf.traverse((o) => {
       (o as THREE.Mesh).castShadow = true;
       (o as THREE.Mesh).receiveShadow = true;
     });
+    // Hinged at the frame, not the middle of the doorway, so it can swing.
+    leaf.position.x = s * (width / 2);
     leaf.userData.side = s;
     g.add(leaf);
   }
@@ -232,6 +234,22 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
         const s = shutter(mats, depth);
         s.position.set(m(p.x + (p.w ?? 14) / 2), 0, m(p.y + (p.h ?? 130) / 2));
         colliders.push(s.userData.curtain as THREE.Object3D);
+        // The sim's fixed screen either side of the opening ('firescreen'): it
+        // seals the corridor wall to wall. Without it the corridor looked open
+        // beside the door (playtest: "a passage you can't go through").
+        const zMid = m(p.y + (p.h ?? 130) / 2);
+        const H = HEIGHTS.corridor;
+        for (const [a, b] of [[CY0, p.y], [p.y + (p.h ?? 130), CY1]] as Array<[number, number]>) {
+          if (b - a < 1) continue;
+          const len = m(b - a);
+          const zc = m((a + b) / 2) - zMid;
+          const panel = new THREE.Mesh(box(0.3, H, len, V(0, H / 2, zc)), mats.enamel);
+          panel.castShadow = true;
+          panel.receiveShadow = true;
+          const post = new THREE.Mesh(box(0.36, H, 0.14, V(0, H / 2, zc + (a === CY0 ? len / 2 : -len / 2))), mats.steel);
+          s.add(panel, post);
+          colliders.push(panel);
+        }
         return s;
       }
       case 'keypad': {
@@ -439,6 +457,27 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
             hm.color.setRGB(done ? 0.15 : 1, done ? 1 : 0.62, done ? 0.35 : 0.12).multiplyScalar(6 * pulse);
             const rm = (o.userData.ring as THREE.Mesh).material as THREE.MeshBasicMaterial;
             rm.color.setRGB(done ? 0.15 : 1, done ? 1 : 0.6, done ? 0.35 : 0.12).multiplyScalar(done ? 0.4 : 0.9 + 0.6 * pulse);
+            break;
+          }
+          case 'lock': {
+            // Cinema B's door swings open on the sim's clock once the panel is
+            // thrown (it used to stay shut, and you walked through it).
+            if (!o.userData.noteTaken) {
+              for (const other of byKey.values()) {
+                if (!other.userData.notice || Math.hypot(other.position.x - o.position.x, other.position.z - o.position.z) > 2) continue;
+                // Taped to whichever leaf it sits on, so it swings with it.
+                const leaf = o.children.reduce((best, l) => (Math.abs(l.getWorldPosition(new THREE.Vector3()).x - other.position.x) < Math.abs(best.getWorldPosition(new THREE.Vector3()).x - other.position.x) ? l : best));
+                leaf.attach(other);
+                o.userData.noteTaken = true;
+              }
+            }
+            const e = THREE.MathUtils.smoothstep(p.progress ?? 0, 0, 1);
+            const roomSign = p.y < (CY0 + CY1) / 2 ? -1 : 1;
+            for (const leaf of o.children) leaf.rotation.y = (leaf.userData.side as number) * roomSign * e * 1.45;
+            if (e > 0.02) {
+              const idx = colliders.indexOf(o);
+              if (idx >= 0) colliders.splice(idx, 1);
+            }
             break;
           }
           case 'jammed': {
