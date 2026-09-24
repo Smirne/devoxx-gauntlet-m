@@ -19,7 +19,7 @@
 import * as THREE from 'three';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { H, W } from '../src/sim/constants';
+import { H, T, W } from '../src/sim/constants';
 import { CY0, CY1, F1, GF, LOBBY_RISE_M, R, rooms, stairFlightRect } from '../src/sim/geometry';
 import { PX_PER_M, STOREY_H_M, m } from '../src/sim/units';
 import { DIORAMA_ELEVATIONS_DEG, dioramaToCameraAtDeg } from '../src/render/camera';
@@ -467,6 +467,37 @@ describe('the exhibition level', () => {
     for (const name of ['roller-door', 'breaker-panel', 'network-rack', 'badge-printer', 'main-stair-gate']) {
       expect(venue.group.getObjectByName(name), `missing ${name}`).toBeDefined();
     }
+  });
+
+  /*
+   * Michele, tonight: *"where is the wifi password graffiti? It should be
+   * visible!"* It was sim-only — chapter 2 published it as a `poster` prop and the
+   * prop style draws every poster as a pale lightbox, so the paint never existed.
+   * Now the venue paints it, and it has to stay on the wall chapter 2 reads.
+   */
+  it('paints the wifi spray tag on the hall wall the chapter reads it off', () => {
+    const tag = venue.group.getObjectByName('wifi-tag');
+    expect(tag, 'no spray tag on the hall wall').toBeDefined();
+    const box = new THREE.Box3().setFromObject(tag as THREE.Object3D);
+    // Chapter 2 puts its prop at x 400 on the hall's top wall (`tagAt`).
+    expect((box.min.x + box.max.x) / 2).toBeCloseTo(m(400), 1);
+    expect((box.min.z + box.max.z) / 2).toBeCloseTo(m(GF.hall.y + T + 0.6), 1);
+    // Paint, not a lightbox: it must not out-glow the real signs.
+    const mat = (tag as THREE.Mesh).material as THREE.MeshStandardMaterial;
+    expect(mat.emissiveIntensity).toBeLessThan(0.4);
+  });
+
+  /*
+   * The printed WiFi notice used to hang at `GF.reception.y - 17` = y 371, which
+   * is inside `GF.coatroom` (262..384) — a sign nailed up inside a closed room.
+   */
+  it('hangs the printed wifi notice where somebody can read it, not inside the wardrobe', () => {
+    const sign = venue.group.getObjectByName('wifi-sign');
+    expect(sign, 'no wifi notice').toBeDefined();
+    const box = new THREE.Box3().setFromObject(sign as THREE.Object3D);
+    const cz = (box.min.z + box.max.z) / 2;
+    const co = GF.coatroom;
+    expect(cz < m(co.y) || cz > m(co.y + co.h), 'the notice is inside the wardrobe').toBe(true);
   });
 
   it('builds all twelve sponsor booths, half of them as cloth-draped tables', () => {
