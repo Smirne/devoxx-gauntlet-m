@@ -41,11 +41,69 @@ const PX_PER_M = 12.5;
 /**
  * Where the crate row stands, in sim px: the centre of the row's FACE line.
  *
- * In the chapter-1 corridor (y 285..415), north of the marks the robots walk to,
- * so they step toward the camera rather than away from it. The row is 60.3 px
- * wide, so this centre keeps it clear of the corridor's west end wall.
+ * Hard against the corridor's north wall (the corridor is y 285..415), so the
+ * crates stay out of the lane the player drives in once the game starts — they
+ * are still there for the rest of the chapter, as scenery with colliders, which
+ * is the half of Michele's option 2 worth keeping: *"crates remain after the
+ * transition, non interactive"*. Vanishing them at the transition would be the
+ * same discontinuity he objected to, only quicker.
+ *
+ * The deepest crate is Biggy's at 1.78 m, and `CRATE_ROW` is the FACE line, so
+ * the row occupies y 285..307 and leaves the southern 108 px of corridor clear.
  */
-export const CRATE_ROW = { x: 96, y: 318 } as const;
+const CRATE_ROW_Y = 307;
+/** One stride south of the crates: out, and facing down the corridor. */
+const STAND_Y = 324;
+export const CRATE_ROW = { x: 96, y: CRATE_ROW_Y } as const;
+
+/**
+ * Where each robot STANDS once it has stepped out — a row in front of its own
+ * crate, facing east, which is the way the corridor runs and the way they are
+ * about to go.
+ *
+ * Michele, on the first cut of this sequence: *"The intermediate scene i don't
+ * get it. Crates are there, robots in a different position, and then another
+ * transition to same scene without crates?"* He was seeing a redundancy rather
+ * than a shot: the step-down walked them the length of the corridor to the
+ * chapter's own start marks, and the chapter then restarted underneath them,
+ * which dropped the crates and re-placed the robots on one frame.
+ *
+ * So the chapter's marks ARE this row — `ch1-night.ts` places them here — and
+ * the step-down is one stride out of a crate rather than a journey. Of his three
+ * options he chose *"they start, but are in a similar position (next to each
+ * other as in the crates)"*, with *"maybe all facing east?"*.
+ */
+export const STAND_AT: Record<RobotKind, { x: number; y: number }> = {
+  voxxy: { x: CRATE_ROW.x - 1.72 * PX_PER_M, y: STAND_Y },
+  droid: { x: CRATE_ROW.x - 0.26 * PX_PER_M, y: STAND_Y },
+  biggy: { x: CRATE_ROW.x + 1.46 * PX_PER_M, y: STAND_Y },
+};
+
+/** Facing east, down the corridor: a sim heading of 0. */
+export const STAND_FACE = 0;
+
+/**
+ * The three crates as floor plan, sim px — what a robot cannot drive through.
+ *
+ * They stay for the whole chapter (Michele: *"crates remain after the
+ * transition, non interactive"*), so they are real obstacles and not a painting:
+ * the one complaint this game has collected twice is walking through something
+ * that is drawn solid. Depth is each crate's own, back from the row's FACE line,
+ * and the row sits against the corridor's north wall so the lane stays clear.
+ */
+export const CRATE_RECTS: ReadonlyArray<{ kind: RobotKind; x: number; y: number; w: number; h: number }> = (
+  [
+    { kind: 'voxxy' as const, cx: -1.72, w: 1.38, d: 1.06 },
+    { kind: 'droid' as const, cx: -0.26, w: 1.38, d: 1.16 },
+    { kind: 'biggy' as const, cx: 1.46, w: 1.9, d: 1.78 },
+  ]
+).map((c) => ({
+  kind: c.kind,
+  x: CRATE_ROW.x + (c.cx - c.w / 2) * PX_PER_M,
+  y: CRATE_ROW.y - c.d * PX_PER_M,
+  w: c.w * PX_PER_M,
+  h: c.d * PX_PER_M,
+}));
 
 /**
  * Each robot stands INSIDE its crate, not against the front of it — sim px.
@@ -107,6 +165,14 @@ export const TITLE_OUT = 0.8;
  * small red `HIGHLY FRAGILE`.
  */
 export const VIEW_CRATES: ViewRect = { x: CRATE_ROW.x - 58, y: CRATE_ROW.y - 34, w: 116, h: 85 };
+
+/**
+ * The shot the step-out plays in: the crates plus the row in front of them, and
+ * no more. The old sequence handed the walk chapter 1's whole rect, which is why
+ * the camera appeared to cut somewhere else and back — the step is 17 px, so the
+ * frame has no reason to move at all.
+ */
+export const VIEW_CRATES_OUT: ViewRect = { x: CRATE_ROW.x - 68, y: CRATE_ROW.y - 30, w: 136, h: 100 };
 
 /** How long the camera takes to pull back from the crates to the corridor. */
 export const PULL_BACK = 2.4;

@@ -39,6 +39,14 @@ import { FIRE_LEAF_H, FIRE_LEAF_T, fireDoorDraw } from './fire-door';
 import { buildKeypad, type KeypadModel } from './keypad';
 import { buildCrates, type CratesModel } from './crates';
 import { CRATE_ROW } from '../sim/opening';
+
+/**
+ * How lit the crates stay once the opening is over. Not zero: they are timber in
+ * a blackout, and at zero they read as three holes in the corridor rather than
+ * as the boxes the three of them climbed out of. The venue's own convention for
+ * anything that has to stay findable without power.
+ */
+const OPEN_CRATE_LIT = 0.16;
 import { createLightLayer, type LightLayer } from './lighting';
 import { PANEL_H_M, PANEL_LIFT_M, buildReleasePanel, type ReleasePanelModel } from './release-panel';
 import { createRobot, measureBounds, updateRobot, yawFromSimHeading, EXCLUDE_FROM_BOUNDS, type RobotRig } from './robots';
@@ -2322,7 +2330,14 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    */
   function drawOpening(snap: GameSnapshot, floorY: number): void {
     const o = snap.opening;
-    if (o === null) {
+    /*
+     * The crates outlive the opening. Chapter 1 publishes their footprints as
+     * walls (`CRATE_RECTS`), so they are solid for the rest of the chapter and
+     * this is what draws them — Michele: *"crates remain after the transition,
+     * non interactive"*. Any other chapter, or no chapter, and they are gone.
+     */
+    const wanted = o !== null || snap.chapter === 1;
+    if (!wanted) {
       if (crates) crates.root.visible = false;
       return;
     }
@@ -2335,11 +2350,22 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       dressing.add(crates.root);
     }
     crates.root.visible = true;
-    // The work light comes up with the first lamp and stays: it is what makes the
-    // stencils readable in a corridor that has no power. It fades out over the
-    // pull-back, so the crates are back to being scenery by the time the chapter
-    // owns the screen.
-    crates.setLit(Math.max(o.lamp.voxxy, o.lamp.droid, o.lamp.biggy));
+    if (o === null) {
+      // Play. The crates are open, empty and dark — standing where they were
+      // left, with their panels on the floor in front of them.
+      crates.setLit(OPEN_CRATE_LIT);
+      for (const c of crates.crates) {
+        c.setLamp(0);
+        c.setOpen(1);
+      }
+      return;
+    }
+    // The work light is what makes the stencils readable in a corridor that has
+    // no power at all: without it the first frame strip was three black boxes
+    // and no `DEVOXX`. It comes up with the first lamp and settles back to the
+    // standing level as the chapter takes over.
+    const lamps = Math.max(o.lamp.voxxy, o.lamp.droid, o.lamp.biggy);
+    crates.setLit(Math.max(OPEN_CRATE_LIT, lamps));
     for (const c of crates.crates) {
       c.setLamp(o.lamp[c.kind]);
       c.setOpen(o.open[c.kind]);

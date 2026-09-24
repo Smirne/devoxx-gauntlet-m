@@ -24,7 +24,7 @@ import {
   TRAVEL_TIME_SCALE,
 } from './constants';
 import { VIEW_CLOSED, groundPlates } from './geometry';
-import { CRATE_AT, openingAt, openingView } from './opening';
+import { CRATE_AT, VIEW_CRATES_OUT, openingAt, openingView } from './opening';
 import {
   botsCollide,
   circleRect,
@@ -470,10 +470,16 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     }
   }
 
+  /**
+   * Put the three of them on their marks. A third number is the heading they
+   * face — chapter 1 uses it to stand them all down the corridor, which is the
+   * way they are about to go; a chapter that does not care leaves it out and
+   * keeps whatever facing the robots had.
+   */
   function place(
-    v: readonly [number, number],
-    d: readonly [number, number],
-    b: readonly [number, number],
+    v: readonly [number, number, number?],
+    d: readonly [number, number, number?],
+    b: readonly [number, number, number?],
   ): void {
     const V = byKind('voxxy');
     const D = byKind('droid');
@@ -484,6 +490,9 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     [V.x, V.y] = v;
     [D.x, D.y] = d;
     [B.x, B.y] = b;
+    if (v[2] !== undefined) V.face = v[2];
+    if (d[2] !== undefined) D.face = d[2];
+    if (b[2] !== undefined) B.face = b[2];
     for (const o of bots) {
       o.vx = 0;
       o.vy = 0;
@@ -1026,9 +1035,16 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       // it derives from the slowest robot's own `max` — nothing here sets a
       // speed. When it finishes, the player has the keyboard.
       if (o.walking && phase === 'intro') {
+        /*
+         * One stride, not a journey. The chapter's own marks are the row in
+         * front of the crates (`STAND_AT`), so stepping out of a crate IS
+         * arriving on the mark — which is what removes the beat Michele could
+         * not read: *"crates are there, robots in a different position, and
+         * then another transition to same scene without crates?"*
+         */
         const routes = startMarks.map((mk) => ({ kind: mk.kind, pts: [{ x: mk.x, y: mk.y }] }));
         openingWalk = true;
-        startCut(routes, endOpening, VIEW_CLOSED);
+        startCut(routes, endOpening, VIEW_CRATES_OUT);
         return;
       }
       if (phase !== 'cut') return;
