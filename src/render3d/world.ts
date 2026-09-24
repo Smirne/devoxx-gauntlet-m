@@ -19,7 +19,7 @@ import { Pipeline, QUALITY, type QualityName, type VolumeSpot } from './pipeline
 import { createProps, type Props3D } from './props3d';
 import { createRobots, updateGlare, updateRobots, type Robot3D } from './robots3d';
 import { HEIGHTS, SIGN_SPANS, X_END, buildVenue, type Venue3D } from './venue';
-import { CY0, CY1, F1, rooms } from '../sim/geometry';
+import { CY0, CY1, F1 } from '../sim/geometry';
 
 export interface World3D {
   readonly renderer: THREE.WebGLRenderer;
@@ -219,9 +219,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       }
       _pos.copy(rob.rig.root.position);
       const speed = Math.hypot(active.vx, active.vy) / PX_PER_M;
-      const inRoom = rooms.find((r) => active.x > r.x && active.x < r.x + r.w && active.y > r.y && active.y < r.y + r.h);
-      const roomM: [number, number, number, number] | undefined = inRoom ? [m(inRoom.x), m(inRoom.y), m(inRoom.x + inRoom.w), m(inRoom.y + inRoom.h)] : undefined;
-      cam.update(dt, active.kind, _pos, active.face, speed, [...venue.colliders, ...props.colliders], roomM);
+      cam.update(dt, active.kind, _pos, active.face, speed, [...venue.colliders, ...props.colliders]);
     }
 
     // Mirror bounces from the sim.

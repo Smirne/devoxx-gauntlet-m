@@ -3009,3 +3009,11 @@ wall.
   when the door opens is drawn as a folded-back steel barrier. It is hinged at the door end, swings
   out as the shutter lifts, and fills the rectangle the sim collides against. Checked by typing the
   real code headlessly: both leaf walls appear and both barriers are built.
+- *Camera, reverted.* After a day of camera changes (stay inside the robot's room, reset behind
+  on a switch, Droid looking up, then chase-camera steering), Michele: "still hard with the camera.
+  Can we reset it as in the first tries? The only needed change is probably droid view being a bit
+  higher." The camera and WASD are back to the first build's, camera-relative with a drift behind
+  a robot running away from it, and the only change kept is Droid's orbit centre raised from 0.8
+  to 0.95 of his height. Rejected on the way, and why: every change fixed one screenshot and made
+  steering harder. The room clamp pulled the camera in close; the switch reset and the chase
+  steering changed what "forward" meant under the player's fingers.
