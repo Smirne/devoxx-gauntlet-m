@@ -68,7 +68,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   // The faintest night fill: sky-blue from above, a bruise of magenta from the
   // floor, so a silhouette in an unlit corner still reads against the dark.
   // Bounce stand-in: the floor and the neons throw warm magenta up at the ceiling.
-  scene.add(new THREE.HemisphereLight(0x2a3a6a, 0x3a1636, 0.5));
+  scene.add(new THREE.HemisphereLight(0x2a3a6a, 0x3a1636, 0.18));
   const pipeline = new Pipeline(renderer, scene, cam.camera, quality);
   const venue: Venue3D = buildVenue(mats, pipeline.reflection);
   scene.add(venue.group);
@@ -140,7 +140,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     }
     const envRT = pmrem.fromScene(scene, 0.02, 0.1, 80, { size: 256, position: PROBE });
     scene.environment = envRT.texture;
-    scene.environmentIntensity = 1.3;
+    scene.environmentIntensity = 0.5;
     for (const o of hidden) o.visible = true;
     for (const r of robots.values()) r.lamp.visible = true;
     envBaked = true;

@@ -210,16 +210,16 @@ export const TERRAZZO: SurfaceDef = {
   bump: 1.2,
   glsl: /* glsl */ `
 void surface(vec2 uv, out vec3 alb, out float rough, out float metal, out float ao, out float h){
-  vec2 per = vec2(64.);
-  vec2 c = cellT(uv * 64., per);
-  float id = cellIdT(uv * 64., per);
+  vec2 per = vec2(96.);
+  vec2 c = cellT(uv * 96., per);
+  float id = cellIdT(uv * 96., per);
   float chip = smoothstep(.34, .22, c.x);
   vec2 c2 = cellT(uv * 160. + 3.1, vec2(160.));
   float fleck = smoothstep(.18, .08, c2.x) * step(.55, hash12(floor(uv*160.)));
   vec3 binder = vec3(.030, .032, .036);
   vec3 chipCol = id < .5 ? vec3(.30, .31, .32) : id < .75 ? vec3(.62, .62, .60) : id < .9 ? vec3(.08, .08, .09) : vec3(.55, .22, .06);
-  alb = mix(binder, chipCol * .8, chip);
-  alb = mix(alb, vec3(.8), fleck * .6);
+  alb = mix(binder, chipCol * .32, chip);
+  alb = mix(alb, vec3(.6), fleck * .15);
   float cloud = fbmT(uv * 6., vec2(6.), 5);
   alb *= .75 + .5 * cloud;
   // Slab joints: 4x4 slabs per texture, brass strips.
@@ -229,7 +229,7 @@ void surface(vec2 uv, out vec3 alb, out float rough, out float metal, out float 
   // Polish: glossy with broad dull patches (grime, old wax), plus scratches.
   float dull = smoothstep(.45, .75, fbmT(uv * 3. + 1.7, vec2(3.), 5));
   float scr = scratchesT(uv, 24., 1.);
-  rough = .13 + .3 * dull + .25 * scr + .08 * chip;
+  rough = .07 + .32 * dull + .25 * scr + .05 * chip;
   rough = mix(rough, .35, joint);
   metal = joint * .9;
   ao = 1. - .5 * joint;
@@ -386,7 +386,7 @@ export const CEILING: SurfaceDef = {
 void surface(vec2 uv, out vec3 alb, out float rough, out float metal, out float ao, out float h){
   float n = fbmT(uv * 6., vec2(6.), 5);
   float stain = smoothstep(.6, .8, fbmT(uv * 2. + 9., vec2(2.), 5));
-  alb = vec3(.42, .42, .43) * (.85 + .3 * n) * (1. - .45 * stain);
+  alb = vec3(.42, .42, .43) * (.9 + .2 * n) * (1. - .18 * stain);
   rough = .9;
   metal = 0.;
   ao = 1.;

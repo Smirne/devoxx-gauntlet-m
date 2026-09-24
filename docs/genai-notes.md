@@ -1629,3 +1629,36 @@ corridor carried past the fire door to both secondary staircases (the Devoxx hal
 in the photos), the foyer back bar, lacquered wall panels, headlamp glare, and cinema E's screen as
 a real mirror, which makes the puzzle's key object explain itself. Six hero screenshots are in
 `docs/3d-poc/`. The playable build was republished to the same private artifact after each round.
+
+### 24 Sep 2026 (morning) — 3D POC: two polish rounds
+
+**Human decisions.** Michele confirmed the fork base (the 2.5D branch), kept the design deviations
+and the "is 3D worth it" question for himself, opened network access for reference screenshots,
+and asked for "a couple rounds" of polish. The access change had not reached this session's
+container (the egress proxy still refused nvidia.com, steampowered.com and wikimedia.org), so the
+rounds were judged against the written checklist of Cyberpunk 2077's look again, not against pictures.
+
+**What the agent found, frame by frame:**
+- *Every procedural material had been rendering with black albedo.* `fromSet()` cloned each baked
+  render-target texture to set its repeat; a clone of a render-target texture is a Texture with no
+  image behind it, and three uploads it as black. So albedo was 0, roughness 0 (hence mirror floors
+  that no roughness tweak could soften) and the normal map was garbage. Last night's lighting was
+  tuned against that: lights raised 6×, exposure 1.35, a strong ambient. Found by tinting the
+  ceiling red to prove it was drawn, lighting it with a 300 cd test lamp that did nothing, swapping
+  its maps out one at a time, then reading the texture's pixels back on the GPU. Fix: use the baked
+  textures as they are (all repeats were 1). Exposure then fell to 0.32; env and ambient came down.
+- The composite's contrast was a linear stretch around mid-grey, which clipped everything below
+  ~0.03 to pure black. It is now a power curve around mid-grey.
+- Blurred coloured blobs in the foyer were the corridor's environment probe box-projected onto the
+  floor: three overwrites `envMapIntensity` with `scene.environmentIntensity` whenever the env comes
+  from `scene.environment`, so zeroing it on the floor material never worked. Planar-reflective
+  materials now switch env specular off with a shader define.
+- Robot lamp flares were being mirrored into the floor; they are hidden from the reflection pass.
+- Rough floor reflections now smear vertically (the long neon streaks of a wet night floor), and
+  reflectivity is patchy. Neon signs got a dim halo and a distinct tube and core so the letters
+  survive bloom. The back bar got frosted backlit glass and 66 bottles. The corridor soffit got
+  linear slot fixtures, most of them dead.
+
+**Rejected:** guessing at the flat, over-bright look with more grading before finding the cause.
+Two exposure passes (0.8, 0.62) barely moved it, because AgX compresses in log space. That was the
+hint that the scene itself was 2–3 stops too hot.

@@ -413,6 +413,10 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
         bulb.position.set(sx, 3.36, z);
         group.add(bulb);
         volumePoints.push({ position: V(sx, 3.2, z), color: new THREE.Color(1, 0.5, 0.18).multiplyScalar(0.25), range: 1.8 });
+        // A real (pooled) light too, so each sconce scallops the drape below it.
+        const wash = new THREE.PointLight(0xff8c3a, 10, 5, 2);
+        wash.position.set(sx + (x < r.x + r.w / 2 ? 0.25 : -0.25), 3.1, z);
+        group.add(wash);
       }
     }
     // Pleated velvet drapes down both side walls.
@@ -513,7 +517,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     neon.position.set(bx, 3.6, bz - 0.2);
     group.add(neon);
     volumePoints.push({ position: V(bx, 3.6, bz), color: new THREE.Color(1, 0.12, 0.5).multiplyScalar(5), range: 6 });
-    const neonLight = new THREE.PointLight(0xff2a8a, 140, 12, 2);
+    const neonLight = new THREE.PointLight(0xff2a8a, 80, 12, 2);
     neonLight.position.set(bx, 3.4, bz + 0.4);
     group.add(neonLight);
     // Stools.
@@ -880,6 +884,34 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
       can.position.set(x, HEIGHTS.corridor - 0.03, z);
       group.add(can);
     }
+  }
+
+  // Linear slot fixtures down the soffit's centre line, one per bay: most dead
+  // (a dark diffuser still gives the ceiling a structure to read), every third
+  // on the emergency circuit. Emissive only — the floor doubles them into the
+  // long light lines a night interior is drawn with.
+  {
+    const bays = colXs.slice().sort((a, b) => a - b);
+    const zc = (c0 + c1) / 2;
+    const housing = new Buckets();
+    const liveMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.85, 0.93, 1).multiplyScalar(9), toneMapped: false });
+    const deadMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 0.6, 0.8).multiplyScalar(0.06), toneMapped: false });
+    const live: THREE.BufferGeometry[] = [];
+    const dead: THREE.BufferGeometry[] = [];
+    for (let i = 0; i + 1 < bays.length; i++) {
+      const x0 = m(bays[i]) + 0.6;
+      const x1 = m(bays[i + 1]) - 0.6;
+      if (x1 - x0 < 1) continue;
+      const len = x1 - x0;
+      const cx = (x0 + x1) / 2;
+      housing.add(mats.darkMetal, box(len + 0.08, 0.07, 0.22, V(cx, HEIGHTS.corridor - 0.035, zc)));
+      const g = new THREE.BoxGeometry(len, 0.012, 0.12);
+      g.translate(cx, HEIGHTS.corridor - 0.075, zc);
+      (i % 3 === 1 ? live : dead).push(g);
+    }
+    housing.build(group);
+    if (live.length) group.add(new THREE.Mesh(mergeGeometries(live), liveMat));
+    if (dead.length) group.add(new THREE.Mesh(mergeGeometries(dead), deadMat));
   }
 
   /* ------------------------------------------------------- wall detail */
