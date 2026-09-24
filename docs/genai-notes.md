@@ -3378,3 +3378,61 @@ telephone band, by duration, and by a conservative rectangle bound on the summed
 (`modem` 0.151, `busbar` 0.334 at the destination — nothing clips). All 9 new cases were written
 first and run red against the old code. Suite at hand-off: **586 tests, 36 files, green**,
 `npx tsc --noEmit` clean, `document.title` `After Dark · ERRORS:0` across seven chapter-2 probes.
+
+## Session — 24 Sep 2026, night (agent, with two sub-agents)
+
+**What Michele decided.** *"the antwerpen sticker could stretch between the 3 crates"*; *"keep both
+bulky and highly fragile on biggy"*; the staircase reading (*"a mid plane between two ramps"*, *"the
+opening is on the sides (WEST, EAST) — that's for ground 2"*); on the first cut of the opening,
+*"the intermediate scene i don't get it… I vote 1"*, then *"the left crate is half black. Robots are
+still black. In the intro I'll show them fully, even if it's dark. It's their presentation"* and the
+restaging itself — *"Why not placing the crates on the west wall and using a single transition?
+Start: cinematic on the crate, light on robots, each one exits and is presented. Transition to the
+corridor, different camera angle, robots ready to start."* Then, late: *"sometimes the toast are
+multiple and not all are visible"*; *"the stair, reception and wardrobe appearence still need fix.
+Am I putting too much thing together on the backlog?"*; *"where is the wifi password graffiti? It
+should be visible!"*; *"chapter 2 ends abruptly… give some seconds for animation"*; and *"Keep
+building tonight, I'll stop here."*
+
+**The honest answer to his backlog question was yes**, and it is recorded in
+`docs/playtest-notes.md`: fifteen items open, and the session before this one went on crates, the
+intro and bubbles, none of them on the priority 1 he had stated on 24 Sep (*"staircase and reception
+right is priority 1"*). Saying so and then burning the venue block was the right order.
+
+**What the agent did.** Fixed the speech bubbles (two causes: a shared keyframe ending on
+`transform:none` with `fill-mode: both`, which permanently cancelled each bubble's
+`translate(-50%,-100%)` anchor; and no separation at all between two bubbles whose boxes crossed).
+Reworked the reception block to his 24 Sep spec — a hollow L of two counter runs, the printer on the
+south run, the wardrobe handing out west instead of south into the back of the desk. Painted the
+wifi spray tag, which existed only in the sim because the `poster` prop style draws every poster as
+a pale lightbox; found on the way that the printed WiFi notice had been hanging at y 371, **inside
+`GF.coatroom`** — a sign nailed up in a closed room. Landed both sub-agents' work, wired their cues
+and hunks. Gave chapter 2 a three-second curtain. Built the run sheet (`I`), the meter and the
+escalating nudge (`H`).
+
+**What was measured rather than argued.** Voxxy's crate stood inside `corridor-column` — 9.1 px of a
+17.25 px crate, 53%, of a pure-black 3.3 m column — and a pixel scan of x 40..400 proved no row
+centre on that wall clears both the columns and the auditorium door leaves. The main staircase's
+orientation was settled off `plans/exhibition-floor-stairs-annotated.png` (entered from the entrance
+side, climbing away) and then **deferred with the measurement written down**, because it drags
+`ch3-breakfast.ts`'s gate swing and Stephan's post with it. The crate row's quarter-turn sign was
+found by sweeping the scene graph's bounding boxes over Voxxy's own rect — twice now that has been
+the only way to identify a dark shape in a screenshot, so `DioramaScene.debugRoot()` is kept.
+
+**What a human decided that a builder would have got wrong.** The restaging. Moving the crates to
+the west wall was Michele's idea for compositional reasons, and it turned out to be the only
+position that works at all — the agent had been trying to slide the row along the north wall.
+
+**Rejected.** Weakening `tests/aim.test.ts` when the new start marks broke it. The marks are a
+north-south line now, so driving north is Voxxy shoving Biggy, and a shoved robot facing its actual
+travel is `stepAim`'s documented rule, not the wall-rebound bug that case exists for — so the case
+clears the lane and says why, instead of quietly asserting the opposite of the design. Also
+rejected: guessing at *"Reception signal points the wrong way"* and *"this element before reception
+is not needed"*. Both candidate signs measure as pointing correctly, so the note is about something
+the agent cannot identify from the words alone; queued as a question rather than a change.
+
+**Tests.** `tests/reception.test.ts` (7) and `tests/tasks-panel.test.ts` (21) new; `tests/aim.test.ts`,
+`tests/party-tricks.test.ts`, `tests/opening.test.ts`, `tests/venue.smoke.test.ts` and
+`tests/ch2-chain.test.ts` extended or turned with the staging. Suite: **609 tests, 37 files, green**,
+`tsc --noEmit` clean, `After Dark · ERRORS:0` across all four chapters and the intro on the built
+bundle.
