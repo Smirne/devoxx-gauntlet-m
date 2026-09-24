@@ -114,7 +114,7 @@ const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(
  * and the gap behind the foyer window for the rest, and classifying it once,
  * at its midpoint, stood a 56 m sheet of plaster between the foyer and the city.
  */
-function wallSlab(b: Buckets, mats: Materials, r: Rect, y0: number, y1: number, pick: (reg: Region) => THREE.Material): void {
+function wallSlab(b: Buckets, r: Rect, y0: number, y1: number, pick: (reg: Region) => THREE.Material): void {
   const tile = 2.5;
   const STEP = 10;
   // Along-x faces (normal -z at r.y, +z at r.y + r.h).
@@ -143,7 +143,6 @@ function wallSlab(b: Buckets, mats: Materials, r: Rect, y0: number, y1: number, 
       b.add(pick(reg), q);
     });
   }
-  void mats;
 
   function runs(a0: number, a1: number, at: (s: number) => Region, emit: (a: number, c: number, reg: Region) => void): void {
     let start = a0;
@@ -228,30 +227,30 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     if (!r) continue;
     if (r.x === F1.foyer.x - T && r.y === F1.foyer.y && r.w === T) {
       // The foyer's west wall carries the window: sill, head, and the two piers.
-      wallSlab(shell, mats, { ...r, y: r.y, h: win.sy0 - r.y }, 0, HEIGHTS.room, pick);
-      wallSlab(shell, mats, { ...r, y: win.sy1, h: r.y + r.h - win.sy1 }, 0, HEIGHTS.room, pick);
-      wallSlab(shell, mats, { ...r, y: win.sy0, h: win.sy1 - win.sy0 }, 0, win.y0, pick);
-      wallSlab(shell, mats, { ...r, y: win.sy0, h: win.sy1 - win.sy0 }, win.y1, HEIGHTS.room, pick);
+      wallSlab(shell, { ...r, y: r.y, h: win.sy0 - r.y }, 0, HEIGHTS.room, pick);
+      wallSlab(shell, { ...r, y: win.sy1, h: r.y + r.h - win.sy1 }, 0, HEIGHTS.room, pick);
+      wallSlab(shell, { ...r, y: win.sy0, h: win.sy1 - win.sy0 }, 0, win.y0, pick);
+      wallSlab(shell, { ...r, y: win.sy0, h: win.sy1 - win.sy0 }, win.y1, HEIGHTS.room, pick);
       continue;
     }
     // The stair niches' walls run on down the flight.
     const niche = [F1.nicheTop, F1.nicheBot].some((n) => r.x >= n.x - T - 1 && r.x <= n.x + n.w + 1 && r.y >= n.y - T - 1 && r.y <= n.y + n.h + 1);
-    wallSlab(shell, mats, r, niche ? -3.6 : 0, HEIGHTS.room, pick);
+    wallSlab(shell, r, niche ? -3.6 : 0, HEIGHTS.room, pick);
   }
   for (const n of [F1.nicheTop, F1.nicheBot]) {
     const y = n === F1.nicheTop ? CY0 - T : CY1;
-    wallSlab(shell, mats, { x: n.x, y, w: n.w, h: T }, 3.0, HEIGHTS.room, pick);
+    wallSlab(shell, { x: n.x, y, w: n.w, h: T }, 3.0, HEIGHTS.room, pick);
   }
   // Lintels over every doorway on the corridor, and over the foyer's wide mouth.
   for (const r of rooms) {
     if (!inBuild(r)) continue;
     const d = roomDoor(r);
     const y = r.side < 0 ? CY0 - T : CY1;
-    wallSlab(shell, mats, { x: d.x, y, w: d.w, h: T }, HEIGHTS.door, HEIGHTS.room, pick);
+    wallSlab(shell, { x: d.x, y, w: d.w, h: T }, HEIGHTS.door, HEIGHTS.room, pick);
   }
-  wallSlab(shell, mats, { x: F1.foyer.x, y: CY1, w: F1.foyer.w, h: T }, HEIGHTS.foyerOpening, HEIGHTS.room, pick);
+  wallSlab(shell, { x: F1.foyer.x, y: CY1, w: F1.foyer.w, h: T }, HEIGHTS.foyerOpening, HEIGHTS.room, pick);
   // The end of the world: a wall just behind the fire door.
-  wallSlab(shell, mats, { x: X_END, y: CY0 - T, w: 8, h: CY1 - CY0 + 2 * T }, 0, HEIGHTS.room, () => mats.plaster);
+  wallSlab(shell, { x: X_END, y: CY0 - T, w: 8, h: CY1 - CY0 + 2 * T }, 0, HEIGHTS.room, () => mats.plaster);
 
   // Door jamb trims (steel) so the openings read as doors.
   const trims = new Buckets();
@@ -874,7 +873,6 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
       const inset = side < 0 ? 1 : -1;
       const spans = doorSpans(side);
       // skirting in runs between openings
-      let run0 = 0;
       const edges = [...spans.flat(), X_END].sort((a, b) => a - b);
       const cuts: Array<[number, number]> = [];
       let open = false;
@@ -884,7 +882,6 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
         open = !open && e !== X_END;
         prev = e;
       }
-      void run0;
       for (const [a, b] of cuts) {
         if (b - a < 4) continue;
         const len = m(b - a);
