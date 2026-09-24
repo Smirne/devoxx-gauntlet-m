@@ -207,17 +207,33 @@ export function mergeSimple(parts: THREE.BufferGeometry[]): THREE.BufferGeometry
 /* -------------------------------------------------------------------- seats */
 
 /**
+ * A seat's three parts, in metres off the floor. Named rather than inlined so
+ * that `SEAT_TOP_M` below is derived from the model instead of re-measured: the
+ * chapters draw seats through `src/render/seats.ts` and the collider sweeps ask
+ * how tall a drawn seat is (`tests/prop-geometry.ts`), so a literal here and a
+ * literal there is exactly the drift this file's neighbours keep getting caught by.
+ */
+const CUSHION_Y = 0.42;
+const CUSHION_H = 0.12;
+const BACK_Y = 0.62;
+const BACK_H = 0.5;
+const LEG_H = 0.36;
+
+/** The top of a seat back, metres above the floor it stands on. */
+export const SEAT_TOP_M = BACK_Y + BACK_H / 2;
+
+/**
  * One cinema seat, origin at the floor between its feet, **facing +z**: a cushion
  * and a taller back, which is all that reads from a diorama camera once a few
  * hundred of them are lined up. Rooms rotate the whole block to face their screen.
  */
 export function seatGeometry(widthM: number, depthM: number): THREE.BufferGeometry {
-  const cushion = new THREE.BoxGeometry(widthM * 0.88, 0.12, depthM * 0.8);
-  cushion.translate(0, 0.42, 0);
-  const back = new THREE.BoxGeometry(widthM * 0.88, 0.5, depthM * 0.16);
-  back.translate(0, 0.62, -depthM * 0.34);
-  const legs = new THREE.BoxGeometry(widthM * 0.2, 0.36, depthM * 0.2);
-  legs.translate(0, 0.18, 0);
+  const cushion = new THREE.BoxGeometry(widthM * 0.88, CUSHION_H, depthM * 0.8);
+  cushion.translate(0, CUSHION_Y, 0);
+  const back = new THREE.BoxGeometry(widthM * 0.88, BACK_H, depthM * 0.16);
+  back.translate(0, BACK_Y, -depthM * 0.34);
+  const legs = new THREE.BoxGeometry(widthM * 0.2, LEG_H, depthM * 0.2);
+  legs.translate(0, LEG_H / 2, 0);
   return mergeSimple([cushion, back, legs]);
 }
 

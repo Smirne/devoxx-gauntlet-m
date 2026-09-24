@@ -24,6 +24,7 @@ import { FIRE_LEAF_H, fireDoorDraw } from '../src/render/fire-door';
 import { KEYPAD_TOP_M } from '../src/render/keypad';
 import { GATE_H, LOCK_LEAF_H, gateDraw, lockDoorDraw } from '../src/render/doors';
 import { ROLLER_H, rollerDoorDraw, ROLLER_CLEAR_M } from '../src/render/roller-door';
+import { SEAT_TOP_M } from '../src/render/seats';
 import type { Prop, Rect } from '../src/sim/types';
 import { PX_PER_M } from '../src/sim/units';
 
@@ -146,8 +147,21 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
   'banner-hook': { h: 0.25 },
   banner: { h: 1.1, tl: true },
   spotlight: { h: 0.35 },
-  seatrow: { h: 0.55, tl: true },
-  seatblock: { h: 0.55, tl: true },
+  /*
+   * A seat row is no longer a 0.55 m slab, and that is a real change, not a fudge.
+   *
+   * It was drawn as one flat-topped cuboid per rect — the entry said so and
+   * `drawProp` obeyed it — while the venue's own auditoria were being seated with
+   * a modelled seat out of `src/render/venue/props.ts`. Michele, with cinema E
+   * under Droid's pool: *"This still needs a shape."* `src/render/seats.ts` draws
+   * both kinds now, from that same seat geometry, and `SEAT_TOP_M` is read off the
+   * model rather than retyped so this transcription cannot drift from it.
+   *
+   * The FOOTPRINT is unchanged and is still the sim's own rect — no seat is drawn
+   * outside it — which is the only thing the collider sweep asks about.
+   */
+  seatrow: { h: SEAT_TOP_M, tl: true },
+  seatblock: { h: SEAT_TOP_M, tl: true },
   /*
    * Drawn by their own functions rather than from the table — `drawBreaker`,
    * `drawTerminal`, `drawCabinet`, `drawCrate`, `drawJammed`, the cable. Their
