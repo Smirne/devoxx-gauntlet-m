@@ -37,6 +37,7 @@
 
 import './style.css';
 
+import { flairPhase } from './sim/bot';
 import { DT_MAX } from './sim/constants';
 import { createGame, type DebugGame } from './sim/game';
 import type { GameSnapshot, RobotKind } from './sim/types';
@@ -288,6 +289,30 @@ let ambientChapter = -1;
 let lastPhase = '';
 /** Last frame's fall progress on chapter 1's jammed door, so the crash plays once. */
 let lastBreak = 0;
+/** Last frame's swing on chapter 1's fire door, so the opening plays once. */
+let lastFireSwing = 0;
+/** Last frame's rise on chapter 2's roller door, so the shutter plays once. */
+let lastRollerRise = 0;
+/** Last frame's flourish per robot, so a party trick's cue plays once. */
+const lastFlair: Record<RobotKind, number> = { voxxy: 0, droid: 0, biggy: 0 };
+/**
+ * How many clues were solved last frame, and who was being driven, and who was
+ * riding — the three edges below.
+ *
+ * `audio.ts` has carried a written, tuned and **never played** `clue` cue since the
+ * day it was added: the sim knew a light-mix enigma had resolved, the marker drew
+ * its digit, and the room stayed silent. Michele, 24 Sep 2026: *"Add sound effect
+ * when a Hint is solved."* A digit surfacing out of the dark is the single best
+ * moment chapter 1 has and it was the one moment with nothing on it.
+ *
+ * The count, not a per-clue flag, because `snap.clues` is rebuilt every chapter and
+ * a chapter change would otherwise fire four cues at once; it is reset below with
+ * the ambient bed. Clues are only ever found, never un-found, so a rising count is
+ * exactly one clue solved.
+ */
+let lastFound = 0;
+let lastActive = -1;
+let lastMounted = false;
 
 function updateAudio(snap: GameSnapshot, dt: number): void {
   // The only thing in the game a robot destroys. `Prop.progress` leaving zero is
@@ -296,8 +321,63 @@ function updateAudio(snap: GameSnapshot, dt: number): void {
   const breaking = snap.props.find((p) => p.kind === 'jammed')?.progress ?? 0;
   if (breaking > 0 && lastBreak <= 0) audio.play('crash', { intensity: 1 });
   lastBreak = breaking;
+
+  // The keypad's payoff. `Prop.progress` leaving zero is the sim saying the magnetic
+  // lock has just let go, and the cue runs about as long as `FIRE_SWING_TIME`. The
+  // chapter deliberately holds the corridor for the swing before the cutscene takes
+  // over, so this is heard over the thing it describes rather than under a fade.
+  const swinging = snap.props.find((p) => p.kind === 'firedoor')?.progress ?? 0;
+  if (swinging > 0 && lastFireSwing <= 0) audio.play('door-open');
+  lastFireSwing = swinging;
+
+  // The store's shutter, on the same edge. `shutter` carries its own impact, so the
+  // roller break does NOT also play `crash` — that stays on chapter 1's jammed door.
+  const rising = snap.props.find((p) => p.kind === 'roller')?.progress ?? 0;
+  if (rising > 0 && lastRollerRise <= 0) audio.play('shutter');
+  lastRollerRise = rising;
+
+  /*
+   * The party tricks on `E`.
+   *
+   * `flairPhase` is the sim's own clock (`src/sim/bot.ts`), the same number the rig
+   * poses from — so the cue rides the edge of a value the sim already owns and
+   * nothing here schedules an animation. Voxxy's hop is not in this list: she lands
+   * with a footstep, which is the right sound for a hop and is already playing.
+   */
+  for (const b of snap.bots) {
+    const f = flairPhase(b);
+    if (f > 0 && lastFlair[b.kind] <= 0) {
+      if (b.kind === 'biggy') audio.play('roll');
+      else if (b.kind === 'droid') audio.play('stretch');
+    }
+    lastFlair[b.kind] = f;
+  }
+
+  /*
+   * A hint solved: the digit's own cue, and — when it was the LAST one — the
+   * "job done" arpeggio a beat later, so the set completing sounds different from
+   * the four steps that got there. `chime` had also never been played.
+   */
+  const found = snap.clues.reduce((n, c) => n + (c.found ? 1 : 0), 0);
+  if (found > lastFound) {
+    audio.play('clue');
+    if (snap.clues.length > 0 && found === snap.clues.length) audio.play('chime', { delay: 0.32 });
+  }
+  lastFound = found;
+
+  // Two more cues that were written and silent: the switcher, and Droid going up.
+  if (snap.active !== lastActive) {
+    if (lastActive >= 0) audio.play('switch');
+    lastActive = snap.active;
+  }
+  const mounted = snap.bots.some((b) => b.mounted);
+  if (mounted && !lastMounted) audio.play('mount');
+  lastMounted = mounted;
   if (snap.chapter !== ambientChapter) {
     ambientChapter = snap.chapter;
+    // A fresh chapter brings a fresh set of clues, already at zero found; without
+    // this, restarting chapter 1 after solving it would count four solves at once.
+    lastFound = snap.clues.reduce((n, c) => n + (c.found ? 1 : 0), 0);
     audio.setAmbient(snap.chapter);
     if (snap.chapter > 1) audio.play('transition');
   }
@@ -342,6 +422,28 @@ function frame(now: number): void {
   raf = requestAnimationFrame(frame);
   const dt = Math.min(Math.max((now - last) / 1000, 0), DT_MAX);
   last = now;
+
+  /*
+   * A KEY THAT IS STILL DOWN WHEN THE SIM TAKES THE KEYBOARD.
+   *
+   * Michele, chapter 2: *"Password not matching: I don't know what was happening,
+   * but i kept typing and it never took it right."* The matching was never the
+   * problem — measured on the built page, `DevoxxForever` goes in under caps lock,
+   * held shift, overlapping keydowns and auto-repeat. The stick was.
+   *
+   * `onKeyDown` suppresses a movement keydown while `typing`, so `held[axis]` is
+   * never set, so nothing ever balances it and `pushStick()` is never called: the
+   * stick keeps whatever value it had when the prompt opened, for as long as the
+   * key is physically down. Traced in the built page, Voxxy accelerated from 11 to
+   * 41 px/s over 2.5 s with the router prompt open and walked out of the terminal's
+   * reach — which closes the prompt, silently, and from there every letter of the
+   * password is a control again. The two `R`s in `DevoxxForever` restart the run.
+   *
+   * The chapter now pins the robot at an open prompt, so the run no longer depends
+   * on this. This is the other half: the stale stick is dropped rather than paid
+   * out the instant the prompt closes, exactly as `blur` already does it.
+   */
+  if (game.snapshot().typing && (held.up || held.down || held.left || held.right)) releaseAll();
 
   game.update(dt);
   const snap = game.snapshot();

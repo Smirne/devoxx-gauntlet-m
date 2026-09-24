@@ -17,5 +17,5 @@ scratchpad/
 # throwaway probes written into tests/ so they can run under vitest; excluded
 # from the suite in vitest.config.ts for the same reason
 tests/_*.test.ts
-tests/zz-*.test.ts
+tests/zz*.test.ts
 tests/probe-*.test.ts

@@ -23,8 +23,17 @@ import {
   TOAST_MS,
   TRAVEL_TIME_SCALE,
 } from './constants';
-import { VIEW_CLOSED } from './geometry';
-import { botsCollide, circleRect, mkBot, pushBiggy as leanOnBiggy, stepBot, syncMount, toggleMount as climbBiggy } from './bot';
+import { VIEW_CLOSED, groundPlates } from './geometry';
+import {
+  botsCollide,
+  circleRect,
+  mkBot,
+  partyTrick as showOff,
+  pushBiggy as leanOnBiggy,
+  stepBot,
+  syncMount,
+  toggleMount as climbBiggy,
+} from './bot';
 import { canGrab, grab as takeHold, stepTow, towPlace, type TowState } from './tow';
 import type {
   Bot,
@@ -36,6 +45,7 @@ import type {
   Mirror,
   Person,
   Phase,
+  Plate,
   Prop,
   RobotKind,
   Toast,
@@ -75,6 +85,44 @@ const CUT_WALK_FADE = 0.9;
  * survives any rescale of `max`.
  */
 const CUT_WALK_TIME = 4.6;
+/**
+ * A CUTSCENE IS A WALK, AND THE ROUTE IS WHAT HAS TO FIT.
+ *
+ * Michele: *"the animation between chapter 1 and 2 is better, but the walk is long
+ * and they are running a bit too fast."* Measured through chapter 1's transition,
+ * frame by frame, teleports excluded:
+ *
+ * ```
+ * voxxy  497 px in 7.23 s   top 109.2 px/s   151% of her own max
+ * droid  481 px             top 105.7 px/s   263% of his
+ * biggy  471 px             top 103.5 px/s   176% of his
+ * ```
+ *
+ * Droid was being driven at **two and a half times the fastest he can physically
+ * move**, and the gait is driven by that speed, so his legs were being asked to run
+ * at a rate the rig was never tuned for. That is a physics-realism bug, not a
+ * pacing note.
+ *
+ * The cause is arithmetic and it is the staircase move of 24 Sep: `leave()` in
+ * `ch1-night.ts` walks to the stairwell mouth, the plan put that mouth 180 px
+ * further east, `pace = routeLength / CUT_WALK_TIME` did the rest. It was already
+ * at 134% of Droid's max before the move.
+ *
+ * The fix is NOT to stretch `CUT_WALK_TIME` — he says the walk is *long*, and a
+ * longer shot makes that worse — and it is not to clamp the pace, because a clamped
+ * pace on an over-long route means the cast never reaches its mark before
+ * `CUT_WALK_MAX` ends the leg and the shot lands with three robots in the wrong
+ * place. **The route is what shrinks**: `trimRoute` below cuts the run-up back from
+ * the destination until the whole leg fits a walking pace, and the destination, the
+ * shape of the final approach and the formation are all untouched. The cast is
+ * teleported to the head of its route anyway (`CUT_PLACE_AT`), so where the walk
+ * begins is a directorial choice and not a continuity one.
+ *
+ * Derived, not picked, which is the durable half: the budget falls out of the
+ * SLOWEST robot's own `max`, so the next time a waypoint moves the shot re-sizes
+ * itself instead of turning into a sprint.
+ */
+const CUT_WALK_FRACTION = 0.7;
 /** They stand on their mark for this long before the black comes back. */
 const CUT_HOLD = 0.5;
 /**
@@ -170,6 +218,15 @@ const NO_MIRRORS: Mirror[] = [];
 const NO_CLUES: Clue[] = [];
 const NO_PROPS: Prop[] = [];
 const NO_PEOPLE: Person[] = [];
+/**
+ * The ground floor's own raised surfaces — the lobby, its steps, the main flight.
+ *
+ * Built once: it is the building, and the building does not move. The first floor
+ * has none, which is why `platesNow` answers with an empty list up there rather
+ * than with a filtered copy of this.
+ */
+const GROUND_PLATES: Plate[] = groundPlates();
+const NO_PLATES: Plate[] = [];
 
 export function createGame(opts: GameOptions = {}): DebugGame {
   const showCards = opts.cards !== false;
@@ -313,6 +370,29 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     flash(`${b.name} takes hold of Biggy — push or pull along the bar, steer across it`);
   }
 
+  /**
+   * `E` with nothing else on it: take hold of Biggy, let go of him, or show off.
+   *
+   * The order is intent, not convenience. A robot already on the bar means to let
+   * go; one standing against Biggy means to take hold, because that is the reason
+   * to be standing there; anything else is that robot's party trick — Voxxy's hop,
+   * Biggy's roll, Droid's stretch. A robot can always step away from Biggy to
+   * perform, and there is nothing any of them could want to hop over, rock on or
+   * stretch out of while touching him.
+   *
+   * That ordering is also the whole of the "towing" gate: a robot on the bar never
+   * reaches `partyTrick`, because on the bar `E` already means something, and
+   * letting go says so out loud.
+   */
+  function spareE(): void {
+    const b = bots[cur];
+    if (tow || (b.kind !== 'biggy' && canGrab(b, byKind('biggy'), MOUNT_REACH))) {
+      towToggle();
+      return;
+    }
+    showOff(bots, b, flash);
+  }
+
   function release(why: string): void {
     if (!tow) return;
     const holder = byKind(tow.holder);
@@ -386,6 +466,9 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       o.vx = 0;
       o.vy = 0;
       o.boostCap = 0;
+      o.air = 0;
+      o.flair = 0;
+      o.hopRest = 0;
     }
   }
 
@@ -405,10 +488,52 @@ export function createGame(opts: GameOptions = {}): DebugGame {
 
   /* ------------------------------------------------------------- cutscenes */
 
+  /**
+   * The longest leg a cutscene may walk, sim px.
+   *
+   * `CUT_WALK_FRACTION` of the slowest robot's top speed, held for
+   * `CUT_WALK_TIME`. Everything in it is derived: the robots' `max` is frozen
+   * physics, the two cutscene numbers are durations and fractions, and no px/s
+   * constant is typed anywhere. A rescale of the speeds re-sizes the shot.
+   */
+  function cutReach(): number {
+    let slowest = Infinity;
+    for (const b of bots) if (b.max < slowest) slowest = b.max;
+    return slowest * CUT_WALK_FRACTION * CUT_WALK_TIME;
+  }
+
+  /**
+   * Shorten a route's RUN-UP until the whole leg fits `budget`, keeping its end.
+   *
+   * Walked back from the destination: every waypoint that still fits is kept, and
+   * the one the budget runs out on becomes an interpolated start point on that
+   * segment. So the mark, the final approach and the three robots' formation are
+   * exactly what the chapter wrote; only the distance the shot opens at moves.
+   * A route that already fits is returned untouched.
+   */
+  function trimRoute(pts: Array<{ x: number; y: number }>, budget: number): Array<{ x: number; y: number }> {
+    if (pts.length < 2 || budget <= 0) return pts;
+    let left = budget;
+    for (let i = pts.length - 1; i > 0; i--) {
+      const a = pts[i - 1];
+      const b = pts[i];
+      const seg = Math.hypot(b.x - a.x, b.y - a.y);
+      if (seg <= left) {
+        left -= seg;
+        continue;
+      }
+      // The budget runs out inside this segment: start the walk partway along it.
+      const u = seg > 0 ? left / seg : 0;
+      return [{ x: b.x + (a.x - b.x) * u, y: b.y + (a.y - b.y) * u }, ...pts.slice(i)];
+    }
+    return pts;
+  }
+
   function startCut(routes: CutRoute[], next: () => void, v: ViewRect): void {
     phase = 'cut';
     const map = new Map<RobotKind, Array<{ x: number; y: number }>>();
-    for (const r of routes) map.set(r.kind, r.pts.map((p) => ({ x: p.x, y: p.y })));
+    const budget = cutReach();
+    for (const r of routes) map.set(r.kind, trimRoute(r.pts.map((p) => ({ x: p.x, y: p.y })), budget));
     cut = { view: v, routes: map, next, stage: 'gather', st: 0, pace: new Map() };
     for (const b of bots) {
       b.ix = 0;
@@ -453,7 +578,19 @@ export function createGame(opts: GameOptions = {}): DebugGame {
               py = pt.y;
             }
           }
-          cut.pace.set(b.kind, len / CUT_WALK_TIME);
+          /*
+           * The clamp is a GUARD, not the pace.
+           *
+           * `trimRoute` has already made every leg short enough that
+           * `len / CUT_WALK_TIME` is under a walking pace, so this line never bites
+           * on a route the chapters actually write — and `tests/cutscene-pace.test.ts`
+           * asserts that, by measuring every robot through every transition against
+           * its own `max`. It is here so that a route nobody trimmed (a chapter
+           * added later, a waypoint moved) degrades into a slow walk that runs out
+           * of time rather than into Droid sprinting at 2.6x his top speed, which
+           * is what this cost last round.
+           */
+          cut.pace.set(b.kind, Math.min(len / CUT_WALK_TIME, b.max));
         }
         cut.stage = 'walk';
         cut.st = 0;
@@ -589,6 +726,9 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       b.max = def.max;
       b.drag = def.drag;
       b.mass = def.mass;
+      b.air = 0;
+      b.flair = 0;
+      b.hopRest = 0;
     }
   }
 
@@ -794,12 +934,39 @@ export function createGame(opts: GameOptions = {}): DebugGame {
         cur = (cur + 1) % bots.length;
       } while (bots[cur].mounted);
     }
-    runtime.key(code);
+    /*
+     * THE CHAPTER GETS FIRST REFUSAL ON `E`.
+     *
+     * Michele: *"Why space and not e for catching? I'd keep it to one key"*, and
+     * then *"I'd keep E, when no other action is available."* `E` already means
+     * use / climb / brace / lift / play inside the chapters, so this is an
+     * ordering problem rather than a rename: the chapter is asked first, and only
+     * a chapter that answers a flat `false` — "I looked, and `E` means nothing
+     * where you are standing" — hands the key on. A chapter that has not been
+     * taught to answer returns nothing and keeps the key, which is why this
+     * arrived one chapter at a time instead of all at once.
+     */
+    const claimed = runtime.key(code);
+    if (code === 'KeyE' && claimed === false) spareE();
     // Taking a different robot lets go of the bar: the holder is driven by the
     // stick, so leaving the pair joined while the stick is somewhere else means
     // Biggy drags a robot nobody is steering. This is checked AFTER the chapter
     // has had the key, because 1/2/3 are handled down there by `switchKey`.
     if (tow && bots[cur].kind !== tow.holder) dropTow();
+  }
+
+  /**
+   * Every raised walking surface on screen this frame: the floor's, plus the
+   * chapter's own (`src/sim/surface.ts`).
+   *
+   * Allocation-free in the common case — a chapter with nothing of its own hands
+   * back the shared array rather than a new one per frame.
+   */
+  function platesNow(r: ChapterRuntime | null): Plate[] {
+    const floorPlates = floor === 'down' ? GROUND_PLATES : NO_PLATES;
+    const mine = r?.plates?.();
+    if (mine === undefined || mine.length === 0) return floorPlates;
+    return floorPlates.length === 0 ? mine : [...floorPlates, ...mine];
   }
 
   function snapshot(): GameSnapshot {
@@ -818,6 +985,13 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       clues: r?.clues?.() ?? NO_CLUES,
       props: r?.props?.() ?? NO_PROPS,
       people: r?.people?.() ?? NO_PEOPLE,
+      /*
+       * The floor's own raised surfaces, plus whatever the chapter has added to
+       * them. `GROUND_PLATES` is built once — it is the building, and the building
+       * does not move — and a chapter with nothing of its own hands back exactly
+       * that array rather than a fresh copy every frame.
+       */
+      plates: platesNow(r),
       objective,
       keys: keysLine,
       progress: r?.progress?.() ?? '',

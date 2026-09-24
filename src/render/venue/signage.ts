@@ -46,14 +46,14 @@
 
 import * as THREE from 'three';
 
-import { CY0, CY1, DOOR, F1, GF, R, TALKS, rooms, roomDoor } from '../../sim/geometry';
+import { CY0, CY1, DOOR, F1, GF, R, TALKS, roomFrontage, rooms, roomDoor } from '../../sim/geometry';
 import { T, W } from '../../sim/constants';
 import type { RoomDef } from '../../sim/types';
 import { PX_PER_M, m } from '../../sim/units';
 import type { VenuePalette } from './materials';
 import { slab } from './props';
 
-type Paint = (ctx: CanvasRenderingContext2D, w: number, h: number) => void;
+export type Paint = (ctx: CanvasRenderingContext2D, w: number, h: number) => void;
 
 const FONT = '"Helvetica Neue", Helvetica, Arial, sans-serif';
 
@@ -63,13 +63,21 @@ const FONT = '"Helvetica Neue", Helvetica, Arial, sans-serif';
  * The one place a canvas is ever created. Materials are cached by key, so the
  * eight Zaal panels cost eight textures and asking for one twice costs nothing.
  */
-class SignPainter {
+export class SignPainter {
   private readonly cache = new Map<string, THREE.MeshStandardMaterial>();
   private readonly textures: THREE.Texture[] = [];
   /** False in node and in any environment without a DOM. */
   private readonly canPaint = typeof document !== 'undefined' && typeof document.createElement === 'function';
 
-  material(key: string, wPx: number, hPx: number, fallback: string, paint: Paint): THREE.MeshStandardMaterial {
+  /**
+   * `glow` is the emissive intensity the baked art is re-used at.
+   *
+   * Half is right for a corridor lightbox. The sponsor panels take much less:
+   * twelve of them at 0.5 lit chapter 2's blacked-out hall like a shop window,
+   * and CAPTIONS.md is explicit that the dark hall is "near-black with red accent
+   * panels and track spots". A stand on standby glows; it does not illuminate.
+   */
+  material(key: string, wPx: number, hPx: number, fallback: string, paint: Paint, glow = 0.5): THREE.MeshStandardMaterial {
     const hit = this.cache.get(key);
     if (hit) return hit;
 
@@ -81,7 +89,7 @@ class SignPainter {
     });
     // Signs in a dark venue are lightboxes: the same art drives colour and glow.
     mat.emissive = new THREE.Color(this.canPaint ? '#ffffff' : fallback);
-    mat.emissiveIntensity = 0.5;
+    mat.emissiveIntensity = glow;
 
     const tex = this.canPaint ? this.bake(wPx, hPx, paint) : null;
     if (tex) {
@@ -443,6 +451,63 @@ const NEAR_Y1 = 3.5;
 const BODY_BACK_PX = 7;
 const BODY_PROUD_PX = 0.5;
 
+/* ------------------------------------------------- what makes a panel a panel
+ *
+ * Michele, with a screenshot of one of these: *"This orange thing. I don't know
+ * if it's supposed to be a projector or what, but it misses a shape."*
+ *
+ * He is right, and it is worth saying exactly what was wrong, because the
+ * floor-to-ceiling height was NOT: `image-1790032674926.webp` shows the real
+ * thing as a full-height orange panel beside the auditorium entrance with the
+ * numeral high on it. Measured off the built scene graph, ours was
+ *
+ *     zaal-sign-3   x 761..791  y 414..422   h 0.00..3.62 m   <- one bare box
+ *     zaal-face-3   x 763..789  y 422..422   h 1.30..3.50 m   <- one textured quad
+ *
+ * — a solid `signOrange` block from floor to 3.62 m carrying a single quad on its
+ * corridor face. Everything else (the whole top, both flanks, the bottom 1.3 m of
+ * the front) was bare orange, and the game's camera is a high isometric, so the
+ * naked lid was prominently in frame. A box, where the photograph shows a panel.
+ *
+ * Four things separate the two, and all four are in the photograph:
+ *
+ *  1. a **coping** — the top band is a lighter orange than the face and stands a
+ *     few centimetres proud of it, because it catches light the face does not;
+ *  2. a **returned edge** — the flanks are the same orange turned away from the
+ *     light, a plane darker, so the slab reads as having thickness;
+ *  3. a **shadow gap** — the panel does not grow out of the floor. It stops short
+ *     of it on a dark recessed foot the block overhangs. (A reveal all *round*
+ *     the panel was drawn first and then taken out: the corridor wall behind it
+ *     is charcoal already, so a dark line against it changes nothing you can see,
+ *     and the coping's proud step is what actually separates panel from wall.)
+ *  4. a **header return** — the panel's top runs on along the wall as a fascia
+ *     over the entrance, which is the "T" the photograph makes of it and the
+ *     thing that stops the top being a stray edge.
+ *
+ * The numbers below are read off that photograph at the panel's own width (the
+ * real one is about 2 m across, ours is `ZAAL_W_M`), rounded to the centimetre.
+ */
+
+/** The coping band across the panel's top, metres. */
+const CAP_H = 0.22;
+/** How far the coping stands proud of the face and of both flanks, metres. */
+const CAP_PROUD = 0.04;
+/** The fillet on top of the coping — the step that stops the lid being one plane. */
+const CAP_FILLET_H = 0.04;
+/** The shadow gap at the panel's foot. */
+const BASE_H = 0.11;
+/**
+ * How far the header fascia runs along the wall from the panel, metres.
+ *
+ * It runs **back toward the doorway** — never the other way — for the reason
+ * `onFrontage` exists: on rooms 4 and 9 the other way is the secondary
+ * staircase, and `tests/venue.smoke.test.ts` checks that nothing of this sign
+ * hangs over that stairwell. One metre is as far as the photograph's own fascia
+ * reads before the wall takes over, and it keeps the header inside the panel's
+ * own room frontage at every room.
+ */
+const HEADER_RUN_M = 1.0;
+
 /**
  * Corridor-facing geometry for one auditorium's frontage.
  *
@@ -499,10 +564,181 @@ function zaalSignSide(r: RoomDef): 1 | -1 {
   return ahead > s.x - 12 ? -1 : 1;
 }
 
+/** Width of the backlit poster box, sim px. `floor1.ts` builds it. */
+export const POSTER_W_PX = 18;
+
+/**
+ * Keep a sign on real wall: on its own room's frontage, beside the doorway rather
+ * than over it, and never behind the secondary staircase standing in front of
+ * rooms 4 and 9.
+ *
+ * `zaalSignSide` already exists because room 7's panel landed inside the main
+ * staircase's opening. This is the same problem one door along: the flight the
+ * plan draws in the corridor takes 109 px out of the middle of rooms 4 and 9's
+ * 297 of frontage (`roomFrontage`), and at the default 42 px the numeral panel
+ * would hang over the stairwell. Flipping the side does not help there — the
+ * other offset lands over the flight instead — so the offset gives, not the side.
+ *
+ * Rooms 4 and 9 leave 30.75 px of wall between the doorway and the head of the
+ * stairs, and the numeral panel's body is 30.25 wide. It therefore fills that
+ * wall, which is exactly what the Kinepolis corridor looks like beside a stair,
+ * and `REVEAL_PX` is the daylight it keeps at each end — enough that the panel is
+ * measurably clear of the lintel over the door and of the flight beside it, which
+ * `tests/venue.smoke.test.ts` checks two different ways.
+ */
+const REVEAL_PX = 0.4;
+
+function onFrontage(r: RoomDef, x: number, halfW: number): number {
+  const [lo, hi] = roomFrontage(r);
+  const d = roomDoor(r);
+  // The run of wall on the side of the doorway the sign was asked for.
+  const [a, b] = x < d.cx ? [lo, d.x] : [d.x + d.w, hi];
+  const min = a + halfW + REVEAL_PX;
+  const max = b - halfW - REVEAL_PX;
+  // A panel as wide as the wall it is given centres on it rather than choosing an
+  // end to overhang. This is the rooms 4 and 9 case, and only that case.
+  return min > max ? (a + b) / 2 : Math.min(Math.max(x, min), max);
+}
+
 /** Where the backlit poster box goes: always the other side of the door. */
 export function zaalPosterX(n: number): number {
   const r = R(n);
-  return roomDoor(r).cx - zaalSignSide(r) * (DOOR / 2 + 20);
+  return onFrontage(r, roomDoor(r).cx - zaalSignSide(r) * (DOOR / 2 + 20), POSTER_W_PX / 2);
+}
+
+/**
+ * A `slab()` with a material per face, in `BoxGeometry`'s own group order:
+ * +x, -x, +y (top), -y, +z, -z.
+ *
+ * The Zaal panel needs this and nothing else does. One box with six faces and
+ * three materials is a cheaper way to give a slab a coping and a returned edge
+ * than three boxes, and — the part that matters at this camera — it is the only
+ * way to make the TOP a different colour from the front without the seam between
+ * them depending on where a light happens to be.
+ */
+function facedSlab(
+  r: { x: number; y: number; w: number; h: number },
+  base: number,
+  height: number,
+  mats: readonly THREE.Material[],
+): THREE.Mesh {
+  const h = Math.max(height, 0.01);
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(m(r.w), h, m(r.h)), mats as THREE.Material[]);
+  mesh.position.set(m(r.x + r.w / 2), base + h / 2, m(r.y + r.h / 2));
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+/**
+ * The Zaal numeral panel's carcass: everything except the numeral itself.
+ *
+ * See "what makes a panel a panel" above for the photograph this is measured
+ * against and for what each piece is doing. The overall height is unchanged —
+ * `f.y1 + 0.12`, the same block the build has always drawn, because the
+ * floor-to-ceiling proportion was right and only the edges were missing.
+ *
+ * `doorX` is the doorway's centre, and the only thing it decides is which way the
+ * header fascia runs: back toward the entrance, never out across whatever else is
+ * on that wall.
+ */
+function zaalPanelBody(
+  p: VenuePalette,
+  panelX: number,
+  bodyPx: number,
+  f: Frontage,
+  doorX: number,
+): THREE.Object3D[] {
+  const top = f.y1 + CAP_H + 0.02;
+  const capY = top - CAP_H;
+  const proudPx = CAP_PROUD * PX_PER_M;
+  const span = { y: f.bodyY, h: f.bodyH };
+  // BoxGeometry group order: +x, -x, +y, -y, +z, -z. The corridor-facing side is
+  // +z for every panel in the building (module header), so that is the one that
+  // gets the flat block orange; the flanks are the returned edge and the lid is
+  // the coping.
+  const ret = p.signOrangeReturn;
+  const bodyMats = [ret, ret, p.signOrangeCap, p.signReveal, p.signOrange, p.signOrange];
+  const capMats = [
+    p.signOrangeCap,
+    p.signOrangeCap,
+    p.signOrangeCap,
+    p.signReveal,
+    p.signOrangeCap,
+    p.signOrangeCap,
+  ];
+
+  const out: THREE.Object3D[] = [];
+  /*
+   * The coping is proud on the FLANKS and nowhere else, and the block is the one
+   * that gives ground.
+   *
+   * `bodyPx` stays the panel's outside width and `f.bodyH` its outside depth, so
+   * the whole assembly still occupies exactly the envelope the old single slab
+   * did. That is not tidiness: `tests/venue.smoke.test.ts` measures this group's
+   * bounding box twice — against the corridor soffit, and against the stairwell
+   * in front of rooms 4 and 9, where `onFrontage` leaves the panel `REVEAL_PX`
+   * (3 cm) of daylight at each end. A coping that grew 4 cm past the block put
+   * room 4's panel over the stairs, which is the fault that test was written for.
+   */
+  const bodyW = bodyPx - proudPx * 2;
+
+  // The shadow gap at the foot: the block overhangs it on both flanks and at the
+  // front, so from a high camera the panel stops short of the floor instead of
+  // growing out of it.
+  const footInset = 0.05 * PX_PER_M;
+  out.push(
+    slab(
+      { x: panelX - bodyW / 2 + footInset, y: span.y, w: bodyW - footInset * 2, h: span.h - 0.5 },
+      0,
+      BASE_H,
+      p.signReveal,
+    ),
+  );
+
+  // The block itself, from the shadow gap up to the underside of the coping.
+  out.push(facedSlab({ x: panelX - bodyW / 2, y: span.y, w: bodyW, h: span.h }, BASE_H, capY - BASE_H, bodyMats));
+
+  // The coping: a thin dark reveal, then the light band that is the panel's own
+  // top edge. The dark line is UNDER the band, not over it — the photograph's
+  // edge is the lightest thing on the panel, and a dark fillet laid on top of it
+  // gave the lid back exactly the flat dark plane this is meant to remove.
+  out.push(slab({ x: panelX - bodyW / 2, y: span.y, w: bodyW, h: span.h }, capY, CAP_FILLET_H, p.signReveal));
+  out.push(
+    facedSlab(
+      { x: panelX - bodyPx / 2, y: span.y, w: bodyPx, h: span.h },
+      capY + CAP_FILLET_H,
+      top - capY - CAP_FILLET_H,
+      capMats,
+    ),
+  );
+
+  /*
+   * The header fascia — the photograph's "T".
+   *
+   * It runs from the panel back toward the doorway at the coping's own height,
+   * flush with the body rather than proud of it, so the coping still reads as the
+   * panel's own edge and the fascia as the wall's. Clamped to the run of wall
+   * between the panel and the door so it never reaches past the opening.
+   */
+  const dir = Math.sign(doorX - panelX) || 1;
+  const gap = Math.abs(doorX - panelX) - bodyPx / 2 - DOOR / 2;
+  const runPx = Math.min(HEADER_RUN_M * PX_PER_M, Math.max(0, gap));
+  if (runPx > 1) {
+    const x0 = dir > 0 ? panelX + bodyW / 2 : panelX - bodyW / 2 - runPx;
+    out.push(
+      facedSlab({ x: x0, y: span.y, w: runPx, h: span.h }, capY, top - capY, [
+        ret,
+        ret,
+        p.signOrangeCap,
+        p.signReveal,
+        p.signOrange,
+        p.signOrange,
+      ]),
+    );
+  }
+
+  return out;
 }
 
 /**
@@ -512,8 +748,16 @@ export function zaalPosterX(n: number): number {
  * those anchors are for: another piece can move or light a room's frontage without
  * re-deriving a single coordinate.
  */
-export function buildSignage(p: VenuePalette, roomAnchors: Map<number | string, THREE.Object3D>): SignageBuild {
-  const painter = new SignPainter();
+export function buildSignage(
+  p: VenuePalette,
+  roomAnchors: Map<number | string, THREE.Object3D>,
+  /**
+   * The shared canvas painter. `buildGround` prints the twelve sponsor stands
+   * from the same cache and the same `dispose()`, so passing one in is what stops
+   * the venue owning two texture pools — see `index.ts`.
+   */
+  painter: SignPainter,
+): SignageBuild {
   const floor1 = new THREE.Group();
   floor1.name = 'signage-floor1';
   const ground = new THREE.Group();
@@ -533,7 +777,7 @@ export function buildSignage(p: VenuePalette, roomAnchors: Map<number | string, 
 
     // The large orange numeral panel, beside the entrance: a colour block first,
     // a numeral second, exactly as the corridor reads at Kinepolis.
-    const panelX = d.cx + zaalSignSide(r) * SIGN_OFFSET_PX;
+    const panelX = zaalSignX(Number(r.n));
     const panelH = f.y1 - f.y0;
     const panel = new THREE.Group();
     panel.name = `zaal-sign-${r.n}`;
@@ -541,9 +785,7 @@ export function buildSignage(p: VenuePalette, roomAnchors: Map<number | string, 
     // box across the door from it. At Kinepolis the numeral panel is the dominant
     // colour mass on the wall; ours used to lose that contest to a blank poster.
     const bodyPx = ZAAL_W_M * PX_PER_M + 4;
-    panel.add(
-      slab({ x: panelX - bodyPx / 2, y: f.bodyY, w: bodyPx, h: f.bodyH }, 0, f.y1 + 0.12, p.signOrange),
-    );
+    for (const part of zaalPanelBody(p, panelX, bodyPx, f, d.cx)) panel.add(part);
     panel.add(
       signFace(
         panelX,
@@ -702,11 +944,7 @@ export function buildSignage(p: VenuePalette, roomAnchors: Map<number | string, 
     ),
   );
 
-  return {
-    floor1,
-    ground,
-    dispose: () => painter.dispose(),
-  };
+  return { floor1, ground, dispose: () => painter.dispose() };
 }
 
 /**
@@ -717,5 +955,196 @@ export function buildSignage(p: VenuePalette, roomAnchors: Map<number | string, 
  */
 export function zaalSignX(n: number): number {
   const r = R(n);
-  return roomDoor(r).cx + zaalSignSide(r) * SIGN_OFFSET_PX;
+  return onFrontage(r, roomDoor(r).cx + zaalSignSide(r) * SIGN_OFFSET_PX, (ZAAL_W_M * PX_PER_M + 4) / 2);
 }
+
+/* ======================================================= sponsor stand art ==
+
+ * Michele, tonight: *"Polishing the graphic, making people and stands real etc."*
+ *
+ * Before this the twelve sponsors existed only as `SPONSORS` in
+ * `src/sim/geometry.ts` — the names were in the sim, used for the "why am I
+ * blocked" lines, and they were on screen nowhere at all. A trade-show floor with
+ * no sponsor names on it is not a trade-show floor, it is twelve boxes.
+ *
+ * `media/other-images/image-1790032637969.webp` and `-650288.webp` are the brief:
+ * what you read from across that hall is a **big flat panel of one brand colour
+ * with the name on it**, plus a slim lit totem out in the lane. Everything else —
+ * the counters, the white tub chairs, the black metal high tables — is furniture
+ * you only resolve up close.
+ *
+ * The art lives here rather than in `ground.ts` because this module is where the
+ * venue's lettering is drawn, and it already owns the one canvas painter and its
+ * texture cache. `ground.ts` says where a panel hangs; this says what is on it.
+ */
+
+/** One sponsor's identity: the brand colour, what it is legible in, and the gag. */
+export interface BoothScheme {
+  /** The panel ground. */
+  readonly brand: string;
+  /** Text on `brand`. */
+  readonly ink: string;
+  /** Strapline under the name. Devoxx-flavoured, nothing that needs permission. */
+  readonly strap: string;
+}
+
+/**
+ * Twelve schemes, in `SPONSORS` order — which is `row * 4 + col`, so a booth's
+ * scheme is a pure function of its plan position and a screenshot is reproducible.
+ * That is the whole of the "deterministic per booth" requirement: no RNG here.
+ */
+export const BOOTH_SCHEMES: readonly BoothScheme[] = Object.freeze([
+  { brand: '#2f6ae0', ink: '#ffffff', strap: 'boils your cluster dry' },
+  { brand: '#6f4a2d', ink: '#f3e2c7', strap: 'since 1995 · still serializable' },
+  { brand: '#14798b', ink: '#ffffff', strap: 'your money, eventually consistent' },
+  { brand: '#f2bf18', ink: '#2a2413', strap: 'tell it your bug · it never blinks' },
+  { brand: '#141a14', ink: '#d8b64a', strap: 'COBOL support since before you' },
+  { brand: '#3b3f4a', ink: '#dfe3ea', strap: 'one deployable · one' },
+  { brand: '#1b3a6b', ink: '#ffffff', strap: 'we cover what you did not check' },
+  { brand: '#2f7fd0', ink: '#ffffff', strap: 'your flight will resolve shortly' },
+  { brand: '#c4507f', ink: '#ffffff', strap: 'everything is a crumb, then a loaf' },
+  { brand: '#e0328c', ink: '#ffffff', strap: 'laptop real estate · free' },
+  { brand: '#b81f28', ink: '#ffffff', strap: '/^(a+)+$/ — do not run this' },
+  { brand: '#4a2c18', ink: '#f0d9b8', strap: 'the queue starts here' },
+]);
+
+/** A backlit-panel wash: hotter along the top edge, shadowed at the bottom. */
+function lightbox(ctx: CanvasRenderingContext2D, w: number, h: number, ground: string): void {
+  ctx.fillStyle = ground;
+  ctx.fillRect(0, 0, w, h);
+  const wash = ctx.createLinearGradient(0, 0, 0, h);
+  wash.addColorStop(0, 'rgba(255,255,255,0.14)');
+  wash.addColorStop(0.5, 'rgba(255,255,255,0)');
+  wash.addColorStop(1, 'rgba(0,0,0,0.20)');
+  ctx.fillStyle = wash;
+  ctx.fillRect(0, 0, w, h);
+}
+
+/**
+ * The big branded back wall of a built stand: the sponsor's name across it, the
+ * gag under the name, and a Devoxx caplet in the corner.
+ *
+ * The name is sized to the PANEL, not to a font list — `Sticker Mine` and
+ * `NullPointer Insurance` are the same height on the wall, which is what a real
+ * stand build does and what makes twelve of them read as one hall.
+ */
+export const sponsorPanel =
+  (name: string, s: BoothScheme): Paint =>
+  (ctx, w, h) => {
+    lightbox(ctx, w, h, s.brand);
+
+    // A soft brand-lighter blob behind the name: every one of these walls in the
+    // drone footage has some graphic on it, and a flat field reads as a painted
+    // board rather than as a printed one.
+    ctx.save();
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = s.ink;
+    ctx.beginPath();
+    ctx.ellipse(w * 0.82, h * 0.30, w * 0.26, h * 0.42, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.fillStyle = s.ink;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const size = fitFont(ctx, name, w * 0.86, Math.round(h * 0.26), 800);
+    ctx.fillText(name, w * 0.07, h * 0.42);
+
+    ctx.globalAlpha = 0.82;
+    ctx.font = `500 ${Math.round(size * 0.34)}px ${FONT}`;
+    ctx.fillText(s.strap, w * 0.07, h * 0.62);
+    ctx.globalAlpha = 1;
+
+    // The rule and the Devoxx caplet: the mark every stand at the show carries.
+    ctx.fillStyle = s.ink;
+    ctx.globalAlpha = 0.35;
+    ctx.fillRect(w * 0.07, h * 0.74, w * 0.86, Math.max(2, h * 0.006));
+    ctx.globalAlpha = 1;
+    ctx.font = `700 ${Math.round(h * 0.075)}px ${FONT}`;
+    ctx.fillText('DEVOXX BELGIUM', w * 0.07, h * 0.84);
+  };
+
+/**
+ * The slim lit pylon standing in the lane beside a built stand.
+ *
+ * `image-1790032607096.webp` is full of these: a two-metre portrait lightbox is
+ * what you actually read at head height in a crowded hall, because the back walls
+ * are behind people. It is `boothTotem()` in the sim and has been a collider since
+ * the "this cube is walk-through" round; all that changes here is that it now says
+ * whose it is.
+ */
+export const sponsorTotem =
+  (name: string, s: BoothScheme): Paint =>
+  (ctx, w, h) => {
+    lightbox(ctx, w, h, s.brand);
+    ctx.fillStyle = s.ink;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitFont(ctx, name, w * 0.86, Math.round(h * 0.12), 800);
+    const lines = wrap(ctx, name, w * 0.86).slice(0, 3);
+    const step = h * 0.115;
+    lines.forEach((line, i) => ctx.fillText(line, w / 2, h * 0.34 + (i - (lines.length - 1) / 2) * step));
+    ctx.globalAlpha = 0.3;
+    ctx.fillRect(w * 0.22, h * 0.52, w * 0.56, Math.max(2, h * 0.004));
+    ctx.globalAlpha = 1;
+    ctx.font = `600 ${Math.round(h * 0.045)}px ${FONT}`;
+    ctx.fillText('DEVOXX', w / 2, h * 0.6);
+  };
+
+/**
+ * The printed cloth on a half table, seen from above.
+ *
+ * A table stand's one big surface is its top, and from a diorama camera pitched
+ * at 31 deg the top is most of what you see of it — the six half tables used to
+ * read as six purple slabs eight metres across, which is the shape of the sim's
+ * booth rect and the look of nothing at all. A branded cloth is what a sponsor
+ * actually puts there, and it is the only surface on a table stand big enough to
+ * carry the name at the size the built stands carry theirs.
+ *
+ * The plane is laid flat with `rotation.x = -PI/2`, which sends the texture's +v
+ * to world -z: away from the fixed camera, which is up the screen, which is the
+ * right way up for the lettering.
+ */
+export const sponsorCloth =
+  (name: string, s: BoothScheme): Paint =>
+  (ctx, w, h) => {
+    ctx.fillStyle = s.brand;
+    ctx.fillRect(0, 0, w, h);
+    // Folds: a cloth off a roll has them, and they stop eight metres of flat
+    // colour from reading as a painted lid.
+    ctx.fillStyle = 'rgba(0,0,0,0.10)';
+    for (let x = 0; x < w; x += w / 9) ctx.fillRect(x, 0, w / 34, h);
+    const wash = ctx.createLinearGradient(0, 0, 0, h);
+    wash.addColorStop(0, 'rgba(0,0,0,0.22)');
+    wash.addColorStop(0.7, 'rgba(255,255,255,0.05)');
+    ctx.fillStyle = wash;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.fillStyle = s.ink;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const size = fitFont(ctx, name, w * 0.7, Math.round(h * 0.2), 800);
+    ctx.fillText(name, w / 2, h * 0.52);
+    ctx.globalAlpha = 0.75;
+    ctx.font = `500 ${Math.round(size * 0.38)}px ${FONT}`;
+    ctx.fillText(s.strap, w / 2, h * 0.68);
+    ctx.globalAlpha = 1;
+  };
+
+/**
+ * The printed valance across the front of a draped half table.
+ *
+ * Small type, read from the lane, and it carries the strapline rather than the
+ * name: the name is already on the roll-up banner standing on the same table, and
+ * saying it twice at two scales is what a stand builder charges you extra for.
+ */
+export const sponsorSkirt =
+  (s: BoothScheme): Paint =>
+  (ctx, w, h) => {
+    lightbox(ctx, w, h, s.brand);
+    ctx.fillStyle = s.ink;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitFont(ctx, s.strap, w * 0.8, Math.round(h * 0.44), 600);
+    ctx.fillText(s.strap, w / 2, h * 0.52);
+  };

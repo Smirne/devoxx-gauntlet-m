@@ -33,8 +33,14 @@
   while his face must go back to the sheet's rounded skull, because the face is what makes him
   recognisable and the shoulders are what make him fun.
 - Venue: the real Devoxx plans in `plans/` (first floor rooms 3–10 + closed cinema section;
-  ground-floor exhibition hall). Secondary staircases between rooms 3|4 and 10|9; main staircase
-  between 6 and 7. Keep these positions exactly — non-negotiable, see GAUNTLET.md Stage 1.
+  ground-floor exhibition hall). The two secondary staircases **stand in the corridor against its
+  two walls, level with rooms 4 and 9** (plan y 884–947, world x 1005.5–1114.7) — not in the 3|4
+  and 10|9 gap, which is what this line used to say and what the drawing does not support. Main
+  staircase at the corridor's end between 6 and 7. Keep these positions exactly — non-negotiable,
+  see GAUNTLET.md Stage 1.
+- **When a drawing in `plans/` and the prose in a `.md` disagree, the drawing wins.** Michele,
+  24 Sep 2026, on the staircases: *"Follow the plan — move them"*, then *"follow the devoxx plant,
+  not the plan.md"*. Re-measure, move the geometry, and fix the prose in the same change.
 - Devoxx flavour: Stephan (first name, caricature), keynote speaker "TBA" until announced, tomato
   soup, queues, "OutOfMemoryError" beer joke. Nothing that needs permission.
 - Tooling: pnpm, Vite, TypeScript strict, vitest, three. No physics engine, no external 3D/audio

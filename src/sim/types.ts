@@ -24,6 +24,35 @@ export interface Rect {
   h: number;
 }
 
+/**
+ * A piece of floor that stands above its storey's datum — something a robot walks
+ * ON rather than into.
+ *
+ * The raised lobby, the six steps up to it, the main flight, and the door leaf
+ * Biggy has just put on the floor of cinema E are all the same thing said four
+ * ways. See `src/sim/surface.ts` for why this is sim state and not a number the
+ * renderer works out for itself, and `riseAt` for how it is read.
+ */
+export interface Plate extends Rect {
+  /** What it is, for readability and for the sweeps' failure messages. */
+  kind?: string;
+  /**
+   * Height of the surface above the storey datum, metres — at the LOW edge of
+   * `axis` when this plate is a ramp, and everywhere when it is not.
+   */
+  lo: number;
+  /** ...and at the high edge. Omitted, or equal to `lo`, means a flat plate. */
+  hi?: number;
+  /** Which axis a ramp climbs along. Ignored by a flat plate. Default `'x'`. */
+  axis?: 'x' | 'y';
+  /**
+   * Yaw of the footprint about its own centre, radians — for a plate that is not
+   * square to the world, which is every piece of scenery that was dropped rather
+   * than built. `x/y/w/h` stay the un-rotated rect.
+   */
+  rot?: number;
+}
+
 export type LightType = 'cone' | 'pool';
 
 /** A robot's lamp, as defined by its species. */
@@ -77,6 +106,43 @@ export interface Bot extends RobotDef {
   braced: boolean;
   /** Transient speed cap above `max`, granted by a push; decays at 1.5 s^-1. */
   boostCap?: number;
+  /**
+   * Seconds of airtime left on a hop; 0 or absent on the ground.
+   *
+   * The sim stays 2D: nothing here has a z. What being airborne means is precisely
+   * one thing — `low` walls are not there for this body — and how high it reads is
+   * the renderer's business, drawn from this clock and `JUMP_RISE_M`.
+   */
+  air?: number;
+  /**
+   * Seconds before this body may show off again, counted from the start of the
+   * last party trick.
+   *
+   * The shared rest for all three of them — Voxxy's hop, Biggy's roll and Droid's
+   * stretch — since 25 Sep 2026, when the other two got a flourish of their own.
+   * One field, because `E` mashed is `E` mashed whoever is holding it, and because
+   * it is already zeroed in the two places a robot's history stops mattering
+   * (`restoreIdentity` and `place`, `game.ts`).
+   */
+  hopRest?: number;
+  /**
+   * Seconds left on a **cosmetic** flourish: Biggy's roll or Droid's stretch.
+   * 0 or absent when the robot is not performing.
+   *
+   * Michele asked for these with *"not needed for gameplay"* attached, and that is
+   * enforced rather than trusted: nothing in the sim branches on this field except
+   * the party trick itself, and no code path that reads it writes a position or a
+   * velocity. Voxxy never uses it — her flourish leaves the floor, which is `air`.
+   */
+  flair?: number;
+  /**
+   * How long the running flourish was given, so `flairPhase` can normalise it.
+   *
+   * It is stored rather than looked up per species because the length belongs to
+   * the performance that is actually running: the renderer asks "how far through",
+   * and the answer must not change under it if a duration is ever retimed mid-hop.
+   */
+  flairDur?: number;
   /** Timestamp of the last "X pushes Biggy" toast, sim seconds. */
   pushFlash?: number;
 }
@@ -309,6 +375,14 @@ export interface GameSnapshot {
   clues: Clue[];
   props: Prop[];
   people: Person[];
+  /**
+   * Every raised walking surface on this floor, this frame — the lobby plate, the
+   * flights, and anything a chapter has put on the floor that a robot stands on
+   * top of. `riseAt` in `src/sim/surface.ts` is how it is read; the renderer only
+   * ever asks (CLAUDE.md), which is what keeps a robot's height off the floor a
+   * fact of the sim rather than a guess made in drawing code.
+   */
+  plates: Plate[];
   /** HUD line: the current objective, may contain simple markup. */
   objective: string;
   /** HUD line: the controls that matter right now. */

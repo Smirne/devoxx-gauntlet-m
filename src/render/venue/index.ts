@@ -32,7 +32,7 @@ import { buildFloor1 } from './floor1';
 import { buildGround } from './ground';
 import { createVenuePalette } from './materials';
 import { disposeGeometries } from './props';
-import { buildSignage } from './signage';
+import { SignPainter, buildSignage } from './signage';
 
 export { createVenuePalette } from './materials';
 export type { VenueMaterialName, VenuePalette } from './materials';
@@ -72,18 +72,28 @@ export function simToWorld(
 
 export function buildVenue(): Venue {
   const palette = createVenuePalette();
+  /*
+   * One canvas painter for the whole venue.
+   *
+   * It used to be private to `buildSignage`, which was fine while lettering was
+   * only ever hung on a wall by that module. The twelve sponsor stands print
+   * their own back walls, totems and fascias in `ground.ts` (Michele: *"making
+   * people and stands real"*), and they must share this cache: it is keyed per
+   * distinct sign, and it is the single `dispose()` that releases every texture.
+   */
+  const painter = new SignPainter();
   const group = new THREE.Group();
   group.name = 'venue';
 
   const f1 = buildFloor1(palette);
-  const gf = buildGround(palette);
+  const gf = buildGround(palette, painter);
   gf.group.position.y = -STOREY_H_M;
   group.add(f1.group);
   group.add(gf.group);
 
   // Signage is built last: it `attach`es the Zaal panels onto the room anchors,
   // which means the anchors must already sit in their final world transform.
-  const signs = buildSignage(palette, f1.anchors);
+  const signs = buildSignage(palette, f1.anchors, painter);
   f1.group.add(signs.floor1);
   gf.group.add(signs.ground);
   group.updateMatrixWorld(true);

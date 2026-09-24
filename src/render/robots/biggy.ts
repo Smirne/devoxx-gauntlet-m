@@ -96,6 +96,7 @@ import {
   panelMaterial,
   part,
   puck,
+  revolvePatch,
   roundedBox,
   smoothstep,
   type RobotRig,
@@ -726,10 +727,18 @@ export function buildBiggy(): RobotRig {
   /**
    * Scuffing for the DARK parts.
    *
-   * `weather()` writes a multiplier against the material's own colour, so a rust
-   * tint on a near-black glove divides a bright patch by a very dark base and
-   * comes out as a white flake. Anything this dark gets a tint close to its own
-   * colour and a small amount.
+   * This started life as a workaround: `weather()` wrote a multiplier against
+   * the material's own colour and clamped it per channel, so a rust tint on a
+   * near-black glove came out as a white flake, and the local cure was to give
+   * the dark parts a tint close to their own colour. **The function is fixed**
+   * — `rig.ts` now caps the patch's luminance gain at `MAX_WEAR_LUM_GAIN` and
+   * scales all three channels together, so the hue survives (measured: Biggy's
+   * worst dark part went from 3.33x its own panel's luminance to 2.00x, and the
+   * three meshes that were pinned at the old per-channel clamp are gone).
+   *
+   * It stays because it is now an ART choice rather than a patch: rubber and
+   * work gloves collect soot and grey polish, not the rust that eats painted
+   * steel, and Biggy's dark parts are all rubber.
    */
   const darkWear = (amount: number, seed: number): WeatherOpts => ({
     amount,
@@ -857,7 +866,8 @@ export function buildBiggy(): RobotRig {
   // It carries on 60 mm BEHIND the orange rather than meeting it edge to edge:
   // two fillets ending at the same height pinched a 40 mm notch out of the
   // block's outline at exactly y = 0.34 — a facet artefact that reads as a chip.
-  const underH = SHORTS_Y2 - SHORTS_Y1 + 0.06;
+  const UNDER_SKIRT = 0.06;
+  const underH = SHORTS_Y2 - SHORTS_Y1 + UNDER_SKIRT;
   /*
    * Swept, for the same reason the orange below it is. Left as a box it became
    * the square thing the moment the trousers stopped being one — a flat slab
@@ -865,19 +875,38 @@ export function buildBiggy(): RobotRig {
    * silhouette and the lower body reads as one rounded mass.
    */
   const underPts: THREE.Vector2[] = [];
-  const UNDER_RINGS = 10;
+  const UNDER_RINGS = 12;
+  /** Where the orange's own top edge falls on this sweep. */
+  const UNDER_T0 = UNDER_SKIRT / underH;
   for (let i = 0; i <= UNDER_RINGS; i++) {
     const t = i / UNDER_RINGS;
-    // Widest at the bottom, where it meets the trousers, drawing in as it climbs
-    // into the gut's shadow.
-    const f = 1.005 - 0.06 * t * t;
+    /*
+     * THE BAND WAS TWICE THE SHEET'S HEIGHT, and this is why.
+     *
+     * The 60 mm skirt below the orange was meant to run BEHIND it. It did not:
+     * the block was 5 mm wider than the trousers all the way down, so the skirt
+     * stood in FRONT of the orange and hid 60 mm of it. Measured on the sheet's
+     * FRONT VIEW (283 px per metre), the gut's lip is at 0.417 m and the orange
+     * starts at 0.353 — a **64 mm** dark band over a 130 mm orange one. Ours was
+     * 137 mm of dark over 85 mm of orange: the ratio was inverted, and that is
+     * the whole of why the lower body read as one grey mass with a skirt under
+     * it rather than as trousers with a lip.
+     *
+     * So the skirt tucks IN below the orange's top edge, where it belongs, and
+     * the block is widest exactly where the sheet's overhang is. After: 77 mm of
+     * dark over 145 mm of orange, against the sheet's 64 over 130.
+     */
+    const f =
+      t < UNDER_T0
+        ? 0.9 + 0.105 * (t / UNDER_T0)
+        : 1.005 - 0.06 * ((t - UNDER_T0) / (1 - UNDER_T0)) ** 2;
     underPts.push(new THREE.Vector2((SHORTS_HW + 0.005) * f, underH * t));
   }
   underPts.push(new THREE.Vector2(0, underH));
   const underGeo = new THREE.LatheGeometry(underPts, 28);
   underGeo.scale(1, 1, (SHORTS_HD + 0.005) / (SHORTS_HW + 0.005));
   const shortsUnder = part(underGeo, armourDark, wear(0.55, 8));
-  shortsUnder.position.y = SHORTS_Y1 - 0.06 - TORSO_Y;
+  shortsUnder.position.y = SHORTS_Y1 - UNDER_SKIRT - TORSO_Y;
   torso.add(shortsUnder);
 
   /*
@@ -897,41 +926,92 @@ export function buildBiggy(): RobotRig {
    * — from the diorama camera you see the plan curve, not the elevation.
    */
   const mainH = SHORTS_Y1 - SHORTS_Y0;
-  const SHORTS_RINGS = 14;
+  /*
+   * THE OUTLINE, RE-MEASURED. Michele, on the round that made these a lathe:
+   * *"a bit better, but still squarish. We can address it later."* This is later.
+   *
+   * The old profile ran 0.90 at the waist, 0.98 at its widest and **0.68 at the
+   * hem** — it took a third of the width out over 0.145 m, which is not a pair
+   * of trousers, it is a bucket. Off the FRONT VIEW panel the block is 227 px
+   * across just under the bumper and 215 px at the hem: it narrows by **5%**,
+   * and everything between is a barrel. The sheet's own hem is a rolled lip —
+   * there is a lit edge line all the way along it — so the profile carries one.
+   *
+   * The width matters for a second reason. At 0.68 the hem was NARROWER than the
+   * legs (0.36 m to their outer edge, against 0.29), so each leg cut out through
+   * the side of the sweep and through the flat side face of the dark panel that
+   * used to stand in front of it — two faceted surfaces crossing at a shallow
+   * angle, which is exactly the **sawtooth where the undercut meets the right
+   * leg** in his note. At the sheet's width the hem overhangs the legs, they
+   * leave through the flat underside instead, and the join is a circle at one
+   * height with nothing to alias.
+   */
+  const SHORTS_RINGS = 20;
+  /** The trousers' own profile, in the lathe's pre-scale frame. t = 0 at the waist. */
+  const shortsF = (t: number): number =>
+    0.93 +
+    0.055 * Math.sin(Math.PI * Math.min(1, t * 1.5)) -
+    0.06 * t * t +
+    // The rolled hem: out over the last fifth, then tucked back under.
+    0.035 * Math.sin(Math.PI * smoothstep(0.82, 1, t));
   const shortsPts: THREE.Vector2[] = [];
   for (let i = 0; i <= SHORTS_RINGS; i++) {
     const t = i / SHORTS_RINGS;
-    // 1 at the waist, swelling a little below it, drawn in above the legs. The
-    // sine puts the widest ring a third of the way down, which is where the
-    // sheet's outline turns over.
-    const f = 0.9 + 0.1 * Math.sin(Math.PI * Math.min(1, t * 1.35)) - 0.22 * t * t;
-    shortsPts.push(new THREE.Vector2(SHORTS_HW * f, mainH * (1 - t)));
+    shortsPts.push(new THREE.Vector2(SHORTS_HW * shortsF(t), mainH * (1 - t)));
   }
-  // Close the bottom so the sweep is a solid, not an open skirt.
-  shortsPts.push(new THREE.Vector2(0, mainH * 0.02));
-  const shortsGeo = new THREE.LatheGeometry(shortsPts, 28);
+  // Close the bottom FLAT. The cone that used to be here rose 3 mm to a point on
+  // the axis, so the legs crossed a sloped faceted surface on their way out; a
+  // horizontal disc gives one clean circle per leg instead.
+  shortsPts.push(new THREE.Vector2(0, 0));
+  const shortsGeo = new THREE.LatheGeometry(shortsPts, 32);
   shortsGeo.scale(1, 1, SHORTS_HD / SHORTS_HW);
   const shortsMain = part(shortsGeo, trouser, wear(0.8, 61, 6));
   shortsMain.position.y = SHORTS_Y0 - TORSO_Y;
   torso.add(shortsMain);
 
+  /** The trouser radius at a height in TORSO space, for anything mounted on it. */
+  const shortsRadiusAt = (y: number): number =>
+    SHORTS_HW * shortsF(clamp((SHORTS_Y1 - (y + TORSO_Y)) / mainH, 0, 1));
+
   /*
-   * The dark central panel. On the sheet the rusted orange is only the outer
-   * sixth of the block on each side — x 300..320 and 525..540 of a block that
-   * runs 300..540 — and everything between is the same cool dark armour as the
-   * belt. 0.55 m of 0.86 here, and it stands only 4 mm off the block's face: at
-   * 6 mm it beat the undercut above it as well and turned the whole crotch into
-   * a slab hung off his front. At 4 it wins over the orange, which is all it is
-   * for, and loses to the undercut, which is what it has to do.
+   * THE DARK CENTRE — a patch that follows the sweep, not a block in front of it.
+   *
+   * It was a `roundedBox` 0.55 m wide and 0.888 m deep with flat faces, sized
+   * when the trousers were a box too. On a lathe it was the squarest thing left
+   * on him: a grey slab across the whole front with two visible vertical edges,
+   * and its side planes at x = +-0.275 cut straight through the legs at
+   * x = +-0.255 (see the sawtooth note above).
+   *
+   * It is now two `revolvePatch`es on the trousers' own profile, front and back,
+   * 6 mm proud. They narrow downward the way the sheet's does — the dark is the
+   * shadow the wrap folds gather into, widest under the bumper and closing to
+   * the gap between the legs — and because they end on a radius rather than a
+   * plane they come nowhere near a leg. The back gets one too: the diorama
+   * camera is fixed but Biggy turns, and the BACK VIEW panel has the same dark
+   * centre with the same rust either side of it.
    */
-  const crotchH = SHORTS_Y1 + 0.015 - SHORTS_Y0;
-  const crotchPanel = part(
-    roundedBox(0.55, crotchH, SHORTS_HD * 2 + 0.008, 0.045, 2),
-    armourDark,
-    wear(0.5, 62),
-  );
-  crotchPanel.position.y = SHORTS_Y0 + crotchH / 2 - TORSO_Y;
-  torso.add(crotchPanel);
+  for (const [phiMid, seed] of [
+    [0, 62],
+    [Math.PI, 63],
+  ] as const) {
+    const centre = part(
+      revolvePatch(shortsRadiusAt, phiMid, 0.52, SHORTS_Y0 + 0.022 - TORSO_Y, SHORTS_Y1 + 0.004 - TORSO_Y, {
+        // Almost flush. At 6 mm it was a shield bolted to his front with a hard
+        // edge all round it — the squareness Michele asked to be rid of, moved
+        // 20 cm down. On the sheet this is shading, so it is a colour region
+        // with just enough offset not to z-fight the trousers under it.
+        out: 0.002,
+        corner: 0.45,
+        taperBottom: 0.5,
+        cols: 18,
+        rows: 10,
+      }),
+      armourDark,
+      wear(0.5, seed),
+    );
+    centre.scale.z = SHORTS_HD / SHORTS_HW;
+    torso.add(centre);
+  }
 
   /*
    * THE DIAGONAL WRAP FOLDS.
@@ -973,11 +1053,39 @@ export function buildBiggy(): RobotRig {
    */
 
   /**
-   * The belt plate: 0.23 by 0.10, dead centre, flush with the block's underside.
-   * In front of the folds, whose fans converge on its two bottom corners.
+   * THE BELT PLATE — the last flat slab on him, and Michele's own example.
+   *
+   * 0.23 by 0.10 on the sheet, dead centre, sitting low on the block. It was a
+   * `roundedBox` pinned at a constant z, which put its flat back face **70 mm
+   * off the shell at its bottom edge** once the trousers became a sweep: the
+   * profile takes the block from 0.42 m of radius at the waist to 0.30 m at the
+   * hem and a flat plate cannot follow that. In the portrait it read as a
+   * sticking-plaster hung on his front — and a pale mauve one, because a rust
+   * tint on a small low-poly mesh sampled the wear noise once and washed the
+   * whole plate with it (that half is fixed in `weather()`; this half is here).
+   *
+   * Now a `revolvePatch` on the trousers' own profile: curved in plan, curved in
+   * elevation, 9 mm proud with a 5 mm dome so it catches the light across its
+   * middle the way the sheet's does. `corner` is high because the sheet's plate
+   * is a rounded rectangle, not a panel — the radius is most of its height.
+   * Wear is turned right down: on the sheet this plate is the cleanest thing on
+   * the lower body, which is what makes it read as a fitting rather than as more
+   * bodywork.
    */
-  const belt = part(roundedBox(0.23, 0.1, 0.05, 0.022, 2), armourDark, wear(0.45, 65));
-  belt.position.set(0, 0.258 - TORSO_Y, SHORTS_HD + 0.006);
+  const BELT_Y0 = 0.216;
+  const BELT_Y1 = 0.302;
+  const belt = part(
+    revolvePatch(shortsRadiusAt, 0, 0.30, BELT_Y0 - TORSO_Y, BELT_Y1 - TORSO_Y, {
+      out: 0.012,
+      dome: 0.01,
+      corner: 0.55,
+      cols: 18,
+      rows: 10,
+    }),
+    armourDark,
+    wear(0.18, 65),
+  );
+  belt.scale.z = SHORTS_HD / SHORTS_HW;
   torso.add(belt);
 
   /*
@@ -1151,7 +1259,11 @@ export function buildBiggy(): RobotRig {
     boltRadius: 0.008,
     boltHeight: 0.006,
     phase: 0.174,
-    aimFrom: new THREE.Vector3(0, -0.25, 0),
+    // `DOME_PTS` runs (0.409, 0.096) -> (0.401, 0.110) -> (0.389, 0.132) through
+    // this ring, so the shell's own dr/dy here is -0.56 and every rivet stands
+    // 29 degrees above horizontal. The `aimFrom` point this replaces put them at
+    // 41 — see `BoltRingOpts.aimFrom`.
+    aimSlope: -0.56,
   });
 
   /*
@@ -1385,10 +1497,40 @@ export function buildBiggy(): RobotRig {
      * test says so after a round shipped Biggy's bellows floating beside a leg
      * that was not there.
      */
-    const shinTop = part(new THREE.CylinderGeometry(0.1, 0.104, KNEE_Y - LEG_TOP + 0.02, 20, 1), armourDark, wear(0.5, 35));
+    /*
+     * THE SAWTOOTH. Michele: *"a sawtooth where the undercut meets the right
+     * leg."* Bisected by hiding one mesh at a time in a live build (the harness
+     * is in this round's session notes): it is not the undercut at all — it is
+     * this joint, and it is on both legs.
+     *
+     * `bellows()` opens on a WAIST, so the concertina's topmost ring is
+     * `0.106 * 0.84 = 0.089` — while the plain cylinder above it ended at 0.104.
+     * That left a 15 mm annulus of the cylinder's own **downward-facing** bottom
+     * cap showing all round the top of the leg, unlit, and its two edges were a
+     * 20-gon (the cylinder) against a 28-gon (the bellows): the dark band's
+     * width beat between the two facet counts and drew a row of black triangles.
+     *
+     * Fixed by making the joint a joint. The cylinder closes on the bellows'
+     * own top radius and at the bellows' own segment count, so the two rings
+     * coincide vertex for vertex, there is no annulus left to see, and no facet
+     * beat to see it with.
+     */
+    const BELLOWS_SEGS = 28;
+    const BELLOWS_R = 0.106;
+    /** `bellows()` starts on a waist — this is the radius its top ring actually has. */
+    const BELLOWS_TOP_R = BELLOWS_R * 0.84;
+    const shinTop = part(
+      new THREE.CylinderGeometry(0.1, BELLOWS_TOP_R, KNEE_Y - LEG_TOP + 0.02, BELLOWS_SEGS, 1),
+      armourDark,
+      wear(0.5, 35),
+    );
     shinTop.position.y = -(KNEE_Y - LEG_TOP) / 2 + 0.01;
     shin.add(shinTop);
-    const bigBellows = part(lathe(bellows(0.106, 0.096, 0.117, LEG_TOP, 2), KNEE_Y, 28), armour, wear(0.62, 36));
+    const bigBellows = part(
+      lathe(bellows(BELLOWS_R, 0.096, 0.117, LEG_TOP, 2), KNEE_Y, BELLOWS_SEGS),
+      armour,
+      wear(0.62, 36),
+    );
     shin.add(bigBellows);
 
     const smallBellows = part(lathe(bellows(0.086, 0.08, 0.076, 0.119, 2), ANKLE_Y, 24), rubber, darkWear(0.4, 37));

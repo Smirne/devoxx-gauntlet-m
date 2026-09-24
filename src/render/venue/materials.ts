@@ -117,9 +117,50 @@ const SPECS = {
   steelBlue: { color: '#5f7387', roughness: 0.5, metalness: 0.55 },
 
   /* ------------------------------------------------------------ expo stuff */
-  boothWall: { color: '#39485a', roughness: 0.85 },
-  /** Cloth-draped half tables. Voxxy is the only one who fits under one. */
-  boothCloth: { color: '#3b3550', roughness: 1 },
+  boothWall: { color: '#2a2f38', roughness: 0.85 },
+  /*
+   * ---------------------------------------------------------- sponsor stands
+   *
+   * Michele: *"Polishing the graphic, making people and stands real etc."* A
+   * stand's own colour is PAINTED, not a material: the twelve brand grounds live
+   * in `BOOTH_SCHEMES` in `signage.ts` and arrive as a canvas texture, so twelve
+   * sponsors cost twelve textures and none of these entries. What is here is the
+   * fabric every stand is built out of, shared by all twelve.
+   */
+  /** Booth carpet: a shade darker than the hall's, which is how a stand edge reads. */
+  boothCarpet: { color: '#282b31', roughness: 1 },
+  /**
+   * The pale line around a stand's carpet — `image-1790032650288.webp` shows it
+   * clearly, a white tape edge separating the stand from the aisle. It is the
+   * cheapest thing on this list and it does more for "this is a stand and that is
+   * a walkway" than any amount of furniture.
+   */
+  boothEdge: { color: '#b6b9bf', roughness: 0.8 },
+  /** White tub chairs and stools, the show's other signature — same photographs. */
+  tubChair: { color: '#e7e6e1', roughness: 0.6 },
+  /** Planter tubs along the aisles. */
+  planterTub: { color: '#cfcbc2', roughness: 0.85 },
+  planterGreen: { color: '#46663c', roughness: 0.95 },
+  /** Rubber Duck Inc's stock, and the giveaway bowls on every counter. */
+  duckYellow: { color: '#f2bf18', roughness: 0.5 },
+  /**
+   * A stand on standby.
+   *
+   * Constraint 4 of this piece: chapter 2 is a blackout, and anything whose only
+   * readable state is "brightly lit" is invisible for a whole chapter. Every stand
+   * carries one of these strips along its counter, at the intensity of a switched
+   * socket rather than of a light — `image-1790032600128.webp` is a near-black
+   * hall in which you can still see exactly where the fittings are.
+   */
+  boothStandby: { color: '#111a26', roughness: 0.5, emissive: '#2f6ea8', emissiveIntensity: 0.55 },
+  /**
+   * Cloth-draped half tables. Voxxy is the only one who fits under one.
+   *
+   * Neutral, not the purple it used to be: the sponsor's colour arrives on the
+   * printed cloth laid over the top (`sponsorCloth` in `signage.ts`), and a purple
+   * skirt under twelve different brand colours fought every one of them.
+   */
+  boothCloth: { color: '#2b2e35', roughness: 1 },
   /** Sponsor LED walls and booth screens. */
   boothScreen: { color: '#1a2230', roughness: 0.4, emissive: '#2f6ea8', emissiveIntensity: 0.8 },
   counterTop: { color: '#2a2d33', roughness: 0.5 },
@@ -161,8 +202,44 @@ const SPECS = {
   /* ---------------------------------------------------------------- accent */
   /** Devoxx orange, the same hue as Voxxy's shell. */
   devoxxOrange: { color: '#f2711c', roughness: 0.6 },
-  /** The Zaal numeral panels: a deeper, flatter orange that reads as a block. */
-  signOrange: { color: '#e1561c', roughness: 0.75 },
+  /**
+   * The Zaal numeral panels: a deeper, flatter orange that reads as a block.
+   *
+   * Backlit, and that is the fix rather than a flourish. The numeral's own face
+   * is a `SignPainter` material at `glow = 0.5` — a lightbox, as the corridor's
+   * panels are — while the block carrying it was inert, so in the venue's own
+   * darkness the lit quad floated on a body that had gone to near-black. Michele,
+   * with the screenshot: *"This orange thing... it misses a shape."* Half of that
+   * is the missing edges (see `signOrangeCap`); the other half is that a panel
+   * has to be one colour block, not a bright rectangle stuck on a dark one.
+   */
+  signOrange: { color: '#e1561c', roughness: 0.75, emissive: '#8d3311', emissiveIntensity: 0.62 },
+  /**
+   * The Zaal panel's COPING — the band across its top, and the only part of it a
+   * high isometric camera sees end-on.
+   *
+   * `media/other-images/image-1790032674926.webp` is the measurement: the real
+   * panel beside the zaal 7 entrance is a slab standing proud of the charcoal
+   * wall, and what reads in the photograph is that its top edge is a *lighter*
+   * orange than its face — it catches the corridor's own light where the face is
+   * in shade. Ours had one material for the whole block, so the top came back as
+   * the same flat orange as the front and the panel read as a box rather than as
+   * a panel. A touch of emissive, at the same "these are backlit boxes" intensity
+   * `SignPainter` gives the numeral itself, keeps that edge alive in chapter 1's
+   * blackout instead of letting the whole thing go to a silhouette.
+   */
+  signOrangeCap: { color: '#ff7f34', roughness: 0.55, emissive: '#b04d15', emissiveIntensity: 0.8 },
+  /** The panel's returned side edges: the same orange, turned away from the light. */
+  signOrangeReturn: { color: '#a83c11', roughness: 0.8, emissive: '#3d1606', emissiveIntensity: 0.5 },
+  /**
+   * The shadow gap a panel is set into.
+   *
+   * In the photograph the panel does not grow out of the floor — it stops on a
+   * dark recessed foot it overhangs, which is what makes a 3.6 m colour block
+   * read as a built panel instead of a decal. Darker than `signDark` on purpose:
+   * this is a gap, not a surface.
+   */
+  signReveal: { color: '#0b0d11', roughness: 1 },
   /** Kinepolis wayfinding blue. */
   signBlue: { color: '#1c4a96', roughness: 0.7 },
   /** Emergency running-man green, lit from its own battery. */

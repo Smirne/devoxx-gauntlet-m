@@ -42,7 +42,7 @@ Model sheets (multi-view PNGs, copies in `robots/`):
 Two levels of one building:
 - **Ground floor — exhibition hall**: main entrance, reception, booths, catering, BOF rooms, toilets; structural column grid; two secondary staircases inside the hall up to the cinema corridor.
 - **First floor — cinema level**: auditoriums with raked seating (Devoxx uses rooms 3–10), the central corridor between them, the curved foyer with pendant lighting, the unnumbered cinema rooms Devoxx does not use.
-- **Main (grand) staircase** connects the exhibition floor to the corridor end between rooms 6 and 7; **secondary staircases** land in the corridor between rooms 3|4 and 10|9.
+- **Main (grand) staircase** connects the exhibition floor to the corridor end between rooms 6 and 7; **secondary staircases** come up into the corridor level with rooms 4 and 9, standing in it against its two walls (**corrected 24 Sep 2026** from "between rooms 3|4 and 10|9", which is not what `plans/devoxx-rooms-stairs-annotated.png` draws; the measurement is in `src/sim/geometry.ts`).
 
 Floor plans (copies in `plans/`):
 - Exhibition hall, raw: https://game.devoxx.be/references/venue/maps/hollywood-area.png

@@ -115,8 +115,12 @@ they escalate to Michele rather than shipping wrong.
 Pass condition: a critic takes a top-down debug screenshot of the rendered map and overlays it on
 `plans/devoxx-rooms-stairs-annotated.png` and `plans/exhibition-floor-stairs-annotated.png`.
 Room count, relative proportions, door positions and **both** staircase positions must match —
-secondary staircases in the corridor walls between rooms **3|4 and 10|9**, main staircase at the
-corridor's end between **6 and 7**. Numbered Zaal signage must be visible in-scene, in the venue's own style — a large orange
+the two secondary staircases **standing in the corridor against its two walls, level with rooms 4
+and 9** (plan y 884–947, 20 plan px deep, hard against the room walls), main staircase at the
+corridor's end between **6 and 7**. This file used to say the secondary staircases were between
+rooms 3|4 and 10|9; they are not, and Michele's ruling of 24 Sep 2026 — *"follow the devoxx plant,
+not the plan.md"* — is the standing rule: **where a drawing in `plans/` and a `.md` disagree, the
+drawing is the authority**, and the prose gets corrected in the same change. Numbered Zaal signage must be visible in-scene, in the venue's own style — a large orange
 panel carrying one big white numeral beside each auditorium entrance, plus the blue Dutch
 wayfinding signs (`uitgang zaal 6/7`, `info`); see `media/other-images/CAPTIONS.md`. Craft polish
 (materials, lighting mood against the venue photos) is only judged once the overlay passes.
