@@ -24,7 +24,7 @@ import {
   TRAVEL_TIME_SCALE,
 } from './constants';
 import { VIEW_CLOSED, groundPlates } from './geometry';
-import { CRATE_AT, VIEW_CRATES_OUT, openingAt, openingView } from './opening';
+import { CRATE_AT, STAND_AT, STAND_FACE, openingAt, openingView } from './opening';
 import {
   botsCollide,
   circleRect,
@@ -267,17 +267,6 @@ export function createGame(opts: GameOptions = {}): DebugGame {
    * expects chapter 1 to be playable on the first frame.
    */
   let opening: number | null = null;
-  /**
-   * Where chapter 1 puts the three of them — read off the chapter itself rather
-   * than copied from it, by starting the chapter and looking at where the robots
-   * landed before the opening moves them onto their pallets. A second copy of
-   * `ctx.place([40, 350], [92, 334], [148, 366])` in this file is a second thing
-   * to keep in step, and it would be wrong the first time the chapter's opening
-   * shot moved.
-   */
-  let startMarks: Array<{ kind: RobotKind; x: number; y: number }> = [];
-  /** True while the opening's step-down walk is running, so a key can cut it short. */
-  let openingWalk = false;
 
   interface CutState {
     view: ViewRect;
@@ -856,7 +845,6 @@ export function createGame(opts: GameOptions = {}): DebugGame {
    */
   function startOpening(): void {
     startChapter(1);
-    startMarks = bots.map((b) => ({ kind: b.kind, x: b.x, y: b.y }));
     phase = 'intro';
     opening = 0;
     fade = 0;
@@ -885,7 +873,6 @@ export function createGame(opts: GameOptions = {}): DebugGame {
    */
   function endOpening(): void {
     opening = null;
-    openingWalk = false;
     cut = null;
     fade = 0;
     startChapter(1);
@@ -1034,20 +1021,39 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       // The walk to the chapter's own marks is the cutscene walker, at the pace
       // it derives from the slowest robot's own `max` — nothing here sets a
       // speed. When it finishes, the player has the keyboard.
-      if (o.walking && phase === 'intro') {
-        /*
-         * One stride, not a journey. The chapter's own marks are the row in
-         * front of the crates (`STAND_AT`), so stepping out of a crate IS
-         * arriving on the mark — which is what removes the beat Michele could
-         * not read: *"crates are there, robots in a different position, and
-         * then another transition to same scene without crates?"*
-         */
-        const routes = startMarks.map((mk) => ({ kind: mk.kind, pts: [{ x: mk.x, y: mk.y }] }));
-        openingWalk = true;
-        startCut(routes, endOpening, VIEW_CRATES_OUT);
+      /*
+       * ONE ROBOT AT A TIME, AND ONE TRANSITION AT THE END.
+       *
+       * Michele asked for the presentation — *"1 for Voxxy, small and swift, 2
+       * for Droid, tall and thoughtful, 3 for biggy... And they come out one at
+       * a time?"* — and for the shape around it: *"Why not placing the crates on
+       * the west wall and using a single transition?"*
+       *
+       * So the stride out is driven here rather than handed to the cutscene
+       * walker: the walker moves all three together and brings its own fade, and
+       * three of those in a row is three transitions where he asked for one. The
+       * step is 17 px over `STEP_TIME`, which is under half of even Droid's top
+       * speed — `tests/opening.test.ts` measures that rather than trusting it.
+       */
+      for (const b of bots) {
+        const u = o.step[b.kind];
+        const from = CRATE_AT[b.kind];
+        const to = STAND_AT[b.kind];
+        // Smoothstep, both ends still. NOT an ease-out: `u(2 - u)` starts at
+        // twice its own mean speed, and `STEP_TIME` is derived against a peak of
+        // 1.5x (`STEP_PEAK`), which is this curve's.
+        const e = u * u * (3 - 2 * u);
+        b.x = from.x + (to.x - from.x) * e;
+        b.y = from.y + (to.y - from.y) * e;
+        b.face = u > 0 ? STAND_FACE : Math.PI / 2;
+      }
+      if (o.walking) {
+        // The single transition: fade out, hand over, fade back in on the
+        // chapter's own framing and its own camera angle.
+        endOpening();
         return;
       }
-      if (phase !== 'cut') return;
+      return;
     }
     if (phase === 'cut') {
       t += dt;
@@ -1080,7 +1086,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
      * something else, so it is consumed here: a player mashing Space to get past
      * the crates does not also toggle the tow bar on the frame they arrive.
      */
-    if (opening !== null || openingWalk) {
+    if (opening !== null) {
       endOpening();
       return;
     }

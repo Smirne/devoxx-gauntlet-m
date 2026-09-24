@@ -18,6 +18,7 @@
 import { CABLE_MAX, TOAST_MS } from '../sim/constants';
 import type { Bot, GameSnapshot, Prop, RobotKind } from '../sim/types';
 import { displayMps } from '../sim/units';
+import { CARDS as INTRO_CARDS } from '../sim/opening';
 
 export interface HudOptions {
   /**
@@ -247,6 +248,17 @@ const CSS = `
   text-shadow:0 6px 40px rgba(0,0,0,.9),0 0 90px rgba(0,0,0,.8)}
 .ad-titles .ad-t2{font-size:min(2.6vw,18px);letter-spacing:.24em;color:#e9e6df;
   text-shadow:0 3px 22px rgba(0,0,0,.95)}
+
+/* THE PRESENTATION CARD. One robot at a time, with its own switch key — the
+   opening teaches 1, 2 and 3 by using them rather than by listing them. Low in
+   the frame, because the robot it names is in the middle of it. */
+.ad-intro{position:absolute;left:0;right:0;bottom:12%;display:flex;align-items:center;
+  justify-content:center;gap:14px;pointer-events:none}
+.ad-intro .ad-ikey{display:grid;place-items:center;width:40px;height:40px;border-radius:9px;
+  border:2px solid currentColor;font-size:22px;font-weight:800;line-height:1}
+.ad-intro .ad-itext{text-align:left}
+.ad-intro .ad-iname{font-size:24px;font-weight:800;letter-spacing:.1em;line-height:1.1}
+.ad-intro .ad-iline{font-size:14px;letter-spacing:.06em;color:#e9e6df;opacity:.92}
 .ad-card small{display:block;font-size:13px;color:${MUTED};margin-top:8px}
 
 /* The objective wraps the top bar onto two or three lines at 1280x720, so nothing
@@ -609,6 +621,17 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   titleMain.textContent = 'AFTER DARK';
   titleSub.textContent = 'KINEPOLIS ANTWERP · THE NIGHT BEFORE DEVOXX';
 
+  /**
+   * The per-robot card: its switch key, its name and one line. Coloured with the
+   * robot's own lamp colour, which is the same colour its chip in the switcher
+   * carries, so the connection is made before the player has touched anything.
+   */
+  const intro = el('div', 'ad-intro ad-hide', root);
+  const introKey = el('div', 'ad-ikey', intro);
+  const introText = el('div', 'ad-itext', intro);
+  const introName = el('div', 'ad-iname', introText);
+  const introLine = el('div', 'ad-iline', introText);
+
   const card = el('div', 'ad-card ad-hide', root);
   const cardBox = el('div', 'ad-cardbox', card);
 
@@ -873,6 +896,16 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     const opening = snap.opening !== null;
     titles.classList.toggle('ad-hide', !opening || snap.opening!.title <= 0.001);
     if (opening) titles.style.opacity = snap.opening!.title.toFixed(3);
+    const who = snap.opening?.card ?? null;
+    intro.classList.toggle('ad-hide', who === null);
+    if (who !== null) {
+      const c = INTRO_CARDS[who];
+      const bot = snap.bots.find((b) => b.kind === who);
+      setText(introKey, String(c.key), textCache);
+      setText(introName, c.name, textCache);
+      setText(introLine, c.line, textCache);
+      if (bot) setStyle(intro, 'introcol', 'color', rgb(bot.light.c), styleCache);
+    }
     left.classList.toggle('ad-hide', opening);
     meters.classList.toggle('ad-hide', opening);
     // The top bar keeps only the one thing that is true during the opening: that

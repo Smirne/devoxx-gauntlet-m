@@ -1438,6 +1438,8 @@ export function buildCrates(opts: CratesOptions = {}): CratesModel {
     return hit;
   };
 
+  // TEMP-DEBUG-HOOK
+  if (typeof globalThis !== 'undefined') (globalThis as any).__crateDebug = { root, models, layout };
   return {
     root,
     crates: models,
