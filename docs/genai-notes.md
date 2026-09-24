@@ -3029,3 +3029,11 @@ wall.
   followed would have turned S round again. S is now an about-face: the first S frame locks the
   direction away from the camera, the robot walks it, and the camera swings behind. Scripted
   W → S → W: 180° turn, camera behind (0°), W continues the new way.
+- *"That black box is a bit odd"*, and separately *"in that corridor there is a candy shop, a
+  self-service shelf — another Devoxx flavour"*. The bare boxes were the sim's knee-high
+  column feet left over when the holograms were cut to one in three. They are now lounge armchairs
+  (the venue's red velvet) and low coffee tables with a closed laptop, a sticker and two cups, in
+  the same footprint. The plan pairs some feet 4 px apart; one piece is drawn per pair. The candy
+  wall is a 2.6 m pick-and-mix shelf, 0.3 m deep and flush to the wall, placed on the widest clear
+  stretch in the closed section (beside Zaal D). It has twenty bins of sweets and a pink "pick &
+  mix" neon.
