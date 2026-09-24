@@ -64,6 +64,10 @@ export class LightPool {
       if (d < this.fadeTo) sc.push({ v, d });
     }
     sc.sort((a, b) => a.d - b.d);
+    // Past the pool's size a light is dropped; fade toward that cut so the
+    // light that loses its slot is already dark (a hard cut popped visibly).
+    const n = this.slots.length;
+    const cut = sc.length > n ? sc[n].d : Infinity;
     for (let i = 0; i < this.slots.length; i++) {
       const s = this.slots[i];
       const e = sc[i];
@@ -72,7 +76,7 @@ export class LightPool {
         continue;
       }
       const src = e.v.src;
-      const fade = 1 - THREE.MathUtils.smoothstep(e.d, this.fadeFrom, this.fadeTo);
+      const fade = (1 - THREE.MathUtils.smoothstep(e.d, this.fadeFrom, this.fadeTo)) * (1 - THREE.MathUtils.smoothstep(e.d, cut - 5, cut));
       s.position.copy(e.v.pos);
       s.color.copy(src.color);
       s.intensity = src.intensity * fade;
