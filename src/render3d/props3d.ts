@@ -11,7 +11,7 @@
 import * as THREE from 'three';
 
 import { CY0, CY1, floor1Walls } from '../sim/geometry';
-import { clueLitBy } from '../sim/lights';
+import { CLUE_SPOT, clueLitBy } from '../sim/lights';
 import { DEFS } from '../sim/constants';
 import type { Clue, GameSnapshot, Prop, RobotKind } from '../sim/types';
 import { m } from '../sim/units';
@@ -374,9 +374,17 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
   function clueObj(c: Clue): ClueObj {
     const root = new THREE.Group();
     root.position.set(m(c.x), 0, m(c.y));
+    // Sized from the sim's own tolerance: the ring's outer edge is the patch
+    // `clueLitBy` tests (CLUE_SPOT), so light on the ring is light that counts.
+    // At 1.5 m it was nearly twice that patch, and a lamp could sit on the ring
+    // without lighting the clue (playtest: Voxxy "not considered lighting it").
+    // The stencil's circle is 110/128 of the texture's half-width.
+    const size = (2 * m(CLUE_SPOT)) / (110 / 128);
+    // A standby glow, as the 2.5D plates have: unlit, the ring was black on a
+    // black floor and a clue could not be found at all ("I lost hint 3").
     const decal = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.5, 1.5),
-      new THREE.MeshStandardMaterial({ color: 0xd8d2c0, roughness: 0.6, alphaMap: stencil, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }),
+      new THREE.PlaneGeometry(size, size),
+      new THREE.MeshStandardMaterial({ color: 0xd8d2c0, roughness: 0.6, alphaMap: stencil, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, emissive: new THREE.Color(0.55, 0.52, 0.45), emissiveIntensity: 0.25 }),
     );
     decal.rotation.x = -Math.PI / 2;
     decal.position.y = 0.012;
@@ -447,7 +455,11 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
             break;
           }
           case 'projector-panel': {
-            const done = p.state === 'done';
+            // Green only once Droid's hand is on it: the sim flips at the key
+            // press, the reach takes ~0.6 s to get there (playtest: "the hint
+            // colour changes too soon, it should wait until contact").
+            if (p.state === 'done' && o.userData.doneAt === undefined) o.userData.doneAt = t;
+            const done = p.state === 'done' && t - (o.userData.doneAt as number) > 0.6;
             const led = o.userData.led as THREE.Mesh;
             const blink = done ? 1 : Math.sin(t * 5) > 0 ? 1 : 0.15;
             (led.material as THREE.MeshBasicMaterial).color.setRGB(done ? 0.1 : 1, done ? 1 : 0.05, 0.05).multiplyScalar(14 * blink);
@@ -525,6 +537,7 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
           (led.material as THREE.MeshBasicMaterial).color.copy(base).multiplyScalar(c.found ? 10 : lit ? 16 : 0.6 + 0.3 * Math.sin(t * 3 + c.slot));
         }
         co.digit.visible = c.found;
+        if (!c.found) (co.decal.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.4 + 0.3 * (0.5 + 0.5 * Math.sin(t * 1.6 + c.slot));
         if (c.found && !co.solved) {
           co.solved = true;
           const dm = co.decal.material as THREE.MeshStandardMaterial;

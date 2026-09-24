@@ -2986,3 +2986,21 @@ has gained, reading the logs of the merge.
 sim lets him walk up the aisle and across the clue, and the 3D seats are built from the same
 `roomSeating()` as the sim's walls. The message the game shows when he stops would identify the
 wall.
+
+**Same evening, more of the same playtest:**
+- *Steering:* "the camera should follow the direction the droid is facing". WASD was
+  camera-relative, and a camera that followed the heading fed back into "right" (the robots-in-
+  circles bug of 23 Sep), so it only followed a robot running away from it. The controls are now
+  chase-camera: W along the heading, A/D turn it, S back. The camera follows the heading and swings
+  behind on a switch. Droid's look-up was halved: it cost too much floor.
+- *Hint 3's panel turned green too soon.* It now waits for the reach to make contact (0.6 s).
+- *"Still can't walk inside the hint 4 area."* The 3D wall pass skipped every plan wall with a
+  `kind`; the merge gave cinema E's exit-alcove walls `kind: 'alcove'`, so they were solid and
+  invisible. Now drawn. The staircase walls (three new kinds) are the same case, but the stairs
+  are moving in 2.5D first.
+- *Voxxy's light on the ring did not count.* The sim tests a patch of `CLUE_SPOT` = 5 px (0.4 m)
+  round each clue; the 3D ring was 1.5 m across. Michele: "I would be more generous with the
+  light / hint match." `CLUE_SPOT` is now 10 px (0.8 m), and the 3D ring is drawn at exactly that
+  radius. This is a SIM change; the 2.5D branch needs the same one line. The suite stayed 460/460.
+- *"I lost hint 3."* Unsolved rings were lit-only and went black in the dark front of cinema B.
+  They now have the 2.5D plates' slow standby pulse.

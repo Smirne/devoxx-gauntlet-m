@@ -16,7 +16,7 @@
  *   ?shot=1                    no animation loop; `window.__ad3d.step()` drives
  *                              frames, for deterministic screenshots
  *
- * Controls: WASD / arrows (camera-relative), mouse to look (click to lock the
+ * Controls: W forward, A/D turn, S back (chase camera), mouse to look (click to lock the
  * pointer), wheel to zoom, 1/2/3/Tab to switch robot, E use/climb, Space tow,
  * 4–9 at the keypad, P photo mode (hide the HUD), M mute.
  */
@@ -146,15 +146,13 @@ const MOVE: Readonly<Record<string, keyof typeof held>> = {
   ArrowRight: 'right',
 };
 
-/** The sim's stick, from held keys and the camera's yaw — refreshed every frame. */
-function pushStick(): void {
+/** The sim's stick, from held keys: W along the robot's heading, A/D turn it (chase camera). */
+function pushStick(dt: number): void {
   const fwd = (held.up ? 1 : 0) - (held.down ? 1 : 0);
-  const strafe = (held.right ? 1 : 0) - (held.left ? 1 : 0);
-  if (fwd === 0 && strafe === 0) {
-    game.setStick(0, 0);
-    return;
-  }
-  const [sx, sy] = world.cam.stick(fwd, strafe);
+  const turn = (held.right ? 1 : 0) - (held.left ? 1 : 0);
+  const snap = game.snapshot();
+  const b = snap.bots[snap.active] ?? snap.bots[0];
+  const [sx, sy] = world.cam.drive(fwd, turn, dt, b.kind, b.face);
   game.setStick(sx, sy);
 }
 
@@ -295,7 +293,7 @@ function frame(dt: number): void {
     world.render(game.snapshot(), dt, true);
     return;
   }
-  pushStick();
+  pushStick(dt);
   game.update(dt);
   const snap = game.snapshot();
   if (snap.chapter > 1) {

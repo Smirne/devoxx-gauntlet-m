@@ -14,7 +14,7 @@ pnpm dev                 # then open http://localhost:5173/3d.html
 
 `pnpm build` builds both pages; the 3D one is `dist/3d.html`.
 
-Controls: **WASD / arrows** move, relative to the camera · **mouse** looks (click to lock the
+Controls: **W** forward, **A/D** turn, **S** back (chase camera) · **mouse** looks (click to lock the
 pointer, or drag) · **wheel** zooms · **1/2/3/Tab** switch robot · **E** use / climb · **Space** tow
 Biggy · **4–9** at the keypad · **P** photo mode (hides the HUD, depth of field on the driven robot)
 · **Q** cycles render quality
@@ -48,7 +48,7 @@ second renderer, `src/render3d/`, entered from `3d.html` / `src/main3d.ts`:
 | `venue.ts` | the closed section at full height **from `floor1Walls()`** — corridor with coved vault, cinemas A–E (screens, velvet seats, drapes, star ceilings, sconces), foyer with bar and windows onto Antwerp, glass kiosk, fire shutter with beacons and an LED ticker, Zaal panels, posters, holo plinths |
 | `props3d.ts` | what moves: the shutter rolls up, the jammed door falls on the sim's own clock with sparks, doors, keypad LCD, projector panel, clues (floor stencil, per-colour LEDs from `clueLitBy`, a floating digit once found) |
 | `robots3d.ts` | the 2.5D rigs (same builders, same gait) with physical materials, and each lamp as a real shadow-casting SpotLight |
-| `camera3d.ts` | third-person orbit with wall collision; WASD made camera-relative |
+| `camera3d.ts` | third-person orbit with wall collision; W along the heading, A/D turn, camera follows it |
 | `signs.ts`, `screens.ts` | canvas-drawn signage, posters, the city, an animated ad and a dot-matrix ticker |
 | `hudTheme.ts` | a night-city skin over the shared HUD (its DOM and logic unchanged) |
 | `details.ts` | wall furniture and floor clutter: lacquered panels, stickers and UV-reactive tags, extinguishers, CCTV, a cable tray, vents, popcorn, tickets, cola spills that mirror the room |
