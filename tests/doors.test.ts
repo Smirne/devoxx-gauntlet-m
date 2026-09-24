@@ -270,19 +270,26 @@ describe('chapter 3 · Stephan opens the stairs instead of the gate blinking out
     const g = mk(3);
     steps(g, 2);
     const gate = (): Prop => propOf(g, 'gate');
-    expect(gate().progress).toBe(0);
-    playToStairGate(g);
-    // `playToStairGate` runs the hold out, so walk it backwards instead: a fresh run
-    // that stops the moment `done()` fires has the clock still at zero.
-    const h = mk(3);
-    steps(h, 2);
-    const hGate = (): Prop => {
-      const p = h.snapshot().props.find((o) => o.kind === 'gate');
-      if (!p) throw new Error('no gate');
-      return p;
-    };
-    expect(hGate().progress).toBe(0);
-    expect(gate().progress).toBe(1);
+    expect(gate().progress, 'the barrier is moving before anyone has opened it').toBe(0);
+
+    const seen: number[] = [];
+    playToStairGate(g, (h) => {
+      // From the frame `done()` fires, watch the clock rather than the end state.
+      for (let i = 0; i < 12; i++) {
+        const p = h.snapshot().props.find((o) => o.kind === 'gate');
+        seen.push(p?.progress ?? -1);
+        h.update(DT_MAX);
+      }
+    });
+    // A dozen frames is 0.4 s of a 1.5 s swing, so every one of them is a pose
+    // between the two ends — which is the whole difference between an animation
+    // and a cut between two stills.
+    expect(seen[0], 'the barrier is already part-open on the frame it is unhooked').toBe(0);
+    expect(seen[seen.length - 1], 'the whole swing happened inside half a second').toBeLessThan(1);
+    for (let i = 1; i < seen.length; i++) {
+      expect(seen[i], `frame ${i} did not advance`).toBeGreaterThan(seen[i - 1]);
+    }
+    expect(gate().progress, 'and it does land on 1').toBe(1);
   });
 
   it('puts the swung barrier where the sim has a wall, and gives the flight back', () => {

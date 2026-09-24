@@ -674,14 +674,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * WHERE THE BARRIER ENDS UP, and the post it leaves behind.
    *
    * The rects `gateDraw` poses at `progress = 1` (`src/render/doors.ts`): the leaf
-   * hinged on the west post, a quarter turn back into the stairwell, lying flat
-   * along the flight's west cheek — where a stair gate is pinned back when a
-   * building is open — plus the east post, which does not move and which the `gate`
-   * wall was covering until now.
+   * hinged on the west post and swung a quarter turn SOUTH, out of the stairwell
+   * and back along the west edge of the approach — where a stair gate is pinned
+   * back when a building is open — plus the east post, which does not move and
+   * which the `gate` wall was covering until now.
    *
-   * Both are hard against the shaft's own side walls, so the flight itself stays
-   * as wide as it was: the transition walks three robots up the middle of it a
-   * second and a half later and none of them goes near either.
+   * South rather than into the shaft, because the flight starts climbing at this
+   * line and is 2.7 m up within the leaf's own length (`groundPlates`): a barrier
+   * lying in there would be buried in the treads, and the transition walks three
+   * robots up the middle of it a second and a half later. Out here it is hard
+   * against the reception block's east face, so the way up stays as wide as it was
+   * and nothing in the cutscene goes near it.
    */
   const gateY = GF.gate.y + GF.gate.h / 2;
   const gateHingeX = GF.gate.x + GATE_POST_INSET;
@@ -689,7 +692,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const gateOpenWalls: Wall[] = [
     {
       x: gateHingeX - GATE_LEAF_T / 2,
-      y: gateY - gateLen - GATE_LEAF_T / 2,
+      y: gateY - GATE_LEAF_T / 2,
       w: GATE_LEAF_T,
       h: gateLen + GATE_LEAF_T,
       kind: 'gateleaf',

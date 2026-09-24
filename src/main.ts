@@ -293,6 +293,12 @@ let lastBreak = 0;
 let lastFireSwing = 0;
 /** Last frame's rise on chapter 2's roller door, so the shutter plays once. */
 let lastRollerRise = 0;
+/** Last frame's swing on chapter 1's cinema-B door, so the maglock plays once. */
+let lastLockSwing = 0;
+/** Last frame's swing on chapter 2's router cabinet, so the hinges play once. */
+let lastCabinetSwing = 0;
+/** Last frame's swing on chapter 3's registration gate, so the hook plays once. */
+let lastGateSwing = 0;
 /** Last frame's flourish per robot, so a party trick's cue plays once. */
 const lastFlair: Record<RobotKind, number> = { voxxy: 0, droid: 0, biggy: 0 };
 /**
@@ -336,6 +342,29 @@ function updateAudio(snap: GameSnapshot, dt: number): void {
   if (rising > 0 && lastRollerRise <= 0) audio.play('shutter');
   lastRollerRise = rising;
 
+  // Cinema B's magnetic lock, released from the projector panel. The prop is
+  // published in BOTH states now — it used to stop existing the moment it opened,
+  // which made the payoff of the whole mount beat a door that silently ceased to
+  // be — so `state === 'open'` is what picks it out of the four cinema doors
+  // chapter 1 draws. A, C and D are scenery and never carry a clock.
+  const unlocking = snap.props.find((p) => p.kind === 'lock' && p.state === 'open')?.progress ?? 0;
+  if (unlocking > 0 && lastLockSwing <= 0) audio.play('maglock');
+  lastLockSwing = unlocking;
+
+  // Biggy shouldering the router cabinet open, on hinges seized since 2019. Two
+  // leaves, so the cue has two stops in it; it is the one cue whose middle is
+  // louder than its ends.
+  const shouldering = snap.props.find((p) => p.kind === 'cabinet')?.progress ?? 0;
+  if (shouldering > 0 && lastCabinetSwing <= 0) audio.play('cabinet');
+  lastCabinetSwing = shouldering;
+
+  // Stephan opening the stairs for the day: a hook off an eye, and nothing hits.
+  // The chapter holds the hall for the whole swing before the exit cutscene, so
+  // this is heard over the thing it describes rather than under a fade.
+  const opening = snap.props.find((p) => p.kind === 'gate')?.progress ?? 0;
+  if (opening > 0 && lastGateSwing <= 0) audio.play('gate');
+  lastGateSwing = opening;
+
   /*
    * The party tricks on `E`.
    *
@@ -378,6 +407,16 @@ function updateAudio(snap: GameSnapshot, dt: number): void {
     // A fresh chapter brings a fresh set of clues, already at zero found; without
     // this, restarting chapter 1 after solving it would count four solves at once.
     lastFound = snap.clues.reduce((n, c) => n + (c.found ? 1 : 0), 0);
+    // Same reason, for every door: a chapter's props arrive shut, and a restart
+    // must not carry the previous run's swing across and swallow the next cue.
+    // The three older edges had this bug — replay chapter 1 after breaking the
+    // jammed door and the crash was silent the second time.
+    lastBreak = 0;
+    lastFireSwing = 0;
+    lastRollerRise = 0;
+    lastLockSwing = 0;
+    lastCabinetSwing = 0;
+    lastGateSwing = 0;
     audio.setAmbient(snap.chapter);
     if (snap.chapter > 1) audio.play('transition');
   }

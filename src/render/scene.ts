@@ -105,18 +105,21 @@ const WIDE_MAX = { w: 900, h: 660 };
  * wider than play (chapter 1 plays at 320x235) so the route they are walking is
  * legible, but close enough that you can see who is walking it.
  *
- * **Chapter 3 is deliberately absent and stays on `WIDE_MAX`.** Its transition walks
- * the three of them UP the main staircase, and the renderer has no elevation for a
- * robot on a flight: `placeRobots` puts every robot at the storey's datum, and
- * `groundRiseM` — which `src/sim/geometry.ts` exports for exactly this and says the
- * renderer is the one that reads it — is not read by anything. So the robots walk
- * at hall height while the treads climb to 5 m over them, and the closer the camera
- * gets the more plainly they are inside the staircase rather than on it. That is a
- * pre-existing gap, not this framing's; until it is fixed, zooming in on it would
- * only frame it better. See the note in `placeRobots`.
+ * **Chapter 3 used to be deliberately absent** and stayed on `WIDE_MAX`, because
+ * its transition walks the three of them UP the main staircase and the renderer had
+ * no elevation for a robot on a flight: `placeRobots` put every robot at the
+ * storey's datum, `groundRiseM` was exported for exactly this and read by nothing,
+ * so they walked at hall height while the treads climbed to 5 m over them. Zooming
+ * in on that would only have framed it better.
+ *
+ * The sim publishes the flight as a walking surface now (`groundPlates` and
+ * `src/sim/surface.ts`) and `surfaceY` reads it, so they climb it. It gets the same
+ * close framing as chapter 1's, and for the same reason: a transition is a beat, not
+ * an establishing shot.
  */
 const CUT_FRAME: Readonly<Record<number, { w: number; h: number }>> = Object.freeze({
   1: { w: 430, h: 315 },
+  3: { w: 430, h: 315 },
 });
 /**
  * The world Y of the walking surface at a sim point.
@@ -2276,15 +2279,13 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       // measurement comes off the rig rather than being a magic number that goes
       // stale the next time either robot is reshaped.
       /*
-       * NOT HANDLED HERE, and it shows in chapter 3's transition: the height of
-       * the ground floor's own walking surface. `groundRiseM` in
-       * `src/sim/geometry.ts` gives the 0.5 m lobby plate at a sim x and says in
-       * its own doc comment that the renderer is what reads it — nothing does, so
-       * a robot standing on the raised lobby stands half a metre inside it, and a
-       * robot on the main flight (whose treads climb to 5 m) is swallowed whole.
-       * The fix is a rise term added to `floorY` per robot; it needs the flight's
-       * own ramp, which lives in `src/render/venue/ground.ts`, so it is a piece of
-       * work of its own rather than a line here.
+       * The height of the floor under a robot is `surfaceY`'s business and the
+       * SIM's answer — `GameSnapshot.plates`, read through `riseAt`. It used to be
+       * nobody's: `groundRiseM` was exported for exactly this, said in its own doc
+       * comment that the renderer was what read it, and nothing did, so a robot
+       * standing on the raised lobby stood half a metre inside it and one on the
+       * main flight was swallowed whole. What is added HERE is only what a robot
+       * does on top of that floor — riding on Biggy, and Voxxy's hop.
        */
       const rider = b.kind === 'droid' && b.mounted;
       /*
