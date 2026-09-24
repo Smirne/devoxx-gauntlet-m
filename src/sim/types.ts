@@ -24,6 +24,35 @@ export interface Rect {
   h: number;
 }
 
+/**
+ * A piece of floor that stands above its storey's datum — something a robot walks
+ * ON rather than into.
+ *
+ * The raised lobby, the six steps up to it, the main flight, and the door leaf
+ * Biggy has just put on the floor of cinema E are all the same thing said four
+ * ways. See `src/sim/surface.ts` for why this is sim state and not a number the
+ * renderer works out for itself, and `riseAt` for how it is read.
+ */
+export interface Plate extends Rect {
+  /** What it is, for readability and for the sweeps' failure messages. */
+  kind?: string;
+  /**
+   * Height of the surface above the storey datum, metres — at the LOW edge of
+   * `axis` when this plate is a ramp, and everywhere when it is not.
+   */
+  lo: number;
+  /** ...and at the high edge. Omitted, or equal to `lo`, means a flat plate. */
+  hi?: number;
+  /** Which axis a ramp climbs along. Ignored by a flat plate. Default `'x'`. */
+  axis?: 'x' | 'y';
+  /**
+   * Yaw of the footprint about its own centre, radians — for a plate that is not
+   * square to the world, which is every piece of scenery that was dropped rather
+   * than built. `x/y/w/h` stay the un-rotated rect.
+   */
+  rot?: number;
+}
+
 export type LightType = 'cone' | 'pool';
 
 /** A robot's lamp, as defined by its species. */
@@ -346,6 +375,14 @@ export interface GameSnapshot {
   clues: Clue[];
   props: Prop[];
   people: Person[];
+  /**
+   * Every raised walking surface on this floor, this frame — the lobby plate, the
+   * flights, and anything a chapter has put on the floor that a robot stands on
+   * top of. `riseAt` in `src/sim/surface.ts` is how it is read; the renderer only
+   * ever asks (CLAUDE.md), which is what keeps a robot's height off the floor a
+   * fact of the sim rather than a guess made in drawing code.
+   */
+  plates: Plate[];
   /** HUD line: the current objective, may contain simple markup. */
   objective: string;
   /** HUD line: the controls that matter right now. */

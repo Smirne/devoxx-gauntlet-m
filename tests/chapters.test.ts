@@ -42,9 +42,7 @@ import {
   ROLLER_DOOR_SPEED,
   nicheMouth,
   roomDoor,
-  circleRect,
   createGame,
-  type Bot,
   type DebugGame,
   type ExpoState,
   type KeynoteState,
@@ -62,12 +60,6 @@ const SEED = 20260930;
 /** Headless: no chapter cards, so `update` never waits on a keypress. */
 const mk = (chapter: number): DebugGame => createGame({ seed: SEED, chapter, cards: false });
 
-const bot = (g: DebugGame, kind: RobotKind): Bot => {
-  const b = g.snapshot().bots.find((o) => o.kind === kind);
-  if (!b) throw new Error(`no ${kind}`);
-  return b;
-};
-
 function steps(g: DebugGame, n: number): void {
   for (let i = 0; i < n; i++) g.update(DT_MAX);
 }
@@ -81,150 +73,8 @@ function until(g: DebugGame, done: () => boolean, budget = 600): boolean {
   return done();
 }
 
-/* --------------------------------------------------------------- a test pilot
- *
- * The prototype's Playwright run held arrow keys down along a route. A headless
- * test has no browser to hold keys in, so this is the same thing: an eight-way
- * stick aimed at the next waypoint, and a grid router that only ever proposes
- * waypoints the robot can actually walk to — including under the sponsor tables
- * that Voxxy, and only Voxxy, fits beneath.
- */
+import { bot, driveTo, walkTo } from './pilot';
 
-const GRID = 10;
-
-function passable(walls: Wall[], b: Bot, x: number, y: number): boolean {
-  const c = { x, y, r: b.r + 1 };
-  for (const w of walls) {
-    if (w.skipFor && w.skipFor(b)) continue;
-    if (circleRect(c, w)) return false;
-  }
-  return true;
-}
-
-/** Eight-way A* on a `GRID`-pixel lattice, no corner cutting. */
-function findPath(g: DebugGame, kind: RobotKind, target: Vec2): Vec2[] {
-  const b = bot(g, kind);
-  const walls = g.debug.walls();
-  const free = new Map<number, boolean>();
-  const key = (ix: number, iy: number): number => iy * 1000 + ix;
-  const ok = (ix: number, iy: number): boolean => {
-    if (ix < 0 || iy < 0 || ix * GRID > 1900 || iy * GRID > 700) return false;
-    const k = key(ix, iy);
-    let v = free.get(k);
-    if (v === undefined) {
-      v = passable(walls, b, ix * GRID, iy * GRID);
-      free.set(k, v);
-    }
-    return v;
-  };
-
-  const sx = Math.round(b.x / GRID);
-  const sy = Math.round(b.y / GRID);
-  const gx = Math.round(target.x / GRID);
-  const gy = Math.round(target.y / GRID);
-  const h = (ix: number, iy: number): number => {
-    const dx = Math.abs(ix - gx);
-    const dy = Math.abs(iy - gy);
-    return Math.max(dx, dy) + (Math.SQRT2 - 1) * Math.min(dx, dy);
-  };
-
-  const gScore = new Map<number, number>();
-  const came = new Map<number, number>();
-  const open: Array<{ k: number; ix: number; iy: number; f: number }> = [];
-  gScore.set(key(sx, sy), 0);
-  open.push({ k: key(sx, sy), ix: sx, iy: sy, f: h(sx, sy) });
-
-  const DIRS: Array<[number, number]> = [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-    [1, 1],
-    [1, -1],
-    [-1, 1],
-    [-1, -1],
-  ];
-
-  let goalKey = -1;
-  while (open.length) {
-    let bi = 0;
-    for (let i = 1; i < open.length; i++) if (open[i].f < open[bi].f) bi = i;
-    const cur = open.splice(bi, 1)[0];
-    if (cur.ix === gx && cur.iy === gy) {
-      goalKey = cur.k;
-      break;
-    }
-    const gc = gScore.get(cur.k) ?? Infinity;
-    for (const [dx, dy] of DIRS) {
-      const nx = cur.ix + dx;
-      const ny = cur.iy + dy;
-      if (!ok(nx, ny)) continue;
-      // No slipping through the diagonal gap between two wall corners.
-      if (dx && dy && (!ok(cur.ix + dx, cur.iy) || !ok(cur.ix, cur.iy + dy))) continue;
-      const step = dx && dy ? Math.SQRT2 : 1;
-      const k = key(nx, ny);
-      if (gc + step >= (gScore.get(k) ?? Infinity)) continue;
-      gScore.set(k, gc + step);
-      came.set(k, cur.k);
-      open.push({ k, ix: nx, iy: ny, f: gc + step + h(nx, ny) });
-    }
-  }
-  if (goalKey < 0) return [];
-
-  const back: Vec2[] = [];
-  let k: number | undefined = goalKey;
-  while (k !== undefined) {
-    back.push({ x: (k % 1000) * GRID, y: Math.floor(k / 1000) * GRID });
-    k = came.get(k);
-  }
-  back.reverse();
-  // Collapse straight runs: the pilot only needs the corners.
-  const pts: Vec2[] = [];
-  for (let i = 0; i < back.length; i++) {
-    const p = back[i];
-    const prev = back[i - 1];
-    const next = back[i + 1];
-    if (!prev || !next) {
-      pts.push(p);
-      continue;
-    }
-    if ((p.x - prev.x) * (next.y - p.y) !== (p.y - prev.y) * (next.x - p.x)) pts.push(p);
-  }
-  pts.push(target);
-  return pts;
-}
-
-/** Hold the stick at the next waypoint until it is reached, or give up. */
-function driveTo(g: DebugGame, kind: RobotKind, pts: Vec2[], tol = 7, budget = 400): boolean {
-  g.debug.select(kind);
-  for (const p of pts) {
-    let arrived = false;
-    for (let i = 0; i < budget && !arrived; i++) {
-      const b = bot(g, kind);
-      const dx = p.x - b.x;
-      const dy = p.y - b.y;
-      if (Math.hypot(dx, dy) <= tol) {
-        arrived = true;
-        break;
-      }
-      g.setStick(Math.abs(dx) > 3 ? Math.sign(dx) : 0, Math.abs(dy) > 3 ? Math.sign(dy) : 0);
-      g.update(DT_MAX);
-    }
-    if (!arrived) {
-      g.setStick(0, 0);
-      return false;
-    }
-  }
-  g.setStick(0, 0);
-  return true;
-}
-
-/** Walk a robot to a point, routing round whatever it cannot walk through. */
-function walkTo(g: DebugGame, kind: RobotKind, target: Vec2, tol = 7): boolean {
-  const pts = findPath(g, kind, target);
-  if (!pts.length) return false;
-  return driveTo(g, kind, pts, tol);
-}
 
 /* --------------------------------------------- the chapter-2 network closet
  *
@@ -1189,10 +1039,17 @@ describe('chapter 3 — breakfast', () => {
     expect(breakfast().beer.oom).toBe(0);
     steps(g, 2);
 
-    // All three delivered: the gate goes up and the cutscene runs.
+    // All three delivered: Stephan walks the barrier back, and the chapter STAYS on
+    // the hall while he does it — `GATE_SWING_TIME + GATE_CUT_DELAY` in
+    // `ch3-breakfast.ts`, the same hold chapter 1 keeps for its fire door. Starting
+    // the cutscene on this frame would take the screen to black in `CUT_FADE`
+    // (0.35 s) and the animation would exist with nobody able to see it.
     expect(breakfast().gateOpen).toBe(true);
     expect(gateWall()).toBeUndefined();
-    expect(g.snapshot().phase).toBe('cut');
+    expect(g.snapshot().phase).toBe('play');
+    expect(until(g, () => g.snapshot().phase === 'cut', 200)).toBe(true);
+    // ...and by the time it hands over, the barrier has finished swinging.
+    expect(breakfast().gateSwing).toBe(1);
     expect(until(g, () => g.snapshot().chapter === 4, 600)).toBe(true);
     expect(g.snapshot().floor).toBe('up');
   });

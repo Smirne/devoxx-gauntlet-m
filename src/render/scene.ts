@@ -29,15 +29,30 @@ import * as THREE from 'three';
 
 import { flairPhase, hopPhase } from '../sim/bot';
 import { JUMP_RISE_M, MOUNT_OFFSET_Y, W as SIM_W, H as SIM_H } from '../sim/constants';
-import { groundRiseM } from '../sim/geometry';
-import type { GameSnapshot, Person, Prop, RobotKind, ViewRect } from '../sim/types';
+import { riseAt } from '../sim/surface';
+import { JAM_LEAF_H, JAM_SKEW, JAM_SKID, JAM_TIP } from '../sim/chapters/ch1-night';
+import type { GameSnapshot, Person, Plate, Prop, RobotKind, ViewRect } from '../sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M, STOREY_H_M, m } from '../sim/units';
 
 import { createCamera, type DioramaCamera } from './camera';
 import { FIRE_LEAF_H, FIRE_LEAF_T, fireDoorDraw } from './fire-door';
+import { buildKeypad, type KeypadModel } from './keypad';
 import { createLightLayer, type LightLayer } from './lighting';
-import { createRobot, measureBounds, updateRobot, EXCLUDE_FROM_BOUNDS, type RobotRig } from './robots';
+import { createRobot, measureBounds, updateRobot, yawFromSimHeading, EXCLUDE_FROM_BOUNDS, type RobotRig } from './robots';
 import { ROLLER_SLATS, rollerDoorDraw } from './roller-door';
+import {
+  CABINET_LEAF_H,
+  CABINET_LEAF_LIFT,
+  CABINET_LEAF_T,
+  CABINET_LEAVES,
+  GATE_H,
+  GATE_LEAF_T,
+  GATE_POST_R,
+  LOCK_LEAF_T,
+  cabinetDoorDraw,
+  gateDraw,
+  lockDoorDraw,
+} from './doors';
 import { BREAKER_H, BREAKER_Y, WALL_H, buildVenue, type Venue } from './venue';
 
 const KINDS: readonly RobotKind[] = ['voxxy', 'droid', 'biggy'];
@@ -104,41 +119,39 @@ const CUT_FRAME: Readonly<Record<number, { w: number; h: number }>> = Object.fre
   1: { w: 430, h: 315 },
 });
 /**
- * The world Y of the walking surface at a sim x.
+ * The world Y of the walking surface at a sim point.
  *
- * ## The bug this closes
+ * ## What this used to be, and the bug it left open
  *
  * The ground floor is not flat. Kinepolis' lobby stands half a metre above the
- * exhibition hall and the two are joined by six long steps 22 m wide — that is
- * what the plan draws, it is why `LOBBY_RISE_M` exists, and `src/render/venue`
- * has built both levels correctly from the start.
+ * exhibition hall, six long steps join the two, and the main flight climbs five
+ * metres out of the lobby to the Devoxx rooms. `src/render/venue` has built all
+ * three correctly from the start and nothing MOVING ever stood on any of them:
+ * this function used to read `groundRiseM(x)`, which models the lobby threshold
+ * alone, and it did so from a table in drawing code.
  *
- * Everything that MOVES was drawn at the hall's datum regardless. `groundRiseM`
- * has been in `src/sim/geometry.ts` the whole time, exported for exactly this,
- * with a doc comment saying the renderer is the thing that reads it — and nothing
- * read it. So a robot standing in the lobby stood half a metre inside the floor,
- * as did the ring under it, its clue markers, the props it was pushing and the
- * visitors walking past it.
+ * Then Michele, with a screenshot of Biggy standing inside the fallen leaf of the
+ * door he had just smashed: *"we are still walking through the crashed door. The
+ * shape is fine, as long as robot walk on it, not through."* That is the same
+ * question — how high is the floor here — asked of a piece of scenery, and
+ * answering it here would have put a third copy of the lift in `src/render`.
  *
- * ## Why the storey is read off `floorY` rather than passed down
+ * So the sim answers it. `GameSnapshot.plates` carries every raised surface the
+ * floor and the chapter have, `riseAt` reads them, and this is the one line of
+ * drawing code that asks. See `src/sim/surface.ts`.
  *
- * `floorY` is computed in exactly two places, both as
- * `snap.floor === 'down' ? -STOREY_H_M : 0`, so the comparison below is exact and
- * needs no second parameter threaded through fifteen drawing functions. The
- * alternative — a frame-scoped `let` — is hidden state, and this file has enough.
+ * ## Why the plates are frame-scoped rather than a parameter
  *
- * ## What this does NOT fix
- *
- * The main staircase to the first floor, whose treads climb to 5 m.
- * `groundRiseM` models the lobby threshold only, and a robot walking chapter 3's
- * transition up the main flight is still drawn at the storey datum. That needs an
- * elevation for the flight itself and is a piece of work of its own; see the note
- * on `CUT_FRAME`, which is why chapter 3's transition is the one that does not
- * zoom in.
+ * `floorY` is already threaded through fifteen drawing functions and was itself
+ * only tolerable because it is computed in exactly two places. A second parameter
+ * beside it would double that for no new information: the plates are a property of
+ * the FRAME, like the frame's own snapshot, and they are set once at the top of
+ * `draw` and read nowhere else. `framePlates` is emptied on dispose so a stale
+ * chapter cannot outlive the frame that published it.
  */
-const GROUND_DATUM = -STOREY_H_M;
-function surfaceY(floorY: number, x: number): number {
-  return floorY === GROUND_DATUM ? floorY + groundRiseM(x) : floorY;
+let framePlates: readonly Plate[] = [];
+function surfaceY(floorY: number, x: number, y: number): number {
+  return floorY + riseAt(x, y, framePlates);
 }
 
 /** Exponential approach rate of the framing, s^-1. High enough not to read as drift. */
@@ -206,7 +219,7 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
   screen: { h: 5.2, color: 0xcfd6dd, tl: true },
   alcove: { h: 0.05, color: 0x2f7d4f, tl: true, flat: true },
   lock: { h: 2.1, color: 0x4a4038, tl: true },
-  jammed: { h: 2.1, color: 0x6b4630, tl: true },
+  jammed: { h: JAM_LEAF_H, color: 0x6b4630, tl: true },
   /* chapter 2 — the exhibition hall */
   // `breaker` is NOT in this table: its three handles carry a live sim value, so it
   // is drawn by `drawBreaker` the way the router terminal is drawn by `drawTerminal`.
@@ -548,7 +561,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   const cabinetOpen = new THREE.Group();
   cabinetOpen.name = 'cabinet-open';
   cabinetOpen.visible = false;
-  const cabinetLeaf = new THREE.Group();
+  const cabinetLeaves: THREE.Group[] = [];
   {
     const inner = new THREE.Mesh(
       new THREE.BoxGeometry(1, 1, 0.12),
@@ -566,13 +579,72 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     // invisible, and "the cabinet is open" has to read from the diorama, not only
     // from the card.
     const leafMat = new THREE.MeshStandardMaterial({ color: 0x5c6470, roughness: 0.5, metalness: 0.5 });
-    const leaf = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 0.06), leafMat);
-    leaf.name = 'cabinet-leaf';
-    leaf.castShadow = true;
-    cabinetLeaf.add(leaf);
-    cabinetOpen.add(cabinetLeaf);
+    for (let i = 0; i < CABINET_LEAVES; i++) {
+      const pivot = new THREE.Group();
+      const leaf = new THREE.Mesh(boxGeo, leafMat);
+      leaf.name = `cabinet-leaf-${i}`;
+      leaf.castShadow = true;
+      pivot.add(leaf);
+      cabinetLeaves.push(pivot);
+      cabinetOpen.add(pivot);
+    }
   }
   dressing.add(cabinetOpen);
+
+  /* ---------------------------------------------- the cinema doors, chapter 1
+   *
+   * Every auditorium door in the closed section: A, C and D are scenery with a
+   * `shut` wall behind the joke taped to them, and B is the one the projector-panel
+   * release opens. They used to be drawn from the `PROPS` table as a flat 2.1 m
+   * box at the prop's own rect — which was true of a shut door and said nothing
+   * about an opening one, so B's leaf did not swing, it stopped being published.
+   *
+   * A pooled hinge group each: the leaf is a child offset half its own length
+   * along +x, so the group's own yaw IS the swing and `lockDoorDraw` owns the
+   * angle. One pool, because the number of doors on screen is a chapter's business.
+   */
+  const lockPool = makePool<THREE.Group>(dressing, () => {
+    const g = new THREE.Group();
+    g.name = 'cinema-door';
+    const leaf = new THREE.Mesh(
+      boxGeo,
+      new THREE.MeshStandardMaterial({ color: PROPS.lock.color, roughness: 0.75, metalness: 0.08 }),
+    );
+    leaf.name = 'cinema-door-leaf';
+    leaf.castShadow = true;
+    leaf.receiveShadow = true;
+    g.add(leaf);
+    return g;
+  });
+
+  /* ------------------------------------------- the registration gate, chapter 3
+   *
+   * The barrier Stephan stands at, its two posts, and the swing that opens the
+   * Devoxx rooms for the day. `buildVenue()` draws a static one in the same place
+   * — `main-stair-gate` — and it is hidden for as long as a chapter publishes this
+   * prop, exactly as the venue's shutter is: two gates in one doorway is the
+   * duplicate the breaker panel and cinema E's screen were each caught doing.
+   */
+  const gateGroup = new THREE.Group();
+  gateGroup.name = 'stair-gate';
+  gateGroup.visible = false;
+  const gateMat = new THREE.MeshStandardMaterial({ color: 0x4d6c8a, roughness: 0.45, metalness: 0.65 });
+  const gatePivot = new THREE.Group();
+  const gateBar = new THREE.Mesh(boxGeo, gateMat);
+  gateBar.name = 'gate-leaf';
+  gateBar.castShadow = true;
+  gatePivot.add(gateBar);
+  gateGroup.add(gatePivot);
+  const gatePosts: THREE.Mesh[] = [];
+  for (let i = 0; i < 2; i++) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(GATE_POST_R / PX_PER_M, GATE_POST_R / PX_PER_M, 1, 10), gateMat);
+    post.name = `gate-post-${i}`;
+    post.castShadow = true;
+    gatePosts.push(post);
+    gateGroup.add(post);
+  }
+  dressing.add(gateGroup);
+  const venueGate = venue.ground.getObjectByName('main-stair-gate') ?? null;
 
   /* ------------------------------------------------- the jammed cinema door
    *
@@ -603,12 +675,16 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   jammedLeaf.add(jammedSlab);
   dressing.add(jammedLeaf);
 
-  /** Radians the leaf tips through: a touch past flat, so it settles back onto the floor. */
-  const JAM_TIP = Math.PI / 2;
-  /** How far it skids into the room once it is off its hinges, metres. */
-  const JAM_SKID = 0.55;
-  /** How far off square it lands — it was hit off-centre, radians. */
-  const JAM_SKEW = 0.17;
+  /*
+   * The fallen leaf's resting pose is `ch1-night.ts`'s now — `JAM_TIP`, `JAM_SKID`
+   * and `JAM_SKEW` are imported, not declared here.
+   *
+   * Michele: *"we are still walking through the crashed door. The shape is fine, as
+   * long as robot walk on it, not through."* Standing on it is a question about the
+   * height of the floor, the sim is the only thing allowed to answer that
+   * (CLAUDE.md), and it cannot answer it without knowing where the leaf ended up.
+   * So the pose moved to the sim and this file draws from it. One fact, not two.
+   */
   /**
    * The broken leaf is LIGHTER than the shut one, and deliberately.
    *
@@ -704,6 +780,19 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   dressing.add(rollerDoor);
   /** The venue's own static shutter, which chapter 2 takes over. See `ground.ts`. */
   const venueRoller = venue.ground.getObjectByName('roller-door') ?? null;
+
+  /* ---------------------------------------------------- the keypad, chapter 1
+   *
+   * Michele: *"the keypad also needs a shape. Big numbers?"* It was one box from
+   * the `PROPS` table, in the chapter whose whole plot is the four digits that go
+   * into it. `src/render/keypad.ts` builds the unit and poses it from the prop —
+   * including `label`, the digits typed so far, which the sim has been publishing
+   * all along with nothing drawing it.
+   */
+  const keypad: KeypadModel = buildKeypad();
+  dressing.add(keypad.root);
+  /** The venue's own static keypad, which chapter 1 takes over. See `floor1.ts`. */
+  const venueKeypad = venue.floor1.getObjectByName('fire-keypad') ?? null;
 
   /**
    * The ground ring under the robot being driven. Nothing else in the frame says
@@ -1462,7 +1551,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
         continue;
       }
       mark.root.visible = true;
-      mark.root.position.set(m(clue.x), surfaceY(floorY, clue.x) + CLUE_PLATE_LIFT_M, m(clue.y));
+      mark.root.position.set(m(clue.x), surfaceY(floorY, clue.x, clue.y) + CLUE_PLATE_LIFT_M, m(clue.y));
 
       const found = clue.found;
       const pulse = 0.55 + 0.45 * Math.sin(snap.t * 2.1 + i * 1.7);
@@ -1553,7 +1642,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     activeRingGhost.visible = true;
     const r = m(bot.r);
     activeRing.scale.setScalar(Math.max(r / RING_OUTER, 0.6) * 1.25);
-    activeRing.position.set(m(bot.x), surfaceY(floorY, bot.x) + 0.03, m(bot.y));
+    activeRing.position.set(m(bot.x), surfaceY(floorY, bot.x, bot.y) + 0.03, m(bot.y));
     activeRingGhost.scale.copy(activeRing.scale);
     activeRingGhost.position.copy(activeRing.position);
     const c = bot.light.c;
@@ -1588,7 +1677,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const hz = m(holder.y);
     const bx = m(big.x);
     const bz = m(big.y);
-    const barY = (surfaceY(floorY, holder.x) + surfaceY(floorY, big.x)) / 2;
+    const barY = (surfaceY(floorY, holder.x, holder.y) + surfaceY(floorY, big.x, big.y)) / 2;
     towBar.position.set((hx + bx) / 2, barY + TOW_BAR_H, (hz + bz) / 2);
     towBar.rotation.y = -Math.atan2(bz - hz, bx - hx);
     towBar.scale.x = Math.max(Math.hypot(bx - hx, bz - hz), 0.2);
@@ -1599,7 +1688,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const az = Math.sin(tow.aim);
     const start = m(big.r);
     const mid = start + TOW_LANE_LEN / 2;
-    towLane.position.set(bx + ax * mid, surfaceY(floorY, big.x) + 0.02, bz + az * mid);
+    towLane.position.set(bx + ax * mid, surfaceY(floorY, big.x, big.y) + 0.02, bz + az * mid);
     // Euler XYZ applies Z first, so `rotation.z` turns the plane inside its own
     // XY before `rotation.x` lays it flat: local +X lands on (cos z, 0, -sin z),
     // which is the sim axis for z = -aim. Feeding it `atan2(az, ax)` mirrors the
@@ -1662,7 +1751,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const mesh = propPool.get();
     const height = spec.flat ? Math.max(spec.h, 0.03) : spec.h;
     mesh.scale.set(Math.max(wM, 0.06), height, Math.max(dM, 0.06));
-    mesh.position.set(cx, surfaceY(floorY, p.x) + (spec.lift ?? 0) + height / 2 + (spec.flat ? 0.01 : 0), cz);
+    mesh.position.set(cx, surfaceY(floorY, p.x, p.y) + (spec.lift ?? 0) + height / 2 + (spec.flat ? 0.01 : 0), cz);
     mesh.castShadow = !spec.flat;
     mesh.receiveShadow = true;
 
@@ -1695,7 +1784,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
 
     const mesh = propPool.get();
     mesh.scale.set(wM, CRATE_H_M, dM * 0.8);
-    mesh.position.set(m(p.x), surfaceY(floorY, p.x) + base + layer * (CRATE_H_M + CRATE_GAP_M) + CRATE_H_M / 2, m(p.y));
+    mesh.position.set(m(p.x), surfaceY(floorY, p.x, p.y) + base + layer * (CRATE_H_M + CRATE_GAP_M) + CRATE_H_M / 2, m(p.y));
     mesh.castShadow = true;
     mesh.receiveShadow = true;
 
@@ -1724,7 +1813,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       arr[o] = m(pts[i].x);
       // Per point, not per cable: the run crosses the lobby threshold, so a
       // single height would bury half of it or float the other half.
-      arr[o + 1] = surfaceY(floorY, pts[i].x) + 0.08;
+      arr[o + 1] = surfaceY(floorY, pts[i].x, pts[i].y) + 0.08;
       arr[o + 2] = m(pts[i].y);
     }
     cablePos.needsUpdate = true;
@@ -1748,7 +1837,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const dM = m(p.h ?? 16);
     const thrown = p.v ?? 0;
     breakerPanel.visible = true;
-    breakerPanel.position.set(m(p.x), surfaceY(floorY, p.x) + BREAKER_Y, m(p.y) + dM);
+    breakerPanel.position.set(m(p.x), surfaceY(floorY, p.x, p.y) + BREAKER_Y, m(p.y) + dM);
     for (let i = 0; i < BREAKER_COUNT; i++) {
       const x = (wM * (i + 0.5)) / BREAKER_COUNT;
       const y = BREAKER_H * 0.42;
@@ -1784,7 +1873,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const dM = m(p.h ?? 4);
     const mesh = propPool.get();
     mesh.scale.set(Math.max(wM, 0.06), spec.h, Math.max(dM, 0.06));
-    mesh.position.set(m(p.x) + wM / 2, surfaceY(floorY, p.x) + (spec.lift ?? 1.25) + spec.h / 2, m(p.y) + dM / 2);
+    mesh.position.set(m(p.x) + wM / 2, surfaceY(floorY, p.x, p.y) + (spec.lift ?? 1.25) + spec.h / 2, m(p.y) + dM / 2);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
 
@@ -1827,7 +1916,19 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     // Pivot on the bottom edge nearest the camera: sim +y is world +z and the
     // camera is on the +z side, so the leaf goes down between the doorway and the
     // lens and stays in shot.
-    jammedLeaf.position.set(m(p.x) + wM / 2, surfaceY(floorY, p.x), m(p.y) + dM + JAM_SKID * swing);
+    jammedLeaf.position.set(m(p.x) + wM / 2, surfaceY(floorY, p.x, p.y), m(p.y) + dM + JAM_SKID * swing);
+    /*
+     * `YXZ`, and that one word is what lets a robot stand on the leaf.
+     *
+     * Under the default `XYZ` the skew is applied to the door while it is still
+     * standing and the tip then turns that yaw into a ROLL: the leaf came to rest
+     * propped on nothing, one long edge 0.78 m in the air and its face running
+     * downhill by 0.62 m across its width — a surface you can only walk on by
+     * walking uphill on air. Yawed AFTER the tip it lands flat and askew in plan,
+     * which is what a door off its hinges does and what the silhouette already
+     * read as. `jammedLeafPlate` in `ch1-night.ts` is the same motion in plan.
+     */
+    jammedLeaf.rotation.order = 'YXZ';
     jammedLeaf.rotation.set(tip, -JAM_SKEW * swing, 0);
     jammedSlab.position.set(0, spec.h / 2, -dM / 2);
 
@@ -1869,7 +1970,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       panel.visible = r !== undefined;
       if (!r) continue;
       panel.scale.set(Math.max(m(r.w), 0.05), WALL_H, Math.max(m(r.h), 0.05));
-      panel.position.set(m(r.x + r.w / 2), surfaceY(floorY, r.x) + WALL_H / 2, m(r.y + r.h / 2));
+      panel.position.set(m(r.x + r.w / 2), surfaceY(floorY, r.x, r.y) + WALL_H / 2, m(r.y + r.h / 2));
     }
 
     const tM = m(FIRE_LEAF_T);
@@ -1879,7 +1980,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       pivot.visible = l !== undefined;
       if (!l) continue;
       const lenM = m(l.len);
-      const base = surfaceY(floorY, l.hinge.x);
+      const base = surfaceY(floorY, l.hinge.x, l.hinge.y);
       pivot.position.set(m(l.hinge.x), base, m(l.hinge.y));
       // The leaf's own length runs along the pivot's local +x. Sim +y is world +z,
       // so a heading of (ax, ay) is a yaw of atan2(-ay, ax).
@@ -1893,6 +1994,24 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       bar.scale.set(lenM * 0.78, 0.08, tM * 0.55);
       bar.position.set(lenM * 0.55, FIRE_BAR_Y, tM * 0.7);
     }
+  }
+
+  /**
+   * Chapter 1's keypad — the thing the whole four-digit hunt is for.
+   *
+   * Everything it shows comes out of the prop: the rect it stands on, `label`
+   * (the digits typed so far, padded with '_'), and `state`, which goes `idle` to
+   * `done` when the magnetic lock lets go. See `src/render/keypad.ts` for the
+   * model and for the camera geometry that decides which way it faces.
+   *
+   * The static keypad `buildVenue()` screws to the fire door is hidden for as
+   * long as a chapter publishes this prop — the same rule the fire door's own
+   * leaf follows above, and for the same reason: two keypads in one doorway.
+   */
+  function drawKeypad(p: Prop, floorY: number): void {
+    if (venueKeypad) venueKeypad.visible = false;
+    keypad.root.visible = true;
+    keypad.pose(p, surfaceY(floorY, p.x, p.y));
   }
 
   /**
@@ -1921,7 +2040,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       if (!s) continue;
       const wM = Math.max(m(s.rect.w), 0.04);
       const dM = Math.max(m(s.rect.h), 0.04);
-      const base = surfaceY(floorY, s.rect.x);
+      const base = surfaceY(floorY, s.rect.x, s.rect.y);
       pivot.position.set(m(s.rect.x) + wM / 2, base + s.lo + s.h / 2, m(s.rect.y) + dM / 2);
       // Sim +y is world +z, so the door's width axis is Z and a slat bent out of
       // its guides leans about it. See `RollerSlat.tilt`.
@@ -1945,29 +2064,114 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     rollerMat.emissiveIntensity = heat > 0 ? 1 : 0;
   }
 
-  /** The swung door leaf and the lit interior, once the cam has let go. */
+  /**
+   * The router cabinet's two doors, and the lit interior behind them.
+   *
+   * Every number comes out of `cabinetDoorDraw` (`src/render/doors.ts`), which is
+   * posed from the sim's own swing clock — `cabinetSwing` in `ch2-expo.ts`, ticked
+   * over `CABINET_SWING_TIME`. This used to cut from nothing to a single 4.32 m
+   * leaf standing at 58° on the frame Biggy pressed `E`: no animation, no sound,
+   * and no collider anywhere near the 3.7 m of technical-room floor it lay across.
+   *
+   * The carcass itself is venue geometry and a collider in every chapter, so this
+   * group is only the state: the doors, and the light coming out from between them.
+   */
   function drawCabinet(p: Prop, floorY: number): void {
-    if (p.state !== 'open') {
+    const u = p.progress ?? (p.state === 'open' ? 1 : 0);
+    if (u <= 0) {
       cabinetOpen.visible = false;
       return;
     }
-    const wM = m(p.w ?? 64);
-    const dM = m(p.h ?? 20);
-    const leafW = wM - 0.8;
-    const leafH = 1.75;
-    const faceZ = m(p.y) + dM;
+    const d = cabinetDoorDraw(p, u);
+    const base = surfaceY(floorY, p.x, p.y) + CABINET_LEAF_LIFT;
     cabinetOpen.visible = true;
+
+    // The interior: the width of the bay, revealed as the leaves come off it.
     const inner = cabinetOpen.children[0] as THREE.Mesh;
-    inner.scale.set(leafW, leafH, 1);
-    inner.position.set(m(p.x) + wM / 2, surfaceY(floorY, p.x) + 0.15 + leafH / 2, faceZ - 0.06);
-    // Hinged on the left stile and swung 58° into the room. Not 90: a door left
-    // square to the wall is edge-on to a camera that looks at that wall, and reads
-    // as a sliver rather than as an open door.
-    cabinetLeaf.position.set(m(p.x) + 0.4, surfaceY(floorY, p.x) + 0.15 + leafH / 2, faceZ);
-    cabinetLeaf.rotation.y = -(58 * Math.PI) / 180;
-    const leaf = cabinetLeaf.children[0] as THREE.Mesh;
-    leaf.scale.set(leafW, leafH, 1);
-    leaf.position.set(leafW / 2, 0, 0);
+    inner.scale.set(m(d.bay.w), CABINET_LEAF_H, 1);
+    inner.position.set(m(d.bay.x + d.bay.w / 2), base + CABINET_LEAF_H / 2, m(d.bay.y) - 0.06);
+    const innerMat = inner.material as THREE.MeshStandardMaterial;
+    // Dark behind a door that has only just cracked: the switch gear is the
+    // brightest thing in the room, but not before you can see into it.
+    innerMat.emissiveIntensity = 1.6 * Math.min(1, d.u * 2.2);
+
+    for (let i = 0; i < cabinetLeaves.length; i++) {
+      const pivot = cabinetLeaves[i];
+      const l = d.leaves[i];
+      pivot.visible = l !== undefined;
+      if (!l) continue;
+      pivot.position.set(m(l.hinge.x), base + CABINET_LEAF_H / 2, m(l.hinge.y));
+      // Sim +y is world +z, so a leaf turning in plan turns about world Y, and the
+      // yaw that gets a sim vector onto a world one is the same one the robots use.
+      pivot.rotation.y = yawFromSimHeading(Math.atan2(l.axis.y, l.axis.x));
+      /*
+       * The leaf runs along the pivot's local +Z, not +X.
+       *
+       * `yawFromSimHeading` is the renderer's one conversion from a sim heading to
+       * a world yaw and it is written for the robots, whose rigs face +Z at yaw 0.
+       * Hung along +X instead, every leaf in this file came out a quarter turn
+       * round — cinema B's door swung west along the corridor instead of north into
+       * its auditorium, which is exactly what the first frame strip showed.
+       */
+      const leaf = pivot.children[0] as THREE.Mesh;
+      leaf.scale.set(m(CABINET_LEAF_T), CABINET_LEAF_H, m(l.len));
+      leaf.position.set(0, 0, m(l.len) / 2);
+    }
+  }
+
+  /**
+   * A cinema door in the closed section: shut, or swinging into its auditorium.
+   *
+   * Every number comes out of `lockDoorDraw` (`src/render/doors.ts`), which reads
+   * the chapter's live wall list and the sim's own clock — so a leaf is only ever
+   * drawn where the sim has something solid, and cinema B's door cannot go back to
+   * being a thing that simply stops existing when the release is pressed.
+   */
+  function drawLock(p: Prop, floorY: number, walls: GameSnapshot['walls']): void {
+    const d = lockDoorDraw(p, walls);
+    const g = lockPool.get();
+    const h = PROPS.lock.h;
+    g.position.set(m(d.leaf.hinge.x), surfaceY(floorY, d.leaf.hinge.x, d.leaf.hinge.y) + h / 2, m(d.leaf.hinge.y));
+    g.rotation.y = yawFromSimHeading(Math.atan2(d.leaf.axis.y, d.leaf.axis.x));
+    // Along the pivot's local +Z — see `drawCabinet` for why that and not +X.
+    const leaf = g.children[0] as THREE.Mesh;
+    leaf.scale.set(m(LOCK_LEAF_T), h, m(d.leaf.len));
+    leaf.position.set(0, 0, m(d.leaf.len) / 2);
+    const mat = leaf.material as THREE.MeshStandardMaterial;
+    // A door standing open shows its edge to the corridor and its back to the
+    // room; lightening it as it goes is what makes the swing read in a blackout.
+    const lit = d.u * 0.35;
+    mat.emissive.setRGB(lit * 0.05, lit * 0.06, lit * 0.08);
+    mat.emissiveIntensity = lit > 0 ? 1 : 0;
+  }
+
+  /**
+   * Chapter 3's registration gate: two posts and a barrier Stephan walks back.
+   *
+   * Every number comes out of `gateDraw` (`src/render/doors.ts`), posed from
+   * `gateSwing` in `ch3-breakfast.ts`. The static gate `buildVenue()` builds in
+   * this doorway is hidden for as long as a chapter publishes this prop — two
+   * barriers in one doorway, one of which never opens, is exactly the duplicate
+   * the venue's shutter was caught doing behind chapter 2's.
+   */
+  function drawGate(p: Prop, floorY: number, walls: GameSnapshot['walls']): void {
+    if (venueGate) venueGate.visible = false;
+    const d = gateDraw(p, walls);
+    gateGroup.visible = true;
+    const base = surfaceY(floorY, d.leaf.hinge.x, d.leaf.hinge.y);
+
+    gatePivot.position.set(m(d.leaf.hinge.x), base + GATE_H / 2, m(d.leaf.hinge.y));
+    gatePivot.rotation.y = yawFromSimHeading(Math.atan2(d.leaf.axis.y, d.leaf.axis.x));
+    gateBar.scale.set(m(GATE_LEAF_T), GATE_H, m(d.leaf.len));
+    gateBar.position.set(0, 0, m(d.leaf.len) / 2);
+
+    for (let i = 0; i < gatePosts.length; i++) {
+      const v = d.posts[i];
+      // A post is 15 cm taller than the bar it carries, which is what makes a
+      // barrier read as a barrier rather than as a plank floating in a doorway.
+      gatePosts[i].scale.set(1, GATE_H + 0.15, 1);
+      gatePosts[i].position.set(m(v.x), base + (GATE_H + 0.15) / 2, m(v.y));
+    }
   }
 
   function drawPerson(p: Person, floorY: number): void {
@@ -1986,7 +2190,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     head.scale.setScalar(rM * 1.5);
     head.position.set(0, bodyH + rM * 0.6, 0);
     contact.scale.setScalar(rM * 1.7);
-    g.position.set(m(p.x), surfaceY(floorY, p.x), m(p.y));
+    g.position.set(m(p.x), surfaceY(floorY, p.x, p.y), m(p.y));
 
     const mat = body.material as THREE.MeshStandardMaterial;
     const hex = p.colour ? new THREE.Color(p.colour).getHex() : (ROLE_COLOR[p.role] ?? ROLE_COLOR.visitor);
@@ -1996,15 +2200,20 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   function drawDressing(snap: GameSnapshot, floorY: number): void {
     propPool.begin();
     peoplePool.begin();
+    lockPool.begin();
+    gateGroup.visible = false;
     cableLine.visible = false;
     breakerPanel.visible = false;
     cabinetOpen.visible = false;
     jammedLeaf.visible = false;
     fireDoor.visible = false;
     rollerDoor.visible = false;
+    keypad.root.visible = false;
     // Handed back to the venue unless a chapter claims it again this frame.
     if (venueFireLeaf) venueFireLeaf.visible = true;
     if (venueRoller) venueRoller.visible = true;
+    if (venueGate) venueGate.visible = true;
+    if (venueKeypad) venueKeypad.visible = true;
     for (const p of snap.props) {
       if (p.kind === 'cable') drawCable(p, floorY);
       else if (p.kind === 'firedoor') drawFireDoor(p, floorY, snap.walls);
@@ -2013,12 +2222,16 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       else if (p.kind === 'breaker') drawBreaker(p, floorY);
       else if (p.kind === 'terminal') drawTerminal(p, floorY, snap.t);
       else if (p.kind === 'cabinet') drawCabinet(p, floorY);
+      else if (p.kind === 'lock') drawLock(p, floorY, snap.walls);
+      else if (p.kind === 'gate') drawGate(p, floorY, snap.walls);
       else if (p.kind === 'crate') drawCrate(p, floorY);
+      else if (p.kind === 'keypad') drawKeypad(p, floorY);
       else drawProp(p, floorY);
     }
     for (const person of snap.people) drawPerson(person, floorY);
     propPool.end();
     peoplePool.end();
+    lockPool.end();
   }
 
   /* ---------------------------------------------------------------- robots */
@@ -2110,7 +2323,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
        * ~30 screen pixels of a pool that is meant to be centred on him.
        */
       const ry = rider ? b.y + MOUNT_OFFSET_Y : b.y;
-      rig.root.position.set(m(b.x), surfaceY(floorY, b.x) + lift, m(ry));
+      rig.root.position.set(m(b.x), surfaceY(floorY, b.x, b.y) + lift, m(ry));
       updateRobot(rig, {
         speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M,
         heading: b.face,
@@ -2154,6 +2367,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
 
   function renderTopDown(snap: GameSnapshot, dt: number): void {
     const floorY = snap.floor === 'down' ? -STOREY_H_M : 0;
+    framePlates = snap.plates;
     venue.floor1.visible = snap.floor === 'up';
     venue.ground.visible = snap.floor === 'down';
     placeRobots(snap, dt, floorY);
@@ -2210,6 +2424,8 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     }
 
     const floorY = snap.floor === 'down' ? -STOREY_H_M : 0;
+    // The frame's raised surfaces, from the sim. See `surfaceY`.
+    framePlates = snap.plates;
     lastFloorY = floorY;
     venue.floor1.visible = snap.floor === 'up';
     venue.ground.visible = snap.floor === 'down';
@@ -2294,9 +2510,16 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       }
       propPool.dispose();
       peoplePool.dispose();
+      lockPool.dispose();
+      gateMat.dispose();
+      for (const post of gatePosts) post.geometry.dispose();
+      // Nothing may outlive the scene that published it — a stale plate list would
+      // otherwise answer `surfaceY` for whatever is built next (see that function).
+      framePlates = [];
       (jammedSlab.material as THREE.Material).dispose();
       fireMat.dispose();
       fireBarMat.dispose();
+      keypad.dispose();
       cableGeo.dispose();
       cableMat.dispose();
       contactGeo.dispose();

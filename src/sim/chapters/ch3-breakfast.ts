@@ -582,6 +582,8 @@ export interface BreakfastState {
   speaker: { following: boolean; onStage: boolean; booth: string };
   queues: Array<{ label: string; open: number }>;
   gateOpen: boolean;
+  /** 0..1, how far Stephan has walked the barrier back. See `GATE_SWING_TIME`. */
+  gateSwing: number;
   crowd: number;
   /** The beer delivery (`src/sim/crates.ts`). */
   beer: {
@@ -617,6 +619,41 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setWalls(groundWalls());
   ctx.place([600, 215], [630, 215], [660, 215]);
 
+  /**
+   * HOW LONG STEPHAN TAKES TO OPEN THE STAIRS, seconds.
+   *
+   * The gate at the foot of the main staircase was the last door in the game that
+   * popped: `done()` called `ctx.removeWall(gate)` and `props()` went on publishing
+   * a `gate` prop, which `PROPS.gate` drew as a 1.1 m box across the stair foot —
+   * un-animated AND walk-through, and with a second, static gate drawn in the same
+   * doorway by `buildVenue()` on top of it. It was flagged during the roller-door
+   * round and left for somebody else; this is that somebody.
+   *
+   * Longer than any of the other three (`FIRE_SWING_TIME` 1 s, `ROLLER_RISE_TIME`
+   * 0.42 s, `CABINET_SWING_TIME` 1.2 s), because nothing is forcing this one. It is
+   * a man unhooking a barrier and walking it back against the wall at the start of
+   * a conference day, and it is the only door in the game that opens because
+   * somebody decided it was time. A duration, not a speed.
+   */
+  const GATE_SWING_TIME = 1.5;
+  /**
+   * ...and how long the chapter stays on the hall afterwards before the exit
+   * cutscene fades it out.
+   *
+   * Exactly the trap `FIRE_CUT_DELAY` exists for in `ch1-night.ts`, and chapter 3
+   * had it in its purest form: `done()` opened the gate and started the cutscene
+   * that ends the chapter in the same statement. `CUT_FADE` is 0.35 s, so the
+   * screen would be black before the barrier had moved a degree and the animation
+   * would exist with nobody able to see it. The chapter now holds — still in
+   * `play`, still driveable — for the swing plus this, and only then hands over.
+   */
+  const GATE_CUT_DELAY = 0.5;
+  /** The barrier's own thickness. Matches `GATE_LEAF_T` in `src/render/doors.ts`. */
+  const GATE_LEAF_T = 4;
+  /** ...and how far in from each end its two posts stand (`GATE_POST_INSET`). */
+  const GATE_POST_INSET = 8;
+  const GATE_POST_R = 1.6;
+
   const gate: Wall = {
     ...GF.gate,
     kind: 'gate',
@@ -629,6 +666,44 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   };
   ctx.walls.push(gate);
   let gateOpen = false;
+  /** 0..1, how far the barrier has swung back. Ticked in `update`. */
+  let gateSwing = 0;
+  /** Sim time the exit cutscene starts, once Stephan has opened up. -1 until then. */
+  let leaveAt = -1;
+  /*
+   * WHERE THE BARRIER ENDS UP, and the post it leaves behind.
+   *
+   * The rects `gateDraw` poses at `progress = 1` (`src/render/doors.ts`): the leaf
+   * hinged on the west post, a quarter turn back into the stairwell, lying flat
+   * along the flight's west cheek — where a stair gate is pinned back when a
+   * building is open — plus the east post, which does not move and which the `gate`
+   * wall was covering until now.
+   *
+   * Both are hard against the shaft's own side walls, so the flight itself stays
+   * as wide as it was: the transition walks three robots up the middle of it a
+   * second and a half later and none of them goes near either.
+   */
+  const gateY = GF.gate.y + GF.gate.h / 2;
+  const gateHingeX = GF.gate.x + GATE_POST_INSET;
+  const gateLen = GF.gate.w - GATE_POST_INSET * 2;
+  const gateOpenWalls: Wall[] = [
+    {
+      x: gateHingeX - GATE_LEAF_T / 2,
+      y: gateY - gateLen - GATE_LEAF_T / 2,
+      w: GATE_LEAF_T,
+      h: gateLen + GATE_LEAF_T,
+      kind: 'gateleaf',
+      why: (b) => `${b.name}: that is the gate itself, pinned back against the wall. The way up is the middle`,
+    },
+    {
+      x: gateHingeX + gateLen - GATE_POST_R,
+      y: gateY - GATE_POST_R,
+      w: GATE_POST_R * 2,
+      h: GATE_POST_R * 2,
+      kind: 'gatepost',
+      why: (b) => `${b.name}: the gate post. It stays where it is`,
+    },
+  ];
 
   /*
    * The bar itself, as a collider.
@@ -1248,11 +1323,21 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   function done(): void {
     gateOpen = true;
     ctx.removeWall(gate);
+    // The barrier does not vanish, it moves: the foot of the flight is free from
+    // this frame and the leaf is solid where it comes to rest. `gateSwing` is only
+    // the picture.
+    for (const w of gateOpenWalls) ctx.walls.push(w);
     ctx.score.soup = Math.trunc(soup);
     ctx.score.temp = Math.trunc(temp);
     ctx.score.complaints = complaints;
     ctx.score.breakfastT = Math.round(ctx.t);
-    ctx.flash('Stephan: "Soup. Speaker. Fine — open the stairs." Up the main staircase', 4000);
+    ctx.flash('Stephan unhooks the barrier and walks it back against the wall: "Soup. Speaker. Fine — the stairs are open." Up you go', 4000);
+    // Watch him open it first. See `GATE_CUT_DELAY`.
+    leaveAt = ctx.t + GATE_SWING_TIME + GATE_CUT_DELAY;
+  }
+
+  /** The exit: up the main staircase Stephan has just opened. */
+  function leave(): void {
     // Up the flight, which climbs NORTH from the gate Stephan has just opened.
     const route = (dx: number): Vec2[] => [
       { x: stair.x + stair.w / 2 + dx, y: stair.y + stair.h + 34 },
@@ -1271,6 +1356,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   }
 
   function update(dt: number): void {
+    if (gateOpen && gateSwing < 1) gateSwing = Math.min(1, gateSwing + dt / GATE_SWING_TIME);
+    if (leaveAt >= 0 && ctx.t >= leaveAt) {
+      leaveAt = -1;
+      leave();
+    }
     ctx.pushBiggy(dt);
     mg.update(dt);
     stepCrates(dt);
@@ -1398,7 +1488,13 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         label: ladle ? 'shelf' : 'ladle (high)',
       },
       { kind: 'dropzone', ...stage, state: delivered ? 'done' : 'idle', label: 'bring the soup here' },
-      { kind: 'gate', ...GF.gate, state: gateOpen ? 'open' : 'shut', label: 'main staircase' },
+      /*
+       * The gate is emitted whatever state it is in, and it carries the sim's own
+       * swing clock. `src/render/doors.ts` poses the leaf from that clock and from
+       * the chapter's LIVE wall list, so a barrier is only ever drawn across the
+       * stair foot while the sim has something solid there.
+       */
+      { kind: 'gate', ...GF.gate, state: gateOpen ? 'open' : 'shut', progress: gateSwing, label: 'main staircase' },
       /*
        * THE BAR, and the three things that make it read as one.
        *
@@ -1608,6 +1704,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       speaker: { following: speaker.following, onStage: speaker.onStage, booth: hideBooth.name },
       queues: queues.map((q) => ({ label: q.label, open: q.open })),
       gateOpen,
+      gateSwing,
       crowd: crowd.length,
       beer: {
         loose: held('loose').map((c) => ({ i: c.i, x: c.x, y: c.y })),

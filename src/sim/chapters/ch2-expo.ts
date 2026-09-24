@@ -152,6 +152,22 @@ const ROLLER_TALK_COOLDOWN = 3;
  * while it runs.
  */
 const ROLLER_RISE_TIME = 0.42;
+/**
+ * How long Biggy takes to walk the router cabinet's doors open, seconds.
+ *
+ * The third clock of this shape in the game and the slowest of them, on purpose.
+ * The fire door arrives (`FIRE_SWING_TIME`, 1 s), the shutter is torn up
+ * (`ROLLER_RISE_TIME`, 0.42 s) and this is neither: Droid's line is *"the hinges
+ * have not moved since 2019"* and the narration is that Biggy *"sets his shoulder
+ * against the cabinet door and walks it open"*. It should take a beat longer than
+ * a door that is simply let go of, and it should not look like anything gave way.
+ *
+ * `drawCabinet` used to cut straight to a leaf standing at 58° with no collider
+ * under it — the third door in the game that changed between two frames, and the
+ * one Michele had not caught yet. A duration, not a speed, so the rescale leaves
+ * it alone; it only ever feeds `Prop.progress`.
+ */
+const CABINET_SWING_TIME = 1.2;
 
 /* ------------------------------------------------------------- the network closet
  *
@@ -274,6 +290,8 @@ export interface ExpoState {
   router: {
     /** Biggy has shouldered the cabinet door open. Nothing else in here starts until he has. */
     cabinetOpen: boolean;
+    /** 0..1, how far the two cabinet doors have swung. See `CABINET_SWING_TIME`. */
+    cabinetSwing: number;
     /**
      * LINK 2: the unit in the cabinet has a supply, so its lamps are up and the
      * terminal is awake. Dead — and it says so — until the breakers are in.
@@ -356,6 +374,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let rollerBroken = false;
   /** 0..1, how far the smashed shutter has torn up. See `ROLLER_RISE_TIME`. */
   let rollerRise = 0;
+  /** 0..1, how far the cabinet doors have been walked open. See `CABINET_SWING_TIME`. */
+  let cabinetSwing = 0;
   let hintedTech = false;
   let rollerTalk = -9;
 
@@ -554,6 +574,39 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
             : null,
   };
   ctx.walls.push(cabinet);
+  /**
+   * Where the two cabinet doors come to rest, once Biggy has walked them open.
+   *
+   * The rects `cabinetDoorDraw` poses at `progress = 1` (`src/render/doors.ts`):
+   * each leaf hinged on its own outer stile, 58° out of the face, hinge to tip plus
+   * the leaf's own thickness. Same rectangles drawn and collided — the rule chapter
+   * 1's fire door already follows, applied to the door that had no collider at all.
+   *
+   * They leave the middle of the bay clear, which is where the terminal is and
+   * which is why the pair is two 1.4 m doors rather than the single 4.3 m slab
+   * that used to be drawn across the whole carcass: that one, open, lay 3.7 m out
+   * across the technical room and would have taken the terminal's own approach
+   * with it.
+   */
+  const CAB_LEAF_T = 3;
+  const CAB_LEAF_W = 17.5;
+  const CAB_BAY_W = CAB_LEAF_W * 2;
+  const CAB_BAY_X = GF.cabinet.x + (GF.cabinet.w - CAB_BAY_W) / 2;
+  const CAB_FACE_Y = GF.cabinet.y + GF.cabinet.h;
+  const CAB_OPEN = (58 * Math.PI) / 180;
+  const cabinetLeaves: Wall[] = [0, 1].map((i): Wall => {
+    const hx = CAB_BAY_X + i * CAB_BAY_W;
+    const tipX = hx + (i === 0 ? 1 : -1) * CAB_LEAF_W * Math.cos(CAB_OPEN);
+    const tipY = CAB_FACE_Y + CAB_LEAF_W * Math.sin(CAB_OPEN);
+    return {
+      x: Math.min(hx, tipX) - CAB_LEAF_T / 2,
+      y: CAB_FACE_Y - CAB_LEAF_T / 2,
+      w: Math.abs(tipX - hx) + CAB_LEAF_T,
+      h: tipY - CAB_FACE_Y + CAB_LEAF_T,
+      kind: 'cabinetleaf',
+      why: (b) => `${b.name}: that is the cabinet door, standing open. The terminal is between the two of them`,
+    };
+  });
 
   ctx.objective(OBJECTIVE, KEYS);
   /*
@@ -914,6 +967,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
     if (!router.cabinetOpen && atCabinet) {
       router.cabinetOpen = true;
+      // The leaves are solid where they come to rest from this frame on;
+      // `cabinetSwing` is only the picture. See `CABINET_SWING_TIME`.
+      for (const l of cabinetLeaves) ctx.walls.push(l);
       /*
        * LINK 2 — and what is behind the door depends on whether link 1 has landed,
        * which is the whole of Michele's chain in one sentence of narration.
@@ -1084,6 +1140,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     // The shutter tearing up into its housing. The opening is already free — the
     // wall went on the frame of the hit — so this is only the picture and the cue.
     if (rollerBroken && rollerRise < 1) rollerRise = Math.min(1, rollerRise + dt / ROLLER_RISE_TIME);
+    if (router.cabinetOpen && cabinetSwing < 1) cabinetSwing = Math.min(1, cabinetSwing + dt / CABINET_SWING_TIME);
 
     if (typeAnchor !== null && typing()) {
       driven.x = typeAnchor.x;
@@ -1313,6 +1370,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         kind: 'cabinet',
         ...GF.cabinet,
         state: router.cabinetOpen ? 'open' : 'shut',
+        // The sim's own swing clock — `src/render/doors.ts` poses the two leaves
+        // from it, and `main.ts` fires the `cabinet` cue off its leading edge.
+        progress: cabinetSwing,
         label: router.cabinetOpen ? 'router cabinet — open' : 'router cabinet — shut (Biggy)',
       },
       /*
@@ -1589,6 +1649,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       rollerRise,
       router: {
         cabinetOpen: router.cabinetOpen,
+        cabinetSwing,
         powered: power,
         known: router.known,
         prompting: router.prompting,

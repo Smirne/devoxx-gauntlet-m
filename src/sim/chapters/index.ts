@@ -20,6 +20,7 @@ import type {
   LightSource,
   Mirror,
   Person,
+  Plate,
   Prop,
   RobotKind,
   TextPrompt,
@@ -106,6 +107,15 @@ export interface ChapterRuntime {
   update(dt: number): void;
   props?(): Prop[];
   people?(): Person[];
+  /**
+   * Raised walking surfaces this chapter has put on the floor — a door leaf lying
+   * where Biggy knocked it, and anything else a robot ends up standing ON.
+   *
+   * The floor's own plates (the lobby, the flights) come from `groundPlates()` and
+   * are added by `game.ts`; this is only what the CHAPTER changes. See
+   * `src/sim/surface.ts`.
+   */
+  plates?(): Plate[];
   clues?(): Clue[];
   mirrors?(): Mirror[];
   /**

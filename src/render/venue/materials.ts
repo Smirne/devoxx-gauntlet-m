@@ -202,8 +202,44 @@ const SPECS = {
   /* ---------------------------------------------------------------- accent */
   /** Devoxx orange, the same hue as Voxxy's shell. */
   devoxxOrange: { color: '#f2711c', roughness: 0.6 },
-  /** The Zaal numeral panels: a deeper, flatter orange that reads as a block. */
-  signOrange: { color: '#e1561c', roughness: 0.75 },
+  /**
+   * The Zaal numeral panels: a deeper, flatter orange that reads as a block.
+   *
+   * Backlit, and that is the fix rather than a flourish. The numeral's own face
+   * is a `SignPainter` material at `glow = 0.5` — a lightbox, as the corridor's
+   * panels are — while the block carrying it was inert, so in the venue's own
+   * darkness the lit quad floated on a body that had gone to near-black. Michele,
+   * with the screenshot: *"This orange thing... it misses a shape."* Half of that
+   * is the missing edges (see `signOrangeCap`); the other half is that a panel
+   * has to be one colour block, not a bright rectangle stuck on a dark one.
+   */
+  signOrange: { color: '#e1561c', roughness: 0.75, emissive: '#8d3311', emissiveIntensity: 0.62 },
+  /**
+   * The Zaal panel's COPING — the band across its top, and the only part of it a
+   * high isometric camera sees end-on.
+   *
+   * `media/other-images/image-1790032674926.webp` is the measurement: the real
+   * panel beside the zaal 7 entrance is a slab standing proud of the charcoal
+   * wall, and what reads in the photograph is that its top edge is a *lighter*
+   * orange than its face — it catches the corridor's own light where the face is
+   * in shade. Ours had one material for the whole block, so the top came back as
+   * the same flat orange as the front and the panel read as a box rather than as
+   * a panel. A touch of emissive, at the same "these are backlit boxes" intensity
+   * `SignPainter` gives the numeral itself, keeps that edge alive in chapter 1's
+   * blackout instead of letting the whole thing go to a silhouette.
+   */
+  signOrangeCap: { color: '#ff7f34', roughness: 0.55, emissive: '#b04d15', emissiveIntensity: 0.8 },
+  /** The panel's returned side edges: the same orange, turned away from the light. */
+  signOrangeReturn: { color: '#a83c11', roughness: 0.8, emissive: '#3d1606', emissiveIntensity: 0.5 },
+  /**
+   * The shadow gap a panel is set into.
+   *
+   * In the photograph the panel does not grow out of the floor — it stops on a
+   * dark recessed foot it overhangs, which is what makes a 3.6 m colour block
+   * read as a built panel instead of a decal. Darker than `signDark` on purpose:
+   * this is a gap, not a surface.
+   */
+  signReveal: { color: '#0b0d11', roughness: 1 },
   /** Kinepolis wayfinding blue. */
   signBlue: { color: '#1c4a96', roughness: 0.7 },
   /** Emergency running-man green, lit from its own battery. */

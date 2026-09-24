@@ -30,10 +30,10 @@ import {
   roomScreen,
 } from '../geometry';
 import { JAMMED_DOOR_SPEED, MOUNT_BIGGY_MAX_SPEED, MOUNT_REACH, SPEED_SCALE, T, W } from '../constants';
-import { m } from '../units';
+import { PX_PER_M, m } from '../units';
 import { buildLights, clueLit, litBy } from '../lights';
 import { dist, speed } from '../bot';
-import type { Clue, LightSource, Mirror, Prop, Rect, Wall } from '../types';
+import type { Clue, LightSource, Mirror, Plate, Prop, Rect, Wall } from '../types';
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 
 /* ---------------------------------------------------------------- tuning that is
@@ -136,6 +136,106 @@ const FIRE_CUT_DELAY = 0.45;
 const FIRE_LEAF_T = 4;
 
 /**
+ * How long cinema B's magnetic lock takes to let its leaf swing clear, seconds.
+ *
+ * The third door in this chapter, and until now the only one that simply ceased to
+ * exist: `key` removed the `lock` wall on the frame Droid reached the projector
+ * panel and `props()` stopped publishing the prop in the same frame, so the biggest
+ * thing the mount beat achieves — a door opening — happened between two frames with
+ * nothing on screen and nothing in the speakers.
+ *
+ * Shorter than `FIRE_SWING_TIME`, and that is the point of having two: the fire door
+ * is a night-sealed pair of leaves on a magnetic hold-open, and this is one light
+ * auditorium door on an electric strike. Same shape as every other clock in this
+ * file — a duration, not a speed, so the rescale leaves it alone — and it only ever
+ * feeds `Prop.progress`.
+ */
+const LOCK_SWING_TIME = 0.7;
+/** Cinema B's leaf, drawn and collided at its own thickness rather than the band's. */
+const LOCK_LEAF_T = 4;
+
+/* ------------------------------------------------- the door Biggy puts on the floor
+ *
+ * Michele, with a screenshot of Biggy and Droid standing inside the fallen leaf of
+ * cinema E's jammed door: *"we are still walking through the crashed door. The shape
+ * is fine, as long as robot walk on it, not through."*
+ *
+ * Both halves matter. He does NOT want it turned back into a blocker — the whole
+ * beat is that Biggy went through it — he wants a robot standing over it to stand on
+ * TOP of it, the way you stand on a fallen door. That is a walking surface, not a
+ * wall, and `src/sim/surface.ts` is where the sim answers that question for the
+ * lobby plate and the flights as well.
+ *
+ * The three numbers below are the leaf's resting pose. They were `JAM_TIP`,
+ * `JAM_SKID` and `JAM_SKEW` inside `src/render/scene.ts`, which is where the shape
+ * Michele approved was tuned; they move here because the sim now has to know where
+ * the leaf ends up in order to say how high the floor is there, and two copies of a
+ * pose is how a drawn thing and its collider drift apart. `scene.ts` imports them
+ * and draws from them, so the picture and the plate are one fact.
+ */
+
+/** How far past upright the leaf goes: flat on the floor. */
+export const JAM_TIP = Math.PI / 2;
+/** How far it slides on, metres, from the doorway it came out of. */
+export const JAM_SKID = 0.55;
+/**
+ * How far off square it lands, radians.
+ *
+ * Applied as a YAW of the leaf lying on the floor (`YXZ` order in `scene.ts`), not
+ * as a tilt of it: a door that has come off its hinges lands askew in plan, and the
+ * version that tipped it after yawing left one long edge 0.78 m in the air, propped
+ * on nothing, with a walking surface that ran downhill by 0.62 m across its width.
+ * The silhouette from the fixed camera is all but identical and the leaf is now
+ * something a robot can be ON.
+ */
+export const JAM_SKEW = 0.17;
+/** The leaf's own height when it was standing, metres — its thickness once down. */
+export const JAM_LEAF_H = 2.1;
+
+/**
+ * Where the smashed leaf comes to rest, as a surface a robot stands on.
+ *
+ * `p` is the chapter's `jammed` prop — the doorway band's own leaf rect — and this
+ * is the same rigid motion `scene.ts` applies to the mesh, written out in plan: tip
+ * it flat about the bottom edge nearest the camera, slide it `JAM_SKID` on, yaw it
+ * `JAM_SKEW`. Flat, so the plate is a plate and not a ramp: its surface is the
+ * leaf's own thickness off the floor, everywhere.
+ *
+ * `null` until the door is actually broken — a shut door is a wall, and the wall is
+ * what the chapter already has.
+ */
+export function jammedLeafPlate(p: Prop): Plate | null {
+  if (p.state !== 'broken') return null;
+  const thickPx = p.h ?? 6;
+  const widthPx = p.w ?? 46;
+  /*
+   * The same rigid motion the mesh gets, in plan.
+   *
+   * `scene.ts` hangs the leaf off a group whose origin is the bottom edge of the
+   * doorway, tips it flat about that edge (so the leaf's own height becomes its
+   * run into the room) and then yaws the whole group by `JAM_SKEW`. A yaw about
+   * the hinge edge is a yaw about the leaf's own centre PLUS a shift of that
+   * centre, which is what the two lines below are; a `Plate` carries its yaw about
+   * its own centre, because that is the only form a footprint test can use.
+   */
+  const runPx = JAM_LEAF_H * PX_PER_M;
+  const originX = p.x + widthPx / 2;
+  const originY = p.y + thickPx + JAM_SKID * PX_PER_M;
+  const cx = originX - (runPx / 2) * Math.sin(JAM_SKEW);
+  const cy = originY + (runPx / 2) * Math.cos(JAM_SKEW);
+  return {
+    kind: 'jammed-leaf',
+    x: cx - widthPx / 2,
+    y: cy - runPx / 2,
+    w: widthPx,
+    h: runPx,
+    rot: JAM_SKEW,
+    // Flat on the floor, so the surface is the leaf's own thickness, everywhere.
+    lo: thickPx / PX_PER_M,
+  };
+}
+
+/**
  * The leaf the renderer draws in a doorway, from the doorway's own collider.
  *
  * `roomDoor()` returns a 12 px band because a door has to seal a 6 px wall from
@@ -163,6 +263,8 @@ export interface NightState {
   entered: string;
   /** The projector-panel release that unlocks cinema B. */
   panelOn: boolean;
+  /** 0..1, how far cinema B's leaf has swung clear. See `LOCK_SWING_TIME`. */
+  lockSwing: number;
   jamBroken: boolean;
   /** 0..1, how far the smashed door has got through falling. See `JAM_FALL_TIME`. */
   jamFall: number;
@@ -200,6 +302,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let lights: LightSource[] = [];
   let entered = '';
   let panelOn = false;
+  /** Cinema B's leaf, 0 -> 1 once the release is pressed. Ticked in `update`. */
+  let lockSwing = 0;
   let jamBroken = false;
   /** 0..1, the smashed door's own fall. Started by the hit, ticked in `update`. */
   let jamFall = 0;
@@ -353,6 +457,33 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           : 'Biggy: locked. Release is up there. I am not up there. Droid could be, if he stood on me',
   };
   ctx.walls.push(lock);
+  /*
+   * WHERE CINEMA B'S LEAF ENDS UP.
+   *
+   * The rule this chapter's fire door already follows, applied to the door that
+   * never got it: a leaf that opens is a collider where it comes to REST, never a
+   * slab across the hole it has just made and never nothing at all. Cinema B is a
+   * north room, so the leaf swings a quarter turn into the auditorium and lies
+   * flat against the inside of the wall it is hung on — hinged on the WEST jamb,
+   * which is the one the fixed camera looks past rather than through.
+   *
+   * It takes 4 px of the 46 px doorway's width away from the room side. Biggy is
+   * 18 px across and still has 24 px of clear opening, which is what makes this a
+   * door that has opened rather than a door that has been half-blocked by its own
+   * leaf.
+   */
+  const lockLeaf: Wall = {
+    // The rect `lockDoorDraw` poses at `progress = 1` (`src/render/doors.ts`):
+    // hinge on the west jamb, a quarter turn into the room, hinge to tip plus the
+    // leaf's own thickness. Same rectangle drawn and collided, as with the fire
+    // door's `swungLeaves` above.
+    x: dB.x,
+    y: CY0 - dB.w - LOCK_LEAF_T / 2,
+    w: LOCK_LEAF_T,
+    h: dB.w + LOCK_LEAF_T,
+    kind: 'lockleaf',
+    why: (b) => `${b.name}: that is the door itself, standing open against the wall`,
+  };
   const panel: Rect = { x: dB.x + dB.w + 14, y: CY0 + 10, w: 20, h: 24 };
   const panelAt = { x: panel.x + 10, y: panel.y + 12 };
   clues.push({
@@ -650,8 +781,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         !d.mounted && b.kind === 'droid' && dist(d, bg) < d.r + bg.r + MOUNT_REACH && speed(bg) < MOUNT_BIGGY_MAX_SPEED;
       if (!panelOn && d.mounted && dist(bg, panelAt) < PANEL_REACH) {
         panelOn = true;
+        // The collider goes NOW and the leaf's own one goes in with it: the opening
+        // is earned on the frame the release is pressed, and the leaf is solid where
+        // it comes to rest. `lockSwing` is only the picture — see `LOCK_SWING_TIME`.
         ctx.removeWall(lock);
-        ctx.flash("Droid reaches the projector panel from Biggy's shoulders — the middle cinema unlocks");
+        ctx.walls.push(lockLeaf);
+        ctx.flash("Droid reaches the projector panel from Biggy's shoulders — the magnetic lock lets go and the middle cinema's door swings open");
         return true;
       }
       if (!panelOn && !canMount && !d.mounted && b.kind === 'droid' && dist(b, panelAt) < PANEL_REACH) {
@@ -728,6 +863,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     ctx.pushBiggy(dt);
     if (jamBroken && jamFall < 1) jamFall = Math.min(1, jamFall + dt / JAM_FALL_TIME);
     if (fireOpen && fireSwing < 1) fireSwing = Math.min(1, fireSwing + dt / FIRE_SWING_TIME);
+    if (panelOn && lockSwing < 1) lockSwing = Math.min(1, lockSwing + dt / LOCK_SWING_TIME);
     if (leaveAt >= 0 && ctx.t >= leaveAt) {
       leaveAt = -1;
       leave();
@@ -782,7 +918,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     // The scenery cinemas' doors, so the wall behind each joke is something you
     // can see rather than something you bump into.
     for (const n of Object.keys(SHUT_VOICES)) out.push({ kind: 'lock', ...leaf(roomDoor(R(n))), state: 'shut' });
-    if (!panelOn) out.push({ kind: 'lock', ...leaf(dB), state: 'shut' });
+    /*
+     * CINEMA B'S DOOR IS EMITTED WHATEVER STATE IT IS IN.
+     *
+     * It used to vanish from this list on the frame the release was pressed —
+     * `if (!panelOn)` — so the payoff of the whole mount beat was a door that did
+     * not open, it ceased to exist, between two frames, in silence. It keeps its
+     * place now and carries `progress`; `src/render/doors.ts` poses the leaf from
+     * that clock and from the chapter's LIVE wall list, so a leaf is only ever
+     * drawn where the sim has something solid.
+     */
+    out.push({ kind: 'lock', ...leaf(dB), state: panelOn ? 'open' : 'shut', progress: lockSwing });
     /*
      * The jammed door is emitted whatever state it is in.
      *
@@ -845,12 +991,21 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       lights = buildLights(ctx.bots, ctx.walls, mirrors);
     },
     entered: () => entered,
+    /*
+     * The one thing in this chapter a robot stands ON: the leaf Biggy put on the
+     * floor of cinema E. See `jammedLeafPlate` and `src/sim/surface.ts`.
+     */
+    plates: (): Plate[] => {
+      const leafPlate = jammedLeafPlate({ kind: 'jammed', ...leaf(dE), state: jamBroken ? 'broken' : 'shut' });
+      return leafPlate ? [leafPlate] : [];
+    },
     state: (): NightState => ({
       chapter: 1,
       clues,
       code,
       entered,
       panelOn,
+      lockSwing,
       jamBroken,
       jamFall,
       fireOpen,

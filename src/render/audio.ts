@@ -50,6 +50,38 @@ export type SoundId =
    */
   | 'shutter'
   /**
+   * Cinema B's magnetic lock letting go, and one light auditorium door swinging.
+   *
+   * The counterpart to `door-open`, a size down. The fire door is a night-sealed
+   * pair of leaves on a hold-open magnet and takes a second to arrive; this is one
+   * door on an electric strike, released from a projector panel at the other end of
+   * the room. So: the strike's own buzz-and-clack, the leaf coming off its keeper
+   * quickly and lightly, and a soft rubber seal at the stop — `LOCK_SWING_TIME` in
+   * `ch1-night.ts`, because the sim owns that clock.
+   */
+  | 'maglock'
+  /**
+   * Biggy walking the router cabinet's steel doors open on hinges seized since 2019.
+   *
+   * Nothing here is a door being let go of. It is a low shoulder-shove, then the
+   * long dry scrape of two hinges that do not want to move — the only cue in the
+   * game whose middle is louder than its ends — and it finishes on the leaves
+   * knocking against their stops one after the other, because there are two of
+   * them. `CABINET_SWING_TIME` in `ch2-expo.ts` is the clock.
+   */
+  | 'cabinet'
+  /**
+   * The registration gate at the foot of the main staircase, opened for the day.
+   *
+   * The only door in the game that opens because somebody decided it was time, and
+   * it has to sound like that: a hook coming off its eye, a light tubular barrier
+   * swinging on one post with the hollow ring a steel tube has, and the clack of it
+   * being pinned back against the wall. Nothing gives way and nothing is forced.
+   * Under it, the hall: this fires with three thousand people already inside.
+   * `GATE_SWING_TIME` in `ch3-breakfast.ts`.
+   */
+  | 'gate'
+  /**
    * Biggy's party trick: he rocks his whole gut a turn and a half.
    *
    * Three apexes (`flairPhase` ~0.17 / 0.5 / 0.83 in `src/sim/bot.ts`), each a low
@@ -450,6 +482,117 @@ export function createAudio(): Audio {
           filter: { type: 'bandpass', f: 2300, q: 9 },
         });
         noise({ t0: t0 + 0.44, dur: 0.7, peak: 0.05 * g, attack: 0.015, filter: { type: 'lowpass', f: 1400, f1: 300 } });
+        break;
+      }
+      case 'maglock': {
+        // 1. The electric strike: a short mains-frequency buzz, then the keeper
+        //    letting go. The buzz is what says *electric* rather than *mechanical*
+        //    — it is the projector panel doing this, from across the room.
+        tone({
+          type: 'square',
+          f0: 100,
+          t0,
+          dur: 0.09,
+          peak: 0.05 * g,
+          attack: 0.004,
+          filter: { type: 'bandpass', f: 520, q: 4 },
+        });
+        noise({ t0: t0 + 0.085, dur: 0.035, peak: 0.16 * g, attack: 0.001, filter: { type: 'highpass', f: 2800 } });
+        // 2. The leaf, lighter and quicker than the fire door's: a narrower band
+        //    of air, sweeping down over `LOCK_SWING_TIME` rather than over a second.
+        noise({
+          t0: t0 + 0.1,
+          dur: 0.6,
+          peak: 0.055 * g,
+          attack: 0.16,
+          filter: { type: 'bandpass', f: 1150, f1: 380, q: 1.6 },
+        });
+        // 3. The stop: a rubber seal, not a latch. Soft, and it is what tells the
+        //    player the door has finished rather than merely started.
+        tone({ type: 'sine', f0: 132, f1: 74, t0: t0 + 0.64, dur: 0.22, peak: 0.085 * g, attack: 0.006 });
+        noise({ t0: t0 + 0.64, dur: 0.14, peak: 0.035 * g, attack: 0.01, filter: { type: 'lowpass', f: 520, q: 0.8 } });
+        break;
+      }
+      case 'cabinet': {
+        // 1. Seven hundred kilos of Biggy putting a shoulder into sheet steel. A
+        //    shove, not a hit: it moves, so there is no ring on it.
+        tone({ type: 'sine', f0: 88, f1: 44, t0, dur: 0.24, peak: 0.2 * g, attack: 0.02 });
+        // 2. The hinges. Two of them, detuned against each other, grinding all the
+        //    way round — the middle of this cue is the loudest part of it, which is
+        //    what makes it a door being FORCED rather than a door swinging.
+        for (let k = 0; k < 2; k++) {
+          tone({
+            type: 'sawtooth',
+            f0: 214 + k * 37,
+            f1: 158 + k * 29,
+            t0: t0 + 0.08 + k * 0.04,
+            dur: 0.92,
+            peak: (0.05 - k * 0.014) * g,
+            attack: 0.3,
+            filter: { type: 'bandpass', f: 1750 + k * 520, q: 11 },
+          });
+        }
+        noise({
+          t0: t0 + 0.1,
+          dur: 0.9,
+          peak: 0.05 * g,
+          attack: 0.35,
+          filter: { type: 'bandpass', f: 720, f1: 1500, q: 1.1 },
+        });
+        // 3. Two stops, one per leaf, a breath apart — it is a pair of doors and it
+        //    should not arrive as one object. The second is the quieter of the two.
+        for (let k = 0; k < 2; k++) {
+          const at = t0 + 1.06 + k * 0.11;
+          tone({ type: 'triangle', f0: 268 - k * 22, f1: 206, t0: at, dur: 0.26, peak: (0.06 - k * 0.02) * g, attack: 0.002, filter: { type: 'bandpass', f: 900, q: 6 } });
+          noise({ t0: at, dur: 0.16, peak: (0.055 - k * 0.018) * g, attack: 0.002, filter: { type: 'lowpass', f: 900, q: 0.9 } });
+        }
+        break;
+      }
+      case 'gate': {
+        // 1. The hook coming off its eye. Two small bright metal taps, a hand's
+        //    width apart — Stephan unhooking a barrier, and nothing heavier.
+        for (let k = 0; k < 2; k++) {
+          noise({
+            t0: t0 + k * 0.075,
+            dur: 0.04,
+            peak: (0.1 - k * 0.03) * g,
+            attack: 0.001,
+            filter: { type: 'bandpass', f: 3400 - k * 600, q: 6 },
+          });
+        }
+        // 2. The barrier swinging on its post: a hollow tubular ring that falls as
+        //    it goes round, over `GATE_SWING_TIME`, with the bearing turning under
+        //    it. Long, unhurried, and the opposite of everything `crash` is.
+        tone({
+          type: 'triangle',
+          f0: 246,
+          f1: 196,
+          t0: t0 + 0.14,
+          dur: 1.25,
+          peak: 0.045 * g,
+          attack: 0.4,
+          filter: { type: 'bandpass', f: 1400, q: 5 },
+        });
+        tone({
+          type: 'sine',
+          f0: 61,
+          f1: 52,
+          t0: t0 + 0.14,
+          dur: 1.3,
+          peak: 0.07 * g,
+          attack: 0.45,
+        });
+        noise({
+          t0: t0 + 0.2,
+          dur: 1.1,
+          peak: 0.03 * g,
+          attack: 0.5,
+          filter: { type: 'bandpass', f: 640, f1: 300, q: 1.4 },
+        });
+        // 3. Pinned back against the wall at the end of the swing: one clack, and
+        //    a short tubular ring off it. The stairs are open.
+        noise({ t0: t0 + 1.46, dur: 0.06, peak: 0.13 * g, attack: 0.001, filter: { type: 'bandpass', f: 2100, q: 3 } });
+        tone({ type: 'triangle', f0: 328, f1: 296, t0: t0 + 1.47, dur: 0.44, peak: 0.05 * g, attack: 0.003, filter: { type: 'bandpass', f: 1250, q: 8 } });
         break;
       }
       case 'roll': {
