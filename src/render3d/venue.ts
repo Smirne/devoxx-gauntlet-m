@@ -410,7 +410,10 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     const shelfX = m(F1.foyer.x) + 0.35;
     const shelfZ = m(F1.foyer.y + 178);
     for (let k = 0; k < 3; k++) b.add(mats.darkMetal, box(0.5, 0.04, 5, V(shelfX, 1.3 + k * 0.55, shelfZ)));
-    b.add(mats.blackGloss, box(0.05, 2.2, 5.2, V(m(F1.foyer.x) + 0.06, 2.0, shelfZ)));
+    // Full-height back-bar cabinet round the shelves.
+    b.add(mats.darkMetal, box(0.55, 0.12, 5.4, V(shelfX, 3.0, shelfZ)));
+    b.add(mats.darkMetal, box(0.55, 3.0, 0.12, V(shelfX, 1.5, shelfZ - 2.64)));
+    b.add(mats.darkMetal, box(0.55, 3.0, 0.12, V(shelfX, 1.5, shelfZ + 2.64)));
     const meshes = b.build(group);
     colliders.push(...meshes);
     // LED strip under the bar's lip: magenta, the bar's one colour.
@@ -436,6 +439,24 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
       }
     }
     group.add(bottles);
+    // Backlit amber glass behind the bottles: every bottle becomes a silhouette.
+    const backlight = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 1.9), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.55, 0.22).multiplyScalar(2.2), toneMapped: false }));
+    backlight.rotation.y = Math.PI / 2;
+    backlight.position.set(m(F1.foyer.x) + 0.07, 1.95, shelfZ);
+    group.add(backlight);
+    const bl = new THREE.PointLight(0xff9040, 30, 6, 2);
+    bl.position.set(shelfX + 1.2, 2.0, shelfZ);
+    group.add(bl);
+    volumePoints.push({ position: bl.position.clone(), color: new THREE.Color(1, 0.55, 0.2).multiplyScalar(0.8), range: 3 });
+    // And a second neon on the pier above it, in the corridor's cyan.
+    const cocktails = emitter(neonText('cocktails', { w: 1024, h: 256, font: 'italic bold 150px "Brush Script MT", "Segoe Script", cursive' }), 3.6, 0.9, 18, 0x33e6ff);
+    cocktails.rotation.y = Math.PI / 2;
+    cocktails.position.set(m(F1.foyer.x) + 0.1, 4.1, shelfZ);
+    group.add(cocktails);
+    const cl = new THREE.PointLight(0x33e6ff, 40, 7, 2);
+    cl.position.set(m(F1.foyer.x) + 1.0, 4.1, shelfZ);
+    group.add(cl);
+    volumePoints.push({ position: cl.position.clone(), color: new THREE.Color(0.2, 0.9, 1).multiplyScalar(1.5), range: 4 });
     // Neon over the bar.
     const neon = emitter(neonText('BAR', { w: 1024, h: 384 }), 3.2, 1.2, 22, 0xff2a8a);
     neon.position.set(bx, 3.6, bz - 0.2);

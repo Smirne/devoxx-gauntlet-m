@@ -462,7 +462,7 @@ export function buildDetails(mats: Materials, refl: PlanarReflection, taken: Arr
     const kernels = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.025, 0), new THREE.MeshStandardMaterial({ color: 0x8a7a52, roughness: 0.95, envMapIntensity: 0.2 }), 260);
     for (let i = 0; i < 260; i++) {
       const a = rnd() * Math.PI * 2;
-      const r = 2.2 + Math.pow(rnd(), 2) * 5;
+      const r = 2.2 + Math.pow(rnd(), 2) * 2.2;
       const x = m(k.x + k.w / 2) + Math.cos(a) * r;
       const z = m(k.y + k.h / 2) + Math.sin(a) * r;
       kernels.setMatrixAt(i, new THREE.Matrix4().compose(new THREE.Vector3(x, 0.018, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rnd() * 6, rnd() * 6, 0)), new THREE.Vector3(1, 0.8, 1)));
