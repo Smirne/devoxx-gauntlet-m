@@ -318,15 +318,15 @@ export function notice(text: string): THREE.CanvasTexture {
   x.fillStyle = 'rgba(0,0,0,0.06)';
   for (let i = 0; i < 12; i++) x.fillRect(0, 30 + i * 24, 256, 1);
   x.fillStyle = '#1b1b1b';
-  x.font = 'bold 26px "Comic Sans MS", "Marker Felt", cursive';
+  x.font = 'bold 34px "Comic Sans MS", "Marker Felt", cursive';
   x.textAlign = 'center';
   const words = text.replace(/"/g, '').split(' ');
   let line = '';
   let y = 70;
   for (const w of words) {
-    if ((line + ' ' + w).length > 15) {
+    if ((line + ' ' + w).length > 12) {
       x.fillText(line.trim(), 128, y);
-      y += 34;
+      y += 42;
       line = w;
     } else line += ' ' + w;
   }
@@ -371,13 +371,64 @@ export function digitMask(d: string, sub: string): THREE.CanvasTexture {
   return tex(c, false);
 }
 
+/** A glowing frame round a wall target (the projector panel): mask only. */
+export function haloFrame(): THREE.CanvasTexture {
+  const [c, x] = canvas(256, 200);
+  x.fillStyle = '#000';
+  x.fillRect(0, 0, 256, 200);
+  x.shadowColor = '#fff';
+  x.shadowBlur = 18;
+  x.strokeStyle = '#fff';
+  x.lineWidth = 8;
+  x.strokeRect(22, 22, 212, 156);
+  x.shadowBlur = 0;
+  // Corner brackets, heavier: the "this is the thing" read.
+  x.lineWidth = 14;
+  for (const [cx, cy, sx, sy] of [[14, 14, 1, 1], [242, 14, -1, 1], [14, 186, 1, -1], [242, 186, -1, -1]]) {
+    x.beginPath();
+    x.moveTo(cx, cy + sy * 40);
+    x.lineTo(cx, cy);
+    x.lineTo(cx + sx * 40, cy);
+    x.stroke();
+  }
+  return tex(c, false);
+}
+
+/** Floor marker: where Biggy parks so Droid, on top, reaches a wall target. */
+export function parkStencil(): THREE.CanvasTexture {
+  const [c, x] = canvas(256, 256);
+  x.clearRect(0, 0, 256, 256);
+  x.strokeStyle = 'rgba(255,255,255,0.95)';
+  x.lineWidth = 10;
+  x.setLineDash([30, 14]);
+  x.beginPath();
+  x.arc(128, 128, 112, 0, Math.PI * 2);
+  x.stroke();
+  x.setLineDash([]);
+  // An arrow toward the wall (up in texture space).
+  x.fillStyle = 'rgba(255,255,255,0.95)';
+  x.beginPath();
+  x.moveTo(128, 40);
+  x.lineTo(178, 110);
+  x.lineTo(146, 110);
+  x.lineTo(146, 190);
+  x.lineTo(110, 190);
+  x.lineTo(110, 110);
+  x.lineTo(78, 110);
+  x.closePath();
+  x.fill();
+  return tex(c);
+}
+
 /** A stencilled question mark: the unsolved clue, visible under any lamp. */
-export function clueStencil(): THREE.CanvasTexture {
+export function clueStencil(digit?: string): THREE.CanvasTexture {
   const [c, x] = canvas(256, 256);
   x.clearRect(0, 0, 256, 256);
   x.strokeStyle = 'rgba(255,255,255,0.9)';
-  x.lineWidth = 10;
-  x.setLineDash([22, 12]);
+  // Solved: the ring closes and the digit is left painted on the floor, as
+  // the 2.5D build does — a floating number alone was easy to miss.
+  x.lineWidth = digit ? 14 : 10;
+  if (!digit) x.setLineDash([22, 12]);
   x.beginPath();
   x.arc(128, 128, 110, 0, Math.PI * 2);
   x.stroke();
@@ -386,7 +437,7 @@ export function clueStencil(): THREE.CanvasTexture {
   x.font = 'bold 150px "Helvetica Neue", Arial, sans-serif';
   x.textAlign = 'center';
   x.textBaseline = 'middle';
-  x.fillText('?', 128, 136);
+  x.fillText(digit ?? '?', 128, 136);
   return tex(c);
 }
 
