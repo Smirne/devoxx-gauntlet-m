@@ -29,6 +29,8 @@ export interface World3D {
   readonly cam: ThirdPersonCamera;
   /** `intro`: play the establishing dolly instead of following the robot. */
   render(snap: GameSnapshot, dt: number, intro?: boolean): void;
+  /** Photo mode: depth of field focused on the driven robot. */
+  photo: boolean;
   resize(w: number, h: number): void;
   /** Sim px (x, y) at `hM` metres up -> canvas CSS px, or null behind the camera. */
   project(x: number, y: number, hM: number): { x: number; y: number } | null;
@@ -202,10 +204,20 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
 
     const active = snap.bots[snap.active] ?? snap.bots[0];
     const rob = robots.get(active.kind);
+    const grade = pipeline.grade;
     if (intro && !cam.pose) {
       introT += dt;
       cam.intro(introT, INTRO.from, INTRO.to, INTRO.lookFrom, INTRO.lookTo);
+      // Rack focus down the corridor as the camera travels.
+      grade.dofAmount = 0.85;
+      grade.dofFocus = 6 + 10 * Math.max(0, 1 - introT / 14);
+      grade.dofRange = 7;
     } else if (rob) {
+      grade.dofAmount = world.photo ? 0.9 : 0;
+      if (world.photo) {
+        grade.dofFocus = cam.camera.position.distanceTo(rob.rig.root.position) - 0.2;
+        grade.dofRange = 3.5;
+      }
       _pos.copy(rob.rig.root.position);
       const speed = Math.hypot(active.vx, active.vy) / PX_PER_M;
       cam.update(dt, active.kind, _pos, active.face, speed, [...venue.colliders, ...props.colliders]);
@@ -253,10 +265,11 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     return { x: ((_v.x + 1) / 2) * w, y: ((1 - _v.y) / 2) * h };
   }
 
-  return {
+  const world: World3D = {
     renderer,
     scene,
     pipeline,
+    photo: false,
     cam,
     render,
     resize,
@@ -267,4 +280,5 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       renderer.dispose();
     },
   };
+  return world;
 }

@@ -82,6 +82,10 @@ export interface Grade {
   fogAnisotropy: number;
   fogAmbient: THREE.Color;
   fogMaxDist: number;
+  /** Depth of field: 0 off, 1 full. Focus distance and falloff in metres. */
+  dofAmount: number;
+  dofFocus: number;
+  dofRange: number;
   /** 0 = ACES (Hill fit), 1 = AgX. */
   curve: number;
 }
@@ -109,6 +113,9 @@ export function defaultGrade(): Grade {
     fogAnisotropy: 0.55,
     fogAmbient: new THREE.Color(0.0012, 0.0016, 0.0028),
     fogMaxDist: 60,
+    dofAmount: 0,
+    dofFocus: 5,
+    dofRange: 6,
     curve: 1,
   };
 }
@@ -169,6 +176,9 @@ export class Pipeline {
   private volHist: [THREE.WebGLRenderTarget, THREE.WebGLRenderTarget];
   private readonly litRT: THREE.WebGLRenderTarget;
   private readonly mips: THREE.WebGLRenderTarget[] = [];
+  private readonly dofA: THREE.WebGLRenderTarget;
+  private readonly dofB: THREE.WebGLRenderTarget;
+  private readonly dofMat: THREE.ShaderMaterial;
   private readonly streakA: THREE.WebGLRenderTarget;
   private readonly streakB: THREE.WebGLRenderTarget;
   private readonly ldrRT: THREE.WebGLRenderTarget;
@@ -212,6 +222,20 @@ export class Pipeline {
     this.litRT = hdrTarget(4, 4);
     for (let i = 0; i < quality.bloomLevels; i++) this.mips.push(hdrTarget(4, 4));
     this.streakA = hdrTarget(4, 4);
+    this.dofA = hdrTarget(4, 4);
+    this.dofB = hdrTarget(4, 4);
+    this.dofMat = quadMat(
+      /* glsl */ `
+      precision highp float; varying vec2 vUv; uniform sampler2D tSrc; uniform vec2 dir;
+      void main(){
+        vec3 c = texture2D(tSrc, vUv).rgb * .2270270270;
+        vec2 o1 = dir * 1.3846153846, o2 = dir * 3.2307692308;
+        c += (texture2D(tSrc, vUv + o1).rgb + texture2D(tSrc, vUv - o1).rgb) * .3162162162;
+        c += (texture2D(tSrc, vUv + o2).rgb + texture2D(tSrc, vUv - o2).rgb) * .0702702703;
+        gl_FragColor = vec4(c, 1.);
+      }`,
+      { tSrc: { value: null }, dir: { value: new THREE.Vector2() } },
+    );
     this.streakB = hdrTarget(4, 4);
     this.ldrRT = new THREE.WebGLRenderTarget(4, 4, { type: THREE.UnsignedByteType, depthBuffer: false });
     this.reflection = new PlanarReflection(quality.reflScale);
@@ -316,6 +340,13 @@ export class Pipeline {
       highlightTint: { value: new THREE.Color() },
       fade: { value: 0 },
       curve: { value: 1 },
+      tDof: { value: null },
+      tDepth: { value: depthTexture },
+      dofAmount: { value: 0 },
+      dofFocus: { value: 5 },
+      dofRange: { value: 6 },
+      near: { value: camera.near },
+      far: { value: camera.far },
     });
     this.fxaaMat = new THREE.ShaderMaterial({
       ...FXAAShader,
@@ -369,6 +400,9 @@ export class Pipeline {
     }
     const s = this.mips[Math.min(2, this.mips.length - 1)];
     this.streakA.setSize(s.width, s.height);
+    const d1 = this.mips[Math.min(1, this.mips.length - 1)];
+    this.dofA.setSize(d1.width, d1.height);
+    this.dofB.setSize(d1.width, d1.height);
     this.streakB.setSize(s.width, s.height);
     this.ldrRT.setSize(W, H);
     this.reflection.setSize(W, H);
@@ -536,6 +570,18 @@ export class Pipeline {
     sm.stepPx.value = 15;
     this.blit(this.streakMat, this.streakA);
 
+    // depth-of-field blur, from the quarter-res mip before the up pass adds into it
+    if (g.dofAmount > 0) {
+      const dm2 = this.dofMat.uniforms;
+      const d1 = this.mips[Math.min(1, this.mips.length - 1)];
+      dm2.tSrc.value = d1.texture;
+      dm2.dir.value.set(1.5 / d1.width, 0);
+      this.blit(this.dofMat, this.dofA);
+      dm2.tSrc.value = this.dofA.texture;
+      dm2.dir.value.set(0, 1.5 / d1.height);
+      this.blit(this.dofMat, this.dofB);
+    }
+
     // bloom: up (additive into the next larger mip)
     const um = this.upMat.uniforms;
     r.autoClear = false;
@@ -567,6 +613,12 @@ export class Pipeline {
     cu.shadowTint.value.copy(g.shadowTint);
     cu.highlightTint.value.copy(g.highlightTint);
     cu.curve.value = g.curve;
+    cu.tDof.value = this.dofB.texture;
+    cu.dofAmount.value = g.dofAmount;
+    cu.dofFocus.value = g.dofFocus;
+    cu.dofRange.value = g.dofRange;
+    cu.near.value = this.camera.near;
+    cu.far.value = this.camera.far;
     this.blit(this.compMat, this.ldrRT);
 
     // 8. FXAA to the canvas
@@ -586,6 +638,8 @@ export class Pipeline {
     this.litRT.dispose();
     this.mips.forEach((t) => t.dispose());
     this.streakA.dispose();
+    this.dofA.dispose();
+    this.dofB.dispose();
     this.streakB.dispose();
     this.ldrRT.dispose();
     this.reflection.dispose();

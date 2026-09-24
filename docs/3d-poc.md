@@ -16,11 +16,22 @@ pnpm dev                 # then open http://localhost:5173/3d.html
 
 Controls: **WASD / arrows** move, relative to the camera · **mouse** looks (click to lock the
 pointer, or drag) · **wheel** zooms · **1/2/3/Tab** switch robot · **E** use / climb · **Space** tow
-Biggy · **4–9** at the keypad · **P** photo mode (hides the HUD) · **Q** cycles render quality
+Biggy · **4–9** at the keypad · **P** photo mode (hides the HUD, depth of field on the driven robot)
+· **Q** cycles render quality
 (low → medium → high → ultra; remembered) · **M** mute.
 
 Debug URL: `?q=low|medium|high|ultra`, `?seed=N`, `?warm=N`, `?nohud=1`, `?shot=1` (no animation
 loop; `window.__ad3d.step(n)` drives frames — this is how every screenshot below was taken).
+
+## Screenshots
+
+Rendered by the headless harness (software WebGL, 1600x900, quality "high"), HUD off.
+
+| | |
+|---|---|
+| ![The corridor from the fire door, the title dolly's first frame](3d-poc/establish.jpg) | ![Third-person view down the corridor](3d-poc/corridor.jpg) |
+| ![The fire shutter, its LED ticker and the keypad](3d-poc/door.jpg) | ![Cinema E: star ceiling, velvet rows, Biggy's flood on the mirror screen](3d-poc/roomE.jpg) |
+| ![The foyer bar and Antwerp through the rain](3d-poc/foyer.jpg) | ![Voxxy, Droid and Biggy under their own lamps](3d-poc/robots.jpg) |
 
 ## What it is
 
