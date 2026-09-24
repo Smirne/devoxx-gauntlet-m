@@ -85,8 +85,35 @@ export interface Bot extends RobotDef {
    * the renderer's business, drawn from this clock and `JUMP_RISE_M`.
    */
   air?: number;
-  /** Seconds before this body may push off again, counted from take-off. */
+  /**
+   * Seconds before this body may show off again, counted from the start of the
+   * last party trick.
+   *
+   * The shared rest for all three of them — Voxxy's hop, Biggy's roll and Droid's
+   * stretch — since 25 Sep 2026, when the other two got a flourish of their own.
+   * One field, because `E` mashed is `E` mashed whoever is holding it, and because
+   * it is already zeroed in the two places a robot's history stops mattering
+   * (`restoreIdentity` and `place`, `game.ts`).
+   */
   hopRest?: number;
+  /**
+   * Seconds left on a **cosmetic** flourish: Biggy's roll or Droid's stretch.
+   * 0 or absent when the robot is not performing.
+   *
+   * Michele asked for these with *"not needed for gameplay"* attached, and that is
+   * enforced rather than trusted: nothing in the sim branches on this field except
+   * the party trick itself, and no code path that reads it writes a position or a
+   * velocity. Voxxy never uses it — her flourish leaves the floor, which is `air`.
+   */
+  flair?: number;
+  /**
+   * How long the running flourish was given, so `flairPhase` can normalise it.
+   *
+   * It is stored rather than looked up per species because the length belongs to
+   * the performance that is actually running: the renderer asks "how far through",
+   * and the answer must not change under it if a duration is ever retimed mid-hop.
+   */
+  flairDur?: number;
   /** Timestamp of the last "X pushes Biggy" toast, sim seconds. */
   pushFlash?: number;
 }

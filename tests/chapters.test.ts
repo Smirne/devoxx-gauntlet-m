@@ -376,7 +376,20 @@ describe('chapter 1 — night', () => {
 
     for (const d of code) g.key(`Digit${d}`);
     expect((g.debug.chapter() as NightState).fireOpen).toBe(true);
-    expect(g.snapshot().phase).toBe('cut');
+    /*
+     * The chapter HOLDS the corridor while the leaves swing, and hands over after.
+     *
+     * It used to call `startCut` on this frame, and `CUT_FADE` is 0.35 s: the
+     * screen was black before the door had moved. Michele asked for an animation
+     * when it opens, and an animation nobody watches is not one — so the phase is
+     * still `play` here, the swing runs in front of the player, and the cutscene
+     * follows it (`FIRE_SWING_TIME` + `FIRE_CUT_DELAY` in `ch1-night.ts`).
+     */
+    expect(g.snapshot().phase).toBe('play');
+    expect((g.debug.chapter() as NightState).fireSwing).toBe(0);
+    expect(until(g, () => (g.debug.chapter() as NightState).fireSwing >= 1, 120)).toBe(true);
+    expect(g.snapshot().phase).toBe('play');
+    expect(until(g, () => g.snapshot().phase === 'cut', 120)).toBe(true);
 
     expect(until(g, () => g.snapshot().chapter === 2, 500)).toBe(true);
     expect(g.snapshot().floor).toBe('down');

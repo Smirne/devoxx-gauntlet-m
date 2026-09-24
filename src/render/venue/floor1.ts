@@ -28,6 +28,7 @@ import {
   SEAT_BLOCK_MIN_PX,
   SEAT_PITCH_PX,
   floor1Walls,
+  nicheMouth,
   roomDoor,
   roomScreen,
   roomSeating,
@@ -36,6 +37,7 @@ import {
 import type { Rect, RoomDef, Wall } from '../../sim/types';
 import { m } from '../../sim/units';
 import type { VenuePalette } from './materials';
+import { projectionBooth } from './projector';
 import {
   DOOR_H,
   GLASS_H,
@@ -319,7 +321,17 @@ function kiosk(p: VenuePalette): THREE.Group {
 
 /* ----------------------------------------------------------------- staircases */
 
-/** Both secondary-staircase niches, with real steps disappearing down the well. */
+/**
+ * Both secondary-staircase wells, with real steps disappearing down them.
+ *
+ * The FLIGHT is only as wide as the mouth, not as wide as the well.
+ * `plans/devoxx-rooms-stairs-annotated.png` measures it at 20 plan px against the
+ * corridor's 147 — `NICHE_MOUTH`, 1.41 m — and the rest of the 40 px well is the
+ * landing you stand on before you take it. Drawing the steps the full width of the
+ * well was what made the stair look wide enough for Biggy from above, which is
+ * Michele's note 18 in `docs/playtest-notes.md` seen from the renderer's side. The
+ * sim already refuses him at the mouth; this is the picture agreeing with it.
+ */
 function secondaryStairs(p: VenuePalette): THREE.Group {
   const g = new THREE.Group();
   g.name = 'secondary-stairs';
@@ -328,21 +340,28 @@ function secondaryStairs(p: VenuePalette): THREE.Group {
     { name: 'stair-niche-bot', rect: F1.nicheBot, dir: '+z' },
   ];
   for (const f of flights) {
+    const mouth = nicheMouth(f.rect);
     const flight = stairFlight({
-      rect: f.rect,
+      rect: { x: mouth.x, y: f.rect.y, w: mouth.w, h: f.rect.h },
       topY: 0,
       bottomY: -2.6,
       dir: f.dir,
       steps: 8,
       tread: p.stairTreadDark,
       nosing: p.stairNosing,
-      runs: 2,
+      runs: 1,
       rail: p.steelRail,
     });
     flight.name = f.name;
     g.add(flight);
     // Close the well so the camera does not look straight through to nothing.
     g.add(slab(f.rect, -3.3, 0.55, p.shell));
+    // The landing either side of the flight, at corridor level: the part of the
+    // well a robot too wide for the mouth can still see into but not enter.
+    for (const lx of [f.rect.x, mouth.x + mouth.w]) {
+      const w = lx === f.rect.x ? mouth.x - f.rect.x : f.rect.x + f.rect.w - lx;
+      if (w > 0.5) g.add(floorSlab({ x: lx, y: f.rect.y, w, h: f.rect.h }, -0.02, p.stairTreadDark, 0.08));
+    }
   }
   return g;
 }
@@ -521,6 +540,11 @@ export function buildFloor1(p: VenuePalette): Floor1Build {
     // walls, exactly as the prototype does; everywhere else the seats are set.
     if (r.n !== 'E') for (const o of seating(r, p)) room.add(o);
     room.add(doorway(r, p, overhead));
+    // The projection booth over the door, and the machine in it — Michele: "the
+    // projector still needs a shape". See `projector.ts` for what it is made of
+    // and why it sits beside the doorway rather than over it.
+    const booth = projectionBooth(r, p);
+    if (booth) room.add(booth);
     group.add(room);
 
     const anchor = anchorAt(`anchor-${r.n}`, r.x + r.w / 2, r.y + r.h / 2);
@@ -553,7 +577,14 @@ export function buildFloor1(p: VenuePalette): Floor1Build {
   // so the chapter can hide it once the code is entered.
   const fire = new THREE.Group();
   fire.name = 'fire-door';
-  fire.add(slab({ x: F1.fireX, y: CY0, w: 14, h: CY1 - CY0 }, 0, WALL_H, p.fireDoor));
+  // Named, because chapter 1 takes it over: once that chapter publishes a
+  // `firedoor` prop the door is a moving thing with a swing clock on it, and
+  // `scene.ts` hides this static leaf and draws the sim's own screen and leaves
+  // instead (`src/render/fire-door.ts`). Chapter 4 publishes no such prop — the
+  // cinema section is simply sealed again — so there this stays the door.
+  const fireLeaf = slab({ x: F1.fireX, y: CY0, w: 14, h: CY1 - CY0 }, 0, WALL_H, p.fireDoor);
+  fireLeaf.name = 'fire-leaf';
+  fire.add(fireLeaf);
   const keypad = slab({ x: F1.fireX - 18, y: CY0 + 8, w: 16, h: 6 }, 1.0, 0.42, p.keypad);
   keypad.name = 'fire-keypad';
   fire.add(keypad);

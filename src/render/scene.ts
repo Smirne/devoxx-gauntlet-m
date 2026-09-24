@@ -27,16 +27,17 @@
 
 import * as THREE from 'three';
 
-import { hopPhase } from '../sim/bot';
+import { flairPhase, hopPhase } from '../sim/bot';
 import { JUMP_RISE_M, MOUNT_OFFSET_Y, W as SIM_W, H as SIM_H } from '../sim/constants';
 import { groundRiseM } from '../sim/geometry';
 import type { GameSnapshot, Person, Prop, RobotKind, ViewRect } from '../sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M, STOREY_H_M, m } from '../sim/units';
 
 import { createCamera, type DioramaCamera } from './camera';
+import { FIRE_LEAF_H, FIRE_LEAF_T, fireDoorDraw } from './fire-door';
 import { createLightLayer, type LightLayer } from './lighting';
 import { createRobot, measureBounds, updateRobot, EXCLUDE_FROM_BOUNDS, type RobotRig } from './robots';
-import { BREAKER_H, BREAKER_Y, buildVenue, type Venue } from './venue';
+import { BREAKER_H, BREAKER_Y, WALL_H, buildVenue, type Venue } from './venue';
 
 const KINDS: readonly RobotKind[] = ['voxxy', 'droid', 'biggy'];
 
@@ -611,6 +612,55 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   /** Last frame's fall progress, so the impact is kicked once and not every frame. */
   let jamLast = 0;
 
+  /* --------------------------------------------------- the fire door, chapter 1
+   *
+   * Michele, with a screenshot of Biggy standing squarely in the doorway: *"still
+   * a walkthrough object on the doorway, add an animation + sound when it opens."*
+   * The leaf was drawn from the `PROPS` table at the prop's own rect, and that
+   * rect went on being published after `ch1-night.ts` had removed the wall — a
+   * 2.1 m slab across an opening that was no longer solid.
+   *
+   * So the door is no longer drawn from a table. `src/render/fire-door.ts` poses
+   * it from the chapter's live wall list and the sim's own swing clock, and that
+   * module's header explains why the collider sweep could not see the bug. Here
+   * there is only the geometry: a pair of leaves on hinge pivots, and up to two
+   * jamb panels for the fixed screen they hang in.
+   */
+  const fireDoor = new THREE.Group();
+  fireDoor.name = 'fire-door-live';
+  const fireMat = new THREE.MeshStandardMaterial({ color: 0x9c3a2c, roughness: 0.6, metalness: 0.25 });
+  const fireBarMat = new THREE.MeshStandardMaterial({ color: 0xd8d4cc, roughness: 0.35, metalness: 0.7 });
+  /** Two hinge pivots; each carries a leaf and the push bar across it. */
+  const firePivots: THREE.Group[] = [];
+  for (let i = 0; i < 2; i++) {
+    const pivot = new THREE.Group();
+    const leaf = new THREE.Mesh(boxGeo, fireMat);
+    leaf.castShadow = true;
+    leaf.receiveShadow = true;
+    // The panic bar: the one detail that says "fire door" rather than "partition",
+    // and the thing the keypad releases. Stainless, so it catches what little light
+    // the corridor has.
+    const bar = new THREE.Mesh(boxGeo, fireBarMat);
+    bar.castShadow = true;
+    pivot.add(leaf, bar);
+    fireDoor.add(pivot);
+    firePivots.push(pivot);
+  }
+  /** The fixed screen either side of the opening, drawn from `firescreen` walls. */
+  const fireScreens: THREE.Mesh[] = [];
+  for (let i = 0; i < 2; i++) {
+    const panel = new THREE.Mesh(boxGeo, fireMat);
+    panel.castShadow = true;
+    panel.receiveShadow = true;
+    fireScreens.push(panel);
+    fireDoor.add(panel);
+  }
+  dressing.add(fireDoor);
+  /** The venue's own static leaf, which chapter 1 takes over. See `floor1.ts`. */
+  const venueFireLeaf = venue.floor1.getObjectByName('fire-leaf') ?? null;
+  /** Height of the panic bar above the floor, metres. */
+  const FIRE_BAR_Y = 1.02;
+
   /**
    * The ground ring under the robot being driven. Nothing else in the frame says
    * which of the three the stick is moving — the HUD chip does, but the player is
@@ -887,6 +937,36 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   const CLUE_MAX = 8;
   /** One slot per robot: the most colours any one clue can ask for. */
   const CLUE_SLOTS = 3;
+  /**
+   * HOW FAR THE PLATE FLOATS ABOVE THE WALKING SURFACE, METRES.
+   *
+   * Michele, with a screenshot of chapter 1's kiosk clue: *"this hint is
+   * flickering."* The rings in the shot are not rings, they are dashed arcs.
+   *
+   * It was 0.02, and 0.02 is exactly where the kiosk's own floor plate ends:
+   * `src/render/venue/floor1.ts` builds it with `floorSlab(F1.kiosk, 0.02, …)`,
+   * i.e. an opaque, depth-writing box whose TOP FACE is at y = 0.0200, measured
+   * off the built scene graph. Chapter 1's clue 2 sits at the kiosk's centre, so
+   * the dark backing disc and all three slot rings — 2.16 m across — were
+   * **exactly coplanar** with a 4.48 x 4.48 m surface that completely contains
+   * them. Which of the ring's pixels survive the depth test is then decided by
+   * float rounding in the rasteriser, and it is re-decided every frame as the
+   * eased framing (`updateFocus`) shifts the camera by a fraction of a pixel:
+   * arcs that break, and breaks that crawl. That is the flicker.
+   *
+   * The same 0.02 also buried chapter 1's clue 4 outright. The exit-alcove plate
+   * is a `flat` prop, and `drawProp` puts a flat prop's top at
+   * `surface + h + 0.01` = 0.06 — four centimetres ABOVE the marker, covering all
+   * of it, so the alcove's marker was not dashed, it was gone.
+   *
+   * 0.09 clears the kiosk plate by 70 mm and the tallest flat prop plate by
+   * 30 mm. It stays a floor decal: at the diorama's 30° pitch the extra 70 mm
+   * moves the plate about two pixels up the screen, and the markers still
+   * depth-test, so a robot standing on a clue still hides the part of it he is
+   * standing on. `tests/clue-plate.test.ts` measures the clearance rather than
+   * trusting this comment.
+   */
+  const CLUE_PLATE_LIFT_M = 0.09;
   const clueGroup = new THREE.Group();
   clueGroup.name = 'clue-markers';
   dressing.add(clueGroup);
@@ -1338,7 +1418,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
         continue;
       }
       mark.root.visible = true;
-      mark.root.position.set(m(clue.x), surfaceY(floorY, clue.x) + 0.02, m(clue.y));
+      mark.root.position.set(m(clue.x), surfaceY(floorY, clue.x) + CLUE_PLATE_LIFT_M, m(clue.y));
 
       const found = clue.found;
       const pulse = 0.55 + 0.45 * Math.sin(snap.t * 2.1 + i * 1.7);
@@ -1722,6 +1802,55 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     jamLast = broken ? u : 0;
   }
 
+  /**
+   * Chapter 1's fire door: the screen it hangs in, and the two leaves swinging.
+   *
+   * Every number here comes out of `fireDoorDraw`, which reads the chapter's own
+   * walls and the sim's swing clock — so a leaf is only ever drawn where the sim
+   * has something solid, and the door cannot go back to being a slab across an
+   * opening it has already given up. See `src/render/fire-door.ts`.
+   *
+   * The static leaf `buildVenue()` puts here is hidden for as long as a chapter
+   * publishes this prop: two doors in one doorway is exactly the duplicate the
+   * breaker panel and cinema E's screen were each caught doing.
+   */
+  function drawFireDoor(p: Prop, floorY: number, walls: GameSnapshot['walls']): void {
+    if (venueFireLeaf) venueFireLeaf.visible = false;
+    const d = fireDoorDraw(p, walls);
+    fireDoor.visible = true;
+
+    for (let i = 0; i < fireScreens.length; i++) {
+      const r = d.screen[i];
+      const panel = fireScreens[i];
+      panel.visible = r !== undefined;
+      if (!r) continue;
+      panel.scale.set(Math.max(m(r.w), 0.05), WALL_H, Math.max(m(r.h), 0.05));
+      panel.position.set(m(r.x + r.w / 2), surfaceY(floorY, r.x) + WALL_H / 2, m(r.y + r.h / 2));
+    }
+
+    const tM = m(FIRE_LEAF_T);
+    for (let i = 0; i < firePivots.length; i++) {
+      const l = d.leaves[i];
+      const pivot = firePivots[i];
+      pivot.visible = l !== undefined;
+      if (!l) continue;
+      const lenM = m(l.len);
+      const base = surfaceY(floorY, l.hinge.x);
+      pivot.position.set(m(l.hinge.x), base, m(l.hinge.y));
+      // The leaf's own length runs along the pivot's local +x. Sim +y is world +z,
+      // so a heading of (ax, ay) is a yaw of atan2(-ay, ax).
+      pivot.rotation.y = Math.atan2(-l.axis.y, l.axis.x);
+      const leaf = pivot.children[0] as THREE.Mesh;
+      const bar = pivot.children[1] as THREE.Mesh;
+      leaf.scale.set(lenM, FIRE_LEAF_H, tM);
+      leaf.position.set(lenM / 2, FIRE_LEAF_H / 2, 0);
+      // Across the leaf, standing proud of its corridor face, and stopping short
+      // of the hinge the way a panic bar does.
+      bar.scale.set(lenM * 0.78, 0.08, tM * 0.55);
+      bar.position.set(lenM * 0.55, FIRE_BAR_Y, tM * 0.7);
+    }
+  }
+
   /** The swung door leaf and the lit interior, once the cam has let go. */
   function drawCabinet(p: Prop, floorY: number): void {
     if (p.state !== 'open') {
@@ -1777,8 +1906,12 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     breakerPanel.visible = false;
     cabinetOpen.visible = false;
     jammedLeaf.visible = false;
+    fireDoor.visible = false;
+    // Handed back to the venue unless a chapter claims it again this frame.
+    if (venueFireLeaf) venueFireLeaf.visible = true;
     for (const p of snap.props) {
       if (p.kind === 'cable') drawCable(p, floorY);
+      else if (p.kind === 'firedoor') drawFireDoor(p, floorY, snap.walls);
       else if (p.kind === 'jammed') drawJammed(p, floorY);
       else if (p.kind === 'breaker') drawBreaker(p, floorY);
       else if (p.kind === 'terminal') drawTerminal(p, floorY, snap.t);
@@ -1889,6 +2022,9 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
         // The same `hopPhase` the lift above is drawn from, so the pose and the
         // height are two readings of one number rather than two animations.
         hop: u,
+        // Biggy's roll and Droid's stretch, off the sim's clock the same way. No
+        // lift goes with this one: a party trick moves nothing (`partyTrick`).
+        flair: flairPhase(b),
       });
     }
   }
@@ -2062,6 +2198,8 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       propPool.dispose();
       peoplePool.dispose();
       (jammedSlab.material as THREE.Material).dispose();
+      fireMat.dispose();
+      fireBarMat.dispose();
       cableGeo.dispose();
       cableMat.dispose();
       contactGeo.dispose();

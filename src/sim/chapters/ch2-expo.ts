@@ -546,15 +546,21 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * What is left is the run sheet with that line **torn off** — which is a better
    * joke than the password was, tells the player there IS a password without
    * telling them what it is, and points at the wall the crew sprayed it on. It also
-   * carries the two things he asked the intro to carry: the store by name, and the
-   * reason it is shut, which is the same pair of keys Stephan lost on the title
-   * card.
+   * carries the three things he asked the intro to carry: the store by name, the
+   * reason it is shut — the same ring of keys Stephan lost on the title card — and,
+   * since 24 Sep (*"In the intro to chapter 2 mention the printer too"*), the badge
+   * printer. The printer was named in the HUD objective and nowhere in the fiction,
+   * so half the chapter's goal arrived as a task line with no stake attached. The
+   * card gives it the stake (no network, no badges, three thousand people at the
+   * door) and still names no route to it, which is the rule this card is under.
    */
   ctx.card(
     '<b>Down the secondary staircase.</b><br>' +
       '<span class="sub">The exhibition hall: twelve sponsor booths, no power, no network, and the whole ' +
       'of <b>SHIRTS &amp; GADGETS</b> — three thousand t-shirts, crated and ready — behind the pickup ' +
       'store\'s roller door. The shutter key is on the ring Stephan lost.<br><br>' +
+      'At the far end, reception: the <b>badge printer</b> is dark, and with no network behind it ' +
+      'nobody who walks through that door in an hour gets a badge.<br><br>' +
       'Taped to the technical room door, the crew\'s run sheet, in biro. The top line has been torn ' +
       'off. Under the gap, in a different hand: <b>\u201cwifi\u2019s on the wall, Bart did it in orange\u201d</b>.</span>' +
       '<small>Press any key</small>',
@@ -684,14 +690,20 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * This chapter's keys — and what it hands back.
    *
    * `false` means "`E` means nothing where you are standing", and `game.ts` then
-   * spends the key on Voxxy's hop or on taking hold of Biggy (see
-   * `ChapterRuntime.key`). Only Voxxy's dead end hands it back, and that is
-   * deliberate: she is the only one of the three who can jump, and she is the one
-   * who has to get hold of Biggy for the roller-door run — which is Michele's
-   * *"Why space and not e for catching? I'd keep it to one key"*, answered here
-   * rather than by a second key. Droid and Biggy keep their own last words,
-   * because "nothing to reach here" and "I don't do buttons, I do doors" say more
-   * in this room than a refusal to jump would.
+   * spends the key on that robot's party trick or on taking hold of Biggy (see
+   * `ChapterRuntime.key`) — which is Michele's *"Why space and not e for catching?
+   * I'd keep it to one key"*, answered here rather than by a second key.
+   *
+   * **All three dead ends hand it back now.** This used to be Voxxy's alone, on
+   * the grounds that "nothing to reach here" and "I don't do buttons, I do doors"
+   * said more in this room than *a refusal to jump* would — and that was right,
+   * because the fall-through only had a hop in it and the other two could only be
+   * told no. Since 25 Sep 2026 it has one for each of them (Michele: *"Could we
+   * add a basic action to each robot on E? Voxxy jumps, Biggy rolls, Droid?
+   * Stretches?"*), so the trade is no longer "a line of character against a
+   * refusal" — it is a line of character against Biggy rocking his whole gut over
+   * and back. Their last words lost that one. Every refusal that names a REASON is
+   * untouched and still claims the key.
    */
   function key(code: string): boolean {
     const b = ctx.bots[ctx.cur];
@@ -783,8 +795,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         );
         return true;
       }
-      ctx.flash('Droid: nothing to reach here');
-      return true;
+      // His dead end, handed back: at Biggy it becomes a grab, anywhere else the
+      // stretch. "Nothing to reach here" is what the stretch says, without words.
+      return false;
     }
 
     if (b.kind === 'voxxy') {
@@ -901,8 +914,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       useTerminal(b);
       return true;
     }
-    ctx.flash("Biggy: I don't do buttons. I do doors.");
-    return true;
+    // His dead end, handed back. He does not do buttons; he does doors, and — with
+    // no door in reach and nobody on his shoulders — a roll.
+    return false;
   }
 
   /* ------------------------------------------------------------------- update */

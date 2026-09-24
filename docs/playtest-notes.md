@@ -30,7 +30,7 @@ right-hand column — sometimes with a small change beside it, sometimes with no
 | 15 | "reduce the black block, make it into a glass wall or something to show the circle better" · and again: "the black bench(?) has to go, for a glass wall as suggested before" | done | Not a bench. The kiosk's own **fascia**: `floor1.ts` drew it as a 60 x 60 px plate laid flat at 2.15 m — a LID over the whole kiosk, 4.8 m square, and unlit from a 30 deg camera that is exactly what a black block looks like. It does not stand between the camera and the clue, it **shades** it: A/B on one build, the ring's box measures mean 39.1 with the lid and 43.5 without, brightest arc pixels 128.8 against 174.1. The counter he guessed at costs 43.8 vs 43.5 — nothing — and is gone anyway because he asked for it. Four 3 px fascia bands now, top open. The glazing was already `glass: true` in the sim and needed no change. **Not all of the ring's improvement is this change**: his build measured 5.8 mean in that box, and most of the climb from there is the concurrent clue-and-lighting work in the same tree, not the kiosk. |
 | 16 | "those two are maybe too near to each other?" | open | Two clue spots. |
 | 17 | "I put all three robots in the room... needed different tries before finding the number" | waiting | His call: try the new arc markers first before adding more help. |
-| 18 | "they seem fit for biggy to pass, make the passage more narrow" | open | The secondary-staircase niche is 3.2 m wide. Must be sized *after* the radius rescale, which halves Biggy's sim width. |
+| 18 | "they seem fit for biggy to pass, make the passage more narrow" | done | The plan decided how narrow. `plans/devoxx-rooms-stairs-annotated.png` draws the flight 20 plan px wide against the corridor's 147, i.e. 17.7 sim px = **1.41 m** (`NICHE_MOUTH`). Biggy is 1.44 m across, so the real stair excludes him by a centimetre. The well behind the mouth stays 40 px: a landing is wider than the door onto it, exactly as the ground-floor shafts already are. |
 
 ## Chapter 2
 
@@ -408,7 +408,7 @@ and the venue is one of the two things `CLAUDE.md` says may not drift.
 | Droid sitting on Biggy reads well only from some angles | Michele | |
 | Voxxy's arms are frenetic at speed | Michele | Gait amplitude, not speed — she is at the speed he approved. |
 | The HUD stays up through cutscenes | agent | The objective paragraph, three robot chips and a live speed meter sit over a shot meant to be a beat. |
-| The secondary staircases are in the wrong place | Michele, with drone footage | They are lateral in the real hallway; he marked the descent direction on the photo. |
+| The secondary staircases are in the wrong place | Michele, with drone footage — and again, 24 Sep: *"The stairs position on the upper wall haven't been fixed"* | **Escalated to him, measured.** Ground floor: fixed — both shafts were wrong (the bot one 64 px toward the hall's centre, halving the gap), now on the plan's own pixels. First floor: the plan measurably puts both flights at plan y 884..947, which is *inside room 4/9's length* (world x 1006..1113), not in the 3|4 or 10|9 gap that CLAUDE.md, GAUNTLET.md Stage 1 and `plans/README.md` all call non-negotiable. Two things he wrote disagree, so a builder cannot settle it; moving them there also crosses rooms 4 and 9's centred doorways and the descent waypoint chapter 1's closing cutscene hard-codes. **His call.** The mouth width (note 18) was measured and fixed in the meantime. |
 
 ## Structural — nobody asked, but they will bite
 

@@ -1143,8 +1143,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * could not hop anywhere in this chapter at all, because everything here ends in
    * a line of dialogue and a line of dialogue was claiming the key.
    *
-   * Only the two dead ends hand it back — Voxxy with nobody to talk to, and Biggy
-   * with nothing to pick up. Every refusal that names a REASON keeps the key,
+   * The dead ends hand it back — Voxxy with nobody to talk to, Biggy with nothing
+   * to pick up, and, since the other two robots got a party trick of their own on
+   * 25 Sep 2026, Droid with nothing to reach. Every refusal that names a REASON
+   * keeps the key,
    * because those are answers: "no ladle", "I am three crates deep", "that weighs
    * more than I do". Hopping instead of saying one of those would be a worse game.
    */
@@ -1168,8 +1170,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         ctx.flash(`Droid: "${dc.name}. Half my own mass, all of it above the knee. This one is Biggy's."`);
         return true;
       }
-      ctx.flash('Droid: nothing to reach here');
-      return true;
+      // His dead end, handed back: at Biggy it becomes a grab, anywhere else the
+      // stretch. "Nothing to reach here" is what the stretch says, without words.
+      return false;
     }
 
     if (b.kind === 'biggy') {
