@@ -9,11 +9,12 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { DEFS } from '../src/sim/constants';
+import { DEFS, T } from '../src/sim/constants';
 import {
   CARDS,
   CRATE_AT,
   CRATE_RECTS,
+  CRATE_ROW,
   HOLD,
   LEAD,
   PANEL_DELAY,
@@ -28,6 +29,7 @@ import {
   openingAt,
 } from '../src/sim/opening';
 import { DT_MAX, createGame, type DebugGame, type RobotKind } from '../src/sim';
+import { CY0, CY1 } from '../src/sim/geometry';
 import { PX_PER_M } from '../src/sim/units';
 
 const KINDS: readonly RobotKind[] = ['voxxy', 'droid', 'biggy'];
@@ -105,8 +107,13 @@ describe('the opening', () => {
       expect(inside.y).toBeLessThan(c.y + c.h);
       // And its standing mark is clear of the crate it came out of, by its own
       // radius — or it would be spawned inside a collider the moment play starts.
+      // Measured as a distance to the rect rather than along one axis: the row
+      // turned 90 degrees when it moved to the west wall, and an assertion that
+      // only watches y would have passed the whole move without looking.
       const stand = STAND_AT[c.kind];
-      expect(stand.y - (c.y + c.h), `${c.kind} stands inside his own crate`).toBeGreaterThan(DEFS[c.kind].r);
+      const dx = Math.max(c.x - stand.x, 0, stand.x - (c.x + c.w));
+      const dy = Math.max(c.y - stand.y, 0, stand.y - (c.y + c.h));
+      expect(Math.hypot(dx, dy), `${c.kind} stands inside his own crate`).toBeGreaterThan(DEFS[c.kind].r);
     }
   });
 
@@ -116,10 +123,15 @@ describe('the opening', () => {
     expect(crates, 'the crates stopped being obstacles').toHaveLength(3);
     for (const w of crates) {
       expect(w.why, 'a wall with no voice').toBeTypeOf('function');
-      // Against the corridor's north wall, leaving the lane clear: the deepest
-      // crate is Biggy's at 1.78 m.
-      expect(w.y! + w.h!).toBeLessThanOrEqual(307 + 1e-6);
-      expect(w.y!).toBeGreaterThanOrEqual(307 - 1.78 * PX_PER_M - 1e-6);
+      // Against the corridor's WEST wall, backs to it, faces east: the deepest
+      // crate is Biggy's at 1.78 m, so nothing may reach past the face line and
+      // nothing may pass through the wall's inner face at T = 6.
+      expect(w.x! + w.w!).toBeLessThanOrEqual(CRATE_ROW.x + 1e-6);
+      expect(w.x!).toBeGreaterThanOrEqual(CRATE_ROW.x - 1.78 * PX_PER_M - 1e-6);
+      expect(w.x!, 'a crate is inside the west wall').toBeGreaterThanOrEqual(T);
+      // And the row stays inside the corridor it is standing in.
+      expect(w.y!).toBeGreaterThan(CY0);
+      expect(w.y! + w.h!).toBeLessThan(CY1);
     }
   });
 });

@@ -42,25 +42,66 @@ const PX_PER_M = 12.5;
 /**
  * Where the crate row stands, in sim px: the centre of the row's FACE line.
  *
- * Hard against the corridor's north wall (the corridor is y 285..415), so the
- * crates stay out of the lane the player drives in once the game starts — they
- * are still there for the rest of the chapter, as scenery with colliders, which
- * is the half of Michele's option 2 worth keeping: *"crates remain after the
- * transition, non interactive"*. Vanishing them at the transition would be the
- * same discontinuity he objected to, only quicker.
+ * ## Against the WEST WALL, quarter-turned, faces looking east
  *
- * The deepest crate is Biggy's at 1.78 m, and `CRATE_ROW` is the FACE line, so
- * the row occupies y 285..307 and leaves the southern 108 px of corridor clear.
+ * Michele: *"Why not placing the crates on the west wall and using a single
+ * transition? Start: cinematic on the crate, light on robots, each one exits and
+ * is presented. Transition to the corridor, different camera angle, robots ready
+ * to start."*
+ *
+ * It was also the only position that works. Against the NORTH wall Voxxy's crate
+ * stood inside `corridor-column` (x 59..75, y 288..304) — 9.1 px of a 17.25 px
+ * crate, 53% of it, which is the half of it that rendered pure black in the
+ * blackout and the thing he reported as *"the left crate is half black"*. And it
+ * could not be slid clear: a pixel-by-pixel scan of x 40..400 found NO row centre
+ * where all three crates clear both the columns and the auditorium door leaves —
+ * the row is 4.82 m, the two usable column gaps are 75..169 and 245..365, and
+ * each has a door in the middle of it.
+ *
+ * Here, the row runs along the corridor's WIDTH on its own centre line and the
+ * crates back up against the west wall, so nothing is in front of anything. Face
+ * line x 29 puts Biggy's 1.78 m depth back to x 6.75, hard against the wall's
+ * inner face at `T` = 6. Measured, with slack: any face line 29..120 on any
+ * centre 316..384 clears. `crateRowFouls()` in `src/render/crates.ts` re-checks
+ * any candidate.
+ *
+ * They stay for the rest of the chapter as scenery with colliders — the half of
+ * his option 2 worth keeping, *"crates remain after the transition, non
+ * interactive"* — and at the west end they are behind the robots the moment the
+ * game starts, rather than beside the lane.
  */
-const CRATE_ROW_Y = 307;
-/** One stride south of the crates: out, and facing down the corridor. */
-const STAND_Y = 324;
-export const CRATE_ROW = { x: 96, y: CRATE_ROW_Y } as const;
+const CRATE_ROW_X = 29;
+/** The corridor's own centre line, `(CY0 + CY1) / 2`. */
+const CRATE_ROW_Y = 350;
+/** One stride EAST of the crates: out, and already facing the way they will go. */
+const STAND_X = 46;
+export const CRATE_ROW = { x: CRATE_ROW_X, y: CRATE_ROW_Y } as const;
 
 /**
- * Where each robot STANDS once it has stepped out — a row in front of its own
+ * The row's layout, shared by everything below: each crate's offset ALONG the
+ * row from its centre, its width across the row, and its depth back from the
+ * face line. The renderer lays the model out from the same three numbers, and
+ * the even centre spacing is what lets the `DEVOXX` stencil span all three
+ * faces without skewing.
+ */
+const ROW: ReadonlyArray<{ kind: RobotKind; along: number; w: number; d: number }> = [
+  // `along` is in SIM +y, which runs the opposite way to the model's own row.
+  // The quarter-turn that backs the crates onto the west wall and points their
+  // faces east also reverses the order that spells the word, and only that one
+  // turn gives both — see the `yaw` note in `src/render/scene.ts`. So the model
+  // reads voxxy -1.72, droid -0.26, biggy +1.46 along its own axis, and these
+  // are the same three numbers negated. The even centre spacing, which is what
+  // keeps `DEVOXX` from skewing across the seams, is unchanged by the mirror.
+  { kind: 'voxxy', along: 1.72, w: 1.38, d: 1.06 },
+  { kind: 'droid', along: 0.26, w: 1.38, d: 1.16 },
+  { kind: 'biggy', along: -1.46, w: 1.9, d: 1.78 },
+];
+
+/**
+ * Where each robot STANDS once it has stepped out — one stride east of its own
  * crate, facing east, which is the way the corridor runs and the way they are
- * about to go.
+ * about to go. With the row against the west wall they are already pointed down
+ * the corridor from the first playable frame, and the crates are behind them.
  *
  * Michele, on the first cut of this sequence: *"The intermediate scene i don't
  * get it. Crates are there, robots in a different position, and then another
@@ -74,11 +115,9 @@ export const CRATE_ROW = { x: 96, y: CRATE_ROW_Y } as const;
  * options he chose *"they start, but are in a similar position (next to each
  * other as in the crates)"*, with *"maybe all facing east?"*.
  */
-export const STAND_AT: Record<RobotKind, { x: number; y: number }> = {
-  voxxy: { x: CRATE_ROW.x - 1.72 * PX_PER_M, y: STAND_Y },
-  droid: { x: CRATE_ROW.x - 0.26 * PX_PER_M, y: STAND_Y },
-  biggy: { x: CRATE_ROW.x + 1.46 * PX_PER_M, y: STAND_Y },
-};
+export const STAND_AT: Record<RobotKind, { x: number; y: number }> = Object.fromEntries(
+  ROW.map((c) => [c.kind, { x: STAND_X, y: CRATE_ROW.y + c.along * PX_PER_M }]),
+) as Record<RobotKind, { x: number; y: number }>;
 
 /** Facing east, down the corridor: a sim heading of 0. */
 export const STAND_FACE = 0;
@@ -89,27 +128,25 @@ export const STAND_FACE = 0;
  * They stay for the whole chapter (Michele: *"crates remain after the
  * transition, non interactive"*), so they are real obstacles and not a painting:
  * the one complaint this game has collected twice is walking through something
- * that is drawn solid. Depth is each crate's own, back from the row's FACE line,
- * and the row sits against the corridor's north wall so the lane stays clear.
+ * that is drawn solid. Depth is each crate's own, back from the row's FACE line
+ * into the west wall, and width runs across the corridor.
  */
-export const CRATE_RECTS: ReadonlyArray<{ kind: RobotKind; x: number; y: number; w: number; h: number }> = (
-  [
-    { kind: 'voxxy' as const, cx: -1.72, w: 1.38, d: 1.06 },
-    { kind: 'droid' as const, cx: -0.26, w: 1.38, d: 1.16 },
-    { kind: 'biggy' as const, cx: 1.46, w: 1.9, d: 1.78 },
-  ]
-).map((c) => ({
-  kind: c.kind,
-  x: CRATE_ROW.x + (c.cx - c.w / 2) * PX_PER_M,
-  y: CRATE_ROW.y - c.d * PX_PER_M,
-  w: c.w * PX_PER_M,
-  h: c.d * PX_PER_M,
-}));
+export const CRATE_RECTS: ReadonlyArray<{ kind: RobotKind; x: number; y: number; w: number; h: number }> = ROW.map(
+  (c) => ({
+    kind: c.kind,
+    // Depth runs back along -x, from the face line into the west wall; width
+    // runs along y, across the corridor.
+    x: CRATE_ROW.x - c.d * PX_PER_M,
+    y: CRATE_ROW.y + (c.along - c.w / 2) * PX_PER_M,
+    w: c.d * PX_PER_M,
+    h: c.w * PX_PER_M,
+  }),
+);
 
 /**
  * Each robot stands INSIDE its crate, not against the front of it — sim px.
  *
- * Two offsets, and getting either wrong is visible immediately. Across the row:
+ * Two offsets, and getting either wrong is visible immediately. Along the row:
  * voxxy -1.72 m, droid -0.26 m, biggy +1.46 m from the row's centre, which is
  * the renderer's own layout and is what makes the crate centres evenly spaced so
  * the spanning word does not skew. And BACK from the face: `CRATE_ROW` is the
@@ -122,11 +159,9 @@ export const CRATE_RECTS: ReadonlyArray<{ kind: RobotKind; x: number; y: number;
  * (CLAUDE.md); `tests/opening.test.ts` asserts the two agree, so the copy cannot
  * drift.
  */
-export const CRATE_AT: Record<RobotKind, { x: number; y: number }> = {
-  voxxy: { x: CRATE_ROW.x - 1.72 * PX_PER_M, y: CRATE_ROW.y - (1.06 / 2) * PX_PER_M },
-  droid: { x: CRATE_ROW.x - 0.26 * PX_PER_M, y: CRATE_ROW.y - (1.16 / 2) * PX_PER_M },
-  biggy: { x: CRATE_ROW.x + 1.46 * PX_PER_M, y: CRATE_ROW.y - (1.78 / 2) * PX_PER_M },
-};
+export const CRATE_AT: Record<RobotKind, { x: number; y: number }> = Object.fromEntries(
+  ROW.map((c) => [c.kind, { x: CRATE_ROW.x - (c.d / 2) * PX_PER_M, y: CRATE_ROW.y + c.along * PX_PER_M }]),
+) as Record<RobotKind, { x: number; y: number }>;
 
 /*
  * THE BEATS. Durations, never speeds — and one robot at a time.
@@ -197,7 +232,7 @@ export const TITLE_OUT = 0.45;
  * so this number was chosen by shooting it: at 116 px the row fills the middle
  * of the frame and every band on all three crates reads.
  */
-export const VIEW_CRATES: ViewRect = { x: CRATE_ROW.x - 58, y: CRATE_ROW.y - 34, w: 116, h: 85 };
+export const VIEW_CRATES: ViewRect = { x: CRATE_ROW.x - 26, y: CRATE_ROW.y - 46, w: 84, h: 92 };
 
 /** How long the camera takes to pull back from the crates to the corridor. */
 export const PULL_BACK = 1.6;
