@@ -80,7 +80,7 @@ import * as THREE from 'three';
 
 import { DEFS } from '../sim/constants';
 import type { RobotKind } from '../sim/types';
-import { ROBOT_HEIGHT_M, m } from '../sim/units';
+import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
 
 import { SignPainter, type Paint } from './venue/signage';
 import { venueSpec } from './venue/materials';
@@ -1438,8 +1438,6 @@ export function buildCrates(opts: CratesOptions = {}): CratesModel {
     return hit;
   };
 
-  // TEMP-DEBUG-HOOK
-  if (typeof globalThis !== 'undefined') (globalThis as any).__crateDebug = { root, models, layout };
   return {
     root,
     crates: models,
@@ -1478,6 +1476,94 @@ export function buildCrates(opts: CratesOptions = {}): CratesModel {
       root.clear();
     },
   };
+}
+
+/* ========================================================================== */
+/*  Where the row may stand                                                   */
+/* ========================================================================== */
+
+/** A footprint on the floor plan, sim pixels — the same shape as a sim `Rect`. */
+export interface CrateFootprint {
+  readonly kind: RobotKind;
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+}
+
+/**
+ * The three crates' footprints on the floor plan, in SIM PIXELS, for a row whose
+ * face line is centred on (`rowX`, `rowY`).
+ *
+ * `yaw` is the same angle `buildCrates` takes: **0** points the faces along +z,
+ * which on the plan is south, so the crates stand back against a north wall and
+ * the row runs east-west — where the row stands today. **π/2** points them along
+ * +x, east, for a row standing against the corridor's WEST wall with the row
+ * running north-south, which is the restaging Michele proposed. Other yaws are
+ * accepted and rotated properly, but those two are the ones the venue has a wall
+ * for.
+ *
+ * ## Why this exists
+ *
+ * 24 Sep 2026: Michele, on the opening — *"the left crate is half black"*. It
+ * was not a material, a shadow or a winding: **Voxxy's crate was standing inside
+ * a corridor column.** The far column at sim x 59..75, y 288..304 (3.3 m of
+ * `venue/corridorColumn`, `#1b1e24` with no emissive) overlaps her crate's
+ * 65.9..83.1 by 9.1 px, which is 53% of the crate's width — the half that
+ * renders black, in front of the boarding and filling the interior the moment
+ * her panel drops. The other two crates are clear, which is why only hers shows
+ * it. Evidence: `scratchpad/intro-light/diagnosis-column-magenta*.png`, the same
+ * frame with every corridor column painted magenta.
+ *
+ * The crates are dressing and the columns are venue, so nothing in either module
+ * can see the other. This is the check that can: hand it a candidate row and the
+ * venue's own rects, and it says which crate fouls what. `src/sim` may not import
+ * `src/render`, so the sim keeps its own copy of the row arithmetic — but a test
+ * can import both, and `tests/intro-light.test.ts` does.
+ */
+export function crateFootprints(rowX: number, rowY: number, yaw = 0): CrateFootprint[] {
+  const layout = crateLayout();
+  const s = Math.sin(yaw);
+  const c = Math.cos(yaw);
+  return layout.crates.map((box) => {
+    // Assembly-local centre, metres. `centreZ` is -depth/2 because the faces are
+    // coplanar on z = 0, so the body sits BEHIND the face line.
+    const lx = box.centreX;
+    const lz = box.centreZ;
+    // Rotate about +y: (x, z) -> (x cos + z sin, -x sin + z cos).
+    const cx = lx * c + lz * s;
+    const cz = -lx * s + lz * c;
+    // The footprint's own extent after the same rotation. At 0 and pi/2 this is
+    // exact; in between it is the axis-aligned box that contains the rotated one,
+    // which is what a wall list wants anyway.
+    const ex = Math.abs(box.width * c) + Math.abs(box.depth * s);
+    const ez = Math.abs(box.width * s) + Math.abs(box.depth * c);
+    return {
+      kind: box.kind,
+      x: rowX + (cx - ex / 2) * PX_PER_M,
+      y: rowY + (cz - ez / 2) * PX_PER_M,
+      w: ex * PX_PER_M,
+      h: ez * PX_PER_M,
+    };
+  });
+}
+
+/** Which of `obstacles` each crate of a row at (`rowX`, `rowY`) is standing inside. */
+export function crateRowFouls(
+  rowX: number,
+  rowY: number,
+  obstacles: ReadonlyArray<{ x: number; y: number; w: number; h: number }>,
+  yaw = 0,
+): Array<{ kind: RobotKind; overlapX: number; overlapY: number; obstacle: { x: number; y: number; w: number; h: number } }> {
+  const out: Array<{ kind: RobotKind; overlapX: number; overlapY: number; obstacle: { x: number; y: number; w: number; h: number } }> = [];
+  for (const f of crateFootprints(rowX, rowY, yaw)) {
+    for (const o of obstacles) {
+      const ox = Math.min(f.x + f.w, o.x + o.w) - Math.max(f.x, o.x);
+      const oy = Math.min(f.y + f.h, o.y + o.h) - Math.max(f.y, o.y);
+      if (ox > 0 && oy > 0) out.push({ kind: f.kind, overlapX: ox, overlapY: oy, obstacle: o });
+    }
+  }
+  return out;
 }
 
 /** Metres a robot's collision circle is across — for the clearance checks. */
