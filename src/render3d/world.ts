@@ -11,11 +11,14 @@ import type { GameSnapshot, RobotKind } from '../sim/types';
 import { PX_PER_M, m } from '../sim/units';
 
 import { ThirdPersonCamera } from './camera3d';
+import { applyBoxProjection, type ProbeBox } from './boxproj';
+import { buildDetails } from './details';
 import { createMaterials } from './materials';
 import { Pipeline, QUALITY, type QualityName, type VolumeSpot } from './pipeline';
 import { createProps, type Props3D } from './props3d';
 import { createRobots, updateRobots, type Robot3D } from './robots3d';
-import { X_END, buildVenue, type Venue3D } from './venue';
+import { HEIGHTS, X_END, buildVenue, type Venue3D } from './venue';
+import { CY0, CY1 } from '../sim/geometry';
 
 export interface World3D {
   readonly renderer: THREE.WebGLRenderer;
@@ -23,7 +26,8 @@ export interface World3D {
   readonly scene: THREE.Scene;
   readonly pipeline: Pipeline;
   readonly cam: ThirdPersonCamera;
-  render(snap: GameSnapshot, dt: number): void;
+  /** `intro`: play the establishing dolly instead of following the robot. */
+  render(snap: GameSnapshot, dt: number, intro?: boolean): void;
   resize(w: number, h: number): void;
   /** Sim px (x, y) at `hM` metres up -> canvas CSS px, or null behind the camera. */
   project(x: number, y: number, hM: number): { x: number; y: number } | null;
@@ -64,6 +68,20 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   scene.add(venue.group);
   pipeline.reflectors = venue.reflectors;
   pipeline.setFogBox(new THREE.Vector3(m(8), -1, m(6)), new THREE.Vector3(m(X_END + 8), 9, m(694)));
+  // Wall furniture keeps clear of what the venue already hung: posters, the ad,
+  // the extinguisher cabinets (sim x ranges, per wall side).
+  const details = buildDetails(mats, pipeline.reflection, [
+    [189, 209, -1],
+    [529, 549, -1],
+    [320, 340, 1],
+    [520, 540, 1],
+    [355, 383, -1],
+    [88, 102, -1],
+    [253, 267, -1],
+    [553, 567, 1],
+  ]);
+  scene.add(details.group);
+  pipeline.reflectors = [...venue.reflectors, ...details.reflectors];
   const robots: Map<RobotKind, Robot3D> = createRobots(scene, quality.shadowSize);
   const props: Props3D = createProps(scene, mats);
   for (const L of venue.volumeSpots) L.light.shadow.mapSize.set(quality.shadowSize, quality.shadowSize);
@@ -83,6 +101,21 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   // that is actually around them.
   const pmrem = new THREE.PMREMGenerator(renderer);
   let envBaked = false;
+  const PROBE = new THREE.Vector3(m(300), 1.8, m(350));
+  const probeBox: ProbeBox = {
+    min: new THREE.Vector3(0, 0, m(CY0)),
+    max: new THREE.Vector3(m(X_END + 8), HEIGHTS.corridor, m(CY1)),
+    probe: PROBE,
+  };
+  let patchedFrames = 0;
+  let introT = 0;
+  const INTRO = {
+    from: new THREE.Vector3(m(560), 1.1, m(350) + 1.5),
+    to: new THREE.Vector3(m(250), 2.1, m(342)),
+    lookFrom: new THREE.Vector3(m(420), 1.4, m(345)),
+    lookTo: new THREE.Vector3(m(60), 1.0, m(350)),
+  };
+
   function bakeEnv(): void {
     const hidden: THREE.Object3D[] = [];
     for (const r of robots.values()) {
@@ -90,7 +123,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       r.rig.root.visible = false;
       r.lamp.visible = false;
     }
-    const envRT = pmrem.fromScene(scene, 0.02, 0.1, 80, { size: 256, position: new THREE.Vector3(m(300), 1.8, m(350)) });
+    const envRT = pmrem.fromScene(scene, 0.02, 0.1, 80, { size: 256, position: PROBE });
     scene.environment = envRT.texture;
     scene.environmentIntensity = 1.3;
     for (const o of hidden) o.visible = true;
@@ -145,17 +178,26 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     }
   }
 
-  function render(snap: GameSnapshot, dt: number): void {
+  function render(snap: GameSnapshot, dt: number, intro = false): void {
     time += dt;
     adapt();
     if (!envBaked) bakeEnv();
     venue.update(time, dt);
+    details.update(time);
     updateRobots(robots, snap, dt);
     props.update(snap, time, dt);
+    // Props are built lazily from the first snapshots; patch whatever exists.
+    if (patchedFrames < 3) {
+      applyBoxProjection(scene, probeBox);
+      patchedFrames++;
+    }
 
     const active = snap.bots[snap.active] ?? snap.bots[0];
     const rob = robots.get(active.kind);
-    if (rob) {
+    if (intro && !cam.pose) {
+      introT += dt;
+      cam.intro(introT, INTRO.from, INTRO.to, INTRO.lookFrom, INTRO.lookTo);
+    } else if (rob) {
       _pos.copy(rob.rig.root.position);
       const speed = Math.hypot(active.vx, active.vy) / PX_PER_M;
       cam.update(dt, active.kind, _pos, active.face, speed, [...venue.colliders, ...props.colliders]);

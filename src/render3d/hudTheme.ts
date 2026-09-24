@@ -56,6 +56,15 @@ body.ad3d .ad-card b{color:${YELLOW}}
 .ad3d-end button{font:inherit;letter-spacing:.16em;text-transform:uppercase;color:${CYAN};background:transparent;border:1px solid ${CYAN};padding:8px 18px;cursor:pointer}
 .ad3d-end button:focus-visible{outline:2px solid ${YELLOW};outline-offset:3px}
 
+.ad3d-title{position:fixed;inset:0;z-index:8;display:flex;flex-direction:column;justify-content:flex-end;gap:12px;padding:0 max(16px,6vw) 12vh;
+  background:linear-gradient(0deg,rgba(0,0,0,.78),rgba(0,0,0,0) 55%);color:#eee;pointer-events:auto;cursor:pointer;
+  font-family:"Bahnschrift","DIN Alternate","Roboto Condensed","Arial Narrow",sans-serif}
+.ad3d-title h1{margin:0;color:${YELLOW};font-size:clamp(40px,8vw,96px);letter-spacing:.3em;line-height:1;text-shadow:0 0 28px rgba(243,230,0,.45),3px 0 0 rgba(255,90,78,.6),-3px 0 0 rgba(94,246,255,.45)}
+.ad3d-title .ad3d-sub{margin:0;max-width:62ch;font-size:15px;line-height:1.55;color:#d8cfc9}
+.ad3d-title .ad3d-poc{margin:0;color:${CYAN};text-transform:uppercase;letter-spacing:.2em;font-size:12px}
+.ad3d-title .ad3d-press{margin:0;color:${RED};text-transform:uppercase;letter-spacing:.3em;font-size:13px;animation:ad3d-blink 1.4s steps(2) infinite}
+@keyframes ad3d-blink{50%{opacity:.25}}
+@media (prefers-reduced-motion: reduce){.ad3d-title .ad3d-press{animation:none}}
 .ad3d-help{position:fixed;right:16px;bottom:16px;z-index:6;pointer-events:none;color:#b79c96;font:11px/1.6 "Bahnschrift","Arial Narrow",sans-serif;
   text-transform:uppercase;letter-spacing:.14em;text-align:right;opacity:.8}
 .ad-nohud .ad3d-help{display:none}

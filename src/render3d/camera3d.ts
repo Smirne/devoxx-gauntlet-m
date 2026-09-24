@@ -50,6 +50,23 @@ export class ThirdPersonCamera {
     this.zoom = THREE.MathUtils.clamp(this.zoom * Math.exp(dy * 0.001), 0.45, 2.2);
   }
 
+  /**
+   * The establishing shot, played while the title card is up: a slow dolly
+   * from the fire door back down the dark corridor to the three robots, low and
+   * close to the floor so the reflections carry it. `t` is seconds into it.
+   */
+  intro(t: number, from: THREE.Vector3, to: THREE.Vector3, lookFrom: THREE.Vector3, lookTo: THREE.Vector3): void {
+    const k = Math.min(1, t / 14);
+    const e = k * k * (3 - 2 * k);
+    const cam = this.camera;
+    cam.position.lerpVectors(from, to, e);
+    cam.position.y += Math.sin(t * 0.7) * 0.05;
+    const look = new THREE.Vector3().lerpVectors(lookFrom, lookTo, e);
+    cam.lookAt(look);
+    cam.updateMatrixWorld();
+    this.snapNext = true;
+  }
+
   /** Teleport next frame instead of easing (chapter start, cutscene cut). */
   cut(): void {
     this.snapNext = true;
