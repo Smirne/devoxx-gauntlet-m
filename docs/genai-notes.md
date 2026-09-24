@@ -2207,3 +2207,94 @@ minutes. The winding rule is now written out in the function.
 **The mount-pose change is in the `fix(biggy)` commit** rather than in the gait commit before it —
 it was made after the gait commit and swept up by the next `git add`. The commit message does not
 mention it; this entry is the record.
+
+## 2026-09-24 — the twelve sponsor stands (agent)
+
+### What Michele asked for
+
+*"Polishing the graphic, making people and stands real etc."* Two agents split it; this one took
+the **stands** — the twelve sponsor booths on the exhibition-hall floor. The people were somebody
+else's half and were not touched.
+
+Two earlier notes of his bore on it, both already in `docs/playtest-notes.md`: *"the orange thing
+and the big black thing with halo (is it a booth? in the middle of the stairs?)"*, and his standing
+call for when looks and precision pull apart, *"I vote funny, robots must be recognizable"* — read
+here as: a stand that is instantly a stand beats one measured off a photograph.
+
+### The state it was in
+
+`SPONSORS` has carried twelve names in `src/sim/geometry.ts` since the ground floor was built, and
+the "why am I blocked" lines speak them. **None of the twelve was on screen anywhere.** Six built
+booths were one `boothWall` slab across the whole 100 x 70 px rect with a 3 px LED stripe laid on
+the back edge; six half tables were a single purple cloth over the same rect — eight metres by five
+and a half of it. From the diorama camera the trade-show floor was twelve boxes.
+
+### What the agent built
+
+Off `media/other-images/image-1790032630885 / -637969 / -650288 / -655131.webp`, in the order you
+actually read a stand at that show, and that order is the design:
+
+1. **a flat panel of one brand colour with the name on it** — read from across the hall;
+2. **a slim lit totem out in the lane** — read at head height when the panel is behind a crowd, and
+   the hall shot is full of them;
+3. **a carpet tile with a white taped edge** — separates a stand from an aisle more cheaply than any
+   furniture, and it is the single most effective thing in the whole change;
+4. only then furniture: counter, black metal high tables, white tub stools, planter, giveaway bowl.
+
+Built stands are **enclosed** — back wall 3.0 m, two side returns, a counter across the front —
+because the sim says a built booth is solid across its whole rect and drawing an open stand you can
+see into would call that a lie. The counter is 0.95 m rather than the venue's usual `LOW_H` 0.78: in
+this game 0.78 is the height of the `low` walls Voxxy can jump, and a stand front is not one of
+them. Half tables keep the full-rect cloth (that rect *is* what Voxxy goes under) and carry their
+name on a printed cloth over the top, a roll-up banner standing on the table and a printed valance
+across the open side, with half a metre of the crawl gap still showing under it.
+
+The named jokes land: Sticker Mine's **three shelves at 0.62 / 1.24 / 1.92 m**, which is chapter 3's
+Droid-only reach gate drawn instead of narrated; Rubber Duck Inc stacked with ducks; Regex Racing's
+chequered apron; The Coffee Sponsor's queue of cups; Legacy Systems SA's beige boxes; Monolith
+GmbH's one deployable, which does not fit on the table and which they brought anyway.
+
+Everything is procedural: `three` primitives plus canvas textures, no external asset files. The
+lettering lives in `signage.ts` with the venue's other lettering and shares its one painter and its
+one `dispose()`; `ground.ts` says only where a panel hangs.
+
+### Human decisions this round
+
+- Michele's, in advance and standing: **funny and recognisable beats measured.** Applied to the
+  straplines (`/^(a+)+$/ — do not run this`, `your flight will resolve shortly`, `COBOL support since
+  before you`) and to the decision to print a table's *top*, which no real stand builder does, because
+  the top is most of what a 31-degree camera sees of a table and it was the only surface big enough to
+  carry the name.
+- Michele's, earlier and unactioned here: *"staircase should be clear of booths in general."* The fix
+  is in `geometry.ts`, which another agent held this round. See the handover below.
+
+### What was rejected, and why
+
+- **A truss arch over the aisles.** It is in three of the four reference frames and it is the most
+  characteristic thing in the hall. At 3.2 m over an aisle, under a fixed 31-degree orthographic
+  camera, it lands squarely in front of the stands behind it. A diorama pays for overhead structure
+  in occlusion, and this one could not afford it.
+- **Opening the built stands' fronts**, which is what the photographs show. The sim collides the
+  whole rect; an open front invites the player to walk into something they cannot.
+- **Shrinking the half tables to table size** and dressing the rest of the footprint as a stand
+  behind them. It would look far better, and Voxxy is allowed through that whole rect — she would
+  walk through the dressing. The cloth stays the size of the rect the sim gives her.
+- **A new floor-standing prop anywhere in an aisle.** That needs a sim collider, which needs
+  `geometry.ts`, which was held. Nothing new stands outside the booth, totem and crate rects.
+- **`sponsorFascia` and `boothSlide`**, two painters written and then deleted: the stands ended up
+  carrying their names on a back wall and a roll-up, and unused art is dead weight.
+
+### Two things worth knowing for the next round
+
+**Merging across objects breaks the collider sweep.** The first cut merged each stand's geometry
+into one mesh *including its totem*, which stands out in the lane. `tests/colliders.test.ts`
+measures bounding boxes, so one box spanning the stand and the totem swallowed the aisle between
+them and the sweep reported six drawn solids with no collider — correctly. Per-booth merges are
+fine; anything reaching outside the booth rect gets its own mesh.
+
+**Emissive ignores the fog of war.** Re-using printed art as an emissive map at the 0.5 a corridor
+lightbox gets lit the entire exhibition floor straight through chapter 2's blackout, and the
+visibility polygon does not touch it. The levels are standby now (0.05 cloth, 0.08 back wall, 0.18
+banner, 0.22 totem) and were tuned on measured pixels — the Kube Kettle panel goes 129 to 75 in
+blue — rather than on how the crop looked. Anything else in this venue that wants to be visible in
+chapter 2 will hit the same wall.
