@@ -390,10 +390,32 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * DEEP and 1.25 m tall, a fridge parked in the corridor — and the collider sweep
    * never looked at it, because `tests/colliders.test.ts` measures what
    * `buildVenue()` builds and this is a chapter prop. You walked straight through
-   * it. Now it is 8 px of housing against the door's own face, standing 1.9 m
+   * it. It became 8 px of housing against the door's own face, standing 1.9 m
    * along the wall, with a wall under it.
+   *
+   * IT NOW STANDS THE OTHER WAY ROUND, and the reason is measured rather than
+   * felt. Michele, with a screenshot of it: *"the keypad also needs a shape. Big
+   * numbers?"* At 8 px the housing had 0.64 m of frontage to put them on, and the
+   * frontage is the only thing this camera can read: the diorama camera is 14 deg
+   * off the plan's z axis (`src/render/camera.ts`), so a face looking +z is nearly
+   * square on and the 1.9 m that ran ACROSS the corridor ran away from the lens
+   * instead. Four digits in 0.64 m is about 8 screen pixels each — unreadable at
+   * any weight. Measured in the running build with the prop drawn in magenta:
+   * **760 visible pixels** at play zoom, most of them behind Voxxy's own head.
+   *
+   * So the same box is turned: 19 px along the corridor by 12 px deep, still
+   * against the fire door's own face, still with a wall under it. That is 1.52 m
+   * of frontage instead of 0.64 m, and HALF the depth it had, so it is less of a
+   * fridge than the rect this replaces.
+   *
+   * Why 19 px and not more: `floor1Walls()` stands a `corridor-column` at
+   * x 565..581 — the closed section's columns are on 34 px centres — and a keypad
+   * that reached past 581 would hang behind it. West of the column the wall is
+   * clear for 150 px, but the dialogue in this chapter says the keypad is ON the
+   * fire door ("stand next to it", "it is on the fire door, drive right up to
+   * it"), so the bay between the column and the door is where it belongs.
    */
-  const keypad: Rect = { x: F1.fireX - 8, y: CY0 + 8, w: 8, h: 24 };
+  const keypad: Rect = { x: F1.fireX - 19, y: CY0 + 8, w: 19, h: 12 };
   ctx.walls.push({
     ...keypad,
     kind: 'keypad',

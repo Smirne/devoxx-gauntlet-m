@@ -378,8 +378,16 @@ export function buildKeypad(): KeypadModel {
     labelPlate.scale.set(stripW, 0.1, 1);
     labelPlate.position.set(u.cx + caseW / 2 - stripW / 2 - caseW * 0.06, base + KEYS_Y0 + KEYS_H - 0.08, caseFrontZ + 0.016);
 
+    /*
+     * The lamp sits just east of the keys, NOT out at the housing's far end.
+     * Measured: the fire screen beside this unit is 2.45 m tall and at chapter
+     * 1's 30 deg pitch a sight line clears it only `2.45 - 2.39d` metres up,
+     * `d` being the distance west of the door — so the last third of the face is
+     * in the door's own shadow, and a status lamp parked there never changes
+     * colour where anyone can see it.
+     */
     lamp.scale.set(LAMP_R, LAMP_R, 0.03);
-    lamp.position.set(u.cx + caseW / 2 - caseW * 0.09, base + KEYS_Y0 + 0.1, caseFrontZ + 0.02);
+    lamp.position.set(keysCx + keysW / 2 + LAMP_R * 2.2, base + KEYS_Y0 + KEYS_H * 0.5, caseFrontZ + 0.02);
 
     // --- what it says
     const done = p.state === 'done';

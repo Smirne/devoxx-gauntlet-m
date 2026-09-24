@@ -41,11 +41,18 @@ const bot = (g: DebugGame, kind: RobotKind): Bot => {
   return b;
 };
 
-/** The keypad's own centre, read off the prop rather than hard-coded. */
+/**
+ * The keypad's own centre, read off the prop rather than hard-coded — including
+ * its half-extents. `+ 8, + 12` was the centre of the 8 x 24 rect this prop used
+ * to be, and it survived the rect being turned on its side (19 x 12, so the four
+ * digits face the camera) only because `PAD_REACH` is generous enough to swallow
+ * an 8 px error. The next change to the rect would not have been so lucky.
+ */
 function padAt(g: DebugGame): { x: number; y: number } {
   const p = g.snapshot().props.find((o) => o.kind === 'keypad');
   if (!p) throw new Error('no keypad prop');
-  return { x: p.x + 8, y: p.y + 12 };
+  if (p.w === undefined || p.h === undefined) throw new Error('keypad prop has no extent');
+  return { x: p.x + p.w / 2, y: p.y + p.h / 2 };
 }
 
 describe('the chapter-1 keypad', () => {
@@ -162,5 +169,51 @@ describe('the chapter-1 keypad', () => {
     }
     // Three robots, three sentences — not one script with the name swapped.
     expect(lines.size).toBe(3);
+  });
+
+  it('publishes an entry a listener can follow without knowing the code', () => {
+    /*
+     * `main.ts` gives the pad its voice off `Prop.label` alone — a keystroke is
+     * the label gaining a character, a backspace is losing one, and a REJECTED
+     * code is the entry emptying. That last edge is 3 to 0 and never 4 to 0,
+     * because the chapter tests the code inside the same key press and a wrong
+     * fourth digit therefore never reaches a snapshot. Assert the shape of the
+     * published string, because the cue wiring cannot be unit-tested and would
+     * otherwise go quietly wrong the next time this entry is touched.
+     */
+    const g = mk(31);
+    const code = night(g).code;
+    const pad = padAt(g);
+    g.debug.select('voxxy');
+    g.debug.place('voxxy', pad.x, pad.y + 20);
+    g.update(DT_MAX);
+
+    const label = (): string => g.snapshot().props.find((o) => o.kind === 'keypad')?.label ?? '';
+    const digits = (): string => label().replace(/_/g, '');
+
+    // Always four cells, so the readout never reflows as it fills.
+    expect(label()).toBe('____');
+    const seen: number[] = [digits().length];
+    const wrong = [code[1], code[2], code[3], code[0]].join('');
+    for (const d of wrong) {
+      g.key(`Digit${d}`);
+      expect(label()).toHaveLength(4);
+      seen.push(digits().length);
+    }
+    expect(seen).toEqual([0, 1, 2, 3, 0]);
+
+    // A backspace is the same edge one step at a time, which is why the length
+    // alone cannot say "rejected" — only a drop straight to zero can.
+    g.key(`Digit${code[0]}`);
+    g.key(`Digit${code[1]}`);
+    expect(digits()).toHaveLength(2);
+    g.key('Backspace');
+    expect(digits()).toHaveLength(1);
+
+    // And the right code leaves all four standing, so the readout can go green.
+    g.key('Backspace');
+    for (const d of code) g.key(`Digit${d}`);
+    expect(digits()).toBe(code);
+    expect(g.snapshot().props.find((o) => o.kind === 'keypad')?.state).toBe('done');
   });
 });
