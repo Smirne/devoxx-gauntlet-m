@@ -221,6 +221,7 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
   const panelLed = new THREE.MeshBasicMaterial({ color: 0xff0000, toneMapped: false });
   type ClueObj = { root: THREE.Group; digit: THREE.Mesh; leds: THREE.Mesh[]; light: THREE.PointLight; mix: THREE.Color; decal: THREE.Mesh; digitText: string; solved: boolean };
   const clueObjs = new Map<number, ClueObj>();
+  const fireLeaves = new Map<string, THREE.Group>();
   const stencil = clueStencil();
 
   function key(p: Prop): string {
@@ -521,6 +522,36 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
         }
       }
       sparks.update(dt);
+
+      // The fire door's open leaves. In the sim the door is a pair of leaves
+      // that swing back along the corridor and stay solid there ('fireleaf'
+      // walls, pushed when it opens); the 3D door is a roll-up shutter
+      // (Michele kept it). So the two spots get a folded-back steel barrier
+      // each, hinged at the door end and swinging out as the shutter lifts:
+      // something you can see where the sim has something you bump into.
+      for (const w of snap.walls) {
+        if (w.kind !== 'fireleaf') continue;
+        const key = `fireleaf:${Math.round(w.y)}`;
+        let g = fireLeaves.get(key);
+        if (!g) {
+          g = new THREE.Group();
+          const len = m(w.w);
+          const panel = new THREE.Mesh(box(len, 2.4, Math.max(0.08, m(w.h) * 0.6), V(-len / 2, 1.2, 0)), mats.enamel);
+          panel.castShadow = true;
+          panel.receiveShadow = true;
+          const rail = new THREE.Mesh(box(len, 0.08, m(w.h) * 0.8, V(-len / 2, 1.1, 0)), mats.steel);
+          const stripe = new THREE.Mesh(box(len * 0.98, 0.18, m(w.h) * 0.65, V(-len / 2, 0.2, 0)), new THREE.MeshStandardMaterial({ color: 0xe8b400, roughness: 0.5 }));
+          g.add(panel, rail, stripe);
+          g.position.set(m(w.x + w.w), 0, m(w.y + w.h / 2));
+          g.userData.born = t;
+          g.scale.x = 0.001;
+          parent.add(g);
+          colliders.push(panel);
+          fireLeaves.set(key, g);
+        }
+        const k = Math.min(1, (t - (g.userData.born as number)) / 1.1);
+        g.scale.x = Math.max(0.001, k * k * (3 - 2 * k));
+      }
 
       // Clues.
       volumePoints.length = 0;

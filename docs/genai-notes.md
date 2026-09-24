@@ -3004,3 +3004,8 @@ wall.
   radius. This is a SIM change; the 2.5D branch needs the same one line. The suite stayed 460/460.
 - *"I lost hint 3."* Unsolved rings were lit-only and went black in the dark front of cinema B.
   They now have the 2.5D plates' slow standby pulse.
+- *The fire door's open leaves.* Michele kept the 3D roll-up shutter ("the rolling shutter is
+  cool") and chose to leave the sim's swinging leaves alone. Each `fireleaf` wall the sim pushes
+  when the door opens is drawn as a folded-back steel barrier. It is hinged at the door end, swings
+  out as the shutter lifts, and fills the rectangle the sim collides against. Checked by typing the
+  real code headlessly: both leaf walls appear and both barriers are built.
