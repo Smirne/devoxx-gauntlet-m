@@ -37,6 +37,8 @@ export interface Robot3D {
    * are driving readable in a building with the lights out.
    */
   spill: THREE.PointLight;
+  /** A camera-facing flare at the lamp, bright only when the lamp points at you. */
+  glare: THREE.Mesh | null;
   /** How much of the lamp shows in the fog. */
   fog: number;
 }
@@ -167,7 +169,25 @@ export function createRobots(parent: THREE.Object3D, shadowSize: number): Map<Ro
     parent.add(lamp, lamp.target);
     const spill = new THREE.PointLight(col, kind === 'biggy' ? 9 : 7, 4, 2);
     parent.add(spill);
-    out.set(kind, { kind, rig, lamp, spill, fog: L.fog });
+    let glare: THREE.Mesh | null = null;
+    if (kind !== 'droid') {
+      const gm = new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        uniforms: { colour: { value: col.clone() }, strength: { value: 0 } },
+        vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+        fragmentShader: /* glsl */ `uniform vec3 colour; uniform float strength; varying vec2 vUv;
+          void main(){ vec2 d = vUv - .5; float r = length(d);
+            float core = exp(-r * r * 180.); float halo = exp(-r * r * 18.) * .25;
+            float star = exp(-abs(d.y) * 90.) * exp(-abs(d.x) * 5.) * .6;
+            gl_FragColor = vec4((colour + .6) * (core * 30. + halo * 3. + star * 6.) * strength, 1.); }`,
+      });
+      glare = new THREE.Mesh(new THREE.PlaneGeometry(kind === 'biggy' ? 1.2 : 0.8, kind === 'biggy' ? 1.2 : 0.8), gm);
+      glare.frustumCulled = false;
+      parent.add(glare);
+    }
+    out.set(kind, { kind, rig, lamp, spill, glare, fog: L.fog });
   }
   return out;
 }
@@ -226,4 +246,24 @@ function aimLamp(r: Robot3D, b: Bot): void {
   // Spill: just in front of and above the lamp, so it grazes the robot's own
   // front and pools on the floor ahead of its feet.
   r.spill.position.set(_p.x + Math.cos(b.face) * 1.1, Math.max(0.9, _p.y + 0.5), _p.z + Math.sin(b.face) * 1.1);
+}
+
+const _dir = new THREE.Vector3();
+const _toCam = new THREE.Vector3();
+
+/** Aim each lamp's flare at the camera and scale it by how squarely the lamp faces it. */
+export function updateGlare(robots: Map<RobotKind, Robot3D>, camera: THREE.Camera): void {
+  for (const r of robots.values()) {
+    const g = r.glare;
+    if (!g) continue;
+    const lamp = r.lamp;
+    _dir.subVectors(lamp.target.position, lamp.position).normalize();
+    g.position.copy(lamp.position).addScaledVector(_dir, 0.12);
+    _toCam.subVectors(camera.position, g.position);
+    const dist = _toCam.length();
+    _toCam.divideScalar(dist);
+    const facing = Math.max(0, _dir.dot(_toCam));
+    (g.material as THREE.ShaderMaterial).uniforms.strength.value = Math.pow(facing, 6) * Math.min(1, dist / 2);
+    g.quaternion.copy(camera.quaternion);
+  }
 }
