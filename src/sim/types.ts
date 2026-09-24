@@ -357,6 +357,45 @@ export interface TextPrompt {
   reject: number;
 }
 
+/**
+ * One thing the player still has to do, or has just done.
+ *
+ * The single source for three things that used to be three different strings:
+ * the meter on the HUD (`3 / 5`), the checklist in the instructions panel, and
+ * what `H` hints at. They were going to drift apart the moment a chapter changed
+ * — `progress()` is a sentence assembled for the bottom bar and nothing can count
+ * it — so the chapters publish the list and the presentation is derived from it.
+ *
+ * It lives in the sim, like everything else that decides anything: the renderer
+ * only reads it (CLAUDE.md).
+ */
+export interface Task {
+  /** Stable across frames, so the panel's selection survives a change of state. */
+  id: string;
+  /** One short line, imperative, no markup: `find the four lit digits`. */
+  text: string;
+  done: boolean;
+  /**
+   * Which robot this needs, when it needs one in particular. The hint's first
+   * escalation is the robot's own chip, and the arrow takes its colour.
+   */
+  who?: RobotKind;
+  /**
+   * Where the thing is, in sim px — the arrow's target. A task with no place (a
+   * password to work out, a count to reach) simply gets no arrow, which is the
+   * honest answer rather than an arrow pointing at nothing.
+   */
+  at?: { x: number; y: number };
+  /**
+   * One line of help in a robot's voice, shown by `H` at the second escalation.
+   * Never the answer: the nudge that gets a stuck player unstuck.
+   */
+  hint?: string;
+  /** Sub-count, when the task is `2 of 3` rather than done / not done. */
+  n?: number;
+  of?: number;
+}
+
 /** Everything the renderer reads for one frame. */
 export interface GameSnapshot {
   chapter: number;
@@ -394,6 +433,13 @@ export interface GameSnapshot {
    * this is the part that ticks.
    */
   progress: string;
+  /**
+   * What is left to do this chapter, in the order a player should meet it — the
+   * one list behind the HUD's meter, the panel's checklist and every hint. Empty
+   * for a chapter that has not been taught to publish one, which the HUD reads as
+   * "no meter", never as "nothing to do".
+   */
+  tasks: Task[];
   /**
    * The tow bar, when somebody has hold of Biggy — `holder` is who, `aim` is the
    * bar's angle and `dir` its snapped eighth. `null` when nobody is holding on.

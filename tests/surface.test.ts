@@ -40,6 +40,7 @@ import {
   groundPlates,
   groundRiseM,
   riseAt,
+  riseForBody,
   roomDoor,
   type DebugGame,
   type NightState,
@@ -256,5 +257,75 @@ describe('the crashed door is something you stand ON', () => {
       plate.lo,
       6,
     );
+  });
+
+  it('starts the climb where the body touches the step, not where its centre does', () => {
+    /*
+     * Michele, watching Biggy meet the fallen leaf: *"walking on the door is fine,
+     * but starts a little too late IMHO. At first it looks like you are walking
+     * through it."*
+     *
+     * The amount is measurable. `riseAt` asks about a POINT, so the lift arrives
+     * when the robot's CENTRE crosses the edge — and for the whole radius before
+     * that, the robot stands at floor height with the step's edge passing through
+     * its body. `riseForBody` starts the climb at contact instead and finishes it
+     * at the centre crossing, which is what walking up a step looks like.
+     */
+    const plate: Plate = { x: 400, y: 400, w: 60, h: 60, lo: 0.48 };
+    const r = 9; // Biggy's radius, 0.72 m.
+    const edge = plate.x;
+    const inward = (d: number): number => riseForBody(edge + d, plate.y + plate.h / 2, r, [plate]);
+
+    // Out of reach entirely: the floor, and no hint of the step.
+    expect(inward(-r - 0.01)).toBe(0);
+    expect(riseAt(edge - 0.01, plate.y + plate.h / 2, [plate]), 'the point answer at the same spot').toBe(0);
+
+    // Touching: the climb has started. This is the frame the old answer got wrong.
+    expect(inward(-r + 0.5)).toBeGreaterThan(0);
+    // Half a body out: half way up.
+    expect(inward(-r / 2)).toBeCloseTo(plate.lo / 2, 6);
+    // Centre on the edge, and from there on: the whole rise, never a partial one.
+    expect(inward(0)).toBeCloseTo(plate.lo, 6);
+    expect(inward(20)).toBeCloseTo(plate.lo, 6);
+
+    // It never lifts a robot ABOVE the surface it is climbing onto.
+    for (let d = -r; d <= r; d += 0.25) {
+      const h = inward(d);
+      expect(h, `d=${d}`).toBeGreaterThanOrEqual(0);
+      expect(h, `d=${d}`).toBeLessThanOrEqual(plate.lo + 1e-9);
+    }
+
+    // And a point-sized query is still exactly the old answer, so every decal,
+    // prop and marker that asks `riseAt` is untouched.
+    expect(riseForBody(edge - 3, plate.y + plate.h / 2, 0, [plate])).toBe(0);
+    expect(riseForBody(edge + 3, plate.y + plate.h / 2, 0, [plate])).toBeCloseTo(plate.lo, 6);
+  });
+
+  it('draws the robots from the body answer, not the point one', () => {
+    // The fix is only real if the renderer asks the new question. A regex, because
+    // `scene.ts` needs a GPU and this is the same trick `clue-plate.test.ts` uses.
+    expect(SCENE_SRC, 'scene.ts no longer imports riseForBody').toMatch(/riseForBody/);
+    expect(SCENE_SRC, 'the robot rig is back on the point surface').toMatch(
+      /rig\.root\.position\.set\(m\(b\.x\), bodySurfaceY\(/,
+    );
+  });
+
+  it('keeps two plates that share a seam continuous', () => {
+    /*
+     * The trap in blending at edges: a robot standing on the join between the
+     * lobby plate and the flight that climbs to it is near an edge of BOTH, and a
+     * naive blend would sag it into the seam. Inside a plate the answer is that
+     * plate's own height, unblended, so the join is flat.
+     */
+    const plates = groundPlates();
+    const lobby = plates.find((p) => p.hi === undefined && p.lo > 0);
+    const ramp = plates.find((p) => p.hi !== undefined);
+    if (!lobby || !ramp) throw new Error('expected a lobby plate and a ramp');
+    for (const r of [4.75, 6.25, 9]) {
+      for (let y = lobby.y + 1; y < lobby.y + lobby.h - 1; y += 7) {
+        const h = riseForBody(lobby.x + 1, y, r, plates);
+        expect(h, `r=${r} y=${y}`).toBeCloseTo(riseAt(lobby.x + 1, y, plates), 6);
+      }
+    }
   });
 });
