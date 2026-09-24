@@ -2878,3 +2878,62 @@ cutscene, and names which chapters run one so a new transition cannot arrive unm
 — is now that playthrough: soup, speaker and the beer delivery, shared with `tests/doors.test.ts`
 through the new `tests/pilot.ts`, so chapter 3's post-gate half is swept for the first time.
 Frame strips captured through all three openings and through a robot standing on the leaf.
+
+---
+
+## 24 Sep 2026 (evening) — the two featureless boxes Michele filed with screenshots
+
+**Human input.** Two notes, both with a screenshot. On the chapter-1 keypad: *"the keypad also
+needs a shape. Big numbers?"* On a Zaal numeral panel: *"This orange thing. I don't know if it's
+supposed to be a projector or what, but it misses a shape."* One standing call applied to both,
+his: *"I vote funny, robots must be recognizable"* — read here as **readable at the game's zoom
+beats accurate in close-up**.
+
+**The Zaal panel.** The floor-to-ceiling height was NOT the fault and was left alone —
+`media/other-images/image-1790032674926.webp` shows the real thing as a full-height orange panel
+beside the auditorium entrance with the numeral high on it, and the built geometry matched
+(`zaal-sign-3`, 0.00..3.62 m, numeral face 1.30..3.50). What was missing was everything that makes
+a panel not a box: our version was one `signOrange` slab carrying one textured quad, so the whole
+top, both flanks and the bottom 1.3 m of the front were bare orange — and this game's camera is a
+high isometric, so the naked lid was in frame. Four things off the photograph were added, in
+`signage.ts` and `materials.ts`: a **coping** (lighter orange, standing proud on the flanks, with a
+dark reveal line under it), a **returned edge** (the flanks a plane darker), a **shadow gap** at the
+foot, and the **header fascia** the photograph makes a "T" of. The block itself is now backlit like
+the numeral on it (`signOrange` gained an emissive) — the real complaint was a lit quad floating on
+a body that had gone black in the venue's own darkness.
+
+Two things were tried and taken out, both because a test said so, not because they looked wrong: a
+dark reveal all *round* the panel (invisible against a charcoal wall), and a coping proud on every
+face — 4 cm of overhang put room 4's panel over the stairwell and `tests/venue.smoke.test.ts`
+caught it, which is the fault that test exists for. The assembly now occupies exactly the envelope
+the old single slab did.
+
+**The keypad.** It was `PROPS.keypad = { h: 1.25, color: 0x2c3340 }` drawn by the generic
+`drawProp` as one box, in the chapter whose entire plot is the four digits that go into it — and it
+had been publishing `label: entered.padEnd(4, '_')` all along with nothing drawing it. New
+`src/render/keypad.ts` poses a modelled unit from the prop, the way the fire door and the roller
+door already do: mounting plate held off the wall, housing with a hood, a recessed four-cell
+readout in **seven-segment** digits (a 2 px bar glyph survives a 16 px cell where a 700-weight
+numeral does not), a painted 3x4 key grid whose **1-2-3 row is drawn dead** because `ch1-night.ts`
+takes 4 to 9 and nothing else, and a status lamp that goes red to green when the magnetic lock lets
+go. The housing also carries a standby glow, for the reason `projector-panel` and `terminal` carry
+one: the thing the player is looking FOR is by definition still idle, and chapter 1 is a blackout.
+It also stops the venue's own static keypad being drawn on top of the chapter's — two keypads in
+one doorway, the same duplicate the breaker panel was caught doing.
+
+**What was measured, and the one thing handed to a human.** The keypad's published rect is 8 px
+wide by 24 px deep — 0.64 m of frontage running 1.9 m ACROSS the corridor. The diorama camera is 14
+deg off that axis, so the 1.9 m ran away from the lens and four digits had 0.64 m to live in, about
+8 screen pixels each. Drawn in magenta in the running build it came to **760 visible pixels** at
+play zoom, most of them behind Voxxy's own head. Turning the same collider to run ALONG the
+corridor (19 x 12 px, still against the door's face, half the depth) gives 1.52 m of frontage and
+digits that read — the "64" in `scratchpad/pad/keypad-after-close-two-digits.png` against
+`keypad-after-close-unpatched-rect.png`. That is a sim change, so it was NOT made: it is
+`scratchpad/pad/keypad-rect.patch`, `git apply --check` clean, suite green with it applied, for a
+human to take or leave. The 19 px is not arbitrary either — `floor1Walls()` stands a
+`corridor-column` at x 565..581, and a wider rect would hang behind it. The renderer reads the rect
+either way, so both pictures are honest.
+
+**Tests.** 460 green. `tests/prop-geometry.ts` now reads the keypad's height from
+`KEYPAD_TOP_M` in the renderer's own module rather than re-typing it, so that transcription cannot
+drift; the footprint it reports is unchanged, which is the only thing the collider sweep asks about.
