@@ -1034,6 +1034,30 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * with.
    */
   function tasks(): Task[] {
+    /*
+     * THE GATE IN FRONT OF THE CLUE, WHEN THERE STILL IS ONE.
+     *
+     * Michele, 25 Sep 2026: *"there might be also intermediate challenges (eg:
+     * open the door for clue 3 with Droid and Biggy). They might need a clue
+     * too?"* Two of these four clues are behind a second puzzle — B's magnetic
+     * lock and E's jammed leaf — and a player stuck at either of those doors is
+     * not stuck on a light mix at all. Telling them about the mix is a hint about
+     * the wrong problem, so the door goes FIRST and drops off the ladder the
+     * moment it is open (`Task.hint` takes a list).
+     */
+    const gate = (slot: number): string[] => {
+      if (slot === 3 && !panelOn)
+        return [
+          'Droid: that door is held by a magnetic lock and the release is by the projector window, a metre above my ' +
+            'reach. Biggy parks under it and I go up — two of us, one of me on top',
+        ];
+      if (slot === 4 && !jamBroken)
+        return [
+          'Biggy: that leaf is jammed solid and nobody is squeezing past it. It wants my whole weight at speed — ' +
+            'the length of the corridor, not a shove from a step away',
+        ];
+      return [];
+    };
     const out: Task[] = clues
       .slice()
       .sort((a, b) => a.slot - b.slot)
@@ -1048,10 +1072,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         // need both lamps on the spot at once.
         who: c.need,
         at: { x: c.x, y: c.y },
-        hint:
+        hint: [
+          ...gate(c.slot),
           c.need.length === 3
             ? 'Biggy: all three of us, and mine has to come off the screen. Back of the room, aim at the picture'
             : `Voxxy: ${c.need.join(' and ')}, same spot, both lamps on it at once`,
+        ],
       }));
     out.push({
       id: 'code',
