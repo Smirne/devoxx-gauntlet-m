@@ -17,7 +17,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createGame, type DebugGame, type Task } from '../src/sim';
-import { nudgeStep } from '../src/render/hud';
+import { hintLines, markLevel, nudgeStep } from '../src/render/hud';
 
 const CHAPTERS = [1, 2, 3, 4] as const;
 const tasksOf = (n: number): Task[] =>
@@ -106,5 +106,77 @@ describe('the nudge ladder', () => {
     const bare: Task = { id: 'b', text: 'work it out', done: false };
     expect(nudgeStep(bare, 0, true)).toBe(1);
     expect(nudgeStep(bare, 1, true)).toBe(1);
+  });
+});
+
+/**
+ * A task with a gate in front of it gets a rung for the gate.
+ *
+ * Michele, 25 Sep 2026: *"there might be also intermediate challenges (eg: open
+ * the door for clue 3 with Droid and Biggy). They might need a clue too?"* — so
+ * `Task.hint` takes a list and `H` walks it before it offers the ring.
+ */
+describe('a ladder with more than one line on it', () => {
+  const two: Task = {
+    id: 'c',
+    text: 'light the green + blue mix',
+    done: false,
+    who: ['droid', 'biggy'],
+    at: { x: 1, y: 2 },
+    hint: ['the door first', 'then the mix'],
+  };
+
+  it('gives each line its own press, and puts the ring after all of them', () => {
+    expect(markLevel(two)).toBe(4);
+    expect(nudgeStep(two, 0, true)).toBe(1);
+    expect(nudgeStep(two, 1, true)).toBe(2);
+    expect(nudgeStep(two, 2, true)).toBe(3);
+    expect(nudgeStep(two, 3, true)).toBe(4);
+    expect(nudgeStep(two, 4, true), 'the ladder kept climbing past the ring').toBe(4);
+  });
+
+  it('stops after the last line when there is nowhere to point', () => {
+    const nowhere: Task = { ...two, at: undefined };
+    expect(nudgeStep(nowhere, 2, true)).toBe(3);
+    expect(nudgeStep(nowhere, 3, true), 'it offered a ring for a task with no place').toBe(3);
+  });
+
+  it('reads a single string as a ladder of one, which is what every other task is', () => {
+    expect(hintLines({ ...two, hint: 'just the one' })).toEqual(['just the one']);
+    expect(hintLines({ ...two, hint: undefined })).toEqual([]);
+    expect(markLevel({ ...two, hint: undefined }), 'the ring moved off rung 3').toBe(3);
+  });
+});
+
+/**
+ * ...and chapter 1 actually publishes those gates, on the two clues that have one.
+ *
+ * The middle cinema is behind a magnetic lock (Droid off Biggy's shoulders) and
+ * cinema E is behind a jammed leaf (Biggy at a run). Both are a whole puzzle in
+ * front of the puzzle, and the line about them has to go before the line about
+ * the light mix — a player standing at a locked door does not need to be told
+ * which two lamps to mix once they are inside.
+ */
+describe('chapter 1 hints at the door before it hints at the mix', () => {
+  const ch1 = (): Task[] => tasksOf(1);
+
+  it('puts the gate first on the two clues that are behind one', () => {
+    const by = new Map(ch1().map((t) => [t.id, t]));
+    for (const [id, want] of [
+      ['clue3', /lock|release|shoulders|up/i],
+      ['clue4', /jam|weight|speed/i],
+    ] as const) {
+      const lines = hintLines(by.get(id) as Task);
+      expect(lines.length, `${id} has no gate line`).toBeGreaterThan(1);
+      expect(lines[0], `${id}'s first line is not about the door`).toMatch(want);
+      expect(lines[0], `${id}'s gate line hands over the digit`).not.toMatch(/\d/);
+    }
+  });
+
+  it('leaves the clues that are simply in an open room on one line', () => {
+    for (const id of ['clue1', 'clue2']) {
+      const t = ch1().find((o) => o.id === id) as Task;
+      expect(hintLines(t), `${id} invented a gate`).toHaveLength(1);
+    }
   });
 });

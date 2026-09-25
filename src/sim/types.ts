@@ -393,10 +393,20 @@ export interface Task {
    */
   at?: { x: number; y: number };
   /**
-   * One line of help in a robot's voice, shown by `H` at the second escalation.
-   * Never the answer: the nudge that gets a stuck player unstuck.
+   * Help in a robot's voice, shown by `H` from the second escalation on. Never
+   * the answer: the nudge that gets a stuck player unstuck.
+   *
+   * **A list when the task has a gate in front of it.** Michele, 25 Sep 2026:
+   * *"there might be also intermediate challenges (eg: open the door for clue 3
+   * with Droid and Biggy). They might need a clue too?"* — and there are: the
+   * middle cinema is locked until Droid reaches the projector panel off Biggy's
+   * shoulders, and cinema E is behind a door only Biggy can put through the wall.
+   * A player stuck on those is not stuck on the light mix at all, and one line
+   * about the mix is a hint about the wrong problem. So the chapter may publish
+   * several lines and `H` walks them in order, nearest obstacle first, before it
+   * offers the ring. A single string is the same thing with one line in it.
    */
-  hint?: string;
+  hint?: string | readonly string[];
   /** Sub-count, when the task is `2 of 3` rather than done / not done. */
   n?: number;
   of?: number;

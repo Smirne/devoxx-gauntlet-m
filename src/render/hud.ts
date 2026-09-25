@@ -96,12 +96,26 @@ const LAMP_FALLBACK: Readonly<Record<RobotKind, [number, number, number]>> = {
  * inventing a step it cannot back up — and a task that publishes none of the
  * three can still be asked, and says so, rather than swallowing the keypress.
  */
+export function hintLines(task: Task): readonly string[] {
+  if (task.hint === undefined) return [];
+  return typeof task.hint === 'string' ? [task.hint] : task.hint;
+}
+
+/** Which rung the ring sits on: after every line the chapter published. */
+export function markLevel(task: Task): number {
+  // `Math.max(.., 1)` so a task with no hint at all keeps the ring on rung 3,
+  // where it has always been, instead of sliding down into the empty rung.
+  return 2 + Math.max(hintLines(task).length, 1);
+}
+
 export function nudgeStep(task: Task, was: number, canMark: boolean): number {
+  const lines = hintLines(task).length;
   const hasMark = task.at !== undefined && canMark;
-  const top = hasMark ? 3 : task.hint !== undefined ? 2 : 1;
+  const ring = markLevel(task);
+  const top = hasMark ? ring : lines > 0 ? 1 + lines : 1;
   let level = was + 1;
   if (level === 1 && (task.who === undefined || task.who.length === 0)) level = 2;
-  if (level === 2 && task.hint === undefined) level = 3;
+  if (level === 2 && lines === 0) level = ring;
   return level > top ? top : level;
 }
 
@@ -1329,8 +1343,9 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
    *     robot selected, so the first answer is the cheapest one that is usually
    *     right, and it is said in that robot's own voice and colour.
    * 2 — the chapter's own line of help. Never the answer: the nudge that gets a
-   *     stuck player moving again.
-   * 3 — a ring on the place.
+   *     stuck player moving again. A task with a gate in front of it publishes
+   *     SEVERAL, nearest obstacle first, and they get a rung each (`Task.hint`).
+   * last — a ring on the place.
    *
    * A task with no `who` has no step 1 and one with no `at` has no step 3, so the
    * escalation stops where the chapter's own knowledge stops rather than
@@ -1357,9 +1372,11 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
         snap,
         life,
       );
-    } else if (level === 2 && t.hint !== undefined) {
-      pushLine(t.hint, snap, life);
-    } else if (level === 3 && hasMark) {
+    } else if (level >= 2 && level - 2 < hintLines(t).length) {
+      // One rung per line, nearest obstacle first: the gate in front of the task
+      // before the task itself. See `Task.hint`.
+      pushLine(hintLines(t)[level - 2], snap, life);
+    } else if (level === markLevel(t) && hasMark) {
       pushLine('Look for the ring.', snap, life);
     } else {
       pushLine('That is everything anybody knows about this one.', snap, life);

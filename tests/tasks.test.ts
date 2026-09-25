@@ -41,6 +41,8 @@ import {
 } from '../src/sim';
 
 import { bot, passable, playToStairGate, walkTo } from './pilot';
+// The ladder's own reader, so the test walks a hint exactly as `H` does.
+import { hintLines } from '../src/render/hud';
 
 /* ------------------------------------------------------------------- harness */
 
@@ -98,7 +100,9 @@ function wellFormed(g: DebugGame, where: string): void {
     expect(t.text.trim(), `${at}: empty text`).not.toBe('');
     expect(t.text, `${at}: the sim is writing markup`).not.toMatch(/[<>]/);
     expect(typeof t.done, `${at}: done is not a flag`).toBe('boolean');
-    if (t.hint !== undefined) expect(t.hint.trim(), `${at}: empty hint`).not.toBe('');
+    // A hint may be several lines now — a gate in front of the task, then the
+    // task (`Task.hint`) — and every one of them has to be a real line.
+    for (const line of hintLines(t)) expect(line.trim(), `${at}: empty hint`).not.toBe('');
     if (t.n !== undefined) {
       expect(t.of, `${at}: n without of`).toBeDefined();
       expect(t.n, `${at}: negative count`).toBeGreaterThanOrEqual(0);
@@ -146,7 +150,9 @@ function wellFormed(g: DebugGame, where: string): void {
 function collect(g: DebugGame, into: string[]): void {
   for (const t of tasks(g)) {
     into.push(t.text);
-    if (t.hint) into.push(t.hint);
+    // Every line, not just the first: an answer leaked on the second rung of the
+    // ladder is leaked.
+    for (const line of hintLines(t)) into.push(line);
   }
 }
 
