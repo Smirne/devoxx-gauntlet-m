@@ -71,6 +71,23 @@ export const FLOOR_T = 0.14;
  */
 export const BREAKER_Y = 1.45;
 export const BREAKER_H = 0.72;
+/**
+ * How far the enclosure stands PROUD of the wall, metres — and it is a number of
+ * its own, not the sim rect's depth.
+ *
+ * Michele, 25 Sep 2026, with a screenshot: *"droid looks inside the breaker."* He
+ * did. `GF.panel` is 26 x 16 sim px and the 16 is a REACH zone — where a robot
+ * has to be standing for `E` to mean the handles — so drawing the box to it made
+ * a distribution board **1.28 m deep**, hanging off the wall like a wardrobe,
+ * with its handle face out where Droid stands. At this camera's 30 deg pitch his
+ * head and shoulders then cross it and he reads as being inside it.
+ *
+ * It is the same diagnosis `src/render/release-panel.ts` opens with (the "green
+ * cube"): the rect's depth is a rule, not a shape. 0.4 m is a real surface-mounted
+ * board, and it puts a clear metre between the handles and the robot reaching for
+ * them.
+ */
+export const BREAKER_D = 0.4;
 
 /* -------------------------------------------------------------- primitives */
 
@@ -207,17 +224,33 @@ export function mergeSimple(parts: THREE.BufferGeometry[]): THREE.BufferGeometry
 /* -------------------------------------------------------------------- seats */
 
 /**
+ * A seat's three parts, in metres off the floor. Named rather than inlined so
+ * that `SEAT_TOP_M` below is derived from the model instead of re-measured: the
+ * chapters draw seats through `src/render/seats.ts` and the collider sweeps ask
+ * how tall a drawn seat is (`tests/prop-geometry.ts`), so a literal here and a
+ * literal there is exactly the drift this file's neighbours keep getting caught by.
+ */
+const CUSHION_Y = 0.42;
+const CUSHION_H = 0.12;
+const BACK_Y = 0.62;
+const BACK_H = 0.5;
+const LEG_H = 0.36;
+
+/** The top of a seat back, metres above the floor it stands on. */
+export const SEAT_TOP_M = BACK_Y + BACK_H / 2;
+
+/**
  * One cinema seat, origin at the floor between its feet, **facing +z**: a cushion
  * and a taller back, which is all that reads from a diorama camera once a few
  * hundred of them are lined up. Rooms rotate the whole block to face their screen.
  */
 export function seatGeometry(widthM: number, depthM: number): THREE.BufferGeometry {
-  const cushion = new THREE.BoxGeometry(widthM * 0.88, 0.12, depthM * 0.8);
-  cushion.translate(0, 0.42, 0);
-  const back = new THREE.BoxGeometry(widthM * 0.88, 0.5, depthM * 0.16);
-  back.translate(0, 0.62, -depthM * 0.34);
-  const legs = new THREE.BoxGeometry(widthM * 0.2, 0.36, depthM * 0.2);
-  legs.translate(0, 0.18, 0);
+  const cushion = new THREE.BoxGeometry(widthM * 0.88, CUSHION_H, depthM * 0.8);
+  cushion.translate(0, CUSHION_Y, 0);
+  const back = new THREE.BoxGeometry(widthM * 0.88, BACK_H, depthM * 0.16);
+  back.translate(0, BACK_Y, -depthM * 0.34);
+  const legs = new THREE.BoxGeometry(widthM * 0.2, LEG_H, depthM * 0.2);
+  legs.translate(0, LEG_H / 2, 0);
   return mergeSimple([cushion, back, legs]);
 }
 

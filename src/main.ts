@@ -154,7 +154,13 @@ const game: DebugGame = createGame({
 });
 
 const scene: DioramaScene = createScene(canvas);
-const hud: Hud = createHud(app, { onSkip: () => game.skipChapter() });
+const hud: Hud = createHud(app, {
+  onSkip: () => game.skipChapter(),
+  // The hint's ring is drawn at a sim point, which only the renderer can put on
+  // the canvas. Handing the HUD the projector rather than a screen position keeps
+  // the ring on the thing while the camera eases.
+  project: (x, y, h) => scene.project(x, y, h),
+});
 const audio: Audio = createAudio();
 
 scene.setFogEnabled(wantFog);
@@ -190,6 +196,8 @@ function pushStick(): void {
 }
 
 let muted = false;
+/** `N` — the score only, on top of `muted`. */
+let musicOff = false;
 
 /** Reused every frame: the three robots' screen positions for the HUD's bubbles. */
 const anchors: SpeakerAnchors = {};
@@ -254,6 +262,33 @@ function onKeyDown(ev: KeyboardEvent): void {
     muted = !muted;
     audio.mute(muted);
   }
+  /*
+   * `N` is the music on its own.
+   *
+   * `M` kills the whole mix, which is the wrong switch for the one thing a player
+   * may well want off while still hearing the game — a score is a preference in a
+   * way a breaking door is not. Neither letter is in `DevoxxForever`, so neither
+   * needs the `typing` guard the overlay keys have.
+   */
+  if (code === 'KeyN') {
+    musicOff = !musicOff;
+    audio.muteMusic(musicOff);
+  }
+  /*
+   * `I` and `H` are the overlay's own keys and the sim never hears them.
+   *
+   * The run sheet and the nudge are both views of `GameSnapshot.tasks`, which the
+   * chapters already publish — no chapter decides anything about either, and
+   * nothing about them can change the run. `typing` guards them because both
+   * letters are in `DevoxxForever`.
+   */
+  if (!game.snapshot().typing) {
+    if (code === 'KeyI') hud.toggleTasks();
+    if (code === 'KeyH') hud.nudge();
+  }
+  // Escape closes the run sheet wherever it is, including mid-password: it is the
+  // one key nobody has to be told about.
+  if (code === 'Escape') hud.closeTasks();
   // Everything the sim understands, plus whatever dismisses a card ("press any key").
   game.key(code);
 }
@@ -293,6 +328,33 @@ let lastBreak = 0;
 let lastFireSwing = 0;
 /** Last frame's rise on chapter 2's roller door, so the shutter plays once. */
 let lastRollerRise = 0;
+/**
+ * What chapter 1's keypad was showing last frame.
+ *
+ * `audio.ts` has carried a written, tuned `keypad` cue — with `semitones`, so the
+ * digits are not all one note — since the day it was added, and it had never been
+ * played: the one object in the game you type into answered in silence. The prop's
+ * `label` is `entered.padEnd(4, '_')`, so the digits are the label with the
+ * underscores taken off, and every edge below is a change in THAT string. The sim
+ * owns the code and the entry; nothing here decides anything.
+ */
+let lastEntered = '';
+/**
+ * A whole-tone ladder, one rung per digit, `4` at the base — chapter 1 accepts 4
+ * to 9 and nothing else, so those six are the ones that have to be told apart by
+ * ear. The others are mapped anyway rather than left to collapse onto one pitch.
+ */
+const KEY_SEMIS = [-8, -6, -4, -2, 0, 2, 4, 6, 8, 10];
+/** Last frame's swing on chapter 1's cinema-B door, so the maglock plays once. */
+let lastLockSwing = 0;
+/** Last frame's swing on chapter 2's router cabinet, so the hinges play once. */
+let lastCabinetSwing = 0;
+/** Last frame's swing on chapter 3's registration gate, so the hook plays once. */
+let lastGateSwing = 0;
+/** Handles up on chapter 2's breaker panel, so each one gets its own cue. */
+let lastBreakerV = 0;
+/** The router cabinet's pilot lamp: '' outside chapter 2, then idle/active/done. */
+let lastPilot = '';
 /** Last frame's flourish per robot, so a party trick's cue plays once. */
 const lastFlair: Record<RobotKind, number> = { voxxy: 0, droid: 0, biggy: 0 };
 /**
@@ -337,6 +399,90 @@ function updateAudio(snap: GameSnapshot, dt: number): void {
   lastRollerRise = rising;
 
   /*
+   * The keypad, one cue per keystroke.
+   *
+   * Three different things can happen to the entry and they have to sound
+   * different, because the player cannot see the object closely while driving:
+   * a digit lands (pitched off the digit itself), a digit is taken back, and a
+   * wrong code clears the whole entry — which is the only one that must not be
+   * mistakable for progress, so it answers low and twice.
+   */
+  const pad = snap.props.find((p) => p.kind === 'keypad');
+  const entered = (pad?.label ?? '').replace(/_/g, '');
+  if (entered.length > lastEntered.length) {
+    const digit = Number(entered[entered.length - 1]);
+    audio.play('keypad', { semitones: KEY_SEMIS[digit] ?? 0 });
+  } else if (entered.length < lastEntered.length) {
+    /*
+     * Backspace, or the whole entry cleared by a wrong code. `state` is still
+     * 'idle' either way, so the LENGTH is what tells them apart — and it is 3,
+     * not 4: `ch1-night.ts:861` tests the code and clears `entered` inside the
+     * same key press, so a wrong fourth digit never reaches a snapshot and the
+     * entry goes 3 to 0 in one frame. That is also why a rejected fourth digit
+     * has no keystroke cue of its own: the rejection is the answer to it.
+     */
+    const wrong = entered.length === 0 && lastEntered.length === 3;
+    audio.play('keypad', { semitones: -14, gain: 0.9 });
+    if (wrong) audio.play('keypad', { semitones: -17, gain: 0.9, delay: 0.11 });
+  }
+  lastEntered = entered;
+
+  // Cinema B's magnetic lock, released from the projector panel. The prop is
+  // published in BOTH states now — it used to stop existing the moment it opened,
+  // which made the payoff of the whole mount beat a door that silently ceased to
+  // be — so `state === 'open'` is what picks it out of the four cinema doors
+  // chapter 1 draws. A, C and D are scenery and never carry a clock.
+  const unlocking = snap.props.find((p) => p.kind === 'lock' && p.state === 'open')?.progress ?? 0;
+  if (unlocking > 0 && lastLockSwing <= 0) audio.play('maglock');
+  lastLockSwing = unlocking;
+
+  // Biggy shouldering the router cabinet open, on hinges seized since 2019. Two
+  // leaves, so the cue has two stops in it; it is the one cue whose middle is
+  // louder than its ends.
+  const shouldering = snap.props.find((p) => p.kind === 'cabinet')?.progress ?? 0;
+  if (shouldering > 0 && lastCabinetSwing <= 0) audio.play('cabinet');
+  lastCabinetSwing = shouldering;
+
+  /*
+   * CHAPTER 2'S SWITCHBOARD.
+   *
+   * Michele: *"the braker activation seems to do nothing, apart from the
+   * message. A 56k like sound for the modem and a light on a cabinet to signal
+   * you should go there?"* All three of those are here.
+   *
+   * The handle count and not the strike, because the strike decays over 0.45 s
+   * and two `E` presses can be 100 ms apart — a progress edge would swallow the
+   * second cue. A ladder of three, so the board audibly settles as the load
+   * comes on.
+   */
+  const breakerV = snap.props.find((p) => p.kind === 'breaker')?.v ?? 0;
+  if (breakerV > lastBreakerV) audio.play('breaker', { semitones: [0, -3, -6][breakerV - 1] ?? 0 });
+  lastBreakerV = breakerV;
+
+  /*
+   * The cabinet's pilot lamp is the state machine for the other two cues, which
+   * is why they ride it rather than the breaker count: the lamp coming up IS the
+   * supply landing, and the lamp going green IS the router on the air.
+   */
+  const pilot = snap.props.find((p) => p.kind === 'pilot')?.state ?? '';
+  // The supply landing — the third handle. Nothing in it is above 300 Hz: the
+  // hall is still dark and a bright cue would promise a room the light isn't in.
+  if (pilot === 'active' && lastPilot === 'idle') audio.play('busbar');
+  // The handshake, and the arpeggio landing as its hiss dies.
+  if (pilot === 'done' && lastPilot === 'active') {
+    audio.play('modem');
+    audio.play('chime', { delay: 1.95 });
+  }
+  lastPilot = pilot;
+
+  // Stephan opening the stairs for the day: a hook off an eye, and nothing hits.
+  // The chapter holds the hall for the whole swing before the exit cutscene, so
+  // this is heard over the thing it describes rather than under a fade.
+  const opening = snap.props.find((p) => p.kind === 'gate')?.progress ?? 0;
+  if (opening > 0 && lastGateSwing <= 0) audio.play('gate');
+  lastGateSwing = opening;
+
+  /*
    * The party tricks on `E`.
    *
    * `flairPhase` is the sim's own clock (`src/sim/bot.ts`), the same number the rig
@@ -378,7 +524,21 @@ function updateAudio(snap: GameSnapshot, dt: number): void {
     // A fresh chapter brings a fresh set of clues, already at zero found; without
     // this, restarting chapter 1 after solving it would count four solves at once.
     lastFound = snap.clues.reduce((n, c) => n + (c.found ? 1 : 0), 0);
+    // Same reason, for every door: a chapter's props arrive shut, and a restart
+    // must not carry the previous run's swing across and swallow the next cue.
+    // The three older edges had this bug — replay chapter 1 after breaking the
+    // jammed door and the crash was silent the second time.
+    lastBreak = 0;
+    lastFireSwing = 0;
+    lastRollerRise = 0;
+    lastEntered = '';
+    lastLockSwing = 0;
+    lastCabinetSwing = 0;
+    lastGateSwing = 0;
+    lastBreakerV = 0;
+    lastPilot = '';
     audio.setAmbient(snap.chapter);
+    audio.setMusic(snap.chapter);
     if (snap.chapter > 1) audio.play('transition');
   }
   if (snap.phase !== lastPhase) {
@@ -480,12 +640,18 @@ export interface AfterDarkHandle {
   portrait(kind: RobotKind | null): void;
   /** Every line the error reporter has caught, live. `document.title` carries the count. */
   errors: string[];
+  /** The three.js scene root. A probe hook — see `DioramaScene.debugRoot`. */
+  debugRoot(): unknown;
+  /** Where a sim point lands on the canvas. The same hook the HUD's hint uses. */
+  project(x: number, y: number, h?: number): { x: number; y: number } | null;
   dispose(): void;
 }
 
 const handle: AfterDarkHandle = {
   game,
   snapshot: () => game.snapshot(),
+  debugRoot: () => scene.debugRoot(),
+  project: (x: number, y: number, h = 0) => scene.project(x, y, h),
   startChapter: (n: number) => game.startChapter(n),
   topDown: (on: boolean) => scene.setTopDown(on),
   fog: (on: boolean) => scene.setFogEnabled(on),

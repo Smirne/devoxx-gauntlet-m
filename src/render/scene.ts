@@ -29,17 +29,38 @@ import * as THREE from 'three';
 
 import { flairPhase, hopPhase } from '../sim/bot';
 import { JUMP_RISE_M, MOUNT_OFFSET_Y, W as SIM_W, H as SIM_H } from '../sim/constants';
-import { riseAt } from '../sim/surface';
+import { riseAt, riseForBody } from '../sim/surface';
 import { JAM_LEAF_H, JAM_SKEW, JAM_SKID, JAM_TIP } from '../sim/chapters/ch1-night';
 import type { GameSnapshot, Person, Plate, Prop, RobotKind, ViewRect } from '../sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M, STOREY_H_M, m } from '../sim/units';
 
-import { createCamera, type DioramaCamera } from './camera';
+import { createCamera, OPENING_AZIMUTH_RAD, OPENING_BAND, type DioramaCamera } from './camera';
 import { FIRE_LEAF_H, FIRE_LEAF_T, fireDoorDraw } from './fire-door';
 import { buildKeypad, type KeypadModel } from './keypad';
+import { buildCrates, type CratesModel } from './crates';
+import { CRATE_ROW, PULL_BACK, WALK_AT } from '../sim/opening';
+
+/**
+ * How lit the crates stay once the opening is over. Not zero: they are timber in
+ * a blackout, and at zero they read as three holes in the corridor rather than
+ * as the boxes the three of them climbed out of. The venue's own convention for
+ * anything that has to stay findable without power.
+ */
+const OPEN_CRATE_LIT = 0.16;
 import { createLightLayer, type LightLayer } from './lighting';
-import { createRobot, measureBounds, updateRobot, yawFromSimHeading, EXCLUDE_FROM_BOUNDS, type RobotRig } from './robots';
+import { PANEL_H_M, PANEL_LIFT_M, buildReleasePanel, type ReleasePanelModel } from './release-panel';
+import { buildPrinter, type PrinterModel } from './printer';
+import {
+  createRobot,
+  measureBounds,
+  presentationLight,
+  updateRobot,
+  yawFromSimHeading,
+  EXCLUDE_FROM_BOUNDS,
+  type RobotRig,
+} from './robots';
 import { ROLLER_SLATS, rollerDoorDraw } from './roller-door';
+import { SEAT_KINDS, SEAT_TOP_M, createSeatField } from './seats';
 import {
   CABINET_LEAF_H,
   CABINET_LEAF_LIFT,
@@ -53,7 +74,7 @@ import {
   gateDraw,
   lockDoorDraw,
 } from './doors';
-import { BREAKER_H, BREAKER_Y, WALL_H, buildVenue, type Venue } from './venue';
+import { BREAKER_D, BREAKER_H, BREAKER_Y, WALL_H, buildVenue, type Venue } from './venue';
 
 const KINDS: readonly RobotKind[] = ['voxxy', 'droid', 'biggy'];
 
@@ -105,18 +126,21 @@ const WIDE_MAX = { w: 900, h: 660 };
  * wider than play (chapter 1 plays at 320x235) so the route they are walking is
  * legible, but close enough that you can see who is walking it.
  *
- * **Chapter 3 is deliberately absent and stays on `WIDE_MAX`.** Its transition walks
- * the three of them UP the main staircase, and the renderer has no elevation for a
- * robot on a flight: `placeRobots` puts every robot at the storey's datum, and
- * `groundRiseM` — which `src/sim/geometry.ts` exports for exactly this and says the
- * renderer is the one that reads it — is not read by anything. So the robots walk
- * at hall height while the treads climb to 5 m over them, and the closer the camera
- * gets the more plainly they are inside the staircase rather than on it. That is a
- * pre-existing gap, not this framing's; until it is fixed, zooming in on it would
- * only frame it better. See the note in `placeRobots`.
+ * **Chapter 3 used to be deliberately absent** and stayed on `WIDE_MAX`, because
+ * its transition walks the three of them UP the main staircase and the renderer had
+ * no elevation for a robot on a flight: `placeRobots` put every robot at the
+ * storey's datum, `groundRiseM` was exported for exactly this and read by nothing,
+ * so they walked at hall height while the treads climbed to 5 m over them. Zooming
+ * in on that would only have framed it better.
+ *
+ * The sim publishes the flight as a walking surface now (`groundPlates` and
+ * `src/sim/surface.ts`) and `surfaceY` reads it, so they climb it. It gets the same
+ * close framing as chapter 1's, and for the same reason: a transition is a beat, not
+ * an establishing shot.
  */
 const CUT_FRAME: Readonly<Record<number, { w: number; h: number }>> = Object.freeze({
   1: { w: 430, h: 315 },
+  3: { w: 430, h: 315 },
 });
 /**
  * The world Y of the walking surface at a sim point.
@@ -152,6 +176,19 @@ const CUT_FRAME: Readonly<Record<number, { w: number; h: number }>> = Object.fre
 let framePlates: readonly Plate[] = [];
 function surfaceY(floorY: number, x: number, y: number): number {
   return floorY + riseAt(x, y, framePlates);
+}
+
+/**
+ * The same, for something that has a WIDTH — a robot rather than a decal.
+ *
+ * A point crosses a step's edge in one frame; a body climbs it across its own
+ * radius. `riseForBody` is the sim's answer to that (`src/sim/surface.ts`), and
+ * it exists because Michele watched Biggy meet the fallen door leaf: *"walking on
+ * the door is fine, but starts a little too late IMHO. At first it looks like you
+ * are walking through it."*
+ */
+function bodySurfaceY(floorY: number, x: number, y: number, r: number): number {
+  return floorY + riseForBody(x, y, r, framePlates);
 }
 
 /** Exponential approach rate of the framing, s^-1. High enough not to read as drift. */
@@ -214,8 +251,16 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
    * the fiction says is a metre above Droid's reach. Now it is a lit panel at
    * 2.5 m: tall, standing proud of the wall, with its own amber standby lamp so
    * it reads as powered equipment long before you work out what it does.
+   *
+   * And then: *"the part that needs a shape is the green Cube that opens the
+   * door"*. A lit box is still a box, and this one was 1.92 m DEEP, so the face
+   * the camera saw most of was its lid. `drawReleasePanel` poses the modelled
+   * unit from `src/render/release-panel.ts`; what survives here is the colour a
+   * robot's lamp finds it with, the standby glow, and the two numbers the
+   * collider sweep asks for — read off the model rather than retyped, the way
+   * `keypad` reads `KEYPAD_TOP_M`.
    */
-  'projector-panel': { h: 0.9, color: 0x39414f, tl: true, lift: 2.5, glow: 0x6b4406 },
+  'projector-panel': { h: PANEL_H_M, color: 0x39414f, tl: true, lift: PANEL_LIFT_M, glow: 0x6b4406 },
   screen: { h: 5.2, color: 0xcfd6dd, tl: true },
   alcove: { h: 0.05, color: 0x2f7d4f, tl: true, flat: true },
   lock: { h: 2.1, color: 0x4a4038, tl: true },
@@ -238,6 +283,26 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
    * `drawTerminal` takes the screen further — a waiting terminal blinks.
    */
   terminal: { h: 0.34, color: 0x101820, tl: true, lift: 1.25, glow: 0x6b4406 },
+  /*
+   * THE ROUTER CABINET'S PILOT LAMP — the one entry in this table that deliberately
+   * carries NO `glow`.
+   *
+   * Every other kind above is given a standby glow because the thing a player is
+   * hunting is idle by definition. This one is the opposite case: the sim keys its
+   * `state` to the SUPPLY (`ch2-expo.ts`), so 'idle' means there is not a volt in
+   * the cabinet, and a standby glow would be the lamp claiming otherwise. Dark is
+   * the truth, and it is what makes the amber mean something when it arrives.
+   * `drawPilot` takes it further — a live lamp breathes.
+   */
+  pilot: { h: 0.1, color: 0x14181d, tl: true, lift: 1.78 },
+  /*
+   * The network rack's link lights — the same lamp as the cabinet's pilot, at the
+   * rack's own height, and a KIND of its own rather than a second `pilot` so that
+   * "the pilot lamp" stays one findable thing in the sim, the tests and the HUD.
+   * Michele: *"I'd like some glow from the rack cabinet when modem is up"*, and
+   * *"The cable start is not much visible, one has to know where to look."*
+   */
+  'rack-lights': { h: 0.08, color: 0x14181d, tl: true, lift: 1.86 },
   poster: { h: 0.62, color: 0xe9e4d6, tl: true, lift: 0.95, glow: 0x2a3a52 },
   printer: { h: 0.95, color: 0xb9bec6, tl: true },
   /*
@@ -261,6 +326,13 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
   // sponsor's own spot would.
   'duck-target': { h: 0.03, color: 0x3f7fa8, flat: true, glow: 0x1d4a63 },
   sticker: { h: 0.06, color: 0xff7a1a },
+  /*
+   * The crab sandwich on the catering counter — Michele: *"We need to add the
+   * CRAB SANDWiCH somewhere. That's the most famous part of the infamous devoxx
+   * food."* A tray on the counter at `LOW_H`, lit like anything else you can walk
+   * up to and use, under the `crab-sign` the venue paints over it.
+   */
+  crab: { h: 0.16, color: 0xe8d6b4, tl: true, lift: 1.06, glow: 0x6b2a14 },
   'race-marker': { h: 0.5, color: 0xff7a1a },
   /* chapter 3 — breakfast */
   'soup-station': { h: 1.0, color: 0xc0392b },
@@ -306,8 +378,24 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
   'banner-hook': { h: 0.25, color: 0xb0b6bd },
   banner: { h: 1.1, color: 0xff7a1a, tl: true },
   spotlight: { h: 0.35, color: 0xffd9a0 },
-  seatrow: { h: 0.55, color: 0x3c2f3a, tl: true },
-  seatblock: { h: 0.55, color: 0x3c2f3a, tl: true },
+  /*
+   * SEATING IS NOT DRAWN FROM THIS TABLE.
+   *
+   * Both entries used to be `{ h: 0.55, color: 0x3c2f3a, tl: true }` and `drawProp`
+   * drew them literally: one flat-topped cuboid per published rect, so cinema E's
+   * six rows were six anthracite slabs and the room next door — dressed by
+   * `floor1.ts` out of the same sim plan — had modelled seats in it. Michele, with
+   * the shot of Droid up on Biggy under his own green pool: *"This still needs a
+   * shape."*
+   *
+   * `src/render/seats.ts` draws them now, from `seatGeometry` and the sim's own
+   * `SEAT_PITCH_PX`/`ROW_PITCH_PX`, as one `InstancedMesh` for the whole frame.
+   * The entries stay because every drawn kind must be classified — the footprint
+   * is still the sim's own rect, and the height is read off the seat model rather
+   * than retyped, so `tests/prop-geometry.ts` cannot drift from it.
+   */
+  seatrow: { h: SEAT_TOP_M, color: 0x3c2f3a, tl: true },
+  seatblock: { h: SEAT_TOP_M, color: 0x3c2f3a, tl: true },
 };
 
 const PROP_FALLBACK: PropSpec = { h: 0.7, color: 0x5a6069 };
@@ -404,6 +492,16 @@ export interface DioramaScene {
    * speech bubble over that robot instead of in a text row at the bottom edge.
    */
   project(simX: number, simY: number, heightM?: number): { x: number; y: number } | null;
+  /**
+   * The three.js scene root, for a headless probe and nothing else.
+   *
+   * Twice now the only way to find out what a dark shape in a screenshot
+   * actually IS has been to sweep the scene graph's bounding boxes — the
+   * corridor column standing inside Voxxy's crate was found that way — and both
+   * times the hook had to be improvised into `crates.ts` and then taken out
+   * again. It costs one line to keep. Nothing in the game reads it.
+   */
+  debugRoot(): THREE.Object3D;
   dispose(): void;
 }
 
@@ -453,6 +551,12 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     mesh.receiveShadow = true;
     return mesh;
   });
+
+  /**
+   * Every seat a chapter publishes, in one instanced draw. See `src/render/seats.ts`
+   * for why the seat rows are not in `propPool` with everything else.
+   */
+  const seatField = createSeatField(dressing);
 
   /** The contact shadow under a visitor — a soft dark disc, not a cast shadow. */
   const contactGeo = new THREE.CircleGeometry(1, 18);
@@ -517,6 +621,8 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   const BREAKER_OFF = 0.7;
   const BREAKER_ON = -0.2;
 
+  /** What an arc across a contact looks like: the colour the supply lamp flares to. */
+  const WHITE_ARC = new THREE.Color(0xfff4e0);
   const breakerHandleMat = new THREE.MeshStandardMaterial({ color: 0xd8d4cc, roughness: 0.5, metalness: 0.1 });
   const breakerLampMat = new THREE.MeshStandardMaterial({
     color: 0x2a2018,
@@ -793,6 +899,53 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   dressing.add(keypad.root);
   /** The venue's own static keypad, which chapter 1 takes over. See `floor1.ts`. */
   const venueKeypad = venue.floor1.getObjectByName('fire-keypad') ?? null;
+  /**
+   * ...and the venue's own static badge printer, which chapter 2 takes over.
+   *
+   * `ground.ts` stands a `printerWhite` slab on the reception counter so the desk
+   * is dressed in chapters 3 and 4 as well. The moment a chapter publishes the
+   * `printer` prop, `src/render/printer.ts` draws the real machine in the same
+   * place — and two printers in one footprint is exactly the fault the fire leaf,
+   * the roller, the gate and the keypad each have a line like this one for.
+   */
+  const venuePrinter = venue.ground.getObjectByName('badge-printer') ?? null;
+
+  /* ------------------------------------------------------------ the opening
+   *
+   * The three shipping crates the robots arrive in. Built once and hidden; the
+   * sim's own clock (`GameSnapshot.opening`, from `src/sim/opening.ts`) says
+   * when each lamp comes up and each front panel comes off. Nothing here decides
+   * anything — this is the same contract every prop in this file has.
+   *
+   * Built lazily, on the first frame that actually has an opening: it is three
+   * painted canvases and ~5 MB, and every test, probe and `?chapter=N` URL in
+   * the repo starts past it.
+   */
+  let crates: CratesModel | null = null;
+
+  /* ------------------------------------------- the door override, chapter 1
+   *
+   * Michele: *"the part that needs a shape is the green Cube that opens the
+   * door"* — cinema B's release, the payoff of the mount beat, drawn from the
+   * `PROPS` table as one lit cuboid. `src/render/release-panel.ts` builds the
+   * unit and poses it from the prop, including `state`, which goes `idle` to
+   * `done` when Droid reaches it off Biggy's shoulders.
+   *
+   * There is no static twin to hide, unlike the keypad, the fire leaf, the gate
+   * and the shutter: `buildVenue()` puts a projection BOOTH over every
+   * auditorium door (`venue/projector.ts`), and that is inside the room behind
+   * this wall, not a second copy of this control.
+   */
+  const releasePanel: ReleasePanelModel = buildReleasePanel();
+  dressing.add(releasePanel.root);
+
+  /*
+   * The badge printer at reception — chapter 2's whole errand, and until now a
+   * pale grey cuboid on the counter. Michele: *"printer should be recognizable
+   * and glowing as a hint"*. See `src/render/printer.ts`.
+   */
+  const printer: PrinterModel = buildPrinter();
+  dressing.add(printer.root);
 
   /**
    * The ground ring under the robot being driven. Nothing else in the frame says
@@ -1642,7 +1795,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     activeRingGhost.visible = true;
     const r = m(bot.r);
     activeRing.scale.setScalar(Math.max(r / RING_OUTER, 0.6) * 1.25);
-    activeRing.position.set(m(bot.x), surfaceY(floorY, bot.x, bot.y) + 0.03, m(bot.y));
+    activeRing.position.set(m(bot.x), bodySurfaceY(floorY, bot.x, bot.y, bot.r) + 0.03, m(bot.y));
     activeRingGhost.scale.copy(activeRing.scale);
     activeRingGhost.position.copy(activeRing.position);
     const c = bot.light.c;
@@ -1677,7 +1830,13 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const hz = m(holder.y);
     const bx = m(big.x);
     const bz = m(big.y);
-    const barY = (surfaceY(floorY, holder.x, holder.y) + surfaceY(floorY, big.x, big.y)) / 2;
+    // Both ends read the BODY surface, like the robots they are attached to: a
+    // bar whose ends came off the point surface would stay on the floor while the
+    // robot holding it climbed a step.
+    const barY =
+      (bodySurfaceY(floorY, holder.x, holder.y, holder.r) +
+        bodySurfaceY(floorY, big.x, big.y, big.r)) /
+      2;
     towBar.position.set((hx + bx) / 2, barY + TOW_BAR_H, (hz + bz) / 2);
     towBar.rotation.y = -Math.atan2(bz - hz, bx - hx);
     towBar.scale.x = Math.max(Math.hypot(bx - hx, bz - hz), 0.2);
@@ -1688,7 +1847,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const az = Math.sin(tow.aim);
     const start = m(big.r);
     const mid = start + TOW_LANE_LEN / 2;
-    towLane.position.set(bx + ax * mid, surfaceY(floorY, big.x, big.y) + 0.02, bz + az * mid);
+    towLane.position.set(bx + ax * mid, bodySurfaceY(floorY, big.x, big.y, big.r) + 0.02, bz + az * mid);
     // Euler XYZ applies Z first, so `rotation.z` turns the plane inside its own
     // XY before `rotation.x` lays it flat: local +X lands on (cos z, 0, -sin z),
     // which is the sim axis for z = -aim. Feeding it `atan2(az, ax)` mirrors the
@@ -1704,6 +1863,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   let portrait: RobotKind | null = null;
   /** Frames left of "re-fit the portrait while the rig settles into its stance". */
   let portraitSettle = 0;
+  let lastAzimuth: number | undefined;
   let lastChapter = -1;
 
   /** Put the scene graph into whatever the current mode needs. */
@@ -1762,6 +1922,39 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     mat.emissiveIntensity = tint === undefined ? 0 : 1;
     mat.transparent = spec.flat === true;
     mat.opacity = spec.flat ? 0.65 : 1;
+    /*
+     * A FLAT PROP IS A DECAL, AND A DECAL MUST NOT FIGHT THE FLOOR IT IS ON.
+     *
+     * Michele has reported flicker twice, the second time with two circles on a
+     * screenshot, and one of them is on the lit pad at the reception counter. A
+     * flat prop is drawn 1 cm over whatever surface the sim says is under it, and
+     * 1 cm at this camera's depth range is inside the noise once anything else is
+     * drawn in the same plane — the lobby slab, a stair nosing, another decal.
+     *
+     * `polygonOffset` is the standard answer and it is exact: it biases the depth
+     * the decal is TESTED at rather than moving the decal, so nothing shifts on
+     * screen. `depthWrite: false` keeps one translucent decal from clipping the
+     * next one where two overlap, which is the second half of the same report.
+     */
+    mat.polygonOffset = spec.flat === true;
+    mat.polygonOffsetFactor = -2;
+    mat.polygonOffsetUnits = -4;
+    mat.depthWrite = spec.flat !== true;
+  }
+
+  /**
+   * A published seat row or seat block, as a row of modelled seats.
+   *
+   * The rect is the sim's, untouched: `src/render/seats.ts` subdivides it on the
+   * sim's own `SEAT_PITCH_PX`/`ROW_PITCH_PX` and faces the seats at the room's
+   * screen, and every seat stands inside the rect the collider is on.
+   */
+  function drawSeats(p: Prop, floorY: number): void {
+    const w = p.w ?? 0;
+    const d = p.h ?? 0;
+    if (w <= 0 || d <= 0) return;
+    // Seat kinds are `tl`: the prop reports the rect's top-left corner.
+    seatField.add({ x: p.x, y: p.y, w, h: d }, (sx, sy) => surfaceY(floorY, sx, sy));
   }
 
   /**
@@ -1834,10 +2027,16 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    */
   function drawBreaker(p: Prop, floorY: number): void {
     const wM = m(p.w ?? 26);
-    const dM = m(p.h ?? 16);
     const thrown = p.v ?? 0;
     breakerPanel.visible = true;
-    breakerPanel.position.set(m(p.x), surfaceY(floorY, p.x, p.y) + BREAKER_Y, m(p.y) + dM);
+    /*
+     * The handles go on the FACE of the enclosure, and the enclosure is
+     * `BREAKER_D` deep — not `p.h`, which is the reach zone in front of it. Drawn
+     * to the rect this was a 1.28 m-deep board with its handles out where the
+     * robot stands, and Droid reaching for them read as Droid inside the box,
+     * which is what Michele filed on 25 Sep 2026.
+     */
+    breakerPanel.position.set(m(p.x), surfaceY(floorY, p.x, p.y) + BREAKER_Y, m(p.y) + BREAKER_D);
     for (let i = 0; i < BREAKER_COUNT; i++) {
       const x = (wM * (i + 0.5)) / BREAKER_COUNT;
       const y = BREAKER_H * 0.42;
@@ -1853,6 +2052,63 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const on = p.state === 'done';
     breakerLampMat.emissive.setHex(on ? 0x2fd17a : 0xb06a10);
     breakerHandleMat.color.setHex(on ? 0xdfe6df : 0xd8d4cc);
+    /*
+     * THE STRIKE — Michele, 26 Sep 2026: *"the braker activation seems to do
+     * nothing, apart from the message."*
+     *
+     * `p.progress` is the sim's own clock (`BREAKER_STRIKE_TIME` in `ch2-expo.ts`),
+     * 1 on the frame a handle goes up and out over the next half second. A board
+     * taking load arcs across the contacts, so the lamp flares white-hot and the
+     * handles catch the light with it — and it happens on all three handles, not
+     * only the one that closes the supply, because all three are the player doing
+     * something. Nothing is decided here: the sim says when, this says what it
+     * looks like.
+     */
+    const strike = Math.min(1, Math.max(0, p.progress ?? 0));
+    breakerLampMat.emissiveIntensity = 1 + 5 * strike;
+    if (strike > 0) breakerLampMat.emissive.lerp(WHITE_ARC, 0.8 * strike);
+    breakerHandleMat.emissive.setHex(0xffd9a0);
+    breakerHandleMat.emissiveIntensity = 0.9 * strike;
+  }
+
+  /**
+   * The router cabinet's pilot lamp — Michele, 26 Sep 2026: *"a light on a cabinet
+   * to signal you should go there?"*
+   *
+   * An annunciator strip across the top of the carcass, above both leaves, so it
+   * reads with the doors shut and with them standing open. Three states, and the
+   * sim decides every one of them (`ch2-expo.ts` keys the prop to the SUPPLY):
+   *
+   *   'idle'   dark. No emissive at all — not a dim standby, nothing. A cabinet
+   *            with no volts in it must not be advertising itself, and the kind
+   *            carries no `glow` in `PROPS` for exactly that reason.
+   *   'active' amber, breathing about once a second. A thing is running behind
+   *            this door. This is the "come here", and it arrives on the frame
+   *            the third breaker lands, four metres from where Droid is standing.
+   *   'done'   green, steady and bright. Nothing left to come for.
+   *
+   * The breath is the same idea as `drawTerminal`'s cursor: a lamp that pulses is
+   * a lamp that is doing something, and a room this dark needs the movement more
+   * than it needs the brightness.
+   */
+  function drawPilot(p: Prop, floorY: number, t: number): void {
+    const spec = PROPS.pilot ?? PROP_FALLBACK;
+    const wM = m(p.w ?? 64);
+    const dM = m(p.h ?? 3);
+    const mesh = propPool.get();
+    mesh.scale.set(Math.max(wM, 0.06), spec.h, Math.max(dM, 0.06));
+    mesh.position.set(m(p.x) + wM / 2, surfaceY(floorY, p.x, p.y) + (spec.lift ?? 1.78) + spec.h / 2, m(p.y) + dM / 2);
+    mesh.castShadow = false;
+    mesh.receiveShadow = true;
+
+    const mat = mesh.material as THREE.MeshStandardMaterial;
+    mat.transparent = false;
+    mat.opacity = 1;
+    mat.color.setHex(spec.color);
+    const live = p.state === 'active';
+    const done = p.state === 'done';
+    mat.emissive.setHex(done ? 0x2fd17a : live ? 0xff8a1a : 0x000000);
+    mat.emissiveIntensity = done ? 1.8 : live ? 1.1 + 0.7 * (0.5 + 0.5 * Math.sin(t * 2.4)) : 0;
   }
 
   /**
@@ -2012,6 +2268,30 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     if (venueKeypad) venueKeypad.visible = false;
     keypad.root.visible = true;
     keypad.pose(p, surfaceY(floorY, p.x, p.y));
+  }
+
+  /**
+   * Chapter 1's door override — the release Droid reaches from Biggy's shoulders.
+   *
+   * Everything it shows comes out of the prop: the rect it hangs in and `state`,
+   * which goes `idle` to `done` on the frame the magnetic lock lets go. See
+   * `src/render/release-panel.ts` for the model, for the camera geometry that
+   * decides which way it faces, and for why the rect's DEPTH is the part of it
+   * that is wrong.
+   */
+  /**
+   * Chapter 2's badge printer, on the reception counter. Everything it shows is
+   * `Prop.state`: dark, amber-waiting, or printing a badge.
+   */
+  function drawPrinter(p: Prop, floorY: number): void {
+    if (venuePrinter) venuePrinter.visible = false;
+    printer.root.visible = true;
+    printer.pose(p, surfaceY(floorY, p.x, p.y));
+  }
+
+  function drawReleasePanel(p: Prop, floorY: number): void {
+    releasePanel.root.visible = true;
+    releasePanel.pose(p, surfaceY(floorY, p.x, p.y));
   }
 
   /**
@@ -2197,10 +2477,89 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     mat.color.setHex(hex);
   }
 
+  /**
+   * The crates, while the opening is running.
+   *
+   * `CRATE_ROW` in `src/sim/opening.ts` is where the row stands and the sim puts
+   * the robots on the same marks, so the two cannot disagree about where a robot
+   * is standing versus where its crate is. The row's FACE line is what is placed
+   * — the three faces are coplanar so the stencil spanning them reads, and it is
+   * the face line rather than the centroid that has to land on the mark.
+   */
+  function drawOpening(snap: GameSnapshot, floorY: number): void {
+    const o = snap.opening;
+    /*
+     * The crates outlive the opening. Chapter 1 publishes their footprints as
+     * walls (`CRATE_RECTS`), so they are solid for the rest of the chapter and
+     * this is what draws them — Michele: *"crates remain after the transition,
+     * non interactive"*. Any other chapter, or no chapter, and they are gone.
+     */
+    const wanted = o !== null || snap.chapter === 1;
+    if (!wanted) {
+      if (crates) crates.root.visible = false;
+      return;
+    }
+    if (!crates) {
+      crates = buildCrates({
+        baseY: floorY,
+        centre: { x: m(CRATE_ROW.x), z: m(CRATE_ROW.y) },
+        // Quarter-turned with the row: the crates back onto the corridor's WEST
+        // wall and look east.
+        //
+        // The sign matters and only one of the two works. A quarter-turn maps
+        // the model's local +x — the row direction, the order that spells the
+        // word — and its local -z — the direction the faces look — TOGETHER.
+        // At -PI/2 the row lands in `CRATE_RECTS`' order but the crates stand
+        // out in the corridor with their faces into the wall; at +PI/2 they back
+        // onto the wall and look east, which is the shot, and the ROW runs the
+        // other way. So the row order is mirrored in `src/sim/opening.ts` to
+        // match, and this stays +PI/2.
+        //
+        // Getting it wrong is not subtle and does not look like a row order: the
+        // sim opens Voxxy's crate while the renderer has Biggy's in that slot,
+        // so an unlit robot is left standing in a box the sim has emptied — a
+        // black shape in an open crate. Found by sweeping the scene graph's
+        // bounding boxes over Voxxy's own rect (`DioramaScene.debugRoot`), which
+        // is why that hook is kept.
+        yaw: Math.PI / 2,
+        seed: 7,
+      });
+      dressing.add(crates.root);
+    }
+    crates.root.visible = true;
+    if (o === null) {
+      // Play. The crates are open, empty and dark — standing where they were
+      // left, with their panels on the floor in front of them, under a bulkhead
+      // that gave out on the way in.
+      crates.setLit(OPEN_CRATE_LIT);
+      crates.setEmergency(0);
+      for (const c of crates.crates) {
+        c.setLamp(0);
+        c.setOpen(1);
+      }
+      return;
+    }
+    // The work light is what makes the stencils readable in a corridor that has
+    // no power at all: without it the first frame strip was three black boxes
+    // and no `DEVOXX`. It comes up with the first lamp and settles back to the
+    // standing level as the chapter takes over.
+    const lamps = Math.max(o.lamp.voxxy, o.lamp.droid, o.lamp.biggy);
+    // ...and it is the bulkhead over the row that provides it, so it goes out
+    // with it. Michele's beat: the light flickers, stops, and the only thing left
+    // lighting anything is the robots themselves (`emergencyAt`).
+    crates.setLit(Math.max(OPEN_CRATE_LIT, lamps) * o.emergency);
+    crates.setEmergency(o.emergency);
+    for (const c of crates.crates) {
+      c.setLamp(o.lamp[c.kind]);
+      c.setOpen(o.open[c.kind]);
+    }
+  }
+
   function drawDressing(snap: GameSnapshot, floorY: number): void {
     propPool.begin();
     peoplePool.begin();
     lockPool.begin();
+    seatField.begin();
     gateGroup.visible = false;
     cableLine.visible = false;
     breakerPanel.visible = false;
@@ -2209,11 +2568,15 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     fireDoor.visible = false;
     rollerDoor.visible = false;
     keypad.root.visible = false;
+    drawOpening(snap, floorY);
+    releasePanel.root.visible = false;
+    printer.root.visible = false;
     // Handed back to the venue unless a chapter claims it again this frame.
     if (venueFireLeaf) venueFireLeaf.visible = true;
     if (venueRoller) venueRoller.visible = true;
     if (venueGate) venueGate.visible = true;
     if (venueKeypad) venueKeypad.visible = true;
+    if (venuePrinter) venuePrinter.visible = true;
     for (const p of snap.props) {
       if (p.kind === 'cable') drawCable(p, floorY);
       else if (p.kind === 'firedoor') drawFireDoor(p, floorY, snap.walls);
@@ -2221,17 +2584,22 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       else if (p.kind === 'jammed') drawJammed(p, floorY);
       else if (p.kind === 'breaker') drawBreaker(p, floorY);
       else if (p.kind === 'terminal') drawTerminal(p, floorY, snap.t);
+      else if (p.kind === 'pilot' || p.kind === 'rack-lights') drawPilot(p, floorY, snap.t);
       else if (p.kind === 'cabinet') drawCabinet(p, floorY);
       else if (p.kind === 'lock') drawLock(p, floorY, snap.walls);
       else if (p.kind === 'gate') drawGate(p, floorY, snap.walls);
       else if (p.kind === 'crate') drawCrate(p, floorY);
       else if (p.kind === 'keypad') drawKeypad(p, floorY);
+      else if (p.kind === 'printer') drawPrinter(p, floorY);
+      else if (p.kind === 'projector-panel') drawReleasePanel(p, floorY);
+      else if (SEAT_KINDS.has(p.kind)) drawSeats(p, floorY);
       else drawProp(p, floorY);
     }
     for (const person of snap.people) drawPerson(person, floorY);
     propPool.end();
     peoplePool.end();
     lockPool.end();
+    seatField.end();
   }
 
   /* ---------------------------------------------------------------- robots */
@@ -2262,6 +2630,23 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       if (!rig) continue;
       rig.root.visible = show;
       if (!show) continue;
+      /*
+       * THE PRESENTATION LIGHT. Michele: *"Robots are still black. In the intro
+       * I'll show them fully, even if it's dark. It's their presentation."*
+       *
+       * Chapter 1's corridor is a blackout and a robot still in its crate is lit
+       * by nothing, so each panel is re-exposed IN ITS OWN COLOUR — no
+       * `THREE.Light` anywhere, which is the rule the crates already follow. It
+       * comes up with that robot's own crate lamp and is handed back to the
+       * game's lighting across the camera pull-back, so nothing pops on the
+       * transition frame.
+       */
+      const op = snap.opening;
+      if (op === null) presentationLight(rig, 0);
+      else {
+        const u = Math.min(1, Math.max(0, (op.t - WALK_AT) / PULL_BACK));
+        presentationLight(rig, op.lamp[b.kind] * (1 - u * u * (3 - 2 * u)));
+      }
       // Droid rides on Biggy: the sim keeps both at the same footprint, so the
       // renderer is the only place that knows how far up "on his shoulders" is.
       //
@@ -2276,15 +2661,13 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       // measurement comes off the rig rather than being a magic number that goes
       // stale the next time either robot is reshaped.
       /*
-       * NOT HANDLED HERE, and it shows in chapter 3's transition: the height of
-       * the ground floor's own walking surface. `groundRiseM` in
-       * `src/sim/geometry.ts` gives the 0.5 m lobby plate at a sim x and says in
-       * its own doc comment that the renderer is what reads it — nothing does, so
-       * a robot standing on the raised lobby stands half a metre inside it, and a
-       * robot on the main flight (whose treads climb to 5 m) is swallowed whole.
-       * The fix is a rise term added to `floorY` per robot; it needs the flight's
-       * own ramp, which lives in `src/render/venue/ground.ts`, so it is a piece of
-       * work of its own rather than a line here.
+       * The height of the floor under a robot is `surfaceY`'s business and the
+       * SIM's answer — `GameSnapshot.plates`, read through `riseAt`. It used to be
+       * nobody's: `groundRiseM` was exported for exactly this, said in its own doc
+       * comment that the renderer was what read it, and nothing did, so a robot
+       * standing on the raised lobby stood half a metre inside it and one on the
+       * main flight was swallowed whole. What is added HERE is only what a robot
+       * does on top of that floor — riding on Biggy, and Voxxy's hop.
        */
       const rider = b.kind === 'droid' && b.mounted;
       /*
@@ -2323,7 +2706,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
        * ~30 screen pixels of a pool that is meant to be centred on him.
        */
       const ry = rider ? b.y + MOUNT_OFFSET_Y : b.y;
-      rig.root.position.set(m(b.x), surfaceY(floorY, b.x, b.y) + lift, m(ry));
+      rig.root.position.set(m(b.x), bodySurfaceY(floorY, b.x, b.y, b.r) + lift, m(ry));
       updateRobot(rig, {
         speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M,
         heading: b.face,
@@ -2435,6 +2818,29 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       diorama.setChapter(snap.chapter);
     }
 
+    /*
+     * THE OPENING GETS ITS OWN ANGLE. Michele: *"Transition to the corridor,
+     * different camera angle, robots ready to start."*
+     *
+     * At the play azimuth the crate row stands edge-on and `DEVOXX` is three
+     * slivers, which is the whole reason this override exists. At 68 degrees all
+     * six stencil letters, the ANTWERPEN band, both red corner blocks and
+     * Biggy's stove-in corner read, and every crate still keeps a flank and a
+     * lid, so the row reads as three boxes stepping up in size — small, tall,
+     * huge, which is the presentation order. Handing it back re-frames the rect
+     * the camera already has, so the start of play is a swing rather than a cut.
+     */
+    const wantAzimuth = snap.opening !== null ? OPENING_AZIMUTH_RAD : undefined;
+    if (wantAzimuth !== lastAzimuth) {
+      lastAzimuth = wantAzimuth;
+      diorama.setAzimuth(wantAzimuth);
+      // And its own vertical band. The framed box always includes the band, so
+      // the band — not `VIEW_CRATES` — is what decides how close the opening can
+      // get; see `OPENING_BAND`.
+      if (wantAzimuth === undefined) diorama.setBand();
+      else diorama.setBand(OPENING_BAND[0], OPENING_BAND[1]);
+    }
+
     placeRobots(snap, dt, floorY);
     drawDressing(snap, floorY);
     updateActiveRing(snap, floorY);
@@ -2461,6 +2867,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
 
   return {
     render,
+    debugRoot: (): THREE.Object3D => scene,
     project(simX: number, simY: number, heightM = 0): { x: number; y: number } | null {
       if (portrait !== null || topDown) return null;
       projV.set(m(simX), lastFloorY + heightM, m(simY));
@@ -2509,6 +2916,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
         (mark.digit.material as THREE.Material).dispose();
       }
       propPool.dispose();
+      seatField.dispose();
       peoplePool.dispose();
       lockPool.dispose();
       gateMat.dispose();
@@ -2520,6 +2928,8 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       fireMat.dispose();
       fireBarMat.dispose();
       keypad.dispose();
+      crates?.dispose();
+      releasePanel.dispose();
       cableGeo.dispose();
       cableMat.dispose();
       contactGeo.dispose();

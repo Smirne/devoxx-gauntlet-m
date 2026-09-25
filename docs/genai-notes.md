@@ -2804,6 +2804,760 @@ the length of the corridor past both of them (flood fill, not arithmetic), and D
 landing where Biggy does not. `venue.smoke.test.ts` asserts the same of the thing on screen and
 adds that neither the numeral panel nor the poster box hangs over a stairwell. 435 green.
 
+---
+
+## 2026-09-25 — every door in the game opens, and the floor has a height
+
+**Michele, mid-playtest, for the second time: "And an animation for the door opening."** The fire
+door and the store shutter had already been done that night, so the first job was an honest audit
+rather than another fix: every `removeWall` in `src/sim/chapters`, every door-ish kind in
+`PROPS`. Seven doors, three of them still popping from shut to open in a single frame.
+
+**Cinema B's magnetic lock** (`ch1-night.ts`) was the worst of the three and the least visible:
+`key` removed the `lock` wall on the frame Droid reached the projector panel and `props()` stopped
+publishing the prop in the same frame, so the payoff of the whole mount beat was a door that did
+not open — it ceased to exist, silently. **The router cabinet** (`ch2-expo.ts`) cut straight to a
+single 4.32 m leaf standing at 58°, which is not a door anybody has opened and which lay 3.7 m out
+across the technical room with no collider under a square centimetre of it. **The registration gate
+at the foot of the main staircase** (`ch3-breakfast.ts`) was known bad and had been left for
+somebody else during the roller round: un-animated, walk-through, AND drawn twice, because
+`buildVenue()` builds a static gate in the same doorway.
+
+All three now follow the shape `src/render/fire-door.ts` and `src/render/roller-door.ts` settled,
+and `src/render/doors.ts` says so at the top so the next one does not invent a fourth: the sim owns
+the clock (`LOCK_SWING_TIME` 0.7 s, `CABINET_SWING_TIME` 1.2 s, `GATE_SWING_TIME` 1.5 s — durations,
+never speeds, so the 23 Sep rescale leaves them alone), the leaf is posed from the chapter's LIVE
+wall list plus that clock, and an open door is a collider where it ENDS UP. Cinema B's leaf lies
+against the inside of its auditorium wall; the cabinet's two doors — two, now, because a 5 m
+equipment cabinet has a pair and because a single 4.3 m leaf sealed off its own terminal — stop at
+58° with a wall under each; the gate swings back along the flight's west cheek, where a stair gate
+is pinned back when a building is open. Three new synthesised cues in the house idiom: `maglock`
+(an electric strike, not a hold-open magnet), `cabinet` (the only cue in the game whose middle is
+louder than its ends — hinges that have not moved since 2019), `gate` (a hook off an eye; nothing
+in it hits, asserted against `crash` and `shutter` in `tests/audio-cues.test.ts`).
+
+**The trap that had already cost a round, caught again.** Chapter 3's `done()` opened the gate and
+started the cutscene that ends the chapter in the same statement, and `CUT_FADE` is 0.35 s — the
+screen would have been black before the barrier moved a degree. It now holds the hall for
+`GATE_SWING_TIME + GATE_CUT_DELAY`, the way `FIRE_CUT_DELAY` made chapter 1 do. Driven on the built
+page, the swing runs 0 → 1 with `phase: 'play'` and `fade: 0` the whole way.
+
+**"We are still walking through the crashed door. The shape is fine, as long as robot walk on it,
+not through."** Michele's second note, about the leaf Biggy knocks off cinema E. Not a wall — the
+whole beat is that he went through that doorway — a **surface**. That is the same question
+`docs/playtest-notes.md` has carried for three rounds about the raised lobby and the main flight:
+`groundRiseM` existed for it, said in its own doc that the renderer read it, and nothing read it.
+So one answer, in the sim: `Plate`, `GameSnapshot.plates`, `riseAt` (`src/sim/surface.ts`), and
+`surfaceY` in `scene.ts` as the one line of drawing code that asks. The ground floor publishes the
+lobby, its six steps and the main flight; chapter 1 publishes the fallen leaf. **Michele's "the
+shape is fine" is kept**: the only change to the leaf is `rotation.order = 'YXZ'`, so the skew is a
+yaw of a leaf lying down instead of a roll of one still standing — under the old `XYZ` it came to
+rest propped on nothing, one edge 0.78 m in the air and its face running downhill by 0.62 m, which
+is a thing you cannot stand on. Flat, it is a 0.48 m plate, and a robot stands on it; Droid's mount
+lift composes on top of it. Closing the logged item also un-blocked chapter 3's transition, which
+used to walk the three of them *through* a flight climbing to 5 m over their heads, so it gets the
+close `CUT_FRAME` chapter 1 has.
+
+**A physics-realism bug, filed as a pacing note.** *"The walk is long and they are running a bit
+too fast."* Measured frame by frame through chapter 1's transition: Voxxy 109.2 px/s (151% of her
+max), **Droid 263% of his**, Biggy 176%. The gait is driven by that speed, so his legs were being
+run at a rate the rig was never tuned for. The cause was arithmetic — `pace = routeLength /
+CUT_WALK_TIME`, and the 24 Sep staircase move made chapter 1's route 180 px longer. The route is
+what shrinks, not the clock and not the pace: `trimRoute` in `game.ts` cuts the run-up back from the
+destination until the leg fits `CUT_WALK_FRACTION` of the **slowest robot's own max**, so the shot
+re-sizes itself the next time a waypoint moves. Both transitions now walk at 28.2 px/s (2.26 m/s);
+chapter 3's was over too, at 112% of Droid's max, and nobody had measured it.
+
+**Tests: 435 → 460, and every new one was run against the old code first.** Putting `trimRoute`
+back out reproduces Michele's own numbers to the decimal (109.2 px/s, 151%). `tests/doors.test.ts`
+measures all three new doors in both settled states; `tests/surface.test.ts` reads the fallen leaf's
+Euler order out of `scene.ts` itself, so the picture and the plate cannot part company;
+`tests/cutscene-pace.test.ts` asserts no robot is ever moved faster than its own `max` during a
+cutscene, and names which chapters run one so a new transition cannot arrive unmeasured. And
+`GATE_RUNS[3]` in `tests/colliders.test.ts` — written off last round as costing a full playthrough
+— is now that playthrough: soup, speaker and the beer delivery, shared with `tests/doors.test.ts`
+through the new `tests/pilot.ts`, so chapter 3's post-gate half is swept for the first time.
+Frame strips captured through all three openings and through a robot standing on the leaf.
+
+---
+
+## 24 Sep 2026 (evening) — the two featureless boxes Michele filed with screenshots
+
+**Human input.** Two notes, both with a screenshot. On the chapter-1 keypad: *"the keypad also
+needs a shape. Big numbers?"* On a Zaal numeral panel: *"This orange thing. I don't know if it's
+supposed to be a projector or what, but it misses a shape."* One standing call applied to both,
+his: *"I vote funny, robots must be recognizable"* — read here as **readable at the game's zoom
+beats accurate in close-up**.
+
+**The Zaal panel.** The floor-to-ceiling height was NOT the fault and was left alone —
+`media/other-images/image-1790032674926.webp` shows the real thing as a full-height orange panel
+beside the auditorium entrance with the numeral high on it, and the built geometry matched
+(`zaal-sign-3`, 0.00..3.62 m, numeral face 1.30..3.50). What was missing was everything that makes
+a panel not a box: our version was one `signOrange` slab carrying one textured quad, so the whole
+top, both flanks and the bottom 1.3 m of the front were bare orange — and this game's camera is a
+high isometric, so the naked lid was in frame. Four things off the photograph were added, in
+`signage.ts` and `materials.ts`: a **coping** (lighter orange, standing proud on the flanks, with a
+dark reveal line under it), a **returned edge** (the flanks a plane darker), a **shadow gap** at the
+foot, and the **header fascia** the photograph makes a "T" of. The block itself is now backlit like
+the numeral on it (`signOrange` gained an emissive) — the real complaint was a lit quad floating on
+a body that had gone black in the venue's own darkness.
+
+Two things were tried and taken out, both because a test said so, not because they looked wrong: a
+dark reveal all *round* the panel (invisible against a charcoal wall), and a coping proud on every
+face — 4 cm of overhang put room 4's panel over the stairwell and `tests/venue.smoke.test.ts`
+caught it, which is the fault that test exists for. The assembly now occupies exactly the envelope
+the old single slab did.
+
+**The keypad.** It was `PROPS.keypad = { h: 1.25, color: 0x2c3340 }` drawn by the generic
+`drawProp` as one box, in the chapter whose entire plot is the four digits that go into it — and it
+had been publishing `label: entered.padEnd(4, '_')` all along with nothing drawing it. New
+`src/render/keypad.ts` poses a modelled unit from the prop, the way the fire door and the roller
+door already do: mounting plate held off the wall, housing with a hood, a recessed four-cell
+readout in **seven-segment** digits (a 2 px bar glyph survives a 16 px cell where a 700-weight
+numeral does not), a painted 3x4 key grid whose **1-2-3 row is drawn dead** because `ch1-night.ts`
+takes 4 to 9 and nothing else, and a status lamp that goes red to green when the magnetic lock lets
+go. The housing also carries a standby glow, for the reason `projector-panel` and `terminal` carry
+one: the thing the player is looking FOR is by definition still idle, and chapter 1 is a blackout.
+It also stops the venue's own static keypad being drawn on top of the chapter's — two keypads in
+one doorway, the same duplicate the breaker panel was caught doing.
+
+**What was measured, and the one thing handed to a human.** The keypad's published rect is 8 px
+wide by 24 px deep — 0.64 m of frontage running 1.9 m ACROSS the corridor. The diorama camera is 14
+deg off that axis, so the 1.9 m ran away from the lens and four digits had 0.64 m to live in, about
+8 screen pixels each. Drawn in magenta in the running build it came to **760 visible pixels** at
+play zoom, most of them behind Voxxy's own head. Turning the same collider to run ALONG the
+corridor (19 x 12 px, still against the door's face, half the depth) gives 1.52 m of frontage and
+digits that read — the "64" in `scratchpad/pad/keypad-after-close-two-digits.png` against
+`keypad-after-close-unpatched-rect.png`. That is a sim change, so it was NOT made: it is
+`scratchpad/pad/keypad-rect.patch`, `git apply --check` clean, suite green with it applied, for a
+human to take or leave. The 19 px is not arbitrary either — `floor1Walls()` stands a
+`corridor-column` at x 565..581, and a wider rect would hang behind it. The renderer reads the rect
+either way, so both pictures are honest.
+
+**Tests.** 460 green. `tests/prop-geometry.ts` now reads the keypad's height from
+`KEYPAD_TOP_M` in the renderer's own module rather than re-typing it, so that transcription cannot
+drift; the footprint it reports is unchanged, which is the only thing the collider sweep asks about.
+
+## 24 Sep 2026 — "this still needs a shape": the seat rows
+
+**Michele's note.** A screenshot of chapter 1's cinema — Droid up on Biggy, his green pool across
+the rows behind them — and one line: *"This still needs a shape."*
+
+**The diagnosis, measured before anything was written.** `src/render/scene.ts` registered
+`seatrow` and `seatblock` in `PROPS` as `{ h: 0.55, color: 0x3c2f3a, tl: true }`, and the generic
+`drawProp` path drew exactly that: **one flat-topped cuboid per published rect**. Cinema E's six
+rows were six anthracite slabs, the longest of them 10 m. Meanwhile the game already knew how to
+draw a seat — `seatGeometry()` in `src/render/venue/props.ts` (cushion, back, legs, facing +z) —
+and `seating()` in `src/render/venue/floor1.ts` lays a whole auditorium out as a single
+`InstancedMesh`, 1900 seats in 26 draw calls. So the venue's cinema D, one wall away, had modelled
+seats in it and cinema E did not: two answers to "what does a seat row look like", and the chapters
+had the bad one. `scratchpad/seats-round/before-crop.png` is Michele's shot reproduced; the small
+blue grid at its top-left is cinema D's proper seating, for scale.
+
+**What was built.** `src/render/seats.ts`: one `InstancedMesh` for every seat every chapter
+publishes, built from the venue's own `seatGeometry` at the **sim's** own `SEAT_PITCH_PX` (14) and
+`ROW_PITCH_PX` (18), facing the room's screen via the sim's `screenEdge()`. Cinema E is 57 seats in
+one draw call. Two rules it is built around: nothing is drawn outside the published rect (a row
+shallower than the row pitch — chapter 1's are 9 px — gets shallower seats, not seats that overhang
+the gap a robot walks down), and the pitch is read from `src/sim/geometry.ts` rather than invented.
+
+**No sim change.** The rects, the `low` walls under them and the light that crosses them are
+untouched; `tests/aisle.test.ts` still reads the same `seatrow` props and `tests/colliders.test.ts`
+still finds a collider under every drawn solid. `SEAT_TOP_M` (0.87 m, the top of the seat back) is
+exported from the seat model and **imported** by both `PROPS` and `tests/prop-geometry.ts`, so that
+transcription cannot drift from what is drawn — the same cure the keypad's `KEYPAD_TOP_M` got.
+
+**What the round found and fixed on the evidence, not on a hunch.** Chapter 4 publishes `seatrow`
+props over room 8's seat blocks, and `buildVenue()` has *already* seated room 8 from the same
+`roomSeating()` plan — with a rake under it that the sim has no plate for, so the chapter's rects
+sit flat beneath it. As slabs that did not show; as seats it did. The before/after strip
+`scratchpad/seats-round/ch4-ab-front.png` caught a **second, half-height row of seats coming up
+through the gap between every raked row**. So `venueAlreadySeats()` stands the chapter's copy down
+wherever the venue's seating already covers the rect — by overlap, not by room name, so a chapter
+that seats a corner the venue's plan does not reach still gets seats. `venueSeatsRoom()` is now
+exported from `floor1.ts` and used by both drawers: one answer to "whose floor is this".
+
+**The clue case, checked rather than eyeballed.** A seat back is 32 cm taller than the slab it
+replaces, and chapter 1's clue 4 sits in cinema E's exit alcove with seating between it and the
+camera. `tests/seats.test.ts` casts a ray from every chapter-1 clue along `dioramaToCameraAtDeg(30)`
+and fails if it passes through any seat box. At a 30 deg pitch a 0.87 m back only occludes within
+1.46 m of depth behind it, and the nearest row is 3.76 m away.
+
+**Tests.** 472 green in 27 files (was 461 in 26). New `tests/seats.test.ts`, 11 cases. Two of them
+fail against the old plain-box renderer, and were run against it to prove it:
+`PROPS.seatrow is a 0.55 m box, not a seat: expected 0.55 to be close to 0.87` and
+`seat props still fall through to drawProp: expected 'function drawDressing…' to match /SEAT_KINDS\.has\(p\.kind\)/`.
+
+**Deliberately not changed.** Chapter 4 goes on publishing seat props over a room the venue already
+seats — that is a sim-side duplicate and a human's call, not a builder's; the renderer just stops
+drawing it twice. Cinema E's chapter seats are **not** raked: the venue's rake is renderer-only
+decoration with no plate behind it, and adding one under rects that are colliders in the 0.15..0.6 m
+band is a different round's change. The 14 px seat pitch is about twice a real cinema seat; it is the
+venue's own choice and the brief was explicit about not inventing a new one.
+
+## 24 Sep 2026 — the opening sequence's crates (`src/render/crates.ts`)
+
+**Human decisions this round.** Michele asked for an opening beat before chapter 1: the three robots
+stand frontal on pallets, *imballati*, they light up, get down, and play begins. He approved the
+lettering in his own words — *"Yes put the crates with 'Devoxx' 'For Stephan' 'Highly Fragile'
+'Bulky' and stuff like that"*, then *"crate labels are good. Highly fragile on Biggy is good."*, then
+*"the antwerpen sticker could strech between the 3 crates instead of being repeated?"*, then *"keep
+both bulky and highly fragile on biggy"*. The settled spec is `docs/playtest-notes.md`, "Crate
+stencils — agreed 24 Sep". The agent built the crates only; the choreography, camera move and
+instructions panel are a parallel piece.
+
+**What the agent did.** A self-contained renderer module: `buildCrates()` returns a group of three
+crates, each with a named removable front panel, a stand anchor, `setLamp(0..1)` and `setOpen(0..1)`.
+Rough sawn timber — plank walls with depth jitter and roll, a darker sawn frame of corner battens and
+rails, a pallet under each — built through `mergeSimple` and the venue palette (`venueSpec('wood')`
+mixed toward deal) rather than a fourth parallel set of helpers. The stencils are painted through the
+existing `SignPainter`, not a new text facility. No game logic, no colliders, no lights, no external
+assets, and no frozen constant touched.
+
+**The finding worth keeping.** Michele's "exactly two letters per crate" has a geometric consequence
+nobody had written down. A word reads as one word when its tracking is constant; two letters per
+crate at constant pitch puts the pair centres `2p` apart, so the crate centres must be `2p` apart
+too, so `2p = (wᵢ + wᵢ₊₁)/2 + GAP` for **every** adjacent pair. Solve them and (1) adjacent crates
+must be equal width, and (2) the tightest reachable tracking is exactly `GAP + 2·INK_MARGIN`. So
+Voxxy's and Droid's crates share a width and differ in height and depth, and Biggy's is the oversize
+one with its pair pushed to its left margin so the surplus falls at the end of the word where nobody
+can see it. `tests/crates.test.ts` asserts the constant tracking rather than just the seam
+clearances, because constant tracking is the formal statement of "the word does not skew" and it is
+the thing that breaks first if someone re-sizes a crate.
+
+**Rejected, and why.** Justifying the second line by character count — eight glyphs of `N · T.A.`,
+five of them punctuation, filled the same 1.28 m as eight letters of `ANTWERPE` and the middle crate
+came out spaced like a ransom note; it is split by width now, off a Helvetica advance table.
+Bridging every stencil glyph — the two X's came back looking like hazard chevrons, so only letters
+with a counter are tied. Stretching every glyph to its cell — an `E` as wide as a `D`; a stencil is
+monospaced in its cells, not in its letterforms. `ZAAL 8` stays dropped.
+
+**Two bugs the screenshots caught that the tests could not.** The crates were centred on z, so each
+front face stood at its own `+depth/2` and Biggy's was 0.31 m nearer the camera than Droid's — at the
+diorama's 14 deg azimuth that ate 0.44 m of his neighbour's face and hid half the letters the
+spanning word exists for. The notes say **coplanar**; that is now a number and a test. And the small
+type used the big band's ink margin, which is narrower than the corner battens, so the first and last
+character of every small line was drawn under a batten.
+
+**Legibility, measured.** Front-on, screen px per metre: `DEVOXX` reads from 14 and is comfortable at
+20; `ANTWERPEN · T.A.V. STEPHAN` needs 34 and is comfortable at 45; the per-crate corner blocks need
+46 and are comfortable at 60. At the diorama's own pitch add about 15 %. Chapter 1's play zoom is
+about 44 px/m, so at play zoom the two spanning bands read and the corner blocks do not; ~65 px/m
+reads everything.
+
+**Tests.** `tests/crates.test.ts`, 26 cases, green. The suite as a whole had 4 reds this round in
+`geometry`, `staircase-clear`, `chapters` and `ch2-chain` — all in a parallel agent's in-flight
+staircase and chapter rewrite, none reachable from this module, which nothing in `src/` imports yet.
+
+---
+
+## 24 Sep 2026 — the green cube that opens the door
+
+**Michele's note.** A screenshot of chapter 1's mount beat, Droid up on Biggy's shoulders in the
+blacked-out corridor: *"the part that needs a shape is the green Cube that opens the door"*. The
+`projector-panel` prop — cinema B's door override, the payoff of the whole climb — was a `PROPS`
+table entry drawn by the generic `drawProp`: one lit cuboid, amber on `idle` and green on `done`.
+
+**What the agent did.** Modelled it in its own module, `src/render/release-panel.ts`, posed from the
+prop the way `src/render/keypad.ts` and `src/render/fire-door.ts` are: a back plate on four standoffs
+with a shadow gap, a hooded housing 0.24 m deep with a lit face plate, a pull lever, a mushroom
+release under a guard ring, a key switch, an engraved Dutch plate (`DEURONTGRENDELING · ZAAL B ·
+ZAALVERLICHTING`) with a hazard flash, a lamp with a `VERGRENDELD` / `ONTGRENDELD` legend, a cable
+tray with a conduit drop, and two stays up to the corridor vault. Four things answer `Prop.state`,
+not one: the lever stands up, the key turns, the mushroom goes in, the lamp and its legend go from
+red-held to green-released. `scene.ts` gets six small hunks — an import, the `PROPS` entry reading
+`PANEL_H_M`/`PANEL_LIFT_M` off the module, the build, `drawReleasePanel`, the dispatch and the
+dispose. `tests/prop-geometry.ts` imports the same two constants instead of retyping them, which is
+the `KEYPAD_TOP_M` pattern.
+
+**The measurement that explains the note.** The diorama camera looks along (0.210, 0.500, 0.840). Of
+a solid box on the published rect it sees 1.44 × 0.840 = 1.21 m² of front and 3.07 × 0.500 =
+**1.54 m² of lid**: the largest surface on screen was the top of the box. "A big flat cube" is not a
+figure of speech, it is that ratio. `tests/release-panel.test.ts` asserts face ÷ lid > 2 and reads
+**0.79** against the old renderer.
+
+**The fault the model uncovered.** Two corridor columns (`corridorColumns()`, sim x 365..385,
+y 288..304, 3.3 m shafts) stand across the back half of that rect. The box only cleared them by
+being 1.92 m deep — its lid stuck out past them, which is *why* the lid was what the player saw. A
+unit drawn at the honest depth at the rect's rear is 70 % hidden and partly inside a column
+(`scratchpad/panel-round/dbg-close.png`, magenta-face probe). So `mountZ` slides the unit forward
+inside its own rect until it is clear of any column in its x range and no further — the move
+`venue/projector.ts` already makes with `bayOffsetPx`, a drawing position computed from the geometry
+it has to stand clear of. Nothing the sim owns moves.
+
+**A human decision is pending.** The rect patch is written and **not applied**:
+`scratchpad/panel-round/panel-rect.patch`. It cuts the depth from 24 px to 6 px and takes `panelAt`
+off its hard-coded half-extents; starting the rect at `CY0 + 19` keeps its centre at (367, 307)
+exactly, so `PANEL_REACH` and the mount beat are unmoved and the unit lands within 2 cm of where it
+draws today. It is the sim and a collider, so it goes to Michele.
+
+**Rejected, and why.** Pushing the rect back against the wall — `floor1.ts` springs the corridor
+vault off the far wall head at 2.95 m and rakes it at 0.75 rad, which is why `signage.ts` caps the
+far wall's readable band at `FAR_Y1 = 2.6 m`; a unit at 2.5–3.4 m hard against `CY0` is behind the
+soffit and invisible. The rect's distance from the wall was right; only its depth was wrong. A
+polished trim hood — the first cut made it 0.36 m deep in the same metal that carries the standby
+glow, and photographed at play zoom it was a gold awning over a dark box, the cube's own mistake one
+tenth the size; the hood and sill are dark shelves with one bright lip now, and the brightest thing
+on the unit is its face. Bright stays — 1.2 m of amber-glowing trim read as brass poles, so they got
+their own cold steel. Raising the release out of reach to match the dialogue's *"about a metre above
+my reach"*: measured off the rigs, Droid's hand tops out at ~2.80 m and `mountLift` is 0.30 m, so the
+mount buys 3.10 m and the controls sit at 3.10 m — the metre is rhetoric, the sign of it is not.
+
+**A false comment corrected.** `src/render/venue/projector.ts`'s header asserted that the
+`projector-panel` prop *"is the door override, a different object, and it already has one"* — a
+shape. It did not. The note now says so and points at the new module.
+
+**Tests.** `tests/release-panel.test.ts`, 10 cases, green; 9 of the 10 fail against the pre-change
+renderer, reconstructed in a worktree at 82ca20b with the old `drawProp` box as a stand-in module.
+Full suite at hand-off: **513 tests, 29 files, green**, `npx tsc --noEmit` clean. Mid-round it
+carried 4 reds in `geometry`, `staircase-clear`, `chapters` and `ch2-chain` from a parallel agent's
+in-flight staircase rewrite in `src/sim/geometry.ts` — they passed at committed HEAD throughout,
+nothing in this change reaches them, and that agent's work went green before the end of the round.
+
+---
+
+## 24 Sep 2026 (evening) — the secondary staircases, read off the drawings a second time
+
+**The human decision.** Michele sent three images back (`plans/michele-notes/`): the plan symbol
+for a secondary staircase enlarged, a photo of the real stair with the balustrade ringed in red,
+and a crop of the ground-floor shaft with its direction arrow. His words, in full, are the whole
+brief for this round:
+
+> the stairs are not yet fine. But i can understand the error here. This makes it look like there's
+> a center, and 2 descent. I think it's a mid plane between two ramps of stairs. In this picture
+> stairs go south to north. There's a protection on West and North, as you can see on the second
+> picture. / stair entrance is where the arrow is, going down North. / On ground floor, your stairs
+> are good. Floor 1 is directly above, so they should match. / Just a correction: you put the
+> opening north, but it's on the sides (WEST, EAST). Worth a fix.
+
+Four separate rulings, and the standing rule of 24 Sep — *"follow the devoxx plant, not the
+plan.md"* — meant each one had to be re-measured on the PNGs rather than taken from him or from a
+comment. All four checked out.
+
+**What the agent measured.** On `devoxx-rooms-plain.png`, the first-floor flight runs plain
+y 853..914 with its treads at a steady pitch and **one tread-free band at 879..887** — a
+half-landing at 13% of the run, not a landing you step onto. On `exhibition-floor-simple.png` the
+same object at that plan's scale: flights over ~199 px with a tread-free band 31 long. One
+staircase, two ramps, a mid-plane; the build had a walkable square in the middle with a run falling
+away either side, which is exactly the "center, and 2 descent" he named. The two drawings also
+agree on aspect ratio (3.2:1 against 3.36:1), which is what proves they are the same staircase seen
+from its two ends.
+
+The doors were counted rather than eyeballed: thresholding the drawing's green door symbols inside
+each shaft's own bands gives **0** on both short ends of both shafts and 200–280 px on all four
+long faces. Landing, first riser, half-landing and doors then came off the plan at
+y 165 / 170..205 / 234 / 276..292 / 323, mapped through this repo's existing calibration.
+
+**The thing the agent got wrong and the drawings corrected.** The coordinator's reading of
+"openings on the WEST and EAST faces" was that they are the shaft rect's two SHORT ends, since the
+rect is 226 × 45. It is the opposite: the module rotates the plan 90°, so the building's west and
+east faces are the rect's two LONG (±y) faces. Both statements describe the same two doors. That
+distinction is now written at the top of `stairDoors`, because it is the kind of thing that will be
+misread again.
+
+**What a driven test caught that no flood fill could.** Moving the first-floor way-on from the
+middle of the flight to its east end quietly removed the pinch that has kept Biggy off the
+secondary stairs since playtest note 18 — with walls on only one side, he drove straight onto the
+top step. Every existing test in the area asks whether a cell is walkable, and those cells were
+walkable before and after. `tests/stairs-driven.test.ts` drives a robot with the stick and reads
+where it stops; it caught this in one run. The fix is the balustrade Michele's photo already
+showed: `NICHE_RAIL` makes the guard a collider across the head, so the head is a 1.30 m pocket
+entered by turning in off the corridor. Droid rests 0.9 px from its centre, Biggy 14 px short.
+
+**Rejected.** Two attempts to give the first-floor well a full-height guard at its head were backed
+out. Room 9's numeral panel is 30.25 px of sign in 30.75 px of wall, clamped against that very
+edge, with its bottom 0.30 m off the floor; traced at every diorama pitch the sight line from its
+bottom corner crosses the guard's line between 0.63 m and 1.11 m, so **no** handrail height clears
+it. Moving the numeral was tried and backed out too: the wall on the other side of room 9's door is
+the same width and has a corridor column in front of its first 5 px, so the panel would overhang
+the door lintel. The head of each well carries a 0.40 m upstand and a newel instead, and that is
+logged as a compromise rather than a solution — the honest fix needs Michele to say whether the
+numeral may move.
+
+**Also found, not fixed:** the technical room's north wall leaves **15.8 px** between it and the
+bot shaft's south door. Biggy is 18 across, so he cannot use that door. `GF.tech` came from the
+prototype and has never been measured off the plan; flagged rather than moved.
+
+**Tests.** `tests/stairs-driven.test.ts` new (3 driven cases). `tests/geometry.test.ts` and
+`tests/staircase-clear.test.ts` had three cases rewritten onto the corrected geometry — none
+loosened: "one doorway in the west end" became "both short ends solid, a doorway in each long
+face", and the descent-waypoint check gained a second assertion that the middle of the flight is
+now wall. Suite at hand-off: **516 tests, 30 files, green**, `npx tsc --noEmit` clean,
+`document.title` = `After Dark · ERRORS:0` on every shot.
+
+## 2026-09-24 — one list behind the meter, the checklist and the hints (chapters 2, 3, 4)
+
+**What a human decided.** Michele asked for an instructions panel carrying "the main mission
+(getting Devoxx ready to start!), the chapter mission, command reminder and eventually checklist /
+hints", a meter on the HUD ("x of y things done") in place of the bottom objective bar, and hints
+"just on demand, for desperate player. arrow last is good". He also fixed the architecture of it:
+all three read ONE list so they cannot drift apart — `Task` in `src/sim/types.ts`, published per
+chapter as `ChapterRuntime.tasks()`, with chapter 1 already written as the worked example.
+
+**What the agent did.** Wrote `tasks()` for chapters 2, 3 and 4, reading the same locals each
+chapter's `progress()` already reads — no new state, no recomputation, and no behaviour change:
+every one of the three diffs is additive apart from one `import type` line. Four rows for the expo
+(power, router, cable, store), five for breakfast (ladle, soup, speaker, beer, stairs) and four for
+the keynote (cake, banner, spotlights, stage).
+
+**Three judgements worth recording.**
+
+- *The router is one row, not four.* Cabinet shut → open and dead → wanting the password → online
+  are four states of one object in one place; four checklist rows would claim the chapter has four
+  times the network jobs it has. The row's tail says which step it is at, which is the sentence
+  `progress()` already writes. While the terminal's prompt is open the row publishes **no** `at`:
+  the password is typed, not walked to, and an arrow would point at the robot's own feet.
+- *The swag is not in the list at all.* The three booth games are optional (`OBJECTIVE` says so and
+  `progress()` refuses to let them lead), so counting them would tell a player who has done
+  everything asked of them that they are 5 of 8 done. `tests/tasks.test.ts` plays chapter 3 to the
+  gate, wins a sticker on the way, and asserts the list is still five rows.
+- *Chapter 4's clock is not a row.* The crowd arriving is a deadline, not a thing to do: nobody can
+  tick it off, and a meter counting it down would read "3 of 5" for a stage that is finished. It
+  stays where a countdown belongs — the `crowd` prop and the progress line.
+
+**Rejected.** Pointing the arrow at the keynote speaker's hiding place. Which booth they are behind
+is that errand's answer, and the chapter deliberately does not even publish the person until Voxxy
+is close enough to have spotted them; the row carries no `at` until they are following her, and
+then it points at Stephan. Also rejected: putting the WiFi password or a keypad digit in a hint —
+the hints name the two places the password is written down and never a letter of it.
+
+**Found, not fixed.** Chapter 1's `code` row points its arrow at the keypad's own rect, which is a
+pad ON the corridor wall, so the target is inside the slab rather than the floor in front of it.
+Harmless for an arrow and left alone (chapter 1 was not this change's to edit); `wellFormed` in the
+new test allows 34 px of slack for exactly this case and asserts chapters 2–4 need none of it.
+
+**What `Task` still cannot say,** flagged for whoever builds the panel: *optional* (the swag), *who
+it needs when that is more than one robot* (chapter 1 picks `need[0]`; chapter 4's stage needs all
+three), and *blocked by* (the router while the breakers are down).
+
+**Tests.** `tests/tasks.test.ts` new — 15 cases, every chapter including 1, and almost nothing
+asserted at setup: ids unique and unchanged across real state changes, `done` flipping under the
+shared A* pilot and the existing choreographies, `n ≤ of`, every `at` reachable after play as well
+as before, and no line containing the chapter's own generated secret (chapter 1's code read from
+`NightState`, chapter 2's password read from the terminal's own buffer, chapter 3's hiding booth).
+Suite at hand-off: **534 tests, 32 files, green**, `npx tsc --noEmit` clean.
+
+---
+
+## 24 Sep 2026 — the opening's three complaints (intro-light round)
+
+**What a human decided.** Michele, having played the opening: *"the left crate is half black.
+Robots are still black. In the intro I'll show them fully, even if it's dark. It's their
+presentation."* And, proposing a restaging: *"Why not placing the crates on the west wall and using
+a single transition? Start: cinematic on the crate, light on robots, each one exits and is
+presented. Transition to the corridor, **different camera angle**, robots ready to start."* He also
+ruled the boundary for the fix: no `THREE.Light` near the crates (the venue's lighting is the sim's
+visibility polygons and a second lighting model is not on the table), `src/sim` untouched, and the
+diagnosis before the change.
+
+**The half-black crate is not a rendering bug.** The agent reproduced it first and instrumented it
+rather than guessing: a run-time bounding-box sweep of everything in the scene that intersects
+Voxxy's crate found a `venue/corridorColumn` — 3.3 m of `#1b1e24` with no emissive, which in a
+blacked-out corridor is exactly black — at sim x 59..75, y 288..304, overlapping her crate's
+65.9..83.1 by **9.1 px of its 17.25 px width, 53%**. The confirming shot paints every corridor
+column magenta at run time and the magenta lands precisely on the black half
+(`scratchpad/intro-light/02-halfblack-diagnosis-magenta.png`). **Voxxy's crate is standing inside a
+structural column**, and because the crate footprints are published as walls, so is the sim.
+Candidates ruled out by that measurement, not by argument: the shared-vs-per-crate `setLit`
+materials, a shadow, the visibility polygon, the fallen panel and a winding problem.
+
+It cannot be fixed by sliding the row: scanning the corridor's west half a pixel at a time there is
+**no** row centre where all three crates clear both the columns and the auditorium door leaves (the
+two usable column gaps, 75..169 and 245..365, each have a door in the middle of them). Michele's own
+restaging is the fix — quarter-turned against the west wall, face line x 29, row centre y 350, the
+whole thing clears with room to spare. The row's position lives in `src/sim/opening.ts`, which was
+out of this agent's scope, so the change was handed back as a hunk and the geometry is guarded by
+`crateFootprints()` / `crateRowFouls()` in `src/render/crates.ts` and five cases in
+`tests/intro-light.test.ts`.
+
+**The presentation light** is `presentationLight(rig, v)` in `src/render/robots/rig.ts`: a per-rig
+emissive lift, 0..1, no light of any kind. Each panel is re-exposed in **its own colour**, to linear
+luminance `0.1 + 0.44 * sqrt(lum)` — the square root is what keeps Droid's graphite darker than
+Voxxy's orange instead of flattening all three to the same grey. Two things are deliberately left
+alone: everything in `rig.glow` (eyes, visors, ports are already emissive at 1.8 with tone mapping
+off, and lifting one gives a robot two white holes in its face) and any material whose own colour is
+black (Voxxy's glass highlights).
+
+**Rejected, twice over, and both by a shot.** First cut lifted `mat.color` for every material. In
+node that looks right; in a browser Biggy's belly and dome carry all of their colour in a canvas
+texture and sit on `color: '#ffffff'`, so his whole gut came out **flat white**. The fix is the rule
+`crates.ts` already records for its painted faces — a mapped material lifts its `emissiveMap`, so
+the orange glows orange and the worn-through grey stays grey. Also deliberately avoided: the
+`weather()` trap in `docs/playtest-notes.md`. Nothing here touches a vertex colour, and three's
+standard shader multiplies `vColor` into the diffuse term only, so the white-flake bug cannot come
+back through this door.
+
+**The second camera angle** is `DioramaCamera.setAzimuth(rad?)` beside `setChapter`, re-framing the
+last rect exactly as a pitch change does; calling it with nothing restores `DIORAMA_AZIMUTH_RAD`.
+Default behaviour is bit-for-bit unchanged, asserted by comparing the full camera state of an
+untouched camera against one that has been swung and given back. The recommended intro angle is
+**`OPENING_AZIMUTH_RAD = 68 deg`**, chosen off a six-shot strip (14/45/56/68/80/90) rather than
+guessed: 14 reads the spanning `DEVOXX` as three slivers, 90 is a flat elevation, and 68 keeps a
+visible flank on all three crates while every one of the six stencil letters and both red corner
+blocks stay legible.
+
+**Flagged, not changed.** `DIORAMA_AZIMUTH_RAD` is baked into the facing and occlusion rules in
+`src/render/venue/signage.ts`, `src/render/keypad.ts`, `src/render/venue/projector.ts` and
+`src/render/venue/floor1.ts`, and asserted at that one angle by `tests/venue.smoke.test.ts`,
+`tests/seats.test.ts`, `tests/aisle.test.ts` and `tests/release-panel.test.ts`. A shot staged far
+off the play azimuth will show some of the set from behind — fine for an opening that frames three
+crates in an empty corridor, and the reason this is a shot override rather than a second setting.
+
+**Tests.** `tests/intro-light.test.ts` new — 27 cases: the column overlap pinned with its own
+numbers against a frozen copy of the row as diagnosed, the "no clear x along the north wall" scan,
+the west-wall row clearing everything, coplanar faces at both yaws; per robot, an exact restore at
+`v = 0`, a lift on every panel with the glow materials untouched, hue preserved and monotonicity in
+`v`; the painted-panel rule; and the camera's default-identical framing, exact restore, re-frame on
+change and the untouched module-level sight-line vector. Suite at hand-off: **568 tests, 34 files,
+green**, `npx tsc --noEmit` clean, `document.title` `After Dark · ERRORS:0` on the opening and in
+play.
+
+## 26 Sep 2026 — chapter 2: the breakers land, the modem, and the cabinet's pilot lamp
+
+**Michele's note.** *"Some comments on chapter2: the braker activation seems to do nothing, apart
+from the message. A 56k like sound for the modem and a light on a cabinet to signal you should go
+there?"*
+
+**What was actually wrong.** Not the design. `ch2-expo.ts` already says beside the last breaker that
+*"a supply is not a lit room: what the player gets for the breakers is a noise behind a door, and a
+reason to go and open it"* — and the noise and the pointer had never been built. Throwing a handle
+set a flag, moved a lever a few pixels up a wall in a blacked-out room, and printed a toast. There
+was no sound at all: the `breaker` cue existed in `audio.ts` and was played in exactly one place,
+`setAmbient`, as a chapter-2 opening stinger, so the only time a player ever heard it was before
+touching anything.
+
+**Built (agent).** Three things, all of them decided in `src/sim` and only drawn in `src/render`.
+
+1. *The strike.* A new duration, `BREAKER_STRIKE_TIME = 0.45 s`, published as `Prop.progress` on the
+   breaker panel — 1 on the frame a handle goes up, decaying to 0. A count (`v`) has no edges in it;
+   this does, so every handle gets a flash and a cue, not just the third. `drawBreaker` flares the
+   supply lamp to white and catches the handles in it. Each handle also now names the circuit it
+   fed, and the middle one is **HALL LIGHTING** — fed, contactor still open, nothing to close it —
+   which answers in the fiction the question Michele asked in the first place (*"I thought they were
+   linked"*).
+2. *The modem.* A new cue, `modem`, ~2.0 s, synthesised like everything else: DTMF dialling
+   (697/770/941 × 1209/1336/1477), the 2100 Hz V.8 answer tone with a 3 Hz beat partner, the two
+   V.21 channels keyed against each other (980/1180 and 1650/1850) as **one oscillator per channel
+   stepping between its mark and space tone**, the scrambled training sequence as noise, and the
+   drop into the connected hiss. Everything inside the 300–3400 Hz telephone band, which is why a
+   modem sounds like a modem. A sibling cue `busbar` carries the supply landing: contactor,
+   overhead relay, and the board settling into a 100 Hz hum — twice the Belgian 50 Hz mains, which
+   is what a transformer core actually does — with nothing bright in it, because the hall stays
+   dark.
+3. *The pilot lamp.* A new `pilot` prop, an annunciator strip across the top of the cabinet, keyed
+   to the **supply** and nothing else: dark with no volts (shut or open — a lit lamp on a dead
+   cabinet is a lie a player only falls for once), amber and breathing once the board takes load,
+   green when the router is on the air. The technical room's threshold plate and name sign gained
+   the same middle state, so the supply landing is visible from out in the hall as well as from the
+   panel.
+
+**Human decisions carried.** The chain itself (Michele, 25 Sep) is untouched and re-guarded: the
+breakers still do not light the hall, and `tests/ch2-power.test.ts` restates that where the new lamp
+is. *Recognisable beats precise* decided the modem's dial tones — a venue router has no phone line,
+and the joke and the physics happen to agree, because a real handshake's frequencies are exactly
+what makes it recognisable.
+
+**Rejected.** A standby glow on the pilot lamp, the convention every other findable prop here
+follows (`projector-panel`, `terminal`, `keypad`, `poster`): those are idle objects, this one is an
+electrical indicator, and giving it a glow would have it claiming a supply it has not got. Also
+rejected: suppressing the two `terminal` props while the cabinet is shut. Their standby glow does
+read faintly through the shut doors, which is a real cosmetic bug, but a prop that stops existing
+mid-chapter is the exact failure this repo has already logged twice (cinema B's door, the roller
+door) — flagged for the renderer instead.
+
+**Found and fixed on the way.** `MAX_VOICES` was 14 and counts voices from creation, not from when
+they sound; a cue schedules its whole timeline up front, so `victory` alone books 11 slots for 2.5 s
+and a Biggy footstep landing on it (3 voices) was silently dropped. Raised to 24.
+
+**Tests.** `tests/ch2-power.test.ts` new — 7 cases: the strike on every handle and its decay, the
+circuits named, the pilot lamp's five-state table including both dead states, the hall staying dark,
+the threshold plate, and the new kind being classified for the collider sweep. `tests/audio-cues.ts`
+extended — the stub now records every oscillator frequency and every envelope peak, so the two new
+cues are asserted by their carriers (2100 / 980 / 1180 / 1650 / 1850, DTMF rows and columns), by the
+telephone band, by duration, and by a conservative rectangle bound on the summed envelope
+(`modem` 0.151, `busbar` 0.334 at the destination — nothing clips). All 9 new cases were written
+first and run red against the old code. Suite at hand-off: **586 tests, 36 files, green**,
+`npx tsc --noEmit` clean, `document.title` `After Dark · ERRORS:0` across seven chapter-2 probes.
+
+## Session — 24 Sep 2026, night (agent, with two sub-agents)
+
+**What Michele decided.** *"the antwerpen sticker could stretch between the 3 crates"*; *"keep both
+bulky and highly fragile on biggy"*; the staircase reading (*"a mid plane between two ramps"*, *"the
+opening is on the sides (WEST, EAST) — that's for ground 2"*); on the first cut of the opening,
+*"the intermediate scene i don't get it… I vote 1"*, then *"the left crate is half black. Robots are
+still black. In the intro I'll show them fully, even if it's dark. It's their presentation"* and the
+restaging itself — *"Why not placing the crates on the west wall and using a single transition?
+Start: cinematic on the crate, light on robots, each one exits and is presented. Transition to the
+corridor, different camera angle, robots ready to start."* Then, late: *"sometimes the toast are
+multiple and not all are visible"*; *"the stair, reception and wardrobe appearence still need fix.
+Am I putting too much thing together on the backlog?"*; *"where is the wifi password graffiti? It
+should be visible!"*; *"chapter 2 ends abruptly… give some seconds for animation"*; and *"Keep
+building tonight, I'll stop here."*
+
+**The honest answer to his backlog question was yes**, and it is recorded in
+`docs/playtest-notes.md`: fifteen items open, and the session before this one went on crates, the
+intro and bubbles, none of them on the priority 1 he had stated on 24 Sep (*"staircase and reception
+right is priority 1"*). Saying so and then burning the venue block was the right order.
+
+**What the agent did.** Fixed the speech bubbles (two causes: a shared keyframe ending on
+`transform:none` with `fill-mode: both`, which permanently cancelled each bubble's
+`translate(-50%,-100%)` anchor; and no separation at all between two bubbles whose boxes crossed).
+Reworked the reception block to his 24 Sep spec — a hollow L of two counter runs, the printer on the
+south run, the wardrobe handing out west instead of south into the back of the desk. Painted the
+wifi spray tag, which existed only in the sim because the `poster` prop style draws every poster as
+a pale lightbox; found on the way that the printed WiFi notice had been hanging at y 371, **inside
+`GF.coatroom`** — a sign nailed up in a closed room. Landed both sub-agents' work, wired their cues
+and hunks. Gave chapter 2 a three-second curtain. Built the run sheet (`I`), the meter and the
+escalating nudge (`H`).
+
+**What was measured rather than argued.** Voxxy's crate stood inside `corridor-column` — 9.1 px of a
+17.25 px crate, 53%, of a pure-black 3.3 m column — and a pixel scan of x 40..400 proved no row
+centre on that wall clears both the columns and the auditorium door leaves. The main staircase's
+orientation was settled off `plans/exhibition-floor-stairs-annotated.png` (entered from the entrance
+side, climbing away) and then **deferred with the measurement written down**, because it drags
+`ch3-breakfast.ts`'s gate swing and Stephan's post with it. The crate row's quarter-turn sign was
+found by sweeping the scene graph's bounding boxes over Voxxy's own rect — twice now that has been
+the only way to identify a dark shape in a screenshot, so `DioramaScene.debugRoot()` is kept.
+
+**What a human decided that a builder would have got wrong.** The restaging. Moving the crates to
+the west wall was Michele's idea for compositional reasons, and it turned out to be the only
+position that works at all — the agent had been trying to slide the row along the north wall.
+
+**Rejected.** Weakening `tests/aim.test.ts` when the new start marks broke it. The marks are a
+north-south line now, so driving north is Voxxy shoving Biggy, and a shoved robot facing its actual
+travel is `stepAim`'s documented rule, not the wall-rebound bug that case exists for — so the case
+clears the lane and says why, instead of quietly asserting the opposite of the design. Also
+rejected: guessing at *"Reception signal points the wrong way"* and *"this element before reception
+is not needed"*. Both candidate signs measure as pointing correctly, so the note is about something
+the agent cannot identify from the words alone; queued as a question rather than a change.
+
+**Tests.** `tests/reception.test.ts` (7) and `tests/tasks-panel.test.ts` (21) new; `tests/aim.test.ts`,
+`tests/party-tricks.test.ts`, `tests/opening.test.ts`, `tests/venue.smoke.test.ts` and
+`tests/ch2-chain.test.ts` extended or turned with the staging. Suite: **609 tests, 37 files, green**,
+`tsc --noEmit` clean, `After Dark · ERRORS:0` across all four chapters and the intro on the built
+bundle.
+
+---
+
+## 25 Sep 2026 (night) — the overnight pass: his list, in his order
+
+**What a human decided.** Michele played chapters 1–3 and filed, in three bursts, about twenty
+separate notes — half of them with screenshots and two with circles drawn on them. He also gave the
+answer to a problem the agent had been circling for two rounds: *"If we want to handle the light
+change, we could do this. There's a light on the crates, robot exit fully visible. Light (emergency
+light?) flickers and stops, robots light up -> transition to game."* That is the whole intro beat,
+and it fixed the one dishonest thing in the sequence — the corridor is a blackout with no fitting
+anywhere near the crates, so the robots were visible because the renderer re-exposed them and for no
+reason inside the fiction. Now there is a bulkhead on the wall, it is what the presentation is lit
+by, and it gives out on cue.
+
+Two more of his calls that a builder would not have made: *"if the soup is spilled, you can come
+back and take a new batch"* — deleting a full-screen `R to try again` twenty seconds from the end of
+chapter 3, for a mistake whose fix in the fiction is walking back to a counter with a vat on it; and
+*"you should be able to 'talk' with stephan"*, which turned the man the whole chapter is about from
+a figure in a hat into somebody who tells you what he is still waiting for.
+
+**What the agent did.** Chapter 1's exit cutscene now goes round the balustrade instead of through
+it (reported twice). `Task.hint` became a list so `H` can walk a gate before the task behind it.
+Toasts render their markup — the chapters have always written `<b>` into them and `pushLine` set
+`textContent`. `standOff()` made the standing people solid: the three staff you ask for directions,
+Stephan and the keynote speaker were drawn and nothing else. Chapter 2's task 1 says *"power up the
+technical room"*, which is what the three handles actually do; the rack rides the supply and has its
+own link lights, so the cable's start is a lit thing in a dark room; the badge printer is a badge
+printer (`src/render/printer.ts`) instead of a pale grey cuboid. The bar on the hall wall is called
+The Finally Block on a fascia over its own taps, and the wifi graffiti moved out from behind it. The
+crab sandwich is in the building, with its own BROODJE KRAB sign and a line from each robot.
+
+**What was measured rather than argued.**
+- *"Pic5 there's still that big strange wooden thing."* Screenshotted the reception from the game's
+  own camera, swept the venue's meshes for long thin brown boxes, and found the reference
+  photograph's orange ceiling soffit hung at 3 m on `overhead` — over a floor this diorama draws no
+  ceiling for. It is a fascia on the wardrobe wall now. It was a free-standing gantry for ten
+  minutes until `tests/colliders.test.ts` pointed out that a post touching the floor is a collider,
+  and `tests/chapters.test.ts` showed what two new colliders beside the desk do to three thousand
+  people walking past: 15 of 33 still queueing when the doors shut.
+- *"Biggy route to the modem room is a bit long. Is this column strictly needed?"* Measured every
+  column against every block: the booth aisles are 60 px and leave Biggy 20 and 26, but two columns
+  on the x 213 line stood 13 px off the technical room and 7 px off a stair shaft — 1.04 m and 0.57 m
+  against his 1.44 — and both are on the route the chapter sends *him* down. The rule that drops
+  them is general and it costs two of eighteen.
+- *"Pic2: droid looks inside the breaker."* `GF.panel` is 26 × 16 px and the 16 is the REACH zone, so
+  drawing the enclosure to the rect made a 1.28 m-deep board with its handles out where the robot
+  stands. Same diagnosis `release-panel.ts` opens with.
+- The new printer model landed on top of the venue's own static printer slab — two printers in one
+  footprint — which the venue/chapter hand-off lines exist for and this one had not been given.
+
+**Rejected / deferred.** The second flicker report (a tall element by the stairs) could not be
+reproduced: the venue has no coplanar face pair anywhere near it, the camera is orthographic with
+linear depth over 420 m, and the two decal classes that could fight were fixed. It is written down
+as needing a live repro rather than guessed at. Music is still queued.
+
+**Tests.** `tests/toast-markup.test.ts` and `tests/people-solid.test.ts` new; `staircase-clear`,
+`opening`, `chapters`, `tasks`, `tasks-panel`, `venue.smoke`, `crates` and `colliders` extended or
+turned with the changes. Suite: **653 tests, 40 files, green**, `tsc --noEmit` clean, `After Dark ·
+ERRORS:0` on the built bundle in chapters 2 and 3 and the intro.
+
+## 25 Sep 2026 — music
+
+**What a human asked for.** One word, queued for two sessions: *"music"*.
+
+**What the agent did.** `src/render/music.ts`: a four-bar score per chapter, played by oscillators
+on the `AudioContext` `audio.ts` already owns. No file could be loaded even if one existed —
+CLAUDE.md forbids external audio assets — so the music is written as data and synthesised, the same
+way every sound effect in the game already was.
+
+The line the module is built on is the one the repo draws everywhere else: the score is pure data
+and pure functions (`SCORES`, `barNotes()`, `chordNote()`), and the player below it is graph
+plumbing. That split is what lets a test say something true about music in an environment with no
+sound card — `tests/music.test.ts` asserts that no part ever plays a note outside its chapter's key
+over three times round the loop, that the patterns are whole bars, that the build-up parts arrive on
+the bar they claim, and that the loudest instant of the fullest bar leaves the sound effects room on
+top of it. Whether it is any *good* is Michele's call and no test pretends otherwise.
+
+Four scores, and they carry the story rather than decorate it:
+- **Chapter 1** A minor, 68 bpm, **no percussion at all** — the one chapter with nothing keeping
+  time. Am9 / Fmaj7 / Dm7 / Esus never resolves, so the loop comes round without sounding finished.
+- **Chapter 2** the same key, because it is the same night; everything else changes. 100 bpm, a
+  sixteenth bass pulse, Am / C / F / G climbing instead of circling — and the drums are not in the
+  first loop at all. `from: 2` brings the kick in, `from: 4` the hats, `from: 6` the rim: the music
+  comes up the way the building does.
+- **Chapter 3** the first daylight in the game, so the first major key. C, 112 bpm, shaker instead
+  of hats, sevenths on everything. Cmaj7 / Am7 / Dm7 / G7 is the most ordinary progression there is,
+  which is the point — nothing is broken yet.
+- **Chapter 4** C major, 84 bpm, and the only progression in the game that lands on its tonic,
+  because this is the one chapter that is allowed to arrive somewhere.
+
+**Decisions with a reason.**
+- **A deck per score, not a score on a shared bus.** Notes are scheduled up to `LOOKAHEAD` seconds
+  ahead, so at a chapter change the old chapter still has nearly two bars booked. Swapping the score
+  on one gain node would have played chapter 1's A minor over chapter 3's C major for two seconds.
+  Each score gets its own fader and the outgoing one fades out with everything already hanging off
+  it — the same trick `fadeOutBed()` plays for the ambient beds.
+- **A 1.9 s lookahead, not the 0.2 s every tutorial uses.** A hidden tab has its timers clamped to
+  about a second; a short lookahead drops the beat the moment a judge tabs away to read the README.
+  For the same reason the pump is a `setInterval` and not the render loop: `requestAnimationFrame`
+  does not fire at all in a hidden tab, and the music would stop dead instead of carrying on.
+- **`N` mutes the music alone**, on top of `M`. A score is a preference in a way a breaking door is
+  not. The scheduler keeps running under the mute so the bar clock stays with the game — turning it
+  back on drops you where the music would have been, not at the start of its build-up.
+- **`setMusic` is separate from `setAmbient`** although `main.ts` calls both on the same edge. A bed
+  is the room and a score is the mood, and they are allowed to disagree: chapter 2's hall keeps its
+  empty-room tone all the way through while the score underneath it grows a drum kit.
+
+**What was measured rather than argued.** The build-ups were first written at `from: 6` and
+`from: 10`. Probing the built bundle with a wrapped `AudioContext.prototype.createOscillator` showed
+that at 100 bpm that put chapter 2's hats 14 seconds in and the rim at 24 — patient to the point of
+never arriving for most players. Pulled to 4 and 6, re-probed, and the noise voices now appear
+inside the first loop. `scratchpad/intro-light/shot.mjs` gained `--autoplay-policy=no-user-gesture-
+required` so a probe exercises the audio at all instead of silently skipping a suspended context.
+
+**Verified.** All four chapters and all three chapter swaps driven in the built bundle: `After Dark
+· ERRORS:0`, empty `window.__afterdark.errors`, 177 oscillator and 41 noise voices scheduled over
+16 seconds of chapter 2. Suite: **682 tests, 40 files, green**; `tsc --noEmit` clean.
+
+**Still open.** The second flicker report (a tall element by the stairs) still needs a live repro —
+unchanged from the last session, and still not guessed at.
+
 ## 24 Sep 2026 — a full-3D proof of concept of chapter 1, aimed at Cyberpunk 2077's look (agent, overnight)
 
 **What a human asked.** Michele: a quick POC of a *full 3D* version, chapter 1 or part of it, on its

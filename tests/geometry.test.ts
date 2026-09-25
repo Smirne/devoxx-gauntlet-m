@@ -32,13 +32,18 @@ import {
   floor1Walls,
   groundRiseM,
   groundWalls,
+  nicheMidLanding,
   nicheMouth,
+  nicheRamps,
   rooms,
   roomDoor,
   roomFrontage,
   stairDoor,
+  stairDoors,
   stairFlightRect,
   stairLanding,
+  stairMidLanding,
+  stairRamps,
 } from '../src/sim/geometry';
 import type { Rect, RoomDef, Vec2, Wall } from '../src/sim/types';
 import { ROBOT_HEIGHT_M } from '../src/sim/units';
@@ -503,6 +508,49 @@ describe('the staircases against the plan pixels', () => {
     expect(nicheMouth(F1.nicheTop).x).toBe(nicheMouth(F1.nicheBot).x);
   });
 
+  /**
+   * ONE staircase upstairs too, and you step on at the END of it.
+   *
+   * Michele, 24 Sep 2026, on the plan symbol: *"This makes it look like there's a
+   * center, and 2 descent. I think it's a mid plane between two ramps of stairs.
+   * In this picture stairs go south to north."* The build had a walkable square in
+   * the middle with a run falling away either side; the drawing has two ramps, a
+   * half-landing between them, and the head at the end the ground floor's own
+   * doors put it — world east. See `nicheMouth` for the derivation.
+   */
+  it('heads each upstairs flight at its east end, with a half-landing mid-run', () => {
+    for (const [name, niche] of [
+      ['top', F1.nicheTop],
+      ['bot', F1.nicheBot],
+    ] as const) {
+      const mouth = nicheMouth(niche);
+      // The head is the EAST end of the flight, not its middle.
+      expect(mouth.x + mouth.w, `the ${name} head is not flush with the east end`).toBeCloseTo(niche.x + niche.w, 6);
+      expect(mouth.w).toBe(NICHE_MOUTH);
+      // The centre of the flight — where the head used to be — is now flight.
+      const centre = niche.x + niche.w / 2;
+      expect(centre, `the ${name} flight's centre is still the way on`).toBeLessThan(mouth.x);
+
+      // One half-landing, well inside the run, with a ramp either side of it.
+      const mid = nicheMidLanding(niche);
+      const [upper, lower] = nicheRamps(niche);
+      expect(mid.x).toBeGreaterThan(niche.x);
+      expect(mid.x + mid.w).toBeLessThan(mouth.x);
+      expect(mid.w / niche.w).toBeGreaterThan(0.08);
+      expect(mid.w / niche.w).toBeLessThan(0.25);
+      // Foot, lower ramp, half-landing, upper ramp, head — tiling the flight.
+      expect(lower.x).toBe(niche.x);
+      expect(lower.x + lower.w).toBe(mid.x);
+      expect(upper.x).toBe(mid.x + mid.w);
+      expect(upper.x + upper.w).toBeCloseTo(niche.x + niche.w, 6);
+      // The plan's two runs are 26 and 27 plain px — near enough equal, and the
+      // mouth is the top step OF the upper one rather than a bite out of it.
+      expect(Math.abs(upper.w - lower.w) / niche.w).toBeLessThan(0.05);
+      expect(lower.w).toBeGreaterThan(20);
+      expect(upper.w).toBeGreaterThan(20);
+    }
+  });
+
   /*
    * `plans/exhibition-floor-stairs-annotated.png`, 900 x 1141, the two shafts
    * Michele circled. Head wall plan y 165, foot wall plan y 323; west shaft
@@ -883,31 +931,112 @@ describe('the hall stops you where it looks solid', () => {
 /*
  * The secondary staircases are ROOMS. Michele: *"In devoxx the stairs are not open
  * but look like rooms."* `plans/exhibition-floor-simple.png` draws each one as a
- * walled shaft standing free in the hall with double doors in its plan-north end
- * (world west) and the ascent arrow running away from them.
+ * walled shaft standing free in the hall with a pair of double doors in EACH of
+ * its two long faces near the plan-north (world west) end, a landing behind them
+ * and the ascent arrow running away down the middle.
+ *
+ * **This block used to assert one doorway in the short west end**, which is what
+ * the build had and what `SHAFT_DOOR`'s own comment had already flagged as wrong
+ * and deferred. Michele overruled the deferral on 24 Sep 2026: *"Just a
+ * correction: you put the opening north, but it's on the sides (WEST, EAST).
+ * Worth a fix."* The building's west and east are this rect's two LONG faces —
+ * the whole floor is rotated 90° (see `src/sim/geometry.ts`'s header) — so the
+ * assertions below moved with the geometry rather than being loosened.
  */
 describe('the secondary staircases are enclosed shafts', () => {
   const shafts = GF.stairs.map((s) => ({ x: s.x, y: s.y, w: s.w, h: s.h }));
 
-  it('walls all four sides, and puts the one doorway in the west end', () => {
+  it('walls both short ends and puts a doorway in each long face', () => {
     for (const s of shafts) {
-      const d = stairDoor(s);
-      // The doorway is in the west face and nowhere else.
-      expect(d.x).toBe(s.x);
-      expect(d.y).toBeGreaterThan(s.y);
-      expect(d.y + d.h).toBeLessThan(s.y + s.h);
-      // Biggy, the widest robot, fits through it.
-      expect(d.h).toBeGreaterThan(DEFS.biggy.r * 2 + 4);
+      const [north, south] = stairDoors(s);
+      for (const d of [north, south]) {
+        // Along the shaft, inside it, and near the west (plan-north) end — the
+        // landing end, not the middle and not the far end.
+        expect(d.x).toBeGreaterThan(s.x);
+        expect(d.x + d.w).toBeLessThan(s.x + s.w);
+        expect(d.x + d.w - s.x).toBeLessThan(s.w / 3);
+        // Biggy, the widest robot, fits through it with room to spare.
+        expect(d.w).toBeGreaterThan(DEFS.biggy.r * 2 + 4);
+      }
+      // One in each long face: same span along the shaft, opposite flanks.
+      expect(north.x).toBe(south.x);
+      expect(north.w).toBe(south.w);
+      expect(north.y).toBe(s.y);
+      expect(south.y + south.h).toBe(s.y + s.h);
+      // ...and the default a chapter gets is the one the camera can see into.
+      expect(stairDoor(s)).toEqual(south);
 
-      // You can stand on the landing...
+      /*
+       * Both short ends are solid: driving straight at either one along the
+       * shaft's own axis always meets a wall. `canWalk` cannot say this — you can
+       * always walk round and in through a long face — so the line is what is
+       * tested, exactly as the north-south case below does it.
+       */
+      const shell = groundWalls().filter((w) => w.kind === 'stairwell' || w.kind === 'stairwell-near' || w.kind === 'stair-foot');
+      const blocked = (px: number, py: number, r: number): boolean =>
+        shell.some((w) => {
+          const cx = Math.max(w.x, Math.min(px, w.x + w.w));
+          const cy = Math.max(w.y, Math.min(py, w.y + w.h));
+          return (px - cx) ** 2 + (py - cy) ** 2 < r * r;
+        });
+      for (const [what, from, to] of [
+        ['west', s.x - 24, s.x + s.w / 2],
+        ['east', s.x + s.w + 24, s.x + s.w / 2],
+      ] as const) {
+        let hit = false;
+        const step = from > to ? -2 : 2;
+        for (let x = from; step > 0 ? x <= to : x >= to; x += step) if (blocked(x, s.y + s.h / 2, DEFS.voxxy.r)) hit = true;
+        expect(hit, `walked straight in through the ${what} end`).toBe(true);
+      }
+
+      /*
+       * You can stand on the landing, coming in through EITHER long face.
+       *
+       * Droid, not Biggy, is the robot asked here, and that is a finding rather
+       * than a convenience: the technical room's north wall runs at y 554 and the
+       * BOT shaft's south face at 538.2, so that door opens onto 15.8 px — 1.26 m
+       * — and Biggy is 1.44 m across. He uses the north door, which opens onto
+       * open hall, and the assertion under this one is that he can always get out
+       * of a shaft some way. The pinch is the technical room's, not the
+       * staircase's; `GF.tech` came from the prototype and has never been measured
+       * off the plan.
+       */
       const landing = stairLanding(s);
-      expect(canWalk({ x: s.x - 20, y: s.y + s.h / 2 }, { x: landing.x + landing.w / 2, y: landing.y + landing.h / 2 }, DEFS.biggy.r)).toBe(true);
-      // ...and you cannot get past it onto the flight, from anywhere at all.
+      const mid = { x: landing.x + landing.w / 2, y: landing.y + landing.h / 2 };
+      expect(canWalk({ x: north.x + north.w / 2, y: s.y - 20 }, mid, DEFS.droid.r), 'Droid cannot use the north door').toBe(true);
+      expect(canWalk({ x: south.x + south.w / 2, y: s.y + s.h + DEFS.droid.r + 1 }, mid, DEFS.droid.r), 'Droid cannot use the south door').toBe(true);
+      // Biggy has to be able to leave a stairwell he is put in — chapter 2 opens
+      // with all three of them standing on this landing.
+      expect(canWalk(mid, { x: s.x + s.w / 2, y: s.y - 30 }, DEFS.biggy.r), 'Biggy is sealed into the shaft').toBe(true);
+      // ...and you cannot get past the landing onto the flight, from anywhere.
       const flight = stairFlightRect(s);
-      expect(
-        canWalk({ x: s.x - 20, y: s.y + s.h / 2 }, { x: flight.x + flight.w - 8, y: flight.y + flight.h / 2 }, DEFS.voxxy.r),
-        'the flight is walkable',
-      ).toBe(false);
+      expect(canWalk(mid, { x: flight.x + flight.w - 8, y: flight.y + flight.h / 2 }, DEFS.voxxy.r), 'the flight is walkable').toBe(false);
+    }
+  });
+
+  /**
+   * ONE staircase with a mid-plane, not two descents. Michele, sending the plan
+   * symbol back enlarged: *"I think it's a mid plane between two ramps of stairs."*
+   */
+  it('cuts the flight into two ramps with a half-landing between them', () => {
+    for (const s of shafts) {
+      const flight = stairFlightRect(s);
+      const mid = stairMidLanding(s);
+      const [lower, upper] = stairRamps(s);
+      // The half-landing is inside the flight, and well inside it — a mid-plane,
+      // not an end landing.
+      expect(mid.x).toBeGreaterThan(flight.x);
+      expect(mid.x + mid.w).toBeLessThan(flight.x + flight.w);
+      // Both ramps are real runs, and the landing is a fraction of the flight.
+      expect(lower.w).toBeGreaterThan(20);
+      expect(upper.w).toBeGreaterThan(20);
+      expect(mid.w / flight.w).toBeGreaterThan(0.1);
+      expect(mid.w / flight.w).toBeLessThan(0.3);
+      // They tile the flight, foot to head, with nothing left over.
+      expect(lower.x).toBe(flight.x);
+      expect(lower.x + lower.w).toBe(mid.x);
+      expect(upper.x).toBe(mid.x + mid.w);
+      expect(upper.x + upper.w).toBe(flight.x + flight.w);
     }
   });
 

@@ -26,7 +26,7 @@
  * the drawing code.
  */
 
-import { W, H, T } from './constants';
+import { DEFS, W, H, T } from './constants';
 import type { Booth, Bot, Plate, Rect, RoomDef, ViewRect, Wall } from './types';
 
 /* ---------------------------------------------------------------- first floor */
@@ -98,8 +98,72 @@ export const DOOR = 46;
  * The same 17.7 is the shaft's **depth into the corridor**, and that is not a
  * coincidence: a flight's width is how far it reaches out from the wall it hugs.
  * One measurement, used twice.
+ *
+ * ## ONE staircase, not two — 24 Sep 2026, second pass
+ *
+ * The first pass read the hatched plan symbol as a landing in the middle with a
+ * descent falling away either side. Michele, sending the symbol back enlarged:
+ * *"This makes it look like there's a center, and 2 descent. I think it's a mid
+ * plane between two ramps of stairs. In this picture stairs go south to north."*
+ *
+ * He is right, and the drawing says so once you count the tread lines. On
+ * `devoxx-rooms-plain.png` the right-hand flight runs plain y **853..914** with
+ * its treads at a steady ~2 px pitch and one clear band at **879..887** carrying
+ * none — a **half-landing**, 8 plain px of the run's 61 (13%), not a landing you
+ * step onto from the corridor. Same object on the floor below, at that plan's own
+ * scale: `exhibition-floor-simple.png` draws the flights over 199 px with a
+ * tread-free band 31 px long at 39–55% of the run. One staircase; two ramps; a
+ * mid-plane between them. `nicheMidLanding` and `nicheRamps` cut it up.
+ *
+ * ## Which end you step on
+ *
+ * The ground floor settles it, and Michele made that explicit: *"On ground floor,
+ * your stairs are good. Floor 1 is directly above, so they should match."* Down
+ * there the shaft's doors and its bottom landing are at the plan's **north** end
+ * and the ascent arrow runs away from them southward (`GF.stairs`, `stairDoors`).
+ * North is plan-top on both drawings, so the **head** of the stair — the end you
+ * step on to go down — is its **south** end, which is this module's rotation
+ * (plan top -> world left) is its **world-EAST** end.
+ *
+ * That is the same sentence as *"In this picture stairs go south to north"*: the
+ * descent runs south to north, world east to world west. And it is why the guard
+ * rail is where he saw it in the photo — *"There's a protection on West and
+ * North"* — the open long face toward the corridor, plus the far (world-west) end
+ * where the well bottoms out. The only side left unguarded is the head.
+ *
+ * `nicheMouth` is that head: one flight-width square at the world-east end. It
+ * used to be centred on the long face, which is the "opening north" Michele is
+ * correcting, and the two runs either side of it were the "2 descent".
  */
 export const NICHE_MOUTH = 17.7;
+
+/**
+ * Thickness of the balustrade along a flight's open face, sim px.
+ *
+ * 1.5 px = 0.12 m of handrail and posts, which is what the renderer draws and
+ * what `floor1Walls` stands across the mouth. It is the difference between the
+ * flight's 1.41 m and the 1.30 m of clear floor at the head of it.
+ */
+export const NICHE_RAIL = 1.5;
+
+/**
+ * The half-landing between the two ramps, as offsets along the flight from its
+ * world-WEST (plan-north, foot) end.
+ *
+ * Measured on `plans/devoxx-rooms-plain.png` and carried through `F1.nicheTop`'s
+ * own arithmetic, `world_x = 898 + (plan_y - 821) * 1.70690`, after mapping the
+ * plain drawing onto the annotated one with `plain_y = annot_y * 0.9943 - 26.3`:
+ *
+ * ```
+ *   treads stop   plain y 879  ->  annot 910.5  ->  world x 1051.6   (46.1 in)
+ *   treads resume plain y 887  ->  annot 918.5  ->  world x 1065.3   (59.8 in)
+ * ```
+ *
+ * Held as offsets rather than absolutes so the pair survives the flight moving
+ * again, which it has done twice in two days.
+ */
+const NICHE_MID_0 = 46.1;
+const NICHE_MID_1 = 59.8;
 
 /**
  * Per-room depth, sim px.
@@ -489,22 +553,53 @@ export function cinemaEExit(): Rect {
 }
 
 /**
- * The way onto a secondary staircase: the one square of it at corridor level.
+ * The way onto a secondary staircase: the head of the stair, at its world-EAST end.
  *
- * Centred on the flight, so the middle of the mouth is the middle of the well and
- * anything aiming at `niche.x + niche.w / 2` — chapter 1's descent, the stairwell
- * lights — still aims at the opening.
- *
- * Centred is also where the plan puts the only part of that flight you could step
- * onto: `devoxx-rooms-plain.png` draws a **landing halfway down**, plan y 881..887
- * of the flight's 853..914, which is world x 1063..1074 against this mouth's
- * 1051..1069. The two runs either side of it drop away, and they are walls,
+ * One flight-width square — the top tread, the only part of the flight at corridor
+ * level. Everything west of it falls away, and a falling-away flight is a wall,
  * because nothing in this game climbs (the same rule as the ground floor's
  * `stair-foot`).
+ *
+ * **It was centred until 24 Sep 2026**, with a run dropping away either side, and
+ * that is the shape Michele sent back: *"This makes it look like there's a center,
+ * and 2 descent"*, and then *"you put the opening north, but it's on the sides"*.
+ * The plan symbol's middle band is a half-landing between two ramps of ONE stair
+ * (`NICHE_MOUTH`, `nicheMidLanding`), so the way on is an END, and the ground
+ * floor says which end: the doors and the foot are at the plan's north, so the
+ * head is at the plan's south, which is world east.
+ *
+ * Both niches give the same `x`, because both flights do.
  */
 export function nicheMouth(niche: Rect): Rect {
-  const x = niche.x + (niche.w - NICHE_MOUTH) / 2;
-  return { x, y: niche.y, w: NICHE_MOUTH, h: niche.h };
+  return { x: niche.x + niche.w - NICHE_MOUTH, y: niche.y, w: NICHE_MOUTH, h: niche.h };
+}
+
+/**
+ * The half-landing between the flight's two ramps — the "mid plane" of Michele's
+ * note. Solid, like the ramps: you can see it, you cannot stand on it.
+ */
+export function nicheMidLanding(niche: Rect): Rect {
+  return { x: niche.x + NICHE_MID_0, y: niche.y, w: NICHE_MID_1 - NICHE_MID_0, h: niche.h };
+}
+
+/**
+ * The two ramps, **head first**: the upper one falls west from the head of the
+ * flight to the half-landing, the lower one falls west from the half-landing to
+ * the foot of the well. With `nicheMidLanding` they tile the whole niche.
+ *
+ * The upper ramp runs to the niche's own east edge and **not** to `nicheMouth`,
+ * which is the point: the plan draws two near-equal runs — 26 and 27 plain px
+ * either side of the half-landing — and these come out 46.1 and 49.4. The mouth
+ * is the top step OF the upper ramp, the one tread that is at corridor level, not
+ * a landing cut out of it; stopping the ramp at the mouth left the upper run a
+ * third shorter than the lower one and the drawing does not do that.
+ */
+export function nicheRamps(niche: Rect): [Rect, Rect] {
+  const mid = nicheMidLanding(niche);
+  return [
+    { x: mid.x + mid.w, y: niche.y, w: niche.x + niche.w - (mid.x + mid.w), h: niche.h },
+    { x: niche.x, y: niche.y, w: mid.x - niche.x, h: niche.h },
+  ];
 }
 
 /** Square corridor column, sim px. */
@@ -576,10 +671,10 @@ export function floor1Walls(): Wall[] {
       w.push({ x: r.x - T, y: by, w: r.w + 2 * T, h: T });
     }
     /*
-     * The staircase itself, as three rects standing in the corridor.
+     * The staircase itself, standing in the corridor.
      *
-     * The head wall first: the piece of corridor wall the mouth backs onto, which
-     * is what you face when you step onto the landing, and the one thing on this
+     * The head wall first: the piece of corridor wall the top step backs onto,
+     * which is what you face when you step onto it, and the one thing on this
      * floor tagged `stair: ±1` for the renderer.
      */
     w.push({
@@ -591,22 +686,64 @@ export function floor1Walls(): Wall[] {
       kind: 'stair-head',
       why: (b) => `${b.name}: that is the wall at the head of the stairs. The way down is the step in front of it`,
     });
-    // Then the two runs either side of the landing. A flight is a wall: you can
-    // come down one (chapter 1 does, in the closing cutscene) and nothing in this
-    // game goes up one. The near-side pair is tagged separately so the renderer
-    // can cut it to a balustrade instead of standing a full-height block between
-    // the fixed camera and the corridor — the same cut the near corridor wall gets.
+    /*
+     * Then the flight, west of the top step: one staircase falling away from the
+     * head, two ramps with a half-landing between them (`nicheRamps`). It is a
+     * wall the whole way — you can come down it, chapter 1 does in the closing
+     * cutscene, and nothing in this game goes up one.
+     *
+     * It used to be emitted as two runs with a walkable square between them, which
+     * is the "center, and 2 descent" Michele sent back on 24 Sep. The loop still
+     * reads as a pair of spans because the mouth is a span of the flight; with the
+     * mouth at the east end the eastern span is empty and is skipped.
+     *
+     * The near-side piece is tagged separately so the renderer can cut it to the
+     * balustrade the plan draws along the flight's open face — *"There's a
+     * protection on West and North"* — instead of standing a full-height block
+     * between the fixed camera and the corridor.
+     */
     const runKind = side < 0 ? 'stairwell' : 'stairwell-near';
     const runWhy = (b: Bot): string =>
       b.kind === 'biggy'
         ? 'Biggy: that flight is 1.41 m wide and I am 1.44. The other stairs, then'
-        : `${b.name}: the flight down to the exhibition hall. One way on, and it is the step in the middle`;
+        : `${b.name}: the flight down to the exhibition hall. One way on, and it is the top step, at the far end`;
     for (const [x0, x1] of [
       [niche.x, mouth.x],
       [mouth.x + mouth.w, niche.x + niche.w],
     ] as const) {
       if (x1 - x0 > 0.5) w.push({ x: x0, y: niche.y, w: x1 - x0, h: niche.h, kind: runKind, why: runWhy });
     }
+    /*
+     * ...and the balustrade along the flight's open face, ACROSS THE MOUTH.
+     *
+     * This is the piece that makes the head of the stair a stair. Michele's photo
+     * is what put it here — *"There's a protection on West and North, as you can
+     * see on the second picture"* — but it earns its collider on gameplay: with
+     * the way on moved to the end of the flight, the top step was open on two
+     * sides and **Biggy walked straight onto it**, which he has not been able to
+     * do since note 18 of `docs/playtest-notes.md` (*"they seem fit for biggy to
+     * pass, make the passage more narrow"*). A driven probe caught it, a grid
+     * sample would not have.
+     *
+     * Guarded, the head is what it is in the building: a pocket the width of the
+     * flight, walled by the corridor behind and the balustrade in front, entered
+     * from the east END by turning in off the corridor. 17.7 less the rail is
+     * **16.2 px = 1.30 m clear**; Droid is 1.00 and Voxxy 0.76 and Biggy is 1.44.
+     * Over the rest of the flight the rail is inside the run, which is already
+     * solid, so only this stretch is emitted.
+     */
+    const railY = side < 0 ? niche.y + niche.h - NICHE_RAIL : niche.y;
+    w.push({
+      x: mouth.x,
+      y: railY,
+      w: mouth.w,
+      h: NICHE_RAIL,
+      kind: side < 0 ? 'stair-rail' : 'stair-rail-near',
+      why: (b) =>
+        b.kind === 'biggy'
+          ? 'Biggy: the handrail down the open side, and 1.30 m between it and the wall. I am 1.44. I have met this stair before'
+          : `${b.name}: the balustrade along the stairs. The way on is round the end, off the corridor`,
+    });
   }
   const f = F1.foyer;
   w.push({ x: f.x - T, y: f.y, w: T, h: f.h }, { x: f.x + f.w, y: f.y, w: T, h: f.h }, { x: f.x - T, y: f.y + f.h, w: f.w + 2 * T, h: T });
@@ -746,7 +883,7 @@ const booths: Booth[] = [];
 }
 
 /** Depth of a service counter — the wardrobe's hand-in top. */
-const COUNTER = 10;
+export const COUNTER = 10;
 
 /**
  * THE LOBBY, AS MICHELE PLOTTED IT (`docs/ground-floor-lobby-fix.md`).
@@ -804,11 +941,14 @@ export const GF = {
    * These are **enclosed shafts**, not open flights. Michele, playing chapter 2:
    * *"In devoxx the stairs are not open but look like rooms."* He is right and the
    * plan says so — `plans/exhibition-floor-simple.png` draws each one as a walled
-   * box standing free in the hall with a pair of doors in its plan-north end and
-   * the ascent arrow running away from them. Plan-north is world **west** (see this
-   * module's header: plan top -> world left), so the doors are in the `x` face and
-   * the flight climbs eastward. `stairDoor` and `stairFlightRect` below cut the
-   * rect up; `groundWalls` builds the shell.
+   * box standing free in the hall with a **pair of double doors in each of its two
+   * long (plan west and east) faces**, near the plan-north end, and the ascent
+   * arrow running away from them down the middle. Plan-north is world **west** (see
+   * this module's header: plan top -> world left), so the landing is at the west
+   * end, the flight climbs eastward, and the doors are in the ±y faces.
+   * `stairDoors`, `stairFlightRect` and `stairRamps` below cut the rect up;
+   * `groundWalls` builds the shell. The doorways moved there 24 Sep 2026, on
+   * Michele's *"you put the opening north, but it's on the sides (WEST, EAST)"*.
    *
    * ## Where they are — measured, 24 Sep 2026
    *
@@ -876,8 +1016,14 @@ export const GF = {
   coatroom: { x: 1172, y: 262, w: 126, h: 122 },
   /** The reception desk itself — BELOW the coatroom, not beside it. */
   reception: { x: 1174, y: 388, w: 126, h: 75 },
-  /** The badge printer, on the reception counter (chapter 2's cable run ends here). */
-  printer: { x: 1262, y: 438, w: 20, h: 12 },
+  /**
+   * The badge printer, ON the reception counter's south run — not inside the desk.
+   *
+   * Michele: *"The printer might be on the reception counter, so no need to
+   * enter?"* Its y is `reception.y + reception.h - COUNTER` (453), so it stands on
+   * the run a robot can reach from the concourse rather than behind it.
+   */
+  printer: { x: 1262, y: 453, w: 20, h: 10 },
   /** The main staircase up to the Devoxx rooms, east of the reception block. */
   mainStair: { x: 1305, y: 263, w: 112, h: 197 },
   /**
@@ -915,6 +1061,38 @@ export const GF = {
   laneX: [385, 530, 690, 850, 1010],
   laneY: [215, 355, 495, 645],
 } as const;
+
+/**
+ * THE BAR ON THE HALL'S NORTH WALL — "The Finally Block", and where it stands.
+ *
+ * Chapter 3 built this out of its own local constants, which was fine until it
+ * turned out to be standing on top of chapter 2's spray tag: Michele, 25 Sep
+ * 2026, *"The bar covers the wifi graffiti at the moment."* Two chapters own
+ * furniture on the same 6 px of wall and neither could see the other, so both
+ * rects live here now, in the venue, where they can be measured against each
+ * other — `tests/venue.smoke.test.ts` does exactly that.
+ */
+export const BAR_RECT: Rect = { x: 336, y: 96, w: 92, h: 26 };
+
+/**
+ * Where Bart's spray tag is: the centre of the paint, on the hall's north wall.
+ *
+ * It was at x 400 and the bar is x 336..428, so the password the whole of
+ * chapter 2 turns on was behind a bar counter for the rest of the game. It moves
+ * EAST, to the next clear run of that wall: 456..544, which clears the bar's east
+ * end (428) by 28 px and is still on the long uninterrupted stretch above the
+ * booth grid that made this wall the right wall in the first place. Not further —
+ * `tests/ch2-chain.test.ts` holds it inside 500 px of where the chapter starts,
+ * which is Michele's own objection to his own idea (*"it's a bit far from the
+ * entrance"*).
+ *
+ * The renderer paints it here (`src/render/venue/signage.ts`) and chapter 2 reads
+ * it here (`ch2-expo.ts`), so the paint and the thing Voxxy's beam has to find
+ * cannot drift apart — which is the fault this constant exists to prevent.
+ */
+export const WIFI_TAG: { readonly x: number; readonly y: number } = { x: 500, y: GF.hall.y + 8 };
+/** How wide the paint is, sim px — the renderer's plane, and the room it needs. */
+export const WIFI_TAG_W = 88;
 
 /**
  * How far the lobby floor stands above the exhibition hall's, metres.
@@ -1002,34 +1180,124 @@ export function groundPlates(): Plate[] {
 
 /** Sim px of stairwell wall the shaft's shell is built from. */
 const SHAFT_T = T;
-/**
- * Clear width of the double doors in a shaft's west end, sim px.
+
+/*
+ * THE SHAFT'S INSIDES, RE-MEASURED OFF THE PLAN — 24 Sep 2026, second pass.
  *
- * **24, down from 34, because the shaft itself came down from 60 to its measured
- * 45** (see `GF.stairs`). 45 less two `SHAFT_T` walls is 33 px of clear internal
- * width — 2.64 m — and a 34 px door in it would have left jambs of negative
- * height. 24 px is 1.92 m of double door with a 0.36 m jamb either side, and it is
- * still a third wider than Biggy's 1.44 m, so chapter 2 still starts with all
- * three of them coming out of it.
+ * `GF.stairs` puts the two shafts where Michele circled them and he has since
+ * confirmed that much — *"On ground floor, your stairs are good"* — so the outer
+ * rects below are untouched. What was wrong is everything inside them, and he
+ * named it in one line: *"you put the opening north, but it's on the sides (WEST,
+ * EAST). Worth a fix."* `SHAFT_DOOR`'s own comment had carried the same note as
+ * deferred work since the shafts moved; this round resolves it.
  *
- * Note for a later round, not fixed here: the plan puts a pair of doors in **each
- * long face** of the shaft at its north end, not one pair in the short west end.
- * Moving them moves where chapter 2 places the three robots, so it is a chapter
- * change rather than a geometry one.
+ * ## Read the compass twice
+ *
+ * The shaft rect is 226 x 45 **in world coordinates**, so its long faces are its
+ * ±y faces and its short ends are west and east — and that is NOT the frame
+ * Michele's sentence is in. This module rotates the plan 90° (see the header:
+ * plan top -> world left, plan left -> world bottom), so
+ *
+ * ```
+ *   building north -> world -x      building west -> world +y
+ *   building south -> world +x      building east -> world -y
+ * ```
+ *
+ * The building's WEST and EAST faces are therefore the rect's two LONG faces, and
+ * "openings on the sides (WEST, EAST)" and "a doorway in each long face" are the
+ * same statement said in two frames. Counted on
+ * `plans/exhibition-floor-simple.png` (1562 x 2238), thresholding the drawing's
+ * green door symbols inside each shaft's own bands:
+ *
+ * | face | door pixels, east shaft | west shaft |
+ * |---|---|---|
+ * | plan-north short end | **0** | **0** |
+ * | plan-south short end | **0** | **0** |
+ * | plan-west long face | 237 | 204 |
+ * | plan-east long face | 279 | 257 |
+ *
+ * Both shafts, both long faces, a pair of leaves meeting in the middle of each;
+ * neither short end carries a door symbol at all. The old single doorway in the
+ * short west end is gone, and that end is now wall like the other.
+ *
+ * ## The numbers
+ *
+ * Measured along the shaft on `exhibition-floor-simple.png` and mapped onto the
+ * annotated plan the world mapping is calibrated to by
+ * `annot_y = 165.5 + (simple_y - 380.5) * 0.53020` (the two end walls are the
+ * anchors), then through `world_x = 30 + (plan_y - 85) * 1.4326`:
+ *
+ * ```
+ *   plan y 165  ->  world x 144.6   north end wall — closed, no door
+ *   plan y 170  ->  world x 151.8   doors open
+ *   plan y 205  ->  world x 201.9   doors close
+ *   plan y 234  ->  world x 243.5   first riser
+ *   plan y 276  ->  world x 303.3   treads stop — the half-landing
+ *   plan y 292  ->  world x 326.8   treads resume
+ *   plan y 323  ->  world x 371.0   south end
+ * ```
+ *
+ * The first riser at plan y 234 was read straight off the annotated drawing too
+ * (the first full-width tread line is at y 234), which is the check that the
+ * mapping between the two renderings of this plan is sound.
  */
-const SHAFT_DOOR = 24;
+
+/**
+ * Clear width of the double doors, sim px — **50.1**, along the shaft.
+ *
+ * It replaces a 24 that was a different measurement of a different opening: the
+ * door used to be in the short west end, where its width ran across the shaft on
+ * this floor's *other* scale. In the long face the opening runs along world x, so
+ * it is carried at the along-shaft scale 1.4326, and 35 plan px of it is 50.1.
+ * As a fraction of the shaft it is 35/158 = 22% either way, which is the check
+ * that the anisotropy has not been applied twice.
+ *
+ * Biggy is 18 px across. 50.1 clears him nearly threefold, so chapter 2 can still
+ * bring all three of them out of a stairwell shoulder to shoulder if it wants to.
+ */
+const SHAFT_DOOR = 50.1;
 /**
  * Depth of the landing inside the doors, before the first riser, sim px.
  *
- * The plan draws a square landing behind the doors and then the flight. The sim is
- * 2D and nothing climbs, so the landing is the part of the shaft a robot may stand
- * in and the flight is a wall: you came down it, you cannot walk back up it.
+ * **98.9, up from 56**: plan y 165..234, measured above. The plan draws a deep
+ * landing behind the doors — deep enough that both door pairs open onto it well
+ * clear of the first riser — and then the flight. The sim is 2D and nothing
+ * climbs, so the landing is the part of the shaft a robot may stand in and the
+ * flight is a wall: you came down it, you cannot walk back up it.
  */
-const SHAFT_LANDING = 56;
+const SHAFT_LANDING = 98.9;
+/** Where the doors start, as an offset along the shaft from its west end. */
+const SHAFT_DOOR_AT = 7.2;
+/** The half-landing between the two ramps, as offsets from the shaft's west end. */
+const SHAFT_MID_0 = 158.7;
+const SHAFT_MID_1 = 182.2;
 
-/** The doorway rect in a stair shaft's west end. */
+/**
+ * Both doorways: one in each long face, `[north, south]` in world terms — the
+ * building's east and west faces (see the compass note above).
+ */
+export function stairDoors(s: Rect): [Rect, Rect] {
+  const x = s.x + SHAFT_DOOR_AT;
+  return [
+    { x, y: s.y, w: SHAFT_DOOR, h: SHAFT_T },
+    { x, y: s.y + s.h - SHAFT_T, w: SHAFT_DOOR, h: SHAFT_T },
+  ];
+}
+
+/**
+ * One of the pair, when only one is wanted: the SOUTH door, because the diorama
+ * camera sits on the +y side (`src/render/camera.ts`) and a robot coming out of
+ * the north one would be read through the shaft.
+ *
+ * **Prefer `stairDoors`.** A shaft has two doors now and each opens onto
+ * something different — the BOT shaft's south door in particular has 15.8 px of
+ * floor outside it before the technical room's north wall, which Biggy is 18
+ * across and cannot use. Nothing in the game picks a door through this function
+ * any more; chapter 2 starts its robots on the landing between the two
+ * (`stairLanding`).
+ */
 export function stairDoor(s: Rect): Rect {
-  return { x: s.x, y: s.y + s.h / 2 - SHAFT_DOOR / 2, w: SHAFT_T, h: SHAFT_DOOR };
+  return stairDoors(s)[1];
 }
 
 /** The part of a stair shaft the flight itself occupies — east of the landing. */
@@ -1044,26 +1312,56 @@ export function stairLanding(s: Rect): Rect {
 }
 
 /**
- * Shell of one enclosed secondary staircase: three walls, a doorway, and the flight.
+ * The half-landing partway up the flight — the "mid plane between two ramps"
+ * Michele named. Not walkable: it is part of the flight, which is a wall.
+ */
+export function stairMidLanding(s: Rect): Rect {
+  const f = stairFlightRect(s);
+  return { x: s.x + SHAFT_MID_0, y: f.y, w: SHAFT_MID_1 - SHAFT_MID_0, h: f.h };
+}
+
+/**
+ * The flight's two ramps, **foot first**: the lower one climbs east from the first
+ * riser to the half-landing, the upper one climbs east from the half-landing to
+ * the top of the shaft. One staircase with a mid-plane, not two descents.
+ */
+export function stairRamps(s: Rect): [Rect, Rect] {
+  const f = stairFlightRect(s);
+  const mid = stairMidLanding(s);
+  return [
+    { x: f.x, y: f.y, w: mid.x - f.x, h: f.h },
+    { x: mid.x + mid.w, y: f.y, w: f.x + f.w - (mid.x + mid.w), h: f.h },
+  ];
+}
+
+/**
+ * Shell of one enclosed secondary staircase: four walls, two doorways, and the flight.
  *
  * The flight itself is a wall, and it is a real gate rather than scenery, so it
  * speaks in three voices like every other gate in the building (CLAUDE.md). The
  * shaft's own flanks get one line: a robot walking into the outside of a stairwell
  * has not been stopped by a puzzle, it has been stopped by a building.
+ *
+ * **Both short ends are now solid and both long faces are cut**, which is Michele's
+ * *"you put the opening north, but it's on the sides (WEST, EAST)"* — see the
+ * compass note above `stairDoors` for why the building's west and east are this
+ * rect's long faces.
  */
 function stairShaftWalls(s: Rect, to: string): Wall[] {
-  const d = stairDoor(s);
+  const [dn, ds] = stairDoors(s);
   const kind = 'stairwell';
   const why = (b: Bot): string =>
-    `${b.name}: the ${to === 'top' ? 'north' : 'south'} stairwell, walled in. The doors are round the far end`;
+    `${b.name}: the ${to === 'top' ? 'north' : 'south'} stairwell, walled in. The doors are in the long sides`;
   return [
-    // North flank, south flank and the closed east end, all inside the plan rect.
-    { x: s.x, y: s.y, w: s.w, h: SHAFT_T, kind, why },
-    { x: s.x, y: s.y + s.h - SHAFT_T, w: s.w, h: SHAFT_T, kind: 'stairwell-near', why },
+    // Both short ends are closed, and both long flanks are cut by a pair of doors
+    // near the west end. The near flank keeps its own kind so the renderer can cut
+    // it down rather than stand a full-height box in front of the camera.
+    { x: s.x, y: s.y + SHAFT_T, w: SHAFT_T, h: s.h - 2 * SHAFT_T, kind, why },
     { x: s.x + s.w - SHAFT_T, y: s.y + SHAFT_T, w: SHAFT_T, h: s.h - 2 * SHAFT_T, kind, why },
-    // The west end, cut by the double doors.
-    { x: s.x, y: s.y + SHAFT_T, w: SHAFT_T, h: d.y - (s.y + SHAFT_T), kind, why },
-    { x: s.x, y: d.y + d.h, w: SHAFT_T, h: s.y + s.h - SHAFT_T - (d.y + d.h), kind, why },
+    { x: s.x, y: s.y, w: dn.x - s.x, h: SHAFT_T, kind, why },
+    { x: dn.x + dn.w, y: s.y, w: s.x + s.w - (dn.x + dn.w), h: SHAFT_T, kind, why },
+    { x: s.x, y: s.y + s.h - SHAFT_T, w: ds.x - s.x, h: SHAFT_T, kind: 'stairwell-near', why },
+    { x: ds.x + ds.w, y: s.y + s.h - SHAFT_T, w: s.x + s.w - (ds.x + ds.w), h: SHAFT_T, kind: 'stairwell-near', why },
     // The foot of the flight. Nothing in this game climbs stairs.
     {
       x: s.x + SHAFT_LANDING,
@@ -1104,11 +1402,47 @@ export const HALL_COLUMNS: readonly Rect[] = (() => {
   ];
   const hits = (a: Rect, b: Rect, pad: number): boolean =>
     a.x < b.x + b.w + pad && a.x + a.w + pad > b.x && a.y < b.y + b.h + pad && a.y + a.h + pad > b.y;
+  /*
+   * ...AND A COLUMN THAT LEAVES A GAP NOBODY CAN USE IS A SNAG, NOT ARCHITECTURE.
+   *
+   * Michele, 25 Sep 2026, with a screenshot of Biggy stopped beside one of them:
+   * *"Biggy route to the modem room is a bit long. Is this column strictly
+   * needed?"*
+   *
+   * Measured, the grid is fine everywhere but the hall's south-west corner. The
+   * booth aisles are 60 px wide and a 14 px column in one leaves 20 and 26 px —
+   * Biggy is 18 across, so he gets through on either side. But two columns on the
+   * x 213 line stand 13 px off the technical room and 7 px off the lower stair
+   * shaft, and 13 px is 1.04 m: nothing but Voxxy fits, and both of them are on
+   * the route to the router cabinet that the chapter sends BIGGY down. So the
+   * walk was long because the short way was a slot he could not enter.
+   *
+   * The rule, rather than deleting the two by hand: a column is dropped when it
+   * forms a true corridor with a block — they overlap on the perpendicular axis —
+   * and that corridor is narrower than the widest robot plus a little. The plan's
+   * 160 x 140 is a PITCH and this is a 2 m diorama of it; where the two disagree
+   * by a robot's width, the robot wins. It costs 2 columns of 18.
+   */
+  const SQUEEZE = DEFS.biggy.r * 2 + 2;
+  const pinched = (foot: Rect, s: Rect): boolean => {
+    const ovY = Math.min(foot.y + foot.h, s.y + s.h) - Math.max(foot.y, s.y);
+    const ovX = Math.min(foot.x + foot.w, s.x + s.w) - Math.max(foot.x, s.x);
+    if (ovY > 0) {
+      const g = Math.max(s.x - (foot.x + foot.w), foot.x - (s.x + s.w));
+      if (g >= 0 && g < SQUEEZE) return true;
+    }
+    if (ovX > 0) {
+      const g = Math.max(s.y - (foot.y + foot.h), foot.y - (s.y + s.h));
+      if (g >= 0 && g < SQUEEZE) return true;
+    }
+    return false;
+  };
   const out: Rect[] = [];
   for (let x = h.x + 190; x < h.x + h.w; x += 160) {
     for (let y = h.y + 110; y < h.y + h.h; y += 140) {
       const foot: Rect = { x: x - 7, y: y - 7, w: 14, h: 14 };
       if (solids.some((s) => hits(foot, s, 6))) continue;
+      if (solids.some((s) => pinched(foot, s))) continue;
       out.push(foot);
     }
   }
@@ -1433,20 +1767,63 @@ export function groundWalls(): Wall[] {
     return out;
   };
 
-  // The reception desk: a counter, so light crosses it and the lamps on it read.
-  w.push({ ...GF.reception, low: true, kind: 'desk', why: (bb) => `${bb.name}: reception. Badges, lanyards, the printer` });
+  /*
+   * THE RECEPTION COUNTER IS AN L, AND IT IS HOLLOW.
+   *
+   * Michele, 24 Sep: *"Reception i don't get it. There's a wood panel longer than
+   * the room. If it's the counter it should be lower, a half square, two sides
+   * (west and south): and it should be hollow inside. The printer might be on the
+   * reception counter, so no need to enter?"*
+   *
+   * It was one solid 126 x 75 slab, which is why it read as a panel rather than a
+   * desk: no counter in any building is ten metres of solid block. Two runs of
+   * `COUNTER` depth now close the west and south faces and the middle is open
+   * floor — the staff side, entered from the north-east, beside the stairs. That
+   * is also the only corner you CAN enter it from: BOF closes the north, the main
+   * staircase the east, and the two runs the other two sides.
+   *
+   * The printer moves onto the south run (`GF.printer`), which settles the second
+   * half of his note: chapter 2's cable ends on top of the counter, reached from
+   * the concourse, and nobody has to walk behind the desk to plug it in.
+   */
+  const rc = GF.reception;
+  const deskWhy = (bb: Bot): string => `${bb.name}: reception. Badges, lanyards, the printer`;
+  w.push(
+    { x: rc.x, y: rc.y, w: COUNTER, h: rc.h, low: true, kind: 'desk', why: deskWhy },
+    {
+      x: rc.x + COUNTER,
+      y: rc.y + rc.h - COUNTER,
+      w: rc.w - COUNTER,
+      h: COUNTER,
+      low: true,
+      kind: 'desk',
+      why: deskWhy,
+    },
+  );
 
-  // The wardrobe: three walls and the hand-in counter along its south face.
+  /*
+   * THE WARDROBE OPENS WEST. Michele: *"Coat room / Wardrobe opening should be
+   * west."* And it is the only side that can open: BOF is north of it, the main
+   * staircase east, and the reception desk's own back south. It used to hand out
+   * over its SOUTH face, into the back of the reception desk, which nobody can
+   * stand in. So the shell closes north, east and south, and the hand-in counter
+   * runs down the west face where the concourse actually reaches it.
+   */
   const co = GF.coatroom;
-  w.push(...shellOf(co, 'coatroom'), {
-    x: co.x,
-    y: co.y + co.h - COUNTER,
-    w: co.w,
-    h: COUNTER,
-    low: true,
-    kind: 'coat-counter',
-    why: (bb) => `${bb.name}: the wardrobe counter. Three thousand coats tomorrow, not one tonight`,
-  });
+  w.push(
+    { x: co.x, y: co.y, w: co.w, h: T, kind: 'coatroom' },
+    { x: co.x + co.w - T, y: co.y + T, w: T, h: co.h - T, kind: 'coatroom' },
+    { x: co.x, y: co.y + co.h - T, w: co.w - T, h: T, kind: 'coatroom' },
+    {
+      x: co.x,
+      y: co.y + T,
+      w: COUNTER,
+      h: co.h - 2 * T,
+      low: true,
+      kind: 'coat-counter',
+      why: (bb) => `${bb.name}: the wardrobe counter. Three thousand coats tomorrow, not one tonight`,
+    },
+  );
 
   // The main staircase. Its south face is left open for the gate a chapter adds
   // there (`GF.gate`); the reception block closes its west side.

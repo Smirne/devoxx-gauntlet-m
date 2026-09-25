@@ -30,7 +30,7 @@ right-hand column — sometimes with a small change beside it, sometimes with no
 | 15 | "reduce the black block, make it into a glass wall or something to show the circle better" · and again: "the black bench(?) has to go, for a glass wall as suggested before" | done | Not a bench. The kiosk's own **fascia**: `floor1.ts` drew it as a 60 x 60 px plate laid flat at 2.15 m — a LID over the whole kiosk, 4.8 m square, and unlit from a 30 deg camera that is exactly what a black block looks like. It does not stand between the camera and the clue, it **shades** it: A/B on one build, the ring's box measures mean 39.1 with the lid and 43.5 without, brightest arc pixels 128.8 against 174.1. The counter he guessed at costs 43.8 vs 43.5 — nothing — and is gone anyway because he asked for it. Four 3 px fascia bands now, top open. The glazing was already `glass: true` in the sim and needed no change. **Not all of the ring's improvement is this change**: his build measured 5.8 mean in that box, and most of the climb from there is the concurrent clue-and-lighting work in the same tree, not the kiosk. |
 | 16 | "those two are maybe too near to each other?" | open | Two clue spots. |
 | 17 | "I put all three robots in the room... needed different tries before finding the number" | waiting | His call: try the new arc markers first before adding more help. |
-| 18 | "they seem fit for biggy to pass, make the passage more narrow" | done | The plan decided how narrow. `plans/devoxx-rooms-stairs-annotated.png` draws the flight 20 plan px wide against the corridor's 147, i.e. 17.7 sim px = **1.41 m** (`NICHE_MOUTH`). Biggy is 1.44 m across, so the real stair excludes him by a centimetre. The well behind the mouth stays 40 px: a landing is wider than the door onto it, exactly as the ground-floor shafts already are. |
+| 18 | "they seem fit for biggy to pass, make the passage more narrow" | done | The plan decided how narrow. `plans/devoxx-rooms-stairs-annotated.png` draws the flight 20 plan px wide against the corridor's 147, i.e. 17.7 sim px = **1.41 m** (`NICHE_MOUTH`). Biggy is 1.44 m across, so the real stair excludes him by a centimetre. **Re-cut 24 Sep 2026 (evening).** The flight turned out to be one staircase with a half-landing rather than a landing with a descent either side, so the way on moved from the middle of its long face to its east END, and the old pinch — two runs 17.7 px apart — went with it. What keeps Biggy off now is the balustrade the plan and Michele's photo put along the open face (`NICHE_RAIL`): the head is a pocket 16.2 px = **1.30 m** clear between the corridor wall and the rail, entered by turning in off the corridor. A driven probe caught the gap between the two (`tests/stairs-driven.test.ts`); the flood fills did not. |
 
 ## Chapter 2
 
@@ -42,7 +42,7 @@ featureless box.
 | # | What he found | Status | What it actually was |
 | --- | --- | --- | --- |
 | 1 | "robots can go through staircase and objects" | done | The sim had never heard of most of the hall's furniture. A throwaway flood-fill probe (`tests/probe-*.test.ts`, gitignored) measured **100% of every footprint walkable** for: both secondary staircases, all 18 structural roof columns, 4 lobby columns, 2 planters and the network rack — every one of them drawn by `src/render/venue/ground.ts` out of its own loops. They are `GF`/`groundWalls()` geometry now, so the picture and the collider are the same object. Same bug as note 3 above, one floor down. |
-| 2 | "In devoxx the stairs are not open but look like rooms" | done | They are rooms — `plans/exhibition-floor-simple.png` draws each secondary stair as a **walled shaft** with double doors in its plan-north end and the ascent arrow running away from them. Ours were open flights climbing the wrong way. Now: shell, doorway in the west face, a walkable landing behind it, and the flight east of that. The chapter's start moved out of the doors with them. |
+| 2 | "In devoxx the stairs are not open but look like rooms" | done | They are rooms — `plans/exhibition-floor-simple.png` draws each secondary stair as a **walled shaft** with the ascent arrow running away down the middle. Ours were open flights climbing the wrong way. Now: shell, a deep walkable landing at the plan-north (world west) end, and the flight east of that. **Corrected 24 Sep 2026 (evening)**, on *"you put the opening north, but it's on the sides (WEST, EAST). Worth a fix."* — the doors are a pair of double doors in EACH of the shaft's two LONG faces beside that landing, and neither short end carries a door symbol at all (counted face by face on the drawing, see `stairDoors`). The building's west and east are the rect's long faces because this floor is rotated 90°. The flight is also two ramps with a half-landing, not one run. The chapter's start moved onto the landing with them. |
 | 3 | "After switching the room gets darker, not lighter (i think is the robot's light being switched off?)" | done | **His guess was right, and it was only half of it.** `ch2-expo.ts` stopped casting light polygons the instant `power` went true, which switched off all three lamps *and* all three key lights; and nothing on the renderer's side had ever heard of the breakers, so no house light came up. Measured on his build: mean scene luminance **12.5 → 5.1**, p90 **42 → 8.8**. The chapter casts its lamps the whole way through now and the last breaker eases the hall into `MOOD_EXPO_LIT` — fog mask off, ambient up, track spots driven as house lighting, lamps damped to 0.4 the way chapter 3's daylight damps them. Same measurement after the fix, same two shots: **9.3 → 24.0** mean, p90 **8.8 → 58.3**, and the share of the frame under L=8 goes 89% → 45%. |
 | 4 | "The breaker should be graphical of course" | done | Two objects in one place, neither of them a breaker panel: a static slab at 1.45 m in `ground.ts`, and chapter 2's own `breaker` prop drawn from the generic `PROPS` table as a **1.5 m box standing on the floor** — the coloured crate in the corner. Split the way chapter 1's door override was: enclosure, its recessed door and the conduit down to the floor are venue fabric; three handles that visibly flip and a supply lamp are drawn from the sim's own `Prop.v`. |
 | 5 | "Cable rack is not visible at all" | done | Not a missing object — an occluded one. Chapter 2's camera pitch is 31°, and the technical room's south side is 3.8 m of building shell standing 4 m in front of a 1.95 m cabinet: the rack's head cleared the wall top by **13 cm**. It stands on a 0.4 m plinth now (clears by half a metre) and is a collider, so it reads as a cabinet rather than as a decal. |
@@ -385,6 +385,207 @@ and the venue is one of the two things `CLAUDE.md` says may not drift.
 | *"Robots light should go off when light is on."* | Once the hall is lit, the lamps are pointless and the mixing puzzle is over. |
 | *"this element before reception is not needed."* | The dark slab in front of the counter in his screenshot. |
 
+## Michele, 24 Sep late — the night list
+
+| his note | state |
+| --- | --- |
+| *"sometimes the toast are multiple and not all are visible. Assure they do not superimpose."* | **Done** (`0f72c59`). Two faults: the shared `ad-rise` keyframe ended on `transform:none` with `fill-mode: both`, which permanently cancelled a bubble's `translate(-50%,-100%)` anchor — every bubble jumped half its width right and its whole height down once it settled — and nothing separated two bubbles whose boxes crossed. Bubbles now have their own keyframes, and `placeBubbles` lifts each box clear of the ones already placed, lowest first. |
+| *"the stair, reception and wardrobe appearence still need fix"* | Reception and wardrobe **done** (`e4c1abe`); see below. Staircase **deferred**, with the measurement settled — see "the main staircase faces the wrong way". |
+| *"where is the wifi password graffiti? It should be visible!"* | **Done** (`1366d1f`). It was sim-only: chapter 2 publishes it as a `poster` prop and the prop style draws every poster as a pale cream lightbox, so no paint existed. The venue paints it now, at the prop's own x, low-glow orange on a dark ground. Found on the way: the printed WiFi notice hung at y 371, **inside `GF.coatroom`** (262..384) — a sign nailed up in a closed room. Moved onto the reception counter's west run. |
+| *"when all actions are done, chapter 2 ends abruptly. I just finished the biggy run, i expected to see the animation and the inside of the gadget room. Since u can finish in different orders, give some seconds for animation / see what happens before the chap 3 screen."* | **Done.** It called `startChapter(3)` on the frame the second of the two conditions flipped, so the shutter was still 0.42 s from the top of its housing when the card came down over it — whichever task you finished last, you never saw it finish. The chapter now stays live for `CURTAIN` = 3 s after the last one lands, and **play is not taken away**: the robots keep their keys, the hall is lit, the store is open and standing there. *"See the inside of the gadget room"* means being allowed to look, which a fade could not have given him. The clock starts on the frame BOTH are true, so it is the same three seconds in either order, and the curtain line names whichever task ended it. `tests/ch2-chain.test.ts` drives both orders. |
+| *"some flickering lights (hard to show on screenshot)"* | **Queued**, not yet reproduced. Two known causes in this repo are coplanar surfaces (the entrance flicker, `lobby()`) and dashed arcs that crawl; a third to check is the new `riseForBody` blend at a plate seam. |
+| *"Am I putting too much thing together on the backlog?"* | Fairly asked, and the honest answer was yes: fifteen items open, and the session before this one went on crates, the intro and bubbles — none of them on his stated priority 1. |
+
+### The main staircase faces the wrong way — measured, deferred
+
+Michele: *"Stairs should be facing the entrance. As i enter i see stairs going straight up."*
+`plans/exhibition-floor-stairs-annotated.png` settles it: the main staircase is drawn **directly
+inside the main entrance**, its treads running across the width of the block and one arrow climbing
+**away** from the doors, with reception above-left of it and the BOF rooms to its right. Both of
+those we already have right — reception IS west of the staircase in our plot, which is what his
+*"Reception signal points the wrong way"* note is about (the sign, not the block).
+
+What is wrong is the face you enter from. Ours climbs **north over its 197 px length**, entered
+through a 112 px gate on its SOUTH face. The plan has it entered from the **entrance side — world
+EAST** — climbing **west** over its 112 px depth, 197 px wide. So the footprint stays exactly where
+it is; the flight's axis and its open face turn 90 degrees.
+
+Deferred rather than done because the change does not stop at geometry: `GF.gate` becomes a
+north–south rect, and `ch3-breakfast.ts` hinges Stephan's gate on `gate.w` with a constant `gateY`
+(`gateHingeX`, `gateLen`), so the swing, Stephan's post and the visitor queue all move with it —
+and `ch2-expo.ts` was held by another agent this round. It is one change, in one commit, when the
+chapter files are free.
+
+### The reception block, done (`e4c1abe`)
+
+- The counter is **two `COUNTER`-deep runs** closing the west and south faces, hollow in the middle,
+  entered from the north-east corner beside the stairs — the only corner that can open, with BOF
+  north and the staircase east. It was one solid 126x75 slab, which is exactly why it read as *"a
+  wood panel longer than the room"*.
+- The **printer sits on the south run**, so chapter 2's cable ends somewhere a robot reaches from
+  the concourse and nobody walks behind the desk.
+- The **wardrobe hands out over its west face**. It used to hand out SOUTH, into the back of the
+  reception desk, where nobody can stand. Its dressing turned with it: the wood-slat back wall is
+  the east face now and the rails run north-south, down the length of the view rather than end-on.
+- `tests/reception.test.ts` holds both shapes, interior included.
+
+Still open on that block from the 24 Sep list: the sign direction, and *"this element before
+reception is not needed"* — the dark slab in front of the counter, which I could not identify from
+the note alone and will ask about rather than guess at.
+
+## Michele, 25 Sep — playing Version 30
+
+Version 28 never started (the bundle was never uploaded with the page; see `GAUNTLET.md`), so
+this is the first real play of the night's work.
+
+| his note | state |
+| --- | --- |
+| *"I'd leave out the robot name here (moreover some task need multiple robots). That's already a big hint"* | **Done.** Worse than a hint: `Task.who` was one kind filled from `need[0]`, so a two-colour mix displayed one robot — a wrong answer. `who` is a list now, the chip is gone, and `H` names every robot a task needs. |
+| *"esc ok click outside should close the panel"* | **Done.** The sheet takes pointer events back from the `pointer-events:none` overlay, or a click on it would land on the canvas and close it. |
+| *"Colours are a bit off: Droid and biggy are whitey-grey"* | **Done.** One gain per rig instead of a per-panel target — see below. |
+| *"I'd zoom a little bit to make robots and crates bigger"* | **Done**, after finding the rect was never what decided it — see below. |
+| *"I'd remove this: and add it to the panel on I. The bar stays only with key reminders?"* | **Done.** The briefing is in the run sheet; the bar carries the chapter name and the keys. |
+| *"we lost the intro text. We should display it somewhere. Maybe animation, transiction to game, popup appears?"* | **Done**, and that is exactly the shape: the sheet opens itself once per chapter, the first frame of play after the transition, and Esc / a click / `I` close it for good until the next chapter. |
+| *"This also can go, it's the old version of the meter"* | **Done.** `GameSnapshot.progress` is no longer drawn. The field stays: several chapter tests read it as the chapter's own state line, and those are sim assertions that would be lost. |
+| *"runsheet should also have the commands recap"* | **Done**, at the foot of the sheet. Still on the top bar too — there it is a glance, here it is a read, and the panel is where a player goes when they do not know what to do. |
+| *"when showing the element, the glow is fine if it's in the view. If it's outside, there should be something pointing at it"* | **Done.** Off screen the ring becomes a chevron pinned to an inset border, rotated along the line from the middle of the frame to the UNCLAMPED point — clamping first would have every edge arrow pointing along the edge. |
+| *"wifi password: when lighted by a robot for the first time, that robot could have a toast, 'Oh yeah, that password..'"* | **Done.** It narrated what the beam found, which is the camera talking; it opens on her reaction now. |
+| *"also the 'this one is mine' hint does not work too well when multiple robots are involved"* | **Done** with the `who` list: *"Voxxy (1) and Droid (2) — this one takes both of us."* |
+| *"Robots still go through the handrail in the chapter transiction"* | **Open.** Queued since 24 Sep. One waypoint through the 1.30 m pocket, plus an assertion that no cutscene leg crosses a wall. |
+| *"there might be also intermediate challenges (eg: open the door for clue 3 with Droid and biggy). They might need a clue too?"* | **Open.** The shape that fits: let `Task.hint` be a LIST, so `H` walks several lines before the ring and a chapter can publish the intermediate step as its own clue without adding a row to the sheet. |
+| *"There's a light on the crates, robot exit fully visible. Light (emergency light?) flickers and stops, robots light up -> transition to game"* | **Open, and it is the right answer** — see below. |
+| *"We'll need to add music!"* | **Open.** |
+| *"We need to add the CRAB SANDWICH somewhere. That's the most famous part of the infamous devoxx food."* | **Open**, noted for later work. Chapter 3's catering court is where it belongs. |
+
+### Why the robots were whitey-grey
+
+The lift scaled **each panel** to a target luminance of its own, `floor + range * sqrt(lum)`. That
+is tone compression, not lighting, and it did two things nobody wanted: it squashed each robot's
+internal contrast, and it exposed a charcoal robot to the same brightness as the pale tan crates he
+is standing in front of. `robots/droid-robot.png` is dark charcoal with warm amber accents; the
+lift was taking his main panel from luminance 0.053 to **0.201**, a mid grey.
+
+Saturation was never the fault — it was preserved exactly. **Brightness was.** A low-saturation
+colour made four times brighter reads as grey, which is why Voxxy (saturation 0.99) survived it and
+Droid (0.47) and Biggy (0.54) did not.
+
+Now: **one gain per rig**, set so the robot's mean panel luminance reaches `PRESENT_TARGET`, applied
+to every panel alike. Dark stays dark relative to light, every hue holds, and the robot is the robot
+with a light on it. Never below 1, never above `PRESENT_MAX_GAIN`, and the cap is **proportional**,
+not per channel — dividing each channel by its own excess is exactly what turns a saturated colour
+white. Voxxy gets a gain of 1.0, which is right: he is the orange one and needs no help.
+
+### Why the zoom did nothing until it did
+
+`frame()` fits a box that is the view rect **crossed with a fixed vertical band** (`BAND_LOW` to
+`BAND_HIGH`, 4.3 m). While that band is in the box it is the binding dimension and the rect has no
+say: measured through `__afterdark.project()`, shrinking `VIEW_CRATES` from 92 to 76 moved the
+crates **3%** on screen, and 76 to 60 moved them 3% again.
+
+The opening frames three crates in an empty corridor with nothing above them worth keeping, so it
+gets its own band (`OPENING_BAND`, 3.1 m) the same way it already gets its own azimuth. `setBand()`
+follows `setAzimuth()` exactly, restore convention included. `tests/intro-light.test.ts` pins the
+thing that was silently false — that the rect now changes the framing at all — rather than merely
+that the override exists.
+
+### The emergency light — Michele's idea, and it is better than what is there
+
+*"If we want to handle the light change, we could do this. There's a light on the crates, robot exit
+fully visible. Light (emergency light?) flickers and stops, robots light up -> transition to game."*
+
+This dissolves the tension the presentation light exists to fudge. Right now the intro has to fake
+"fully visible in a blackout", which is why it needed tuning twice. With his version there IS a
+light: the robots are lit because something is lighting them, it dies on camera, their own lamps
+come up, and the cut to a dark corridor is **motivated** rather than a fade. It also explains the
+blackout to a player who has just arrived, and it costs nothing in the sim — the presentation light
+already takes a 0..1, so the flicker is a curve on the number that is already there.
+
+### The intro, restaged against the west wall
+
+Michele's own proposal, taken whole: *"Why not placing the crates on the west wall and using a single
+transition? Start: cinematic on the crate, light on robots, each one exits and is presented.
+Transition to the corridor, different camera angle, robots ready to start."*
+
+It also turned out to be the only position that works, which the *"the left crate is half black"*
+complaint was pointing at without either of us knowing. **Voxxy's crate was standing inside
+`corridor-column`** (x 59..75, y 288..304): 9.1 px of a 17.25 px crate — 53% of it — of 3.3 m of
+`#1b1e24` with a black emissive, i.e. exactly black in a blackout, standing in front of the boarding
+and filling the interior the moment her panel dropped. Droid's and Biggy's fouled nothing, which is
+why only hers showed it. Ruled out by measurement, not argument: the crate materials (probed live,
+all three identical), a shadow (the black is pure 0,0,0 and survives `?nofog=1`), the visibility
+polygon, the fallen panel, winding.
+
+**And it could not be slid clear.** A pixel-by-pixel scan of x 40..400 against both the columns and
+the auditorium door leaves found NO row centre where all three crates clear everything — the row is
+4.82 m, the two usable column gaps are 75..169 and 245..365, and each has a door in the middle of
+it. (Sliding it 26 px east, the obvious first try, puts Biggy's crate inside `cinema-door-leaf`.)
+
+So: face line **x 29**, row centre **y 350** — the corridor's own centre line — backs to the west
+wall, faces east, Biggy's 1.78 m depth reaching back to x 6.75 against the wall's inner face at
+`T` = 6. Measured with slack: any face line 29..120 on any centre 316..384 clears.
+`crateRowFouls()` in `src/render/crates.ts` re-checks a candidate before it is committed.
+
+Three things fall out of it for free, and they are why this is better than a fix:
+- The robots' start marks are the crate row, so they begin at the **west end facing east** — already
+  pointed down the corridor, with the crates behind them instead of beside the lane.
+- **One transition**, as he asked: the presentation and the cut to play are the same pull-back.
+- The crates stay as scenery with colliders for the rest of the chapter.
+
+**The presentation light** answers *"Robots are still black. In the intro I'll show them fully, even
+if it's dark. It's their presentation."* Each panel is re-exposed in its OWN colour — no
+`THREE.Light` anywhere, the rule the crates already follow — to `0.1 + 0.44 * sqrt(lum)`, so Droid's
+graphite comes up a long way and Voxxy's orange shell hardly moves and they stay three different
+robots rather than three grey ghosts. It rises with each robot's own crate lamp and is handed back
+across the camera pull-back so nothing pops on the transition frame. Two traps recorded: the eye and
+visor emissives are skipped (lifting one gives a robot two white holes in its face), and a material
+carrying its colour in a canvas texture is lifted through its `emissiveMap` — lifting `mat.color`
+works in node and painted Biggy's whole belly flat white in a browser.
+
+**The intro's camera angle is 68 degrees** (`OPENING_AZIMUTH_RAD`), against the play azimuth's 14.
+At 14 the row is edge-on and `DEVOXX` is three slivers, which is why the override exists at all; at
+68 all six stencil letters, the ANTWERPEN band, both red corner blocks and Biggy's stove-in corner
+read, and every crate still keeps a flank and a lid so the row reads as three boxes stepping up in
+size — small, tall, huge, which is the presentation order. 90 degrees is a flat elevation: three
+painted boards, no diorama. The override is per-shot and `dioramaToCamera()` deliberately still
+reads the constant, so no signage facing rule moves with it; a shot at 68 will show some signs from
+behind, which is harmless in an empty corridor and is the reason this is not a second setting.
+
+### The run sheet, the meter and the nudge — `I` and `H`
+
+Built tonight, and the biggest single playability item on the list. A stuck player
+had two things: the briefing at the top, which says what the chapter is, once, and the
+progress line at the bottom, which says what is happening, now. Neither answers
+*what is left* or *what do I do about it*.
+
+All four chapters already published `GameSnapshot.tasks` and nothing read it.
+
+- **The meter** is one pip per task and a count, in the bottom strip **above** the progress
+  line rather than replacing it. Two different questions: the line says what is
+  happening right now (*"digits 2/4 · still dark: ..."*), the meter says how much of the
+  chapter is left. A chapter with no list gets no meter, never an empty one.
+- **`I` — the run sheet.** The whole list, struck through as it lands, with each task's
+  robot as a chip in that robot's own lamp colour and its sub-count where it has one.
+- **`H` — the nudge**, escalating, one step per press, and **never past what the chapter
+  published**: (1) whose job it is, in that robot's voice, naming the key to press —
+  most of being stuck in this game is having the wrong robot selected, so the cheapest
+  answer is usually the right one; (2) the chapter's own line of help, never the
+  answer; (3) a ring on the place. A task with no `who` has no step 1, one with no `at`
+  has no step 3. The count is per task id, so moving on starts again from nothing.
+
+The ring is drawn **at the target**, not from the robot: an arrow starting at the robot
+has to be re-aimed every frame and reads as a tether telling you the route. *Where* is
+what a stuck player is asking.
+
+`nudgeStep` is lifted out of the HUD closure and exported so the ladder can be tested
+without a DOM (the suite runs in node). `tests/tasks-panel.test.ts` also holds the
+contract the overlay leans on, per chapter: unique ids, something to read on every row,
+nothing done on the first frame, a complete sub-count or none, and every task
+answerable at least once.
+
+Verified in the browser at all four chapters: every task carries `who`, `at` and `hint`
+except chapter 3's speaker (no fixed place — correct, he is hiding) and the two
+"all three robots" rows, which have no single owner.
+
 ## Chapter 2, second pass — Michele, 24 Sep
 
 | his note | decision |
@@ -477,3 +678,27 @@ reads as one block rather than two labels competing for the corner.
 Consequences to honour when it is built: crate order is load-bearing (Voxxy, Droid, Biggy, left to
 right) and the three faces must be coplanar and evenly gapped, or the word skews. `ZAAL 8` is dropped
 — three bands on one face is one too many at this size.
+
+### Two staircase questions, decided 24 Sep
+
+Both came out of the switchback rebuild, and both are Michele's call rather than a
+measurement, so they are recorded here as decisions and not as open items.
+
+| question | his answer | what it means in the code |
+| --- | --- | --- |
+| A proper 0.95 m guard at the head of each first-floor well would hide rooms 4 and 9's Zaal numerals from the diorama camera — traced at every pitch, the sight line crosses the well between 0.63 m and 1.11 m, so **no** rail height clears it. Guard, or numerals? | **Keep the 0.40 m upstand.** | `NICHE_RAIL` stays an upstand at the head of the well and a full rail (0.95–0.99 m) on the open long face, where nothing is behind it. The numerals are untouched and `tests/venue.smoke.test.ts`'s legibility pass stays a real check rather than one with an exception in it. The compromise is deliberate and it is invisible at play zoom; the photo's guard is drawn where it can be. |
+| The technical room leaves 15.8 px of floor outside the bot shaft's south door and Biggy is 18 px across, so he cannot use that door at all. `GF.tech` came from the prototype and has never been measured against the plan. | **Leave it — Biggy uses the north door.** | Both long faces carry doors now, so he always has a way through; the south door is a Voxxy-and-Droid route. That is a gate, not a bug, and it costs nothing to leave `GF.tech` unmeasured until something else needs it. |
+
+Still open, not asked because he has already said the ground floor is right: the
+ground-floor shaft's south end is not cleanly terminated on the drawing — treads
+run past the bold wall at plan y 323 down to about y 709. `GF.stairs`' rect ends
+at the bold line. If he ever wants the shaft's full length, that is the number.
+
+### Chapter 1's ending — two filed 24 Sep, queued behind the intro
+
+| his note | what it is | the fix, when it comes |
+| --- | --- | --- |
+| *"The door opens through Voxxy. What about vertical opening? shutter door?"* | The fire door swings on `FIRE_SWING_TIME` and its leaves become colliders where they END UP (`src/render/fire-door.ts`, `ch1-night.ts`), but nothing sweeps a robot out of the arc on the way. A robot parked in front of the door — which is exactly where the player leaves Voxxy, because she has just typed the code — is passed through by the leaf. | **Not a shutter.** A fire door swings, chapter 2 already owns the one roller shutter in the game, and a second one would spend a distinct object twice. The honest fix is the arc: the swinging leaf pushes anything in it, the way the door in a real corridor does. It is also funnier — Voxxy gets shoved aside by the door she just opened — and it is a physics win rather than a dodge. If he wants it gone rather than solved, the cheap version is opening the leaf the other way, away from the keypad. |
+| *"The robots enter the stair when an handrail is, passing through it. They should walk around it."* | The exit cutscene walks straight lines between waypoints and asks no wall a question — which was harmless until `NICHE_RAIL` made the balustrade at the head of the stair a real collider this same day. So the route now crosses a wall the player cannot cross. | One waypoint, not a pathfinder: the route enters the well by turning in off the corridor at the east end, which is the pocket the rail leaves (16.2 px, 1.30 m). `tests/stairs-driven.test.ts` already drives that entry, so the number to aim at is measured. Worth also asserting that no cutscene leg crosses a wall — the class of bug is "a route written before a collider existed", and it will happen again. |
+
+Both queued behind the opening sequence at his instruction: *"Fix this after the animation preview."*
