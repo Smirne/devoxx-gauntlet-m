@@ -326,6 +326,13 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
   // sponsor's own spot would.
   'duck-target': { h: 0.03, color: 0x3f7fa8, flat: true, glow: 0x1d4a63 },
   sticker: { h: 0.06, color: 0xff7a1a },
+  /*
+   * The crab sandwich on the catering counter — Michele: *"We need to add the
+   * CRAB SANDWiCH somewhere. That's the most famous part of the infamous devoxx
+   * food."* A tray on the counter at `LOW_H`, lit like anything else you can walk
+   * up to and use, under the `crab-sign` the venue paints over it.
+   */
+  crab: { h: 0.16, color: 0xe8d6b4, tl: true, lift: 1.06, glow: 0x6b2a14 },
   'race-marker': { h: 0.5, color: 0xff7a1a },
   /* chapter 3 — breakfast */
   'soup-station': { h: 1.0, color: 0xc0392b },
