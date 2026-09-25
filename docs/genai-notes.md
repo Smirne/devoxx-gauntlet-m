@@ -3791,3 +3791,37 @@ wall.
   wall is a 2.6 m pick-and-mix shelf, 0.3 m deep and flush to the wall, placed on the widest clear
   stretch in the closed section (beside Zaal D). It has twenty bins of sweets and a pink "pick &
   mix" neon.
+
+### 3D candidate — second merge of the 2.5D branch (25 Sep 2026)
+
+**What Michele asked.** *"2.5D has made lots of improvement. Can you try a 'rebase' and see if it all
+fits? This is also promoted from POC to candidate. Focus on the intro, interface and chapter 1."*
+
+**What the agent did.**
+- *Merged, not rebased.* 40 commits of the 2.5D branch came in with one merge commit. The 3D renderer only
+  reads `src/sim`, so no gameplay had to be ported. Conflicts were confined to `docs/` and the build
+  config. The two-page Vite build broke the single-file publish (`tools/inline-build.mjs`), because a
+  page built alongside another one imports a shared chunk. `PAGE=main|3d` now builds one page at a time,
+  and `tools/publish-build.sh` produces both `dist/index.html` and `dist-3d/3d.html` as self-contained
+  files.
+- *Intro.* The old 3D title and dolly are retired. The 3D build now plays the 2.5D opening from
+  `snap.opening`: the three crates on the dark stage, the emergency bulkhead light, a key light on the
+  robot being introduced, then the walk out. The camera eases from the crates to each carded robot and
+  settles behind the stand-at point. Title, cards and skip come from the shared HUD.
+- *Interface.* The run sheet (I), the escalating hint (H) and the off-screen arrow are the 2.5D
+  `createHud`. The arrow gets a 3D `project` hook that points the right way even for targets behind
+  the camera. The audio edges (`main.ts`'s `updateAudio`) moved verbatim into `src/render/cues.ts`, so
+  the 3D build gets the new keypad voice, the per-chapter score and every other cue without keeping a
+  copy. `main.ts` is untouched and could switch to it.
+- *Chapter 1.*
+  - The secondary staircases now stand in the corridor, where the plans put them. They are real flights
+    in 3D: two ramps with a half-landing, a balustrade and step lights, down to the ground floor.
+  - Plates lift the robots.
+  - Voxxy hops, and the party tricks play in 3D.
+  - Cinema B's maglocked door swings open on the sim's clock.
+  - R restarts the chapter: the 3D props now follow it back. Doors shut and are walls again for the
+    camera, the projector panel forgets it was thrown, found clues go back to the standby ring, and the
+    fire door's barrier leaves fold away.
+
+**What was deferred.** Chapters 2–4 in 3D (*"We'll do the others later"*). The 2.5D side is still
+working on a couple of things; the next merge is the same one-command operation.
