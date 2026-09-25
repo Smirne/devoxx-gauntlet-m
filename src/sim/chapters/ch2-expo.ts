@@ -106,7 +106,7 @@ import {
   TRAVEL_TIME_SCALE,
 } from '../constants';
 import { m } from '../units';
-import { GF, VIEW_GROUND, groundWallsFor, stairLanding } from '../geometry';
+import { GF, VIEW_GROUND, WIFI_TAG, groundWallsFor, stairLanding } from '../geometry';
 import { dist, inRect, speed } from '../bot';
 import { buildLights, litBy } from '../lights';
 import type { Bot, LightSource, Mirror, Prop, Task, TextPrompt, Vec2, Wall } from '../types';
@@ -589,7 +589,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * Four pixels proud of the wall, as chapter 1's clues stand off theirs, so nothing
    * occludes the beam that is trying to read it.
    */
-  const tagAt: Vec2 = { x: 400, y: GF.hall.y + 8 };
+  // The venue owns the position (`WIFI_TAG`): the renderer paints it and this
+  // chapter reads it, so the paint and the thing the beam has to find are one
+  // number. It used to be written down twice, and the second copy is how it
+  // ended up behind chapter 3's bar.
+  const tagAt: Vec2 = { x: WIFI_TAG.x, y: WIFI_TAG.y };
   /** Kept under the old name inside the beat: it is still the thing Voxxy reads. */
   const posterAt: Vec2 = tagAt;
 

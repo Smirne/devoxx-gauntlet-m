@@ -20,7 +20,7 @@ import * as THREE from 'three';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { H, T, W } from '../src/sim/constants';
-import { CY0, CY1, F1, GF, LOBBY_RISE_M, R, rooms, stairFlightRect } from '../src/sim/geometry';
+import { BAR_RECT, CY0, CY1, F1, GF, LOBBY_RISE_M, R, WIFI_TAG, WIFI_TAG_W, rooms, stairFlightRect } from '../src/sim/geometry';
 import { PX_PER_M, STOREY_H_M, m } from '../src/sim/units';
 import { DIORAMA_ELEVATIONS_DEG, dioramaToCameraAtDeg } from '../src/render/camera';
 import { buildVenue, simToWorld, type Venue } from '../src/render/venue/index';
@@ -479,12 +479,45 @@ describe('the exhibition level', () => {
     const tag = venue.group.getObjectByName('wifi-tag');
     expect(tag, 'no spray tag on the hall wall').toBeDefined();
     const box = new THREE.Box3().setFromObject(tag as THREE.Object3D);
-    // Chapter 2 puts its prop at x 400 on the hall's top wall (`tagAt`).
-    expect((box.min.x + box.max.x) / 2).toBeCloseTo(m(400), 1);
+    // One number, in the venue: `WIFI_TAG` is what the renderer paints and what
+    // chapter 2's beam has to find. It was written down twice, at x 400 in both
+    // places, and the second copy is how the password ended up behind chapter
+    // 3's bar counter.
+    expect((box.min.x + box.max.x) / 2).toBeCloseTo(m(WIFI_TAG.x), 1);
     expect((box.min.z + box.max.z) / 2).toBeCloseTo(m(GF.hall.y + T + 0.6), 1);
     // Paint, not a lightbox: it must not out-glow the real signs.
     const mat = (tag as THREE.Mesh).material as THREE.MeshStandardMaterial;
     expect(mat.emissiveIntensity).toBeLessThan(0.4);
+  });
+
+  /**
+   * ...and nothing else on that wall stands in front of it.
+   *
+   * Michele, 25 Sep 2026: *"The bar covers the wifi graffiti at the moment."* It
+   * did: the tag is 88 px of paint centred on the hall's north wall and chapter
+   * 3's bar counter is 92 px of the same wall, and they overlapped almost
+   * exactly. Both rects live in `geometry.ts` now so this can be asked.
+   */
+  it('keeps the bar counter off the spray tag', () => {
+    const tag = { x: WIFI_TAG.x - WIFI_TAG_W / 2, w: WIFI_TAG_W };
+    const gap = Math.max(BAR_RECT.x - (tag.x + tag.w), tag.x - (BAR_RECT.x + BAR_RECT.w));
+    expect(
+      gap,
+      `the bar (${BAR_RECT.x}..${BAR_RECT.x + BAR_RECT.w}) stands in front of the tag (${tag.x}..${tag.x + tag.w})`,
+    ).toBeGreaterThan(10);
+  });
+
+  /** The bar is called something, and until now it was called it only in dialogue. */
+  it('paints the bar’s name on the wall behind its taps', () => {
+    const sign = venue.group.getObjectByName('bar-sign-hall');
+    expect(sign, 'The Finally Block has no sign').toBeDefined();
+    const box = new THREE.Box3().setFromObject(sign as THREE.Object3D);
+    expect((box.min.x + box.max.x) / 2).toBeCloseTo(m(BAR_RECT.x + BAR_RECT.w / 2), 1);
+    // Above the graffiti on the same wall, which is the one thing on that wall
+    // with a known height — the hall floor is not at y 0 (`LOBBY_RISE_M`).
+    const tag = venue.group.getObjectByName('wifi-tag') as THREE.Object3D;
+    const tagBox = new THREE.Box3().setFromObject(tag);
+    expect(box.min.y, 'the name is hung down among the taps').toBeGreaterThan(tagBox.max.y - 0.6);
   });
 
   /*
