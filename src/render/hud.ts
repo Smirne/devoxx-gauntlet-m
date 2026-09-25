@@ -1088,7 +1088,20 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
       node.style.background = `linear-gradient(90deg, ${rgba(colour, 0.2)}, rgba(10,11,14,.93) 58%)`;
     }
     const line = el('span', 'ad-line', node);
-    line.textContent = text;
+    /*
+     * MARKUP, LIKE EVERY OTHER LINE THE SIM WRITES — and this was a bug.
+     *
+     * Michele: *"There's some html code in toast, not rendered."* The chapters
+     * have always written `<b>` into their toasts — the breaker circuits, the
+     * password, `SHIRTS &amp; GADGETS` — because the briefing and the objective
+     * take the same simple markup, and this one path set `textContent`. So the
+     * emphasis the sentence was built around arrived on screen as literal tags
+     * and an `&amp;`.
+     *
+     * Same trusted source as `setHtml`: these strings come from `src/sim`, which
+     * is ours. Nothing a player types ever reaches here.
+     */
+    line.innerHTML = text;
     (speaker ? bubbles : toasts).appendChild(node);
     live.push({ node, text, dieAt: now + lifeMs, removeAt: now + lifeMs + 340, out: false, speaker });
     // Three lines is already a wall of text over the diorama: as a fourth

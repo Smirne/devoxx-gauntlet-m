@@ -73,7 +73,7 @@ import {
   loadBiggy,
 } from '../crates';
 import { GF, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
-import { botsCollide, circleRect, dist, inRect, mkBody, speed, stepBot } from '../bot';
+import { botsCollide, circleRect, dist, inRect, mkBody, speed, standOff, stepBot } from '../bot';
 import type { Bot, Person, Prop, Rect, Task, Vec2, Wall } from '../types';
 
 import type { ChapterCtx, ChapterDef, ChapterRuntime, PrevVel } from './index';
@@ -1439,6 +1439,22 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           'Stone cold. Stephan drinks it anyway, out of politeness.<small>R to try again · or Skip chapter</small>',
         );
       }
+    }
+
+    /*
+     * ...and the people who simply STAND there are solid too.
+     *
+     * Michele, with a screenshot of Voxxy inside one of them: *"voxy passes
+     * though a person?"* The queues pushed back and the crowd pushed back; the
+     * three you ask for directions, Stephan and the speaker did not, so the three
+     * most important figures in the chapter were the ones you could walk through.
+     * A speaker who is FOLLOWING is exempt — she is walking with Voxxy, and a
+     * follower who shoulder-charges the robot she is following cannot keep up.
+     */
+    for (const b of ctx.bots) {
+      for (const n of npcs) standOff(b, n);
+      standOff(b, stephan);
+      if (!speaker.following) standOff(b, speaker);
     }
 
     if (speaker.following && !speaker.onStage) {
