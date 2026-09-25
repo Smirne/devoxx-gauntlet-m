@@ -94,14 +94,59 @@ describe('the small staircase is clear', () => {
      * the next person to resize a stand finds out in a second rather than in a
      * screenshot.
      */
-    expect(HALL_COLUMNS).toHaveLength(18);
+    // Sixteen, not the eighteen this test was written on: the x 213 line was both
+    // of the columns that pinched the route to the technical room, and the rule in
+    // `HALL_COLUMNS` drops them. See the test below for what that rule means.
+    expect(HALL_COLUMNS).toHaveLength(16);
     const xs = [...new Set(HALL_COLUMNS.map((c) => c.x))].sort((a, b) => a - b);
-    expect(xs).toEqual([213, 373, 533, 693, 853, 1013]);
+    expect(xs).toEqual([373, 533, 693, 853, 1013]);
     for (const c of HALL_COLUMNS) {
       for (const b of GF.booths) {
         expect(hits(c, { x: b.x, y: b.y, w: b.w, h: b.h }), `a column stands inside ${b.name}`).toBe(false);
       }
     }
+  });
+
+  /**
+   * ...and none of the sixteen makes a gap the heaviest robot cannot get through.
+   *
+   * Michele, 25 Sep 2026, with Biggy stopped beside one: *"Biggy route to the
+   * modem room is a bit long. Is this column strictly needed?"* Two of the
+   * eighteen were not: one stood 13 px off the technical room and one 7 px off
+   * the lower stair shaft, both on the x 213 line, both on the route the chapter
+   * sends BIGGY down to open the router cabinet. 13 px is 1.04 m and he is 1.44,
+   * so the short way was a slot he could not enter — which is the whole of "a bit
+   * long".
+   *
+   * The rule that dropped them is in `HALL_COLUMNS`; this is what it means, asked
+   * of the result rather than of the code.
+   */
+  it('leaves every column a gap Biggy can actually use', () => {
+    const blocks: Array<{ name: string; r: Rect }> = [
+      { name: 'catering court', r: GF.food.court },
+      { name: 'technical room', r: GF.tech },
+      { name: 'store', r: GF.store },
+      { name: 'small stairs', r: GF.smallStairs },
+      { name: 'concrete wall', r: GF.concreteWall },
+      ...GF.stairs.map((s, i) => ({ name: `stair shaft ${i}`, r: { x: s.x, y: s.y, w: s.w, h: s.h } })),
+      ...GF.booths.map((b) => ({ name: b.name, r: { x: b.x, y: b.y, w: b.w, h: b.h } })),
+    ];
+    const tight: string[] = [];
+    for (const c of HALL_COLUMNS) {
+      for (const { name, r } of blocks) {
+        const ovY = Math.min(c.y + c.h, r.y + r.h) - Math.max(c.y, r.y);
+        const ovX = Math.min(c.x + c.w, r.x + r.w) - Math.max(c.x, r.x);
+        const gapX = Math.max(r.x - (c.x + c.w), c.x - (r.x + r.w));
+        const gapY = Math.max(r.y - (c.y + c.h), c.y - (r.y + r.h));
+        if (ovY > 0 && gapX >= 0 && gapX < DEFS.biggy.r * 2) {
+          tight.push(`column ${c.x},${c.y} leaves ${gapX.toFixed(1)} px to ${name} — Biggy is ${DEFS.biggy.r * 2}`);
+        }
+        if (ovX > 0 && gapY >= 0 && gapY < DEFS.biggy.r * 2) {
+          tight.push(`column ${c.x},${c.y} leaves ${gapY.toFixed(1)} px to ${name} — Biggy is ${DEFS.biggy.r * 2}`);
+        }
+      }
+    }
+    expect(tight, `columns standing in a gap nothing can use:\n  ${tight.join('\n  ')}`).toEqual([]);
   });
 
   it('is not where chapter 3 plays shuffleboard', () => {

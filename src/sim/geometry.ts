@@ -26,7 +26,7 @@
  * the drawing code.
  */
 
-import { W, H, T } from './constants';
+import { DEFS, W, H, T } from './constants';
 import type { Booth, Bot, Plate, Rect, RoomDef, ViewRect, Wall } from './types';
 
 /* ---------------------------------------------------------------- first floor */
@@ -1402,11 +1402,47 @@ export const HALL_COLUMNS: readonly Rect[] = (() => {
   ];
   const hits = (a: Rect, b: Rect, pad: number): boolean =>
     a.x < b.x + b.w + pad && a.x + a.w + pad > b.x && a.y < b.y + b.h + pad && a.y + a.h + pad > b.y;
+  /*
+   * ...AND A COLUMN THAT LEAVES A GAP NOBODY CAN USE IS A SNAG, NOT ARCHITECTURE.
+   *
+   * Michele, 25 Sep 2026, with a screenshot of Biggy stopped beside one of them:
+   * *"Biggy route to the modem room is a bit long. Is this column strictly
+   * needed?"*
+   *
+   * Measured, the grid is fine everywhere but the hall's south-west corner. The
+   * booth aisles are 60 px wide and a 14 px column in one leaves 20 and 26 px —
+   * Biggy is 18 across, so he gets through on either side. But two columns on the
+   * x 213 line stand 13 px off the technical room and 7 px off the lower stair
+   * shaft, and 13 px is 1.04 m: nothing but Voxxy fits, and both of them are on
+   * the route to the router cabinet that the chapter sends BIGGY down. So the
+   * walk was long because the short way was a slot he could not enter.
+   *
+   * The rule, rather than deleting the two by hand: a column is dropped when it
+   * forms a true corridor with a block — they overlap on the perpendicular axis —
+   * and that corridor is narrower than the widest robot plus a little. The plan's
+   * 160 x 140 is a PITCH and this is a 2 m diorama of it; where the two disagree
+   * by a robot's width, the robot wins. It costs 2 columns of 18.
+   */
+  const SQUEEZE = DEFS.biggy.r * 2 + 2;
+  const pinched = (foot: Rect, s: Rect): boolean => {
+    const ovY = Math.min(foot.y + foot.h, s.y + s.h) - Math.max(foot.y, s.y);
+    const ovX = Math.min(foot.x + foot.w, s.x + s.w) - Math.max(foot.x, s.x);
+    if (ovY > 0) {
+      const g = Math.max(s.x - (foot.x + foot.w), foot.x - (s.x + s.w));
+      if (g >= 0 && g < SQUEEZE) return true;
+    }
+    if (ovX > 0) {
+      const g = Math.max(s.y - (foot.y + foot.h), foot.y - (s.y + s.h));
+      if (g >= 0 && g < SQUEEZE) return true;
+    }
+    return false;
+  };
   const out: Rect[] = [];
   for (let x = h.x + 190; x < h.x + h.w; x += 160) {
     for (let y = h.y + 110; y < h.y + h.h; y += 140) {
       const foot: Rect = { x: x - 7, y: y - 7, w: 14, h: 14 };
       if (solids.some((s) => hits(foot, s, 6))) continue;
+      if (solids.some((s) => pinched(foot, s))) continue;
       out.push(foot);
     }
   }
