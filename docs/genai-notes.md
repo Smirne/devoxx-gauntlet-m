@@ -3871,3 +3871,80 @@ the collision live, and `pilot.ts` takes the sticker after the speaker instead o
 before, which keeps its swag count identical while exercising the fix.
 
 Suite **706 tests, 44 files, green**; `tsc --noEmit` clean.
+
+## 25 Sep 2026 — his decisions, and the line that finally had an address
+
+Michele went through the open list and settled nine of them. Three needed building.
+
+**The flicker, found because he gave a location.** *"Chapter 2/3 the passage between
+the reception zone and the main hall. There's a line that flicker when the robot is
+walking."* It had been on the list since 24 Sep as "queued, not yet reproduced" —
+three of his reports over three days are the same fault, and none of them survived a
+screenshot, because z-fighting sits perfectly still until a light crosses it. A robot
+walking past with a lamp is what makes it move.
+
+Measured off the built scene rather than looked for by eye: the raised lobby plate
+started 6 px west of `LOBBY_X` and the threshold's top tread ended there, both top
+faces at **y = -5.0000 exactly**, sharing a 0.48 m ribbon down the flight's whole
+22.6 m — plus the concrete riser caps above and below the flight, which the lip
+covered outright. The plate stops at `LOBBY_X` now. Abutting is fine; overlapping is
+not.
+
+The test is the class, not the instance: `tests/coplanar.test.ts` walks the built
+venue, takes every mesh's top face, and fails on any pair sharing a height to within
+a millimetre and overlapping in plan — but only in the height bands a robot walks in,
+because a dozen wall tops meet at corners by construction and a speckle at 2.4 m is
+not what anybody sees. It immediately turned up **a second one nobody had reported**:
+the first floor's corridor carpet ran straight over the main staircase's head,
+12.46 m² at y = 0.0000. Reverting the first fix makes the test report 23.04 m² of
+ribbon across three pairs, so it is not a vacuous pass.
+
+**The fire door's arc push**, which he chose over a shutter. For the one second of
+`FIRE_SWING_TIME` the `firedoor` collider has gone and the leaves' resting walls are
+not in yet, so a robot standing in the arc was passed straight through — and that
+robot is Voxxy nine times in ten, because the keypad she has just used is **on the
+door**. `sweepFireDoor` finds the closest point on each leaf's centre line, puts the
+robot out along the leaf's own normal, and gives it the leaf's speed at that radius:
+a point `r` along a leaf turning at `w` travels at `w r`, so the tip throws harder
+than the hinge, out of the arithmetic rather than out of a special case.
+
+Two things were wrong first and both were found by measuring:
+
+- The push direction was "whichever side of the leaf she is on". A robot standing
+  exactly on the line has no side, so the sign came out of rounding noise, and Voxxy
+  in the doorway was thrown **east**, deeper into the opening she was meant to be
+  cleared out of. A door pushes one way.
+- The first tests compared the **peak** speed from two radii and got 53.8 against
+  52.8 — which is not the push being flat, it is the robot sliding outward along the
+  leaf until both ride the tip. The measurement that means something is first
+  contact, and there it is exact: **31.3 px/s measured against the leaf edge's
+  31.26**. Two more test setups had to be thrown away before that: the subject cannot
+  be the robot that types (`g.key` goes to the driven robot and the code is only
+  accepted at the pad — the door never opened, `fireSwing` stayed 0.000 for forty
+  frames), and it cannot stand in the north leaf's quarter, because the keypad
+  housing ejects it before the swing starts and all three radii came back from
+  `place` at one corner, leaving an experiment with no radius in it.
+
+**The toilets**, *"cover the toilets"*: sealed rather than moved. One unbroken south
+face with a pair of shut leaves drawn in it and the pictogram over them; the two
+internal partitions went with the doorway. Nothing in any chapter happens in there,
+and a room nobody can walk into is a room whose position against the plan nobody can
+check — which is what he was asking for when he said it was not an important detail.
+`tests/geometry.test.ts` asserted one doorway; it now asserts the face is unbroken
+and that the shut door speaks in three voices.
+
+**Closed with no code**, on his word: the two clue spots that sit near each other and
+chapter 1's number hunt (*"keep as is"*), six beer crates rather than five
+(*"six is fine"*), the OutOfMemoryError at five crates (*"that's fine"*), and
+`pushBiggy`/`stepTow` ignoring Biggy's mass (*"fine as is I'd say"*) — the last of
+which would have retuned chapter 2's roller door, so it stays frozen.
+
+**Still his**, and he is replaying tonight for them: the two reception objects he
+would have to point at, chapter 1's mirror puzzle playing off camera, the crowd radii,
+chapter 3's leaking catering gate (measured again and drawn to scale this round — 11
+px of the doorway's 44 fit Biggy's centre with the queue standing, 27 px once Voxxy
+clears it, and he can already get within 25 px of the soup against a `POT_REACH` of
+70), the intermediate-challenge beat, and chapter 4's six minutes.
+
+Suite **711 tests, 45 files, green**; `tsc --noEmit` clean; `ERRORS:0` in all four
+chapters on the built bundle.
