@@ -49,6 +49,7 @@ import { CRATE_ROW, PULL_BACK, WALK_AT } from '../sim/opening';
 const OPEN_CRATE_LIT = 0.16;
 import { createLightLayer, type LightLayer } from './lighting';
 import { PANEL_H_M, PANEL_LIFT_M, buildReleasePanel, type ReleasePanelModel } from './release-panel';
+import { buildPrinter, type PrinterModel } from './printer';
 import {
   createRobot,
   measureBounds,
@@ -294,6 +295,14 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
    * `drawPilot` takes it further — a live lamp breathes.
    */
   pilot: { h: 0.1, color: 0x14181d, tl: true, lift: 1.78 },
+  /*
+   * The network rack's link lights — the same lamp as the cabinet's pilot, at the
+   * rack's own height, and a KIND of its own rather than a second `pilot` so that
+   * "the pilot lamp" stays one findable thing in the sim, the tests and the HUD.
+   * Michele: *"I'd like some glow from the rack cabinet when modem is up"*, and
+   * *"The cable start is not much visible, one has to know where to look."*
+   */
+  'rack-lights': { h: 0.08, color: 0x14181d, tl: true, lift: 1.86 },
   poster: { h: 0.62, color: 0xe9e4d6, tl: true, lift: 0.95, glow: 0x2a3a52 },
   printer: { h: 0.95, color: 0xb9bec6, tl: true },
   /*
@@ -912,6 +921,14 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    */
   const releasePanel: ReleasePanelModel = buildReleasePanel();
   dressing.add(releasePanel.root);
+
+  /*
+   * The badge printer at reception — chapter 2's whole errand, and until now a
+   * pale grey cuboid on the counter. Michele: *"printer should be recognizable
+   * and glowing as a hint"*. See `src/render/printer.ts`.
+   */
+  const printer: PrinterModel = buildPrinter();
+  dressing.add(printer.root);
 
   /**
    * The ground ring under the robot being driven. Nothing else in the frame says
@@ -2221,6 +2238,15 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    * decides which way it faces, and for why the rect's DEPTH is the part of it
    * that is wrong.
    */
+  /**
+   * Chapter 2's badge printer, on the reception counter. Everything it shows is
+   * `Prop.state`: dark, amber-waiting, or printing a badge.
+   */
+  function drawPrinter(p: Prop, floorY: number): void {
+    printer.root.visible = true;
+    printer.pose(p, surfaceY(floorY, p.x, p.y));
+  }
+
   function drawReleasePanel(p: Prop, floorY: number): void {
     releasePanel.root.visible = true;
     releasePanel.pose(p, surfaceY(floorY, p.x, p.y));
@@ -2502,6 +2528,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     keypad.root.visible = false;
     drawOpening(snap, floorY);
     releasePanel.root.visible = false;
+    printer.root.visible = false;
     // Handed back to the venue unless a chapter claims it again this frame.
     if (venueFireLeaf) venueFireLeaf.visible = true;
     if (venueRoller) venueRoller.visible = true;
@@ -2514,12 +2541,13 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       else if (p.kind === 'jammed') drawJammed(p, floorY);
       else if (p.kind === 'breaker') drawBreaker(p, floorY);
       else if (p.kind === 'terminal') drawTerminal(p, floorY, snap.t);
-      else if (p.kind === 'pilot') drawPilot(p, floorY, snap.t);
+      else if (p.kind === 'pilot' || p.kind === 'rack-lights') drawPilot(p, floorY, snap.t);
       else if (p.kind === 'cabinet') drawCabinet(p, floorY);
       else if (p.kind === 'lock') drawLock(p, floorY, snap.walls);
       else if (p.kind === 'gate') drawGate(p, floorY, snap.walls);
       else if (p.kind === 'crate') drawCrate(p, floorY);
       else if (p.kind === 'keypad') drawKeypad(p, floorY);
+      else if (p.kind === 'printer') drawPrinter(p, floorY);
       else if (p.kind === 'projector-panel') drawReleasePanel(p, floorY);
       else if (SEAT_KINDS.has(p.kind)) drawSeats(p, floorY);
       else drawProp(p, floorY);
