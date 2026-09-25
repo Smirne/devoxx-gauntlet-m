@@ -1024,17 +1024,35 @@ export const GF = {
    * the run a robot can reach from the concourse rather than behind it.
    */
   printer: { x: 1262, y: 453, w: 20, h: 10 },
-  /** The main staircase up to the Devoxx rooms, east of the reception block. */
+  /**
+   * The main staircase up to the Devoxx rooms, east of the reception block.
+   *
+   * The footprint is the plan's: on `plans/exhibition-floor-stairs-annotated.png`
+   * the block is 203 plan px of tread width by 70 plan px of run, with its treads
+   * drawn across the width and a single ascent arrow up the middle. The quarter
+   * turn this module applies makes that **197 px of width in y** and **112 px of
+   * run in x** — so the long side of this rect is the width of the stair, not the
+   * direction you climb. See `groundPlates` and `GF.gate`.
+   */
   mainStair: { x: 1305, y: 263, w: 112, h: 197 },
   /**
    * The gate across the foot of the main staircase — the one Stephan stands at.
    *
-   * It closes the staircase's SOUTH face, which is the only side of it anybody can
-   * reach: the wardrobe and the reception desk close the west, and "when Devoxx
-   * opens this passage is closed and you go to the reception first" is exactly the
-   * gate chapter 3 ends on.
+   * It closes the staircase's **EAST** face, because that is the foot of the
+   * flight and the side the doors are on. Michele: *"Stairs should be facing the
+   * entrance. As i enter i see stairs going straight up."*
+   * `plans/exhibition-floor-stairs-annotated.png` draws the ascent arrow climbing
+   * plan-NORTH, away from the Main Entrance at the plan's bottom edge — and this
+   * module rotates the plan a quarter turn (plan north -> world west), so the
+   * flight climbs **west** and is entered from the east, 55 px in front of
+   * `GF.entrance`. It used to be a 112 px bar across the SOUTH face, which put the
+   * climb across the treads.
+   *
+   * The west flank is closed by the wardrobe and the reception desk either way,
+   * and "when Devoxx opens this passage is closed and you go to the reception
+   * first" is still exactly the gate chapter 3 ends on.
    */
-  gate: { x: 1305, y: 263 + 197, w: 112, h: T },
+  gate: { x: 1305 + 112, y: 263, w: T, h: 197 },
   /** BOF rooms: tables, workshops, and usable game space. Top-clamped. */
   bof: { x: 1195, y: 6, w: 275, h: 151 },
   /** Internal partitions of the BOF block, as offsets from `bof.x`. */
@@ -1140,11 +1158,17 @@ export const MAIN_STAIR_TOP_M = 5;
  *  - **the small staircase**, six long steps ramping from the hall to the lobby —
  *    the same interpolation `groundRiseM` above does, which is asserted against
  *    this list in `tests/surface.test.ts` so the two cannot drift;
- *  - **the main flight**, climbing NORTH out of the lobby to the first floor.
+ *  - **the main flight**, climbing WEST out of the lobby to the first floor.
  *    `src/render/venue/ground.ts` builds it from `bottomY: LOBBY_RISE_M` at its
- *    south edge to `topY: MAIN_STAIR_TOP_M` at its north, and until now chapter
- *    3's transition walked the three of them straight through it at hall level —
- *    which is the "walks into a staircase" note in `docs/playtest-notes.md`.
+ *    east edge — the foot, the side the entrance is on — to `topY:
+ *    MAIN_STAIR_TOP_M` at its west, and until now chapter 3's transition walked
+ *    the three of them straight through it at hall level, which is the "walks into
+ *    a staircase" note in `docs/playtest-notes.md`.
+ *
+ *    It climbed north until 25 Sep 2026, across its own treads. The plan draws the
+ *    ascent arrow running plan-north out of the Main Entrance and this module
+ *    turns the plan a quarter turn, so the climb is world-west; `GF.gate` moved to
+ *    the east face with it.
  *
  * A plate is not a wall (see `src/sim/surface.ts`): every cell of these stays
  * walkable, and what stops a robot strolling up the main flight in play is the
@@ -1156,10 +1180,10 @@ export function groundPlates(): Plate[] {
   return [
     { kind: 'lobby', x: s.x + s.w, y: 0, w: W - (s.x + s.w), h: H, lo: LOBBY_RISE_M },
     { kind: 'lobby-steps', ...s, lo: 0, hi: LOBBY_RISE_M, axis: 'x' },
-    // North edge is the top: `axis: 'y'` runs low-y to high-y, so `lo` is the TOP
-    // of the flight and `hi` is its foot. The names are the axis's ends, not the
-    // stair's.
-    { kind: 'main-flight', ...ms, lo: MAIN_STAIR_TOP_M, hi: LOBBY_RISE_M, axis: 'y' },
+    // West edge is the top: `axis: 'x'` runs low-x to high-x, so `lo` is the TOP
+    // of the flight and `hi` is its foot, which faces the entrance. The names are
+    // the axis's ends, not the stair's.
+    { kind: 'main-flight', ...ms, lo: MAIN_STAIR_TOP_M, hi: LOBBY_RISE_M, axis: 'x' },
   ];
 }
 

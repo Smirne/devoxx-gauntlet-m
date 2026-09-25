@@ -3557,3 +3557,60 @@ required` so a probe exercises the audio at all instead of silently skipping a s
 
 **Still open.** The second flicker report (a tall element by the stairs) still needs a live repro —
 unchanged from the last session, and still not guessed at.
+
+## 25 Sep 2026 — the main staircase, and the briefing that spoiled itself
+
+**What a human asked for.** Two lines, mid-session. *"You really don't wanna fix that main stairs,
+eh?"* — fair; it had been measured and deferred for a session and a half. And, on the panel that
+opens with each chapter: *"I'll hide this from the starting splash page, it's a kind of spoiler.
+Could show the meter? and a key to expand to this?"*
+
+**What the agent did — the staircase.** Re-measured it from the drawing rather than trusting the
+note, which turned out to agree: on `plans/exhibition-floor-stairs-annotated.png` the stair's tread
+lines run plan-east–west across x 308..511 over a 70 px depth, and the ascent arrow stands at
+x 410 with its head at y 976 — pointing plan-NORTH, away from the Main Entrance at the plan's
+bottom edge. This repo turns the plan a quarter turn (plan north → world west, confirmed against
+three landmarks: the entrance, the BOF rooms and the polo store), so the flight climbs **west** and
+is entered from the **east**, facing the doors. Ours climbed north, across its own treads.
+
+The footprint did not move a pixel; the axis did. `groundPlates()`'s main flight became `axis: 'x'`,
+`GF.gate` became a north–south rect on the east face, `stairFlight`'s `dir` went `'+z'` to `'+x'`,
+Stephan moved to the opening in the barrier, and the exit cutscene climbs west through it.
+
+**The turn changed what the gate is, and that was not a choice.** There are 55 px — 4.4 m — of
+concourse between the new gate line and the glazed entrance wall, and the barrier across the foot
+of the flight is 197 px. A leaf that long had nowhere to swing that was not inside the glass or
+buried two metres up the treads. So the building settled it: nobody hangs a 15.7 m barrier on one
+hinge, a stair that wide is closed by a run of posts with **one gate in it**, and that is exactly
+what Stephan has been unhooking in the chapter's own text since it was written. `GATE_MOUTH` is the
+opening, `gateDraw` reads the rect's long side for which way the run lies rather than carrying two
+hard-coded orientations, and the barrier either side of the mouth stays standing.
+
+**What was measured rather than argued.** The stair's step count. The run is 8.96 m now instead of
+15.76, and the 16 steps it had gave a 31 cm riser — 24 gives 21 cm, which is a staircase people walk
+up. Also the leaf's landing: swung right back it stops 11 px short of the glazing, which is why the
+mouth is 44 px and not 48.
+
+**A bug the change surfaced.** The two standing barrier runs were first pushed as `kind: 'gate'`
+walls, which is what they look like. `openness()` in `src/render/doors.ts` reads the wall list for a
+`gate` to decide whether the barrier is still sealed, so the renderer concluded the gate had never
+opened and drew the leaf shut across its own opening — with nothing in the sim behind it.
+`tests/colliders.test.ts` caught it as 40 cells of barrier you could walk through. They are
+`gatebar` now, and the comment says why.
+
+**What the agent did — the briefing.** The panel was doing two jobs with one layout. Opened *by the
+chapter* it is a briefing and should set the scene; listing "light the orange + green mix" before
+the player has seen a lamp hands them the answer to a puzzle they have not met. Opened *by `I`* it
+is a run sheet, asked for, and then the rows are the whole point. So it has two states: the
+briefing carries the objective, the count and the key that expands it; `I` turns it into the rows.
+
+Screenshotting it turned up the other half of his note — the briefing was opening *on top of the
+chapter card*, two panels saying the same thing through each other. It now waits for the card to be
+dismissed. Card, then briefing, then play.
+
+**Tests.** `geometry`, `surface`, `chapters` and `venue.smoke` turned to the new orientation rather
+than relaxed — `surface` gained an assertion that height does not change across the width of the
+stair, which is the thing that tells the two axes apart and is what was wrong before, and
+`venue.smoke` now measures the drawn flight's own treads west against east instead of only looking
+at where the gate is. Suite: **682 tests, 40 files, green**; `tsc --noEmit` clean; `After Dark ·
+ERRORS:0` on the built bundle.

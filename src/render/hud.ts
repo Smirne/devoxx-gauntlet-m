@@ -316,6 +316,10 @@ const CSS = `
 .ad-brief{margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid rgba(242,239,233,.12);
   font-size:13px;line-height:1.45;color:#cdc9c2;max-height:34vh;overflow-y:auto}
 .ad-brief b{color:${ACCENT};font-weight:600}
+.ad-peek{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  font-size:13px;color:#cdc9c2}
+.ad-peek b{color:#f2efe9;font-weight:600;font-variant-numeric:tabular-nums}
+.ad-peek .ad-key{color:${ACCENT};letter-spacing:.06em}
 .ad-skeys{margin-top:12px;padding-top:11px;border-top:1px solid rgba(242,239,233,.12);
   font-size:12px;line-height:1.5;color:${MUTED}}
 .ad-trow{display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-top:1px solid rgba(242,239,233,.09);
@@ -695,6 +699,24 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   const sheetBrief = el('div', 'ad-brief', sheet);
   const sheetRows = el('div', '', sheet);
   /*
+   * WHAT THE BRIEFING SHOWS INSTEAD OF THE TASK LIST.
+   *
+   * Michele, 25 Sep 2026, on the panel that opens with the chapter: *"I'll hide
+   * this from the starting splash page, it's a kind of spoiler. Could show the
+   * meter? and a key to expand to this?"*
+   *
+   * He is right, and it is the same panel doing two jobs. Opened BY the chapter
+   * it is a briefing — it should set the scene and say how much there is to do,
+   * and listing "light the orange + green mix" before the player has seen a lamp
+   * hands them the answer to a puzzle they have not met. Opened BY `I` it is a
+   * run sheet, asked for, and then the rows are the whole point.
+   *
+   * So the sheet has two states and `sheetFull` is which: the briefing carries
+   * this line — the count, and the key that expands it — and the run sheet
+   * carries the rows.
+   */
+  const sheetPeek = el('div', 'ad-peek', sheet);
+  /*
    * THE KEYS, AGAIN, AT THE BOTTOM OF THE SHEET. Michele: *"runsheet should also
    * have the commands recap."*
    *
@@ -707,6 +729,8 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   const mark = el('div', 'ad-mark ad-hide', root);
   const edge = el('div', 'ad-edge ad-hide', root);
   let sheetOpen = false;
+  /** Is the sheet showing its rows, or only the briefing and the meter? See `sheetPeek`. */
+  let sheetFull = false;
   /**
    * How much help the player has asked for on the task in hand, keyed by its id
    * so it survives the task list being rebuilt every frame — and so moving on to
@@ -912,7 +936,8 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   }
 
   function updateSheet(snap: GameSnapshot): void {
-    const open = sheetOpen && snap.phase === 'play' && snap.opening === null && snap.tasks.length > 0;
+    const open =
+      sheetOpen && snap.phase === 'play' && snap.opening === null && snap.card === null && snap.tasks.length > 0;
     sheet.classList.toggle('ad-hide', !open);
     if (!open) return;
     const done = snap.tasks.reduce((n, t) => n + (t.done ? 1 : 0), 0);
@@ -922,6 +947,19 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     // Rebuilt rather than diffed: the sheet is open only while the player is
     // reading it, the lists are five rows long, and a diff here would be cost
     // with no frame to spend it on.
+    sheetTitle.textContent = sheetFull ? 'Run sheet' : 'Briefing';
+    sheetPeek.classList.toggle('ad-hide', sheetFull);
+    sheetRows.classList.toggle('ad-hide', !sheetFull);
+    if (!sheetFull) {
+      setHtml(
+        sheetPeek,
+        `<span><b>${snap.tasks.length}</b> things to do here, <b>${done}</b> done</span>` +
+          `<span class="ad-key">I \u2014 the run sheet</span>`,
+        htmlCache,
+      );
+      setText(sheetKeys, snap.keys, textCache);
+      return;
+    }
     sheetRows.textContent = '';
     for (const t of snap.tasks) {
       const row = el('div', `ad-trow${t.done ? ' ad-did' : ''}`, sheetRows);
@@ -1242,9 +1280,20 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
      * band it replaced. `briefedFor` is the chapter it has already been shown
      * for, so Esc, a click or `I` close it for good until the next one.
      */
-    if (snap.phase === 'play' && snap.opening === null && snap.chapter !== briefedFor) {
+    /*
+     * ...and only once the chapter CARD is gone.
+     *
+     * It opened the moment the chapter went live, which put two panels on the
+     * screen at once — the card saying what this chapter is, and the briefing
+     * saying the same thing at length across the middle of it. Michele's *"I'll
+     * hide this from the starting splash page"* is about a panel he could see
+     * through another panel. Card, then briefing, then play.
+     */
+    if (snap.phase === 'play' && snap.opening === null && snap.card === null && snap.chapter !== briefedFor) {
       briefedFor = snap.chapter;
       sheetOpen = true;
+      // The chapter opens the BRIEFING. `I` is what turns it into the run sheet.
+      sheetFull = false;
     }
 
     setText(chapterEl, CHAPTER_TITLES[snap.chapter] ?? CHAPTER_TITLES[0], textCache);
@@ -1326,8 +1375,21 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     style.remove();
   }
 
+  /**
+   * `I`, three ways: open the run sheet, expand the briefing into it, close it.
+   *
+   * The middle case is the one Michele asked for — the panel the chapter opens is
+   * a briefing with a meter on it, and `I` is the key that expands it (see
+   * `sheetPeek`). From anywhere else `I` goes straight to the rows, because a
+   * player who presses it has asked for them.
+   */
   function toggleTasks(): void {
+    if (sheetOpen && !sheetFull) {
+      sheetFull = true;
+      return;
+    }
     sheetOpen = !sheetOpen;
+    sheetFull = true;
   }
 
   function closeTasks(): void {

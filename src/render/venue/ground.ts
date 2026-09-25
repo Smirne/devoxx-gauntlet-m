@@ -878,8 +878,10 @@ function reception(p: VenuePalette, overhead: THREE.Group): THREE.Group {
  * (`GF.stairs`, which come up beside rooms 4 and 9 — see `F1.nicheTop`) and the
  * main staircase beside reception, which is gated until Stephan opens it.
  *
- * The main flight climbs NORTH out of the lobby, so its gate — the only side of it
- * anybody can reach — is at the foot, on the south. All of them stop short of the
+ * The main flight climbs WEST out of the lobby, straight in front of the entrance,
+ * so its gate — the only side of it anybody can reach — is at the foot, on the
+ * east. It climbed north until 25 Sep 2026; see `stairFlight`'s `dir` below and
+ * `GF.mainStair`. All of them stop short of the
  * cinema floor plate: they disappear into the soffit rather than punching through a
  * level the diorama draws separately.
  *
@@ -978,9 +980,24 @@ function staircases(p: VenuePalette, anchors: Map<number | string, THREE.Object3
     rect: { x: ms.x, y: ms.y, w: ms.w, h: ms.h },
     topY: STAIR_RISE,
     bottomY: RISE,
-    // Top of the flight at its north edge, descending south to the lobby floor.
-    dir: '+z',
-    steps: 16,
+    /*
+     * Top of the flight at its WEST edge, descending east to the lobby floor and
+     * the entrance. Michele: *"Stairs should be facing the entrance. As i enter I
+     * see stairs going straight up."*
+     *
+     * It was `'+z'` — climbing north, across its own treads — until 25 Sep 2026.
+     * `plans/exhibition-floor-stairs-annotated.png` draws the treads running the
+     * width of the block with one ascent arrow up the middle pointing plan-north,
+     * away from the Main Entrance, and this module turns the plan a quarter turn
+     * (plan north -> world west), so the climb is world-west over the rect's 112
+     * px of depth and the 197 px is the width of the stair. `GF.mainStair` and
+     * `groundPlates()` carry the same correction.
+     *
+     * 24 steps, not 16: the run is 8.96 m now rather than 15.76, and 16 steps over
+     * it is a 31 cm riser. 24 gives 21 cm, which is a staircase people walk up.
+     */
+    dir: '+x',
+    steps: 24,
     tread: p.stairCarpetBlue,
     nosing: p.stairNosing,
     runs: 3,
@@ -993,8 +1010,9 @@ function staircases(p: VenuePalette, anchors: Map<number | string, THREE.Object3
   const gate = slab(GF.gate, RISE, 1.55, p.steelBlue);
   gate.name = 'main-stair-gate';
   g.add(gate);
-  for (let k = 0; k <= 4; k++) {
-    g.add(postAt(GF.gate.x + (GF.gate.w * k) / 4, GF.gate.y + T / 2, 0.09, 1.6, RISE, p.steelBlue, 10));
+  // Posts up the barrier's long side — which is its y now, not its x.
+  for (let k = 0; k <= 8; k++) {
+    g.add(postAt(GF.gate.x + T / 2, GF.gate.y + (GF.gate.h * k) / 8, 0.09, 1.6, RISE, p.steelBlue, 10));
   }
 
   const a = anchorAt('anchor-stair-main', ms.x + ms.w / 2, ms.y + ms.h / 2, RISE);

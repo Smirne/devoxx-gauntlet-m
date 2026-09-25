@@ -811,17 +811,28 @@ describe('ground floor — the lobby, where Michele plotted it', () => {
     expect(GF.toilets.x + GF.toilets.w).toBeLessThanOrEqual(GF.bof.x);
   });
 
+  /**
+   * The gate closes the flight's EAST face — the foot, and the side the entrance
+   * is on. It was the south face until 25 Sep 2026, which put the barrier across
+   * the treads rather than in front of them; the plan's ascent arrow settles it
+   * (`GF.mainStair`, and Michele: *"Stairs should be facing the entrance"*).
+   */
   it('keeps the gate at the foot of the main staircase — its only reachable side', () => {
     const ms = GF.mainStair;
-    expect(GF.gate.x).toBe(ms.x);
-    expect(GF.gate.w).toBe(ms.w);
-    expect(GF.gate.y).toBe(ms.y + ms.h);
+    expect(GF.gate.y).toBe(ms.y);
+    expect(GF.gate.h).toBe(ms.h);
+    expect(GF.gate.x).toBe(ms.x + ms.w);
     // The wardrobe and the desk close the flight's whole west flank, which is why
-    // the south is the only way at it — and why Stephan stands exactly there.
+    // the east is the only way at it — and why Stephan stands exactly there.
     const west = [GF.coatroom, GF.reception];
     expect(Math.min(...west.map((r) => r.y))).toBeLessThanOrEqual(ms.y);
     expect(Math.max(...west.map((r) => r.y + r.h))).toBeGreaterThanOrEqual(ms.y + ms.h);
     for (const r of west) expect(r.x + r.w).toBeLessThanOrEqual(ms.x);
+    // And the gate faces the entrance across the concourse, which is what the
+    // whole quarter turn was for. Not far: a leaf the width of the stair would
+    // not fit in the gap, which is why the barrier has an opening in it instead.
+    expect(GF.entrance.x).toBeGreaterThan(GF.gate.x + GF.gate.w);
+    expect(GF.entrance.x - (GF.gate.x + GF.gate.w)).toBeLessThan(60);
   });
 
   it('never overlaps two blocks of the lobby', () => {

@@ -390,13 +390,13 @@ and the venue is one of the two things `CLAUDE.md` says may not drift.
 | his note | state |
 | --- | --- |
 | *"sometimes the toast are multiple and not all are visible. Assure they do not superimpose."* | **Done** (`0f72c59`). Two faults: the shared `ad-rise` keyframe ended on `transform:none` with `fill-mode: both`, which permanently cancelled a bubble's `translate(-50%,-100%)` anchor — every bubble jumped half its width right and its whole height down once it settled — and nothing separated two bubbles whose boxes crossed. Bubbles now have their own keyframes, and `placeBubbles` lifts each box clear of the ones already placed, lowest first. |
-| *"the stair, reception and wardrobe appearence still need fix"* | Reception and wardrobe **done** (`e4c1abe`); see below. Staircase **deferred**, with the measurement settled — see "the main staircase faces the wrong way". |
+| *"the stair, reception and wardrobe appearence still need fix"* | **All three done.** Reception and wardrobe in `e4c1abe`; the staircase on 25 Sep 2026 — see "the main staircase faces the wrong way" below. |
 | *"where is the wifi password graffiti? It should be visible!"* | **Done** (`1366d1f`). It was sim-only: chapter 2 publishes it as a `poster` prop and the prop style draws every poster as a pale cream lightbox, so no paint existed. The venue paints it now, at the prop's own x, low-glow orange on a dark ground. Found on the way: the printed WiFi notice hung at y 371, **inside `GF.coatroom`** (262..384) — a sign nailed up in a closed room. Moved onto the reception counter's west run. |
 | *"when all actions are done, chapter 2 ends abruptly. I just finished the biggy run, i expected to see the animation and the inside of the gadget room. Since u can finish in different orders, give some seconds for animation / see what happens before the chap 3 screen."* | **Done.** It called `startChapter(3)` on the frame the second of the two conditions flipped, so the shutter was still 0.42 s from the top of its housing when the card came down over it — whichever task you finished last, you never saw it finish. The chapter now stays live for `CURTAIN` = 3 s after the last one lands, and **play is not taken away**: the robots keep their keys, the hall is lit, the store is open and standing there. *"See the inside of the gadget room"* means being allowed to look, which a fade could not have given him. The clock starts on the frame BOTH are true, so it is the same three seconds in either order, and the curtain line names whichever task ended it. `tests/ch2-chain.test.ts` drives both orders. |
 | *"some flickering lights (hard to show on screenshot)"* | **Queued**, not yet reproduced. Two known causes in this repo are coplanar surfaces (the entrance flicker, `lobby()`) and dashed arcs that crawl; a third to check is the new `riseForBody` blend at a plate seam. |
 | *"Am I putting too much thing together on the backlog?"* | Fairly asked, and the honest answer was yes: fifteen items open, and the session before this one went on crates, the intro and bubbles — none of them on his stated priority 1. |
 
-### The main staircase faces the wrong way — measured, deferred
+### The main staircase faces the wrong way — DONE 25 Sep 2026
 
 Michele: *"Stairs should be facing the entrance. As i enter i see stairs going straight up."*
 `plans/exhibition-floor-stairs-annotated.png` settles it: the main staircase is drawn **directly
@@ -410,11 +410,28 @@ through a 112 px gate on its SOUTH face. The plan has it entered from the **entr
 EAST** — climbing **west** over its 112 px depth, 197 px wide. So the footprint stays exactly where
 it is; the flight's axis and its open face turn 90 degrees.
 
-Deferred rather than done because the change does not stop at geometry: `GF.gate` becomes a
-north–south rect, and `ch3-breakfast.ts` hinges Stephan's gate on `gate.w` with a constant `gateY`
-(`gateHingeX`, `gateLen`), so the swing, Stephan's post and the visitor queue all move with it —
-and `ch2-expo.ts` was held by another agent this round. It is one change, in one commit, when the
-chapter files are free.
+Deferred once, then done in one commit on 25 Sep 2026 — Michele: *"You really don't wanna fix that
+main stairs, eh?"* Fair. Re-measured from scratch off the same drawing before touching anything:
+the tread lines run plan-east–west across x 308..511 over a 70 px depth, the ascent arrow sits at
+x 410 with its head at y 976, pointing plan-NORTH, away from the Main Entrance at the plan's bottom
+edge. The quarter turn this repo applies to the plan makes that a climb to **world west**, entered
+from the **east**.
+
+What moved with it: `groundPlates()`'s main flight is `axis: 'x'` now; `GF.gate` is a north–south
+rect on the east face; `stairFlight`'s `dir` went `'+z'` to `'+x'` and its step count 16 to 24,
+because the run is 8.96 m instead of 15.76 and 16 steps over it is a 31 cm riser; Stephan stands at
+the opening in the barrier rather than at the middle of the old rect; the exit cutscene climbs west
+through that opening.
+
+**And the turn changed what the gate IS.** There are 55 px — 4.4 m — of concourse between the new
+gate line and the glazed entrance wall, and the barrier is 197 px long. A leaf that length had
+nowhere to swing that was not inside the glass or buried in the treads. Which is the building
+saying what it actually is: nobody hangs a 15.7 m barrier on one hinge, a stair that wide is closed
+by a run with **one gate in it**, and that is what Stephan has been unhooking in the text all along.
+`GATE_MOUTH` is the opening, `gateDraw` reads the rect's long side for which way the run lies, and
+the barrier either side of the mouth stays standing as `gatebar` walls — not `gate`, because
+`openness()` reads that kind to decide whether the barrier is still sealed and two runs under it
+told the renderer the gate had never opened.
 
 ### The reception block, done (`e4c1abe`)
 

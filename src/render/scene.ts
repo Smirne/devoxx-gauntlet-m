@@ -749,6 +749,25 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     gatePosts.push(post);
     gateGroup.add(post);
   }
+  /*
+   * The fixed barrier either side of the opening.
+   *
+   * The gate stopped being one leaf the width of the stair when the staircase was
+   * turned to face the entrance (`GATE_MOUTH` in `src/render/doors.ts`): 15.7 m of
+   * barrier has one gate in it, and the rest of the run does not move. Hiding the
+   * venue's static `main-stair-gate` therefore hides more than the part that
+   * swings, so these two carry it while the prop is up — the sim pushes walls
+   * under exactly these rects (`gatebar` in `ch3-breakfast.ts`).
+   */
+  const gateRuns: THREE.Mesh[] = [];
+  for (let i = 0; i < 2; i++) {
+    const run = new THREE.Mesh(boxGeo, gateMat);
+    run.name = `gate-run-${i}`;
+    run.castShadow = true;
+    run.visible = false;
+    gateRuns.push(run);
+    gateGroup.add(run);
+  }
   dressing.add(gateGroup);
   const venueGate = venue.ground.getObjectByName('main-stair-gate') ?? null;
 
@@ -2444,6 +2463,18 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     gatePivot.rotation.y = yawFromSimHeading(Math.atan2(d.leaf.axis.y, d.leaf.axis.x));
     gateBar.scale.set(m(GATE_LEAF_T), GATE_H, m(d.leaf.len));
     gateBar.position.set(0, 0, m(d.leaf.len) / 2);
+
+    for (let i = 0; i < gateRuns.length; i++) {
+      const r = d.runs[i];
+      gateRuns[i].visible = r !== undefined;
+      if (!r) continue;
+      gateRuns[i].scale.set(m(r.w), GATE_H, m(r.h));
+      gateRuns[i].position.set(
+        m(r.x + r.w / 2),
+        surfaceY(floorY, r.x + r.w / 2, r.y + r.h / 2) + GATE_H / 2,
+        m(r.y + r.h / 2),
+      );
+    }
 
     for (let i = 0; i < gatePosts.length; i++) {
       const v = d.posts[i];
