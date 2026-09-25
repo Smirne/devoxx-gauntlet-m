@@ -1063,6 +1063,38 @@ export const GF = {
 } as const;
 
 /**
+ * THE BAR ON THE HALL'S NORTH WALL — "The Finally Block", and where it stands.
+ *
+ * Chapter 3 built this out of its own local constants, which was fine until it
+ * turned out to be standing on top of chapter 2's spray tag: Michele, 25 Sep
+ * 2026, *"The bar covers the wifi graffiti at the moment."* Two chapters own
+ * furniture on the same 6 px of wall and neither could see the other, so both
+ * rects live here now, in the venue, where they can be measured against each
+ * other — `tests/venue.smoke.test.ts` does exactly that.
+ */
+export const BAR_RECT: Rect = { x: 336, y: 96, w: 92, h: 26 };
+
+/**
+ * Where Bart's spray tag is: the centre of the paint, on the hall's north wall.
+ *
+ * It was at x 400 and the bar is x 336..428, so the password the whole of
+ * chapter 2 turns on was behind a bar counter for the rest of the game. It moves
+ * EAST, to the next clear run of that wall: 456..544, which clears the bar's east
+ * end (428) by 28 px and is still on the long uninterrupted stretch above the
+ * booth grid that made this wall the right wall in the first place. Not further —
+ * `tests/ch2-chain.test.ts` holds it inside 500 px of where the chapter starts,
+ * which is Michele's own objection to his own idea (*"it's a bit far from the
+ * entrance"*).
+ *
+ * The renderer paints it here (`src/render/venue/signage.ts`) and chapter 2 reads
+ * it here (`ch2-expo.ts`), so the paint and the thing Voxxy's beam has to find
+ * cannot drift apart — which is the fault this constant exists to prevent.
+ */
+export const WIFI_TAG: { readonly x: number; readonly y: number } = { x: 500, y: GF.hall.y + 8 };
+/** How wide the paint is, sim px — the renderer's plane, and the room it needs. */
+export const WIFI_TAG_W = 88;
+
+/**
  * How far the lobby floor stands above the exhibition hall's, metres.
  *
  * Michele measured the drop at about half a metre — 5-7 shallow risers of roughly

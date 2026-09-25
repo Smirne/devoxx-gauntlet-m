@@ -37,6 +37,7 @@ import {
   crateLoadAccel,
   crateLoadMass,
   GF,
+  WIFI_TAG,
   JAMMED_DOOR_SPEED,
   R,
   ROLLER_DOOR_SPEED,
@@ -93,7 +94,8 @@ const HUB: Vec2 = { x: GF.cabinet.x + GF.cabinet.w / 2, y: GF.cabinet.y + GF.cab
  * place of the small print on the Cloudy Bank booth's banner. Same point
  * `ch2-expo.ts` measures from.
  */
-const POSTER: Vec2 = { x: 400, y: GF.hall.y + 8 };
+// The venue's own number, not a third copy of it — see `WIFI_TAG`.
+const POSTER: Vec2 = { x: WIFI_TAG.x, y: WIFI_TAG.y };
 /** The three breakers, on the technical room's high panel. */
 const PANEL: Vec2 = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
 

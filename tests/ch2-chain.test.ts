@@ -31,6 +31,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DT_MAX,
   GF,
+  WIFI_TAG,
   createGame,
   type DebugGame,
   type ExpoState,
@@ -57,7 +58,9 @@ const HUB: Vec2 = { x: GF.cabinet.x + GF.cabinet.w / 2, y: GF.cabinet.y + GF.cab
 /** The breaker panel, high on the technical room's back wall. */
 const PANEL: Vec2 = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
 /** The spray tag, on the hall's top wall at the west head of the run-up lane. */
-const TAG: Vec2 = { x: 400, y: GF.hall.y + 8 };
+// The venue's own number (`WIFI_TAG`), not a copy of it: this constant was a
+// second copy at x 400, and a second copy is how the tag ended up behind the bar.
+const TAG: Vec2 = { x: WIFI_TAG.x, y: WIFI_TAG.y };
 
 function powerUp(g: DebugGame): void {
   g.debug.select('droid');

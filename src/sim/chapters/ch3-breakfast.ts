@@ -72,7 +72,7 @@ import {
   crateLoadMass,
   loadBiggy,
 } from '../crates';
-import { GF, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
+import { BAR_RECT, GF, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
 import { botsCollide, circleRect, dist, inRect, mkBody, speed, standOff, stepBot } from '../bot';
 import type { Bot, Person, Prop, Rect, Task, Vec2, Wall } from '../types';
 
@@ -164,7 +164,10 @@ const PALLET_MARK: Rect = { x: PALLET.x - 26, y: PALLET.y - 20, w: 52, h: 40 };
  * leaves only 6 px to the hall wall, which is deliberate: any wider and there is a
  * pocket behind the bar for a robot to get stuck in.
  */
-const BAR: Rect = { x: 336, y: 96, w: 92, h: 26 };
+// The bar is venue furniture, not a chapter constant — it shares the hall's north
+// wall with chapter 2's spray tag and the two have to be measurable against each
+// other (`BAR_RECT`, and Michele's *"The bar covers the wifi graffiti"*).
+const BAR: Rect = BAR_RECT;
 /** What it is called, in the register the sponsor list next door uses. */
 const BAR_NAME = 'The Finally Block';
 /**

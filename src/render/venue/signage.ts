@@ -46,7 +46,7 @@
 
 import * as THREE from 'three';
 
-import { CY0, CY1, DOOR, F1, GF, LOBBY_RISE_M, R, TALKS, roomFrontage, rooms, roomDoor } from '../../sim/geometry';
+import { BAR_RECT, CY0, CY1, DOOR, F1, GF, LOBBY_RISE_M, R, TALKS, WIFI_TAG, WIFI_TAG_W, roomFrontage, rooms, roomDoor } from '../../sim/geometry';
 import { T, W } from '../../sim/constants';
 import type { RoomDef } from '../../sim/types';
 import { PX_PER_M, m } from '../../sim/units';
@@ -360,6 +360,34 @@ const barSign: Paint = (ctx, w, h) => {
  * it; this one, the one the cable errand ends beyond, had emergency greens and
  * concrete.
  */
+/**
+ * The ground-floor bar's own sign: the name, and the joke that is in the name.
+ *
+ * `finally` is the block that runs whatever happened in the `try` — which is
+ * exactly what a bar at the end of a conference day is, and it is the register
+ * the sponsor stands next door are written in. Under it, the two things a Devoxx
+ * attendee actually wants to know.
+ */
+const finallyBlockSign: Paint = (ctx, w, h) => {
+  ctx.fillStyle = '#141a18';
+  ctx.fillRect(0, 0, w, h);
+  // A hairline of bar light along the top, so it reads as a lit fascia rather
+  // than as a poster taped to the concrete.
+  ctx.fillStyle = 'rgba(255,200,120,0.22)';
+  ctx.fillRect(0, 0, w, Math.max(2, h * 0.035));
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#7f8b86';
+  ctx.font = `600 ${Math.round(h * 0.15)}px ${FONT}`;
+  ctx.fillText('} finally {', w / 2, h * 0.24);
+  ctx.fillStyle = '#ffc878';
+  fitFont(ctx, 'THE FINALLY BLOCK', w * 0.9, Math.round(h * 0.34), 800);
+  ctx.fillText('THE FINALLY BLOCK', w / 2, h * 0.55);
+  ctx.fillStyle = '#c8cdd4';
+  ctx.font = `400 ${Math.round(h * 0.15)}px ${FONT}`;
+  ctx.fillText('belgian beer · doors 18:00 · runs whatever happened in the try', w / 2, h * 0.84);
+};
+
 const receptionSign: Paint = (ctx, w, h) => {
   ctx.fillStyle = '#1c4a96';
   ctx.fillRect(0, 0, w, h);
@@ -993,14 +1021,41 @@ export function buildSignage(
    */
   ground.add(
     signFace(
-      400,
-      GF.hall.y + T + 0.6,
-      88 / PX_PER_M,
+      WIFI_TAG.x,
+      WIFI_TAG.y - 8 + T + 0.6,
+      WIFI_TAG_W / PX_PER_M,
       1.7,
       1.35,
       0,
       painter.material('wifi-tag', 1024, 198, '#14161a', wifiTag, 0.24),
       'wifi-tag',
+    ),
+  );
+
+  /*
+   * THE BAR HAS A NAME AND NOWHERE TO PUT IT. Michele, 25 Sep 2026: *"The
+   * 'Finally block' should be identifiable, written somewhere."*
+   *
+   * It is called The Finally Block in every line chapter 3 writes — Biggy's
+   * refusal, Stephan's, the delivery toast — and on screen it was a grey counter
+   * with three taps on it. A prop's `label` is HUD text and nothing paints it, so
+   * the name only existed in the dialogue.
+   *
+   * On the wall behind the taps, which is where a bar's name goes, and lit like
+   * the rest of the hall's signage rather than glowing on its own: the bar is
+   * scenery until Biggy has a crate, and a sign that shouts is a sign a player
+   * walks over to for nothing.
+   */
+  ground.add(
+    signFace(
+      BAR_RECT.x + BAR_RECT.w / 2,
+      GF.hall.y + T + 0.6,
+      (BAR_RECT.w - 6) / PX_PER_M,
+      1.15,
+      2.35,
+      0,
+      painter.material('finally-block', 768, 226, '#141a18', finallyBlockSign),
+      'bar-sign-hall',
     ),
   );
 
