@@ -27,7 +27,7 @@
 
 import * as THREE from 'three';
 
-import { flairPhase, hopPhase } from '../sim/bot';
+import { flairPhase, hopPhase, worldMoved } from '../sim/bot';
 import { JUMP_RISE_M, MOUNT_OFFSET_Y, W as SIM_W, H as SIM_H } from '../sim/constants';
 import { riseAt, riseForBody } from '../sim/surface';
 import { JAM_LEAF_H, JAM_SKEW, JAM_SKID, JAM_TIP } from '../sim/chapters/ch1-night';
@@ -49,6 +49,7 @@ import { CRATE_ROW, PULL_BACK, WALK_AT } from '../sim/opening';
 const OPEN_CRATE_LIT = 0.16;
 import { createLightLayer, type LightLayer } from './lighting';
 import { PANEL_H_M, PANEL_LIFT_M, buildReleasePanel, type ReleasePanelModel } from './release-panel';
+import { buildPerson, type PersonModel } from './people';
 import { buildPrinter, type PrinterModel } from './printer';
 import {
   createRobot,
@@ -417,7 +418,6 @@ const ROLE_COLOR: Readonly<Record<string, number>> = {
   speaker: 0x4aa3a0,
 };
 
-const PERSON_H = 1.72;
 
 /* ------------------------------------------------------------------- pools */
 
@@ -542,8 +542,6 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   scene.add(dressing);
 
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
-  const bodyGeo = new THREE.CylinderGeometry(0.5, 0.56, 1, 10);
-  const headGeo = new THREE.SphereGeometry(0.5, 10, 8);
 
   const propPool = makePool<THREE.Mesh>(dressing, () => {
     const mesh = new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0.06 }));
@@ -558,33 +556,19 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    */
   const seatField = createSeatField(dressing);
 
-  /** The contact shadow under a visitor — a soft dark disc, not a cast shadow. */
-  const contactGeo = new THREE.CircleGeometry(1, 18);
-  const contactMat = new THREE.MeshBasicMaterial({
-    color: 0x05070c,
-    transparent: true,
-    opacity: 0.3,
-    depthWrite: false,
-  });
-
+  /*
+   * The crowd. One `PersonModel` per figure, pooled exactly as before — what
+   * changed is what a figure IS: head, torso, two arms and two legs that walk,
+   * instead of a cylinder with a sphere on top. See `src/render/people.ts`.
+   */
+  const peopleModels: PersonModel[] = [];
   const peoplePool = makePool<THREE.Group>(dressing, () => {
-    const g = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.02 });
-    const body = new THREE.Mesh(bodyGeo, mat);
-    body.name = 'body';
-    body.castShadow = true;
-    const head = new THREE.Mesh(headGeo, mat);
-    head.name = 'head';
-    head.castShadow = true;
-    // A crowd of unshaded pawns standing on a flat floor reads as pawns floating
-    // over it; one disc each is what pins them down.
-    const contact = new THREE.Mesh(contactGeo, contactMat);
-    contact.name = 'contact';
-    contact.rotation.x = -Math.PI / 2;
-    contact.position.y = 0.02;
-    g.add(body, head, contact);
-    return g;
+    const pm = buildPerson();
+    peopleModels.push(pm);
+    return pm.root;
   });
+  /** How many figures have been drawn this frame — the pool hands them out in order. */
+  let peopleN = 0;
 
   /** The chapter-2 cable, as the sim laid it: a polyline on the floor. */
   const CABLE_MAX_PTS = 512;
@@ -748,6 +732,25 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     post.castShadow = true;
     gatePosts.push(post);
     gateGroup.add(post);
+  }
+  /*
+   * The fixed barrier either side of the opening.
+   *
+   * The gate stopped being one leaf the width of the stair when the staircase was
+   * turned to face the entrance (`GATE_MOUTH` in `src/render/doors.ts`): 15.7 m of
+   * barrier has one gate in it, and the rest of the run does not move. Hiding the
+   * venue's static `main-stair-gate` therefore hides more than the part that
+   * swings, so these two carry it while the prop is up — the sim pushes walls
+   * under exactly these rects (`gatebar` in `ch3-breakfast.ts`).
+   */
+  const gateRuns: THREE.Mesh[] = [];
+  for (let i = 0; i < 2; i++) {
+    const run = new THREE.Mesh(boxGeo, gateMat);
+    run.name = `gate-run-${i}`;
+    run.castShadow = true;
+    run.visible = false;
+    gateRuns.push(run);
+    gateGroup.add(run);
   }
   dressing.add(gateGroup);
   const venueGate = venue.ground.getObjectByName('main-stair-gate') ?? null;
@@ -2445,6 +2448,18 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     gateBar.scale.set(m(GATE_LEAF_T), GATE_H, m(d.leaf.len));
     gateBar.position.set(0, 0, m(d.leaf.len) / 2);
 
+    for (let i = 0; i < gateRuns.length; i++) {
+      const r = d.runs[i];
+      gateRuns[i].visible = r !== undefined;
+      if (!r) continue;
+      gateRuns[i].scale.set(m(r.w), GATE_H, m(r.h));
+      gateRuns[i].position.set(
+        m(r.x + r.w / 2),
+        surfaceY(floorY, r.x + r.w / 2, r.y + r.h / 2) + GATE_H / 2,
+        m(r.y + r.h / 2),
+      );
+    }
+
     for (let i = 0; i < gatePosts.length; i++) {
       const v = d.posts[i];
       // A post is 15 cm taller than the bar it carries, which is what makes a
@@ -2454,27 +2469,24 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     }
   }
 
-  function drawPerson(p: Person, floorY: number): void {
-    const g = peoplePool.get();
-    const rM = Math.max(m(p.r), 0.16);
-    // A line of identical pawns reads as a stack of cylinders, so each one gets a
-    // deterministic 8% height wobble off its own position — the same person is
-    // the same height every frame, and a queue reads as people.
-    const jitter = 0.92 + 0.16 * (((Math.abs(Math.round(p.x * 7 + p.y * 13)) % 97) / 97) || 0);
-    const bodyH = PERSON_H * jitter - rM * 1.1;
-    const body = g.children[0] as THREE.Mesh;
-    const head = g.children[1] as THREE.Mesh;
-    const contact = g.children[2] as THREE.Mesh;
-    body.scale.set(rM * 2, bodyH, rM * 2);
-    body.position.set(0, bodyH / 2, 0);
-    head.scale.setScalar(rM * 1.5);
-    head.position.set(0, bodyH + rM * 0.6, 0);
-    contact.scale.setScalar(rM * 1.7);
-    g.position.set(m(p.x), surfaceY(floorY, p.x, p.y), m(p.y));
-
-    const mat = body.material as THREE.MeshStandardMaterial;
-    const hex = p.colour ? new THREE.Color(p.colour).getHex() : (ROLE_COLOR[p.role] ?? ROLE_COLOR.visitor);
-    mat.color.setHex(hex);
+  /**
+   * One person, posed.
+   *
+   * The pool hands back a `THREE.Group`; `peopleModels` is the parallel list of
+   * the models that own them, built in the same order and only ever appended to,
+   * so the n-th figure the pool hands out this frame is posed by the n-th model.
+   * `peopleN` counts them, and is reset beside `peoplePool.begin()`.
+   *
+   * `p.colour` is the chapter's own word on who this is — a visitor, a queue, a
+   * member of staff — and `ROLE_COLOR` is the fallback for a role that did not
+   * say. It is their CLOTHES; skin, hair and trousers come off `Person.seed`
+   * inside the model.
+   */
+  function drawPerson(p: Person, floorY: number, t: number): void {
+    peoplePool.get();
+    const model = peopleModels[peopleN++];
+    const hex = p.colour ?? `#${(ROLE_COLOR[p.role] ?? ROLE_COLOR.visitor).toString(16).padStart(6, '0')}`;
+    model.pose({ ...p, colour: hex }, surfaceY(floorY, p.x, p.y), t);
   }
 
   /**
@@ -2558,6 +2570,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   function drawDressing(snap: GameSnapshot, floorY: number): void {
     propPool.begin();
     peoplePool.begin();
+    peopleN = 0;
     lockPool.begin();
     seatField.begin();
     gateGroup.visible = false;
@@ -2595,7 +2608,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       else if (SEAT_KINDS.has(p.kind)) drawSeats(p, floorY);
       else drawProp(p, floorY);
     }
-    for (const person of snap.people) drawPerson(person, floorY);
+    for (const person of snap.people) drawPerson(person, floorY, snap.t);
     propPool.end();
     peoplePool.end();
     lockPool.end();
@@ -2718,6 +2731,28 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
         // Biggy's roll and Droid's stretch, off the sim's clock the same way. No
         // lift goes with this one: a party trick moves nothing (`partyTrick`).
         flair: flairPhase(b),
+        /*
+         * BEING PUSHED, as opposed to walking — Michele: *"Biggy should really
+         * roll, at least when he's pushed!"*
+         *
+         * Shoved by another robot, towed, or still sliding after either: all
+         * three are the same fact, and all three are where a ball should behave
+         * like a ball. `worldMoved` is the sim's own answer to it, the flag
+         * `stepAim` already keeps to decide whether a let-go robot's heading
+         * follows its stick or its velocity.
+         *
+         * This line used to read the stick — `hypot(b.ix, b.iy) < 1e-3` — on the
+         * grounds that the sim had no flag for it. It has one, and the stick was
+         * the wrong question: the gait's acceleration is smoothed, so a tap and
+         * release left it positive with the stick already empty, and a third of a
+         * second of driving Biggy rolled him 61% as hard as a real shove. See
+         * `worldMoved` in `src/sim/bot.ts` for the measurement.
+         *
+         * Only Biggy does anything with it (`applyShove`); the flag is handed
+         * to all three because which robot is a ball is the rig's business,
+         * not this file's.
+         */
+        shoved: worldMoved(b) ? 1 : 0,
       });
     }
   }
@@ -2918,6 +2953,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       propPool.dispose();
       seatField.dispose();
       peoplePool.dispose();
+      for (const pm of peopleModels) pm.dispose();
       lockPool.dispose();
       gateMat.dispose();
       for (const post of gatePosts) post.geometry.dispose();
@@ -2932,11 +2968,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       releasePanel.dispose();
       cableGeo.dispose();
       cableMat.dispose();
-      contactGeo.dispose();
-      contactMat.dispose();
       boxGeo.dispose();
-      bodyGeo.dispose();
-      headGeo.dispose();
       plinth.traverse((o) => {
         const mesh = o as THREE.Mesh;
         if (mesh.isMesh) {

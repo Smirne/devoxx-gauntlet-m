@@ -3,8 +3,8 @@
  * `GameSnapshot.clues`.
  *
  * Each prop is built the first time the sim publishes it and then only READ
- * each frame: a state string, a label, a `progress` clock. The fire shutter
- * rolls up when its state says open, the jammed door falls on its own clock,
+ * each frame: a state string, a label, a `progress` clock. The fire door
+ * swings on its own clock, the jammed door falls on its own clock,
  * the keypad's LCD shows what the sim says was typed. No rule lives here.
  */
 
@@ -30,7 +30,7 @@ import { HEIGHTS, addSeats } from './venue';
 
 export interface Props3D {
   update(snap: GameSnapshot, t: number, dt: number): void;
-  /** Solid things the camera should not pass through (closed doors, the shutter). */
+  /** Solid things the camera should not pass through (closed doors, the fire door). */
   colliders: THREE.Object3D[];
   /** Emitters that change: found clues. */
   volumePoints: VolumePoint[];
@@ -147,33 +147,27 @@ function doorPair(mats: Materials, width: number): THREE.Group {
   return g;
 }
 
-function shutter(mats: Materials, depth: number): THREE.Group {
-  // A corrugated steel fire shutter across the whole corridor, rolled from a
-  // drum housing under the ceiling.
+/** How tall the fire door's leaves are, m; a steel transom fills the rest of the corridor's height. */
+const LEAF_H = 2.7;
+
+/**
+ * The fire door: a steel double door across the opening, each leaf hinged at the
+ * jamb and swinging west, back along the corridor — the sim's own door
+ * (`sweepFireDoor`, `swungLeaves` in `ch1-night.ts`), posed from its `progress`.
+ *
+ * It was a roll-up shutter, which Michele liked; the 2.5D side then made the
+ * leaves shove whatever stands in their arc (his "arc push", chosen over a
+ * shutter), and a robot pushed aside by a door nobody can see is worse than
+ * either door. So 3D draws the door the sim has (Michele, 25 Sep: swinging leaves).
+ */
+function fireDoorLeaves(mats: Materials, depth: number): THREE.Group {
   const g = new THREE.Group();
-  const H = 4.3;
-  const corr = new THREE.PlaneGeometry(depth, H, 1, 160);
-  const pos = corr.getAttribute('position') as THREE.BufferAttribute;
-  for (let i = 0; i < pos.count; i++) pos.setZ(i, Math.sin(pos.getY(i) * 38) * 0.025);
-  corr.computeVertexNormals();
-  // Painted, not bare: grey enamel over galvanised steel, so the work light
-  // shows on it instead of glancing off it.
-  const slatMat = mats.enamel.clone();
-  slatMat.color = new THREE.Color(0.42, 0.44, 0.46);
-  slatMat.clearcoat = 0.3;
-  const curtain = new THREE.Group();
-  const front = new THREE.Mesh(corr, slatMat);
-  front.rotation.y = -Math.PI / 2;
-  front.position.set(-0.02, H / 2, 0);
-  const back = front.clone();
-  back.rotation.y = Math.PI / 2;
-  back.position.x = 0.02;
-  // Hazard stripes on the bottom rail.
+  const H = HEIGHTS.corridor;
   const c = document.createElement('canvas');
-  c.width = 512;
+  c.width = 256;
   c.height = 32;
   const x = c.getContext('2d')!;
-  for (let i = -2; i < 34; i++) {
+  for (let i = -2; i < 18; i++) {
     x.fillStyle = i % 2 ? '#111' : '#f2c200';
     x.beginPath();
     x.moveTo(i * 16, 32);
@@ -184,30 +178,34 @@ function shutter(mats: Materials, depth: number): THREE.Group {
   }
   const stripeTex = new THREE.CanvasTexture(c);
   stripeTex.colorSpace = THREE.SRGBColorSpace;
-  const rail = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.22, depth), [
-    new THREE.MeshStandardMaterial({ map: stripeTex, roughness: 0.5 }),
-    new THREE.MeshStandardMaterial({ map: stripeTex, roughness: 0.5 }),
-    mats.darkMetal,
-    mats.darkMetal,
-    mats.darkMetal,
-    mats.darkMetal,
-  ]);
-  (rail.material as THREE.Material[]).forEach((mm) => mm.needsUpdate);
-  rail.position.set(0, 0.11, 0);
-  curtain.add(front, back, rail);
-  curtain.traverse((o) => {
-    (o as THREE.Mesh).castShadow = true;
-    (o as THREE.Mesh).receiveShadow = true;
-  });
-  g.add(curtain);
-  g.userData.curtain = curtain;
-  const drum = new THREE.Mesh(box(0.9, HEIGHTS.corridor - H, depth + 0.4, V(0.1, H + (HEIGHTS.corridor - H) / 2, 0)), mats.enamel);
-  drum.castShadow = true;
-  g.add(drum);
-  for (const s of [-1, 1]) {
-    const guide = new THREE.Mesh(box(0.3, H, 0.25, V(0, H / 2, (s * depth) / 2)), mats.darkMetal);
-    g.add(guide);
+  const stripe = new THREE.MeshStandardMaterial({ map: stripeTex, roughness: 0.5 });
+  const leafMat = mats.enamel.clone();
+  leafMat.color = new THREE.Color(0.55, 0.12, 0.1);
+  leafMat.clearcoat = 0.3;
+  // Transom and frame: the opening is a doorway in the fire screen, not a hole.
+  const transom = new THREE.Mesh(box(0.3, H - LEAF_H, depth + 0.3, V(0, LEAF_H + (H - LEAF_H) / 2, 0)), mats.enamel);
+  transom.castShadow = true;
+  g.add(transom);
+  for (const s of [-1, 1]) g.add(new THREE.Mesh(box(0.36, LEAF_H, 0.14, V(0, LEAF_H / 2, (s * depth) / 2)), mats.steel));
+  g.add(new THREE.Mesh(box(0.36, 0.14, depth + 0.14, V(0, LEAF_H, 0)), mats.steel));
+  const leaves: Array<{ pivot: THREE.Object3D; dir: number; panel: THREE.Mesh }> = [];
+  const len = depth / 2 - 0.03;
+  for (const dir of [1, -1]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(0, 0, (-dir * depth) / 2);
+    // Local -x runs from the hinge to the tip; rotation.y = dir * PI/2 is shut.
+    const panel = new THREE.Mesh(box(len, LEAF_H - 0.04, 0.09, V(-len / 2, (LEAF_H - 0.04) / 2, 0)), leafMat);
+    panel.castShadow = true;
+    panel.receiveShadow = true;
+    const kick = new THREE.Mesh(box(len * 0.96, 0.3, 0.1, V(-len / 2, 0.17, 0)), stripe);
+    const bar = new THREE.Mesh(box(len * 0.7, 0.06, 0.24, V(-len * 0.55, 1.05, 0)), mats.steel);
+    const glass = new THREE.Mesh(box(0.28, 0.8, 0.1, V(-len * 0.72, 1.75, 0)), mats.darkMetal);
+    pivot.add(panel, kick, bar, glass);
+    pivot.rotation.y = (dir * Math.PI) / 2;
+    g.add(pivot);
+    leaves.push({ pivot, dir, panel });
   }
+  g.userData.leaves = leaves;
   return g;
 }
 
@@ -223,11 +221,9 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
   const lcdTex = lcd();
   let lcdText = '';
   let jamLast = 0;
-  const shutterLift = { v: 0 };
   const panelLed = new THREE.MeshBasicMaterial({ color: 0xff0000, toneMapped: false });
   type ClueObj = { root: THREE.Group; digit: THREE.Mesh; leds: THREE.Mesh[]; light: THREE.PointLight; mix: THREE.Color; decal: THREE.Mesh; digitText: string; solved: boolean };
   const clueObjs = new Map<number, ClueObj>();
-  const fireLeaves = new Map<string, THREE.Group>();
   const stencil = clueStencil();
 
   /** Keep a door in the wall-hiding set exactly while it is shut (R shuts it again). */
@@ -245,9 +241,10 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
     switch (p.kind) {
       case 'firedoor': {
         const depth = m(p.h ?? 130);
-        const s = shutter(mats, depth);
+        const s = fireDoorLeaves(mats, depth);
+        // The leaves hinge on the door's centre line, 7 px in (the sim's hinge x).
         s.position.set(m(p.x + (p.w ?? 14) / 2), 0, m(p.y + (p.h ?? 130) / 2));
-        colliders.push(s.userData.curtain as THREE.Object3D);
+        for (const l of s.userData.leaves as Array<{ panel: THREE.Mesh }>) colliders.push(l.panel);
         // The sim's fixed screen either side of the opening ('firescreen'): it
         // seals the corridor wall to wall. Without it the corridor looked open
         // beside the door (playtest: "a passage you can't go through").
@@ -450,11 +447,9 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
         }
         switch (p.kind) {
           case 'firedoor': {
-            const open = p.state === 'open' ? 1 : 0;
-            shutterLift.v += (open - shutterLift.v) * Math.min(1, dt * 0.8);
-            const curtain = o.userData.curtain as THREE.Object3D;
-            curtain.position.y = shutterLift.v * 4.1;
-            curtain.scale.y = 1 - shutterLift.v * 0.95;
+            // The sim's swing, linear over FIRE_SWING_TIME: a quarter turn west.
+            const u = THREE.MathUtils.clamp(p.progress ?? (p.state === 'open' ? 1 : 0), 0, 1);
+            for (const l of o.userData.leaves as Array<{ pivot: THREE.Object3D; dir: number }>) l.pivot.rotation.y = (l.dir * (1 - u) * Math.PI) / 2;
             break;
           }
           case 'keypad': {
@@ -533,45 +528,6 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
         }
       }
       sparks.update(dt);
-
-      // The fire door's open leaves. In the sim the door is a pair of leaves
-      // that swing back along the corridor and stay solid there ('fireleaf'
-      // walls, pushed when it opens); the 3D door is a roll-up shutter
-      // (Michele kept it). So the two spots get a folded-back steel barrier
-      // each, hinged at the door end and swinging out as the shutter lifts:
-      // something you can see where the sim has something you bump into.
-      // After R the sim's leaves are gone again: fold ours away with them.
-      const liveLeaves = new Set(snap.walls.filter((w) => w.kind === 'fireleaf').map((w) => `fireleaf:${Math.round(w.y)}`));
-      for (const [k, g] of fireLeaves) {
-        if (liveLeaves.has(k)) continue;
-        parent.remove(g);
-        const idx = colliders.indexOf(g.children[0]);
-        if (idx >= 0) colliders.splice(idx, 1);
-        fireLeaves.delete(k);
-      }
-      for (const w of snap.walls) {
-        if (w.kind !== 'fireleaf') continue;
-        const key = `fireleaf:${Math.round(w.y)}`;
-        let g = fireLeaves.get(key);
-        if (!g) {
-          g = new THREE.Group();
-          const len = m(w.w);
-          const panel = new THREE.Mesh(box(len, 2.4, Math.max(0.08, m(w.h) * 0.6), V(-len / 2, 1.2, 0)), mats.enamel);
-          panel.castShadow = true;
-          panel.receiveShadow = true;
-          const rail = new THREE.Mesh(box(len, 0.08, m(w.h) * 0.8, V(-len / 2, 1.1, 0)), mats.steel);
-          const stripe = new THREE.Mesh(box(len * 0.98, 0.18, m(w.h) * 0.65, V(-len / 2, 0.2, 0)), new THREE.MeshStandardMaterial({ color: 0xe8b400, roughness: 0.5 }));
-          g.add(panel, rail, stripe);
-          g.position.set(m(w.x + w.w), 0, m(w.y + w.h / 2));
-          g.userData.born = t;
-          g.scale.x = 0.001;
-          parent.add(g);
-          colliders.push(panel);
-          fireLeaves.set(key, g);
-        }
-        const k = Math.min(1, (t - (g.userData.born as number)) / 1.1);
-        g.scale.x = Math.max(0.001, k * k * (3 - 2 * k));
-      }
 
       // Clues.
       volumePoints.length = 0;

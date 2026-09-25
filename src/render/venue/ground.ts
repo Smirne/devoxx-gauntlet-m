@@ -57,6 +57,7 @@ import {
   stairLanding,
   stairMidLanding,
   stairRamps,
+  toiletDoor,
 } from '../../sim/geometry';
 import type { Rect, Wall } from '../../sim/types';
 import { PX_PER_M, m } from '../../sim/units';
@@ -878,8 +879,10 @@ function reception(p: VenuePalette, overhead: THREE.Group): THREE.Group {
  * (`GF.stairs`, which come up beside rooms 4 and 9 — see `F1.nicheTop`) and the
  * main staircase beside reception, which is gated until Stephan opens it.
  *
- * The main flight climbs NORTH out of the lobby, so its gate — the only side of it
- * anybody can reach — is at the foot, on the south. All of them stop short of the
+ * The main flight climbs WEST out of the lobby, straight in front of the entrance,
+ * so its gate — the only side of it anybody can reach — is at the foot, on the
+ * east. It climbed north until 25 Sep 2026; see `stairFlight`'s `dir` below and
+ * `GF.mainStair`. All of them stop short of the
  * cinema floor plate: they disappear into the soffit rather than punching through a
  * level the diorama draws separately.
  *
@@ -978,9 +981,24 @@ function staircases(p: VenuePalette, anchors: Map<number | string, THREE.Object3
     rect: { x: ms.x, y: ms.y, w: ms.w, h: ms.h },
     topY: STAIR_RISE,
     bottomY: RISE,
-    // Top of the flight at its north edge, descending south to the lobby floor.
-    dir: '+z',
-    steps: 16,
+    /*
+     * Top of the flight at its WEST edge, descending east to the lobby floor and
+     * the entrance. Michele: *"Stairs should be facing the entrance. As i enter I
+     * see stairs going straight up."*
+     *
+     * It was `'+z'` — climbing north, across its own treads — until 25 Sep 2026.
+     * `plans/exhibition-floor-stairs-annotated.png` draws the treads running the
+     * width of the block with one ascent arrow up the middle pointing plan-north,
+     * away from the Main Entrance, and this module turns the plan a quarter turn
+     * (plan north -> world west), so the climb is world-west over the rect's 112
+     * px of depth and the 197 px is the width of the stair. `GF.mainStair` and
+     * `groundPlates()` carry the same correction.
+     *
+     * 24 steps, not 16: the run is 8.96 m now rather than 15.76, and 16 steps over
+     * it is a 31 cm riser. 24 gives 21 cm, which is a staircase people walk up.
+     */
+    dir: '+x',
+    steps: 24,
     tread: p.stairCarpetBlue,
     nosing: p.stairNosing,
     runs: 3,
@@ -993,8 +1011,9 @@ function staircases(p: VenuePalette, anchors: Map<number | string, THREE.Object3
   const gate = slab(GF.gate, RISE, 1.55, p.steelBlue);
   gate.name = 'main-stair-gate';
   g.add(gate);
-  for (let k = 0; k <= 4; k++) {
-    g.add(postAt(GF.gate.x + (GF.gate.w * k) / 4, GF.gate.y + T / 2, 0.09, 1.6, RISE, p.steelBlue, 10));
+  // Posts up the barrier's long side — which is its y now, not its x.
+  for (let k = 0; k <= 8; k++) {
+    g.add(postAt(GF.gate.x + T / 2, GF.gate.y + (GF.gate.h * k) / 8, 0.09, 1.6, RISE, p.steelBlue, 10));
   }
 
   const a = anchorAt('anchor-stair-main', ms.x + ms.w / 2, ms.y + ms.h / 2, RISE);
@@ -1109,12 +1128,18 @@ function lobby(p: VenuePalette, overhead: THREE.Group): THREE.Group {
 
   /* --------------------------------------------------------------- toilets */
 
-  // The two partitions inside are sim walls (`toiletPartitions()`); this is the
-  // tiled back wall and the pictogram.
+  /*
+   * Shut, per Michele: *"Cover the toilets."* The block is sealed in the sim
+   * (`groundWalls`), so all that is drawn is what reads from the concourse — a pair
+   * of leaves in the south face and the pictogram over them. The tiled back wall
+   * stays: it is what shows over the top of the 2.4 m shell from a 31 deg camera,
+   * and without it the block reads as an empty open box.
+   */
   const tl = GF.toilets;
   g.add(slab({ x: tl.x + T, y: tl.y + T, w: tl.w - 2 * T, h: 4 }, RISE, WALL_H, p.tiling));
-  // The blue pictogram panel beside the doorway, on the lobby side.
-  g.add(slab({ x: tl.x + tl.w / 2 - 34, y: tl.y + tl.h - 2, w: 22, h: 2 }, RISE + 1.5, 0.5, p.signBlue));
+  for (const leaf of toiletDoor()) g.add(slab(leaf, RISE, DOOR_H, p.doorLeaf));
+  // The blue pictogram panel, centred over the doors on the lobby side.
+  g.add(slab({ x: tl.x + tl.w / 2 - 11, y: tl.y + tl.h - 2, w: 22, h: 2 }, RISE + 1.5, 0.5, p.signBlue));
 
   /* ------------------------------------------------------------- BOF rooms */
 
@@ -1158,16 +1183,30 @@ export function buildGround(
   overhead.name = 'overhead';
   const anchors = new Map<number | string, THREE.Object3D>();
 
-  // The hall plate at the datum, the lobby plate half a metre above it. The raised
-  // plate is thick enough to carry its own riser, so the level change is a solid
-  // mass from the hall side rather than a floating sheet.
-  // The raised plate stops at the building line: east of it is the forecourt's own
-  // paving, and when the two overlapped at the same height they z-fought (see
-  // `lobby()`'s forecourt note — Michele's "something is flickering at the
-  // entrance").
+  /*
+   * The hall plate at the datum, the lobby plate half a metre above it. The raised
+   * plate is thick enough to carry its own riser, so the level change is a solid
+   * mass from the hall side rather than a floating sheet.
+   *
+   * **Both of its ends are exact, and both were wrong once.** East, it stops at the
+   * building line: past that is the forecourt's own paving, and when the two
+   * overlapped at the same height they z-fought — `lobby()`'s forecourt note, and
+   * Michele's *"something is flickering at the entrance"*.
+   *
+   * West, it stops at `LOBBY_X`, where the threshold's top tread ends. It used to
+   * start 6 px short of that, and those 6 px were the same bug one join along:
+   * measured off the built scene, the plate's top face and the top tread's both sit
+   * at **y = -5.0000 exactly**, and they shared x 83.12..83.60 for the flight's whole
+   * 22.6 m — plus the concrete riser caps above and below the flight, which the lip
+   * covered completely. A 0.48 m ribbon of two coplanar faces running the full
+   * length of the level change, which is Michele's *"chapter 2/3, the passage
+   * between the reception zone and the main hall. There's a line that flickers when
+   * the robot is walking"*: a moving lamp sweeping a z-fight is what makes it
+   * flicker rather than just sit there. Abutting is fine; overlapping is not.
+   */
   const buildingLine = GF.entrance.x + GF.entrance.w;
   group.add(floorSlab({ x: 0, y: 0, w: LOBBY_X, h: H }, 0, p.lobbyFloor, 0.4));
-  group.add(floorSlab({ x: LOBBY_X - 6, y: 0, w: buildingLine - LOBBY_X + 6, h: H }, RISE, p.lobbyFloor, RISE + 0.3));
+  group.add(floorSlab({ x: LOBBY_X, y: 0, w: buildingLine - LOBBY_X, h: H }, RISE, p.lobbyFloor, RISE + 0.3));
   const hallFloor = floorSlab(GF.hall, 0.005, p.hallFloor, 0.1);
   hallFloor.name = 'hall-floor';
   group.add(hallFloor);

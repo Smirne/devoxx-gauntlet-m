@@ -909,7 +909,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     }
   }
 
-  // The dot-matrix sign over the fire shutter says what the chapter wants.
+  // The dot-matrix sign over the fire door says what the chapter wants.
   {
     const tick = ledTicker('SECTION CLOSED  ·  FIRE DOOR SEALED  ·  ENTER THE 4-DIGIT CODE AT THE KEYPAD  ·  DEVOXX ROOMS 3–10 BEYOND', 7.6, 0.55, 0xff3a0a);
     tick.rotation.y = -Math.PI / 2;
@@ -1266,7 +1266,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   group.add(em);
   for (const p of emerg) volumePoints.push({ position: p, color: new THREE.Color(1, 0.04, 0.02).multiplyScalar(0.35), range: 2.2 });
 
-  /* ------------------------------------------------------ the fire shutter */
+  /* --------------------------------------------------------- the fire door */
   // Built by props3d.ts (it opens); the beacon above it lives here.
   for (const [bz, phase] of [
     [m(CY0) + 1.2, 0],

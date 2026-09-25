@@ -220,12 +220,6 @@ export function playToStairGate(g: DebugGame, onOpen?: (g: DebugGame) => void): 
     use('biggy', drop);
     expect(st().delivered, 'the soup never arrived').toBe(true);
 
-    // The top-shelf sticker first: it shares the booth grid with the speaker's
-    // hiding places and `E` offers the swag before the conversation, so a run that
-    // skips it ends up collecting a sticker instead of a keynote speaker.
-    const sticker = g.snapshot().props.find((p) => p.kind === 'sticker');
-    if (sticker) use('droid', { x: sticker.x, y: sticker.y }, 20);
-
     /*
      * The keynote speaker is hiding behind a booth; Voxxy finds them and they
      * follow her to the stage.
@@ -259,6 +253,16 @@ export function playToStairGate(g: DebugGame, onOpen?: (g: DebugGame) => void): 
     expect(walkTo(g, 'voxxy', drop), 'Voxxy could not walk the speaker to the stage').toBe(true);
     for (let i = 0; i < 900 && !st().speaker.onStage; i++) g.update(DT_MAX);
     expect(st().speaker.onStage, 'the speaker never reached the stage').toBe(true);
+
+    // The top-shelf sticker, AFTER the speaker rather than before. It used to come
+    // first, because the minigames take `E` before the chapter does and the speaker
+    // could be hiding at the sticker's own spot — one seed in six — so a run that
+    // skipped it collected a sticker instead of a keynote speaker. The speaker keeps
+    // clear of a minigame's key circle now (`SPEAKER_CLEAR`), so the order is free
+    // again, and this way round the pilot walks the errand with the sticker still
+    // live rather than with the collision swept out of the way.
+    const sticker = g.snapshot().props.find((p) => p.kind === 'sticker');
+    if (sticker) use('droid', { x: sticker.x, y: sticker.y }, 20);
 
     // And the beer delivery, off the aisle and onto the bar: Biggy alone, and only
     // so many crates at a time before the heap throws.

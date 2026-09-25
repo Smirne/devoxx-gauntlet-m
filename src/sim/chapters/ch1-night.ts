@@ -331,6 +331,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let fireOpen = false;
   /** The leaves' own swing, 0 -> 1 once the code is in. Ticked in `update`. */
   let fireSwing = 0;
+  /** Has the swinging door already shoved somebody? The line is worth one outing. */
+  let shoved = false;
   /** Sim time the exit cutscene starts, once the code is in. -1 until then. */
   let leaveAt = -1;
   /** Biggy says "my light is coming off the screen" once, the first time it does. */
@@ -916,11 +918,99 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   /* ------------------------------------------------------------------- update */
 
+  /**
+   * THE SWINGING LEAF PUSHES WHAT IS IN ITS WAY.
+   *
+   * Michele: *"The door opens through Voxxy. What about vertical opening? shutter
+   * door?"* — and then, asked which of the two fixes he wanted, *"arc push"*.
+   *
+   * The complaint was real and the cause was narrow. The two leaves become
+   * colliders where they END UP (`swungLeaves`), and the `firedoor` collider goes
+   * on the frame the code is accepted, so for the one second of `FIRE_SWING_TIME`
+   * the leaves are a picture with nothing under them. A robot parked in the arc —
+   * which is exactly where the player leaves Voxxy, because she has just typed the
+   * code at the keypad on that door — was passed straight through.
+   *
+   * A shutter was the other option and it is the wrong object: a fire door swings,
+   * chapter 2 already owns the one roller shutter in the game, and spending a
+   * distinct object twice would cost more than it bought. This is the honest fix
+   * and it is also the funnier one — Voxxy gets shoved aside by the door she just
+   * opened.
+   *
+   * What it does, per leaf, per robot: find the closest point on the leaf's centre
+   * line, and if the robot's circle overlaps the leaf's half-thickness, put it out
+   * along the leaf's own NORMAL and give it the leaf's speed at that radius. A
+   * point `r` along a leaf turning at `w` rad/s moves at `w r` perpendicular to
+   * the leaf, so the robot leaves with the speed the door actually hands it rather
+   * than with a number somebody picked — a light robot near the tip gets thrown
+   * further than a heavy one near the hinge, out of the arithmetic and not out of a
+   * special case.
+   *
+   * `u0`/`u1` are the swing before and after this step; the angular rate is taken
+   * from them rather than from `FIRE_SWING_TIME`, so it stays right if the swing is
+   * ever eased instead of linear.
+   */
+  function sweepFireDoor(u0: number, u1: number, dt: number): void {
+    if (dt <= 0 || u1 <= u0) return;
+    const w = (((u1 - u0) * Math.PI) / 2) / dt;
+    const th = (Math.min(1, Math.max(0, u1)) * Math.PI) / 2;
+    const sin = Math.sin(th);
+    const cos = Math.cos(th);
+    const hingeX = F1.fireX + 7;
+    for (const dir of [1, -1] as const) {
+      const hy = fireMid + (dir > 0 ? -FIRE_OPENING / 2 : FIRE_OPENING / 2);
+      // The leaf's axis at this angle, and the way a point on it is travelling.
+      const ax = -sin;
+      const ay = dir * cos;
+      const nx = -cos;
+      const ny = -dir * sin;
+      for (const b of ctx.bots) {
+        if (b.mounted) continue;
+        // Closest point on the leaf's centre line, clamped to its own length.
+        const r = Math.max(0, Math.min(leafLen, (b.x - hingeX) * ax + (b.y - hy) * ay));
+        const cx = hingeX + ax * r;
+        const cy = hy + ay * r;
+        const gap = b.r + FIRE_LEAF_T / 2;
+        if ((b.x - cx) ** 2 + (b.y - cy) ** 2 >= gap * gap) continue;
+        /*
+         * Out along the normal — ALWAYS the way the leaf is going, never
+         * "whichever side she is on".
+         *
+         * Picking the side by which face she is nearest was the first version and
+         * it is wrong twice over: a robot standing exactly on the leaf's line has
+         * no side, so the sign came out of rounding noise, and a robot the leaf is
+         * about to sweep past is by definition on its leading face. A door pushes
+         * one way. Measured on the first version, Voxxy standing in the doorway
+         * was thrown EAST, deeper into the opening she was supposed to be cleared
+         * out of.
+         */
+        b.x = cx + nx * gap;
+        b.y = cy + ny * gap;
+        // Carried at the leaf's own speed at this radius, if she is not already
+        // going faster than the door.
+        const along = b.vx * nx + b.vy * ny;
+        const carry = w * r;
+        if (along < carry) {
+          b.vx += (carry - along) * nx;
+          b.vy += (carry - along) * ny;
+        }
+        if (!shoved) {
+          shoved = true;
+          ctx.flash(`${b.name} is shoved aside by the fire door — mind the swing`);
+        }
+      }
+    }
+  }
+
   function update(dt: number): void {
     ctx.stepAll(dt);
     ctx.pushBiggy(dt);
     if (jamBroken && jamFall < 1) jamFall = Math.min(1, jamFall + dt / JAM_FALL_TIME);
-    if (fireOpen && fireSwing < 1) fireSwing = Math.min(1, fireSwing + dt / FIRE_SWING_TIME);
+    if (fireOpen && fireSwing < 1) {
+      const was = fireSwing;
+      fireSwing = Math.min(1, fireSwing + dt / FIRE_SWING_TIME);
+      sweepFireDoor(was, fireSwing, dt);
+    }
     if (panelOn && lockSwing < 1) lockSwing = Math.min(1, lockSwing + dt / LOCK_SWING_TIME);
     if (leaveAt >= 0 && ctx.t >= leaveAt) {
       leaveAt = -1;

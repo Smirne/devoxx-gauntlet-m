@@ -253,13 +253,33 @@ export const GATE_H = 1.1;
 export const GATE_POST_INSET = 8;
 /** A post's own radius, sim px. */
 export const GATE_POST_R = 1.6;
+/**
+ * The width of the opening in the barrier, sim px — the part that actually swings.
+ *
+ * The stair got a quarter turn on 25 Sep 2026 (`GF.gate`, and Michele's *"Stairs
+ * should be facing the entrance"*), and that turned one number into a design
+ * problem: the barrier now runs 197 px across the foot of the flight, and there
+ * are **55 px** of concourse between it and the glazed entrance wall. A leaf the
+ * length of the barrier had nowhere to swing that was not either inside the glass
+ * or buried in the treads.
+ *
+ * Which is the building telling us what it actually is. Nobody hangs a 15.7 m
+ * barrier on one hinge; a stair that wide is closed by a run of posts and rope
+ * with **one gate in it**, and that is what Stephan has been unhooking in the text
+ * all along — *"Stephan unhooks the barrier and walks it back against the wall"*.
+ * So the barrier is a run, the middle 44 px of it is a leaf, and the leaf has
+ * 11 px to spare when it is swung right back.
+ */
+export const GATE_MOUTH = 44;
 
 export interface GateDraw {
   /** The single barrier leaf, posed. */
   leaf: Leaf;
   /** The two fixed posts it hangs between, as points. */
   posts: Vec2[];
-  /** 0 shut .. 1 swung back along the stair's west cheek. */
+  /** The fixed barrier either side of the opening — it never moves. */
+  runs: Rect[];
+  /** 0 shut .. 1 swung right back into the concourse. */
   u: number;
   /** The sim still has a `gate` wall across the foot of the flight. */
   sealed: boolean;
@@ -275,25 +295,50 @@ export interface GateDraw {
  * and it swings a quarter turn to lie flat along the west edge of the approach,
  * which is where a stair gate is pinned back when a building is open.
  *
- * **It swings SOUTH, out of the stairwell, and that is not a taste call.** Back
- * into the shaft would have been the tidier drawing and it is wrong twice over: the
- * flight starts climbing at `GF.gate`'s own edge and reaches 2.7 m within the
- * leaf's length (`groundPlates` in `src/sim/geometry.ts`), so a barrier drawn at
- * the height of its hinge would be buried two metres inside the treads — and the
+ * **It swings OUT of the stairwell, and that is not a taste call.** Back into the
+ * shaft would have been the tidier drawing and it is wrong twice over: the flight
+ * starts climbing at `GF.gate`'s own edge and reaches 2.7 m within the leaf's
+ * length (`groundPlates` in `src/sim/geometry.ts`), so a barrier drawn at the
+ * height of its hinge would be buried two metres inside the treads — and the
  * transition walks three robots up the middle of that flight a moment later. Out
- * into the concourse it lies on flat lobby floor at one height, hard against the
- * reception block's east face, in full view of a camera that is on that side.
- * `ch3-breakfast.ts` pushes a `gateleaf` wall exactly where it stops.
+ * in the concourse it lies on flat lobby floor at one height, in full view of a
+ * camera that is on that side. `ch3-breakfast.ts` pushes a `gateleaf` wall exactly
+ * where it stops.
+ *
+ * ## It reads its own rect for which way it lies
+ *
+ * The gate was an east–west bar until the staircase was turned to face the
+ * entrance, and it is a north–south one now. Rather than carry the turn as two
+ * hard-coded orientations, the long side of the rect decides: the barrier runs
+ * along it, and the leaf swings out along the short one, away from the flight.
+ * `GF.gate` is the single place that says which, and the drawing follows it.
  */
 export function gateDraw(p: Prop, walls: readonly Wall[]): GateDraw {
-  const rect: Rect = { x: p.x, y: p.y, w: p.w ?? 112, h: p.h ?? 6 };
+  const rect: Rect = { x: p.x, y: p.y, w: p.w ?? 6, h: p.h ?? 197 };
   const { u, sealed } = openness(p, rect, walls, ['gate']);
-  const y = rect.y + rect.h / 2;
-  const hingeX = rect.x + GATE_POST_INSET;
-  const len = rect.w - GATE_POST_INSET * 2;
-  // South is out into the lobby — see the header for why it is not the other way.
-  const leaf = swingLeaf({ x: hingeX, y }, { x: 1, y: 0 }, { x: 0, y: 1 }, len, GATE_LEAF_T, u);
-  return { leaf, posts: [{ x: hingeX, y }, { x: hingeX + len, y }], u, sealed };
+  // The barrier runs along the rect's LONG side; the leaf swings out along the
+  // short one, into the concourse and away from the flight behind it.
+  const vertical = rect.h >= rect.w;
+  const along: Vec2 = vertical ? { x: 0, y: 1 } : { x: 1, y: 0 };
+  const out: Vec2 = vertical ? { x: 1, y: 0 } : { x: 0, y: 1 };
+  const span = vertical ? rect.h : rect.w;
+  const cross = (vertical ? rect.x : rect.y) + (vertical ? rect.w : rect.h) / 2;
+  const start = vertical ? rect.y : rect.x;
+  // The opening sits in the middle of the run, which is where the stair's own
+  // centre line is and where the transition walks up.
+  const mouth = Math.min(GATE_MOUTH, span);
+  const lo = start + (span - mouth) / 2;
+  const hi = lo + mouth;
+  const at = (t: number): Vec2 => (vertical ? { x: cross, y: t } : { x: t, y: cross });
+  const leaf = swingLeaf(at(lo), along, out, mouth, GATE_LEAF_T, u);
+  const run = (a: number, b: number): Rect =>
+    vertical
+      ? { x: cross - GATE_LEAF_T / 2, y: a, w: GATE_LEAF_T, h: b - a }
+      : { x: a, y: cross - GATE_LEAF_T / 2, w: b - a, h: GATE_LEAF_T };
+  const runs: Rect[] = [];
+  if (lo - start > 0.5) runs.push(run(start, lo));
+  if (start + span - hi > 0.5) runs.push(run(hi, start + span));
+  return { leaf, posts: [at(lo), at(hi)], runs, u, sealed };
 }
 
 /** Every footprint the gate puts in the robot band this frame, posts included. */
@@ -301,6 +346,7 @@ export const gateSolids = (p: Prop, walls: readonly Wall[]): Rect[] => {
   const d = gateDraw(p, walls);
   return [
     d.leaf.rect,
+    ...d.runs,
     ...d.posts.map((v): Rect => ({ x: v.x - GATE_POST_R, y: v.y - GATE_POST_R, w: GATE_POST_R * 2, h: GATE_POST_R * 2 })),
   ];
 };
