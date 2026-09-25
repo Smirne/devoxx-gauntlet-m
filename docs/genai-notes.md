@@ -3614,3 +3614,83 @@ stair, which is the thing that tells the two axes apart and is what was wrong be
 `venue.smoke` now measures the drawn flight's own treads west against east instead of only looking
 at where the gate is. Suite: **682 tests, 40 files, green**; `tsc --noEmit` clean; `After Dark ·
 ERRORS:0` on the built bundle.
+
+## 25 Sep 2026 — the crate that could eat a run, and the people
+
+**What a human asked for.** *"Yes fine"* to two things offered off the backlog: the chapter-3
+soft-lock, and then the people.
+
+### The crate
+
+`beerDone` needs all six crates on the bar, and a crate is a 0.32 m body in a hall built for 0.72 m
+robots — so there are places a crate fits and Biggy does not. The note said *"nothing prevents one
+ending up shoved under a booth"*, which is a guess; so the first thing was to stop guessing. A sweep
+of every cell of the ground floor against both radii found **exactly one** such place: the 15 px
+slot between the sandwich counter and the coffee counter, open at its south end and backed by the
+hall's north wall. Five cells out of 61,218.
+
+Then a second measurement narrowed it again. The slot is 30 px deep and `CRATE_REACH` is 26, so a
+crate in the MOUTH is still something Biggy can lean in and take from the open floor outside — at
+y 112 there is exactly one standing spot left, dead ahead at 25 px. Only past about y 108 does the
+last of them go. The test is aimed at the back of the slot for that reason, and says so.
+
+The guard is general rather than a plug in that one slot: the slot is a consequence of two counters
+standing a metre apart, any future prop can make another, and a chapter that can eat a crate is a
+chapter that can eat a run. It costs nothing per frame — a crate can only become stranded by coming
+to rest, so the check runs on the frame its velocity hits zero and never otherwise. `crateReachable`
+and `crateRescueSpot` live in `src/sim/crates.ts` rather than as closures inside `setup()`, because
+a closure is a thing no test can ask a question of.
+
+**A bug found on the way.** The first version pushed the standing barrier runs as `kind: 'gate'`
+walls, which is what they look like. `openness()` reads the wall list for a `gate` to decide whether
+the barrier is still sealed, so the renderer concluded the gate had never opened and drew the leaf
+shut across its own opening. `tests/colliders.test.ts` caught it as 40 cells of barrier you could
+walk through.
+
+### The people
+
+They were a cylinder with a sphere on top — no arms, no legs, nothing that moved — and there are
+thirty-six of them walking chapter 3 and eighty-four filling Room 8, so they are in almost every
+frame of the back half of the game. Ten points are "sense of place", and a venue full of chess pawns
+does not have one.
+
+**The sim had to change first, and that is the interesting part.** A body needs three things a
+position cannot give it: **identity**, because a body has to be the same body every frame; a
+**heading**, because a figure with a front has to have one; and a **speed**, because legs swing in
+proportion to it. All three are facts about a person rather than about a picture, so all three are
+the sim's — `Person.seed`, `Person.face`, `Person.speed` in `src/sim/types.ts`, with the chapters
+handing out seeds from a counter that only ever goes up.
+
+`seed` fixed a live bug nobody had reported. The old height jitter was derived from `x` and `y`, so
+a visitor **changed height as they walked** — the comment above it claimed the opposite, and was
+true only of people standing still. `tests/people.test.ts` now holds that: the same person in two
+places is the same height, two seeds in one place are not.
+
+**The gait is stateless, and that is a design choice rather than a shortcut.** There is no
+per-person phase kept anywhere: the phase is `t * cadence + seed` and the AMPLITUDE is what `speed`
+scales. A person who stops has their legs come to rest instead of freezing mid-stride, a person who
+starts walking picks up wherever the clock is, and the renderer never has to match a person in this
+frame to a person in the last one — which is just as well, because `snap.people` is rebuilt every
+frame and a visitor who sits down takes everybody's index with them.
+
+**Two things were measured rather than eyeballed.**
+- **The hair was a sweatband.** The sphere geometry has radius 0.5, so a scale of `k` is a radius of
+  `k/2`; the first pass centred the cap low enough that its top came out *below* the crown. Centred
+  at `H - 0.55 r` it sits on the top 44% of the skull, which is a hairline.
+- **Seated height.** A seated figure that keeps its standing hip is a standing figure with its knees
+  bent, and Room 8 read as a row of people hovering. Dropped to a hip of 0.62 m — 17 cm above where
+  a chair actually puts one, and deliberate: at the true height the seat backs cut the audience off
+  at the neck and a hall of floating heads reads as emptier than a hall of people. CLAUDE.md's
+  *"recognisable beats precise"*, applied to a crowd.
+
+**Cost, measured against the previous build rather than guessed.** Twelve meshes a figure, with
+every geometry and every material but the clothes shared. Headless Chromium on SwiftShader renders
+chapter 3 at 2 fps — and rendered it at 2 fps on `dbaee3e` too, with the old pawns, so the software
+rasteriser is the floor and the figures are not measurably on top of it.
+
+**Tests.** `tests/crate-rescue.test.ts` (4) and `tests/people.test.ts` (8) new. The people tests
+call `updateMatrixWorld` before every measurement, with a comment saying why: `Box3.setFromObject`
+only refreshes the object handed to it, not the chain above, and a figure that has never been
+rendered measures as its own local box — which would have made every pose look identical, the exact
+wrong way for that file to be wrong. Suite: **694 tests, 42 files, green**; `tsc --noEmit` clean;
+`After Dark · ERRORS:0` in all four chapters of the built bundle.
