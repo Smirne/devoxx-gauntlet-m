@@ -355,7 +355,11 @@ function skullShell(
       const b = r * segs + s2;
       const c = (r + 1) * segs + s;
       const d = (r + 1) * segs + s2;
-      idx.push(a, c, b, b, c, d);
+      // Wound outward. It was (a, c, b, b, c, d), which faces every triangle
+      // INTO the skull: seen from behind, the back of his head was culled and
+      // his eyes showed through it (Michele, 25 Sep, the 3D build's chase
+      // camera: "two orange points behind his head that look too much like eyes").
+      idx.push(a, b, c, b, d, c);
     }
   }
   // Flat cap on the open bottom: the jaw covers it, but a shell you can see
@@ -364,7 +368,7 @@ function skullShell(
   pos.push(0, topY - height, sampleRing(rings, 1, 3));
   for (let s = 0; s < segs; s++) {
     const s2 = (s + 1) % segs;
-    idx.push(rows * segs + s, base, rows * segs + s2);
+    idx.push(rows * segs + s, rows * segs + s2, base);
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));

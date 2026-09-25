@@ -444,8 +444,10 @@ export function buildDetails(mats: Materials, refl: PlanarReflection, taken: Arr
   const camBody = new THREE.BoxGeometry(0.34, 0.14, 0.14);
   const camMat = new THREE.MeshPhysicalMaterial({ color: 0xd8d8d4, roughness: 0.4 });
   const ledMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0, 0).multiplyScalar(20), toneMapped: false });
+  // None at the west end: the chapter starts there with the camera high, and
+  // the one at x 60 hung in the middle of the first frame.
   for (const [x, side] of [
-    [60, 1],
+    [180, 1],
     [300, -1],
     [520, 1],
   ] as Array<[number, Side]>) {
@@ -466,31 +468,9 @@ export function buildDetails(mats: Materials, refl: PlanarReflection, taken: Arr
     updaters.push((t) => (led.visible = Math.sin(t * 2 + x) > 0.2));
   }
 
-  // A cable tray along the north cove: a steel channel and three sagging cables.
-  {
-    const len = m(X_END) - 1;
-    const tray = new THREE.Mesh(new THREE.BoxGeometry(len, 0.06, 0.28), mats.steel);
-    tray.position.set(len / 2 + 0.5, HEIGHTS.cove - 0.5, c0 + 0.4);
-    tray.castShadow = true;
-    group.add(tray);
-    const cableMat = new THREE.MeshStandardMaterial({ color: 0x0b0b0c, roughness: 0.6 });
-    for (let k = 0; k < 3; k++) {
-      const pts: THREE.Vector3[] = [];
-      for (let i = 0; i <= 60; i++) {
-        const x = 0.5 + (len * i) / 60;
-        const sag = Math.abs(Math.sin((i / 60) * Math.PI * 9)) * (0.05 + 0.03 * k);
-        pts.push(new THREE.Vector3(x, HEIGHTS.cove - 0.46 - sag + k * 0.01, c0 + 0.32 + k * 0.08));
-      }
-      const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 240, 0.018 + k * 0.006, 6), cableMat);
-      group.add(tube);
-    }
-    // Brackets.
-    for (let x = 1; x < len; x += 3) {
-      const br = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.3, 0.3), mats.darkMetal);
-      br.position.set(x, HEIGHTS.cove - 0.35, c0 + 0.2);
-      group.add(br);
-    }
-  }
+  // (A cable tray ran the north cove here. From the high camera at the start of
+  // the chapter it read as a beam floating in front of Zaal A's door — Michele,
+  // 25 Sep, "there's a floating camera + wall part?" — so it is gone.)
 
   // Vent grilles high on the walls.
   const ventMat = new THREE.MeshStandardMaterial({ color: 0x2a2d31, roughness: 0.5, metalness: 0.6 });

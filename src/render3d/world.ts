@@ -199,6 +199,11 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     return { pos: _oPos.clone().lerp(_fPos, e), look: _oLook.clone().lerp(_fLook, e), follow: e };
   }
   const ORDER_3D: RobotKind[] = ['voxxy', 'droid', 'biggy'];
+  const _cutC = new THREE.Vector3();
+  const _cutT = new THREE.Vector3();
+  const _cutPos = new THREE.Vector3();
+  const _cutLook = new THREE.Vector3();
+  let inCut = false;
   const PULL_DELAY = 0.7;
   /**
    * The crate front tips out and falls flat, as the 2.5D model's does, but stops
@@ -375,7 +380,33 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       grade.dofAmount = 0.85;
       grade.dofFocus = 6 + 10 * Math.max(0, 1 - introT / 14);
       grade.dofRange = 7;
+    } else if (snap.phase === 'cut' && !cam.pose) {
+      // The exit walk: the three of them from above and behind, eased in from
+      // wherever the camera was (Michele: "it should show the 3 characters
+      // from above / behind"). The follow camera stayed on the one robot.
+      grade.dofAmount = 0;
+      const c = cam.camera;
+      _cutC.set(0, 0, 0);
+      for (const b of snap.bots) _cutC.add(_cutT.set(m(b.x), 0, m(b.y)));
+      _cutC.divideScalar(Math.max(1, snap.bots.length));
+      _cutT.set(_cutC.x - 4.6, Math.min(HEIGHTS.corridor - 0.6, 4.3), _cutC.z + 1.2);
+      if (!inCut) {
+        _cutPos.copy(c.position);
+        _cutLook.copy(c.position).add(c.getWorldDirection(new THREE.Vector3()).multiplyScalar(4));
+        inCut = true;
+      }
+      const k = 1 - Math.exp(-dt * 1.6);
+      _cutPos.lerp(_cutT, k);
+      _cutLook.lerp(_cutT.set(_cutC.x + 1.8, 0.4, _cutC.z), k);
+      c.position.copy(_cutPos);
+      c.lookAt(_cutLook);
+      c.updateMatrixWorld();
+      cam.cut();
     } else if (rob) {
+      if (inCut) {
+        inCut = false;
+        cam.cut();
+      }
       grade.dofAmount = world.photo ? 0.9 : 0;
       if (world.photo) {
         grade.dofFocus = cam.camera.position.distanceTo(rob.rig.root.position) - 0.2;
