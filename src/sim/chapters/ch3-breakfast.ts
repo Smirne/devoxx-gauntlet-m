@@ -667,8 +667,14 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const GATE_CUT_DELAY = 0.5;
   /** The barrier's own thickness. Matches `GATE_LEAF_T` in `src/render/doors.ts`. */
   const GATE_LEAF_T = 4;
-  /** ...and how far in from each end its two posts stand (`GATE_POST_INSET`). */
-  const GATE_POST_INSET = 8;
+  /**
+   * ...and how wide the opening in it is (`GATE_MOUTH` in `src/render/doors.ts`).
+   *
+   * Both numbers are duplicated rather than imported because `src/sim` may not
+   * read `src/render` (CLAUDE.md). `tests/doors.test.ts` asserts the two copies
+   * against each other so they cannot drift.
+   */
+  const GATE_MOUTH = 44;
   const GATE_POST_R = 1.6;
 
   const gate: Wall = {
@@ -688,41 +694,73 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /** Sim time the exit cutscene starts, once Stephan has opened up. -1 until then. */
   let leaveAt = -1;
   /*
-   * WHERE THE BARRIER ENDS UP, and the post it leaves behind.
+   * WHERE THE BARRIER ENDS UP, and what it leaves behind.
    *
-   * The rects `gateDraw` poses at `progress = 1` (`src/render/doors.ts`): the leaf
-   * hinged on the west post and swung a quarter turn SOUTH, out of the stairwell
-   * and back along the west edge of the approach — where a stair gate is pinned
-   * back when a building is open — plus the east post, which does not move and
-   * which the `gate` wall was covering until now.
+   * The rects `gateDraw` poses at `progress = 1` (`src/render/doors.ts`), which
+   * since the staircase was turned to face the entrance is a **gate in a run of
+   * barrier** rather than one enormous leaf: the flight is 197 px — 15.7 m —
+   * across its foot, and the 55 px of concourse between it and the glazed wall has
+   * nowhere to put a leaf that long. `GATE_MOUTH` is the opening; the leaf is that
+   * wide, hinged on its north post and swung a quarter turn EAST into the
+   * concourse; both posts stay, and so does the barrier either side.
    *
-   * South rather than into the shaft, because the flight starts climbing at this
-   * line and is 2.7 m up within the leaf's own length (`groundPlates`): a barrier
+   * East rather than into the shaft, because the flight starts climbing at this
+   * line and is 3.9 m up within the leaf's own length (`groundPlates`): a barrier
    * lying in there would be buried in the treads, and the transition walks three
-   * robots up the middle of it a second and a half later. Out here it is hard
-   * against the reception block's east face, so the way up stays as wide as it was
-   * and nothing in the cutscene goes near it.
+   * robots up the middle of it a second and a half later. Out here it lies flat on
+   * the lobby floor with 11 px to spare in front of the glazing, and nothing in
+   * the cutscene goes near it.
    */
-  const gateY = GF.gate.y + GF.gate.h / 2;
-  const gateHingeX = GF.gate.x + GATE_POST_INSET;
-  const gateLen = GF.gate.w - GATE_POST_INSET * 2;
+  const gateX = GF.gate.x + GF.gate.w / 2;
+  /** The middle of the barrier: where the opening is, and where Stephan stands. */
+  const gateMouthY = GF.gate.y + (GF.gate.h - GATE_MOUTH) / 2;
   const gateOpenWalls: Wall[] = [
+    // The leaf, swung a quarter turn east into the concourse and resting there.
     {
-      x: gateHingeX - GATE_LEAF_T / 2,
-      y: gateY - GATE_LEAF_T / 2,
-      w: GATE_LEAF_T,
-      h: gateLen + GATE_LEAF_T,
+      x: gateX - GATE_LEAF_T / 2,
+      y: gateMouthY - GATE_LEAF_T / 2,
+      w: GATE_MOUTH + GATE_LEAF_T,
+      h: GATE_LEAF_T,
       kind: 'gateleaf',
-      why: (b) => `${b.name}: that is the gate itself, pinned back against the wall. The way up is the middle`,
+      why: (b) => `${b.name}: that is the gate itself, walked back out of the way. The way up is beside it`,
     },
-    {
-      x: gateHingeX + gateLen - GATE_POST_R,
-      y: gateY - GATE_POST_R,
-      w: GATE_POST_R * 2,
-      h: GATE_POST_R * 2,
-      kind: 'gatepost',
-      why: (b) => `${b.name}: the gate post. It stays where it is`,
-    },
+    // Both posts stay. So does the rest of the barrier, either side of the
+    // opening: Stephan opened a gate, he did not take the stair's whole front off.
+    ...[gateMouthY, gateMouthY + GATE_MOUTH].map(
+      (y): Wall => ({
+        x: gateX - GATE_POST_R,
+        y: y - GATE_POST_R,
+        w: GATE_POST_R * 2,
+        h: GATE_POST_R * 2,
+        kind: 'gatepost',
+        why: (b) => `${b.name}: the gate post. It stays where it is`,
+      }),
+    ),
+    ...(
+      [
+        [GF.gate.y, gateMouthY],
+        [gateMouthY + GATE_MOUTH, GF.gate.y + GF.gate.h],
+      ] as const
+    )
+      .filter(([a, b]) => b - a > 0.5)
+      .map(
+        ([a, b]): Wall => ({
+          x: gateX - GATE_LEAF_T / 2,
+          y: a,
+          w: GATE_LEAF_T,
+          h: b - a,
+          /*
+           * `gatebar`, NOT `gate`. `openness()` in `src/render/doors.ts` reads the
+           * wall list for a `gate` to decide whether the barrier is still sealed,
+           * so leaving these two runs under that kind told the renderer the gate
+           * had never opened and drew the leaf shut across its own opening — with
+           * nothing in the sim behind it, which `tests/colliders.test.ts` catches
+           * as a wall you can walk through.
+           */
+          kind: 'gatebar',
+          why: (bot) => `${bot.name}: the barrier still runs the width of the stair. The gate is the gap in the middle`,
+        }),
+      ),
   ];
 
   /*
@@ -827,14 +865,27 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /*
    * Stephan, and the spot the soup has to reach him.
    *
-   * Both sit SOUTH of the main staircase, because that is the only side of it
-   * anyone can reach: the wardrobe and the reception desk close its west flank
-   * (`src/sim/geometry.ts`), and `GF.gate` — the gate he is standing at — closes
-   * the foot of the flight. Arrivals come in through the left-hand doors and walk
-   * straight past reception into him, which is the queue Devoxx actually has.
+   * Both sit EAST of the main staircase, because that is the foot of the flight
+   * and the only side of it anyone can reach: the wardrobe and the reception desk
+   * close its west flank (`src/sim/geometry.ts`), and `GF.gate` — the gate he is
+   * standing at — closes the east. He stands **at the opening**, not at the middle
+   * of the rect, which since the stair was turned are no longer the same point.
+   * Arrivals come in through the left-hand doors a few metres to his south-east
+   * and walk straight into him, which is the queue Devoxx actually has.
    */
   const stair = GF.mainStair;
-  const stephan = { x: stair.x + stair.w / 2, y: stair.y + stair.h + 26, r: 8 };
+  const gateMidY = GF.gate.y + GF.gate.h / 2;
+  const stephan = { x: stair.x + stair.w + 26, y: gateMidY, r: 8 };
+  /*
+   * The stage stays SOUTH of the stair, where it always was.
+   *
+   * Stephan moved to the east face with the gate; the stage did not follow him,
+   * because it cannot: the concourse east of the flight is 49 px — 3.9 m — of
+   * clear floor between the barrier and the glazed wall, which is a corridor two
+   * robots wide and not somewhere to stand a lectern, a soup pot and a keynote
+   * speaker. Down here is the open lobby in front of reception, it is in the same
+   * frame as the gate, and it is the ground a robot already crosses on the way in.
+   */
   const stage = { x: stair.x + 6, y: stair.y + stair.h + 40, w: 100, h: 110 };
 
   /* --------------------------------------------------------------- the crowd */
@@ -1490,11 +1541,19 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   /** The exit: up the main staircase Stephan has just opened. */
   function leave(): void {
-    // Up the flight, which climbs NORTH from the gate Stephan has just opened.
-    const route = (dx: number): Vec2[] => [
-      { x: stair.x + stair.w / 2 + dx, y: stair.y + stair.h + 34 },
-      { x: stair.x + stair.w / 2 + dx, y: stair.y + stair.h - 40 },
-      { x: stair.x + stair.w / 2 + dx, y: stair.y + 24 },
+    /*
+     * Up the flight, which climbs WEST from the gate Stephan has just opened, and
+     * through the OPENING in the barrier rather than through the barrier.
+     *
+     * The three lanes used to be 34 px either side of the centre line, which was
+     * fine across a 112 px gate and is 24 px too wide for a 44 px one. They queue
+     * through the mouth and fan out once they are on the treads, where there is
+     * 15.7 m of stair to fan out across.
+     */
+    const route = (dy: number): Vec2[] => [
+      { x: stair.x + stair.w + 34, y: gateMidY + dy * 0.4 },
+      { x: stair.x + stair.w - 10, y: gateMidY + dy * 0.4 },
+      { x: stair.x + 24, y: gateMidY + dy },
     ];
     ctx.startCut(
       [

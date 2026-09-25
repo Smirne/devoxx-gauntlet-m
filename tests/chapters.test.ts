@@ -1224,9 +1224,22 @@ describe('chapter 3 — breakfast', () => {
     expect(g.snapshot().people.filter((p) => p.role === 'visitor')).toHaveLength(36);
     const stephan = g.snapshot().people.find((p) => p.role === 'stephan');
     expect(stephan).toBeDefined();
-    // He stands where the gate is: south of the flight, past the reception desk.
-    expect((stephan as { y: number }).y).toBeGreaterThan(GF.mainStair.y + GF.mainStair.h);
-    expect((stephan as { x: number }).x).toBeGreaterThan(GF.reception.x + GF.reception.w);
+    /*
+     * He stands where the gate is: EAST of the flight, in the concourse between
+     * its foot and the entrance, and level with the opening in the barrier.
+     *
+     * This used to read `y > mainStair.y + mainStair.h` — south of the flight —
+     * which was true of the gate until the staircase was turned to face the
+     * entrance on 25 Sep 2026. Stephan did not move because somebody preferred
+     * him there; he moved because the foot of the stair did.
+     */
+    const st = stephan as { x: number; y: number };
+    expect(st.x).toBeGreaterThan(GF.mainStair.x + GF.mainStair.w);
+    expect(st.x).toBeLessThan(GF.entrance.x);
+    expect(st.y).toBeGreaterThan(GF.gate.y);
+    expect(st.y).toBeLessThan(GF.gate.y + GF.gate.h);
+    // ...and still past the reception desk, which is the read that has not changed.
+    expect(st.x).toBeGreaterThan(GF.reception.x + GF.reception.w);
   });
 
   /**

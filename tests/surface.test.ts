@@ -67,10 +67,16 @@ describe('the ground floor is not flat, and the sim says so', () => {
     // Halfway up the six steps is halfway up the level change.
     const mid = GF.smallStairs.x + GF.smallStairs.w / 2;
     expect(riseAt(mid, 400, plates)).toBeCloseTo(LOBBY_RISE_M / 2, 6);
-    // ...and the main flight, from the lobby at its foot to the first floor at its head.
+    // ...and the main flight, from the lobby at its foot to the first floor at its
+    // head. The foot is its EAST edge — the entrance side — since the quarter turn
+    // of 25 Sep 2026; it used to climb north, across its own treads.
     const ms = GF.mainStair;
-    expect(riseAt(ms.x + ms.w / 2, ms.y + ms.h - 1, plates)).toBeCloseTo(LOBBY_RISE_M, 1);
-    expect(riseAt(ms.x + ms.w / 2, ms.y + 1, plates)).toBeCloseTo(MAIN_STAIR_TOP_M, 1);
+    expect(riseAt(ms.x + ms.w - 1, ms.y + ms.h / 2, plates)).toBeCloseTo(LOBBY_RISE_M, 1);
+    expect(riseAt(ms.x + 1, ms.y + ms.h / 2, plates)).toBeCloseTo(MAIN_STAIR_TOP_M, 1);
+    // Across the width of the stair the height does not change at all: that is
+    // what tells the two axes apart, and it is what was wrong before.
+    const foot = riseAt(ms.x + ms.w - 1, ms.y + 8, plates);
+    expect(riseAt(ms.x + ms.w - 1, ms.y + ms.h - 8, plates)).toBeCloseTo(foot, 6);
   });
 
   /**
