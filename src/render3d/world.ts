@@ -20,6 +20,8 @@ import { createProps, type Props3D } from './props3d';
 import { createRobots, updateGlare, updateRobots, type Robot3D } from './robots3d';
 import { HEIGHTS, SIGN_SPANS, X_END, buildVenue, type Venue3D } from './venue';
 import { CY0, CY1, F1 } from '../sim/geometry';
+import { CRATE_AT, CRATE_ROW, PULL_BACK, STAND_AT, WALK_AT } from '../sim/opening';
+import { buildCrates } from '../render/crates';
 
 export interface World3D {
   readonly renderer: THREE.WebGLRenderer;
@@ -36,6 +38,8 @@ export interface World3D {
   resize(w: number, h: number): void;
   /** Sim px (x, y) at `hM` metres up -> canvas CSS px, or null behind the camera. */
   project(x: number, y: number, hM: number): { x: number; y: number } | null;
+  /** `project` for the HUD hint: never null; off-screen in the true direction when behind. */
+  projectHint(x: number, y: number, hM: number): { x: number; y: number };
   dispose(): void;
 }
 
@@ -88,6 +92,78 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   const pool = new LightPool(scene, 14, [...robots.values()].map((r) => r.spill));
   pool.collect(scene);
   for (const L of venue.volumeSpots) L.light.shadow.mapSize.set(quality.shadowSize, quality.shadowSize);
+
+  // THE OPENING: the three arrive in crates against the corridor's west wall
+  // (src/sim/opening.ts owns the clock; the crates are the 2.5D build's own
+  // model, src/render/crates.ts, placed exactly as src/render/scene.ts places
+  // them). They stay for the rest of chapter 1, open and dark, as the sim keeps
+  // their footprints solid. Two lights go with them, always in the scene and
+  // switched by intensity (a visibility toggle recompiles every material): the
+  // emergency bulkhead over the row, which gives out at the end, and a key
+  // light on whichever robot is being presented.
+  const crates = buildCrates({ baseY: 0, centre: { x: m(CRATE_ROW.x), z: m(CRATE_ROW.y) }, yaw: Math.PI / 2, seed: 7 });
+  scene.add(crates.root);
+  const bulkhead = new THREE.SpotLight(0xffe2b0, 0, 9, 0.9, 0.7, 2);
+  bulkhead.position.set(m(CRATE_ROW.x) + 1.4, 3.2, m(CRATE_ROW.y));
+  bulkhead.target.position.set(m(CRATE_ROW.x) + 0.4, 0, m(CRATE_ROW.y));
+  scene.add(bulkhead, bulkhead.target);
+  const keyLight = new THREE.SpotLight(0xffffff, 0, 8, 0.32, 0.8, 2);
+  keyLight.position.set(m(CRATE_ROW.x) + 4.5, 2.6, m(CRATE_ROW.y));
+  scene.add(keyLight, keyLight.target);
+  const OPEN_CRATE_LIT = 0.08;
+  const _oPos = new THREE.Vector3();
+  const _oLook = new THREE.Vector3();
+  const _fPos = new THREE.Vector3();
+  const _fLook = new THREE.Vector3();
+
+  /** Pose the crates and the two lights from `snap.opening`; returns the camera pose while it runs. */
+  function stageOpening(snap: GameSnapshot): { pos: THREE.Vector3; look: THREE.Vector3; follow: number } | null {
+    const o = snap.opening;
+    crates.root.visible = o !== null || snap.chapter === 1;
+    if (o === null) {
+      crates.setLit(OPEN_CRATE_LIT);
+      crates.setEmergency(0);
+      for (const c of crates.crates) {
+        c.setLamp(0);
+        c.setOpen(1);
+      }
+      bulkhead.intensity = 0;
+      keyLight.intensity = 0;
+      return null;
+    }
+    const lamps = Math.max(o.lamp.voxxy, o.lamp.droid, o.lamp.biggy);
+    crates.setLit(Math.max(OPEN_CRATE_LIT, lamps) * o.emergency);
+    crates.setEmergency(o.emergency);
+    for (const c of crates.crates) {
+      c.setLamp(o.lamp[c.kind]);
+      c.setOpen(o.open[c.kind]);
+    }
+    bulkhead.intensity = 70 * o.emergency;
+    // The key light follows the card: the robot being presented is the one lit.
+    const who = o.card;
+    const row = new THREE.Vector3(m(CRATE_ROW.x), 1.0, m(CRATE_ROW.y));
+    if (who) {
+      const at = CRATE_AT[who];
+      keyLight.target.position.set(m(at.x), 1.0, m(at.y));
+      keyLight.intensity = 60 * o.lamp[who];
+    } else keyLight.intensity *= 0.9;
+    keyLight.target.updateMatrixWorld();
+    // Camera: frontal on the row, a step east of it, easing toward whoever is
+    // being presented; then, as the sim pulls back (WALK_AT .. +PULL_BACK), it
+    // blends into the follow camera's framing behind the lead robot.
+    const focus = who ? new THREE.Vector3(m(CRATE_AT[who].x), 1.0, m(CRATE_AT[who].y)) : row;
+    _oLook.lerp(focus, _oLook.lengthSq() === 0 ? 1 : 0.06);
+    _oPos.set(_oLook.x + 5.2, 1.55, _oLook.z * 0.6 + row.z * 0.4);
+    const u = Math.min(1, Math.max(0, (o.t - WALK_AT) / PULL_BACK));
+    const e = u * u * (3 - 2 * u);
+    const lead = snap.bots[snap.active] ?? snap.bots[0];
+    const lx = m(STAND_AT[lead.kind].x);
+    const lz = m(STAND_AT[lead.kind].y);
+    _fPos.set(lx - DIST_BEHIND, 1.9, lz);
+    _fLook.set(lx + 2, 1.0, lz);
+    return { pos: _oPos.clone().lerp(_fPos, e), look: _oLook.clone().lerp(_fLook, e), follow: e };
+  }
+  const DIST_BEHIND = 3.4;
 
   // Mirror bounces: the sim's secondary lights (cinema E's screen), drawn as
   // unshadowed spots from the point on the screen they leave.
@@ -204,7 +280,21 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     const active = snap.bots[snap.active] ?? snap.bots[0];
     const rob = robots.get(active.kind);
     const grade = pipeline.grade;
-    if (intro && !cam.pose) {
+    const staged = stageOpening(snap);
+    if (staged && !cam.pose) {
+      // The opening frames itself; the follow camera takes over, snapped to the
+      // same framing, on the frame the player gets the keyboard.
+      const c = cam.camera;
+      c.position.copy(staged.pos);
+      c.lookAt(staged.look);
+      c.updateMatrixWorld();
+      cam.yaw = -Math.PI / 2;
+      cam.pitch = 0.22;
+      cam.cut();
+      grade.dofAmount = 0.6 * (1 - staged.follow);
+      grade.dofFocus = c.position.distanceTo(staged.look);
+      grade.dofRange = 3;
+    } else if (intro && !cam.pose) {
       introT += dt;
       cam.intro(introT, INTRO.from, INTRO.to, INTRO.lookFrom, INTRO.lookTo);
       // Rack focus down the corridor as the camera travels.
@@ -272,6 +362,28 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   }
 
   const _v = new THREE.Vector3();
+  /**
+   * `project`, for the HUD's hint: a point BEHIND the camera does not vanish
+   * (the perspective divide flips it through the middle of the screen). It is
+   * returned far off the edge in its true direction instead, so the HUD's
+   * off-screen chevron points at it — the 2.5D camera never has anything
+   * behind it, the 3D one often does.
+   */
+  function projectHint(x: number, y: number, hM: number): { x: number; y: number } {
+    const c = cam.camera;
+    _v.set(m(x), hM, m(y)).applyMatrix4(c.matrixWorldInverse);
+    if (_v.z < -0.05) {
+      const p = project(x, y, hM);
+      if (p) return p;
+    }
+    // Behind (camera looks down -z): its right/up components give the side.
+    let dx = _v.x;
+    const dy = -_v.y;
+    if (Math.abs(dx) < 1e-3 && Math.abs(dy) < 1e-3) dx = 1;
+    const k = 4 * Math.max(w, h) / Math.hypot(dx, dy);
+    return { x: w / 2 + dx * k, y: h / 2 + Math.max(dy, 0.2) * k };
+  }
+
   function project(x: number, y: number, hM: number): { x: number; y: number } | null {
     _v.set(m(x), hM, m(y)).project(cam.camera);
     if (_v.z > 1 || _v.z < -1) return null;
@@ -288,6 +400,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     render,
     resize,
     project,
+    projectHint,
     dispose(): void {
       pipeline.dispose();
       pmrem.dispose();

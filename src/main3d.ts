@@ -27,12 +27,12 @@ import { Vector3 } from 'three';
 
 import { DT_MAX } from './sim/constants';
 import { createGame, type DebugGame } from './sim/game';
-import type { GameSnapshot, RobotKind } from './sim/types';
-import { PX_PER_M, ROBOT_HEIGHT_M } from './sim/units';
+import type { RobotKind } from './sim/types';
+import { ROBOT_HEIGHT_M } from './sim/units';
 
 import { createAudio, type Audio } from './render/audio';
+import { createCues } from './render/cues';
 import { createHud, type Hud, type SpeakerAnchors } from './render/hud';
-import { STEP_FREQ_BASE, STEP_FREQ_PER_MPS, gaitSpeed } from './render/robots';
 import type { QualityName } from './render3d/pipeline';
 import { createWorld3D, type World3D } from './render3d/world';
 import { installHudTheme } from './render3d/hudTheme';
@@ -101,14 +101,18 @@ app.appendChild(fadeEl);
 if (hideHud) document.body.classList.add('ad-nohud');
 installHudTheme();
 
-const game: DebugGame = createGame({ seed: int('seed'), chapter: 1, cards: false });
+// Play starts with the sim's opening (the crates), exactly as the 2.5D page
+// does: no chapter, cards on. Screenshot runs go straight to chapter 1 unless
+// they ask for the opening with ?cards=1.
+const withOpening = !shotMode || flag('cards');
+const game: DebugGame = createGame({ seed: int('seed'), chapter: withOpening ? undefined : 1, cards: withOpening });
 
 /*
- * The title: the sim waits (chapter 1 is set up, so every door and the fire
- * shutter are already in place) while the camera dollies down the corridor;
- * any key starts play. This is shell, not game: the sim simply is not stepped.
+ * The old 3D title (a dolly down the corridor under "press any key") is
+ * retired: the sim's opening has its own title card, drawn by the shared HUD,
+ * and the crates are the establishing shot. Kept as a switch, off.
  */
-let titleUp = !shotMode || flag('cards');
+let titleUp = false;
 const titleEl = document.createElement('div');
 titleEl.className = 'ad3d-title';
 titleEl.innerHTML =
@@ -123,7 +127,12 @@ function dismissTitle(): void {
   world.cam.cut();
 }
 const world: World3D = createWorld3D(canvas, { quality, preserveDrawingBuffer: shotMode });
-const hud: Hud = createHud(app, { onSkip: () => game.skipChapter() });
+const hud: Hud = createHud(app, {
+  onSkip: () => game.skipChapter(),
+  // The hint's ring and off-screen arrow are drawn at a sim point, which only
+  // the renderer can put on the canvas (same hook as the 2.5D page).
+  project: (x, y, h) => world.projectHint(x, y, h ?? 0),
+});
 const audio: Audio = createAudio();
 
 function resize(): void {
@@ -221,6 +230,8 @@ function codeOf(ev: KeyboardEvent): string {
 }
 
 let muted = false;
+/** `N` — the score only, on top of `muted`. */
+let musicOff = false;
 let photo = false;
 
 window.addEventListener('keydown', (ev) => {
@@ -241,6 +252,18 @@ window.addEventListener('keydown', (ev) => {
     muted = !muted;
     audio.mute(muted);
   }
+  // The 2.5D page's overlay keys, the same way: N the score on its own, I the
+  // run sheet, H the escalating hint, Escape closes the sheet. The sim never
+  // hears I/H; both letters are in the keypad password, hence `typing`.
+  if (code === 'KeyN') {
+    musicOff = !musicOff;
+    audio.muteMusic(musicOff);
+  }
+  if (!game.snapshot().typing) {
+    if (code === 'KeyI') hud.toggleTasks();
+    if (code === 'KeyH') hud.nudge();
+  }
+  if (code === 'Escape') hud.closeTasks();
   // Q cycles the render quality. The pipeline is built for one quality, so the
   // choice is remembered and the page reloads into it.
   if (code === 'KeyQ' && !game.snapshot().typing) {
@@ -292,30 +315,9 @@ canvas.addEventListener('wheel', (ev) => {
 
 /* =============================================================== audio ===== */
 
-const stepPhase: Record<RobotKind, number> = { voxxy: 0, droid: 0, biggy: 0 };
-let lastBreak = 0;
-let ambientSet = false;
-function updateAudio(snap: GameSnapshot, dt: number): void {
-  const breaking = snap.props.find((p) => p.kind === 'jammed')?.progress ?? 0;
-  if (breaking > 0 && lastBreak <= 0) audio.play('crash', { intensity: 1 });
-  lastBreak = breaking;
-  if (!ambientSet) {
-    audio.setAmbient(snap.chapter);
-    ambientSet = true;
-  }
-  for (const b of snap.bots) {
-    if (b.mounted) continue;
-    const v = gaitSpeed(Math.hypot(b.vx, b.vy) / PX_PER_M);
-    if (v < 0.12) {
-      stepPhase[b.kind] = 0;
-      continue;
-    }
-    const before = stepPhase[b.kind];
-    const after = before + (STEP_FREQ_BASE + STEP_FREQ_PER_MPS * v) * dt;
-    stepPhase[b.kind] = after % 1;
-    if (Math.floor(after * 2) > Math.floor(before * 2)) audio.footstep(b.kind, Math.min(1, v / 2.6));
-  }
-}
+// Shared with the 2.5D page (src/render/cues.ts): every cue is an edge in the
+// snapshot, whichever renderer draws it. This page used to keep its own copy.
+const updateAudio = createCues(audio);
 
 /* ============================================================ end card ===== */
 

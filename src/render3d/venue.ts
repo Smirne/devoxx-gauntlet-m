@@ -17,9 +17,9 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { T } from '../sim/constants';
-import { CY0, CY1, F1, roomDoor, rooms, roomSeating, floor1Walls } from '../sim/geometry';
+import { CY0, CY1, F1, floor1Walls, nicheMidLanding, nicheMouth, roomDoor, rooms, roomSeating } from '../sim/geometry';
 import type { Rect, RoomDef, Wall } from '../sim/types';
-import { m } from '../sim/units';
+import { STOREY_H_M, m } from '../sim/units';
 
 import type { Materials } from './materials';
 import { freeSpans } from './details';
@@ -31,7 +31,9 @@ import { adScreen, ledTicker } from './screens';
 import { POSTERS, backlitGlass, cityscape, emitter, exitSign, menuBoard, neonText, poster, rainMask, wayfinding, zaalPanel } from './signs';
 
 /** Where chapter 1's geometry stops, sim px: just past the fire door. */
-export const X_END = 912;
+// Past the secondary staircases (sim x 1005.5..1114.7, standing in the corridor
+// level with rooms 4 and 9), so chapter 1's walk-out has somewhere to go.
+export const X_END = 1140;
 
 export const HEIGHTS = Object.freeze({
   room: 7.2,
@@ -55,6 +57,11 @@ function regionAt(sx: number, sy: number): Region {
 
 /** A room this build draws: the closed section, plus the sealed Devoxx rooms 10 and 3 up to the stairs. */
 const inBuild = (r: RoomDef): boolean => r.x + r.w <= X_END;
+/** A room whose DOORWAY is inside the build, even if the room runs past it. */
+const doorInBuild = (r: RoomDef): boolean => {
+  const d = roomDoor(r);
+  return d.x + d.w <= X_END;
+};
 
 export interface Venue3D {
   group: THREE.Group;
@@ -243,9 +250,19 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
 
   const carpet = new Buckets();
   {
+    // The Devoxx half's navy carpet, with a hole over each stair flight (from
+    // its west end to the top step, which is floor level: `nicheMouth`).
     const x0 = F1.fireX + 7;
     const x1 = X_END + 40;
-    carpet.add(mats.carpet, quad(V(m(x0), 0.002, m(CY1 + T)), V(m(x1), 0.002, m(CY1 + T)), V(m(x1), 0.002, m(CY0 - T)), V(m(x0), 0.002, m(CY0 - T)), 2.5));
+    const rect = (ax: number, ay: number, bx: number, by: number): void =>
+      carpet.add(mats.carpet, quad(V(m(ax), 0.002, m(by)), V(m(bx), 0.002, m(by)), V(m(bx), 0.002, m(ay)), V(m(ax), 0.002, m(ay)), 2.5));
+    const n = F1.nicheTop;
+    const holeX1 = nicheMouth(n).x;
+    rect(x0, CY0 - T, n.x, CY1 + T);
+    rect(n.x, CY0 + n.h, holeX1, CY1 - F1.nicheBot.h);
+    rect(n.x, CY0 - T, holeX1, CY0);
+    rect(n.x, CY1, holeX1, CY1 + T);
+    rect(holeX1, CY0 - T, x1, CY1 + T);
   }
   for (const r of rooms) {
     if (!r.closed) continue;
@@ -261,7 +278,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     // just walls. Cinema E's exit alcove gained `kind: 'alcove'` in the sim and
     // this line then skipped it: solid in the sim, invisible here, and the
     // player walked into thin air at clue 4 (playtest, 24 Sep).
-    if (w.hidden || w.low || w.glass || (w.kind && w.kind !== 'alcove')) continue;
+    if (w.hidden || w.low || w.glass || (w.kind && w.kind !== 'alcove' && w.kind !== 'stair-head')) continue;
     const r = clipX(w);
     if (!r) continue;
     if (r.x === F1.foyer.x - T && r.y === F1.foyer.y && r.w === T) {
@@ -272,17 +289,13 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
       wallSlab(shell, { ...r, y: win.sy0, h: win.sy1 - win.sy0 }, win.y1, HEIGHTS.room, pick);
       continue;
     }
-    // The stair niches' walls run on down the flight.
-    const niche = [F1.nicheTop, F1.nicheBot].some((n) => r.x >= n.x - T - 1 && r.x <= n.x + n.w + 1 && r.y >= n.y - T - 1 && r.y <= n.y + n.h + 1);
-    wallSlab(shell, r, niche ? -3.6 : 0, HEIGHTS.room, pick);
-  }
-  for (const n of [F1.nicheTop, F1.nicheBot]) {
-    const y = n === F1.nicheTop ? CY0 - T : CY1;
-    wallSlab(shell, { x: n.x, y, w: n.w, h: T }, 3.0, HEIGHTS.room, pick);
+    // Along the stair flights the corridor wall runs on down the shaft.
+    const shaft = [F1.nicheTop, F1.nicheBot].some((n) => r.x < n.x + n.w && r.x + r.w > n.x && Math.abs((r.y + r.h / 2) - (n === F1.nicheTop ? CY0 - T / 2 : CY1 + T / 2)) < T);
+    wallSlab(shell, r, shaft ? -STOREY_H_M : 0, HEIGHTS.room, pick);
   }
   // Lintels over every doorway on the corridor, and over the foyer's wide mouth.
   for (const r of rooms) {
-    if (!inBuild(r)) continue;
+    if (!doorInBuild(r)) continue;
     const d = roomDoor(r);
     const y = r.side < 0 ? CY0 - T : CY1;
     wallSlab(shell, { x: d.x, y, w: d.w, h: T }, HEIGHTS.door, HEIGHTS.room, pick);
@@ -294,7 +307,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   // Door jamb trims (steel) so the openings read as doors.
   const trims = new Buckets();
   for (const r of rooms) {
-    if (!inBuild(r)) continue;
+    if (!doorInBuild(r)) continue;
     const d = roomDoor(r);
     const zc = m(r.side < 0 ? CY0 - T / 2 : CY1 + T / 2);
     const depth = m(T) + 0.08;
@@ -1132,49 +1145,81 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
 
   /* ------------------------------------------- the secondary staircases */
 
-  // Between 10|9 (north) and 3|4 (south), exactly where the plans put them: a
-  // landing off the corridor, then a flight down toward the exhibition hall,
-  // amber nosing lights on every tread and a green sign over the mouth.
-  for (const [n, dir] of [
+  // Standing IN the corridor against its two walls, level with rooms 4 and 9,
+  // as the plans have them (src/sim/geometry.ts, F1.nicheTop/nicheBot): the top
+  // step at the east end is floor level (`nicheMouth`), a first ramp falls west
+  // to the half-landing, a second one on down to the exhibition hall, one storey
+  // below. A shaft wall under the open side, a balustrade along it and across
+  // the west end, nosing lights on every tread, and the green sign.
+  for (const [n, side] of [
     [F1.nicheTop, -1],
     [F1.nicheBot, 1],
   ] as Array<[Rect, number]>) {
-    const zEdge = dir > 0 ? m(n.y) : m(n.y + n.h);
-    const x0 = m(n.x);
-    const x1 = m(n.x + n.w);
-    const landing = 2.7;
-    const treads = 14;
-    const run = 0.3;
-    const rise = 0.19;
+    const mouth = nicheMouth(n);
+    const mid = nicheMidLanding(n);
+    const z0 = m(n.y);
+    const z1 = m(n.y + n.h);
+    const zOpen = side < 0 ? z1 : z0;
+    const zc = (z0 + z1) / 2;
+    const width = z1 - z0;
+    const H = STOREY_H_M;
     const st = new Buckets();
-    st.add(mats.carpet, quad(V(x0, 0.004, zEdge + dir * landing), V(x1, 0.004, zEdge + dir * landing), V(x1, 0.004, zEdge), V(x0, 0.004, zEdge), 2.4));
     const noses: THREE.Vector3[] = [];
-    for (let i = 0; i < treads; i++) {
-      const zA = zEdge + dir * (landing + i * run);
-      const yTop = -(i + 1) * rise;
-      const zc = zA + (dir * run) / 2;
-      st.add(mats.carpet, box(x1 - x0, 0.06, run, V((x0 + x1) / 2, yTop - 0.03, zc), 1.5));
-      st.add(mats.darkMetal, box(x1 - x0, rise, 0.04, V((x0 + x1) / 2, yTop + rise / 2, zA), 1.5));
-      noses.push(V(x0 + 0.25, yTop + 0.01, zA + dir * 0.03), V(x1 - 0.25, yTop + 0.01, zA + dir * 0.03));
-    }
-    for (const x of [x0 + 0.12, x1 - 0.12]) {
-      const pts = [V(x, 0.95, zEdge + dir * (landing - 0.3)), V(x, 0.95 - treads * rise, zEdge + dir * (landing + treads * run))];
-      st.add(mats.steel, new THREE.TubeGeometry(new THREE.LineCurve3(pts[0], pts[1]), 8, 0.025, 8).toNonIndexed());
-    }
+    // A ramp of treads from xa (top, height ya) west to xb (bottom, height yb).
+    const ramp = (xa: number, xb: number, ya: number, yb: number): void => {
+      const run = xa - xb;
+      const count = Math.max(2, Math.round(run / 0.28));
+      const tread = run / count;
+      const rise = (ya - yb) / count;
+      for (let i = 0; i < count; i++) {
+        const xR = xa - i * tread;
+        const yTop = ya - (i + 1) * rise;
+        st.add(mats.carpet, box(tread, 0.06, width, V(xR - tread / 2, yTop - 0.03, zc), 1.5));
+        st.add(mats.darkMetal, box(0.04, rise, width, V(xR, yTop + rise / 2, zc), 1.5));
+        // Solid under each tread, down to the ramp's foot: no see-through stair.
+        st.add(mats.plaster, box(tread, yTop - yb + 0.001, width, V(xR - tread / 2, (yTop + yb) / 2 - 0.03, zc), 2));
+        noses.push(V(xR - 0.03, yTop + 0.01, z0 + 0.2), V(xR - 0.03, yTop + 0.01, z1 - 0.2));
+      }
+    };
+    ramp(m(mouth.x), m(mid.x + mid.w), 0, -H / 2);
+    st.add(mats.carpet, box(m(mid.w), 0.06, width, V(m(mid.x + mid.w / 2), -H / 2 - 0.03, zc), 1.5));
+    st.add(mats.plaster, box(m(mid.w), H / 2, width, V(m(mid.x + mid.w / 2), -H * 0.75 - 0.06, zc), 2));
+    ramp(m(mid.x), m(n.x), -H / 2, -H);
+    // The shaft: its open-side wall below corridor level, and the west end.
+    st.add(mats.plaster, box(m(mouth.x - n.x), H, 0.12, V(m((n.x + mouth.x) / 2), -H / 2, zOpen), 2));
+    st.add(mats.plaster, box(0.12, H, width, V(m(n.x) - 0.06, -H / 2, zc), 2));
+    st.add(mats.carpet, box(m(n.w) + 0.4, 0.05, width + 0.4, V(m(n.x + n.w / 2), -H - 0.03, zc), 2));
+    // Balustrade: posts, a handrail and a glass infill along the open face and
+    // round the west end of the hole, at corridor level.
+    const railZ = zOpen - side * 0.06;
+    const rx0 = m(n.x);
+    const rx1 = m(mouth.x + mouth.w);
+    st.add(mats.steel, box(rx1 - rx0, 0.05, 0.06, V((rx0 + rx1) / 2, 1.02, railZ), 1));
+    st.add(mats.steel, box(0.06, 0.05, width, V(rx0 + 0.03, 1.02, zc), 1));
+    for (let x = rx0 + 0.03; x <= rx1; x += 1.1) st.add(mats.steel, box(0.05, 1.02, 0.05, V(x, 0.51, railZ), 1));
+    const glassPane = new THREE.Mesh(new THREE.PlaneGeometry(rx1 - rx0, 0.9), mats.glass);
+    glassPane.position.set((rx0 + rx1) / 2, 0.5, railZ);
+    glassPane.renderOrder = 2;
+    group.add(glassPane);
     st.build(group);
     addStepLights(group, noses);
     const signTex = wayfinding([['↓', 'gelijkvloers'], ['', 'expo · hall']]);
     const sign = emitter(signTex, 1.6, 0.8, 2.4, 0xffffff, false);
-    sign.position.set((x0 + x1) / 2, 3.45, (dir > 0 ? m(CY1) : m(CY0)) - dir * 0.06);
-    sign.rotation.y = dir > 0 ? Math.PI : 0;
+    const wallZ = side < 0 ? m(CY0) + 0.06 : m(CY1) - 0.06;
+    sign.position.set(m(mouth.x + mouth.w / 2), 3.1, wallZ);
+    sign.rotation.y = side < 0 ? 0 : Math.PI;
     group.add(sign);
-    volumePoints.push({ position: V((x0 + x1) / 2, 2.2, zEdge + dir * 1.2), color: new THREE.Color(1, 0.55, 0.2).multiplyScalar(0.35), range: 3 });
+    volumePoints.push({ position: V(m(mouth.x + mouth.w / 2), 1.6, zc), color: new THREE.Color(1, 0.55, 0.2).multiplyScalar(0.35), range: 3 });
+    // A warm light down the shaft so the flight reads from the corridor.
+    const shaftLight = new THREE.PointLight(0xffb070, 30, 9, 2);
+    shaftLight.position.set(m(n.x + n.w / 2), -H / 2 + 1.5, zc);
+    group.add(shaftLight);
   }
 
   // The Devoxx half has power: warm downlights down its corridor. Cones point
   // straight down and stop at the floor, so nothing leaks through the shutter
   // while it is shut — and when it rolls up, the light is waiting.
-  for (const x of [668, 760, 840]) {
+  for (const x of [668, 760, 840, 930, 1060]) {
     const spot = new THREE.SpotLight(0xffd7a8, 700, 9, 0.62, 0.5, 2);
     spot.position.set(m(x), HEIGHTS.corridor - 0.1, m((CY0 + CY1) / 2));
     spot.target.position.set(m(x), 0, m((CY0 + CY1) / 2));
@@ -1188,7 +1233,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   // Rooms 10 and 3 are Devoxx rooms and sealed tonight: their doors are shut
   // (the sim never sends anyone in; this only closes the view).
   for (const r of rooms) {
-    if (r.closed || !inBuild(r)) continue;
+    if (r.closed || !doorInBuild(r)) continue;
     const d = roomDoor(r);
     const leafZ = m(d.y + d.h / 2);
     const g = new THREE.Group();
