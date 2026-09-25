@@ -71,6 +71,23 @@ export const FLOOR_T = 0.14;
  */
 export const BREAKER_Y = 1.45;
 export const BREAKER_H = 0.72;
+/**
+ * How far the enclosure stands PROUD of the wall, metres — and it is a number of
+ * its own, not the sim rect's depth.
+ *
+ * Michele, 25 Sep 2026, with a screenshot: *"droid looks inside the breaker."* He
+ * did. `GF.panel` is 26 x 16 sim px and the 16 is a REACH zone — where a robot
+ * has to be standing for `E` to mean the handles — so drawing the box to it made
+ * a distribution board **1.28 m deep**, hanging off the wall like a wardrobe,
+ * with its handle face out where Droid stands. At this camera's 30 deg pitch his
+ * head and shoulders then cross it and he reads as being inside it.
+ *
+ * It is the same diagnosis `src/render/release-panel.ts` opens with (the "green
+ * cube"): the rect's depth is a rule, not a shape. 0.4 m is a real surface-mounted
+ * board, and it puts a clear metre between the handles and the robot reaching for
+ * them.
+ */
+export const BREAKER_D = 0.4;
 
 /* -------------------------------------------------------------- primitives */
 

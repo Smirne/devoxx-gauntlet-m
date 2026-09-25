@@ -74,7 +74,7 @@ import {
   gateDraw,
   lockDoorDraw,
 } from './doors';
-import { BREAKER_H, BREAKER_Y, WALL_H, buildVenue, type Venue } from './venue';
+import { BREAKER_D, BREAKER_H, BREAKER_Y, WALL_H, buildVenue, type Venue } from './venue';
 
 const KINDS: readonly RobotKind[] = ['voxxy', 'droid', 'biggy'];
 
@@ -2020,10 +2020,16 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    */
   function drawBreaker(p: Prop, floorY: number): void {
     const wM = m(p.w ?? 26);
-    const dM = m(p.h ?? 16);
     const thrown = p.v ?? 0;
     breakerPanel.visible = true;
-    breakerPanel.position.set(m(p.x), surfaceY(floorY, p.x, p.y) + BREAKER_Y, m(p.y) + dM);
+    /*
+     * The handles go on the FACE of the enclosure, and the enclosure is
+     * `BREAKER_D` deep — not `p.h`, which is the reach zone in front of it. Drawn
+     * to the rect this was a 1.28 m-deep board with its handles out where the
+     * robot stands, and Droid reaching for them read as Droid inside the box,
+     * which is what Michele filed on 25 Sep 2026.
+     */
+    breakerPanel.position.set(m(p.x), surfaceY(floorY, p.x, p.y) + BREAKER_Y, m(p.y) + BREAKER_D);
     for (let i = 0; i < BREAKER_COUNT; i++) {
       const x = (wM * (i + 0.5)) / BREAKER_COUNT;
       const y = BREAKER_H * 0.42;

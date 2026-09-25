@@ -59,7 +59,7 @@ import {
   stairRamps,
 } from '../../sim/geometry';
 import type { Rect, Wall } from '../../sim/types';
-import { m } from '../../sim/units';
+import { PX_PER_M, m } from '../../sim/units';
 import type { VenuePalette } from './materials';
 import {
   BOOTH_SCHEMES,
@@ -70,6 +70,7 @@ import {
   sponsorTotem,
 } from './signage';
 import {
+  BREAKER_D,
   BREAKER_H,
   BREAKER_Y,
   DOOR_H,
@@ -838,11 +839,35 @@ function reception(p: VenuePalette, overhead: THREE.Group): THREE.Group {
     g.add(boxAt(lx, ly, 9, 9, RISE + LOW_H + 0.26, 0.2, p.lampWarm));
   }
 
-  // The big white pendant disc and the orange ceiling soffit strip.
+  /*
+   * The big white pendant disc, and the orange band over the desk — WHICH NOW
+   * SITS ON SOMETHING.
+   *
+   * Michele, twice, the second time with a circle round it: *"Pic5 there's still
+   * that big strange wooden thing."* It was the reference photograph's orange
+   * ceiling soffit, 14 m of it, hung at 3 m on `overhead` — and this diorama
+   * draws no ceiling for the ground floor, so the strip was a plank floating in
+   * mid-air over open carpet with nothing above it and nothing holding it up.
+   * From the fixed camera it reads as a beam somebody left in the room, which is
+   * exactly what he called it.
+   *
+   * It is a FASCIA now, on top of the wardrobe block's south wall: the warm band
+   * over the reception, backed by the 2.6 m wall it belongs to, reading as part
+   * of the building from every angle this camera has.
+   *
+   * It was a free-standing gantry for about ten minutes — band, two posts, floor
+   * to ceiling — until `tests/colliders.test.ts` pointed out that a post which
+   * touches the floor is a collider, and then `tests/chapters.test.ts` pointed
+   * out what two new colliders either side of the desk do to three thousand
+   * people walking past it: 15 of 33 were still queueing at the threshold when
+   * the doors shut. Nothing that stands in the concourse is free.
+   */
   const disc = pendant(r.x + r.w / 2, r.y + 30, 1.5, RISE + 2.6, p.pendantWhite);
   disc.name = 'reception-pendant';
   overhead.add(disc);
-  overhead.add(slab({ x: r.x - 26, y: r.y + r.h + 18, w: r.w + 52, h: 10 }, RISE + 3.0, 0.22, p.devoxxOrange));
+  const band = slab({ x: co.x, y: co.y + co.h - 3, w: co.w, h: 5 }, RISE + 2.34, 0.38, p.devoxxOrange);
+  band.name = 'reception-fascia';
+  g.add(band);
   return g;
 }
 
@@ -1193,13 +1218,22 @@ export function buildGround(
     const pa = GF.panel;
     const box = new THREE.Group();
     box.name = 'breaker-panel';
-    // The enclosure, proud of the wall, and its darker recessed door.
-    box.add(slab(pa, BREAKER_Y, BREAKER_H, p.breakerBox));
-    box.add(slab({ x: pa.x + 2, y: pa.y + pa.h - 1, w: pa.w - 4, h: 2 }, BREAKER_Y + 0.06, BREAKER_H - 0.12, p.blackMetal));
+    // The enclosure, proud of the wall by `BREAKER_D` and no more — the rect's own
+    // depth is the reach zone in front of it, not the box (see `BREAKER_D`).
+    const deep = BREAKER_D * PX_PER_M;
+    const face = { x: pa.x, y: pa.y, w: pa.w, h: deep };
+    box.add(slab(face, BREAKER_Y, BREAKER_H, p.breakerBox));
+    box.add(slab({ x: pa.x + 2, y: pa.y + deep - 1, w: pa.w - 4, h: 2 }, BREAKER_Y + 0.06, BREAKER_H - 0.12, p.blackMetal));
     // Conduit down to the floor and along to the router cabinet: the giveaway that
     // this box is where the room's power comes from.
-    box.add(slab({ x: pa.x + pa.w / 2 - 2, y: pa.y + pa.h - 2, w: 4, h: 2 }, 0, BREAKER_Y, p.chafingSteel));
-    box.add(slab({ x: pa.x + pa.w / 2, y: pa.y + pa.h - 2, w: GF.cabinet.x - pa.x - pa.w / 2, h: 2 }, 0.1, 0.09, p.chafingSteel));
+    // Conduit down the WALL behind the box and along it to the router cabinet —
+    // inside the technical room's own north wall, where the sim already has a
+    // collider. Run out on the open floor it is a 1.45 m post and a trip hazard
+    // nothing in the sim knows about, which is what `tests/colliders.test.ts`
+    // says the moment it moves.
+    const wallY = GF.tech.y + 1;
+    box.add(slab({ x: pa.x + pa.w / 2 - 2, y: wallY, w: 4, h: 2 }, 0, BREAKER_Y, p.chafingSteel));
+    box.add(slab({ x: pa.x + pa.w / 2, y: wallY, w: GF.cabinet.x - pa.x - pa.w / 2, h: 2 }, 0.1, 0.09, p.chafingSteel));
     group.add(box);
   }
 
