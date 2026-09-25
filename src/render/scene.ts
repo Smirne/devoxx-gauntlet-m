@@ -27,7 +27,7 @@
 
 import * as THREE from 'three';
 
-import { flairPhase, hopPhase } from '../sim/bot';
+import { flairPhase, hopPhase, worldMoved } from '../sim/bot';
 import { JUMP_RISE_M, MOUNT_OFFSET_Y, W as SIM_W, H as SIM_H } from '../sim/constants';
 import { riseAt, riseForBody } from '../sim/surface';
 import { JAM_LEAF_H, JAM_SKEW, JAM_SKID, JAM_TIP } from '../sim/chapters/ch1-night';
@@ -2731,6 +2731,28 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
         // Biggy's roll and Droid's stretch, off the sim's clock the same way. No
         // lift goes with this one: a party trick moves nothing (`partyTrick`).
         flair: flairPhase(b),
+        /*
+         * BEING PUSHED, as opposed to walking — Michele: *"Biggy should really
+         * roll, at least when he's pushed!"*
+         *
+         * Shoved by another robot, towed, or still sliding after either: all
+         * three are the same fact, and all three are where a ball should behave
+         * like a ball. `worldMoved` is the sim's own answer to it, the flag
+         * `stepAim` already keeps to decide whether a let-go robot's heading
+         * follows its stick or its velocity.
+         *
+         * This line used to read the stick — `hypot(b.ix, b.iy) < 1e-3` — on the
+         * grounds that the sim had no flag for it. It has one, and the stick was
+         * the wrong question: the gait's acceleration is smoothed, so a tap and
+         * release left it positive with the stick already empty, and a third of a
+         * second of driving Biggy rolled him 61% as hard as a real shove. See
+         * `worldMoved` in `src/sim/bot.ts` for the measurement.
+         *
+         * Only Biggy does anything with it (`applyShove`); the flag is handed
+         * to all three because which robot is a ball is the rig's business,
+         * not this file's.
+         */
+        shoved: worldMoved(b) ? 1 : 0,
       });
     }
   }

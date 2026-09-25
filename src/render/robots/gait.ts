@@ -117,6 +117,20 @@ export interface GaitParams {
    * and the body does not move a millimetre.
    */
   flair?: number;
+  /**
+   * How much of this robot's motion is SOMEBODY ELSE'S: 0 driving himself, 1 shoved.
+   *
+   * Michele, 24 Sep 2026: *"ah Another thing to handle later. Biggy should really
+   * roll, at least when he's pushed!"* He is right about the physics — Biggy is a
+   * 1.2 m ball on two stubby legs and he crossed the hall like a crate on ice,
+   * with the same walk whether he was driving or being pushed into a door.
+   *
+   * The caller works it out from the one thing that distinguishes the two: a
+   * robot that is moving with nothing on the stick is being moved by something.
+   * Which robot does what with it is this file's business, and only Biggy does
+   * anything at all — Voxxy and Droid are not balls.
+   */
+  shoved?: number;
 }
 
 /**
@@ -256,6 +270,18 @@ interface BoneBase {
 }
 
 interface GaitState {
+  /**
+   * Smoothed `GaitParams.shoved`, and how far the ball has rolled, in radians.
+   *
+   * The angle is integrated from DISTANCE, not from time: `v dt / r` is exactly
+   * what a ball of radius `r` turns through while it travels, so the wobble has
+   * one period per revolution and speeding up makes him roll faster rather than
+   * flap faster. It is the same reasoning the step cycle uses two hundred lines
+   * up — a gait that is a function of the clock instead of the ground is the
+   * thing that reads as ice.
+   */
+  shove: number;
+  rollA: number;
   base: Map<THREE.Object3D, BoneBase>;
   partScale: Map<THREE.Object3D, THREE.Vector3>;
   /** Ankle rest positions in root space, [left, right]. */
@@ -360,6 +386,8 @@ function capture(rig: RobotRig): GaitState {
     twitchPhase: 0,
     rnd: 0x9e3779b9,
     contact: [true, true],
+    shove: 0,
+    rollA: 0,
   };
 }
 
@@ -743,6 +771,13 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
   if (poseName) applyPoseUpper(rig, poseName, e, st);
   if (hopping) applyHopUpper(rig, tuck, land);
   if (flairing) applyFlairBody(rig, st, f, standH);
+  /*
+   * ...and the roll, which is the same tip driven by being pushed instead of by
+   * showing off. It is skipped outright while a flourish is playing: both of them
+   * move the whole body about the floor between his boots, and two at once would
+   * be two pivots fighting over one pelvis.
+   */
+  if (!flairing) applyShove(rig, st, params.shoved ?? 0, v, amp, dt, standH);
 
   /* --------------------------------------------------------- antenna */
   const ant = bones.antenna;
@@ -970,6 +1005,106 @@ function applyFlairPelvis(rig: RobotRig, f: number, scale: number): void {
  * tipping a wide flat base up onto its edge actually costs you — it also keeps
  * the low boot from going through the floor at the top of each rock.
  */
+/**
+ * Tip Biggy over the floor between his boots, about one axis.
+ *
+ * Rotating a bone rotates the body about THAT BONE, and a ball goes over its own
+ * edge, not about its middle — so the pelvis is translated by exactly as much as
+ * the rotation moved it away from the floor pivot, and the two cancel. For a roll
+ * about z a pelvis `standH` up ends at `(-standH sin th, standH cos th)`; about x
+ * it ends at `(standH sin th)` in z. That is the whole of the arithmetic.
+ *
+ * `rise` is the extra lift from levering a wide flat base up onto its edge. Biggy's
+ * boots are wide across him and short front to back, so it is real for a sideways
+ * rock and near enough nothing for a forward one — which is why it is an argument
+ * rather than a constant.
+ */
+function tipBiggy(rig: RobotRig, th: number, standH: number, axis: 'x' | 'z', rise: number): void {
+  const pelvis = rig.bones.pelvis;
+  const s = Math.sin(th);
+  const c = Math.cos(th);
+  pelvis.position.y += standH * (c - 1) + Math.abs(rise * s);
+  if (axis === 'z') {
+    pelvis.rotation.z += th;
+    pelvis.position.x -= standH * s;
+  } else {
+    pelvis.rotation.x += th;
+    pelvis.position.z += standH * s;
+  }
+}
+
+/** Biggy's gut as a fraction of his height — the sheet's ball is 0.83 across. */
+const GUT_R_PER_H = 0.415;
+/** How far he goes over on each roll, radians at full tilt. */
+const ROLL_TIP = 0.20;
+/** ...and how far the top of him lags behind a shove that is pushing the bottom. */
+const PUSH_LAG = 0.12;
+/**
+ * How fast the roll comes on when a shove lands, per second.
+ *
+ * Fast: the push is the event, and a ball that is hit goes over on the frame it
+ * is hit. There is no matching threshold here any more — whether he is being
+ * moved by somebody else is the sim's answer (`worldMoved`), and it is a fact
+ * rather than a guess, so this file does not second-guess it with a number.
+ */
+const SHOVE_ON = 9;
+/**
+ * ...and how fast it lets go when the player takes the stick back, per second.
+ *
+ * Slower than it came on, because standing up out of a roll is a recovery and
+ * not a cut. It never runs during the coast: `shoved` stays true for the whole
+ * free slide, and the roll tapers there with `amp`, which is the speed — he
+ * stops rolling because he has stopped, not because a timer ran out.
+ */
+const SHOVE_OFF = 3.5;
+
+/**
+ * BIGGY BEING PUSHED, which should not look like Biggy walking.
+ *
+ * Michele: *"Biggy should really roll, at least when he's pushed!"* The read the
+ * sheet gives us is a huge round gut with a tin lid on it, and a huge round gut
+ * that is shoved does two things a walking one does not: it goes over its own
+ * edge and comes back, and the top of it lags behind the bottom because the
+ * push is down at the floor and the mass is up in the ball.
+ *
+ * Both are here, and both are scaled by how much of his motion is somebody
+ * else's — `GaitParams.shoved`, which the renderer takes from the sim's
+ * `worldMoved` and NOT from an empty stick; the difference is a measured 61% of
+ * a roll on every tap and release, and the measurement is in `worldMoved`'s own
+ * comment. The wobble's angle is integrated from DISTANCE (`v dt / r`), so it
+ * has one period per revolution of a ball that size: he rolls faster when he is
+ * going faster instead of flapping faster, which is the difference between this
+ * and an animation. The free slide after the push is still a roll, and it dies
+ * with `amp` as he slows — there is nothing to blend out of.
+ *
+ * Only Biggy. Voxxy and Droid are not balls, and a shoved Droid staying upright
+ * and offended is the right picture for Droid.
+ */
+function applyShove(
+  rig: RobotRig,
+  st: GaitState,
+  shoved: number,
+  v: number,
+  amp: number,
+  dt: number,
+  standH: number,
+): void {
+  if (rig.kind !== 'biggy') return;
+  const pushed = shoved > 0.5;
+  st.shove += ((pushed ? 1 : 0) - st.shove) * (1 - Math.exp(-(pushed ? SHOVE_ON : SHOVE_OFF) * dt));
+  st.rollA = (st.rollA + (v * dt) / (rig.height * GUT_R_PER_H)) % TAU;
+  const w = st.shove * amp;
+  if (w < 0.01) return;
+  const th = Math.sin(st.rollA) * ROLL_TIP * w - PUSH_LAG * w;
+  tipBiggy(rig, th, standH, 'x', 0);
+  const b = rig.bones;
+  // The lid tries to stay level and fails by about half — the same half it fails
+  // by in the flourish, because it is the same lid on the same ball.
+  b.head.rotation.x -= 0.45 * th;
+  // The stubby arms trail a beat behind the body rather than riding on it.
+  for (const L of ['L', 'R'] as const) b[`shoulder${L}`].rotation.x -= 0.55 * th;
+}
+
 function applyFlairBody(rig: RobotRig, st: GaitState, f: number, standH: number): void {
   const b = rig.bones;
   if (rig.kind === 'droid') {
@@ -996,12 +1131,7 @@ function applyFlairBody(rig: RobotRig, st: GaitState, f: number, standH: number)
   if (rig.kind !== 'biggy') return;
 
   const roll = rollRad(f);
-  const s = Math.sin(roll);
-  const c = Math.cos(roll);
-  const pelvis = b.pelvis;
-  pelvis.rotation.z += roll;
-  pelvis.position.x -= standH * s;
-  pelvis.position.y += standH * (c - 1) + Math.abs(st.footRest[0].x * s);
+  tipBiggy(rig, roll, standH, 'z', st.footRest[0].x);
   for (const L of ['L', 'R'] as const) {
     // The body has already taken the arms round with it; this takes them back past
     // neutral, so they swing counter to the gut instead of riding on it.

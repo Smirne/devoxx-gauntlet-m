@@ -3742,3 +3742,75 @@ abreast" — three seeds, more than forty of sixty moving, nobody parked in the 
 comment drawing the line between dwelling (up to two seconds at a lane node, by design) and being
 frozen for good. Suite: **695 tests, 42 files, green**; `tsc --noEmit` clean; `After Dark ·
 ERRORS:0`.
+
+## 25 Sep 2026 — Biggy rolls when he is pushed, and the gate that decides it
+
+**What Michele asked for**, on 24 Sep and then deferred himself: *"ah Another thing to handle later.
+Biggy should really roll, at least when he's pushed!"* It had been sitting in
+`docs/playtest-notes.md` under "mechanics still owed" ever since. He said *"Ok next task?"* and this
+is the one he had named himself, so the agent took it without asking.
+
+**What the rig would not allow.** The obvious reading is to spin the gut. `buildBiggy` parents the
+belly shell, the hatches, the bumper, the shorts, the belt, the vents, the seam ring **and** the
+neck, the helmet and both shoulders to `torso` — so a literally rotating gut means re-parenting a
+model Michele has already signed off, to draw a thing that lasts two seconds. Instead the roll
+borrows the vocabulary of the party trick that already exists: `applyFlairBody` tips his whole body
+about the floor between his boots, and the pivot maths came out of it into `tipBiggy(rig, th,
+standH, axis, rise)` so both use one function. The shove tips him forward and back on `x` where the
+flourish rocks him sideways on `z`; the lid fails to stay level by about half, and the stubby arms
+trail, because it is the same lid on the same ball.
+
+The angle is integrated from **distance**, not from the clock: `v dt / (height * 0.415)` is what a
+ball that size turns through while it travels, so speeding him up makes him roll faster instead of
+flapping faster. That is the same rule the step cycle two hundred lines up already follows, and it
+is the difference between physics and an animation.
+
+**The part that was actually hard was the gate**, and it is the second time this week that a
+cosmetic task turned into a bug report. "Being pushed" first read as *the stick is empty and the
+smoothed acceleration is positive* — you cannot speed up under your own steam with nothing on the
+stick, so it looked airtight. It is not: `GaitState.accel` is a 1/6 s low-pass, so for a few frames
+after every release the stick is empty **and** the acceleration is still positive. Driven for a
+third of a second and let go, Biggy rolled at **0.61 of a full shove** and took a second to settle —
+exactly the "he lurches every time you let go" that the threshold had been added to prevent.
+
+Measured properly, driving the sim at `DT_MAX`:
+
+| case | peak accel | spurious roll |
+|---|---|---|
+| Voxxy shoving, contact resolved | 6.6 m/s² | — |
+| Droid shoving | 3.4 m/s² | — |
+| Biggy driving himself | 2.2 m/s² | none (stick held) |
+| 0.1 / 0.2 / 0.35 / 0.5 / 1.0 s tap, then release | — | **0.30 / 0.56 / 0.61 / 0.56 / 0.37** |
+
+So the threshold could not be rescued by raising it: a weak shove and a tap-and-release sit in the
+same band. **The sim already had the right answer and was keeping it private.** `stepAim` in
+`src/sim/bot.ts` maintains `driven` precisely to decide whether a let-go robot's heading follows its
+stick or its velocity — its own comment says *"a body that speeds up while nobody is steering it is
+being towed, shoved or knocked"* — and it has no filter to lag: `coast` ratchets down to the running
+minimum speed, so a shove trips it on the frame it lands and a coast, which can only ever slow down,
+never trips it at all. That is published as `worldMoved(bot)` (a read of existing state; no sim
+behaviour changed) and `scene.ts` asks it instead of guessing. `PUSH_ACC` and the whole asymmetric
+coast-fade went with it: the roll now dies with `amp`, which is the speed, so he stops rolling
+because he has stopped.
+
+**A comment that had to be retracted.** The old line in `scene.ts` read *"The sim does not have a
+flag for it and does not need one."* It did have one. Both that comment and the `shoved` doc in
+`robots/index.ts` now say what the wrong question cost, so the next person does not re-derive it.
+
+**Tests.** `tests/shove-roll.test.ts`, nine cases. The rig ones run one sim and feed the identical
+stream of speeds and headings to two rigs, one with `shoved` wired up and one holding it at 0, then
+measure the difference — the lean, the stride and the idle twitches are common to both and cancel,
+so what is left is the roll alone. A real shove swings the pelvis both ways and keeps rolling
+through the slide; driving himself, tapping the stick at five different hold times, and a wall
+bounce mid-coast all measure **exactly zero** difference; Voxxy and Droid measure zero when knocked,
+because a shoved Droid standing there offended is the right picture for Droid. The tap case was
+checked against the old derivation and fails on it, so it is not a vacuous zero.
+
+**Also closed: chapter 1, note 14** — *"lighting on south room is odd. I should be able to see the
+seats"*. The note had guessed this was already fixed by note 3 (the seats were missing geometry, not
+dim geometry) and it was: parked in cinema E, five rows read clearly under all three lamps and the
+clue ring. No lighting change was needed, and none was made — worth saying, because "adjust the
+lighting" was the obvious thing to do and would have been a change to something that was not broken.
+
+Suite **704 tests, 43 files, green**; `tsc --noEmit` clean; `After Dark · ERRORS:0` on the built
+bundle in chapter 2, with the shove driven through the real key handler.
