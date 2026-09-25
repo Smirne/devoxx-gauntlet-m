@@ -232,7 +232,16 @@ export const TITLE_OUT = 0.45;
  * so this number was chosen by shooting it: at 116 px the row fills the middle
  * of the frame and every band on all three crates reads.
  */
-export const VIEW_CRATES: ViewRect = { x: CRATE_ROW.x - 26, y: CRATE_ROW.y - 46, w: 84, h: 92 };
+/*
+ * Michele: *"I'd zoom a little bit to make robots and crates bigger."*
+ *
+ * The HEIGHT is what does it. The camera fits this rect to the viewport, which is
+ * wider than it is tall, so a portrait rect like this one is height-limited and
+ * the width is whatever the aspect makes of it — widening it changes nothing and
+ * shortening it zooms. The crates and the three standing marks together occupy
+ * y 314..386, so 76 is that plus a margin, centred on the row.
+ */
+export const VIEW_CRATES: ViewRect = { x: CRATE_ROW.x - 26, y: CRATE_ROW.y - 38, w: 58, h: 76 };
 
 /** How long the camera takes to pull back from the crates to the corridor. */
 export const PULL_BACK = 1.6;

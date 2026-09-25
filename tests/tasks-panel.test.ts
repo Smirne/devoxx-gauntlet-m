@@ -54,6 +54,17 @@ describe('every chapter publishes a run sheet the overlay can draw', () => {
       }
     });
 
+    it(`chapter ${n}: a task that names robots names ALL of them`, () => {
+      // "light the orange + green mix" needs Voxxy AND Droid, and `who` used to
+      // be `need[0]`, so the hint named one of the two — a wrong answer rather
+      // than half an answer. Michele: *"some task need multiple robots"*.
+      for (const t of tasksOf(n)) {
+        if (t.who === undefined) continue;
+        expect(t.who.length, `"${t.id}" published an empty crew`).toBeGreaterThan(0);
+        expect(new Set(t.who).size, `"${t.id}" names a robot twice`).toBe(t.who.length);
+      }
+    });
+
     it(`chapter ${n}: every task can be asked about at least once`, () => {
       // `H` must always say something. A task with no who, no hint and no place
       // still answers — with the truth that there is nothing more to give.
@@ -65,7 +76,7 @@ describe('every chapter publishes a run sheet the overlay can draw', () => {
 });
 
 describe('the nudge ladder', () => {
-  const full: Task = { id: 'a', text: 'do the thing', done: false, who: 'voxxy', at: { x: 1, y: 2 }, hint: 'try there' };
+  const full: Task = { id: 'a', text: 'do the thing', done: false, who: ['voxxy'], at: { x: 1, y: 2 }, hint: 'try there' };
 
   it('climbs one step per press and then stops', () => {
     expect(nudgeStep(full, 0, true)).toBe(1);

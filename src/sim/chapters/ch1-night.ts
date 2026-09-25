@@ -1084,7 +1084,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         // The first robot the mix needs. A two-colour mix needs both, and the
         // panel says so from `need` — but an arrow can only point for one, and
         // the one to fetch first is the one that is not already standing there.
-        who: c.need[0],
+        // Every robot the mix needs, not just the first — the two-colour mixes
+        // need both lamps on the spot at once.
+        who: c.need,
         at: { x: c.x, y: c.y },
         hint:
           c.need.length === 3
@@ -1095,7 +1097,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       id: 'code',
       text: 'type the four digits at the fire door',
       done: fireOpen,
-      who: 'voxxy',
+      who: ['voxxy'],
       at: { x: keypad.x + keypad.w / 2, y: keypad.y + keypad.h / 2 },
       n: entered.length,
       of: 4,

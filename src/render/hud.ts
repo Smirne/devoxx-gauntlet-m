@@ -47,6 +47,8 @@ export interface Hud {
   update(snap: GameSnapshot, anchors?: SpeakerAnchors): void;
   /** `I` — show or hide the run sheet. */
   toggleTasks(): void;
+  /** `Escape`, or a click anywhere off the panel. */
+  closeTasks(): void;
   /**
    * `H` — one more step of help on the task in hand.
    *
@@ -98,7 +100,7 @@ export function nudgeStep(task: Task, was: number, canMark: boolean): number {
   const hasMark = task.at !== undefined && canMark;
   const top = hasMark ? 3 : task.hint !== undefined ? 2 : 1;
   let level = was + 1;
-  if (level === 1 && task.who === undefined) level = 2;
+  if (level === 1 && (task.who === undefined || task.who.length === 0)) level = 2;
   if (level === 2 && task.hint === undefined) level = 3;
   return level > top ? top : level;
 }
@@ -296,7 +298,10 @@ const CSS = `
 .ad-count b{color:#f2efe9;font-weight:600}
 .ad-ask{font-size:11px;letter-spacing:.06em;color:${MUTED};opacity:.8}
 
-.ad-sheet{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:4;
+/* The overlay root is pointer-events:none so the canvas keeps the pointer. The
+   sheet takes them back, or a click ON the panel would land on the canvas and
+   the click-outside rule would close the thing the player is reading. */
+.ad-sheet{pointer-events:auto;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:4;
   width:min(560px,86vw);padding:18px 20px;border:1px solid ${ACCENT};border-radius:12px;
   background:rgba(10,11,14,.97);box-shadow:0 24px 80px rgba(0,0,0,.7)}
 .ad-sheet h3{margin:0 0 4px;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:${ACCENT}}
@@ -887,11 +892,14 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
         const n = el('span', 'ad-tn', row);
         n.textContent = `${t.n ?? 0} / ${t.of}`;
       }
-      if (t.who !== undefined) {
-        const who = el('span', 'ad-twho', row);
-        who.textContent = t.who.toUpperCase();
-        who.style.color = lampOf(snap, t.who);
-      }
+      /*
+       * NO ROBOT CHIP HERE. Michele: *"I'd leave out the robot name here
+       * (moreover some task need multiple robots). That's already a big hint"*.
+       *
+       * The sheet says what is left to do; working out who does it is the game.
+       * `who` stays in the data because `H` is where a player ASKS for that, and
+       * an answer you asked for is not a spoiler.
+       */
     }
   }
 
@@ -912,7 +920,10 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     if (p === null) return;
     mark.style.left = `${Math.round(p.x)}px`;
     mark.style.top = `${Math.round(p.y)}px`;
-    mark.style.color = t?.who !== undefined ? lampOf(snap, t.who) : ACCENT;
+    // One ring, so one colour: the first robot named, or the house accent when a
+    // task belongs to nobody in particular.
+    const who = t?.who;
+    mark.style.color = who && who.length > 0 ? lampOf(snap, who[0]) : ACCENT;
   }
 
   /**
@@ -1211,6 +1222,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     disposed = true;
     skip.removeEventListener('click', onSkipClick);
     objEl.removeEventListener('click', onBriefClick);
+    window.removeEventListener('click', onRootClick);
     live.length = 0;
     promptCells.length = 0;
     meterRows.clear();
@@ -1224,6 +1236,25 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   function toggleTasks(): void {
     sheetOpen = !sheetOpen;
   }
+
+  function closeTasks(): void {
+    sheetOpen = false;
+  }
+
+  /*
+   * Michele: *"esc ok click outside should close the panel"*. `I` opens it and
+   * the two ways anybody expects to get rid of a panel close it.
+   *
+   * The click listener is on the OVERLAY ROOT rather than the window: the HUD
+   * root already sits over the canvas, and a listener on the window would also
+   * catch the click that the Skip button is in the middle of handling.
+   */
+  const onRootClick = (ev: MouseEvent): void => {
+    if (!sheetOpen) return;
+    if (sheet.contains(ev.target as Node)) return;
+    sheetOpen = false;
+  };
+  window.addEventListener('click', onRootClick);
 
   /*
    * ONE PRESS, ONE MORE STEP, AND NEVER PAST WHAT THE CHAPTER PUBLISHED.
@@ -1249,9 +1280,17 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     const level = nudgeStep(t, nudges.get(t.id) ?? 0, opts.project !== undefined);
     nudges.set(t.id, level);
     const life = 4200;
-    if (level === 1 && t.who !== undefined) {
-      const name = `${t.who[0].toUpperCase()}${t.who.slice(1)}`;
-      pushLine(`${name}: this one is mine — ${BOT_KEY[t.who]} to take me.`, snap, life);
+    if (level === 1 && t.who !== undefined && t.who.length > 0) {
+      // Every robot it needs, because plenty need two and naming one of them is
+      // a wrong answer rather than half an answer.
+      const names = t.who.map((k) => `${k[0].toUpperCase()}${k.slice(1)} (${BOT_KEY[k]})`);
+      pushLine(
+        t.who.length === 1
+          ? `${names[0]}: this one is mine.`
+          : `${names.join(' and ')} — this one takes both of us.`,
+        snap,
+        life,
+      );
     } else if (level === 2 && t.hint !== undefined) {
       pushLine(t.hint, snap, life);
     } else if (level === 3 && hasMark) {
@@ -1261,5 +1300,5 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     }
   }
 
-  return { update, toggleTasks, nudge, dispose, root };
+  return { update, toggleTasks, closeTasks, nudge, dispose, root };
 }

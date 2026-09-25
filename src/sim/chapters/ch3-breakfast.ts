@@ -1710,7 +1710,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         id: 'ladle',
         text: 'fetch the ladle off the high shelf',
         done: ladle,
-        who: 'droid',
+        who: ['droid'],
         at: shelfStand,
         hint: 'Droid: top shelf in the catering block, and nobody fills a pot without it. Voxxy cannot see over that shelf and Biggy cannot get an arm into it',
       },
@@ -1718,7 +1718,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         id: 'soup',
         text: 'take Stephan his tomato soup',
         done: delivered,
-        who: 'biggy',
+        who: ['biggy'],
         at: carrying && !delivered ? stageAt : soupStand,
         hint: carrying
           ? 'Biggy: it goes cold while I walk and it comes out of the pot every time I hit something. Smooth lines — and let Voxxy open a queue before I am standing in it'
@@ -1728,7 +1728,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         id: 'speaker',
         text: 'find the keynote speaker and walk them to Stephan',
         done: speaker.onStage,
-        who: 'voxxy',
+        who: ['voxxy'],
         /*
          * NO ARROW WHILE THEY ARE STILL HIDING.
          *
@@ -1745,7 +1745,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         id: 'beer',
         text: `stack tonight’s beer delivery at ${BAR_NAME}`,
         done: beerDone,
-        who: 'biggy',
+        who: ['biggy'],
         at: STACK_AT,
         n: held('stacked').length,
         of: CRATE_DELIVERY,

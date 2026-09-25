@@ -122,11 +122,16 @@ function wellFormed(g: DebugGame, where: string): void {
        * are being sent to is not the failure this is hunting. An arrow into the
        * middle of a room-sized wall, or off the map, is.
        */
-      const kind: RobotKind = t.who ?? 'voxxy';
-      expect(
-        reachable(g, kind, t.at),
-        `${at}: the arrow sends ${kind} somewhere they cannot get to, ${Math.round(t.at.x)},${Math.round(t.at.y)}`,
-      ).toBe(true);
+      // EVERY robot the task names, not just the first: `who` is a list now
+      // (a two-colour mix needs both lamps), and a place only one of them can
+      // reach is a task only one of them can do.
+      const crew: readonly RobotKind[] = t.who ?? ['voxxy'];
+      for (const kind of crew) {
+        expect(
+          reachable(g, kind, t.at),
+          `${at}: the arrow sends ${kind} somewhere they cannot get to, ${Math.round(t.at.x)},${Math.round(t.at.y)}`,
+        ).toBe(true);
+      }
     }
   }
 }
@@ -171,11 +176,13 @@ describe('the task list', () => {
       steps(g, 2);
       for (const t of tasks(g)) {
         if (!t.at) continue;
-        const kind: RobotKind = t.who ?? 'voxxy';
-        expect(
-          passable(g.debug.walls(), bot(g, kind), t.at.x, t.at.y),
-          `chapter ${n} · ${t.id}: ${kind} cannot stand on ${Math.round(t.at.x)},${Math.round(t.at.y)}`,
-        ).toBe(true);
+        const crew: readonly RobotKind[] = t.who ?? ['voxxy'];
+        for (const kind of crew) {
+          expect(
+            passable(g.debug.walls(), bot(g, kind), t.at.x, t.at.y),
+            `chapter ${n} · ${t.id}: ${kind} cannot stand on ${Math.round(t.at.x)},${Math.round(t.at.y)}`,
+          ).toBe(true);
+        }
       }
     }
   });

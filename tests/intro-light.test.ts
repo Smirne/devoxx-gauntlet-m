@@ -46,7 +46,10 @@ import {
   dioramaToCameraAtDeg,
 } from '../src/render/camera';
 import { crateFootprints, crateRowFouls } from '../src/render/crates';
-import { createRobot, presentationLight } from '../src/render/robots';
+import { PRESENT_MAX_GAIN, createRobot, presentationLight } from '../src/render/robots';
+
+/** `MAP_REF_LUM` in `rig.ts`: what a painted panel weighs in at. */
+const MAP_REF = 0.25;
 import { CY0, CY1, corridorColumns, roomDoor, rooms } from '../src/sim/geometry';
 import { T } from '../src/sim/constants';
 import type { RobotKind } from '../src/sim/types';
@@ -210,6 +213,85 @@ describe('the presentation light', () => {
       rig.dispose();
     });
 
+    /*
+     * ONE GAIN, NOT A PER-PANEL TARGET.
+     *
+     * This used to assert that every lifted panel cleared a luminance floor of
+     * 0.08, which is what the old `floor + range * sqrt(lum)` formula did — and
+     * doing that to every panel is exactly what flattened Droid into a mid grey
+     * (Michele: *"Droid and biggy are whitey-grey"*). The replacement is not a
+     * weaker assertion, it is the one that actually pins the behaviour we want:
+     * the rig reaches the target ON AVERAGE, and every pair of panels keeps the
+     * SAME RATIO it was built with, so the robot's own tonal range survives the
+     * light instead of being compressed into it.
+     */
+    it(`${kind}: exposes the whole rig to the target without flattening it`, () => {
+      const rig = createRobot(kind);
+      const glow = new Set<THREE.Material>(rig.glow);
+      const lit: Array<{ base: number; after: number; maxCh: number }> = [];
+      const mats: THREE.MeshStandardMaterial[] = [];
+      for (const s of shotOf(rig.root)) {
+        if (glow.has(s.mat) || (!s.mat.map && relLum(s.mat.color) < 1e-4)) continue;
+        mats.push(s.mat);
+      }
+      const bases = mats.map((m) => (m.map ? MAP_REF : relLum(m.color)));
+      presentationLight(rig, 1);
+      mats.forEach((m, i) =>
+        lit.push({
+          base: bases[i],
+          after: relLum(m.emissive),
+          // A mapped panel's colour is #ffffff and is deliberately not capped.
+          maxCh: m.map ? 0 : Math.max(m.color.r, m.color.g, m.color.b),
+        }),
+      );
+      expect(lit.length).toBeGreaterThan(3);
+
+      /*
+       * The gain is ONE number, so every panel with headroom shares it exactly.
+       *
+       * "With headroom" has to be judged on the panel's brightest CHANNEL, not
+       * on its luminance: the cap is proportional, so a saturated colour like
+       * Droid's amber runs out of room in red long before its luminance gets
+       * anywhere near 1. Judging by luminance is what made the first version of
+       * this assertion compare a capped panel against an uncapped one.
+       */
+      const gain = Math.max(...lit.map((e) => e.after / e.base));
+      expect(gain, 'a presentation light made the robot darker').toBeGreaterThanOrEqual(1 - 1e-6);
+      expect(gain).toBeLessThanOrEqual(PRESENT_MAX_GAIN + 1e-6);
+      let shared = 0;
+      for (const e of lit) {
+        const ratio = e.after / e.base;
+        if (e.maxCh * gain <= 1) {
+          expect(ratio, 'a panel with headroom did not get the rig gain').toBeCloseTo(gain, 4);
+          shared++;
+        } else {
+          // Capped, but only ever downward, and never below its own colour.
+          expect(ratio).toBeLessThanOrEqual(gain + 1e-6);
+          expect(ratio).toBeGreaterThanOrEqual(1 - 1e-6);
+        }
+      }
+      expect(shared, 'every panel was capped — the gain was never actually applied').toBeGreaterThan(0);
+      rig.dispose();
+    });
+
+    it(`${kind}: keeps every panel's hue exactly, which is what greyed them out before`, () => {
+      const rig = createRobot(kind);
+      const glow = new Set<THREE.Material>(rig.glow);
+      const mats = shotOf(rig.root)
+        .filter((s) => !glow.has(s.mat) && !s.mat.map && relLum(s.mat.color) >= 1e-4)
+        .map((s) => s.mat);
+      const hue = (c: THREE.Color): number => {
+        const mx = Math.max(c.r, c.g, c.b);
+        return mx < 1e-6 ? 0 : (mx - Math.min(c.r, c.g, c.b)) / mx;
+      };
+      const before = mats.map((m) => hue(m.color));
+      presentationLight(rig, 1);
+      mats.forEach((m, i) => {
+        expect(hue(m.emissive), 'the lift washed a panel toward grey').toBeCloseTo(before[i], 4);
+      });
+      rig.dispose();
+    });
+
     it(`${kind}: v = 1 lifts every panel and leaves the eyes and visors alone`, () => {
       const rig = createRobot(kind);
       const glow = new Set<THREE.Material>(rig.glow);
@@ -230,7 +312,6 @@ describe('the presentation light', () => {
           continue;
         }
         expect(s.emissive).not.toBe(before.get(s.mat));
-        expect(relLum(s.mat.emissive)).toBeGreaterThan(0.08);
         lifted++;
       }
       expect(lifted).toBeGreaterThan(3);
@@ -326,12 +407,31 @@ describe('the presentation light', () => {
     });
     expect(painted.size).toBe(1);
     const [mat] = [...painted];
+    const unmapped: THREE.MeshStandardMaterial[] = [];
+    rig.root.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const m = mesh.material as THREE.MeshStandardMaterial;
+      if (m?.isMeshStandardMaterial && !m.map && !rig.glow.includes(m) && !unmapped.includes(m)) unmapped.push(m);
+    });
     presentationLight(rig, 1);
     // The map is what is lit...
     expect(mat.emissiveMap).toBe(mat.map);
     // ...by an exposure above 1, since the hue lives in the texture and the
-    // texel is what carries it.
-    expect(mat.emissive.r).toBeGreaterThan(1);
+    // texel is what carries it. A mapped panel is deliberately NOT capped at 1
+    // the way an unmapped one is: capping it would drop the rig's own gain on
+    // the one panel carrying Biggy's orange, and with no hue of its own there is
+    // nothing for a cap to protect.
+    //
+    // Asserted against the gain the UNMAPPED panels got rather than against a
+    // number, because the rig's gain depends on its own palette: forcing a white
+    // base onto one panel raises the rig's mean and can take the gain to exactly
+    // 1, at which point a bare `> 1` is testing the fixture instead of the code.
+    const other = unmapped.find((m) => relLum(m.color) > 1e-3);
+    expect(other, 'no unmapped panel left to compare against').toBeDefined();
+    const shared = relLum(other!.emissive) / relLum(other!.color);
+    expect(mat.emissive.r).toBeCloseTo(shared, 4);
+    expect(mat.emissive.r).toBeGreaterThanOrEqual(1 - 1e-6);
     expect(mat.emissive.r).toBeCloseTo(mat.emissive.g, 6);
     expect(mat.emissive.b).toBeCloseTo(mat.emissive.g, 6);
     presentationLight(rig, 0);

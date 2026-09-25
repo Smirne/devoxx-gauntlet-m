@@ -376,10 +376,16 @@ export interface Task {
   text: string;
   done: boolean;
   /**
-   * Which robot this needs, when it needs one in particular. The hint's first
-   * escalation is the robot's own chip, and the arrow takes its colour.
+   * Which robots this needs, when it needs particular ones — **a list**, because
+   * plenty of them need two.
+   *
+   * It was a single kind, and chapter 1 filled it with `need[0]`: "light the
+   * orange + green mix" needs Voxxy AND Droid and the run sheet said VOXXY, which
+   * is not a spoiler but a wrong answer. Michele: *"some task need multiple
+   * robots"*. Nothing may narrow it back to one — a hint that names half the
+   * crew is worse than no hint.
    */
-  who?: RobotKind;
+  who?: readonly RobotKind[];
   /**
    * Where the thing is, in sim px — the arrow's target. A task with no place (a
    * password to work out, a count to reach) simply gets no arrow, which is the

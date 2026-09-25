@@ -486,7 +486,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         id: 'cake',
         text: 'push the cake crate onto its mark',
         done: cakeOnMark(),
-        who: 'biggy',
+        who: ['biggy'],
         at: { x: crateMark.x + crateMark.w / 2, y: crateMark.y + crateMark.h / 2 },
         hint: 'Biggy: it only moves for me, and only if I lean into it rather than brush past it. Up an aisle — it does not go over the seats any more than I do',
       },
@@ -494,7 +494,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         id: 'banner',
         text: 'hang the banner at both ends',
         done: hooks.every((h) => h.done),
-        who: 'droid',
+        who: ['droid'],
         // The hook still to do: the other one is finished, and an arrow to it
         // would be an arrow to a job that is over.
         at: { x: hook.x, y: hook.y + 24 },
@@ -506,7 +506,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         id: 'spots',
         text: 'light the four spotlights in order',
         done: spots.every((s) => s.on),
-        who: 'voxxy',
+        who: ['voxxy'],
         at: { x: spot.x, y: spot.y },
         n: spots.filter((s) => s.on).length,
         of: spots.length,
