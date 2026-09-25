@@ -3436,3 +3436,63 @@ the agent cannot identify from the words alone; queued as a question rather than
 `tests/ch2-chain.test.ts` extended or turned with the staging. Suite: **609 tests, 37 files, green**,
 `tsc --noEmit` clean, `After Dark · ERRORS:0` across all four chapters and the intro on the built
 bundle.
+
+---
+
+## 25 Sep 2026 (night) — the overnight pass: his list, in his order
+
+**What a human decided.** Michele played chapters 1–3 and filed, in three bursts, about twenty
+separate notes — half of them with screenshots and two with circles drawn on them. He also gave the
+answer to a problem the agent had been circling for two rounds: *"If we want to handle the light
+change, we could do this. There's a light on the crates, robot exit fully visible. Light (emergency
+light?) flickers and stops, robots light up -> transition to game."* That is the whole intro beat,
+and it fixed the one dishonest thing in the sequence — the corridor is a blackout with no fitting
+anywhere near the crates, so the robots were visible because the renderer re-exposed them and for no
+reason inside the fiction. Now there is a bulkhead on the wall, it is what the presentation is lit
+by, and it gives out on cue.
+
+Two more of his calls that a builder would not have made: *"if the soup is spilled, you can come
+back and take a new batch"* — deleting a full-screen `R to try again` twenty seconds from the end of
+chapter 3, for a mistake whose fix in the fiction is walking back to a counter with a vat on it; and
+*"you should be able to 'talk' with stephan"*, which turned the man the whole chapter is about from
+a figure in a hat into somebody who tells you what he is still waiting for.
+
+**What the agent did.** Chapter 1's exit cutscene now goes round the balustrade instead of through
+it (reported twice). `Task.hint` became a list so `H` can walk a gate before the task behind it.
+Toasts render their markup — the chapters have always written `<b>` into them and `pushLine` set
+`textContent`. `standOff()` made the standing people solid: the three staff you ask for directions,
+Stephan and the keynote speaker were drawn and nothing else. Chapter 2's task 1 says *"power up the
+technical room"*, which is what the three handles actually do; the rack rides the supply and has its
+own link lights, so the cable's start is a lit thing in a dark room; the badge printer is a badge
+printer (`src/render/printer.ts`) instead of a pale grey cuboid. The bar on the hall wall is called
+The Finally Block on a fascia over its own taps, and the wifi graffiti moved out from behind it. The
+crab sandwich is in the building, with its own BROODJE KRAB sign and a line from each robot.
+
+**What was measured rather than argued.**
+- *"Pic5 there's still that big strange wooden thing."* Screenshotted the reception from the game's
+  own camera, swept the venue's meshes for long thin brown boxes, and found the reference
+  photograph's orange ceiling soffit hung at 3 m on `overhead` — over a floor this diorama draws no
+  ceiling for. It is a fascia on the wardrobe wall now. It was a free-standing gantry for ten
+  minutes until `tests/colliders.test.ts` pointed out that a post touching the floor is a collider,
+  and `tests/chapters.test.ts` showed what two new colliders beside the desk do to three thousand
+  people walking past: 15 of 33 still queueing when the doors shut.
+- *"Biggy route to the modem room is a bit long. Is this column strictly needed?"* Measured every
+  column against every block: the booth aisles are 60 px and leave Biggy 20 and 26, but two columns
+  on the x 213 line stood 13 px off the technical room and 7 px off a stair shaft — 1.04 m and 0.57 m
+  against his 1.44 — and both are on the route the chapter sends *him* down. The rule that drops
+  them is general and it costs two of eighteen.
+- *"Pic2: droid looks inside the breaker."* `GF.panel` is 26 × 16 px and the 16 is the REACH zone, so
+  drawing the enclosure to the rect made a 1.28 m-deep board with its handles out where the robot
+  stands. Same diagnosis `release-panel.ts` opens with.
+- The new printer model landed on top of the venue's own static printer slab — two printers in one
+  footprint — which the venue/chapter hand-off lines exist for and this one had not been given.
+
+**Rejected / deferred.** The second flicker report (a tall element by the stairs) could not be
+reproduced: the venue has no coplanar face pair anywhere near it, the camera is orthographic with
+linear depth over 420 m, and the two decal classes that could fight were fixed. It is written down
+as needing a live repro rather than guessed at. Music is still queued.
+
+**Tests.** `tests/toast-markup.test.ts` and `tests/people-solid.test.ts` new; `staircase-clear`,
+`opening`, `chapters`, `tasks`, `tasks-panel`, `venue.smoke`, `crates` and `colliders` extended or
+turned with the changes. Suite: **653 tests, 40 files, green**, `tsc --noEmit` clean, `After Dark ·
+ERRORS:0` on the built bundle in chapters 2 and 3 and the intro.
