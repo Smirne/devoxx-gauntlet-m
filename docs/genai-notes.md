@@ -4263,3 +4263,24 @@ chapters on the built bundle.
   shutter that was chapter 1's 3D fire door is saved as `src/render3d/shutter.ts`
   (`rollerShutter`, `poseShutter`) for the store's roller door in chapter 2. Nothing builds it until
   the 3D build has that chapter.
+- *Intro and panel feedback (25 Sep, evening).*
+  - *"When the crate is open robots are still on the side, then they turn. I'd keep them
+    frontal."* In the crates the sim turns the robots south, toward the 2.5D diorama's camera. The
+    3D intro looks from the east, so they stood side-on. In 3D they now face east for the whole
+    opening.
+  - *"A little more time before the camera movement for Biggy's movement."* The pull-back starts
+    0.7 s later and still lands on the hand-off pose when the opening ends.
+  - *"The crate's panel on the ground does not look fine... a part disappears, like it's
+    absorbed."* The 2.5D model tips the front out flat and rolls it face up to spell the word, which
+    works from above. At eye level it was a board sinking into the floor at the robots' feet. In 3D
+    the front now swings open like a door, hinged at its outer edge.
+  - *"'do not bend' should also be in red."* All three crates' warning stamps are now oxide red.
+    This is in the shared crate model, so 2.5D gets it too.
+  - *"We lost the main story. Stephan lost the keys... keep a general objective + chapter briefing
+    in the I panel."* The crate opening had replaced the title card, which was the only place the
+    premise was told. The premise now lives in `src/sim/story.ts`, which the title card reads. The
+    run sheet (shared HUD, so both builds) opens with "The night" (the premise and the run's goal)
+    above "This chapter" (the briefing).
+  - *"How do I close the start-of-chapter panel? I thought any key would do."* In 3D any key now
+    closes it except I, H and the view keys (M, N, P, Q). A movement key closes it and moves.
+    `main.ts` still closes it only with Escape or I; the 2.5D side may want the same change.

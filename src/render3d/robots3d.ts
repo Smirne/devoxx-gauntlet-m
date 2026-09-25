@@ -23,7 +23,7 @@ import * as THREE from 'three';
 import { flairPhase, hopPhase, worldMoved } from '../sim/bot';
 import { riseAt } from '../sim/surface';
 import { BIGGY_ROLL_DUR, DEFS, DROID_STRETCH_DUR, JUMP_AIR, JUMP_RISE_M } from '../sim/constants';
-import { LEAD, SLOT, STEP_DELAY, STEP_TIME } from '../sim/opening';
+import { LEAD, SLOT, STAND_FACE, STEP_DELAY, STEP_TIME } from '../sim/opening';
 import type { Bot, GameSnapshot, RobotKind } from '../sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
 import { createRobot, updateRobot, type RobotRig } from '../render/robots';
@@ -309,12 +309,16 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
       }
     }
     r.rig.root.position.set(x, lift, z);
-    updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: b.face, dt, mounted, hop: u, flair: trick ? trick.flair : flairPhase(b), shoved: worldMoved(b) ? 1 : 0, pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null });
-    aimLamp(r, b);
+    // In the crates the sim turns them south, to the 2.5D diorama's camera; the
+    // 3D intro looks at them from the east, so they stood side-on and turned on
+    // the step (Michele: "I'd keep them frontal"). Facing east throughout.
+    const face = snap.opening ? STAND_FACE : b.face;
+    updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: face, dt, mounted, hop: u, flair: trick ? trick.flair : flairPhase(b), shoved: worldMoved(b) ? 1 : 0, pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null });
+    aimLamp(r, b, face);
   }
 }
 
-function aimLamp(r: Robot3D, b: Bot): void {
+function aimLamp(r: Robot3D, b: Bot, face: number): void {
   r.rig.root.updateMatrixWorld(true);
   r.rig.lampAnchor.getWorldPosition(_p);
   const L = LAMP[r.kind];
@@ -329,19 +333,19 @@ function aimLamp(r: Robot3D, b: Bot): void {
     const top = r.rig.root.position.y + ROBOT_HEIGHT_M.droid + 1.4;
     const rad = m(DEFS.droid.light.range) * (b.mounted ? 1.6 : 1);
     lamp.position.set(_p.x, top, _p.z);
-    lamp.target.position.set(_p.x + Math.cos(b.face) * 0.3, 0, _p.z + Math.sin(b.face) * 0.3);
+    lamp.target.position.set(_p.x + Math.cos(face) * 0.3, 0, _p.z + Math.sin(face) * 0.3);
     lamp.angle = Math.min(1.35, Math.atan(rad / top));
     lamp.distance = Math.hypot(rad, top) + 1;
   } else {
     lamp.position.copy(_p);
-    const dx = Math.cos(b.face);
-    const dz = Math.sin(b.face);
+    const dx = Math.cos(face);
+    const dz = Math.sin(face);
     lamp.target.position.set(_p.x + dx * 10, _p.y - 10 * Math.tan(L.tilt), _p.z + dz * 10);
   }
   lamp.target.updateMatrixWorld();
   // Spill: just in front of and above the lamp, so it grazes the robot's own
   // front and pools on the floor ahead of its feet.
-  r.spill.position.set(_p.x + Math.cos(b.face) * 1.1, Math.max(0.9, _p.y + 0.5), _p.z + Math.sin(b.face) * 1.1);
+  r.spill.position.set(_p.x + Math.cos(face) * 1.1, Math.max(0.9, _p.y + 0.5), _p.z + Math.sin(face) * 1.1);
 }
 
 const _dir = new THREE.Vector3();

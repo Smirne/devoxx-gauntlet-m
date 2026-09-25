@@ -19,6 +19,7 @@ import { CABLE_MAX, TOAST_MS } from '../sim/constants';
 import type { Bot, GameSnapshot, Prop, RobotKind, Task } from '../sim/types';
 import { displayMps } from '../sim/units';
 import { CARDS as INTRO_CARDS } from '../sim/opening';
+import { GOAL, STORY } from '../sim/story';
 
 export interface HudOptions {
   /**
@@ -316,6 +317,9 @@ const CSS = `
 .ad-brief{margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid rgba(242,239,233,.12);
   font-size:13px;line-height:1.45;color:#cdc9c2;max-height:34vh;overflow-y:auto}
 .ad-brief b{color:${ACCENT};font-weight:600}
+.ad-shead{margin:0 0 5px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:${MUTED}}
+.ad-story{max-height:none;color:#b9b4ac}
+.ad-goal{margin-top:6px;color:#f2efe9}
 .ad-peek{display:flex;align-items:center;justify-content:space-between;gap:12px;
   font-size:13px;color:#cdc9c2}
 .ad-peek b{color:#f2efe9;font-weight:600;font-variant-numeric:tabular-nums}
@@ -696,6 +700,15 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
    * the diorama that folded to one line and could be clicked back. In the panel
    * it is read when it is wanted and takes no screen the rest of the time.
    */
+  /*
+   * The night itself, above the chapter's briefing: Stephan and the keys, and the
+   * run's one goal. Michele: *"we lost the main story... Could we keep a general
+   * objective + chapter briefing in the I panel?"* — the crate opening had
+   * replaced the title card, which was the only place it was told.
+   */
+  const sheetStory = el('div', 'ad-brief ad-story', sheet);
+  sheetStory.innerHTML = `<div class="ad-shead">The night</div>${STORY}<div class="ad-goal">${GOAL}</div>`;
+  el('div', 'ad-shead', sheet).textContent = 'This chapter';
   const sheetBrief = el('div', 'ad-brief', sheet);
   const sheetRows = el('div', '', sheet);
   /*

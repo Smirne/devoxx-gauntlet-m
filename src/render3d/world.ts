@@ -20,7 +20,7 @@ import { createProps, type Props3D } from './props3d';
 import { createRobots, updateGlare, updateRobots, type Robot3D } from './robots3d';
 import { HEIGHTS, SIGN_SPANS, X_END, buildVenue, type Venue3D } from './venue';
 import { CY0, CY1, F1 } from '../sim/geometry';
-import { CRATE_AT, CRATE_ROW, LEAD, PULL_BACK, SLOT, STAND_AT, WALK_AT } from '../sim/opening';
+import { CRATE_AT, CRATE_ROW, LEAD, OVER_AT, SLOT, STAND_AT, WALK_AT } from '../sim/opening';
 import { buildCrates } from '../render/crates';
 
 export interface World3D {
@@ -125,7 +125,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       crates.setEmergency(0);
       for (const c of crates.crates) {
         c.setLamp(0);
-        c.setOpen(1);
+        swingPanel(c, 1);
       }
       bulkhead.intensity = 0;
       keyLight.intensity = 0;
@@ -136,7 +136,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     crates.setEmergency(o.emergency);
     for (const c of crates.crates) {
       c.setLamp(o.lamp[c.kind]);
-      c.setOpen(o.open[c.kind]);
+      swingPanel(c, o.open[c.kind]);
     }
     bulkhead.intensity = 70 * o.emergency;
     // The key light follows the card: the robot being presented is the one lit.
@@ -189,13 +189,36 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     // crates stand a stride behind the robots, so from there the first playable
     // frame was the inside of a crate. The hand-off looks down over them
     // instead, and the camera settles to its usual pitch once the robot walks.
-    const u = Math.min(1, Math.max(0, (o.t - WALK_AT) / PULL_BACK));
+    // Held a beat longer than the sim's pull-back, so Biggy's roll plays out in
+    // shot (Michele: "a little more time before the camera movement"), and
+    // still landing on the hand-off pose when the opening ends.
+    const u = Math.min(1, Math.max(0, (o.t - WALK_AT - PULL_DELAY) / (OVER_AT - WALK_AT - PULL_DELAY)));
     const e = u * u * (3 - 2 * u);
     const lead = snap.bots[snap.active] ?? snap.bots[0];
     handOff(lead.kind, m(STAND_AT[lead.kind].x), m(STAND_AT[lead.kind].y), _fPos, _fLook);
     return { pos: _oPos.clone().lerp(_fPos, e), look: _oLook.clone().lerp(_fLook, e), follow: e };
   }
   const ORDER_3D: RobotKind[] = ['voxxy', 'droid', 'biggy'];
+  const PULL_DELAY = 0.7;
+  /**
+   * A crate front that swings open like a door, hinged at its outer edge (Droid's
+   * toward Voxxy), instead of the 2.5D model's tip-and-roll onto the floor
+   * (Michele: "the crates panel on the ground during the animation does not look
+   * fine"). In the diorama it lands face up and spells the word in pieces; seen
+   * at eye level it was a board lying at the robots' feet, flipping through the
+   * next crate on the way. 105 degrees out: clear of every robot's stand mark,
+   * the panels standing in the gaps between them.
+   */
+  function swingPanel(c: (typeof crates.crates)[number], t: number): void {
+    c.setOpen(0);
+    const k = THREE.MathUtils.smoothstep(t, 0, 1);
+    const s = c.geom.centreX < 0 ? -1 : 1;
+    const half = c.geom.width / 2;
+    const a = s * k * 1.83;
+    const z0 = c.panel.position.z;
+    c.panel.rotation.set(0, a, 0);
+    c.panel.position.set(s * half * (1 - Math.cos(a)), c.panel.position.y, z0 + half * Math.sin(Math.abs(a)));
+  }
   const _want = new THREE.Vector3();
   const _wantPos = new THREE.Vector3();
   /** The follow camera's yaw and pitch at the hand-off; see `stageOpening`. */
