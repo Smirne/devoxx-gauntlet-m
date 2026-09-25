@@ -21,6 +21,7 @@
 import * as THREE from 'three';
 
 import { flairPhase, hopPhase } from '../sim/bot';
+import { riseAt } from '../sim/surface';
 import { DEFS, JUMP_RISE_M } from '../sim/constants';
 import type { Bot, GameSnapshot, RobotKind } from '../sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
@@ -246,7 +247,10 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
     const hop = u > 0 ? JUMP_RISE_M * 4 * u * (1 - u) : 0;
     let x = m(b.x);
     let z = m(b.y);
-    let lift = hop;
+    // Standing on a raised surface the sim publishes (the fallen leaf of cinema
+    // E's door, the stair treads): the 2.5D renderer lifts by this, so does 3D.
+    const rise = riseAt(b.x, b.y, snap.plates ?? []);
+    let lift = hop + rise;
     let mounted = b.mounted;
     if (b.kind === 'droid' && droid) {
       // The sim snaps him on and off Biggy; the climb is eased here. While
