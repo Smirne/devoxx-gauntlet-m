@@ -3694,3 +3694,51 @@ only refreshes the object handed to it, not the chain above, and a figure that h
 rendered measures as its own local box — which would have made every pose look identical, the exact
 wrong way for that file to be wrong. Suite: **694 tests, 42 files, green**; `tsc --noEmit` clean;
 `After Dark · ERRORS:0` in all four chapters of the built bundle.
+
+## 25 Sep 2026 — sixty visitors, and the deadlock that was hiding behind thirty-six
+
+**What a human asked for.** *"Raise a bit, 60?"* — after the figures got bodies, and after the
+agent pointed out that the hall simulates thirty-six people while the chapter card claims three
+thousand walk in.
+
+**What the agent did.** `VISITORS` 36 → 60, and `SPAWN_EVERY` 0.9 → 0.55 with it, so the hall still
+*fills* in the same thirty-odd seconds rather than spending a minute half empty — the second number
+is part of the first change, not a separate opinion.
+
+**What that turned up, which is the whole of this entry.** Counting how many visitors actually
+reached the hall across five seeds gave 45 to 53 of 60, never all of them, and a cluster of thirteen
+standing at **exactly zero speed** at the top of the six steps. Tracking it over time showed it was
+not traffic: seventeen people knotted there from frame 3,500 to the end of the chapter and never
+moved again.
+
+`stepVisitor`'s rule was *"do not walk into the back of the person in front"*, implemented as
+`spd = blocked ? 0 : a.walk` — and nothing anywhere to start them again. A stands in front of B, B
+stands in front of A, and both are still there when the chapter ends. Then the number that mattered:
+**seven of the sixty were moving at all.** The hall was not a crowd with a jam in it, it was a room
+of statues with seven people walking through them — and it had been, at thirty-six, since the crowd
+was written. The old test's `>= 33 of 36` had been covering for it.
+
+The fix is what a pedestrian actually does: not stop, sidestep. A blocked visitor steers onto the
+perpendicular that leads away from whoever is in the way, at a little over half speed. Two people
+meeting head-on each see the other a touch off-centre and pass; dead level, `Person.seed` gives
+everybody a consistent hand to favour, which is what a corridor full of people settles into anyway.
+That seed exists because the renderer needed stable identity — it turned out to be the cheapest way
+to break a symmetry in the sim as well.
+
+Measured after: **60 of 60 in the hall, 0 stuck, 55–58 of 60 moving**, on six seeds.
+
+**What was NOT done.** The threshold in `tests/chapters.test.ts` was raised to 55 first, which
+passed on the default seed and would have gone red the moment anybody changed it. Checking five
+seeds is what turned a tuned number into a bug report. The assertion is `toBe(60)` now — everybody —
+because that is what the behaviour actually is once it works.
+
+**Cost.** The crowd's only quadratic term is each visitor's pass over the others: 3,600 distance
+checks a frame at sixty, against the 2,900 meshes the hall already draws. Headless Chromium renders
+chapter 3 at the same 2 fps it did at thirty-six and at the same 2 fps it did with the old pawns —
+the software rasteriser is the floor in all three.
+
+**Tests.** `tests/chapters.test.ts` gains "keeps the crowd walking instead of deadlocking it two
+abreast" — three seeds, more than forty of sixty moving, nobody parked in the doorway — with a
+comment drawing the line between dwelling (up to two seconds at a lane node, by design) and being
+frozen for good. Suite: **695 tests, 42 files, green**; `tsc --noEmit` clean; `After Dark ·
+ERRORS:0`.
