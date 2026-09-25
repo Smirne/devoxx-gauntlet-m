@@ -30,8 +30,9 @@
  * rescale, `constants.ts`).
  */
 
+import { circleRect } from './bot';
 import { DEFS, SPEED_SCALE } from './constants';
-import type { Bot } from './types';
+import type { Bot, Wall } from './types';
 
 /**
  * A crate's collision radius, sim px. 4 px = 0.32 m.
@@ -166,3 +167,81 @@ export const CRATE_BREWS: readonly string[] = [
 
 /** The brewery on crate `i`, wrapping if a future delivery is bigger than the list. */
 export const crateBrew = (i: number): string => CRATE_BREWS[i % CRATE_BREWS.length];
+
+/* ------------------------------------------------- a crate nobody can reach */
+
+/**
+ * THE ONE WAY CHAPTER 3 COULD DEAD-END, and it is not hypothetical.
+ *
+ * `beerDone` needs all six crates on the bar, and a crate is a 0.32 m body in a
+ * hall built for 0.72 m robots — so there are places a crate fits and Biggy does
+ * not. A sweep of every cell of the ground floor found exactly one: the **15 px
+ * slot between the sandwich counter and the coffee counter** (`GF.food`, x
+ * 270..285 at y 100..130), open at its south end and backed by the hall's north
+ * wall. A crate shoved up there sits in a 1.2 m gap that Biggy is 1.44 m wide
+ * for, and the chapter can never be finished again.
+ *
+ * Five cells out of 61,218 is a low risk and an unrecoverable one, which is the
+ * combination worth spending code on — and the guard is deliberately GENERAL
+ * rather than a plug in that one slot. The slot is a consequence of two counters
+ * standing a metre apart; any future prop can make another, and a chapter that
+ * can eat a crate is a chapter that can eat a run.
+ *
+ * It lives here rather than inside the chapter because it is a fact about crates
+ * and robot sizes, and because a closure in `setup()` is a thing no test can ask
+ * a question of. `tests/crate-rescue.test.ts` names the real slot.
+ */
+
+/** Is this circle clear of every wall in `walls`? */
+const clearOfWalls = (x: number, y: number, r: number, walls: readonly Wall[]): boolean =>
+  !walls.some((w) => !w.hidden && circleRect({ x, y, r }, w) !== null);
+
+/**
+ * Could a robot of radius `botR` stand somewhere it could get its arms round a
+ * crate at `(x, y)`?
+ *
+ * The same question `crateInReach` asks from the robot's side, asked from the
+ * crate's: somewhere within `CRATE_REACH` of it that a body that size fits in.
+ * Sixteen directions at 4 px steps is coarse, and coarse is the right way to be
+ * wrong here — it can call a tight-but-usable spot unreachable and move the crate
+ * 20 px into the open, which nobody will notice. The other error is a dead run.
+ */
+export function crateReachable(x: number, y: number, botR: number, walls: readonly Wall[]): boolean {
+  for (let a = 0; a < 16; a++) {
+    const th = (a / 16) * Math.PI * 2;
+    const cx = Math.cos(th);
+    const cy = Math.sin(th);
+    for (let d = botR + CRATE_R; d <= CRATE_REACH; d += 4) {
+      if (clearOfWalls(x + cx * d, y + cy * d, botR, walls)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Where a stranded crate should be walked back out to, or null if nowhere is.
+ *
+ * Outward in rings until a spot turns up that the crate itself fits in AND the
+ * robot can reach — so it comes back out the way it went in, by the shortest
+ * route, rather than teleporting across the hall. Nothing is created and nothing
+ * is destroyed: it is the same crate, a metre further out, which is the smallest
+ * honest thing that can happen to it.
+ */
+export function crateRescueSpot(
+  x: number,
+  y: number,
+  botR: number,
+  walls: readonly Wall[],
+): { x: number; y: number } | null {
+  for (let d = 10; d <= 120; d += 5) {
+    for (let a = 0; a < 24; a++) {
+      const th = (a / 24) * Math.PI * 2;
+      const px = x + Math.cos(th) * d;
+      const py = y + Math.sin(th) * d;
+      if (clearOfWalls(px, py, CRATE_R, walls) && crateReachable(px, py, botR, walls)) {
+        return { x: px, y: py };
+      }
+    }
+  }
+  return null;
+}

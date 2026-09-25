@@ -70,6 +70,8 @@ import {
   crateBrew,
   crateLoadAccel,
   crateLoadMass,
+  crateReachable,
+  crateRescueSpot,
   loadBiggy,
 } from '../crates';
 import { BAR_RECT, GF, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
@@ -299,6 +301,13 @@ interface Crate extends Bot {
   held: 'loose' | 'carried' | 'stacked';
   /** Which layer of the finished stack it is in, so the renderer can pile them up. */
   layer: number;
+  /**
+   * Was it moving last frame? The falling edge is when a crate can become stranded.
+   *
+   * A crate only ever ends up somewhere unreachable by coming to rest there, so
+   * that is the one frame worth paying for the check on — see `rescueStranded`.
+   */
+  rolling: boolean;
 }
 
 const VISITOR_COLOURS = ['#b9a58c', '#8c9bb9', '#c98c8c', '#9bb98c'] as const;
@@ -1057,6 +1066,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     c.i = i;
     c.held = 'loose';
     c.layer = 0;
+    c.rolling = false;
     crates.push(c);
   }
   let beerDone = false;
@@ -1109,6 +1119,27 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       a.x = c.x + (dx / d) * min;
       a.y = c.y + (dy / d) * min;
     }
+  }
+
+  /*
+   * A CRATE NOBODY CAN REACH. The rules are in `src/sim/crates.ts`, which is where
+   * a test can ask them a question; this is the chapter deciding what to say.
+   */
+  function rescueCrate(c: Crate): void {
+    const spot = crateRescueSpot(c.x, c.y, ctx.byKind('biggy').r, ctx.walls);
+    c.vx = 0;
+    c.vy = 0;
+    if (spot) {
+      c.x = spot.x;
+      c.y = spot.y;
+      ctx.flash(`Biggy: "${c.name} went somewhere my arms do not. Dragged it back out."`, 3600);
+      return;
+    }
+    // Nowhere within four metres. Should never happen on this floor, and if it
+    // ever does the pallet is somewhere the crate is definitely reachable from.
+    c.x = PALLET.x;
+    c.y = PALLET.y;
+    ctx.flash(`Biggy: "${c.name} is back on the pallet. Do not ask."`, 3600);
   }
 
   /** The nearest crate Biggy could get his arms round, or null. */
@@ -1231,11 +1262,24 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         c.vy = 0;
         continue;
       }
-      if (c.held === 'stacked') continue;
+      if (c.held === 'stacked') {
+        c.rolling = false;
+        continue;
+      }
       // A crate at rest has nothing to integrate and no wall to resolve: it got
       // there by being resolved already. Only a crate somebody has shoved pays
       // for `stepBot`, which walks the whole ground-floor wall list.
       if (c.vx !== 0 || c.vy !== 0) stepBot(c, dt, ctx.walls);
+      /*
+       * The one frame a crate can become stranded: the one it stops on.
+       *
+       * See `rescueCrate`. Checking here rather than on a timer is what keeps the
+       * guard free — a crate that has not moved cannot have moved somewhere new,
+       * and a crate that is still rolling has not arrived anywhere yet.
+       */
+      const rolling = c.vx !== 0 || c.vy !== 0;
+      if (c.rolling && !rolling && !crateReachable(c.x, c.y, ctx.byKind('biggy').r, ctx.walls)) rescueCrate(c);
+      c.rolling = rolling;
       for (const b of ctx.bots) {
         if (b.mounted) continue;
         const dx = c.x - b.x;
