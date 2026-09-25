@@ -155,12 +155,24 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     // slot, so the shot is never still ("too slow and static").
     const k = 1 - Math.exp(-dt * 2.5);
     if (who) {
+      const i = ORDER_3D.indexOf(who);
       const b = snap.bots.find((q) => q.kind === who) ?? snap.bots[0];
       const h = ROBOT_HEIGHT_M[who];
-      const s = THREE.MathUtils.clamp((o.t - (LEAD + ORDER_3D.indexOf(who) * SLOT)) / SLOT, 0, 1);
+      const s = THREE.MathUtils.clamp((o.t - (LEAD + i * SLOT)) / SLOT, 0, 1);
       const dist = 2.2 + h * 1.4 - 1.1 * s * s * (3 - 2 * s);
       _want.set(m(b.x), h * 0.6, m(b.y));
       _wantPos.set(_want.x + dist, h * 0.75 + 0.25, _want.z + Math.sin(o.t * 0.6) * 0.3);
+      // The previous robot is still doing its trick when the next crate lights:
+      // hold between the two for the first part of the slot, so neither the
+      // trick nor the new crate is cut off.
+      if (i > 0) {
+        const pb = snap.bots.find((q) => q.kind === ORDER_3D[i - 1]) ?? b;
+        const w = THREE.MathUtils.smoothstep(o.t - (LEAD + i * SLOT), 0.2, 1.6);
+        const mid = 0.5 + 0.5 * w;
+        _want.set(THREE.MathUtils.lerp(m(pb.x), _want.x, mid), _want.y, THREE.MathUtils.lerp(m(pb.y), _want.z, mid));
+        _wantPos.x += (1 - w) * 1.4;
+        _wantPos.z = _want.z;
+      }
     } else {
       // Before the first card: the whole row, drifting in.
       _want.copy(row);
