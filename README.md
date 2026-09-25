@@ -25,7 +25,7 @@ pnpm preview    # serve the production bundle
 ```
 
 No API keys, no asset downloads, no native build step: everything — geometry, robots, lighting and
-audio — is generated in code at startup.
+audio, music included — is generated in code at startup.
 
 ## Controls
 
@@ -36,7 +36,8 @@ audio — is generated in code at startup.
 | `Tab` | Cycle to the next robot |
 | `E` | Act — fix, carry, take, and mount Biggy when Droid stands beside him |
 | number keys | Type the code, **standing at the fire-door keypad**. Away from the pad, `1` `2` `3` still switch robot |
-| `M` | Mute |
+| `M` | Mute everything |
+| `N` | Music on / off, leaving the sound effects alone |
 | `R` | Restart the run |
 | **Skip chapter ▸** (button, top right) | Jump to the next chapter if you are stuck, or to see the later ones |
 | **the briefing** (top of the screen) | Folds itself to one line a few seconds in, so it is not sitting over the diorama all chapter. Click it to unfold or refold |
@@ -91,7 +92,8 @@ TypeScript (strict), Vite, Three.js r186 and vitest — and nothing else. No gam
 library, no 3D models, no texture or audio files. `src/sim` is a headless, tested 2D simulation and
 is the only source of truth for game state; `src/render` is Three.js and only ever reads it. The
 robots are procedural primitives on a bone rig with a procedurally animated gait, the venue is built
-from the floor plans, and every sound is synthesised with the Web Audio API at runtime.
+from the floor plans, and every sound is synthesised with the Web Audio API at runtime — including
+the music, which is a four-bar score per chapter played by oscillators rather than a file.
 
 Built with generative AI, deliberately and with the process written down:
 **[docs/genai-notes.md](docs/genai-notes.md)**. How the build itself is run — builder, then a critic

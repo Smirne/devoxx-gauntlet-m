@@ -17,6 +17,7 @@
  * and disconnect themselves on `ended`; everything longer-lived is reused.
  */
 
+import { startMusic, type Music } from './music';
 import type { RobotKind } from '../sim/types';
 
 export type SoundId =
@@ -160,9 +161,25 @@ export interface Audio {
   play(id: SoundId, opts?: PlayOpts): void;
   /** 1..4 for the chapter beds, 0 (or anything else) for silence. */
   setAmbient(chapter: number): void;
+  /**
+   * 1..4 for the chapter scores in `music.ts`, anything else for silence.
+   *
+   * Separate from `setAmbient` although `main.ts` calls both on the same edge: a
+   * bed is the room and a score is the mood, and they are allowed to disagree —
+   * chapter 2's hall keeps its empty-room tone all the way through while the score
+   * underneath it grows a drum kit.
+   */
+  setMusic(chapter: number): void;
   /** One planted foot. `intensity` 0..1 scales with the robot's speed. */
   footstep(kind: RobotKind, intensity?: number): void;
   mute(on: boolean): void;
+  /**
+   * Silence the score without silencing the game.
+   *
+   * Music is the one thing here somebody may want off while still hearing the door
+   * they just broke, so it has its own switch (`N` in `main.ts`) on top of `mute`.
+   */
+  muteMusic(on: boolean): void;
   dispose(): void;
 }
 
@@ -210,9 +227,13 @@ export function createAudio(): Audio {
   let master: GainNode | null = null;
   let noiseBuf: AudioBuffer | null = null;
   let bed: Bed | null = null;
+  let music: Music | null = null;
   /** An ambient asked for before the first gesture, replayed once we have a context. */
   let pendingChapter: number | null = null;
+  /** The chapter the score should be on, kept across a context that does not exist yet. */
+  let musicChapter = 0;
   let muted = false;
+  let musicMuted = false;
   let disposed = false;
   let unlocked = false;
   let voices = 0;
@@ -274,6 +295,10 @@ export function createAudio(): Audio {
     const data = buf.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     noiseBuf = buf;
+
+    music = startMusic(c, master, noiseBuf);
+    music.mute(musicMuted);
+    if (musicChapter > 0) music.setChapter(musicChapter);
 
     if (c.state === 'suspended') void c.resume().catch(() => undefined);
     if (pendingChapter !== null) {
@@ -1169,10 +1194,32 @@ export function createAudio(): Audio {
     }
   }
 
+  /**
+   * Point the score at a chapter.
+   *
+   * Like `setAmbient`, this is remembered when there is no context yet — the first
+   * chapter starts before anybody has touched the page, and the score has to be
+   * waiting for the gesture rather than missed by it.
+   */
+  function setMusic(chapter: number): void {
+    if (disposed) return;
+    musicChapter = chapter;
+    const c = ensure();
+    if (!c || !music) return;
+    music.setChapter(chapter);
+  }
+
+  function muteMusic(on: boolean): void {
+    musicMuted = on;
+    music?.mute(on);
+  }
+
   function dispose(): void {
     if (disposed) return;
     disposed = true;
     detachGestures();
+    music?.dispose();
+    music = null;
     const c = ctx;
     if (c) {
       if (bed) fadeOutBed(c, bed, 0.05);
@@ -1190,5 +1237,5 @@ export function createAudio(): Audio {
     voices = 0;
   }
 
-  return { play, setAmbient, footstep, mute, dispose };
+  return { play, setAmbient, setMusic, footstep, mute, muteMusic, dispose };
 }
