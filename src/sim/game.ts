@@ -194,6 +194,8 @@ export interface GameOptions {
    * harness) so `update` is never waiting on a keypress that nobody will send.
    */
   cards?: boolean;
+  /** A clue's patch radius, sim px; see `CLUE_SPOT`. The 3D build is more generous. */
+  clueSpot?: number;
 }
 
 /** Test and debug-overlay access to state the renderer has no business reading. */
@@ -953,6 +955,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     },
     byKind,
     place,
+    clueSpot: opts.clueSpot,
     get t(): number {
       return t;
     },

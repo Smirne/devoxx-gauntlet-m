@@ -63,6 +63,8 @@ export interface ChapterCtx {
   ): void;
   /** Sim seconds since the run started. */
   readonly t: number;
+  /** How big a clue's patch is, sim px (`GameOptions.clueSpot`, default `CLUE_SPOT`). */
+  readonly clueSpot?: number;
   /** Index into `bots` of the robot being driven. Chapters may hand over control. */
   cur: number;
   /** A toast, in the speaking robot's voice where there is one. */
