@@ -323,6 +323,34 @@ const cateringBoard: Paint = (ctx, w, h) => {
   ctx.fillText('one ladle per robot, please', 24, h * 0.85);
 };
 
+/**
+ * THE CRAB SANDWICH. Michele, 25 Sep 2026: *"We need to add the CRAB SANDWiCH
+ * somewhere. That's the most famous part of the infamous devoxx food."*
+ *
+ * It is a running joke with a queue attached, so it gets a sign of its own over
+ * the sandwich counter rather than a line buried in the catering board: the
+ * Dutch on top, because that is what the sign in the building says, and the
+ * English under it for everybody else. The chapter's own `crab` prop puts the
+ * glow on the counter under it; this is what tells you what the glow IS.
+ */
+const crabSign: Paint = (ctx, w, h) => {
+  ctx.fillStyle = '#7d2417';
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = 'rgba(255,255,255,0.14)';
+  ctx.fillRect(0, h - Math.max(2, h * 0.06), w, Math.max(2, h * 0.06));
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ffd9c2';
+  fitFont(ctx, 'BROODJE KRAB', w * 0.88, Math.round(h * 0.36), 800);
+  ctx.fillText('BROODJE KRAB', w / 2, h * 0.36);
+  ctx.fillStyle = '#f0d6c8';
+  ctx.font = `500 ${Math.round(h * 0.17)}px ${FONT}`;
+  ctx.fillText('the crab sandwich · yes, that one', w / 2, h * 0.68);
+  ctx.fillStyle = '#e0b8a6';
+  ctx.font = `400 ${Math.round(h * 0.14)}px ${FONT}`;
+  ctx.fillText('one per person · the queue starts behind you', w / 2, h * 0.88);
+};
+
 const wifiNotice: Paint = (ctx, w, h) => {
   ctx.fillStyle = '#1c4a96';
   ctx.fillRect(0, 0, w, h);
@@ -1056,6 +1084,25 @@ export function buildSignage(
       0,
       painter.material('finally-block', 768, 226, '#141a18', finallyBlockSign),
       'bar-sign-hall',
+    ),
+  );
+
+  /*
+   * ...and the crab sandwich has its own sign over the counter it is served from.
+   * The catering board next to it is 4.6 m of "share · celebrate · passion"; this
+   * is 2.6 m of the thing people actually queue for.
+   */
+  const sand = GF.food.sandwich;
+  ground.add(
+    signFace(
+      sand.x + sand.w / 2,
+      GF.food.court.y + GF.food.court.h + 0.4,
+      2.6,
+      0.78,
+      2.42,
+      0,
+      painter.material('crab', 640, 192, '#7d2417', crabSign),
+      'crab-sign',
     ),
   );
 

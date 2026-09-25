@@ -1758,3 +1758,44 @@ describe('chapter 3 — the soup is refillable', () => {
     expect(g.snapshot().phase, 'a cold pot ended the run').toBe('play');
   });
 });
+
+/**
+ * The crab sandwich.
+ *
+ * Michele, 25 Sep 2026: *"We need to add the CRAB SANDWiCH somewhere. That's the
+ * most famous part of the infamous devoxx food."* It is a running joke with a
+ * queue attached, so it is in the building rather than in a line of text — a lit
+ * tray on the sandwich counter with its own sign over it, and a different answer
+ * from each robot. It asks nothing and blocks nothing; what these hold is that it
+ * is THERE, that it is reachable, and that it never becomes a task.
+ */
+describe('chapter 3 — broodje krab', () => {
+  const st = (g: DebugGame): BreakfastState => g.debug.chapter() as BreakfastState;
+
+  it('puts it on the catering counter, lit, before anybody has found it', () => {
+    const g = createGame({ seed: 20260930, chapter: 3, cards: false }) as DebugGame;
+    const crab = g.snapshot().props.find((p) => p.kind === 'crab');
+    expect(crab, 'the crab sandwich is not in the building').toBeDefined();
+    expect(crab?.state, 'it is dark until you find it, which is how you never find it').toBe('active');
+    expect(crab?.label?.toLowerCase()).toContain('krab');
+    // On the sandwich counter, not floating in the court.
+    const s = GF.food.sandwich;
+    expect(crab!.x).toBeGreaterThanOrEqual(s.x);
+    expect(crab!.x + (crab!.w ?? 0)).toBeLessThanOrEqual(s.x + s.w);
+  });
+
+  it('answers in each robot’s own voice, and never becomes a task', () => {
+    for (const kind of ['voxxy', 'droid', 'biggy'] as const) {
+      const g = createGame({ seed: 20260930, chapter: 3, cards: false }) as DebugGame;
+      const crab = g.snapshot().props.find((p) => p.kind === 'crab')!;
+      g.debug.select(kind);
+      g.debug.place(kind, crab.x + (crab.w ?? 0) / 2, crab.y + 24);
+      g.key('KeyE');
+      const said = g.snapshot().toast?.t ?? '';
+      expect(said.toLowerCase(), `${kind} had nothing to say about the crab sandwich`).toContain('krab');
+      expect(st(g).crabFound).toBe(true);
+      // It is flavour: the run sheet must not grow a row for it.
+      expect(g.snapshot().tasks.some((t) => t.text.toLowerCase().includes('krab'))).toBe(false);
+    }
+  });
+});

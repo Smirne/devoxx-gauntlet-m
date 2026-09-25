@@ -84,6 +84,16 @@ const SHELF_REACH = 45;
 const POT_REACH = 70;
 const TALK_REACH = 40;
 /**
+ * The crab sandwich, on the sandwich counter's hall-facing edge.
+ *
+ * On the counter, not behind it: what a robot walks up to is the tray at the
+ * front, under the sign. (`GF.food.sandwich` is the counter block; its `y + h` is
+ * the face the queues stand at.)
+ */
+const CRAB: Vec2 = { x: GF.food.sandwich.x + GF.food.sandwich.w / 2, y: GF.food.sandwich.y + GF.food.sandwich.h - 5 };
+/** How close counts as standing at the tray. */
+const CRAB_REACH = 46;
+/**
  * A queue steps aside for this long — a window Voxxy has to *walk* through, so it
  * grows with `TRAVEL_TIME_SCALE` (constants.ts, the 2026-09-23 rescale).
  */
@@ -583,6 +593,8 @@ export interface BreakfastState {
   temp: number;
   /** Pots spilled or gone cold and refilled — never a lost run (`ruined`). */
   batches: number;
+  /** Has anybody walked up to the crab sandwich yet. Flavour, and a test hook. */
+  crabFound: boolean;
   complaints: number;
   speaker: { following: boolean; onStage: boolean; booth: string };
   queues: Array<{ label: string; open: number }>;
@@ -750,6 +762,18 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let pickupT = 0;
   /** How many pots have been spilled or gone cold on the way over. Flavour, and a count. */
   let batches = 0;
+  /**
+   * THE CRAB SANDWICH, and whether anybody has found it yet.
+   *
+   * Michele, 25 Sep 2026: *"We need to add the CRAB SANDWiCH somewhere. That's
+   * the most famous part of the infamous devoxx food."* It is a running joke with
+   * a queue attached, so it is in the building rather than in a line of text: a
+   * lit tray on the sandwich counter under its own sign (`crab-sign` in
+   * `src/render/venue/signage.ts`), and three different answers when a robot walks
+   * up to it. It asks nothing of the player and blocks nothing — it is the kind of
+   * thing the "sense of place" 10 points are for.
+   */
+  let crabFound = false;
   let complaints = 0;
 
   /* --------------------------------------------------------------- the queues */
@@ -1229,7 +1253,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         'Somebody saw them hiding from the queue behind a booth. One of the built ones.',
       ]);
     }
-    if (!beerDone) return pick([`Tonight's beer is standing in the middle of my aisle. It goes to ${BAR_NAME}.`, 'Three thousand people, one aisle, and a pallet of beer in it. Biggy.']);
+    if (!beerDone)
+      return pick([
+        `Tonight's beer is standing in the middle of my aisle. It goes to ${BAR_NAME}.`,
+        'Three thousand people, one aisle, and a pallet of beer in it. Biggy.',
+        'And if anybody is passing the sandwich counter — no. I have had two. Do not tell the crew.',
+      ]);
     return pick(['Soup. Speaker. Beer. Right — give me a moment with this barrier.']);
   }
 
@@ -1334,6 +1363,24 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      */
     if (dist(b, stephan) < TALK_REACH + b.r && !(b.kind === 'biggy' && carrying && !delivered)) {
       ctx.flash(stephanSays(), 4600);
+      return true;
+    }
+
+    /*
+     * THE CRAB SANDWICH. One per robot, in three voices, because the joke is what
+     * each of them makes of it — and Biggy carrying the pot is working, so he gets
+     * the one line that admits it.
+     */
+    if (dist(b, CRAB) < CRAB_REACH && !(b.kind === 'biggy' && carrying && !delivered)) {
+      crabFound = true;
+      ctx.flash(
+        b.kind === 'voxxy'
+          ? 'Voxxy: "<b>Broodje krab.</b> THE crab sandwich. People queue an hour for this and argue about it for a year. It is the size of my head."'
+          : b.kind === 'droid'
+            ? 'Droid: "<b>Broodje krab.</b> Bread, crab salad, and a queue with its own folklore. I have no mouth and I would still like to be asked."'
+            : 'Biggy: "<b>Broodje krab.</b> One per person, it says. I am one person. I am simply a lot of it."',
+        4600,
+      );
       return true;
     }
 
@@ -1606,6 +1653,20 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         label: ladle ? 'shelf' : 'ladle (high)',
       },
       { kind: 'dropzone', ...stage, state: delivered ? 'done' : 'idle', label: 'bring the soup here' },
+      /*
+       * The crab sandwich on the counter, under its own sign. Lit before it is
+       * found, because the whole point of it is that you notice it and go and
+       * look — it asks nothing and gives a line (`crabFound`).
+       */
+      {
+        kind: 'crab',
+        x: CRAB.x - 8,
+        y: CRAB.y - 5,
+        w: 16,
+        h: 10,
+        state: crabFound ? 'done' : 'active',
+        label: crabFound ? 'broodje krab — the famous one' : 'broodje krab (E)',
+      },
       /*
        * The gate is emitted whatever state it is in, and it carries the sim's own
        * swing clock. `src/render/doors.ts` poses the leaf from that clock and from
@@ -1910,6 +1971,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       carrying,
       delivered,
       batches,
+      crabFound,
       soup,
       temp,
       complaints,
