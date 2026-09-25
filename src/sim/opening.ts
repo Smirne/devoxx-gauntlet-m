@@ -214,6 +214,64 @@ export const HOLD = 0.8;
 /** When the last robot has finished, and the one transition begins. */
 export const WALK_AT = LEAD + SLOT * 2 + STEP_DELAY + STEP_TIME + HOLD;
 
+/* ----------------------------------------------------- and then the lights go
+ *
+ * MICHELE'S OWN BEAT, 25 Sep 2026, and it is the right answer: *"If we want to
+ * handle the light change, we could do this. There's a light on the crates, robot
+ * exit fully visible. Light (emergency light?) flickers and stops, robots light
+ * up -> transition to game."*
+ *
+ * It fixes the one dishonest thing in this sequence. The corridor is a blackout
+ * with no fixture anywhere near the west end, so the robots were visible in their
+ * crates because the renderer re-exposed them and for no reason inside the
+ * fiction. Now there IS a light — the last emergency fitting on this stretch,
+ * over the crates — it is what the player is being shown the robots by, and it
+ * gives out on cue. What is left after it is the three lamps the whole game is
+ * played by, which is the best possible way to say what this game is about
+ * without a line of text.
+ *
+ * The two numbers are durations, like every other number in this file.
+ */
+/** The tube stuttering out: strikes, half-recoveries, gone. */
+export const FLICKER_TIME = 1.05;
+/** Dark, with only their own lamps on — the game's own look, before it starts. */
+export const DARK_HOLD = 0.75;
+/** When the opening is actually over and the chapter takes the keyboard. */
+export const OVER_AT = WALK_AT + FLICKER_TIME + DARK_HOLD;
+
+/**
+ * The dark windows of the flicker, as fractions of `FLICKER_TIME`.
+ *
+ * A failing fluorescent does not fade, it strikes: dark, back, dark longer, back
+ * dimmer, gone. Written down rather than generated so the shot is the same shot
+ * every run — the opening is a presentation and a presentation that is different
+ * each time cannot be cut to. The last window runs to the end, which is the one
+ * it does not come back from.
+ */
+const STRIKES: ReadonlyArray<readonly [number, number]> = [
+  [0.08, 0.15],
+  [0.27, 0.38],
+  [0.49, 0.56],
+  [0.63, 1],
+];
+
+/**
+ * The emergency fitting over the crates at `t`: 1 lit, 0 dead.
+ *
+ * Pure and exported because it is the whole of the beat — `src/render` draws a
+ * fitting, a point light and the work light on the boarding from this one number
+ * and decides nothing (CLAUDE.md).
+ */
+export function emergencyAt(t: number): number {
+  if (t <= WALK_AT) return 1;
+  const u = clamp01((t - WALK_AT) / FLICKER_TIME);
+  if (u >= 1) return 0;
+  for (const [a, b] of STRIKES) if (u >= a && u < b) return 0;
+  // Between strikes it comes back, and never all the way back: a tube that is
+  // going does not recover.
+  return 1 - 0.55 * u;
+}
+
 /**
  * The title is up, held and gone before the first crate opens, so the crates
  * open onto a clear frame.
@@ -286,8 +344,12 @@ export interface OpeningView {
   card: RobotKind | null;
   /** 0..1 on the title card over the first shot. */
   title: number;
-  /** True once the robots have started walking to their marks. */
+  /** True once all three are on their marks and the camera has started pulling back. */
   walking: boolean;
+  /** The emergency fitting over the crates: 1 lit, 0 dead. See `emergencyAt`. */
+  emergency: number;
+  /** True on the frame the chapter takes over — everything has been said. */
+  over: boolean;
 }
 
 /**
@@ -329,5 +391,5 @@ export function openingAt(t: number): OpeningView {
   // In, hold, out — the title is over the first shot and gone before the first
   // crate opens, so the thing it names is what the player is looking at.
   const title = t < TITLE_IN + TITLE_HOLD ? ramp(t, 0, TITLE_IN) : 1 - ramp(t, TITLE_IN + TITLE_HOLD, TITLE_OUT);
-  return { t, lamp, open, step, card, title: clamp01(title), walking: t >= WALK_AT };
+  return { t, lamp, open, step, card, title: clamp01(title), walking: t >= WALK_AT, emergency: emergencyAt(t), over: t >= OVER_AT };
 }

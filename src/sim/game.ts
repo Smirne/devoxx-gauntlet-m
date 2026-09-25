@@ -1047,9 +1047,17 @@ export function createGame(opts: GameOptions = {}): DebugGame {
         b.y = from.y + (to.y - from.y) * e;
         b.face = u > 0 ? STAND_FACE : Math.PI / 2;
       }
-      if (o.walking) {
+      if (o.over) {
         // The single transition: fade out, hand over, fade back in on the
         // chapter's own framing and its own camera angle.
+        //
+        // It used to fire on `walking`, the instant the last robot was standing,
+        // which cut the shot at exactly the moment the camera was supposed to
+        // start pulling back — so `openingView`'s pull-back and the presentation
+        // light's hand-off, both written for it, had never once played. The clock
+        // now runs to `OVER_AT`: the pull-back, the emergency fitting flickering
+        // out over the crates and a beat with nothing lit but the three lamps the
+        // game is played by.
         endOpening();
         return;
       }

@@ -330,13 +330,25 @@ describe('the built model', () => {
   it('stays inside a handful of draw calls', () => {
     const crates = buildCrates();
     try {
+      // The crates themselves, and the fitting over them, counted apart: the
+      // bulkhead is one lamp on the wall (`setEmergency`), not a fourth crate,
+      // and folding it into the crate budget would have quietly raised that.
+      const bulkhead = crates.root.getObjectByName('crate-bulkhead');
+      expect(bulkhead, 'the emergency fitting over the row is gone').toBeDefined();
       let meshes = 0;
+      let fitting = 0;
       crates.root.traverse((o) => {
-        if (o instanceof THREE.Mesh) meshes++;
+        if (!(o instanceof THREE.Mesh)) return;
+        let p: THREE.Object3D | null = o;
+        while (p && p.name !== 'crate-bulkhead') p = p.parent;
+        if (p) fitting++;
+        else meshes++;
       });
       // Six per crate: pallet, body, side slits, panel slab, painted face, cleats,
       // plus the face's glow decal. Everything else is merged.
       expect(meshes).toBeLessThanOrEqual(24);
+      // Case, lens and the three bars of its guard.
+      expect(fitting).toBeLessThanOrEqual(5);
     } finally {
       crates.dispose();
     }

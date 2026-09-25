@@ -2461,8 +2461,10 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     crates.root.visible = true;
     if (o === null) {
       // Play. The crates are open, empty and dark — standing where they were
-      // left, with their panels on the floor in front of them.
+      // left, with their panels on the floor in front of them, under a bulkhead
+      // that gave out on the way in.
       crates.setLit(OPEN_CRATE_LIT);
+      crates.setEmergency(0);
       for (const c of crates.crates) {
         c.setLamp(0);
         c.setOpen(1);
@@ -2474,7 +2476,11 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     // and no `DEVOXX`. It comes up with the first lamp and settles back to the
     // standing level as the chapter takes over.
     const lamps = Math.max(o.lamp.voxxy, o.lamp.droid, o.lamp.biggy);
-    crates.setLit(Math.max(OPEN_CRATE_LIT, lamps));
+    // ...and it is the bulkhead over the row that provides it, so it goes out
+    // with it. Michele's beat: the light flickers, stops, and the only thing left
+    // lighting anything is the robots themselves (`emergencyAt`).
+    crates.setLit(Math.max(OPEN_CRATE_LIT, lamps) * o.emergency);
+    crates.setEmergency(o.emergency);
     for (const c of crates.crates) {
       c.setLamp(o.lamp[c.kind]);
       c.setOpen(o.open[c.kind]);
