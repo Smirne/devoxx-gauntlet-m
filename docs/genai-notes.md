@@ -3852,3 +3852,7 @@ working on a couple of things; the next merge is the same one-command operation.
     which the intro makes them do. It is now small and tight.
 
   Shortening the timings themselves was not done, because the 2.5D build plays the same opening.
+- *Splash screen / menu.* The old 3D title ("Full-3D proof of concept · Press any key") is switched
+  off, not deleted. The agent proposed bringing it back as a menu (Start, Continue, Credits, Controls).
+  Michele: *"keep it out for the moment. Starting with the intro is cool."* The page starts on the
+  crates intro, and the dormant code stays in `main3d.ts` in case a menu is wanted later.
