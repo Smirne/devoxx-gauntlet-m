@@ -689,10 +689,24 @@ export function buildFloor1(p: VenuePalette): Floor1Build {
   const cut = (r: Rect): Rect[] => wells.reduce<Rect[]>((acc, hole) => acc.flatMap((q) => minus(q, hole)), [r]);
   // A base plate under everything, so voids between rooms read as building, not sky.
   for (const r of cut({ x: 0, y: 0, w: W, h: H })) group.add(floorSlab(r, -0.02, p.shell, 0.4));
-  // The corridor itself: dark navy carpet running the full length of the level.
+  /*
+   * The corridor itself: dark navy carpet running the full length of the level.
+   *
+   * Cut by the two stair wells AND by the main staircase's own rect. The main stair
+   * was missing from that list, and it cost the same z-fight the ground floor's
+   * threshold had: the carpet's top face and the flight's top tread both sit at
+   * **y = 0.0000**, and they shared a 1.32 x 9.4 m ribbon — 12.46 m2 — at the head
+   * of the flight. Found by the scan in `tests/coplanar.test.ts`, which was written
+   * for Michele's ground-floor line and turned this up on the floor above.
+   *
+   * The hole is covered by the staircase's own head slab and treads, so nothing
+   * shows through: this only stops two surfaces claiming the same plane.
+   */
   const carpet = new THREE.Group();
   carpet.name = 'corridor-carpet';
-  for (const r of cut({ x: 0, y: CY0, w: W, h: CY1 - CY0 })) carpet.add(floorSlab(r, 0, p.corridorCarpet));
+  for (const r of cut({ x: 0, y: CY0, w: W, h: CY1 - CY0 })) {
+    for (const q of minus(r, F1.mainStair)) carpet.add(floorSlab(q, 0, p.corridorCarpet));
+  }
   group.add(carpet);
 
   for (const r of rooms) {
