@@ -1018,15 +1018,15 @@ describe('chapter 3 — breakfast', () => {
     expect(breakfast().delivered).toBe(true);
     expect(gateWall()).toBeDefined();
 
-    // Clear the top-shelf sticker out of the way first: it shares the booth grid with
-    // the speaker's hiding places, and `E` offers the swag before the conversation.
-    const sticker = g.snapshot().props.find((p) => p.kind === 'sticker');
-    g.debug.select('droid');
-    g.debug.place('droid', sticker!.x, sticker!.y + 20);
-    g.key('KeyE');
-    expect(g.snapshot().swag).toContain('sticker');
-
     // Find the speaker at the booth they are hiding behind, then lead them over.
+    //
+    // This used to CLEAR THE TOP-SHELF STICKER FIRST, because the minigames take `E`
+    // before the chapter does and on one seed in six the speaker was hiding at the
+    // sticker's own spot — so a Voxxy pressing `E` at the speaker got the sticker's
+    // refusal and the chapter could not be finished. That was a test working around a
+    // soft-lock. The speaker no longer hides inside a minigame's key circle
+    // (`SPEAKER_CLEAR` in `ch3-breakfast.ts`), so the sticker stays on its shelf here
+    // and this errand runs with the collision still live underneath it.
     const hiding = g.snapshot().people.find((p) => p.role === 'speaker');
     const booth = GF.booths.find((b) => b.name === breakfast().speaker.booth);
     expect(booth).toBeDefined();

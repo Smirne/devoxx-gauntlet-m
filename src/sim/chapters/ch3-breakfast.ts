@@ -220,6 +220,25 @@ const BEER_STACK: Rect = { x: 346, y: 128, w: 72, h: 40 };
  * own way; here the mark stays clear and the finished delivery reads as stowed.
  */
 const CELLAR: Vec2 = { x: 440, y: 106 };
+
+/**
+ * The floor in front of a sponsor stand — where somebody stands to be talked to.
+ *
+ * Two beats derive their position from a booth this way: the Sticker Mine's
+ * top-shelf swag and the keynote speaker's hiding place. They used to write the
+ * formula out twice, which is how they came to be **the same point on one seed in
+ * six** — see `hideBooth` below.
+ */
+const inFrontOf = (b: Rect): Vec2 => ({ x: b.x + b.w / 2, y: b.y + b.h + 14 });
+
+/**
+ * How far clear of a minigame's key circle the speaker has to hide, sim px.
+ *
+ * Not zero and not a hair: Voxxy has to be able to stand at the speaker and press
+ * `E` without being inside the sticker's reach, and she is 4.75 px of robot, so the
+ * two spots have to be further apart than one of her plus the slack a player leaves.
+ */
+const SPEAKER_CLEAR = 24;
 /** How close a robot has to get to the pallet to read what is printed on the wrap. */
 const LABEL_REACH = 90;
 /** The middle of the stack zone, and how close to it counts as "on the mark". */
@@ -393,6 +412,18 @@ export interface MinigameState {
 interface Minigames {
   /** Returns true when the key was consumed, so the chapter does not also act on it. */
   key(code: string, b: Bot): boolean;
+  /**
+   * Where `key` will swallow `E`, as circles — so a chapter beat never lands on one.
+   *
+   * The minigames are optional swag and the chapter's beats are its spine, but the
+   * minigames get the key first (`mg.key(code, b)` is the second line of the
+   * chapter's own handler). That ordering is deliberate and stays: a refusal that
+   * names a reason is an answer, and Michele's rule for this chapter is that such a
+   * refusal keeps the key rather than falling through to a party trick. The price of
+   * the rule is that a spine beat standing inside one of these circles is
+   * unreachable, so the spine has to keep out of them.
+   */
+  keySpots(): readonly { x: number; y: number; r: number }[];
   update(dt: number): void;
   props(): Prop[];
   /** Debug/test seam: move the duck. */
@@ -456,7 +487,9 @@ function setupMinigames(ctx: ChapterCtx): Minigames {
   let duckDone = ctx.swag.includes('duck');
 
   const stB = booth('Sticker Mine');
-  const sticker = { x: stB.x + stB.w / 2, y: stB.y + stB.h + 14 };
+  const sticker = inFrontOf(stB);
+  /** How close a robot has to be for `E` to mean "the top shelf" and nothing else. */
+  const STICKER_REACH = 40;
   let stickerDone = ctx.swag.includes('sticker');
 
   const rxB = booth('Regex Racing');
@@ -484,7 +517,7 @@ function setupMinigames(ctx: ChapterCtx): Minigames {
    */
   function key(code: string, b: Bot): boolean {
     if (code !== 'KeyE') return false;
-    if (!stickerDone && dist(b, sticker) < 40) {
+    if (!stickerDone && dist(b, sticker) < STICKER_REACH) {
       if (b.kind === 'droid') {
         stickerDone = true;
         ctx.addSwag(
@@ -601,6 +634,9 @@ function setupMinigames(ctx: ChapterCtx): Minigames {
 
   return {
     key,
+    // Only the sticker swallows `E`. The duck is shoved by driving into it and the
+    // race is started by crossing its own line, so neither owns a key anywhere.
+    keySpots: () => [{ x: sticker.x, y: sticker.y, r: STICKER_REACH }],
     update,
     props,
     place(kind: string, x: number, y: number): boolean {
@@ -901,11 +937,33 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     { x: 370, y: 215, r: 8, name: 'Devoxx crew', line: 'Mind the coffee queue with that pot. It bites.' },
   ];
 
-  // The speaker hides behind one of the *built* booths, never a table — the hint the
-  // NPCs give has to stay true, and a table booth would be visible from the aisle.
-  const built = GF.booths.filter((b) => !b.table);
+  /*
+   * WHERE THE SPEAKER HIDES, AND THE ONE STAND THEY MAY NOT HIDE BEHIND.
+   *
+   * Built booths only, never a table: the hint the NPCs give says *"one of the built
+   * ones, with walls"* and it has to stay true, and a table booth would be visible
+   * from the aisle anyway.
+   *
+   * The second filter is a **soft-lock**, found 25 Sep 2026 while auditing the note
+   * that said `E` at the Sticker Mine runs before the chapter's own handler. The
+   * speaker's spot and the sticker's are both `inFrontOf(booth)`, so when the RNG
+   * picked the Sticker Mine they were the SAME POINT — and Voxxy pressing `E` there
+   * got the sticker's "I am 38 cm of robot" refusal, which consumes the key, so the
+   * speaker could not be picked up at all until somebody happened to walk DROID over
+   * to take a sticker they had no reason to connect to the problem. Chapter 3 cannot
+   * be finished without the speaker. Measured over 200 seeds: **35 of them, one run
+   * in six.** `tests/chapters.test.ts` had been clearing the sticker first, which is
+   * a test working around a bug rather than catching it.
+   *
+   * Filtering the spot rather than naming the booth: either beat can move, and this
+   * stays correct when it does.
+   */
+  const noGo = mg.keySpots();
+  const built = GF.booths.filter(
+    (b) => !b.table && !noGo.some((s) => Math.hypot(inFrontOf(b).x - s.x, inFrontOf(b).y - s.y) < s.r + SPEAKER_CLEAR),
+  );
   const hideBooth = built[Math.floor(ctx.rng() * built.length)];
-  const speaker = { x: hideBooth.x + hideBooth.w / 2, y: hideBooth.y + hideBooth.h + 14, r: 7, following: false, onStage: false };
+  const speaker = { ...inFrontOf(hideBooth), r: 7, following: false, onStage: false };
 
   /*
    * Stephan, and the spot the soup has to reach him.

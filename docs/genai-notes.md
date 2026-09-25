@@ -3814,3 +3814,60 @@ lighting" was the obvious thing to do and would have been a change to something 
 
 Suite **704 tests, 43 files, green**; `tsc --noEmit` clean; `After Dark · ERRORS:0` on the built
 bundle in chapter 2, with the shove driven through the real key handler.
+
+## 25 Sep 2026 — the audit that found a one-in-six soft-lock
+
+He asked what else there was to go on with, so the agent went through
+`docs/playtest-notes.md` row by row against the code rather than picking a feature.
+That file is what he reads to decide what is left, and it had drifted badly: **nine
+rows claimed open work that had already shipped.** Chapter 1's notes 9, 10, 11 and
+12 were still "in flight" days after the speed rescale and the falling-leaf
+animation had landed; four structural rows described code that has since been
+fixed — `weather()`'s white flakes (`MAX_WEAR_LUM_GAIN`), `buildLights`' missing
+range cull (`castPoly` filters occluders now), `gaitSpeed`'s `tanh` (removed, with
+the measurement that showed it was making all three robots skate), and the four
+helper sets that wanted promoting to `rig.ts` (promoted, rivet aim and all). Every
+row now carries the evidence rather than a status word, and the rows that are still
+true say **re-checked, and when**.
+
+Note 13 is the one that did not close: the transition's pace is fixed and held by a
+test, the zoom is fixed (`CUT_FRAME`), and *"too dark"* is untouched on purpose —
+chapter 1 is a dark building by design and it had a whole light pass after that
+note, so it is a mood decision and his. The cutscene was driven and re-shot on the
+V37 build so he judges the current one, not the one he played.
+
+**Then the audit turned up a real bug**, in a row that read like a footnote: *"`E`
+precedence at the Sticker Mine … the chapter-3 end-to-end test already works around
+it by clearing the sticker first."* A test working around something is worth
+opening, and underneath it was this. The keynote speaker's hiding place and the
+Sticker Mine's top-shelf swag are both derived as `inFrontOf(booth)`. When the
+chapter's RNG picked the Sticker Mine as the hiding booth, the two were **the same
+point** — and the minigames get `E` before the chapter does, so Voxxy pressing `E`
+at the speaker got the sticker's "I am 38 cm of robot" refusal, which consumes the
+key. Chapter 3 cannot be finished without the speaker, and nothing tells the player
+that walking Droid over for a sticker is what unblocks it.
+
+Measured over 200 seeds: **35 of them. One run in six.** Two test files had been
+papering over it — `tests/chapters.test.ts` and `tests/pilot.ts` both cleared the
+sticker first, and `pilot.ts`'s comment even stated the symptom (*"a run that skips
+it ends up collecting a sticker instead of a keynote speaker"*) without anyone
+treating it as a bug.
+
+**What was NOT done.** The obvious fix is to reorder the handlers so the chapter's
+own beats get `E` first. That is wrong here: Michele's rule for this chapter is that
+a refusal which names a reason keeps the key, because those refusals are answers and
+hopping instead would be a worse game. The second-obvious fix is to name the Sticker
+Mine as forbidden, which fixes today's collision and none of tomorrow's. What went in
+instead is the general shape: `Minigames.keySpots()` publishes the circles where the
+optional content will swallow a key, and the chapter's spine keeps `SPEAKER_CLEAR`
+out of them when it picks a hiding place. Either beat can move now and it stays
+correct.
+
+`tests/speaker-spot.test.ts`, two tests at two altitudes across sixty seeds each:
+the spots are apart, and Voxxy can collect the speaker **with the sticker still on
+its shelf** — the state the old code could not survive. Both go red on the old
+derivation. The two workarounds are gone: `chapters.test.ts` runs the errand with
+the collision live, and `pilot.ts` takes the sticker after the speaker instead of
+before, which keeps its swag count identical while exercising the fix.
+
+Suite **706 tests, 44 files, green**; `tsc --noEmit` clean.
