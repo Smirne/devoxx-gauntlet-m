@@ -37,6 +37,12 @@ import { POSTERS, backlitGlass, cityscape, emitter, exitSign, menuBoard, neonTex
 // Biggy's radius), and the wall stops short of the corridor column at x 1198.
 export const X_END = 1190;
 
+/** A wall slab that belongs to the foyer kiosk (drawn by `buildKiosk`, not the wall loop). */
+const inKiosk = (w: { x: number; y: number; w: number; h: number }): boolean => {
+  const k = F1.kiosk;
+  return w.x >= k.x - 0.5 && w.y >= k.y - 0.5 && w.x + w.w <= k.x + k.w + 0.5 && w.y + w.h <= k.y + k.h + 0.5;
+};
+
 export const HEIGHTS = Object.freeze({
   room: 7.2,
   corridor: 5.2,
@@ -281,6 +287,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     // this line then skipped it: solid in the sim, invisible here, and the
     // player walked into thin air at clue 4 (playtest, 24 Sep).
     if (w.hidden || w.low || w.glass || (w.kind && w.kind !== 'alcove' && w.kind !== 'stair-head')) continue;
+    if (inKiosk(w)) continue; // the kiosk's solid sides are its own, at its own height: buildKiosk()
     const r = clipX(w);
     if (!r) continue;
     if (r.x === F1.foyer.x - T && r.y === F1.foyer.y && r.w === T) {
@@ -676,6 +683,17 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     g.add(mats.steel, box(0.12, 0.08, m(24), V(m(k.x), HATCH, m(k.y + 28))));
     const meshes = g.build(group);
     colliders.push(...meshes);
+    // Its solid sides — the back under the menu board and the counter front
+    // either side of the hatch, which face the robots' starting marks: kiosk
+    // height, not a corridor wall.
+    for (const w of walls) {
+      if (w.glass || w.hidden || !inKiosk(w)) continue;
+      const kb = new THREE.Mesh(box(m(w.w), H, m(w.h), V(m(w.x + w.w / 2), H / 2, m(w.y + w.h / 2))), mats.counter);
+      kb.castShadow = true;
+      kb.receiveShadow = true;
+      group.add(kb);
+      colliders.push(kb);
+    }
     // Glass walls from the sim's glass slabs.
     for (const w of walls) {
       if (!w.glass || w.kind === 'screen') continue;

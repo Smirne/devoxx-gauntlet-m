@@ -16,8 +16,12 @@ import { clueLitBy } from '../sim/lights';
 /**
  * The 3D build's clue patch, sim px (the sim's default is 5, which the 2.5D build
  * keeps). `main3d.ts` hands it to the sim; the ring is drawn at exactly this radius.
+ *
+ * 10 (0.8 m) was too generous: clue 4 went without Voxxy ever entering the alcove
+ * (Michele, 25 Sep, "the lights circle tolerance is maybe too much now"). 7 is
+ * 0.56 m, still more forgiving than 2.5D's 0.4 m for a camera behind the robot.
  */
-export const CLUE_SPOT_3D = 10;
+export const CLUE_SPOT_3D = 7;
 import { DEFS } from '../sim/constants';
 import type { Clue, GameSnapshot, Prop, RobotKind } from '../sim/types';
 import { m } from '../sim/units';
