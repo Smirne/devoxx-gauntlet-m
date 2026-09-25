@@ -22,7 +22,8 @@ import * as THREE from 'three';
 
 import { flairPhase, hopPhase } from '../sim/bot';
 import { riseAt } from '../sim/surface';
-import { DEFS, JUMP_RISE_M } from '../sim/constants';
+import { BIGGY_ROLL_DUR, DEFS, DROID_STRETCH_DUR, JUMP_AIR, JUMP_RISE_M } from '../sim/constants';
+import { LEAD, SLOT, STEP_DELAY, STEP_TIME } from '../sim/opening';
 import type { Bot, GameSnapshot, RobotKind } from '../sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
 import { createRobot, updateRobot, type RobotRig } from '../render/robots';
@@ -229,6 +230,27 @@ const gesture = new Map<RobotKind, number>();
 let lastPanel: string | undefined;
 let lastPad: string | undefined;
 
+/**
+ * The intro's party tricks, as `hopPhase`/`flairPhase` values off the opening's
+ * clock: each robot does its own `E` trick the moment it is out of its crate.
+ * Voxxy hops twice, Droid stretches, Biggy rolls (Michele: the start animation is
+ * "too slow and static... add actions (voxxy exits and jumps...)").
+ *
+ * Drawn only: the sim's opening places the robots and nothing here moves one.
+ * The tricks are the same poses `E` plays, so nothing new is being claimed about
+ * what these bodies can do. A trick runs on into the next robot's slot, which
+ * keeps the shot busy while the next crate opens.
+ */
+function openingTrick(kind: RobotKind, t: number): { hop: number; flair: number } {
+  const out = LEAD + ['voxxy', 'droid', 'biggy'].indexOf(kind) * SLOT + STEP_DELAY + STEP_TIME;
+  const phase = (from: number, dur: number): number => {
+    const u = (t - from) / dur;
+    return u > 0 && u < 1 ? u : 0;
+  };
+  if (kind === 'voxxy') return { hop: phase(out + 0.05, JUMP_AIR) || phase(out + 0.05 + JUMP_AIR + 0.2, JUMP_AIR), flair: 0 };
+  return { hop: 0, flair: phase(out + 0.1, kind === 'droid' ? DROID_STRETCH_DUR : BIGGY_ROLL_DUR) };
+}
+
 /** Place and animate the robots from the snapshot, and aim their lamps. */
 export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot, dt: number): void {
   const droid = robots.get('droid');
@@ -249,7 +271,8 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
     // Voxxy's hop and every robot's party trick (E), off the sim's own clocks —
     // the 2.5D renderer draws them the same way; the 3D one used to ignore
     // both, so E did something in the sim and nothing on screen.
-    const u = hopPhase(b);
+    const trick = snap.opening ? openingTrick(b.kind, snap.opening.t) : null;
+    const u = trick ? trick.hop : hopPhase(b);
     const hop = u > 0 ? JUMP_RISE_M * 4 * u * (1 - u) : 0;
     let x = m(b.x);
     let z = m(b.y);
@@ -286,7 +309,7 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
       }
     }
     r.rig.root.position.set(x, lift, z);
-    updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: b.face, dt, mounted, hop: u, flair: flairPhase(b), pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null });
+    updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: b.face, dt, mounted, hop: u, flair: trick ? trick.flair : flairPhase(b), pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null });
     aimLamp(r, b);
   }
 }

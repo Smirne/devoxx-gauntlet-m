@@ -8,9 +8,9 @@ import * as THREE from 'three';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 
 import type { GameSnapshot, RobotKind } from '../sim/types';
-import { PX_PER_M, m } from '../sim/units';
+import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
 
-import { ThirdPersonCamera } from './camera3d';
+import { DIST, PIVOT, ThirdPersonCamera } from './camera3d';
 import { applyBoxProjection, type ProbeBox } from './boxproj';
 import { buildDetails } from './details';
 import { LightPool } from './lightpool';
@@ -20,7 +20,7 @@ import { createProps, type Props3D } from './props3d';
 import { createRobots, updateGlare, updateRobots, type Robot3D } from './robots3d';
 import { HEIGHTS, SIGN_SPANS, X_END, buildVenue, type Venue3D } from './venue';
 import { CY0, CY1, F1 } from '../sim/geometry';
-import { CRATE_AT, CRATE_ROW, PULL_BACK, STAND_AT, WALK_AT } from '../sim/opening';
+import { CRATE_AT, CRATE_ROW, LEAD, PULL_BACK, SLOT, STAND_AT, WALK_AT } from '../sim/opening';
 import { buildCrates } from '../render/crates';
 
 export interface World3D {
@@ -117,7 +117,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   const _fLook = new THREE.Vector3();
 
   /** Pose the crates and the two lights from `snap.opening`; returns the camera pose while it runs. */
-  function stageOpening(snap: GameSnapshot): { pos: THREE.Vector3; look: THREE.Vector3; follow: number } | null {
+  function stageOpening(snap: GameSnapshot, dt: number): { pos: THREE.Vector3; look: THREE.Vector3; follow: number } | null {
     const o = snap.opening;
     crates.root.visible = o !== null || snap.chapter === 1;
     if (o === null) {
@@ -148,22 +148,58 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       keyLight.intensity = 60 * o.lamp[who];
     } else keyLight.intensity *= 0.9;
     keyLight.target.updateMatrixWorld();
-    // Camera: frontal on the row, a step east of it, easing toward whoever is
-    // being presented; then, as the sim pulls back (WALK_AT .. +PULL_BACK), it
-    // blends into the follow camera's framing behind the lead robot.
-    const focus = who ? new THREE.Vector3(m(CRATE_AT[who].x), 1.0, m(CRATE_AT[who].y)) : row;
-    _oLook.lerp(focus, _oLook.lengthSq() === 0 ? 1 : 0.06);
-    _oPos.set(_oLook.x + 5.2, 1.55, _oLook.z * 0.6 + row.z * 0.4);
+    // Camera. Square on to the robot being presented, on its own axis: an
+    // off-axis camera put a robot standing a stride in front of its crate
+    // beside it on screen (Michele: "when the crate opens, robots are on the
+    // side"). It follows the robot as it steps out and dollies in through its
+    // slot, so the shot is never still ("too slow and static").
+    const k = 1 - Math.exp(-dt * 2.5);
+    if (who) {
+      const b = snap.bots.find((q) => q.kind === who) ?? snap.bots[0];
+      const h = ROBOT_HEIGHT_M[who];
+      const s = THREE.MathUtils.clamp((o.t - (LEAD + ORDER_3D.indexOf(who) * SLOT)) / SLOT, 0, 1);
+      const dist = 2.2 + h * 1.4 - 1.1 * s * s * (3 - 2 * s);
+      _want.set(m(b.x), h * 0.6, m(b.y));
+      _wantPos.set(_want.x + dist, h * 0.75 + 0.25, _want.z + Math.sin(o.t * 0.6) * 0.3);
+    } else {
+      // Before the first card: the whole row, drifting in.
+      _want.copy(row);
+      _wantPos.set(row.x + 7.5 - Math.min(1, o.t / LEAD) * 1.2, 1.7, row.z);
+    }
+    if (_oLook.lengthSq() === 0) {
+      _oLook.copy(_want);
+      _oPos.copy(_wantPos);
+    }
+    _oLook.lerp(_want, k);
+    _oPos.lerp(_wantPos, k);
+    // Then, as the sim pulls back (WALK_AT .. +PULL_BACK), into the follow
+    // camera's own framing behind the lead robot. Not at its usual pitch: the
+    // crates stand a stride behind the robots, so from there the first playable
+    // frame was the inside of a crate. The hand-off looks down over them
+    // instead, and the camera settles to its usual pitch once the robot walks.
     const u = Math.min(1, Math.max(0, (o.t - WALK_AT) / PULL_BACK));
     const e = u * u * (3 - 2 * u);
     const lead = snap.bots[snap.active] ?? snap.bots[0];
-    const lx = m(STAND_AT[lead.kind].x);
-    const lz = m(STAND_AT[lead.kind].y);
-    _fPos.set(lx - DIST_BEHIND, 1.9, lz);
-    _fLook.set(lx + 2, 1.0, lz);
+    handOff(lead.kind, m(STAND_AT[lead.kind].x), m(STAND_AT[lead.kind].y), _fPos, _fLook);
     return { pos: _oPos.clone().lerp(_fPos, e), look: _oLook.clone().lerp(_fLook, e), follow: e };
   }
-  const DIST_BEHIND = 3.4;
+  const ORDER_3D: RobotKind[] = ['voxxy', 'droid', 'biggy'];
+  const _want = new THREE.Vector3();
+  const _wantPos = new THREE.Vector3();
+  /** The follow camera's yaw and pitch at the hand-off; see `stageOpening`. */
+  const HAND_YAW = -Math.PI / 2;
+  const HAND_PITCH = 0.75;
+  /**
+   * Where the follow camera will put itself behind a robot at (x, z) with the
+   * hand-off yaw and pitch, so the staged shot ends exactly there. Its distance
+   * is cut short of the west wall, as the camera's own collision would.
+   */
+  function handOff(kind: RobotKind, x: number, z: number, pos: THREE.Vector3, look: THREE.Vector3): void {
+    look.set(x, ROBOT_HEIGHT_M[kind] * PIVOT[kind], z);
+    const back = Math.cos(HAND_PITCH);
+    const d = Math.min(DIST[kind], (x - m(8) - 0.3) / back);
+    pos.set(x - back * d, look.y + Math.sin(HAND_PITCH) * d, z);
+  }
 
   // Mirror bounces: the sim's secondary lights (cinema E's screen), drawn as
   // unshadowed spots from the point on the screen they leave.
@@ -280,7 +316,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     const active = snap.bots[snap.active] ?? snap.bots[0];
     const rob = robots.get(active.kind);
     const grade = pipeline.grade;
-    const staged = stageOpening(snap);
+    const staged = stageOpening(snap, dt);
     if (staged && !cam.pose) {
       // The opening frames itself; the follow camera takes over, snapped to the
       // same framing, on the frame the player gets the keyboard.
@@ -288,8 +324,9 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       c.position.copy(staged.pos);
       c.lookAt(staged.look);
       c.updateMatrixWorld();
-      cam.yaw = -Math.PI / 2;
-      cam.pitch = 0.22;
+      cam.yaw = HAND_YAW;
+      cam.pitch = HAND_PITCH;
+      cam.settlePitch = 0.22;
       cam.cut();
       grade.dofAmount = 0.6 * (1 - staged.follow);
       grade.dofFocus = c.position.distanceTo(staged.look);
@@ -309,7 +346,8 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       }
       _pos.copy(rob.rig.root.position);
       const speed = Math.hypot(active.vx, active.vy) / PX_PER_M;
-      cam.update(dt, active.kind, _pos, active.face, speed, [...venue.colliders, ...props.colliders]);
+      // The crates are walls to the camera too, so it can never end up inside one.
+      cam.update(dt, active.kind, _pos, active.face, speed, [...venue.colliders, ...props.colliders, ...(crates.root.visible ? [crates.root] : [])]);
     }
 
     // Mirror bounces from the sim.
