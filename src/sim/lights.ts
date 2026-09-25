@@ -329,19 +329,21 @@ export const litBy = (lights: LightSource[], kind: RobotKind, p: Vec2): boolean 
  * somewhere you would not think to stand; it stops a solution failing because
  * the beam's edge fell a handspan short of a mathematical point.
  *
- * Raised to 10 px (0.8 m) on 24 Sep by Michele, playing the 3D build: a lamp
- * visibly on the clue did not count ("I would be more generous with the light /
- * hint match"). The 3D ring is drawn at exactly this radius.
+ * The default, and the 2.5D build's. A build can pass its own through
+ * `GameOptions.clueSpot`: the 3D build uses 10 px (0.8 m) — Michele, playing it,
+ * "I would be more generous with the light / hint match" — because aiming a lamp
+ * from behind the robot, with the floor foreshortened, is harder than from above.
+ * In 2.5D, 5 "works well" (Michele, 25 Sep), so the two stay different.
  */
-export const CLUE_SPOT = 10;
+export const CLUE_SPOT = 5;
 
 /** The centre and four cardinal points of a clue's patch. */
-const clueSamples = (c: Vec2): Vec2[] => [
+const clueSamples = (c: Vec2, spot: number): Vec2[] => [
   c,
-  { x: c.x + CLUE_SPOT, y: c.y },
-  { x: c.x - CLUE_SPOT, y: c.y },
-  { x: c.x, y: c.y + CLUE_SPOT },
-  { x: c.x, y: c.y - CLUE_SPOT },
+  { x: c.x + spot, y: c.y },
+  { x: c.x - spot, y: c.y },
+  { x: c.x, y: c.y + spot },
+  { x: c.x, y: c.y - spot },
 ];
 
 /**
@@ -360,8 +362,8 @@ const clueSamples = (c: Vec2): Vec2[] => [
  * clue's centre point and so measured the behaviour that had just been replaced,
  * reporting no change from a change that had landed.
  */
-export const clueLitBy = (lights: LightSource[], kind: RobotKind, clue: Vec2): boolean =>
-  clueSamples(clue).some((s) => litBy(lights, kind, s));
+export const clueLitBy = (lights: LightSource[], kind: RobotKind, clue: Vec2, spot = CLUE_SPOT): boolean =>
+  clueSamples(clue, spot).some((s) => litBy(lights, kind, s));
 
-export const clueLit = (lights: LightSource[], clue: Clue): boolean =>
-  clue.need.every((k) => clueLitBy(lights, k, clue));
+export const clueLit = (lights: LightSource[], clue: Clue, spot = CLUE_SPOT): boolean =>
+  clue.need.every((k) => clueLitBy(lights, k, clue, spot));

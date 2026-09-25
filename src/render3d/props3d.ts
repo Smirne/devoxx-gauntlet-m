@@ -11,7 +11,13 @@
 import * as THREE from 'three';
 
 import { CY0, CY1, floor1Walls } from '../sim/geometry';
-import { CLUE_SPOT, clueLitBy } from '../sim/lights';
+import { clueLitBy } from '../sim/lights';
+
+/**
+ * The 3D build's clue patch, sim px (the sim's default is 5, which the 2.5D build
+ * keeps). `main3d.ts` hands it to the sim; the ring is drawn at exactly this radius.
+ */
+export const CLUE_SPOT_3D = 10;
 import { DEFS } from '../sim/constants';
 import type { Clue, GameSnapshot, Prop, RobotKind } from '../sim/types';
 import { m } from '../sim/units';
@@ -383,11 +389,11 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
     const root = new THREE.Group();
     root.position.set(m(c.x), 0, m(c.y));
     // Sized from the sim's own tolerance: the ring's outer edge is the patch
-    // `clueLitBy` tests (CLUE_SPOT), so light on the ring is light that counts.
+    // `clueLitBy` tests (CLUE_SPOT_3D), so light on the ring is light that counts.
     // At 1.5 m it was nearly twice that patch, and a lamp could sit on the ring
     // without lighting the clue (playtest: Voxxy "not considered lighting it").
     // The stencil's circle is 110/128 of the texture's half-width.
-    const size = (2 * m(CLUE_SPOT)) / (110 / 128);
+    const size = (2 * m(CLUE_SPOT_3D)) / (110 / 128);
     // A standby glow, as the 2.5D plates have: unlit, the ring was black on a
     // black floor and a clue could not be found at all ("I lost hint 3").
     const decal = new THREE.Mesh(
@@ -577,7 +583,7 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
           clueObjs.set(c.slot, co);
         }
         for (const led of co.leds) {
-          const lit = clueLitBy(snap.lights, led.userData.kind as RobotKind, c);
+          const lit = clueLitBy(snap.lights, led.userData.kind as RobotKind, c, CLUE_SPOT_3D);
           const base = lampColour(led.userData.kind as RobotKind);
           (led.material as THREE.MeshBasicMaterial).color.copy(base).multiplyScalar(c.found ? 10 : lit ? 16 : 0.6 + 0.3 * Math.sin(t * 3 + c.slot));
         }

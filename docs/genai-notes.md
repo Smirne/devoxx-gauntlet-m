@@ -3825,3 +3825,11 @@ fits? This is also promoted from POC to candidate. Focus on the intro, interface
 
 **What was deferred.** Chapters 2–4 in 3D (*"We'll do the others later"*). The 2.5D side is still
 working on a couple of things; the next merge is the same one-command operation.
+- *Clue patch, two sizes.* The agent had raised `CLUE_SPOT` from 5 to 10 px in the shared sim for
+  the 3D build and proposed the same change on the 2.5D branch. Michele: *"we can keep them different
+  if it's not a problem. In 2D it works well. Maybe less dimensions?"* It is not a problem, and the
+  reason holds up. From above, the whole lamp pool and the clue are on screen together. From behind
+  the robot, the floor is foreshortened, and a pool that looks as if it covers the ring can fall
+  short of it. `CLUE_SPOT` is back to 5, the 2.5D branch's value, so the next merge has nothing to
+  reconcile. `GameOptions.clueSpot` lets a build pass its own size, and the 3D build passes 10
+  (`CLUE_SPOT_3D`, the radius its floor ring is drawn at).

@@ -942,7 +942,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       ctx.flash('Biggy: my light is coming back off the screen — swing it until the bounce lands in the exit alcove', 3500);
     }
     for (const c of clues) {
-      if (!c.found && clueLit(lights, c)) {
+      if (!c.found && clueLit(lights, c, ctx.clueSpot)) {
         c.found = true;
         ctx.flash(`Clue: digit ${c.digit} is position ${c.slot}`);
       }

@@ -34,6 +34,7 @@ import { createAudio, type Audio } from './render/audio';
 import { createCues } from './render/cues';
 import { createHud, type Hud, type SpeakerAnchors } from './render/hud';
 import type { QualityName } from './render3d/pipeline';
+import { CLUE_SPOT_3D } from './render3d/props3d';
 import { createWorld3D, type World3D } from './render3d/world';
 import { installHudTheme } from './render3d/hudTheme';
 
@@ -105,7 +106,7 @@ installHudTheme();
 // does: no chapter, cards on. Screenshot runs go straight to chapter 1 unless
 // they ask for the opening with ?cards=1.
 const withOpening = !shotMode || flag('cards');
-const game: DebugGame = createGame({ seed: int('seed'), chapter: withOpening ? undefined : 1, cards: withOpening });
+const game: DebugGame = createGame({ seed: int('seed'), chapter: withOpening ? undefined : 1, cards: withOpening, clueSpot: CLUE_SPOT_3D });
 
 /*
  * The old 3D title (a dolly down the corridor under "press any key") is
