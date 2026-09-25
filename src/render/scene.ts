@@ -892,6 +892,16 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   dressing.add(keypad.root);
   /** The venue's own static keypad, which chapter 1 takes over. See `floor1.ts`. */
   const venueKeypad = venue.floor1.getObjectByName('fire-keypad') ?? null;
+  /**
+   * ...and the venue's own static badge printer, which chapter 2 takes over.
+   *
+   * `ground.ts` stands a `printerWhite` slab on the reception counter so the desk
+   * is dressed in chapters 3 and 4 as well. The moment a chapter publishes the
+   * `printer` prop, `src/render/printer.ts` draws the real machine in the same
+   * place — and two printers in one footprint is exactly the fault the fire leaf,
+   * the roller, the gate and the keypad each have a line like this one for.
+   */
+  const venuePrinter = venue.ground.getObjectByName('badge-printer') ?? null;
 
   /* ------------------------------------------------------------ the opening
    *
@@ -1905,6 +1915,24 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     mat.emissiveIntensity = tint === undefined ? 0 : 1;
     mat.transparent = spec.flat === true;
     mat.opacity = spec.flat ? 0.65 : 1;
+    /*
+     * A FLAT PROP IS A DECAL, AND A DECAL MUST NOT FIGHT THE FLOOR IT IS ON.
+     *
+     * Michele has reported flicker twice, the second time with two circles on a
+     * screenshot, and one of them is on the lit pad at the reception counter. A
+     * flat prop is drawn 1 cm over whatever surface the sim says is under it, and
+     * 1 cm at this camera's depth range is inside the noise once anything else is
+     * drawn in the same plane — the lobby slab, a stair nosing, another decal.
+     *
+     * `polygonOffset` is the standard answer and it is exact: it biases the depth
+     * the decal is TESTED at rather than moving the decal, so nothing shifts on
+     * screen. `depthWrite: false` keeps one translucent decal from clipping the
+     * next one where two overlap, which is the second half of the same report.
+     */
+    mat.polygonOffset = spec.flat === true;
+    mat.polygonOffsetFactor = -2;
+    mat.polygonOffsetUnits = -4;
+    mat.depthWrite = spec.flat !== true;
   }
 
   /**
@@ -2243,6 +2271,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    * `Prop.state`: dark, amber-waiting, or printing a badge.
    */
   function drawPrinter(p: Prop, floorY: number): void {
+    if (venuePrinter) venuePrinter.visible = false;
     printer.root.visible = true;
     printer.pose(p, surfaceY(floorY, p.x, p.y));
   }
@@ -2534,6 +2563,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     if (venueRoller) venueRoller.visible = true;
     if (venueGate) venueGate.visible = true;
     if (venueKeypad) venueKeypad.visible = true;
+    if (venuePrinter) venuePrinter.visible = true;
     for (const p of snap.props) {
       if (p.kind === 'cable') drawCable(p, floorY);
       else if (p.kind === 'firedoor') drawFireDoor(p, floorY, snap.walls);
