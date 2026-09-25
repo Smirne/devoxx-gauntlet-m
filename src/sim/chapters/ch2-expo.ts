@@ -1433,7 +1433,46 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
             ? 'supply ON — the hall is still dark (the router has not authorised)'
             : `breakers ${BREAKERS - breakersLeft}/${BREAKERS} (high)`,
       },
-      { kind: 'rack', ...GF.rack, state: cable.carrying || cable.connected ? 'active' : 'idle', label: 'network rack' },
+      /*
+       * THE RACK, and the two things Michele asked it for on 25 Sep 2026:
+       * *"I'd like some glow from the rack cabinet when modem is up (after the 3
+       * sockets)"* and *"The cable start is not much visible, one has to know
+       * where to look."*
+       *
+       * They are the same request. The rack is where the cable run STARTS, and it
+       * was keyed to the cable itself — so it only lit up once you had already
+       * found it and picked the end up, which is the one moment the player does
+       * not need telling. It rides the SUPPLY now, like the cabinet's pilot lamp
+       * four metres away: dark with no volts in it, awake the moment the third
+       * handle goes up, green once the router is on the air. A rack with its link
+       * lights on in a black room is a thing you walk towards.
+       */
+      {
+        kind: 'rack',
+        ...GF.rack,
+        state: cable.connected ? 'done' : power || cable.carrying ? 'active' : 'idle',
+        label: power ? 'network rack — patch panel live, the cable starts here' : 'network rack — dark, no supply',
+      },
+      /*
+       * ...and its own row of link lights, on top of the carcass, because the rack
+       * body's `active` tint is a shelf glowing slightly and what is wanted is a
+       * LAMP. Same three states and the same `pilot` kind as the cabinet's, which
+       * is the one visual language this chapter uses for "there is something
+       * running in here".
+       */
+      {
+        kind: 'rack-lights',
+        x: GF.rack.x,
+        y: GF.rack.y + GF.rack.h - 2,
+        w: GF.rack.w,
+        h: 3,
+        state: cable.connected ? 'done' : power ? 'active' : 'idle',
+        label: !power
+          ? 'rack link lights — dark'
+          : cable.connected
+            ? 'rack link lights — the run is in at reception'
+            : 'rack link lights — a patch lead coiled on the shelf, ready to run',
+      },
       {
         kind: 'printer',
         ...GF.printer,
@@ -1869,7 +1908,20 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     return [
       {
         id: 'power',
-        text: 'get the power back on',
+        /*
+         * Michele, 25 Sep 2026: *"getting the router up is part of restoring the
+         * power, task 1 on it's own has no effect. Maybe task 1 could be 'power up
+         * the technical room'?"*
+         *
+         * He is right about the fiction and about the feedback. Three handles in
+         * the technical room put a supply on the busbar and the hall stays dark —
+         * the lights do not come on until the router has authorised — so a row
+         * that promised "the power back on" was writing a cheque the next task
+         * cashes. What the handles actually do is wake the room they are in, and
+         * that is what the player sees: the panel, the cabinet's pilot and the
+         * rack all come up, four metres apart, and nothing else does.
+         */
+        text: 'power up the technical room',
         done: power,
         who: ['droid'],
         at: panelStand,

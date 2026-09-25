@@ -186,6 +186,11 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
    * handles and the beer taps.
    */
   pilot: { h: 0.1, tl: true, lift: 1.78 },
+  /**
+   * The network rack's link lights: the same annunciator, at the rack's height.
+   * Hung, like the pilot — nothing walks into a row of LEDs on top of a rack.
+   */
+  'rack-lights': { h: 0.08, tl: true, lift: 1.86 },
   crate: { h: 0.34 },
   cable: { h: 0.02, flat: true },
 });
