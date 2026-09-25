@@ -34,7 +34,7 @@ import { JAMMED_DOOR_SPEED, MOUNT_BIGGY_MAX_SPEED, MOUNT_REACH, SPEED_SCALE, T, 
 import { PX_PER_M, m } from '../units';
 import { buildLights, clueLit, litBy } from '../lights';
 import { dist, speed } from '../bot';
-import type { Clue, LightSource, Mirror, Plate, Prop, Rect, Task, Wall } from '../types';
+import type { Clue, CutRoute, LightSource, Mirror, Plate, Prop, Rect, Task, Vec2, Wall } from '../types';
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 import { CRATE_RECTS, STAND_AT, STAND_FACE } from '../opening';
 
@@ -802,47 +802,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   /** The exit: out of the closed section, down the secondary staircase. */
   function leave(): void {
-    // Out of the closed section and down the secondary staircase on the near wall
-    // — the one the plan puts level with room 4, standing in the corridor rather
-    // than recessed behind it (`F1.nicheBot`, and Michele's 24 Sep ruling in
-    // `src/sim/geometry.ts`'s header).
-    //
-    // The descent waypoint is the HEAD of that flight — `nicheMouth`, the top step
-    // at its world-east end, which is the only part of it at corridor level.
-    //
-    // It was the centre of the flight until 24 Sep 2026, when Michele read the
-    // plan symbol back to us: *"This makes it look like there's a center, and 2
-    // descent. I think it's a mid plane between two ramps of stairs."* It is one
-    // staircase with a half-landing, so the centre is now a wall and the way on is
-    // an end (`nicheMouth` in `src/sim/geometry.ts` has the measurement). Derived
-    // from the geometry, so it cannot go stale the next time the flight moves —
-    // which is the third time it has moved in two days.
-    const nb = F1.nicheBot;
-    /*
-     * A loose diagonal, not a column.
-     *
-     * The three used to walk this with only a `dy` offset — 14 px apart along the
-     * diorama camera's own depth axis — so at the closer cutscene framing Biggy
-     * stood in front of the other two and the shot was one robot and two hats.
-     * Staggered in x as well they read as three, Voxxy out in front because she is
-     * the quick one, and they converge on the stairwell mouth for the descent.
-     */
-    const top = nicheMouth(nb);
-    const head = { x: top.x + top.w / 2, y: top.y + top.h / 2 };
-    const route = (dx: number, dy: number): Array<{ x: number; y: number }> => [
-      { x: F1.fireX + 30 + dx, y: 350 + dy },
-      { x: head.x + dx, y: 350 + dy },
-      { ...head },
-    ];
-    ctx.startCut(
-      [
-        { kind: 'voxxy', pts: route(18, -14) },
-        { kind: 'droid', pts: route(0, 0) },
-        { kind: 'biggy', pts: route(-18, 14) },
-      ],
-      () => ctx.startChapter(2),
-      VIEW_F1,
-    );
+    ctx.startCut(stairExitRoutes(), () => ctx.startChapter(2), VIEW_F1);
   }
 
   /* --------------------------------------------------------------------- keys */
@@ -1166,6 +1126,83 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
  */
 export function clueProgress(lights: LightSource[], clue: Clue): number {
   return clue.need.filter((k) => litBy(lights, k, clue)).length;
+}
+
+/**
+ * The closing cutscene's route: out of the closed section, down the secondary
+ * staircase on the near wall — the one the plan puts level with room 4, standing
+ * in the corridor rather than recessed behind it (`F1.nicheBot`, and Michele's
+ * 24 Sep ruling in `src/sim/geometry.ts`'s header).
+ *
+ * The descent waypoint is the HEAD of that flight — `nicheMouth`, the top step at
+ * its world-east end, which is the only part of it at corridor level. It was the
+ * centre of the flight until 24 Sep 2026, when Michele read the plan symbol back
+ * to us: *"This makes it look like there's a center, and 2 descent. I think it's
+ * a mid plane between two ramps of stairs."* It is one staircase with a
+ * half-landing, so the centre is now a wall and the way on is an END.
+ *
+ * **And the way on is round the end.** Michele, twice: *"Robots still go throuh
+ * the handrail in the chapter transiction."* They did, and it was this route: the
+ * last leg ran from the middle of the corridor straight south into `head`, which
+ * crosses the balustrade `floor1Walls()` stands across the mouth — the wall whose
+ * own `why` says *"the way on is round the end, off the corridor"*. A cutscene
+ * ignores walls on purpose (`game.ts`), so nothing stopped them and nothing
+ * complained; the shot was three robots stepping through a handrail.
+ *
+ * So the route now does what the geometry says: along the corridor, past the
+ * flight, turn in at `TURN_X` — clear of the balustrade's east end — and walk
+ * WEST into the pocket along its own axis, which is the one side that is open.
+ * They arrive in file rather than in a heap, deepest first, and Biggy stops at
+ * the mouth, which is also the truth of the building: 1.30 m clear and he is
+ * 1.44 (`NICHE_RAIL`, and his own line on that wall).
+ *
+ * Exported because `tests/staircase-clear.test.ts` walks the legs against the
+ * floor's walls. The fault was invisible to every test in the repo, which asked
+ * where a robot may WALK and never where a cutscene sends one.
+ */
+export function stairExitRoutes(): CutRoute[] {
+  const nb = F1.nicheBot;
+  const top = nicheMouth(nb);
+  /** The head of the flight: the centre of the top step. */
+  const head = { x: top.x + top.w / 2, y: top.y + top.h / 2 };
+  /**
+   * Where they turn off the corridor, east of the flight's open end.
+   *
+   * Far enough that Biggy — 9 px of radius — clears the end of the balustrade at
+   * `nb.x + nb.w` with room to spare, and well short of the corridor column at
+   * x 1198 (`corridorColumns()` leaves this stretch empty for the stair).
+   */
+  const TURN_X = nb.x + nb.w + 20;
+  /**
+   * A loose diagonal, not a column.
+   *
+   * The three used to walk this with only a `dy` offset — 14 px apart along the
+   * diorama camera's own depth axis — so at the closer cutscene framing Biggy
+   * stood in front of the other two and the shot was one robot and two hats.
+   * Staggered in x as well they read as three, Voxxy out in front because she is
+   * the quick one. The stagger is spent by the turn: the pocket is one robot
+   * wide, so the file below is what goes in.
+   */
+  const lead = (dx: number, dy: number): Vec2[] => [
+    { x: F1.fireX + 30 + dx, y: 350 + dy },
+    { x: TURN_X + dx, y: 350 + dy },
+  ];
+  /*
+   * Who actually gets on the step, and who queues behind.
+   *
+   * Only one robot fits in the pocket: Voxxy's 4.75 and Droid's 6.25 of radius
+   * want 11 px of separation and the mouth is 17.7 wide, so the second of them is
+   * already back in the corridor. Voxxy takes the step — she is the one out in
+   * front all the way down the corridor — Droid stands at the turn, and Biggy
+   * waits a robot further back, which is the truth of that flight anyway: 1.30 m
+   * clear and he is 1.44. They are a queue at the head of the stairs, not three
+   * robots standing inside one another on it.
+   */
+  return [
+    { kind: 'voxxy', pts: [...lead(18, -14), { x: TURN_X, y: head.y }, { ...head }] },
+    { kind: 'droid', pts: [...lead(0, 0), { x: TURN_X, y: head.y - 2 }] },
+    { kind: 'biggy', pts: [...lead(-18, 14), { x: TURN_X + 18, y: head.y - 6 }] },
+  ];
 }
 
 export const ch1Night: ChapterDef = { n: 1, title: '1 · Night — the closed cinema section', setup };

@@ -44,7 +44,9 @@ import {
   nicheMouth,
   roomDoor,
   type Rect,
+  type RobotKind,
 } from '../src/sim';
+import { stairExitRoutes } from '../src/sim/chapters/ch1-night';
 
 /** Do two rectangles overlap at all? */
 const hits = (a: Rect, b: Rect): boolean =>
@@ -318,6 +320,85 @@ describe('the two secondary staircases upstairs are clear too', () => {
         runs.some((w) => centre.x > w.x && centre.x < w.x + w.w && centre.y > w.y && centre.y < w.y + w.h),
         `the middle of the ${name} flight is still walkable`,
       ).toBe(true);
+    }
+  });
+});
+
+/**
+ * ...and the chapter-1 exit cutscene walks round the balustrade, not through it.
+ *
+ * Michele, twice, the second time after a round that had not touched it: *"Robots
+ * still go throuh the handrail in the chapter transiction."* He was right both
+ * times. The closing route ran along the corridor to a point above the mouth and
+ * then straight south into the top step, which crosses the balustrade
+ * `floor1Walls()` stands across that mouth — the wall whose own `why` tells the
+ * player *"the way on is round the end, off the corridor"*.
+ *
+ * Nothing caught it because a cutscene ignores walls on purpose (`game.ts`: the
+ * shot has to be able to walk through the doorway it is being framed through), and
+ * because every test in this repo asked where a robot may DRIVE. This one asks
+ * where the chapter SENDS one, which is the question that was missing.
+ *
+ * The legs are sampled rather than solved: a segment/rect intersection would be
+ * exact, but the sample is what a viewer sees — a robot's centre, frame by frame —
+ * and it reports the offending leg and point instead of a boolean.
+ */
+describe('chapter 1 leaves by the stairs, not through them', () => {
+  /** The walls a cutscene may not be seen to cross. Doorways are not among them. */
+  const solid = floor1Walls().filter((w) => !w.hidden && !w.glass && !w.low);
+
+  it('never walks a robot through a wall on the way out', () => {
+    const fouls: string[] = [];
+    for (const { kind, pts } of stairExitRoutes()) {
+      const rad = DEFS[kind].r;
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1];
+        const b = pts[i];
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        const n = Math.max(2, Math.ceil(len / 0.5));
+        for (let s = 0; s <= n; s++) {
+          const p = { x: a.x + ((b.x - a.x) * s) / n, y: a.y + ((b.y - a.y) * s) / n };
+          for (const w of solid) {
+            // The robot is a disc, not a point: grazing the end of the handrail
+            // reads as walking through it just as plainly as crossing the middle.
+            if (p.x > w.x - rad && p.x < w.x + w.w + rad && p.y > w.y - rad && p.y < w.y + w.h + rad) {
+              fouls.push(`${kind} leg ${i} at (${p.x.toFixed(1)}, ${p.y.toFixed(1)}) is inside ${w.kind ?? 'wall'} ${w.x.toFixed(1)},${w.y.toFixed(1)} ${w.w.toFixed(1)}x${w.h.toFixed(1)}`);
+            }
+          }
+        }
+      }
+    }
+    expect([...new Set(fouls)].slice(0, 6), 'the exit cutscene walks through walls').toEqual([]);
+  });
+
+  it('turns in past the east end of the flight', () => {
+    const nb = F1.nicheBot;
+    const rail = floor1Walls().find((w) => w.kind === 'stair-rail-near');
+    expect(rail, 'the near balustrade is gone').toBeDefined();
+    for (const { kind, pts } of stairExitRoutes()) {
+      // Every point that is south of the balustrade — i.e. on the stair side of it
+      // — was reached from the open east end, never over the rail.
+      const turn = pts.findIndex((p) => p.y > (rail as { y: number }).y);
+      expect(turn, `${kind} never reaches the stair`).toBeGreaterThan(0);
+      expect(pts[turn].x, `${kind} turns in over the balustrade`).toBeGreaterThan(nb.x + nb.w);
+    }
+  });
+
+  it('ends with the three queued at the head, not in a heap', () => {
+    const at = new Map(stairExitRoutes().map((r) => [r.kind, r.pts[r.pts.length - 1]]));
+    const order: RobotKind[] = ['voxxy', 'droid', 'biggy'];
+    for (let i = 1; i < order.length; i++) {
+      const a = at.get(order[i - 1]) as { x: number; y: number };
+      const b = at.get(order[i]) as { x: number; y: number };
+      const gap = Math.hypot(b.x - a.x, b.y - a.y);
+      expect(gap, `${order[i - 1]} and ${order[i]} finish inside each other`).toBeGreaterThan(DEFS[order[i - 1]].r + DEFS[order[i]].r);
+    }
+    // Voxxy takes the step; the other two are still in the corridor, because only
+    // one robot fits in a 17.7 px mouth and Biggy does not fit in it at all.
+    const mouth = nicheMouth(F1.nicheBot);
+    expect((at.get('voxxy') as { x: number }).x).toBeLessThan(mouth.x + mouth.w);
+    for (const k of ['droid', 'biggy'] as const) {
+      expect((at.get(k) as { x: number }).x, `${k} is standing on the top step`).toBeGreaterThan(mouth.x + mouth.w);
     }
   });
 });
