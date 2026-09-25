@@ -743,7 +743,6 @@ function paintFace(layout: CrateLayout, crate: CrateGeom, seed: number): Paint {
     // --- band 3: the crate's own corner block, lower left. Biggy's stops well
     // short of his right-hand end: that is where the crate is stoved in.
     const arrow = crate.kind === 'voxxy';
-    const red = crate.kind !== 'droid';
     const textX = (arrow ? SMALL_MARGIN + 0.28 : SMALL_MARGIN) * s;
     const room =
       (crate.kind === 'biggy' ? crate.width * 0.56 : crate.width - 2 * SMALL_MARGIN) * s -
@@ -753,7 +752,7 @@ function paintFace(layout: CrateLayout, crate: CrateGeom, seed: number): Paint {
     const lead = cornerCap * 1.62;
     const blockTop = toY(layout.band.cornerTop);
     crate.corner.forEach((line, i) => {
-      sprayLine(lc, line, textX, blockTop + cornerCap + i * lead, cornerCap, cornerCap * 0.07, red ? INK_RED : INK, r);
+      sprayLine(lc, line, textX, blockTop + cornerCap + i * lead, cornerCap, cornerCap * 0.07, INK_RED, r); // every warning in oxide red, Droid's too (Michele, 25 Sep)
     });
     if (arrow) {
       // "THIS WAY UP", and it is upside down. Michele's note, taken literally.

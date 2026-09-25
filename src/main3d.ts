@@ -264,7 +264,11 @@ window.addEventListener('keydown', (ev) => {
     if (code === 'KeyI') hud.toggleTasks();
     if (code === 'KeyH') hud.nudge();
   }
-  if (code === 'Escape') hud.closeTasks();
+  // Any other key closes the sheet too — the one that opens at chapter start
+  // used to need Escape, I or a click outside (Michele: "I thought any key would
+  // do"). Only the overlay keys that act on the sheet or the view leave it open;
+  // a movement key closes it and moves.
+  if (!SHEET_KEEPS.has(code)) hud.closeTasks();
   // Q cycles the render quality. The pipeline is built for one quality, so the
   // choice is remembered and the page reloads into it.
   if (code === 'KeyQ' && !game.snapshot().typing) {
@@ -284,6 +288,8 @@ window.addEventListener('keydown', (ev) => {
   }
   game.key(code);
 });
+/** Keys that leave the run sheet open: I and H act on it; mute, music, photo and quality are about the view. */
+const SHEET_KEEPS = new Set(['KeyI', 'KeyH', 'KeyM', 'KeyN', 'KeyP', 'KeyQ', 'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight']);
 window.addEventListener('keyup', (ev) => {
   const axis = MOVE[codeOf(ev)];
   if (axis) {

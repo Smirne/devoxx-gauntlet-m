@@ -24,6 +24,7 @@ import {
   TRAVEL_TIME_SCALE,
 } from './constants';
 import { VIEW_CLOSED, groundPlates } from './geometry';
+import { STORY } from './story';
 import { CRATE_AT, STAND_AT, STAND_FACE, openingAt, openingView } from './opening';
 import {
   botsCollide,
@@ -154,9 +155,7 @@ const CUT_ANIM_DIV = 18;
  */
 const TITLE_CARD =
   '<b>AFTER DARK</b><br>' +
-  '<span class="sub">Kinepolis Antwerp, the night before Devoxx. <b>Stephan</b> lost the keys — the humans are ' +
-  'locked out until morning, but three robots are already inside, set up for the conference. The power is out ' +
-  'in the closed cinema section, and somewhere a keynote has to happen after breakfast.<br>' +
+  `<span class="sub">${STORY}<br>` +
   'Three robots. Two floors. Four chapters.</span><small>Press any key</small>';
 const TITLE_OBJECTIVE =
   '<b>After Dark</b> — the night before Devoxx, a power cut, three robots, two floors of Kinepolis and one keynote to save.';
