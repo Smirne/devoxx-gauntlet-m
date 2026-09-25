@@ -26,8 +26,8 @@ export {
   presentationLight,
   BONE_NAMES,
   EXCLUDE_FROM_BOUNDS,
-  PRESENT_FLOOR,
-  PRESENT_RANGE,
+  PRESENT_TARGET,
+  PRESENT_MAX_GAIN,
 } from './rig';
 export type { PoseName, GaitParams } from './gait';
 export {

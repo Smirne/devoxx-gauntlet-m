@@ -272,6 +272,9 @@ function onKeyDown(ev: KeyboardEvent): void {
     if (code === 'KeyI') hud.toggleTasks();
     if (code === 'KeyH') hud.nudge();
   }
+  // Escape closes the run sheet wherever it is, including mid-password: it is the
+  // one key nobody has to be told about.
+  if (code === 'Escape') hud.closeTasks();
   // Everything the sim understands, plus whatever dismisses a card ("press any key").
   game.key(code);
 }

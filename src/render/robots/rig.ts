@@ -354,11 +354,31 @@ export function glowMaterial(
  * A flat white lift turns three robots into three grey ghosts, and the one thing
  * the beat exists for is that Voxxy is orange, Droid is graphite and Biggy is
  * rusted orange under a blue-grey dome. So the lift is the material's own colour,
- * re-exposed: each panel is scaled to the linear luminance
- * `PRESENT_FLOOR + PRESENT_RANGE * sqrt(lum)` of its own. The square root is what
- * keeps the robot's internal tonal range — Droid's near-black panels come up a
- * long way, Voxxy's orange shell hardly moves, and the two are still plainly
- * different materials rather than the same mid-grey.
+ * re-exposed.
+ *
+ * ## ONE GAIN PER ROBOT, which is what a light actually does
+ *
+ * The first cut scaled EACH PANEL to a target luminance of its own
+ * (`floor + range * sqrt(lum)`). That is tone compression, not lighting, and it
+ * had two effects nobody wanted. It squashed each robot's internal contrast —
+ * a near-black panel and a mid panel both arrived in the same narrow band — and
+ * it exposed a charcoal robot to the same brightness as the pale tan crates he
+ * is standing in front of. Michele, on the first build of it: *"Colours are a
+ * bit off: Droid and biggy are whitey-grey."* He was right, and the sheet says
+ * so: `robots/droid-robot.png` is dark charcoal with warm amber accents, and the
+ * lift was taking his main panel from luminance 0.053 to 0.201 — a mid grey.
+ *
+ * Saturation was never the fault; it was preserved exactly. **Brightness was.** A
+ * low-saturation colour made four times brighter reads as grey, which is why
+ * Voxxy (saturation 0.99) survived it and Droid (0.47) and Biggy (0.54) did not.
+ *
+ * So: one scalar per rig, chosen so the robot's MEAN panel luminance reaches
+ * `PRESENT_TARGET`, and every panel multiplied by that same scalar. Dark stays
+ * dark relative to light, every hue holds, and the robot is simply the robot with
+ * a light on it. The gain is never below 1 — a presentation light may not make a
+ * robot darker than it is — and never above `PRESENT_MAX_GAIN`, or Droid's
+ * near-black recesses would be dragged up into his mid tones and flatten him the
+ * other way.
  *
  * ## The trap this deliberately avoids
  *
@@ -376,13 +396,27 @@ export function glowMaterial(
  * `rig.glow` is skipped.
  */
 
-/** Linear luminance the darkest panel is lifted to at `v = 1`. */
-export const PRESENT_FLOOR = 0.1;
-/** ...plus this much, by the square root of the panel's own luminance. */
-export const PRESENT_RANGE = 0.44;
+/**
+ * The mean panel luminance a rig is exposed to at `v = 1`.
+ *
+ * Measured against the set rather than guessed: the crates stand at
+ * `OPEN_CRATE_LIT` and up, and a robot in front of them should read as a LIT
+ * OBJECT rather than as another pale box. At 0.14 Droid's charcoal body lands
+ * near 0.12 — dark, but plainly lit — against the 0.201 the old per-panel target
+ * gave it, which is a mid grey and is what he reported. Voxxy needs no lift at
+ * all (his own mean is above this), which is right: he is the orange one.
+ */
+export const PRESENT_TARGET = 0.14;
 
-/** The exposure a panel of luminance `lum` is lifted to at `v = 1`. */
-const presentLum = (lum: number): number => PRESENT_FLOOR + PRESENT_RANGE * Math.sqrt(clamp(lum, 0, 1));
+/**
+ * The most a rig may be scaled by, however dark it is.
+ *
+ * Without it a very dark rig gets a very large gain, which drags its near-black
+ * recesses — panel gaps, shadow lines, the dirt in a weathered seam — up into its
+ * mid tones and flattens the robot just as badly as the old formula did, only
+ * from the other direction.
+ */
+export const PRESENT_MAX_GAIN = 4;
 
 /**
  * The luminance a PAINTED panel's average texel is taken to sit at.
@@ -403,6 +437,21 @@ const presentLum = (lum: number): number => PRESENT_FLOOR + PRESENT_RANGE * Math
  */
 const MAP_REF_LUM = 0.25;
 
+/**
+ * The gain that takes this rig's mean panel luminance to `PRESENT_TARGET`.
+ *
+ * The mean is over the panels the light actually touches — `rig.glow` and pure
+ * blacks are already excluded by the caller — and a mapped panel contributes
+ * `MAP_REF_LUM`, since its colour is `#ffffff` and its luminance lives in the
+ * texture. Never below 1 and never above `PRESENT_MAX_GAIN`.
+ */
+function rigGain(lums: readonly number[]): number {
+  if (lums.length === 0) return 1;
+  const mean = lums.reduce((a, b) => a + b, 0) / lums.length;
+  if (mean <= 1e-5) return PRESENT_MAX_GAIN;
+  return clamp(PRESENT_TARGET / mean, 1, PRESENT_MAX_GAIN);
+}
+
 interface PresentEntry {
   mat: THREE.MeshStandardMaterial;
   /** The emissive the material was built with — restored exactly at `v = 0`. */
@@ -420,6 +469,8 @@ function presentEntries(rig: RobotRig): PresentEntry[] {
   const skip = new Set<THREE.Material>(rig.glow);
   const seen = new Set<THREE.Material>();
   const out: PresentEntry[] = [];
+  /** Every panel the light touches, with the luminance the gain is set from. */
+  const lit: Array<{ mat: THREE.MeshStandardMaterial; lum: number }> = [];
   rig.root.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
@@ -448,26 +499,52 @@ function presentEntries(rig: RobotRig): PresentEntry[] {
           mat.emissiveMap = mat.map;
           mat.needsUpdate = true;
         }
-        const k = presentLum(MAP_REF_LUM) / MAP_REF_LUM;
-        // Not clamped at 1: the hue lives in the texture, so this is an exposure
-        // on the art rather than a colour of its own.
-        out.push({ mat, base: mat.emissive.clone(), lift: new THREE.Color(c.r * k, c.g * k, c.b * k) });
+        // Its colour is #ffffff and its luminance lives in the texture, so it
+        // weighs in at the paint's own reference value.
+        lit.push({ mat, lum: MAP_REF_LUM });
         continue;
       }
-      const lum = Math.max(1e-5, relLum(c.r, c.g, c.b));
-      const k = presentLum(lum) / lum;
-      out.push({
-        mat,
-        base: mat.emissive.clone(),
-        // Held at 1 per channel: emissive above 1 is just clipping, and on a
-        // saturated shell (Voxxy's orange is at the red primary already) it
-        // would drag the hue toward white instead of making it brighter.
-        lift: new THREE.Color(clamp(c.r * k, 0, 1), clamp(c.g * k, 0, 1), clamp(c.b * k, 0, 1)),
-      });
+      lit.push({ mat, lum: Math.max(1e-5, relLum(c.r, c.g, c.b)) });
     }
   });
+
+  /*
+   * ONE GAIN FOR THE WHOLE RIG. Every panel is multiplied by the same scalar, so
+   * the robot's own tonal range survives the light instead of being compressed
+   * into it — see the header. A per-panel target is what turned Droid into a mid
+   * grey.
+   */
+  const gain = rigGain(lit.map((e) => e.lum));
+  for (const { mat } of lit) {
+    const c = mat.color;
+    /*
+     * A MAPPED panel is not capped. Its colour is `#ffffff` and its hue lives in
+     * the emissive map, so the emissive here is a pure exposure on the art and
+     * pushing it past 1 shifts nothing — capping it would just quietly drop the
+     * rig's gain on the one panel that carries Biggy's orange.
+     *
+     * An UNMAPPED panel is capped PROPORTIONALLY, never per channel: dividing
+     * each channel by its own excess is what turns a saturated colour white at
+     * the top of its range, while scaling the whole triple by one factor keeps
+     * the hue exactly and gives up only the brightness there was no room for.
+     */
+    out.push({
+      mat,
+      base: mat.emissive.clone(),
+      lift: mat.map
+        ? new THREE.Color(c.r * gain, c.g * gain, c.b * gain)
+        : capped(c.r * gain, c.g * gain, c.b * gain),
+    });
+  }
   rig.root.userData[PRESENT_KEY] = out;
   return out;
+}
+
+/** `(r, g, b)` scaled down as a whole until nothing is over 1. Hue is exact. */
+function capped(r: number, g: number, b: number): THREE.Color {
+  const mx = Math.max(r, g, b);
+  const k = mx > 1 ? 1 / mx : 1;
+  return new THREE.Color(r * k, g * k, b * k);
 }
 
 /**
