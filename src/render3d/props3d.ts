@@ -268,28 +268,46 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
         return s;
       }
       case 'keypad': {
+        // Frontage to the corridor (south, +z): the sim turned the housing on
+        // its side, 19 x 12 px, so the four digits face whoever walks up
+        // (a629e10). The 3D keys were still on its narrow west end, and in the
+        // dark by the fire door the pad could not be found at all (Michele,
+        // 25 Sep: "where's the keypad?"). A backlit bezel pulses until the code
+        // is in, and a lamp in front lights whoever is typing.
         const g = new THREE.Group();
         const w = m(p.w ?? 8);
         const d = m(p.h ?? 24);
         const ped = new THREE.Mesh(box(w, 1.05, d, V(0, 0.525, 0)), mats.enamel);
         ped.castShadow = true;
         ped.receiveShadow = true;
-        const face = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.62, 0.5), mats.darkMetal);
-        face.position.set(-w / 2 - 0.02, 1.35, 0);
-        face.rotation.z = 0.25;
-        const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.13), new THREE.MeshBasicMaterial({ map: lcdTex.texture, color: new THREE.Color(1, 1, 1).multiplyScalar(3), toneMapped: false }));
-        screen.position.set(-w / 2 - 0.05, 1.56, 0);
-        screen.rotation.y = -Math.PI / 2;
-        screen.rotation.x = 0;
-        const keys = new THREE.InstancedMesh(new THREE.BoxGeometry(0.02, 0.07, 0.08), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 0.9, 1).multiplyScalar(4), toneMapped: false }), 12);
-        for (let i = 0; i < 12; i++) keys.setMatrixAt(i, new THREE.Matrix4().makeTranslation(-w / 2 - 0.06, 1.42 - Math.floor(i / 3) * 0.1, -0.1 + (i % 3) * 0.1));
+        const panel = new THREE.Group();
+        panel.position.set(0, 1.32, d / 2 + 0.02);
+        panel.rotation.x = -0.3;
+        const face = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.54, 0.04), mats.darkMetal);
+        const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.44, 0.15), new THREE.MeshBasicMaterial({ map: lcdTex.texture, color: new THREE.Color(1, 1, 1).multiplyScalar(3), toneMapped: false }));
+        screen.position.set(0, 0.16, 0.025);
+        const keys = new THREE.InstancedMesh(new THREE.BoxGeometry(0.085, 0.06, 0.02), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 0.9, 1).multiplyScalar(4), toneMapped: false }), 12);
+        for (let i = 0; i < 12; i++) keys.setMatrixAt(i, new THREE.Matrix4().makeTranslation(-0.1 + (i % 3) * 0.1, 0.03 - Math.floor(i / 3) * 0.075, 0.03));
         const led = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 8), panelLed.clone());
-        led.position.set(-w / 2 - 0.05, 1.68, 0.18);
-        g.add(ped, face, screen, keys, led);
+        led.position.set(0.27, 0.16, 0.03);
+        const bezelMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 0.9, 1).multiplyScalar(5), toneMapped: false });
+        for (const [bw, bh, bx, by] of [
+          [0.72, 0.025, 0, 0.285],
+          [0.72, 0.025, 0, -0.285],
+          [0.025, 0.57, 0.36, 0],
+          [0.025, 0.57, -0.36, 0],
+        ]) {
+          const bar = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, 0.03), bezelMat);
+          bar.position.set(bx, by, 0.015);
+          panel.add(bar);
+        }
+        panel.add(face, screen, keys, led);
+        g.add(ped, panel);
         g.userData.led = led;
+        g.userData.bezel = bezelMat;
         g.position.set(m(p.x + (p.w ?? 8) / 2), 0, m(p.y + (p.h ?? 24) / 2));
-        const kl = new THREE.PointLight(0x40e0ff, 12, 3.5, 2);
-        kl.position.set(-0.6, 1.5, 0);
+        const kl = new THREE.PointLight(0x40e0ff, 22, 4.5, 2);
+        kl.position.set(0, 1.6, d / 2 + 0.7);
         g.add(kl);
         return g;
       }
@@ -465,6 +483,7 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
             }
             const led = o.userData.led as THREE.Mesh;
             (led.material as THREE.MeshBasicMaterial).color.setRGB(ok ? 0.1 : 1, ok ? 1 : 0.05, 0.05).multiplyScalar(ok ? 12 : 6 + 6 * (Math.sin(t * 6) > 0 ? 1 : 0));
+            (o.userData.bezel as THREE.MeshBasicMaterial).color.setRGB(ok ? 0.15 : 0.3, ok ? 1 : 0.9, ok ? 0.35 : 1).multiplyScalar(ok ? 3 : 3 + 3 * (0.5 + 0.5 * Math.sin(t * 3)));
             break;
           }
           case 'projector-panel': {

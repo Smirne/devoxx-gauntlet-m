@@ -210,12 +210,17 @@ export function createRobots(parent: THREE.Object3D, shadowSize: number): Map<Ro
 
 const _p = new THREE.Vector3();
 let mountLiftM: number | null = null;
+/** How far above Biggy's crown Droid's pelvis rides, m. */
+const RIDE_CLEAR = 0.1;
 
 function mountLift(droid: RobotRig): number {
   if (mountLiftM !== null) return mountLiftM;
   droid.root.updateMatrixWorld(true);
   const pelvisY = new THREE.Vector3().setFromMatrixPosition(droid.bones.pelvis.matrixWorld).y - droid.root.position.y;
-  mountLiftM = ROBOT_HEIGHT_M.biggy - pelvisY - 0.02;
+  // Sitting ON the lid, not in it: the 2.5D lift (pelvis 2 cm into the crown)
+  // reads from above; at eye level his hips vanished into the dome (Michele,
+  // 25 Sep: "droid is still a bit sinking into biggy").
+  mountLiftM = ROBOT_HEIGHT_M.biggy - pelvisY + RIDE_CLEAR;
   return mountLiftM;
 }
 
