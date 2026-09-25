@@ -1196,6 +1196,13 @@ export interface CratesModel {
    * corridor. Emissive only; this adds no `THREE.Light`.
    */
   setLit(v: number): void;
+  /**
+   * 0..1 on the emergency bulkhead over the row — the fitting the opening is lit
+   * by, and the one that gives out at the end of it (`emergencyAt` in
+   * `src/sim/opening.ts`). Emissive only; the point light that goes with it is
+   * `src/render/lighting.ts`'s.
+   */
+  setEmergency(v: number): void;
   dispose(): void;
 }
 
@@ -1432,6 +1439,60 @@ export function buildCrates(opts: CratesOptions = {}): CratesModel {
     return model;
   });
 
+  /* ------------------------------------------------- the light over the row
+   *
+   * Michele: *"There's a light on the crates, robot exit fully visible. Light
+   * (emergency light?) flickers and stops, robots light up -> transition to
+   * game."*
+   *
+   * This is the fitting. A bulkhead on the corridor's west wall above the crates:
+   * a cast body, a milky lens and a wire guard over it, which is what the last
+   * light still running in a building with the power out looks like. The lens is
+   * emissive only — no `THREE.Light` goes inside this module, which is the rule
+   * the boarding's work light already follows — and `src/render/lighting.ts`
+   * hangs the actual point light at the same place off the same number.
+   *
+   * It is a child of `root`, so the quarter-turn that backs the crates onto the
+   * wall carries it there too: local -z is into the wall, local +z is out over
+   * the row.
+   */
+  const BULKHEAD_Y = 2.55;
+  const BULKHEAD_Z = -1.62;
+  const lensMat = new THREE.MeshStandardMaterial({
+    name: 'crate/bulkhead-lens',
+    color: new THREE.Color('#e8f3ea'),
+    emissive: new THREE.Color('#bdf0d2'),
+    emissiveIntensity: 1,
+    roughness: 0.55,
+    metalness: 0,
+    toneMapped: false,
+  });
+  const caseMat = new THREE.MeshStandardMaterial({
+    name: 'crate/bulkhead-case',
+    color: new THREE.Color('#2b3038'),
+    roughness: 0.8,
+    metalness: 0.2,
+    flatShading: true,
+  });
+  owned.push(lensMat, caseMat);
+  const bulkhead = new THREE.Group();
+  bulkhead.name = 'crate-bulkhead';
+  bulkhead.position.set(0, BULKHEAD_Y, BULKHEAD_Z);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.26, 0.09), caseMat);
+  back.position.set(0, 0, -0.045);
+  const lens = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.19, 0.11), lensMat);
+  lens.name = 'crate-bulkhead-lens';
+  lens.position.set(0, 0, 0.05);
+  bulkhead.add(back, lens);
+  // The guard: three bars across the lens, the detail that says "emergency
+  // fitting" rather than "lamp" at a glance.
+  for (let i = -1; i <= 1; i++) {
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.23, 0.02), caseMat);
+    bar.position.set(i * 0.14, 0, 0.11);
+    bulkhead.add(bar);
+  }
+  root.add(bulkhead);
+
   const byKind = (kind: RobotKind): CrateModel => {
     const hit = models.find((c) => c.kind === kind);
     if (!hit) throw new Error(`no crate for "${String(kind)}"`);
@@ -1445,6 +1506,14 @@ export function buildCrates(opts: CratesOptions = {}): CratesModel {
     byKind,
     setLamp(v: number): void {
       for (const c of models) c.setLamp(v);
+    },
+    setEmergency(v: number): void {
+      // Emissive only. The lens keeps a trace of itself at zero so the dead
+      // fitting is still a shape on the wall rather than a hole in it, which is
+      // the same convention the boarding and the keypad follow.
+      const k = Math.min(1, Math.max(0, v));
+      lensMat.emissiveIntensity = 0.04 + k * 2.6;
+      lensMat.color.setHex(k > 0.02 ? 0xe8f3ea : 0x555f5a);
     },
     setLit(v: number): void {
       /*

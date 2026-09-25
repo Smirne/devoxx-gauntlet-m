@@ -26,6 +26,10 @@ import {
   TITLE_IN,
   TITLE_OUT,
   WALK_AT,
+  DARK_HOLD,
+  FLICKER_TIME,
+  OVER_AT,
+  emergencyAt,
   openingAt,
 } from '../src/sim/opening';
 import { DT_MAX, createGame, type DebugGame, type RobotKind } from '../src/sim';
@@ -133,5 +137,68 @@ describe('the opening', () => {
       expect(w.y!).toBeGreaterThan(CY0);
       expect(w.y! + w.h!).toBeLessThan(CY1);
     }
+  });
+});
+
+/**
+ * The light over the crates, and the beat it gives the end of the sequence.
+ *
+ * Michele, 25 Sep 2026: *"If we want to handle the light change, we could do
+ * this. There's a light on the crates, robot exit fully visible. Light
+ * (emergency light?) flickers and stops, robots light up -> transition to
+ * game."*
+ *
+ * The numbers are here rather than in the renderer because the fitting, the point
+ * light and the work light on the boarding all read the same one (CLAUDE.md), so
+ * this is where "it flickers and then it is gone" is actually true or not.
+ */
+describe('the emergency fitting over the crates', () => {
+  it('is lit for the whole presentation', () => {
+    for (let t = 0; t <= WALK_AT; t += 0.05) {
+      expect(emergencyAt(t), `dark at t=${t.toFixed(2)}, mid-presentation`).toBe(1);
+    }
+  });
+
+  it('flickers — strikes and half-recoveries, not a fade', () => {
+    const step = FLICKER_TIME / 240;
+    let dark = 0;
+    let backOn = 0;
+    let was = 1;
+    for (let t = WALK_AT; t < WALK_AT + FLICKER_TIME; t += step) {
+      const v = emergencyAt(t);
+      expect(v, `out of range at t=${t.toFixed(2)}`).toBeGreaterThanOrEqual(0);
+      expect(v, `out of range at t=${t.toFixed(2)}`).toBeLessThanOrEqual(1);
+      if (was > 0 && v === 0) dark++;
+      if (was === 0 && v > 0) backOn++;
+      was = v;
+    }
+    expect(dark, 'it faded instead of striking').toBeGreaterThanOrEqual(3);
+    expect(backOn, 'it went out once and stayed out — that is a switch, not a failing tube').toBeGreaterThanOrEqual(2);
+  });
+
+  it('never comes back to full once it has started going', () => {
+    for (let t = WALK_AT + 0.01; t < WALK_AT + FLICKER_TIME; t += 0.01) {
+      expect(emergencyAt(t), `full brightness again at t=${t.toFixed(2)}`).toBeLessThan(1);
+    }
+  });
+
+  it('is dead, and stays dead, before the chapter takes over', () => {
+    expect(emergencyAt(WALK_AT + FLICKER_TIME)).toBe(0);
+    expect(emergencyAt(OVER_AT)).toBe(0);
+    expect(emergencyAt(OVER_AT + 10)).toBe(0);
+    // ...with a beat in the dark first: their own three lamps, and nothing else,
+    // which is the game the player is about to be handed.
+    expect(OVER_AT - (WALK_AT + FLICKER_TIME)).toBeCloseTo(DARK_HOLD, 6);
+  });
+
+  it('hands the sequence over after the flicker, not before it', () => {
+    // `game.ts` used to end the opening on `walking`, which is the instant the
+    // last robot is standing — so the camera pull-back and the presentation
+    // light's hand-off, both written for it, had never played.
+    expect(openingAt(WALK_AT).walking).toBe(true);
+    expect(openingAt(WALK_AT).over, 'the shot was cut before the light went').toBe(false);
+    expect(openingAt(OVER_AT - 0.01).over).toBe(false);
+    expect(openingAt(OVER_AT).over).toBe(true);
+    expect(openingAt(OVER_AT).emergency).toBe(0);
   });
 });
