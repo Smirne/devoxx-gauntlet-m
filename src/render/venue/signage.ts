@@ -1096,7 +1096,10 @@ export function buildSignage(
   ground.add(
     signFace(
       sand.x + sand.w / 2,
-      GF.food.court.y + GF.food.court.h + 0.4,
+      // The same plane as the catering board: the court's NORTH wall, above the
+      // counters. Its south edge is 9.6 m away across the queueing floor, which
+      // is where this sign spent its first ten minutes.
+      GF.food.court.y + 0.4,
       2.6,
       0.78,
       2.42,
