@@ -72,9 +72,9 @@ import {
   crateLoadMass,
   loadBiggy,
 } from '../crates';
-import { GF, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
-import { botsCollide, circleRect, dist, inRect, mkBody, speed, stepBot } from '../bot';
-import type { Bot, Person, Prop, Rect, Vec2, Wall } from '../types';
+import { BAR_RECT, GF, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
+import { botsCollide, circleRect, dist, inRect, mkBody, speed, standOff, stepBot } from '../bot';
+import type { Bot, Person, Prop, Rect, Task, Vec2, Wall } from '../types';
 
 import type { ChapterCtx, ChapterDef, ChapterRuntime, PrevVel } from './index';
 
@@ -83,6 +83,16 @@ import type { ChapterCtx, ChapterDef, ChapterRuntime, PrevVel } from './index';
 const SHELF_REACH = 45;
 const POT_REACH = 70;
 const TALK_REACH = 40;
+/**
+ * The crab sandwich, on the sandwich counter's hall-facing edge.
+ *
+ * On the counter, not behind it: what a robot walks up to is the tray at the
+ * front, under the sign. (`GF.food.sandwich` is the counter block; its `y + h` is
+ * the face the queues stand at.)
+ */
+const CRAB: Vec2 = { x: GF.food.sandwich.x + GF.food.sandwich.w / 2, y: GF.food.sandwich.y + GF.food.sandwich.h - 5 };
+/** How close counts as standing at the tray. */
+const CRAB_REACH = 46;
 /**
  * A queue steps aside for this long — a window Voxxy has to *walk* through, so it
  * grows with `TRAVEL_TIME_SCALE` (constants.ts, the 2026-09-23 rescale).
@@ -164,7 +174,10 @@ const PALLET_MARK: Rect = { x: PALLET.x - 26, y: PALLET.y - 20, w: 52, h: 40 };
  * leaves only 6 px to the hall wall, which is deliberate: any wider and there is a
  * pocket behind the bar for a robot to get stuck in.
  */
-const BAR: Rect = { x: 336, y: 96, w: 92, h: 26 };
+// The bar is venue furniture, not a chapter constant — it shares the hall's north
+// wall with chapter 2's spray tag and the two have to be measurable against each
+// other (`BAR_RECT`, and Michele's *"The bar covers the wifi graffiti"*).
+const BAR: Rect = BAR_RECT;
 /** What it is called, in the register the sponsor list next door uses. */
 const BAR_NAME = 'The Finally Block';
 /**
@@ -578,6 +591,10 @@ export interface BreakfastState {
   soup: number;
   /** Percent of the original heat. */
   temp: number;
+  /** Pots spilled or gone cold and refilled — never a lost run (`ruined`). */
+  batches: number;
+  /** Has anybody walked up to the crab sandwich yet. Flavour, and a test hook. */
+  crabFound: boolean;
   complaints: number;
   speaker: { following: boolean; onStage: boolean; booth: string };
   queues: Array<{ label: string; open: number }>;
@@ -611,7 +628,7 @@ const OBJECTIVE =
   'speaker at a built booth. The sponsor booths are open and running their games: three bits of ' +
   '<b>swag</b> to be won on the way, all optional.';
 const KEYS =
-  '1/2/3/Tab: switch · WASD · E: use / lift / ask / clear a queue / play a game / tow Biggy / Voxxy jumps · R: restart';
+  '1/2/3/Tab: switch · WASD · E: use / lift / ask / clear a queue / play a game / tow Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');
@@ -674,14 +691,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * WHERE THE BARRIER ENDS UP, and the post it leaves behind.
    *
    * The rects `gateDraw` poses at `progress = 1` (`src/render/doors.ts`): the leaf
-   * hinged on the west post, a quarter turn back into the stairwell, lying flat
-   * along the flight's west cheek — where a stair gate is pinned back when a
-   * building is open — plus the east post, which does not move and which the `gate`
-   * wall was covering until now.
+   * hinged on the west post and swung a quarter turn SOUTH, out of the stairwell
+   * and back along the west edge of the approach — where a stair gate is pinned
+   * back when a building is open — plus the east post, which does not move and
+   * which the `gate` wall was covering until now.
    *
-   * Both are hard against the shaft's own side walls, so the flight itself stays
-   * as wide as it was: the transition walks three robots up the middle of it a
-   * second and a half later and none of them goes near either.
+   * South rather than into the shaft, because the flight starts climbing at this
+   * line and is 2.7 m up within the leaf's own length (`groundPlates`): a barrier
+   * lying in there would be buried in the treads, and the transition walks three
+   * robots up the middle of it a second and a half later. Out here it is hard
+   * against the reception block's east face, so the way up stays as wide as it was
+   * and nothing in the cutscene goes near it.
    */
   const gateY = GF.gate.y + GF.gate.h / 2;
   const gateHingeX = GF.gate.x + GATE_POST_INSET;
@@ -689,7 +709,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const gateOpenWalls: Wall[] = [
     {
       x: gateHingeX - GATE_LEAF_T / 2,
-      y: gateY - gateLen - GATE_LEAF_T / 2,
+      y: gateY - GATE_LEAF_T / 2,
       w: GATE_LEAF_T,
       h: gateLen + GATE_LEAF_T,
       kind: 'gateleaf',
@@ -740,6 +760,20 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let soup = 100;
   let temp = 100;
   let pickupT = 0;
+  /** How many pots have been spilled or gone cold on the way over. Flavour, and a count. */
+  let batches = 0;
+  /**
+   * THE CRAB SANDWICH, and whether anybody has found it yet.
+   *
+   * Michele, 25 Sep 2026: *"We need to add the CRAB SANDWiCH somewhere. That's
+   * the most famous part of the infamous devoxx food."* It is a running joke with
+   * a queue attached, so it is in the building rather than in a line of text: a
+   * lit tray on the sandwich counter under its own sign (`crab-sign` in
+   * `src/render/venue/signage.ts`), and three different answers when a robot walks
+   * up to it. It asks nothing of the player and blocks nothing — it is the kind of
+   * thing the "sense of place" 10 points are for.
+   */
+  let crabFound = false;
   let complaints = 0;
 
   /* --------------------------------------------------------------- the queues */
@@ -1191,18 +1225,96 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     }
   }
 
+  /* -------------------------------------------------------------- Stephan talks */
+
+  /** How many times he has been asked, so he does not say the same thing twice. */
+  let asked = 0;
+
+  /**
+   * What Stephan says when you walk up to him, which depends entirely on what is
+   * still outstanding — he is a man with a list.
+   *
+   * Two or three lines per state, cycled rather than randomised: a line you can
+   * get back to by pressing `E` again is a line the player can read properly, and
+   * nothing in this game is random that does not have to be.
+   */
+  function stephanSays(): string {
+    const pick = (lines: readonly string[]): string => `Stephan: "${lines[asked++ % lines.length]}"`;
+    if (gateOpen) return pick(['All is ready. All is ready! Up you go, the rooms are yours.', 'Go on. Before I find something else that is missing.']);
+    if (!delivered) {
+      if (carrying) return pick(['Is that my soup? Bring it here before it is a cold soup.', 'I can see it from here. Walk. Do not run.']);
+      if (ladle) return pick(['Where is my soup?', 'Tomato. At breakfast, yes. It is a tradition and I am the one who keeps it.']);
+      return pick(['Where is my soup?', 'The pot is on the counter and the ladle is on the shelf. I am not doing it myself, I am holding a staircase.']);
+    }
+    if (!speaker.onStage) {
+      if (speaker.following) return pick(['That is them? Good. Over here, please.', 'Hurry them along. The programme still says TBA and people are reading it.']);
+      return pick([
+        'The keynote speaker! Where is he? Or she. The programme says <b>TBA</b> and it has said TBA for a month.',
+        'Somebody saw them hiding from the queue behind a booth. One of the built ones.',
+      ]);
+    }
+    if (!beerDone)
+      return pick([
+        `Tonight's beer is standing in the middle of my aisle. It goes to ${BAR_NAME}.`,
+        'Three thousand people, one aisle, and a pallet of beer in it. Biggy.',
+        'And if anybody is passing the sandwich counter — no. I have had two. Do not tell the crew.',
+      ]);
+    return pick(['Soup. Speaker. Beer. Right — give me a moment with this barrier.']);
+  }
+
   /* ----------------------------------------------------------------- the soup */
 
   function spill(amount: number, why: string): void {
     if (!carrying || delivered) return;
     soup = Math.max(0, soup - amount);
-    ctx.flash(`Splash — ${why} (${Math.trunc(soup)}% left)`);
-    if (soup <= 0) ctx.fail('The pot is empty. Stephan gets a napkin.<small>R to try again · or Skip chapter</small>');
+    if (soup > 0) {
+      ctx.flash(`Splash — ${why} (${Math.trunc(soup)}% left)`);
+      return;
+    }
+    ruined('Biggy: "…that was all of it."');
+  }
+
+  /**
+   * THE POT IS RUINED — AND THAT IS NOT THE END OF THE RUN.
+   *
+   * Michele, 25 Sep 2026: *"if the soup is spilled, you can come back and take a
+   * new batch."* He is right, and what was there was the worst kind of
+   * difficulty: a full-screen `R to try again` twenty seconds from the end of the
+   * chapter, for a mistake whose fix in the fiction is walking back to a counter
+   * with a vat on it. There are three thousand people at a breakfast queue; the
+   * kitchen is not out of soup.
+   *
+   * So an empty pot and a cold pot both send Biggy back to the counter with the
+   * ladle he already has. The cost is the walk and the clock, which is a cost the
+   * player can see and can do something about, and Stephan's line at the end
+   * counts the batches — the joke is better than the failure was.
+   */
+  function ruined(line: string): void {
+    carrying = false;
+    batches++;
+    soup = 100;
+    temp = 100;
+    ctx.flash(`${line} Back to the counter, Biggy — they will fill it again.`, 4200);
   }
 
   ctx.objective(OBJECTIVE, KEYS);
+  /*
+   * THE CARD HAS TO SAY WHAT THE CHAPTER IS FOR. Michele, 25 Sep 2026: *"Intro
+   * for chapter 3 does not state the aim. Breakfast is ready, stephan wants his
+   * soup. And the keynote speaker (has it been announced yet?)"*
+   *
+   * It said *"Power, network, badges"* — which is chapter TWO's list, already
+   * done, and then a line about a queue. So the one screen the player actually
+   * reads named none of the three things they are about to be asked for. It names
+   * all three now, in Stephan's own order, and it keeps the TBA joke where the
+   * joke is: on the programme.
+   */
   ctx.card(
-    "<b>Power, network, badges.</b> The main entrance opens… and the queue for breakfast is already out of the door." +
+    '<b>Breakfast, and Stephan wants three things.</b> The doors are open, three thousand people are inside, ' +
+      'and the man at the foot of the main staircase is not unhooking that barrier until he has his ' +
+      '<b>tomato soup</b> — at breakfast, yes — until somebody finds the <b>keynote speaker</b>, who is still ' +
+      '<b>TBA</b> on the programme and hiding from the queue behind a booth, and until <b>tonight\u2019s beer</b> ' +
+      `is out of the aisle and behind the bar at ${BAR_NAME}.` +
       '<small>Press any key</small>',
   );
 
@@ -1233,6 +1345,44 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     ctx.switchKey(code);
     if (code !== 'KeyE') return true;
     if (mg.key(code, b)) return true;
+
+    /*
+     * TALK TO STEPHAN. Michele, 25 Sep 2026: *"you should be able to 'talk' with
+     * stephan. Lines like 'where's my soup' 'All is ready.. all is ready' 'the
+     * keynote speaker! Where is he'."*
+     *
+     * He is the whole chapter — three errands, all of them his — and he was a
+     * figure with a hat you walked up to and nothing happened. Any robot can
+     * talk to him, not only Voxxy: he is not a person you have to be charming to,
+     * he is a man waiting for his soup, and he will say so to whoever turns up.
+     *
+     * Biggy arriving WITH the pot is a delivery and not a chat, so that one case
+     * falls straight through to the branch below — being told "where is my soup"
+     * by the man you are handing the soup to is a worse joke than the one it
+     * would replace.
+     */
+    if (dist(b, stephan) < TALK_REACH + b.r && !(b.kind === 'biggy' && carrying && !delivered)) {
+      ctx.flash(stephanSays(), 4600);
+      return true;
+    }
+
+    /*
+     * THE CRAB SANDWICH. One per robot, in three voices, because the joke is what
+     * each of them makes of it — and Biggy carrying the pot is working, so he gets
+     * the one line that admits it.
+     */
+    if (dist(b, CRAB) < CRAB_REACH && !(b.kind === 'biggy' && carrying && !delivered)) {
+      crabFound = true;
+      ctx.flash(
+        b.kind === 'voxxy'
+          ? 'Voxxy: "<b>Broodje krab.</b> THE crab sandwich. People queue an hour for this and argue about it for a year. It is the size of my head."'
+          : b.kind === 'droid'
+            ? 'Droid: "<b>Broodje krab.</b> Bread, crab salad, and a queue with its own folklore. I have no mouth and I would still like to be asked."'
+            : 'Biggy: "<b>Broodje krab.</b> One per person, it says. I am one person. I am simply a lot of it."',
+        4600,
+      );
+      return true;
+    }
 
     if (b.kind === 'droid') {
       if (!ladle && dist(d, shelfAt) < SHELF_REACH) {
@@ -1276,8 +1426,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       }
       if (carrying && !delivered && inRect(bg, stage)) {
         delivered = true;
+        const said =
+          soup > 70 ? 'Finally! Still hot.' : soup > 35 ? "Half a bowl. It's… something." : 'Is this a bowl or a hint?';
         ctx.flash(
-          `Stephan: "${soup > 70 ? 'Finally! Still hot.' : soup > 35 ? "Half a bowl. It's… something." : 'Is this a bowl or a hint?'}"`,
+          `Stephan: "${said}"${batches > 0 ? ` <i>(${batches === 1 ? 'the second pot' : `pot number ${batches + 1}`}, but who is counting)</i>` : ''}`,
           4000,
         );
         return true;
@@ -1431,11 +1583,24 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
     if (carrying && !delivered) {
       temp = Math.max(0, 100 - ((ctx.t - pickupT) / COOL_SECONDS) * 100);
-      if (temp <= 0) {
-        ctx.fail(
-          'Stone cold. Stephan drinks it anyway, out of politeness.<small>R to try again · or Skip chapter</small>',
-        );
-      }
+      // Stone cold is a ruined batch, not a lost run — see `ruined`.
+      if (temp <= 0) ruined('Stephan: "Cold. I am not drinking that, and neither is anybody else."');
+    }
+
+    /*
+     * ...and the people who simply STAND there are solid too.
+     *
+     * Michele, with a screenshot of Voxxy inside one of them: *"voxy passes
+     * though a person?"* The queues pushed back and the crowd pushed back; the
+     * three you ask for directions, Stephan and the speaker did not, so the three
+     * most important figures in the chapter were the ones you could walk through.
+     * A speaker who is FOLLOWING is exempt — she is walking with Voxxy, and a
+     * follower who shoulder-charges the robot she is following cannot keep up.
+     */
+    for (const b of ctx.bots) {
+      for (const n of npcs) standOff(b, n);
+      standOff(b, stephan);
+      if (!speaker.following) standOff(b, speaker);
     }
 
     if (speaker.following && !speaker.onStage) {
@@ -1488,6 +1653,20 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         label: ladle ? 'shelf' : 'ladle (high)',
       },
       { kind: 'dropzone', ...stage, state: delivered ? 'done' : 'idle', label: 'bring the soup here' },
+      /*
+       * The crab sandwich on the counter, under its own sign. Lit before it is
+       * found, because the whole point of it is that you notice it and go and
+       * look — it asks nothing and gives a line (`crabFound`).
+       */
+      {
+        kind: 'crab',
+        x: CRAB.x - 8,
+        y: CRAB.y - 5,
+        w: 16,
+        h: 10,
+        state: crabFound ? 'done' : 'active',
+        label: crabFound ? 'broodje krab — the famous one' : 'broodje krab (E)',
+      },
       /*
        * The gate is emitted whatever state it is in, and it carries the sim's own
        * swing clock. `src/render/doors.ts` poses the leaf from that clock and from
@@ -1654,7 +1833,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       : carrying
         ? `soup: carrying the pot · ${Math.round(soup)}% left at ${Math.round(temp)}°`
         : ladle
-          ? 'soup: ladle in hand — fill the pot at the counter'
+          ? `soup: ladle in hand — ${batches > 0 ? 'fill it again' : 'fill the pot'} at the counter`
           : 'soup: the ladle is on the high shelf (Droid)';
     const spk = speaker.onStage
       ? 'speaker ✓'
@@ -1668,12 +1847,105 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     return `${beer} · ${soupLine} · ${spk}${sw}`;
   }
 
+  /* ------------------------------------------------------------------- tasks
+   *
+   * WHERE TO STAND, rather than where the thing sits: the ladle is on a shelf and
+   * the pot is on a counter, and both of those are furniture with a collider on
+   * it. Each address below is floor, inside the reach the chapter already enforces
+   * for that prop, so walking to the arrow is walking to the job.
+   */
+  /** Under the high shelf, inside `SHELF_REACH`. */
+  const shelfStand: Vec2 = { x: shelfAt.x, y: shelfAt.y + 26 };
+  /** In front of the soup counter, inside `POT_REACH`. */
+  const soupStand: Vec2 = { x: station.x, y: food.soup.y + food.soup.h + 22 };
+  /** The spot in front of Stephan the soup and the speaker both have to reach. */
+  const stageAt: Vec2 = { x: stage.x + stage.w / 2, y: stage.y + stage.h / 2 };
+  /** Stephan's own feet, at the foot of the flight he is not opening yet. */
+  const stephanAt: Vec2 = { x: stephan.x, y: stephan.y + 14 };
+
+  /**
+   * The same state as `progress()`, as a list — the one source behind the HUD's
+   * meter, the panel's checklist and every hint (`Task` in `src/sim/types.ts`).
+   *
+   * Five things, in the order the briefing puts them: soup, speaker, beer, and
+   * then the staircase all three of them are for. The ladle is a row of its own
+   * rather than a step inside the soup, because it is a different robot in a
+   * different place — one `who` cannot say "Droid, over there" and "Biggy, over
+   * here" at the same time, and the player who is stuck on the soup is almost
+   * always stuck on the ladle.
+   *
+   * **The booth games are not in here.** Three bits of swag are winnable and every
+   * one of them is optional (`OBJECTIVE`, and `progress()` refuses to let them
+   * lead), so counting them in a meter would tell the player the chapter is 3/8
+   * done when they have in fact done everything that is asked of them. They stay
+   * where they are: last in the progress line, and only once something has been won.
+   */
+  function tasks(): Task[] {
+    return [
+      {
+        id: 'ladle',
+        text: 'fetch the ladle off the high shelf',
+        done: ladle,
+        who: ['droid'],
+        at: shelfStand,
+        hint: 'Droid: top shelf in the catering block, and nobody fills a pot without it. Voxxy cannot see over that shelf and Biggy cannot get an arm into it',
+      },
+      {
+        id: 'soup',
+        text: 'take Stephan his tomato soup',
+        done: delivered,
+        who: ['biggy'],
+        at: carrying && !delivered ? stageAt : soupStand,
+        hint: carrying
+          ? 'Biggy: it goes cold while I walk and it comes out of the pot every time I hit something. Smooth lines — and let Voxxy open a queue before I am standing in it'
+          : batches > 0
+            ? 'Biggy: back to the counter. They have a vat of it and there are three thousand people here — nobody is going to miss another pot'
+            : 'Biggy: the pot is on the counter in the catering court, and I am not filling it with my hands. Ladle first',
+      },
+      {
+        id: 'speaker',
+        text: 'find the keynote speaker and walk them to Stephan',
+        done: speaker.onStage,
+        who: ['voxxy'],
+        /*
+         * NO ARROW WHILE THEY ARE STILL HIDING.
+         *
+         * Which booth the speaker is behind is this errand's answer — the chapter
+         * picks it per run and does not even publish the person until Voxxy is
+         * close enough to have spotted them (`people()`). An arrow to it would
+         * hand over the search; once they are following her, where they have to
+         * END UP is not a secret at all.
+         */
+        at: speaker.following ? stageAt : undefined,
+        hint: 'Voxxy: they are hiding from the queues behind one of the booths with WALLS — you can see straight under the cloth tables, so it is none of those',
+      },
+      {
+        id: 'beer',
+        text: `stack tonight’s beer delivery at ${BAR_NAME}`,
+        done: beerDone,
+        who: ['biggy'],
+        at: STACK_AT,
+        n: held('stacked').length,
+        of: CRATE_DELIVERY,
+        hint: 'Biggy: they are mine alone, and there are only so many of them I can hold. When the last safe one goes on, take that load to the lit mark by the taps before trying for another',
+      },
+      {
+        id: 'stairs',
+        text: 'get Stephan to open the main staircase',
+        done: gateOpen,
+        at: stephanAt,
+        hint: 'Voxxy: he is at the foot of the flight with his arms crossed and he is counting. Soup, speaker, beer — all three, and then he unhooks it himself',
+      },
+    ];
+  }
+
   return {
     key,
     update,
     props,
     people,
     progress,
+    tasks,
     /**
      * `crate` moves the first crate still on the floor; `crate3` moves that one
      * whatever state it is in, which is how a test takes a load off Biggy without
@@ -1698,6 +1970,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       ladle,
       carrying,
       delivered,
+      batches,
+      crabFound,
       soup,
       temp,
       complaints,

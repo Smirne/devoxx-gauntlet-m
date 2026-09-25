@@ -195,7 +195,7 @@ export function walkTo(g: DebugGame, kind: RobotKind, target: Vec2, tol = 7): bo
  * chapter draws with its gate open — the half of the chapter that was written off
  * as unreachable for a round — and `tests/doors.test.ts` measures the swing itself.
  */
-export function playToStairGate(g: DebugGame): void {
+export function playToStairGate(g: DebugGame, onOpen?: (g: DebugGame) => void): void {
     const st = (): BreakfastState => g.debug.chapter() as BreakfastState;
     const propAt = (kind: string, match?: (p: Prop) => boolean): Vec2 => {
       const p = g.snapshot().props.find((o) => o.kind === kind && (match?.(o) ?? true));
@@ -276,6 +276,8 @@ export function playToStairGate(g: DebugGame): void {
 
     g.update(DT_MAX);
     expect(st().gateOpen, 'chapter 3s gate did not open').toBe(true);
+  // The frame the barrier starts moving on, for a caller that wants to watch it.
+  onOpen?.(g);
   /*
    * Let the barrier finish its swing and stop there.
    *

@@ -26,6 +26,7 @@ import {
   VIEW_F1,
   cinemaEExit,
   floor1Walls,
+  nicheMouth,
   roomDoor,
   roomScreen,
 } from '../geometry';
@@ -33,8 +34,9 @@ import { JAMMED_DOOR_SPEED, MOUNT_BIGGY_MAX_SPEED, MOUNT_REACH, SPEED_SCALE, T, 
 import { PX_PER_M, m } from '../units';
 import { buildLights, clueLit, litBy } from '../lights';
 import { dist, speed } from '../bot';
-import type { Clue, LightSource, Mirror, Plate, Prop, Rect, Wall } from '../types';
+import type { Clue, CutRoute, LightSource, Mirror, Plate, Prop, Rect, Task, Vec2, Wall } from '../types';
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
+import { CRATE_RECTS, STAND_AT, STAND_FACE } from '../opening';
 
 /* ---------------------------------------------------------------- tuning that is
  * chapter-local: reach distances for "use", not physics. The prototype spelled these
@@ -280,7 +282,7 @@ const OBJECTIVE =
   'rooms has a keypad: find the <b>4 digits</b>, each visible only under the right <b>mix of lights</b>. ' +
   'Droid can climb on Biggy (E). Biggy can smash the jammed door with a straight run across the corridor. ' +
   'In the last cinema the <b>screen is a mirror</b>: light that hits it comes back into the room.';
-const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb / hold Biggy / Voxxy jumps · 4-9 at the keypad (Backspace) · R: restart';
+const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb / hold Biggy / Voxxy jumps · 4-9 at the keypad (Backspace) · R: restart \u00b7 I: run sheet \u00b7 H: hint';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('up');
@@ -295,7 +297,26 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * are three. Spread left-to-right they all read from the first frame, which is
    * also the first thing a judge screenshots.
    */
-  ctx.place([40, 350], [92, 334], [148, 366]);
+  /*
+   * THE THREE OF THEM START WHERE THEIR CRATES ARE.
+   *
+   * The marks used to be spread down the corridor. They are now the row in
+   * front of the crates (`STAND_AT` in `src/sim/opening.ts`), facing east, and
+   * that is not decoration: it is what removes the beat Michele could not read.
+   * The opening used to walk them from the crates to marks 100 px away and then
+   * restart the chapter, so the sequence ended with a transition into a shot
+   * identical to the one before it. With the marks here, stepping out of the
+   * crate IS arriving at the mark.
+   *
+   * They still read as three from the first frame, which is what the old spread
+   * was for: the row is left-to-right across the camera, not along its depth
+   * axis, so the tallest never stands in front of the smallest.
+   */
+  ctx.place(
+    [STAND_AT.voxxy.x, STAND_AT.voxxy.y, STAND_FACE],
+    [STAND_AT.droid.x, STAND_AT.droid.y, STAND_FACE],
+    [STAND_AT.biggy.x, STAND_AT.biggy.y, STAND_FACE],
+  );
 
   const clues: Clue[] = [];
   const mirrors: Mirror[] = [];
@@ -339,6 +360,30 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           : 'Biggy: fire door. I could hit it. I would lose. Find the four digits',
   };
   ctx.walls.push(fire);
+
+  /*
+   * THE CRATES THEY ARRIVED IN, still standing against the corridor's north wall.
+   *
+   * Michele's option 2, taken alongside his option 1: *"crates remain after the
+   * transition, non interactive"*. They are scenery with a footprint — dropping
+   * them at the transition would be the same discontinuity as the walk, and
+   * drawing them without a collider would be the third walk-through object he
+   * has had to file. `why` is in the robot's own voice, like every other gate in
+   * this game.
+   */
+  for (const c of CRATE_RECTS) {
+    ctx.walls.push({
+      x: c.x,
+      y: c.y,
+      w: c.w,
+      h: c.h,
+      kind: 'crate',
+      why: (b) =>
+        b.kind === c.kind
+          ? `${b.name}: that is the crate I came in. I am not getting back in it`
+          : `${b.name}: ${c.kind}'s crate. Empty, heavy, and going nowhere`,
+    });
+  }
   /*
    * The fixed screen either side of the opening. It never opens, so it is pushed
    * once and never removed — and it is what keeps the corridor sealed everywhere
@@ -390,10 +435,32 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * DEEP and 1.25 m tall, a fridge parked in the corridor — and the collider sweep
    * never looked at it, because `tests/colliders.test.ts` measures what
    * `buildVenue()` builds and this is a chapter prop. You walked straight through
-   * it. Now it is 8 px of housing against the door's own face, standing 1.9 m
+   * it. It became 8 px of housing against the door's own face, standing 1.9 m
    * along the wall, with a wall under it.
+   *
+   * IT NOW STANDS THE OTHER WAY ROUND, and the reason is measured rather than
+   * felt. Michele, with a screenshot of it: *"the keypad also needs a shape. Big
+   * numbers?"* At 8 px the housing had 0.64 m of frontage to put them on, and the
+   * frontage is the only thing this camera can read: the diorama camera is 14 deg
+   * off the plan's z axis (`src/render/camera.ts`), so a face looking +z is nearly
+   * square on and the 1.9 m that ran ACROSS the corridor ran away from the lens
+   * instead. Four digits in 0.64 m is about 8 screen pixels each — unreadable at
+   * any weight. Measured in the running build with the prop drawn in magenta:
+   * **760 visible pixels** at play zoom, most of them behind Voxxy's own head.
+   *
+   * So the same box is turned: 19 px along the corridor by 12 px deep, still
+   * against the fire door's own face, still with a wall under it. That is 1.52 m
+   * of frontage instead of 0.64 m, and HALF the depth it had, so it is less of a
+   * fridge than the rect this replaces.
+   *
+   * Why 19 px and not more: `floor1Walls()` stands a `corridor-column` at
+   * x 565..581 — the closed section's columns are on 34 px centres — and a keypad
+   * that reached past 581 would hang behind it. West of the column the wall is
+   * clear for 150 px, but the dialogue in this chapter says the keypad is ON the
+   * fire door ("stand next to it", "it is on the fire door, drive right up to
+   * it"), so the bay between the column and the door is where it belongs.
    */
-  const keypad: Rect = { x: F1.fireX - 8, y: CY0 + 8, w: 8, h: 24 };
+  const keypad: Rect = { x: F1.fireX - 19, y: CY0 + 8, w: 19, h: 12 };
   ctx.walls.push({
     ...keypad,
     kind: 'keypad',
@@ -484,8 +551,34 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     kind: 'lockleaf',
     why: (b) => `${b.name}: that is the door itself, standing open against the wall`,
   };
-  const panel: Rect = { x: dB.x + dB.w + 14, y: CY0 + 10, w: 20, h: 24 };
-  const panelAt = { x: panel.x + 10, y: panel.y + 12 };
+  /*
+   * THE DOOR OVERRIDE, AND THE 1.92 METRES OF DEPTH IT DID NOT NEED.
+   *
+   * Michele, with a screenshot of the mount beat: *"the part that needs a shape
+   * is the green Cube that opens the door"*. It has a shape now
+   * (`src/render/release-panel.ts`), and modelling it showed the rect was two
+   * things at once: a control 1.6 m wide, and 1.92 m of corridor behind it.
+   *
+   * That depth was not free. The diorama camera looks along (0.210, 0.500,
+   * 0.840), so of a solid box on this rect it sees 1.44 x 0.840 = 1.21 m2 of
+   * front and 3.07 x 0.500 = **1.54 m2 of lid** — the largest thing on screen
+   * was the top of the box, which is what "a big flat cube" means. And the
+   * depth was hiding a second fault: two corridor columns (`corridorColumns()`,
+   * sim x 365..385, y 288..304, 3.3 m tall) stand across the back half of this
+   * rect. The box only cleared them by sticking its lid out past them.
+   *
+   * 6 px of depth is what the unit actually is: 0.48 m, hung on stays off the
+   * corridor vault, standing clear of the columns in front of them rather than
+   * inside them. Starting it at CY0 + 19 keeps the rect's CENTRE exactly where
+   * it was, so `panelAt` and the whole mount beat are unmoved — see below.
+   *
+   * `panelAt` takes the rect's own half-extents rather than the 10 and 12 that
+   * were the half-extents of the 20 x 24 rect. Same latent bug
+   * `tests/keypad.test.ts` records for the pad: a hard-coded centre survives one
+   * reshape by luck and not the next.
+   */
+  const panel: Rect = { x: dB.x + dB.w + 14, y: CY0 + 19, w: 20, h: 6 };
+  const panelAt = { x: panel.x + panel.w / 2, y: panel.y + panel.h / 2 };
   clues.push({
     x: rB.x + rB.w / 2,
     y: rB.y + 40,
@@ -709,42 +802,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   /** The exit: out of the closed section, down the secondary staircase. */
   function leave(): void {
-    // Out of the closed section and down the secondary staircase on the near wall
-    // — the one the plan puts level with room 4, standing in the corridor rather
-    // than recessed behind it (`F1.nicheBot`, and Michele's 24 Sep ruling in
-    // `src/sim/geometry.ts`'s header).
-    //
-    // The descent waypoint is the CENTRE of that flight, which is the centre of
-    // its mouth, which is where the plan draws the only part of it at corridor
-    // level. It used to be `nicheBot.x + 20, nicheBot.y + 30`: measured against a
-    // 17.7-deep shaft standing IN the corridor, +30 lands 12 px through the
-    // corridor wall and the chapter would have ended with all three robots inside
-    // it. Derived, it cannot go stale the next time the flight moves.
-    const nb = F1.nicheBot;
-    /*
-     * A loose diagonal, not a column.
-     *
-     * The three used to walk this with only a `dy` offset — 14 px apart along the
-     * diorama camera's own depth axis — so at the closer cutscene framing Biggy
-     * stood in front of the other two and the shot was one robot and two hats.
-     * Staggered in x as well they read as three, Voxxy out in front because she is
-     * the quick one, and they converge on the stairwell mouth for the descent.
-     */
-    const head = { x: nb.x + nb.w / 2, y: nb.y + nb.h / 2 };
-    const route = (dx: number, dy: number): Array<{ x: number; y: number }> => [
-      { x: F1.fireX + 30 + dx, y: 350 + dy },
-      { x: head.x + dx, y: 350 + dy },
-      { ...head },
-    ];
-    ctx.startCut(
-      [
-        { kind: 'voxxy', pts: route(18, -14) },
-        { kind: 'droid', pts: route(0, 0) },
-        { kind: 'biggy', pts: route(-18, 14) },
-      ],
-      () => ctx.startChapter(2),
-      VIEW_F1,
-    );
+    ctx.startCut(stairExitRoutes(), () => ctx.startChapter(2), VIEW_F1);
   }
 
   /* --------------------------------------------------------------------- keys */
@@ -963,6 +1021,77 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     return out;
   }
 
+  /**
+   * The same state as `progress()`, as a list — the one source behind the HUD's
+   * meter, the panel's checklist and every hint (`Task` in `src/sim/types.ts`).
+   *
+   * Five things, in the order a player meets them: the four light-mix enigmas,
+   * then the code. Each clue carries WHO it needs and WHERE it is, so the hint
+   * escalation has something true to say without this chapter writing any of the
+   * presentation: the panel decides how a task looks, the chapter decides what is
+   * true. The hints are nudges and never the answer — the digit is never in one,
+   * because a hint that hands over the digit deletes the enigma it is helping
+   * with.
+   */
+  function tasks(): Task[] {
+    /*
+     * THE GATE IN FRONT OF THE CLUE, WHEN THERE STILL IS ONE.
+     *
+     * Michele, 25 Sep 2026: *"there might be also intermediate challenges (eg:
+     * open the door for clue 3 with Droid and Biggy). They might need a clue
+     * too?"* Two of these four clues are behind a second puzzle — B's magnetic
+     * lock and E's jammed leaf — and a player stuck at either of those doors is
+     * not stuck on a light mix at all. Telling them about the mix is a hint about
+     * the wrong problem, so the door goes FIRST and drops off the ladder the
+     * moment it is open (`Task.hint` takes a list).
+     */
+    const gate = (slot: number): string[] => {
+      if (slot === 3 && !panelOn)
+        return [
+          'Droid: that door is held by a magnetic lock and the release is by the projector window, a metre above my ' +
+            'reach. Biggy parks under it and I go up — two of us, one of me on top',
+        ];
+      if (slot === 4 && !jamBroken)
+        return [
+          'Biggy: that leaf is jammed solid and nobody is squeezing past it. It wants my whole weight at speed — ' +
+            'the length of the corridor, not a shove from a step away',
+        ];
+      return [];
+    };
+    const out: Task[] = clues
+      .slice()
+      .sort((a, b) => a.slot - b.slot)
+      .map((c) => ({
+        id: `clue${c.slot}`,
+        text: `light the ${c.label} mix`,
+        done: c.found,
+        // The first robot the mix needs. A two-colour mix needs both, and the
+        // panel says so from `need` — but an arrow can only point for one, and
+        // the one to fetch first is the one that is not already standing there.
+        // Every robot the mix needs, not just the first — the two-colour mixes
+        // need both lamps on the spot at once.
+        who: c.need,
+        at: { x: c.x, y: c.y },
+        hint: [
+          ...gate(c.slot),
+          c.need.length === 3
+            ? 'Biggy: all three of us, and mine has to come off the screen. Back of the room, aim at the picture'
+            : `Voxxy: ${c.need.join(' and ')}, same spot, both lamps on it at once`,
+        ],
+      }));
+    out.push({
+      id: 'code',
+      text: 'type the four digits at the fire door',
+      done: fireOpen,
+      who: ['voxxy'],
+      at: { x: keypad.x + keypad.w / 2, y: keypad.y + keypad.h / 2 },
+      n: entered.length,
+      of: 4,
+      hint: 'Droid: drive right up to the pad first — from a step away the number keys take a robot instead',
+    });
+    return out;
+  }
+
   /** The live bottom-of-screen line: clues found, then what the keypad is waiting for. */
   function progress(): string {
     if (fireOpen) return 'fire door open · down the secondary stairs, the ones outside zaal 4';
@@ -982,6 +1111,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     update,
     props,
     progress,
+    tasks,
     clues: () => clues,
     mirrors: () => mirrors,
     lights: () => lights,
@@ -1022,6 +1152,83 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
  */
 export function clueProgress(lights: LightSource[], clue: Clue): number {
   return clue.need.filter((k) => litBy(lights, k, clue)).length;
+}
+
+/**
+ * The closing cutscene's route: out of the closed section, down the secondary
+ * staircase on the near wall — the one the plan puts level with room 4, standing
+ * in the corridor rather than recessed behind it (`F1.nicheBot`, and Michele's
+ * 24 Sep ruling in `src/sim/geometry.ts`'s header).
+ *
+ * The descent waypoint is the HEAD of that flight — `nicheMouth`, the top step at
+ * its world-east end, which is the only part of it at corridor level. It was the
+ * centre of the flight until 24 Sep 2026, when Michele read the plan symbol back
+ * to us: *"This makes it look like there's a center, and 2 descent. I think it's
+ * a mid plane between two ramps of stairs."* It is one staircase with a
+ * half-landing, so the centre is now a wall and the way on is an END.
+ *
+ * **And the way on is round the end.** Michele, twice: *"Robots still go throuh
+ * the handrail in the chapter transiction."* They did, and it was this route: the
+ * last leg ran from the middle of the corridor straight south into `head`, which
+ * crosses the balustrade `floor1Walls()` stands across the mouth — the wall whose
+ * own `why` says *"the way on is round the end, off the corridor"*. A cutscene
+ * ignores walls on purpose (`game.ts`), so nothing stopped them and nothing
+ * complained; the shot was three robots stepping through a handrail.
+ *
+ * So the route now does what the geometry says: along the corridor, past the
+ * flight, turn in at `TURN_X` — clear of the balustrade's east end — and walk
+ * WEST into the pocket along its own axis, which is the one side that is open.
+ * They arrive in file rather than in a heap, deepest first, and Biggy stops at
+ * the mouth, which is also the truth of the building: 1.30 m clear and he is
+ * 1.44 (`NICHE_RAIL`, and his own line on that wall).
+ *
+ * Exported because `tests/staircase-clear.test.ts` walks the legs against the
+ * floor's walls. The fault was invisible to every test in the repo, which asked
+ * where a robot may WALK and never where a cutscene sends one.
+ */
+export function stairExitRoutes(): CutRoute[] {
+  const nb = F1.nicheBot;
+  const top = nicheMouth(nb);
+  /** The head of the flight: the centre of the top step. */
+  const head = { x: top.x + top.w / 2, y: top.y + top.h / 2 };
+  /**
+   * Where they turn off the corridor, east of the flight's open end.
+   *
+   * Far enough that Biggy — 9 px of radius — clears the end of the balustrade at
+   * `nb.x + nb.w` with room to spare, and well short of the corridor column at
+   * x 1198 (`corridorColumns()` leaves this stretch empty for the stair).
+   */
+  const TURN_X = nb.x + nb.w + 20;
+  /**
+   * A loose diagonal, not a column.
+   *
+   * The three used to walk this with only a `dy` offset — 14 px apart along the
+   * diorama camera's own depth axis — so at the closer cutscene framing Biggy
+   * stood in front of the other two and the shot was one robot and two hats.
+   * Staggered in x as well they read as three, Voxxy out in front because she is
+   * the quick one. The stagger is spent by the turn: the pocket is one robot
+   * wide, so the file below is what goes in.
+   */
+  const lead = (dx: number, dy: number): Vec2[] => [
+    { x: F1.fireX + 30 + dx, y: 350 + dy },
+    { x: TURN_X + dx, y: 350 + dy },
+  ];
+  /*
+   * Who actually gets on the step, and who queues behind.
+   *
+   * Only one robot fits in the pocket: Voxxy's 4.75 and Droid's 6.25 of radius
+   * want 11 px of separation and the mouth is 17.7 wide, so the second of them is
+   * already back in the corridor. Voxxy takes the step — she is the one out in
+   * front all the way down the corridor — Droid stands at the turn, and Biggy
+   * waits a robot further back, which is the truth of that flight anyway: 1.30 m
+   * clear and he is 1.44. They are a queue at the head of the stairs, not three
+   * robots standing inside one another on it.
+   */
+  return [
+    { kind: 'voxxy', pts: [...lead(18, -14), { x: TURN_X, y: head.y }, { ...head }] },
+    { kind: 'droid', pts: [...lead(0, 0), { x: TURN_X, y: head.y - 2 }] },
+    { kind: 'biggy', pts: [...lead(-18, 14), { x: TURN_X + 18, y: head.y - 6 }] },
+  ];
 }
 
 export const ch1Night: ChapterDef = { n: 1, title: '1 · Night — the closed cinema section', setup };

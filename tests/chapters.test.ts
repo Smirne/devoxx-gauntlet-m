@@ -37,6 +37,7 @@ import {
   crateLoadAccel,
   crateLoadMass,
   GF,
+  WIFI_TAG,
   JAMMED_DOOR_SPEED,
   R,
   ROLLER_DOOR_SPEED,
@@ -93,7 +94,8 @@ const HUB: Vec2 = { x: GF.cabinet.x + GF.cabinet.w / 2, y: GF.cabinet.y + GF.cab
  * place of the small print on the Cloudy Bank booth's banner. Same point
  * `ch2-expo.ts` measures from.
  */
-const POSTER: Vec2 = { x: 400, y: GF.hall.y + 8 };
+// The venue's own number, not a third copy of it — see `WIFI_TAG`.
+const POSTER: Vec2 = { x: WIFI_TAG.x, y: WIFI_TAG.y };
 /** The three breakers, on the technical room's high panel. */
 const PANEL: Vec2 = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
 
@@ -266,12 +268,25 @@ describe('chapter 1 — night', () => {
     ).toBe(true);
     expect(parked).toHaveLength(3);
     const mouth = nicheMouth(F1.nicheBot);
+    /*
+     * ...and they end AT the head, in a queue, not stacked on the top step.
+     *
+     * This used to assert all three inside the mouth's 17.7 px, which is one robot
+     * wide — so it was asserting the heap, and it was also asserting the fault
+     * Michele filed twice: *"Robots still go throuh the handrail in the chapter
+     * transiction."* Three robots cannot be on that step without being in each
+     * other and without one of them having come over the balustrade. Voxxy takes
+     * the step; the other two queue east of the mouth, which is the open end and
+     * the way on (`stairExitRoutes`).
+     */
     for (const b of parked) {
       expect(b.y, `${b.kind} ends outside the corridor`).toBeGreaterThan(CY0);
       expect(b.y, `${b.kind} ends through the corridor wall`).toBeLessThan(CY1);
-      expect(b.x, `${b.kind} misses the stair mouth`).toBeGreaterThan(mouth.x - 2);
-      expect(b.x, `${b.kind} misses the stair mouth`).toBeLessThan(mouth.x + mouth.w + 2);
+      expect(b.x, `${b.kind} ends short of the stair`).toBeGreaterThan(mouth.x - 2);
+      expect(b.x, `${b.kind} ends past the head of the stair`).toBeLessThan(mouth.x + mouth.w + 45);
     }
+    const onStep = parked.filter((b) => b.x < mouth.x + mouth.w);
+    expect(onStep.map((b) => b.kind), 'the top step is one robot wide').toEqual(['voxxy']);
     expect(g.snapshot().floor).toBe('down');
   });
 
@@ -585,9 +600,11 @@ describe('chapter 2 — expo', () => {
     expect(powerUp(g)).toBe(true);
     expect(openCabinet(g)).toBe(true);
 
-    // No prompt: R is restart, and a restart drops the whole run back to chapter 1.
+    // No prompt: R is restart, and a restart now puts you back at the top of THIS
+    // chapter rather than at the top of the run (Michele: "not the whole game!").
     g.key('KeyR');
-    expect(g.snapshot().chapter).toBe(1);
+    expect(g.snapshot().chapter).toBe(2);
+    expect(g.snapshot().t).toBe(0);
 
     g.startChapter(2);
     expect(powerUp(g)).toBe(true);
@@ -1190,7 +1207,10 @@ describe('chapter 3 — breakfast', () => {
       expect(bg.mass).toBeGreaterThan(DEFS.biggy.mass);
       if (escape === 'skip') g.skipChapter();
       else g.key('KeyR');
-      expect(g.snapshot().chapter).toBe(escape === 'skip' ? 4 : 1);
+      // `R` restarts the chapter rather than the run, so the escape it tests is
+      // now "back to the top of chapter 3" — and the load must not survive that
+      // either, which is the same `restoreIdentity` this test exists for.
+      expect(g.snapshot().chapter).toBe(escape === 'skip' ? 4 : 3);
       expect(bg.mass, escape).toBe(DEFS.biggy.mass);
       expect(bg.accel, escape).toBe(DEFS.biggy.accel);
     }
@@ -1251,7 +1271,32 @@ describe('chapter 3 — breakfast', () => {
     // leaves the hall empty, which is the whole chapter's stage.
     const crowd = g.snapshot().people.filter((p) => p.role === 'visitor');
     expect(crowd).toHaveLength(36);
-    for (const p of crowd) expect(p.x).toBeLessThan(edge);
+    /*
+     * Not `x < edge`. The six steps STRADDLE the hall's right edge — the hall
+     * ends at x 1040 and `GF.smallStairs` runs 952..1045 — so a visitor caught
+     * mid-climb is legitimately a pixel or two past it, which is the same
+     * crossing the loop above has just spent 1400 frames allowing. The strict
+     * form passed only because the old random stream never sampled a visitor on
+     * the tread at the final frame; giving each chapter its own seed sampled one
+     * at 1041.37 and the assertion, not the crowd, was what was wrong.
+     *
+     * What this line is actually for is "nobody is through the wall somewhere
+     * else", and the steps' own far edge is where that stops being true.
+     */
+    const inTheHall = crowd.filter((p) => p.x < edge);
+    // Nearly all of them, not every last one: the six steps straddle the hall's
+    // right edge (the hall ends at 1040, `GF.smallStairs` runs 952..1045) and
+    // arrivals keep coming, so at any given frame one or two are still on the
+    // tread or a step behind it. What this asserts is the thing the comment above
+    // says — the crowd got IN rather than jamming single file at the threshold.
+    expect(inTheHall.length, 'the crowd is still queueing at the threshold').toBeGreaterThanOrEqual(33);
+    // And nobody is through a wall somewhere else: whatever is not yet in the
+    // hall is on the steps or immediately behind them, never off in the lobby.
+    for (const p of crowd) {
+      if (p.x < edge) continue;
+      expect(p.y, `a visitor is outside the hall at y=${Math.round(p.y)}`).toBeGreaterThanOrEqual(st.y - 6);
+      expect(p.y, `a visitor is outside the hall at y=${Math.round(p.y)}`).toBeLessThanOrEqual(st.y + st.h + 6);
+    }
     expect(new Set(crowd.map((p) => Math.round(p.y / 70))).size).toBeGreaterThan(3);
     // 5,600 simulated frames of a 36-body crowd is a wall-clock budget, not a
     // behaviour, and this test is the most expensive in the suite: 13.1 s on an
@@ -1518,19 +1563,37 @@ describe('the game rig', () => {
     expect(g.snapshot().phase).toBe('intro');
   });
 
-  it('starts on a card, dismisses it with any key, and restarts on R', () => {
+  it('starts on a card, dismisses it with any key, and restarts THE CHAPTER on R', () => {
+    /*
+     * `R` used to mean "start the whole game again", and this test asserted it.
+     * Michele, listing the controls the instructions panel has to teach: *"R to
+     * restart the chapter (not the whole game!)"*. So a player two chapters in no
+     * longer loses both by pressing the key the HUD tells them to press.
+     */
     const g = createGame({ seed: SEED });
-    expect(g.snapshot().card).toContain('AFTER DARK');
-    expect(g.snapshot().chapter).toBe(0);
+    /*
+     * The run opens on the crates, not on a card: chapter 1 is already built and
+     * running underneath, the three of them are on their pallets, and `phase`
+     * stays 'intro' so nothing the chapter owns can fire yet. The title is drawn
+     * over that shot instead of on a card of its own.
+     */
+    expect(g.snapshot().opening, 'the run no longer opens on the crates').not.toBe(null);
+    expect(g.snapshot().card).toBe(null);
+    expect(g.snapshot().chapter).toBe(1);
+    expect(g.snapshot().phase).toBe('intro');
     g.update(DT_MAX);
     expect(g.snapshot().t).toBe(0);
+    // Skippable from the first frame, and the key that skips does nothing else.
     g.key('Space');
+    expect(g.snapshot().opening).toBe(null);
     expect(g.snapshot().chapter).toBe(1);
+    expect(g.snapshot().phase).toBe('play');
     steps(g, 10);
     expect(g.snapshot().t).toBeGreaterThan(0);
     g.key('KeyR');
-    expect(g.snapshot().chapter).toBe(0);
-    expect(g.snapshot().t).toBe(0);
+    expect(g.snapshot().chapter, 'R threw the player back to the title').toBe(1);
+    expect(g.snapshot().t, 'the chapter clock did not restart').toBe(0);
+    expect(g.snapshot().card, 'R put the title card back up').toBe(null);
   });
 
   it('is deterministic for a seed, and different for another', () => {
@@ -1627,5 +1690,112 @@ describe('the game rig', () => {
     expect(g.snapshot().active).toBe(2);
     g.key('Tab');
     expect(g.snapshot().active).toBe(0);
+  });
+});
+
+/**
+ * An empty pot is a walk back to the counter, not the end of the run.
+ *
+ * Michele, 25 Sep 2026: *"if the soup is spilled, you can come back and take a
+ * new batch."* What was there was the worst kind of difficulty — a full-screen
+ * `R to try again` twenty seconds from the end of the chapter, for a mistake
+ * whose fix in the fiction is walking back to a counter with a vat on it.
+ *
+ * Both ways of ruining it are checked, because they were two separate `fail`
+ * calls: the pot spilled dry, and the pot gone cold.
+ */
+describe('chapter 3 — the soup is refillable', () => {
+  const start = (): DebugGame => {
+    const g = createGame({ seed: 20260930, chapter: 3, cards: false }) as DebugGame;
+    const st = (): BreakfastState => g.debug.chapter() as BreakfastState;
+    // Ladle, then pot.
+    g.debug.select('droid');
+    g.debug.place('droid', 176, 150);
+    g.key('KeyE');
+    expect(st().ladle).toBe(true);
+    g.debug.select('biggy');
+    g.debug.place('biggy', 105, 180);
+    g.key('KeyE');
+    expect(st().carrying).toBe(true);
+    return g;
+  };
+
+  it('sends Biggy back for another pot when he spills the last of it', () => {
+    const g = start();
+    const st = (): BreakfastState => g.debug.chapter() as BreakfastState;
+    /*
+     * Drive him into the catering counter until the pot is dry. A spill is caused
+     * by the jerk rather than by the speed (`SPILL_DV`), so this is a run-up and a
+     * wall, over and over — which is exactly how a player empties it by accident.
+     */
+    for (let i = 0; i < 24 && st().carrying; i++) {
+      g.debug.place('biggy', 138, 270);
+      g.setStick(0, -1);
+      steps(g, 120);
+    }
+    g.setStick(0, 0);
+    expect(st().carrying, 'he is still holding an empty pot').toBe(false);
+    expect(st().batches, 'the ruined pot was not counted').toBeGreaterThan(0);
+    expect(st().soup, 'the counter did not refill it').toBe(100);
+    expect(g.snapshot().phase, 'a spilled pot ended the run').toBe('play');
+    expect(st().ladle, 'he lost the ladle with the soup').toBe(true);
+
+    // ...and he can simply go and get another one.
+    g.debug.select('biggy');
+    g.debug.place('biggy', 105, 180);
+    g.key('KeyE');
+    expect(st().carrying, 'the counter would not fill it a second time').toBe(true);
+  });
+
+  it('does the same when it goes cold, rather than failing the chapter', () => {
+    const g = start();
+    const st = (): BreakfastState => g.debug.chapter() as BreakfastState;
+    // COOL_SECONDS is 150 s of game time at `TRAVEL_TIME_SCALE`, so this is the
+    // pot standing still for ten sim minutes, which is the honest way to do it.
+    for (let i = 0; i < 22000 && st().carrying; i++) g.update(DT_MAX);
+    expect(st().carrying, 'it never went cold').toBe(false);
+    expect(st().batches).toBeGreaterThan(0);
+    expect(g.snapshot().phase, 'a cold pot ended the run').toBe('play');
+  });
+});
+
+/**
+ * The crab sandwich.
+ *
+ * Michele, 25 Sep 2026: *"We need to add the CRAB SANDWiCH somewhere. That's the
+ * most famous part of the infamous devoxx food."* It is a running joke with a
+ * queue attached, so it is in the building rather than in a line of text — a lit
+ * tray on the sandwich counter with its own sign over it, and a different answer
+ * from each robot. It asks nothing and blocks nothing; what these hold is that it
+ * is THERE, that it is reachable, and that it never becomes a task.
+ */
+describe('chapter 3 — broodje krab', () => {
+  const st = (g: DebugGame): BreakfastState => g.debug.chapter() as BreakfastState;
+
+  it('puts it on the catering counter, lit, before anybody has found it', () => {
+    const g = createGame({ seed: 20260930, chapter: 3, cards: false }) as DebugGame;
+    const crab = g.snapshot().props.find((p) => p.kind === 'crab');
+    expect(crab, 'the crab sandwich is not in the building').toBeDefined();
+    expect(crab?.state, 'it is dark until you find it, which is how you never find it').toBe('active');
+    expect(crab?.label?.toLowerCase()).toContain('krab');
+    // On the sandwich counter, not floating in the court.
+    const s = GF.food.sandwich;
+    expect(crab!.x).toBeGreaterThanOrEqual(s.x);
+    expect(crab!.x + (crab!.w ?? 0)).toBeLessThanOrEqual(s.x + s.w);
+  });
+
+  it('answers in each robot’s own voice, and never becomes a task', () => {
+    for (const kind of ['voxxy', 'droid', 'biggy'] as const) {
+      const g = createGame({ seed: 20260930, chapter: 3, cards: false }) as DebugGame;
+      const crab = g.snapshot().props.find((p) => p.kind === 'crab')!;
+      g.debug.select(kind);
+      g.debug.place(kind, crab.x + (crab.w ?? 0) / 2, crab.y + 24);
+      g.key('KeyE');
+      const said = g.snapshot().toast?.t ?? '';
+      expect(said.toLowerCase(), `${kind} had nothing to say about the crab sandwich`).toContain('krab');
+      expect(st(g).crabFound).toBe(true);
+      // It is flavour: the run sheet must not grow a row for it.
+      expect(g.snapshot().tasks.some((t) => t.text.toLowerCase().includes('krab'))).toBe(false);
+    }
   });
 });

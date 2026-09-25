@@ -74,7 +74,7 @@ const PLATE_GAP = 0.05;
 /** How far the housing stands proud of the plate. */
 const CASE_D = 0.26;
 /** Margin between the housing and the ends of the plate. */
-const CASE_INSET = 0.16;
+const CASE_INSET = 0.1;
 
 /** The readout window: the part that has to read at play zoom. */
 const READ_H = 0.3;
@@ -283,6 +283,21 @@ export function buildKeypad(): KeypadModel {
   lampMat.emissive = new THREE.Color(0xd8452f);
   lampMat.emissiveIntensity = 1.4;
   lampMat.toneMapped = false;
+  /*
+   * A STANDBY GLOW ON THE BEZEL, for the reason `PROPS['projector-panel']` and
+   * `PROPS.terminal` carry one in `scene.ts`: the thing the player is looking FOR
+   * is by definition still idle, and chapter 1 is a blackout. Measured in the
+   * running build, an unlit housing in that corridor is a silhouette until a robot
+   * happens to point a lamp at it — Michele has filed *"there should be something
+   * visible"* against exactly this failure twice, on two other props. The lock is
+   * powered (it is a MAGNETIC lock; that is the whole fiction), so its own trim
+   * having current in it is the honest reading as well as the findable one.
+   */
+  trim.emissive = new THREE.Color(0x4a3a18);
+  trim.emissiveIntensity = 0.6;
+  trim.toneMapped = false;
+  shell.emissive = new THREE.Color(0x12171e);
+  shell.emissiveIntensity = 1;
   const owned: THREE.Material[] = [shell, plate, foot, trim, lampMat];
 
   const plinth = box(foot);
@@ -363,8 +378,16 @@ export function buildKeypad(): KeypadModel {
     labelPlate.scale.set(stripW, 0.1, 1);
     labelPlate.position.set(u.cx + caseW / 2 - stripW / 2 - caseW * 0.06, base + KEYS_Y0 + KEYS_H - 0.08, caseFrontZ + 0.016);
 
+    /*
+     * The lamp sits just east of the keys, NOT out at the housing's far end.
+     * Measured: the fire screen beside this unit is 2.45 m tall and at chapter
+     * 1's 30 deg pitch a sight line clears it only `2.45 - 2.39d` metres up,
+     * `d` being the distance west of the door — so the last third of the face is
+     * in the door's own shadow, and a status lamp parked there never changes
+     * colour where anyone can see it.
+     */
     lamp.scale.set(LAMP_R, LAMP_R, 0.03);
-    lamp.position.set(u.cx + caseW / 2 - caseW * 0.09, base + KEYS_Y0 + 0.1, caseFrontZ + 0.02);
+    lamp.position.set(keysCx + keysW / 2 + LAMP_R * 2.2, base + KEYS_Y0 + KEYS_H * 0.5, caseFrontZ + 0.02);
 
     // --- what it says
     const done = p.state === 'done';

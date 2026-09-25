@@ -36,6 +36,7 @@ import * as THREE from 'three';
 
 import { DEFS, H, RAYS_CONE, RAYS_MIRROR, RAYS_POOL, W } from '../sim/constants';
 import { CY0, CY1, F1, GF, R } from '../sim/geometry';
+import { CRATE_ROW } from '../sim/opening';
 import type { GameSnapshot, LightSource, RobotKind } from '../sim/types';
 import { ROBOT_HEIGHT_M, STOREY_H_M, m } from '../sim/units';
 
@@ -881,6 +882,25 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
     return light;
   });
 
+  /**
+   * The opening's own fitting: the emergency bulkhead over the crate row.
+   *
+   * Michele: *"There's a light on the crates, robot exit fully visible. Light
+   * (emergency light?) flickers and stops, robots light up -> transition to
+   * game."* `src/render/crates.ts` builds the fitting on the wall; this is the
+   * light that comes out of it, and both ride one number from the sim
+   * (`emergencyAt` in `src/sim/opening.ts`).
+   *
+   * Pale green-white rather than the corridor's exit green: it has to show three
+   * robots in their own colours — *"Droid and biggy are whitey-grey"* was a
+   * colour report — and a green wash would be a fourth lamp in a game whose whole
+   * mechanic is which lamp is on what.
+   */
+  const crateLamp = new THREE.PointLight(0xd6f0e2, 0, m(105), 1.15);
+  crateLamp.name = 'exit-green-f1/crates';
+  crateLamp.position.set(m(CRATE_ROW.x + 6), 0, m(CRATE_ROW.y));
+  group.add(crateLamp);
+
   /** Chapter 4: the Room 8 stage, and a thin wash of house light. */
   const room8 = R(8);
   const stageSim = { x: room8.x + room8.w / 2, y: room8.y + 18 };
@@ -1162,6 +1182,17 @@ export function createLightLayer(scene: THREE.Scene): LightLayer {
       e.intensity = onGround ? 0 : 2.2 * cur.exits;
       e.visible = e.intensity > 0.01;
     }
+    /*
+     * ...and the crate bulkhead, which exists only while the opening does. It is
+     * the last fitting running on this stretch and the opening ends by killing
+     * it, so once the chapter has the keyboard there is nothing here but the
+     * three lamps — which is the state the whole game is played in.
+     */
+    const op = snap.opening;
+    crateLamp.position.y = floorY + 2.55;
+    crateLamp.intensity = op === null || onGround ? 0 : 5.2 * op.emergency;
+    crateLamp.visible = crateLamp.intensity > 0.01;
+
     for (const hl of house) {
       hl.position.y = floorY + 3.1;
       hl.intensity = onGround ? 0 : 9 * cur.house;

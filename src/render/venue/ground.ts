@@ -40,6 +40,7 @@ import * as THREE from 'three';
 
 import { H, T, W } from '../../sim/constants';
 import {
+  COUNTER,
   ENTRANCE_BAYS,
   FORECOURT_BOLLARDS,
   FORECOURT_PLANTERS,
@@ -52,12 +53,13 @@ import {
   boothTotem,
   entranceLeaves,
   groundWalls,
-  stairDoor,
-  stairFlightRect,
+  stairDoors,
   stairLanding,
+  stairMidLanding,
+  stairRamps,
 } from '../../sim/geometry';
 import type { Rect, Wall } from '../../sim/types';
-import { m } from '../../sim/units';
+import { PX_PER_M, m } from '../../sim/units';
 import type { VenuePalette } from './materials';
 import {
   BOOTH_SCHEMES,
@@ -68,6 +70,7 @@ import {
   sponsorTotem,
 } from './signage';
 import {
+  BREAKER_D,
   BREAKER_H,
   BREAKER_Y,
   DOOR_H,
@@ -794,36 +797,77 @@ function reception(p: VenuePalette, overhead: THREE.Group): THREE.Group {
   const r = GF.reception;
   const co = GF.coatroom;
 
-  // The wood-slat back wall: the wardrobe's own north face, seen over the counter
-  // and over the desk from the diorama camera.
-  g.add(slab({ x: co.x + T, y: co.y + T, w: co.w - 2 * T, h: 5 }, RISE, 2.6, p.wood));
-  for (let x = co.x + T + 5; x < co.x + co.w - T; x += 13) {
-    g.add(slab({ x, y: co.y + T - 2, w: 4, h: 2 }, RISE + 0.1, 2.4, p.blackMetal));
+  /*
+   * THE WARDROBE IS NOW READ FROM THE WEST, so its dressing turned with it.
+   *
+   * The hand-in counter moved to the west face (`groundWalls`), which is the only
+   * side of this block anybody can stand at. So the wood-slat back wall is the
+   * EAST face — the one you see across the room when you look in over the counter
+   * — and the coat rails run north-south, down the length of the view, instead of
+   * end-on across it.
+   */
+  g.add(slab({ x: co.x + co.w - T - 5, y: co.y + T, w: 5, h: co.h - 2 * T }, RISE, 2.6, p.wood));
+  for (let y = co.y + T + 5; y < co.y + co.h - T; y += 13) {
+    g.add(slab({ x: co.x + co.w - T - 2, y, w: 2, h: 4 }, RISE + 0.1, 2.4, p.blackMetal));
   }
 
   // Coat rails and a thin crowd of hangers, inside the wardrobe.
-  for (const ry of [co.y + 34, co.y + 74]) {
-    g.add(slab({ x: co.x + 14, y: ry, w: co.w - 28, h: 3 }, RISE + 1.5, 0.05, p.steelRail));
-    for (let x = co.x + 18; x < co.x + co.w - 18; x += 7) {
-      g.add(slab({ x, y: ry - 4, w: 5, h: 10 }, RISE + 0.72, 0.76, p.coatFabric));
+  for (const rx of [co.x + 40, co.x + 80]) {
+    g.add(slab({ x: rx, y: co.y + 14, w: 3, h: co.h - 28 }, RISE + 1.5, 0.05, p.steelRail));
+    for (let y = co.y + 18; y < co.y + co.h - 18; y += 7) {
+      g.add(slab({ x: rx - 4, y, w: 10, h: 5 }, RISE + 0.72, 0.76, p.coatFabric));
     }
   }
 
   const printer = slab(GF.printer, RISE + LOW_H, 0.28, p.printerWhite);
   printer.name = 'badge-printer';
   g.add(printer);
-  // Cream-shaded table lamps along the counter.
-  for (let k = 0; k < 3; k++) {
-    const lx = r.x + 22 + k * 42;
-    g.add(postAt(lx, r.y + 22, 0.03, 0.26, RISE + LOW_H, p.brass, 8));
-    g.add(boxAt(lx, r.y + 22, 9, 9, RISE + LOW_H + 0.26, 0.2, p.lampWarm));
+  /*
+   * Cream-shaded table lamps ALONG THE TWO RUNS, not floating in the middle.
+   *
+   * The counter is an L and hollow now, so a lamp at the old `r.y + 22` would have
+   * stood on open floor inside the desk. Two sit on the south run either side of
+   * the printer, one on the west run.
+   */
+  const southMid = r.y + r.h - COUNTER / 2;
+  for (const [lx, ly] of [
+    [r.x + 30, southMid],
+    [r.x + r.w - 14, southMid],
+    [r.x + COUNTER / 2, r.y + 26],
+  ] as const) {
+    g.add(postAt(lx, ly, 0.03, 0.26, RISE + LOW_H, p.brass, 8));
+    g.add(boxAt(lx, ly, 9, 9, RISE + LOW_H + 0.26, 0.2, p.lampWarm));
   }
 
-  // The big white pendant disc and the orange ceiling soffit strip.
+  /*
+   * The big white pendant disc, and the orange band over the desk — WHICH NOW
+   * SITS ON SOMETHING.
+   *
+   * Michele, twice, the second time with a circle round it: *"Pic5 there's still
+   * that big strange wooden thing."* It was the reference photograph's orange
+   * ceiling soffit, 14 m of it, hung at 3 m on `overhead` — and this diorama
+   * draws no ceiling for the ground floor, so the strip was a plank floating in
+   * mid-air over open carpet with nothing above it and nothing holding it up.
+   * From the fixed camera it reads as a beam somebody left in the room, which is
+   * exactly what he called it.
+   *
+   * It is a FASCIA now, on top of the wardrobe block's south wall: the warm band
+   * over the reception, backed by the 2.6 m wall it belongs to, reading as part
+   * of the building from every angle this camera has.
+   *
+   * It was a free-standing gantry for about ten minutes — band, two posts, floor
+   * to ceiling — until `tests/colliders.test.ts` pointed out that a post which
+   * touches the floor is a collider, and then `tests/chapters.test.ts` pointed
+   * out what two new colliders either side of the desk do to three thousand
+   * people walking past it: 15 of 33 were still queueing at the threshold when
+   * the doors shut. Nothing that stands in the concourse is free.
+   */
   const disc = pendant(r.x + r.w / 2, r.y + 30, 1.5, RISE + 2.6, p.pendantWhite);
   disc.name = 'reception-pendant';
   overhead.add(disc);
-  overhead.add(slab({ x: r.x - 26, y: r.y + r.h + 18, w: r.w + 52, h: 10 }, RISE + 3.0, 0.22, p.devoxxOrange));
+  const band = slab({ x: co.x, y: co.y + co.h - 3, w: co.w, h: 5 }, RISE + 2.34, 0.38, p.devoxxOrange);
+  band.name = 'reception-fascia';
+  g.add(band);
   return g;
 }
 
@@ -843,11 +887,25 @@ function reception(p: VenuePalette, overhead: THREE.Group): THREE.Group {
  *
  * Michele, on chapter 2: *"In devoxx the stairs are not open but look like rooms."*
  * They are rooms. `plans/exhibition-floor-simple.png` draws each secondary stair as
- * a walled shaft with a pair of doors in its plan-north end — world WEST, by this
- * module's rotation — and the ascent arrow running away from them, so the flight
- * climbs eastward and the landing is behind the doors. The shell is `groundWalls()`'
- * job now (it has to be a collider, which was the other half of the same report);
- * what is built here is the flight inside it, the landing floor and the doors.
+ * a walled shaft with the ascent arrow running away down the middle, a deep landing
+ * at the plan-north end — world WEST, by this module's rotation — and **a pair of
+ * double doors in each of the shaft's two LONG faces** beside that landing. The
+ * shell is `groundWalls()`' job now (it has to be a collider, which was the other
+ * half of the same report); what is built here is the flight inside it, the landing
+ * floor and both doors.
+ *
+ * ## Two corrections, 24 Sep 2026
+ *
+ * *"Just a correction: you put the opening north, but it's on the sides (WEST,
+ * EAST). Worth a fix."* — there was one doorway, in the shaft's short west end.
+ * There are two now, one per long face (`stairDoors`); counted on the drawing, the
+ * short ends carry no door symbol at all. The building's west and east ARE these
+ * long faces: the whole floor is rotated 90° (see `src/sim/geometry.ts`'s header).
+ *
+ * *"I think it's a mid plane between two ramps of stairs"* — the flight is drawn
+ * as two ramps with a half-landing between them (`stairRamps`, `stairMidLanding`),
+ * not as one unbroken run. The drop is split between the ramps in proportion to
+ * their runs so the half-landing comes out level.
  */
 function staircases(p: VenuePalette, anchors: Map<number | string, THREE.Object3D>): THREE.Group {
   const g = new THREE.Group();
@@ -855,35 +913,60 @@ function staircases(p: VenuePalette, anchors: Map<number | string, THREE.Object3
 
   for (const s of GF.stairs) {
     const rect: Rect = { x: s.x, y: s.y, w: s.w, h: s.h };
-    const flight = stairFlight({
-      rect: stairFlightRect(rect),
-      topY: STAIR_RISE,
-      bottomY: 0,
-      // Top of the flight at its EAST end: you come down heading west, and step
-      // out of the doors in the west face.
-      dir: '-x',
-      steps: 12,
-      tread: p.stairTreadDark,
-      nosing: p.stairNosing,
-      runs: 2,
-      rail: p.steelRail,
-    });
+    const mid = stairMidLanding(rect);
+    const [lower, upper] = stairRamps(rect);
+    const flight = new THREE.Group();
+    /*
+     * Split the climb by run length so the half-landing comes out level, and hang
+     * the group's own origin ON that half-landing: `ground-stair-*` is the handle
+     * `tests/venue.smoke.test.ts` takes the flight's height by, and a wrapper
+     * sitting at local zero would report the exhibition floor rather than the
+     * stair. So the ramps are built relative to `midY` and the group carries it.
+     */
+    const midY = (STAIR_RISE * lower.w) / (lower.w + upper.w);
+    flight.position.y = midY;
+    for (const [r, y0, y1] of [
+      [lower, 0, -midY],
+      [upper, STAIR_RISE - midY, 0],
+    ] as const) {
+      flight.add(
+        stairFlight({
+          rect: r,
+          topY: y0,
+          bottomY: y1,
+          // Top of each ramp at its EAST end: you come down heading west, toward
+          // the landing and the doors beside it.
+          dir: '-x',
+          steps: Math.max(3, Math.round((r.w / (lower.w + upper.w)) * 12)),
+          tread: p.stairTreadDark,
+          nosing: p.stairNosing,
+          runs: 2,
+          rail: p.steelRail,
+        }),
+      );
+    }
+    // The mid plane between the two ramps — Michele's own words for it.
+    flight.add(floorSlab(mid, 0, p.stairTreadDark, 0.1));
     flight.name = `ground-stair-${s.to}`;
     g.add(flight);
 
-    // The landing behind the doors, and a lintel over them so the mouth reads as a
-    // doorway rather than as a hole in a wall.
-    const d = stairDoor(rect);
+    // The landing at the foot, and then BOTH doorways: a lintel over each so the
+    // mouth reads as a doorway rather than as a hole in a wall, two leaves stood
+    // open against the jambs, and the green running-man plate — this is a fire
+    // stair. Held 0.4 px off the jamb face: two coplanar surfaces is how the
+    // entrance got its flicker (see `lobby()`), and one costs nothing to avoid.
     g.add(floorSlab(stairLanding(rect), 0.02, p.stairTreadDark, 0.1));
-    g.add(slab({ x: d.x, y: d.y, w: d.w, h: d.h }, DOOR_H, WALL_H - DOOR_H, p.hallWall));
-    // Two leaves standing open against the jambs, pushed back into the shaft.
-    for (const ly of [d.y + 1, d.y + d.h - 6]) {
-      g.add(slab({ x: d.x + T, y: ly, w: 15, h: 5 }, 0, DOOR_H, p.doorLeaf));
+    const [north, south] = stairDoors(rect);
+    for (const [d, out] of [
+      [north, -1],
+      [south, 1],
+    ] as const) {
+      g.add(slab({ x: d.x, y: d.y, w: d.w, h: d.h }, DOOR_H, WALL_H - DOOR_H, p.hallWall));
+      for (const lx of [d.x + 1, d.x + d.w - 16]) {
+        g.add(slab({ x: lx, y: d.y - out * T, w: 15, h: 5 }, 0, DOOR_H, p.doorLeaf));
+      }
+      g.add(slab({ x: d.x + d.w / 2 - 7, y: d.y + (out < 0 ? -2.4 : d.h + 0.4), w: 14, h: 2 }, DOOR_H + 0.12, 0.34, p.signGreen));
     }
-    // The green running-man plate over the doors — this is a fire stair.
-    // Held 0.4 px off the jamb face: two coplanar surfaces is how the entrance
-    // got its flicker (see `lobby()`), and one costs nothing to avoid here.
-    g.add(slab({ x: d.x - 2.4, y: d.y + d.h / 2 - 7, w: 2, h: 14 }, DOOR_H + 0.12, 0.34, p.signGreen));
 
     const a = anchorAt(`anchor-stair-${s.to}`, s.x + s.w / 2, s.y + s.h / 2);
     anchors.set(`stair-${s.to}`, a);
@@ -1135,13 +1218,22 @@ export function buildGround(
     const pa = GF.panel;
     const box = new THREE.Group();
     box.name = 'breaker-panel';
-    // The enclosure, proud of the wall, and its darker recessed door.
-    box.add(slab(pa, BREAKER_Y, BREAKER_H, p.breakerBox));
-    box.add(slab({ x: pa.x + 2, y: pa.y + pa.h - 1, w: pa.w - 4, h: 2 }, BREAKER_Y + 0.06, BREAKER_H - 0.12, p.blackMetal));
+    // The enclosure, proud of the wall by `BREAKER_D` and no more — the rect's own
+    // depth is the reach zone in front of it, not the box (see `BREAKER_D`).
+    const deep = BREAKER_D * PX_PER_M;
+    const face = { x: pa.x, y: pa.y, w: pa.w, h: deep };
+    box.add(slab(face, BREAKER_Y, BREAKER_H, p.breakerBox));
+    box.add(slab({ x: pa.x + 2, y: pa.y + deep - 1, w: pa.w - 4, h: 2 }, BREAKER_Y + 0.06, BREAKER_H - 0.12, p.blackMetal));
     // Conduit down to the floor and along to the router cabinet: the giveaway that
     // this box is where the room's power comes from.
-    box.add(slab({ x: pa.x + pa.w / 2 - 2, y: pa.y + pa.h - 2, w: 4, h: 2 }, 0, BREAKER_Y, p.chafingSteel));
-    box.add(slab({ x: pa.x + pa.w / 2, y: pa.y + pa.h - 2, w: GF.cabinet.x - pa.x - pa.w / 2, h: 2 }, 0.1, 0.09, p.chafingSteel));
+    // Conduit down the WALL behind the box and along it to the router cabinet —
+    // inside the technical room's own north wall, where the sim already has a
+    // collider. Run out on the open floor it is a 1.45 m post and a trip hazard
+    // nothing in the sim knows about, which is what `tests/colliders.test.ts`
+    // says the moment it moves.
+    const wallY = GF.tech.y + 1;
+    box.add(slab({ x: pa.x + pa.w / 2 - 2, y: wallY, w: 4, h: 2 }, 0, BREAKER_Y, p.chafingSteel));
+    box.add(slab({ x: pa.x + pa.w / 2, y: wallY, w: GF.cabinet.x - pa.x - pa.w / 2, h: 2 }, 0.1, 0.09, p.chafingSteel));
     group.add(box);
   }
 

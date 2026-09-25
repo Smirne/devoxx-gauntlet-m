@@ -44,7 +44,9 @@ import {
   nicheMouth,
   roomDoor,
   type Rect,
+  type RobotKind,
 } from '../src/sim';
+import { stairExitRoutes } from '../src/sim/chapters/ch1-night';
 
 /** Do two rectangles overlap at all? */
 const hits = (a: Rect, b: Rect): boolean =>
@@ -92,14 +94,59 @@ describe('the small staircase is clear', () => {
      * the next person to resize a stand finds out in a second rather than in a
      * screenshot.
      */
-    expect(HALL_COLUMNS).toHaveLength(18);
+    // Sixteen, not the eighteen this test was written on: the x 213 line was both
+    // of the columns that pinched the route to the technical room, and the rule in
+    // `HALL_COLUMNS` drops them. See the test below for what that rule means.
+    expect(HALL_COLUMNS).toHaveLength(16);
     const xs = [...new Set(HALL_COLUMNS.map((c) => c.x))].sort((a, b) => a - b);
-    expect(xs).toEqual([213, 373, 533, 693, 853, 1013]);
+    expect(xs).toEqual([373, 533, 693, 853, 1013]);
     for (const c of HALL_COLUMNS) {
       for (const b of GF.booths) {
         expect(hits(c, { x: b.x, y: b.y, w: b.w, h: b.h }), `a column stands inside ${b.name}`).toBe(false);
       }
     }
+  });
+
+  /**
+   * ...and none of the sixteen makes a gap the heaviest robot cannot get through.
+   *
+   * Michele, 25 Sep 2026, with Biggy stopped beside one: *"Biggy route to the
+   * modem room is a bit long. Is this column strictly needed?"* Two of the
+   * eighteen were not: one stood 13 px off the technical room and one 7 px off
+   * the lower stair shaft, both on the x 213 line, both on the route the chapter
+   * sends BIGGY down to open the router cabinet. 13 px is 1.04 m and he is 1.44,
+   * so the short way was a slot he could not enter — which is the whole of "a bit
+   * long".
+   *
+   * The rule that dropped them is in `HALL_COLUMNS`; this is what it means, asked
+   * of the result rather than of the code.
+   */
+  it('leaves every column a gap Biggy can actually use', () => {
+    const blocks: Array<{ name: string; r: Rect }> = [
+      { name: 'catering court', r: GF.food.court },
+      { name: 'technical room', r: GF.tech },
+      { name: 'store', r: GF.store },
+      { name: 'small stairs', r: GF.smallStairs },
+      { name: 'concrete wall', r: GF.concreteWall },
+      ...GF.stairs.map((s, i) => ({ name: `stair shaft ${i}`, r: { x: s.x, y: s.y, w: s.w, h: s.h } })),
+      ...GF.booths.map((b) => ({ name: b.name, r: { x: b.x, y: b.y, w: b.w, h: b.h } })),
+    ];
+    const tight: string[] = [];
+    for (const c of HALL_COLUMNS) {
+      for (const { name, r } of blocks) {
+        const ovY = Math.min(c.y + c.h, r.y + r.h) - Math.max(c.y, r.y);
+        const ovX = Math.min(c.x + c.w, r.x + r.w) - Math.max(c.x, r.x);
+        const gapX = Math.max(r.x - (c.x + c.w), c.x - (r.x + r.w));
+        const gapY = Math.max(r.y - (c.y + c.h), c.y - (r.y + r.h));
+        if (ovY > 0 && gapX >= 0 && gapX < DEFS.biggy.r * 2) {
+          tight.push(`column ${c.x},${c.y} leaves ${gapX.toFixed(1)} px to ${name} — Biggy is ${DEFS.biggy.r * 2}`);
+        }
+        if (ovX > 0 && gapY >= 0 && gapY < DEFS.biggy.r * 2) {
+          tight.push(`column ${c.x},${c.y} leaves ${gapY.toFixed(1)} px to ${name} — Biggy is ${DEFS.biggy.r * 2}`);
+        }
+      }
+    }
+    expect(tight, `columns standing in a gap nothing can use:\n  ${tight.join('\n  ')}`).toEqual([]);
   });
 
   it('is not where chapter 3 plays shuffleboard', () => {
@@ -287,22 +334,116 @@ describe('the two secondary staircases upstairs are clear too', () => {
 
   /**
    * ...and the two who CAN take those stairs still fit through the mouth, while
-   * Biggy does not. Chapter 1 ends by walking all three onto that landing, so the
-   * landing has to be somewhere a robot can be.
+   * Biggy does not. Chapter 1 ends by walking all three onto the top step, so the
+   * top step has to be somewhere a robot can be.
+   *
+   * **The waypoint used to be the middle of the flight** — `r.x + r.w / 2` — back
+   * when the mouth was centred and a run fell away either side. Michele, 24 Sep
+   * 2026: *"This makes it look like there's a center, and 2 descent. I think it's
+   * a mid plane between two ramps of stairs."* It is one staircase, the centre is
+   * a ramp, and the way on is the east end (`nicheMouth`). The assertion moved
+   * onto the new head rather than being dropped, and `ch1-night.ts` derives its
+   * waypoint from `nicheMouth` so the two cannot drift apart again.
    */
-  it('lets Droid onto the landing and keeps Biggy off it', () => {
+  it('lets Droid onto the top step and keeps Biggy off it', () => {
     for (const { name, r } of shafts) {
       const mouth = nicheMouth(r);
       expect(mouth.w, `the ${name} mouth admits Biggy`).toBeLessThan(DEFS.biggy.r * 2);
       expect(mouth.w, `the ${name} mouth refuses Droid`).toBeGreaterThan(DEFS.droid.r * 2);
       expect(mouth.h).toBeGreaterThan(DEFS.droid.r * 2);
-      // Chapter 1's descent waypoint is the middle of the flight, which is the
-      // middle of that landing, and it is inside the corridor band.
-      const head = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+      // Chapter 1's descent waypoint is the centre of that top step, and it is
+      // inside the corridor band.
+      const head = { x: mouth.x + mouth.w / 2, y: mouth.y + mouth.h / 2 };
       expect(head.x).toBeGreaterThan(mouth.x);
       expect(head.x).toBeLessThan(mouth.x + mouth.w);
       expect(head.y).toBeGreaterThan(CY0);
       expect(head.y).toBeLessThan(CY1);
+      // ...and the middle of the flight, where it used to stand, is now wall.
+      const runs = floor1Walls().filter((w) => w.kind === 'stairwell' || w.kind === 'stairwell-near');
+      const centre = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+      expect(
+        runs.some((w) => centre.x > w.x && centre.x < w.x + w.w && centre.y > w.y && centre.y < w.y + w.h),
+        `the middle of the ${name} flight is still walkable`,
+      ).toBe(true);
+    }
+  });
+});
+
+/**
+ * ...and the chapter-1 exit cutscene walks round the balustrade, not through it.
+ *
+ * Michele, twice, the second time after a round that had not touched it: *"Robots
+ * still go throuh the handrail in the chapter transiction."* He was right both
+ * times. The closing route ran along the corridor to a point above the mouth and
+ * then straight south into the top step, which crosses the balustrade
+ * `floor1Walls()` stands across that mouth — the wall whose own `why` tells the
+ * player *"the way on is round the end, off the corridor"*.
+ *
+ * Nothing caught it because a cutscene ignores walls on purpose (`game.ts`: the
+ * shot has to be able to walk through the doorway it is being framed through), and
+ * because every test in this repo asked where a robot may DRIVE. This one asks
+ * where the chapter SENDS one, which is the question that was missing.
+ *
+ * The legs are sampled rather than solved: a segment/rect intersection would be
+ * exact, but the sample is what a viewer sees — a robot's centre, frame by frame —
+ * and it reports the offending leg and point instead of a boolean.
+ */
+describe('chapter 1 leaves by the stairs, not through them', () => {
+  /** The walls a cutscene may not be seen to cross. Doorways are not among them. */
+  const solid = floor1Walls().filter((w) => !w.hidden && !w.glass && !w.low);
+
+  it('never walks a robot through a wall on the way out', () => {
+    const fouls: string[] = [];
+    for (const { kind, pts } of stairExitRoutes()) {
+      const rad = DEFS[kind].r;
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1];
+        const b = pts[i];
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        const n = Math.max(2, Math.ceil(len / 0.5));
+        for (let s = 0; s <= n; s++) {
+          const p = { x: a.x + ((b.x - a.x) * s) / n, y: a.y + ((b.y - a.y) * s) / n };
+          for (const w of solid) {
+            // The robot is a disc, not a point: grazing the end of the handrail
+            // reads as walking through it just as plainly as crossing the middle.
+            if (p.x > w.x - rad && p.x < w.x + w.w + rad && p.y > w.y - rad && p.y < w.y + w.h + rad) {
+              fouls.push(`${kind} leg ${i} at (${p.x.toFixed(1)}, ${p.y.toFixed(1)}) is inside ${w.kind ?? 'wall'} ${w.x.toFixed(1)},${w.y.toFixed(1)} ${w.w.toFixed(1)}x${w.h.toFixed(1)}`);
+            }
+          }
+        }
+      }
+    }
+    expect([...new Set(fouls)].slice(0, 6), 'the exit cutscene walks through walls').toEqual([]);
+  });
+
+  it('turns in past the east end of the flight', () => {
+    const nb = F1.nicheBot;
+    const rail = floor1Walls().find((w) => w.kind === 'stair-rail-near');
+    expect(rail, 'the near balustrade is gone').toBeDefined();
+    for (const { kind, pts } of stairExitRoutes()) {
+      // Every point that is south of the balustrade — i.e. on the stair side of it
+      // — was reached from the open east end, never over the rail.
+      const turn = pts.findIndex((p) => p.y > (rail as { y: number }).y);
+      expect(turn, `${kind} never reaches the stair`).toBeGreaterThan(0);
+      expect(pts[turn].x, `${kind} turns in over the balustrade`).toBeGreaterThan(nb.x + nb.w);
+    }
+  });
+
+  it('ends with the three queued at the head, not in a heap', () => {
+    const at = new Map(stairExitRoutes().map((r) => [r.kind, r.pts[r.pts.length - 1]]));
+    const order: RobotKind[] = ['voxxy', 'droid', 'biggy'];
+    for (let i = 1; i < order.length; i++) {
+      const a = at.get(order[i - 1]) as { x: number; y: number };
+      const b = at.get(order[i]) as { x: number; y: number };
+      const gap = Math.hypot(b.x - a.x, b.y - a.y);
+      expect(gap, `${order[i - 1]} and ${order[i]} finish inside each other`).toBeGreaterThan(DEFS[order[i - 1]].r + DEFS[order[i]].r);
+    }
+    // Voxxy takes the step; the other two are still in the corridor, because only
+    // one robot fits in a 17.7 px mouth and Biggy does not fit in it at all.
+    const mouth = nicheMouth(F1.nicheBot);
+    expect((at.get('voxxy') as { x: number }).x).toBeLessThan(mouth.x + mouth.w);
+    for (const k of ['droid', 'biggy'] as const) {
+      expect((at.get(k) as { x: number }).x, `${k} is standing on the top step`).toBeGreaterThan(mouth.x + mouth.w);
     }
   });
 });

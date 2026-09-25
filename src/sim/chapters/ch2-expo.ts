@@ -106,10 +106,10 @@ import {
   TRAVEL_TIME_SCALE,
 } from '../constants';
 import { m } from '../units';
-import { GF, VIEW_GROUND, groundWallsFor, stairDoor } from '../geometry';
+import { GF, VIEW_GROUND, WIFI_TAG, groundWallsFor, stairLanding } from '../geometry';
 import { dist, inRect, speed } from '../bot';
 import { buildLights, litBy } from '../lights';
-import type { Bot, LightSource, Mirror, Prop, TextPrompt, Vec2, Wall } from '../types';
+import type { Bot, LightSource, Mirror, Prop, Task, TextPrompt, Vec2, Wall } from '../types';
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 
 /* ---------------------------------------------------------------- reach distances */
@@ -152,6 +152,16 @@ const ROLLER_TALK_COOLDOWN = 3;
  * while it runs.
  */
 const ROLLER_RISE_TIME = 0.42;
+
+/**
+ * How long chapter 2 stays live after its last task lands, seconds.
+ *
+ * Long enough for the shutter's own 0.42 s lift to finish and then some — the
+ * point is not the animation alone but being left standing in a hall that is
+ * lit, with a store that is open, for a beat before the card. Play is not taken
+ * away: this is a curtain, not a cutscene.
+ */
+const CURTAIN = 3;
 /**
  * How long Biggy takes to walk the router cabinet's doors open, seconds.
  *
@@ -240,6 +250,43 @@ const TECH_DOOR_HAIL = 120;
 /** Seconds between the terminal's "that is not it" readouts, so a mashed key is not a wall of toast. */
 const TYPO_COOLDOWN = 1.2;
 const BREAKERS = 3;
+/**
+ * How long the panel goes on striking after a handle is thrown, seconds.
+ *
+ * Michele, 26 Sep 2026: *"the braker activation seems to do nothing, apart from
+ * the message."* He was right, and the chapter's own comment beside the last
+ * breaker had already promised otherwise — *"what the player gets for the breakers
+ * is a noise behind a door, and a reason to go and open it"* — so what was missing
+ * was not the design, it was the feedback the design owes.
+ *
+ * This is the same shape as every other clock in the file (`ROLLER_RISE_TIME`,
+ * `CABINET_SWING_TIME`): the sim owns it, it only ever feeds `Prop.progress`, and
+ * a duration is not a speed so the 2026-09-23 rescale leaves it alone. It is a
+ * STRIKE and not a state — 1 on the frame the handle goes up, decaying to 0 — so
+ * that each of the three handles has a rising edge of its own for the renderer to
+ * flash the board off and for `main.ts` to fire a cue off. A flag that stayed true
+ * would fire once and then never again.
+ *
+ * Short, because it is an arc across a contact and not a lamp: long enough that a
+ * player looking at the robot rather than at the panel still catches it in the
+ * corner of the frame, short enough that mashing `E` reads as three distinct
+ * strikes rather than one long glow.
+ */
+const BREAKER_STRIKE_TIME = 0.45;
+/**
+ * What each handle feeds, in the order Droid throws them.
+ *
+ * Three handles that counted "1/3, 2/3, 3/3" said nothing about the room. Naming
+ * the circuits costs one array and buys the answer to the question Michele asked
+ * in the first place — *"The breaker lighted all up, with no need to activate the
+ * router. I thought they were linked"* — because the middle handle is the hall
+ * lighting, and the player watches it come up and the room stay black. The reason
+ * is in the sentence the panel says: a lighting circuit is fed through a
+ * contactor, and a contactor is held open until something closes it. That
+ * something is the router, four metres to the left, behind a door Biggy has to
+ * open. The whole chapter, explained by a switchboard being a switchboard.
+ */
+const BREAKER_CIRCUITS: readonly string[] = ['SOCKETS &amp; RACK', 'HALL LIGHTING', 'MAINS / TRANSFORMER'];
 
 /** The exhibition hall has no cinema screen to bounce a lamp off. */
 const NO_MIRRORS: Mirror[] = [];
@@ -339,26 +386,40 @@ const OBJECTIVE =
   'the <b>store</b> open. <b>Droid</b> reaches what is too high, <b>Biggy</b> moves what is too ' +
   'heavy, <b>Voxxy</b> goes where nothing else fits.';
 const KEYS =
-  '1/2/3/Tab: switch · WASD · E: use / climb / terminal / hold Biggy / Voxxy jumps · R: restart';
+  '1/2/3/Tab: switch · WASD · E: use / climb / terminal / hold Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');
   ctx.setView(VIEW_GROUND);
   ctx.setWalls(groundWallsFor(2));
   /*
-   * Out of the secondary stairwell's doors, into the hall.
+   * At the foot of the secondary stairs, on the landing, doors ahead of them.
    *
    * They used to stand at x 372, off the EAST end of the staircase, because the
-   * staircase was an open flight that climbed westward. It is an enclosed shaft now
-   * with its doors in the west face and the flight climbing away from them, which
-   * is what `plans/exhibition-floor-simple.png` draws (see `GF.stairs`) — so the
-   * three of them come out on the west side. The old spot has also stopped being
-   * empty floor: one of the hall's roof columns stands at 380,480, and it is a
-   * collider now.
+   * staircase was an open flight that climbed westward; then west of a single
+   * doorway in the shaft's short west end. Both are gone. Michele, 24 Sep 2026:
+   * *"you put the opening north, but it's on the sides (WEST, EAST)"* — the plan
+   * puts a pair of double doors in each of the shaft's two LONG faces, near the
+   * foot, and nothing at all in either short end (`stairDoors` in
+   * `src/sim/geometry.ts` counts the door symbols face by face).
+   *
+   * So there is no "outside the door" that is both roomy and in shot any more: the
+   * north door faces away from the diorama camera behind a full-height flank, and
+   * the strip south of the south door is 15.8 px of floor — the technical room's
+   * north wall runs at y 554 and this shaft's south face at 538.2 — and Biggy is
+   * 18 across, so he cannot use that door at all. The landing itself is 92.9
+   * x 32.1 of walkable floor, it is where three robots who have just come down a
+   * flight would actually be, and the near flank is cut to `NEAR_CUT_H` so the
+   * camera reads straight over it. They start there, at the foot of the flight,
+   * with the doors beside them.
    */
   const shaft = GF.stairs[1];
-  const mouth = stairDoor({ x: shaft.x, y: shaft.y, w: shaft.w, h: shaft.h });
-  ctx.place([mouth.x - 20, mouth.y + 4], [mouth.x - 34, mouth.y + mouth.h / 2], [mouth.x - 20, mouth.y + mouth.h - 4]);
+  const landing = stairLanding({ x: shaft.x, y: shaft.y, w: shaft.w, h: shaft.h });
+  const foot = landing.x + landing.w;
+  const cy = landing.y + landing.h / 2;
+  // Voxxy nearest the foot of the flight — she came down it first — then Droid,
+  // then Biggy back toward the doors, which is the order they will go out in.
+  ctx.place([foot - 14, cy - 8], [foot - 30, cy], [foot - 50, cy + 6]);
 
   let power = false;
   /**
@@ -371,7 +432,13 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    */
   let lights: LightSource[] = [];
   let breakersLeft = BREAKERS;
+  /** 1 on the frame a handle goes up, decaying to 0. See `BREAKER_STRIKE_TIME`. */
+  let breakerStrike = 0;
   let rollerBroken = false;
+  /** When both tasks were first done, sim seconds — see `CURTAIN`. Null until then. */
+  let curtainAt: number | null = null;
+  /** Whether the shutter was the LAST of the two, so the curtain line names it. */
+  let rollerLast = false;
   /** 0..1, how far the smashed shutter has torn up. See `ROLLER_RISE_TIME`. */
   let rollerRise = 0;
   /** 0..1, how far the cabinet doors have been walked open. See `CABINET_SWING_TIME`. */
@@ -418,6 +485,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       if (b.kind !== 'biggy') return false;
       if (b.vx > ROLLER_DOOR_SPEED) {
         rollerBroken = true;
+        // Which task finished the chapter decides what the curtain says. Read
+        // here rather than in `update`, because by the next frame both are true
+        // and the order is gone.
+        rollerLast = printerOnline();
         ctx.removeWall(roller);
         ctx.flash(
           `CRASH — Biggy rolls through at ${m(b.vx).toFixed(1)} m/s. The Devoxx crew and 3,000 badges are free`,
@@ -518,7 +589,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * Four pixels proud of the wall, as chapter 1's clues stand off theirs, so nothing
    * occludes the beam that is trying to read it.
    */
-  const tagAt: Vec2 = { x: 400, y: GF.hall.y + 8 };
+  // The venue owns the position (`WIFI_TAG`): the renderer paints it and this
+  // chapter reads it, so the paint and the thing the beam has to find are one
+  // number. It used to be written down twice, and the second copy is how it
+  // ended up behind chapter 3's bar.
+  const tagAt: Vec2 = { x: WIFI_TAG.x, y: WIFI_TAG.y };
   /** Kept under the old name inside the beat: it is still the thing Voxxy reads. */
   const posterAt: Vec2 = tagAt;
 
@@ -827,6 +902,14 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       }
       if (atPanel) {
         breakersLeft--;
+        const n = BREAKERS - breakersLeft;
+        /*
+         * THE STRIKE, ON EVERY HANDLE. See `BREAKER_STRIKE_TIME`: this is the one
+         * fact the renderer and the audio need and the one the panel never
+         * published — that a handle went up on THIS frame. The count (`v`) says
+         * how many are up and a count has no edges in it.
+         */
+        breakerStrike = 1;
         if (breakersLeft <= 0) {
           power = true;
           /*
@@ -834,14 +917,34 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
            * on, booth by booth" and they did, which is precisely what made the
            * router optional. A supply is not a lit room: what the player gets for
            * the breakers is a noise behind a door, and a reason to go and open it.
+           *
+           * ...and as of 26 Sep 2026 he gets both of them, because neither had
+           * been built. The noise is `busbar` (`main.ts` rides the panel's own
+           * state) and the reason is the cabinet's pilot lamp, four metres to the
+           * left, coming up amber on the same frame.
            */
           ctx.flash(
-            'Droid throws the last breaker. The bars go live with a thump you feel through the floor — ' +
-              'and the hall stays black. Something behind that grey cabinet door starts spinning up',
-            4200,
+            `Droid throws <b>${BREAKER_CIRCUITS[2]}</b> (3/3). The bars take the load with a thump you ` +
+              'feel through the floor, the board settles into a hum — and the hall stays black. Over in ' +
+              'the grey cabinet a pilot lamp comes up amber, and something behind that door starts spinning up',
+            4600,
+          );
+        } else if (n === 2) {
+          /*
+           * THE HANDLE THAT EXPLAINS THE CHAPTER. See `BREAKER_CIRCUITS`.
+           */
+          ctx.flash(
+            `Droid throws <b>${BREAKER_CIRCUITS[1]}</b> (2/3). The board strikes, the handle stays up — ` +
+              'and the contactor above it does not pull in. The lighting circuit is fed and still open: ' +
+              'something has to tell it to close',
+            4000,
           );
         } else {
-          ctx.flash(`Droid flips a breaker (${BREAKERS - breakersLeft}/${BREAKERS})`);
+          ctx.flash(
+            `Droid throws <b>${BREAKER_CIRCUITS[0]}</b> (1/3). A crack off the contacts, a sting of ozone, ` +
+              'and the panel lamp kicks. Nothing else in this room so much as blinks. Two handles to go',
+            3600,
+          );
         }
         return true;
       }
@@ -1098,8 +1201,20 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     // wall: still true, and nothing left to say about it.
     if (!router.posterLit || router.known) return;
     router.known = true;
+    /*
+     * SHE RECOGNISES IT BEFORE SHE READS IT OUT. Michele: *"wifi password: when
+     * lighted by a robot for the first time, that robot could have a toast, 'Oh
+     * yeah, that password..'"*
+     *
+     * It narrated what the beam found, which is the camera talking. Opening on
+     * her reaction makes it hers, and it makes the joke land harder: a robot that
+     * has been round this venue before already knows the password is dreadful and
+     * is only annoyed to be reminded. The line is still one toast, because the
+     * password has to arrive with it — two would stack and the second would be
+     * the one she is talking over.
+     */
     ctx.flash(
-      'Voxxy holds the beam on the paint. A wifi symbol, a metre of orange, and under it: ' +
+      'Voxxy: oh — <i>that</i> password. A wifi symbol, a metre of orange, and under it ' +
         '<b>DevoxxForever</b> — <i>(and no, you can\u2019t change it)</i>. Bart. Now the terminal in the ' +
         'technical room',
       4600,
@@ -1140,6 +1255,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     // The shutter tearing up into its housing. The opening is already free — the
     // wall went on the frame of the hit — so this is only the picture and the cue.
     if (rollerBroken && rollerRise < 1) rollerRise = Math.min(1, rollerRise + dt / ROLLER_RISE_TIME);
+    // The arc across the contacts going out. See `BREAKER_STRIKE_TIME`.
+    if (breakerStrike > 0) breakerStrike = Math.max(0, breakerStrike - dt / BREAKER_STRIKE_TIME);
     if (router.cabinetOpen && cabinetSwing < 1) cabinetSwing = Math.min(1, cabinetSwing + dt / CABINET_SWING_TIME);
 
     if (typeAnchor !== null && typing()) {
@@ -1243,10 +1360,41 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     lights = cast;
     stepPoster(cast);
 
+    /*
+     * THE CURTAIN. Michele: *"when all actions are done, chapter 2 ends
+     * abruptly. I just finished the biggy run, i expected to see the animation
+     * and the inside of the gadget room. Since u can finish in different orders,
+     * give some seconds for animation / see what happens before the chap 3
+     * screen."*
+     *
+     * It called `startChapter(3)` on the exact frame the second of the two
+     * conditions flipped, so the shutter — `ROLLER_RISE_TIME`, 0.42 s of it —
+     * was still on its way up when the chapter card came down over it. Whichever
+     * task you finish last, you never saw it finish.
+     *
+     * So the chapter stays live for `CURTAIN` seconds after the last one lands.
+     * Play is not taken away during it: the robots keep their keys, the shutter
+     * finishes its lift, the hall is up, the store is open and standing there —
+     * which is the half of his note that a fade could not have answered, because
+     * *"see the inside of the gadget room"* means being allowed to look.
+     *
+     * The clock starts on the frame BOTH are true rather than on either one, so
+     * it is the same three seconds in either finishing order.
+     */
     if (printerOnline() && rollerBroken) {
-      ctx.score.expoT = Math.round(ctx.t);
-      ctx.score.cable = Math.trunc(cable.len);
-      ctx.startChapter(3);
+      if (curtainAt === null) {
+        curtainAt = ctx.t;
+        ctx.flash(
+          rollerLast
+            ? 'The shutter goes up on three thousand Devoxx shirts. The printer is already chattering next door'
+            : 'The printer wakes up next door. Behind you the store is open, and the shirts are in there',
+          Math.round(CURTAIN * 1000),
+        );
+      } else if (ctx.t - curtainAt >= CURTAIN) {
+        ctx.score.expoT = Math.round(curtainAt);
+        ctx.score.cable = Math.trunc(cable.len);
+        ctx.startChapter(3);
+      }
     }
   }
 
@@ -1271,6 +1419,13 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         kind: 'breaker',
         ...GF.panel,
         v: BREAKERS - breakersLeft,
+        /*
+         * THE STRIKE. `v` is a count and a count has no edges: `progress` is the
+         * arc, 1 on the frame a handle goes up and out over `BREAKER_STRIKE_TIME`,
+         * which is what `drawBreaker` flashes the board off. It is the same
+         * channel every other watchable change in this chapter uses.
+         */
+        progress: breakerStrike,
         state: hallLit() ? 'done' : power ? 'active' : 'idle',
         label: hallLit()
           ? 'power ON · hall lit'
@@ -1278,7 +1433,46 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
             ? 'supply ON — the hall is still dark (the router has not authorised)'
             : `breakers ${BREAKERS - breakersLeft}/${BREAKERS} (high)`,
       },
-      { kind: 'rack', ...GF.rack, state: cable.carrying || cable.connected ? 'active' : 'idle', label: 'network rack' },
+      /*
+       * THE RACK, and the two things Michele asked it for on 25 Sep 2026:
+       * *"I'd like some glow from the rack cabinet when modem is up (after the 3
+       * sockets)"* and *"The cable start is not much visible, one has to know
+       * where to look."*
+       *
+       * They are the same request. The rack is where the cable run STARTS, and it
+       * was keyed to the cable itself — so it only lit up once you had already
+       * found it and picked the end up, which is the one moment the player does
+       * not need telling. It rides the SUPPLY now, like the cabinet's pilot lamp
+       * four metres away: dark with no volts in it, awake the moment the third
+       * handle goes up, green once the router is on the air. A rack with its link
+       * lights on in a black room is a thing you walk towards.
+       */
+      {
+        kind: 'rack',
+        ...GF.rack,
+        state: cable.connected ? 'done' : power || cable.carrying ? 'active' : 'idle',
+        label: power ? 'network rack — patch panel live, the cable starts here' : 'network rack — dark, no supply',
+      },
+      /*
+       * ...and its own row of link lights, on top of the carcass, because the rack
+       * body's `active` tint is a shelf glowing slightly and what is wanted is a
+       * LAMP. Same three states and the same `pilot` kind as the cabinet's, which
+       * is the one visual language this chapter uses for "there is something
+       * running in here".
+       */
+      {
+        kind: 'rack-lights',
+        x: GF.rack.x,
+        y: GF.rack.y + GF.rack.h - 2,
+        w: GF.rack.w,
+        h: 3,
+        state: cable.connected ? 'done' : power ? 'active' : 'idle',
+        label: !power
+          ? 'rack link lights — dark'
+          : cable.connected
+            ? 'rack link lights — the run is in at reception'
+            : 'rack link lights — a patch lead coiled on the shelf, ready to run',
+      },
       {
         kind: 'printer',
         ...GF.printer,
@@ -1320,7 +1514,19 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         y: 600,
         w: 20,
         h: 50,
-        state: hallLit() ? 'done' : 'broken',
+        /*
+         * THREE STATES, NOT TWO — and the middle one is the breakers landing, seen
+         * from out in the hall.
+         *
+         * The cabinet's pilot lamp is four metres inside a doorway in a blacked-out
+         * room, behind the technical room's own east wall from the diorama camera
+         * (see `techDoorAt`), so it is the right light for a robot standing at the
+         * panel and no use at all to one still out among the booths. This plate
+         * lies IN the gap and is the one thing in the chain the hall can see: red
+         * while the room is dead, amber once there is a supply in it — work in
+         * progress, come in — and green when the room is finished with.
+         */
+        state: hallLit() ? 'done' : power ? 'active' : 'broken',
         label: 'technical room — breakers & router cabinet',
       },
       {
@@ -1329,7 +1535,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         y: 592,
         w: 5,
         h: 18,
-        state: hallLit() ? 'done' : 'idle',
+        state: hallLit() ? 'done' : power ? 'active' : 'idle',
         label: 'TECHNISCHE RUIMTE · TECHNICAL',
       },
       {
@@ -1374,6 +1580,46 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         // from it, and `main.ts` fires the `cabinet` cue off its leading edge.
         progress: cabinetSwing,
         label: router.cabinetOpen ? 'router cabinet — open' : 'router cabinet — shut (Biggy)',
+      },
+      /*
+       * THE PILOT LAMP, and the answer to *"a light on a cabinet to signal you
+       * should go there?"* (Michele, 26 Sep 2026).
+       *
+       * An annunciator strip across the top of the carcass, above the two leaves,
+       * so it reads whether the doors are shut or standing open. What makes it
+       * honest is WHAT IT IS KEYED TO: the supply, and nothing else.
+       *
+       *   - no supply        → 'idle', dark. Shut or open, it makes no difference:
+       *                        a lamp lit on a cabinet with no volts in it is a lie,
+       *                        and a player who walks the length of a black hall on
+       *                        the strength of it finds a dead grey box and learns
+       *                        not to trust the lights. Before the breakers the
+       *                        cabinet is found the way it always was — the run
+       *                        sheet, the technical room's hail, the task arrow.
+       *   - supply, not authorised → 'active', amber. This is the whole point: it
+       *                        comes up on the frame Droid throws the third handle,
+       *                        four metres from where he is standing, and it says
+       *                        exactly one true thing — *there is something running
+       *                        behind this door*.
+       *   - online           → 'done', green and steady. Nothing left to come for.
+       *
+       * The door's own state is NOT in here: `progress` on the `cabinet` prop above
+       * already says how far the leaves have swung, and one fact belongs in one
+       * place. It is also the edge `main.ts` fires `busbar` and `modem` off, which
+       * is why the two of them live on one prop rather than on three.
+       */
+      {
+        kind: 'pilot',
+        x: GF.cabinet.x,
+        y: GF.cabinet.y + GF.cabinet.h - 2,
+        w: GF.cabinet.w,
+        h: 3,
+        state: !power ? 'idle' : router.online ? 'done' : 'active',
+        label: !power
+          ? 'cabinet pilot lamp — dark, no supply on the cabinet'
+          : router.online
+            ? 'cabinet pilot lamp — green, the router is on the air'
+            : 'cabinet pilot lamp — amber, something in there is running',
       },
       /*
        * THE TRANSFORMER/ROUTER ITSELF, which Michele asked to SEE come up: *"Breaker
@@ -1600,6 +1846,118 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     return `${breakers} · ${net2} · ${net} · ${store}`;
   }
 
+  /* ------------------------------------------------------------------- tasks
+   *
+   * WHERE TO STAND, rather than where the thing is bolted.
+   *
+   * The four addresses below are the arrow's targets (`Task.at`), and every one
+   * of them is a piece of FLOOR: the rack is a 19-inch cabinet with its own
+   * collider, the breaker panel is up a wall, the shutter is a wall until Biggy
+   * is through it, and an arrow that lands inside furniture is an arrow pointing
+   * at somewhere nobody can go. Each is inside the reach the chapter already
+   * enforces for that prop, so walking to the arrow is walking to the thing.
+   */
+  /** In front of the breaker panel, well inside `PANEL_REACH`. */
+  const panelStand: Vec2 = { x: panelAt.x, y: panelAt.y + 18 };
+  /** Clear of the cabinet's south face by more than Biggy's radius, between the two leaves. */
+  const cabinetStand: Vec2 = { x: cabinetAt.x, y: cabinetAt.y + 14 };
+  /** North of the patch rack, off its collider and inside `PLUG_REACH`. */
+  const rackStand: Vec2 = { x: rackAt.x, y: GF.rack.y - 10 };
+  /** In front of the reception desk, under the lit pad, inside `PLUG_REACH`. */
+  const printerStand: Vec2 = { x: printerAt.x, y: GF.reception.y + GF.reception.h + 10 };
+  /** On the hall side of the shutter, on the lane Biggy has to come down. */
+  const storeStand: Vec2 = { x: GF.roller.x - 14, y: storeAt.y };
+
+  /**
+   * The same state as `progress()`, as a list — the one source behind the HUD's
+   * meter, the panel's checklist and every hint (`Task` in `src/sim/types.ts`).
+   *
+   * Four things, in the order of Michele's chain: a supply, then the router that
+   * the supply wakes, then the cable that the router feeds, and the store, which
+   * is the one errand in the hall that owes nothing to the other three.
+   *
+   * **The router is one task, not four.** Cabinet shut, open and dead, waiting on
+   * the password, online — those are four states of one object standing in one
+   * place, and four rows on a checklist would say the chapter has four times the
+   * network jobs it has. The row's tail says which step it is at instead, which is
+   * the sentence `progress()` already writes, set out as a list.
+   *
+   * No hint carries the password. Two of them name the two places it is written
+   * down, because a player who cannot find it is stuck on the search and not on
+   * the typing; none of them spells a letter of it, here or in `text`.
+   */
+  function tasks(): Task[] {
+    const step = router.online
+      ? ''
+      : !router.cabinetOpen
+        ? ' — the cabinet is shut'
+        : !power
+          ? ' — open, and not a volt in it'
+          : router.prompting
+            ? ' — it is asking for the venue WiFi password'
+            : router.known
+              ? ' — the password is known; back to the terminal'
+              : ' — it wants the venue WiFi password';
+    const routerHint = !router.cabinetOpen
+      ? 'Droid: the hinges have not moved since 2019 and there is no lever on a flush door. This one wants weight, and weight is Biggy'
+      : !power
+        ? 'Voxxy: no standby lamp, no fan, nothing humming. There is a supply to put on this wire before anybody starts pressing things'
+        : router.known
+          ? "Biggy: thirteen little keys, and these are not thirteen-little-key hands. Voxxy or Droid, at the terminal, and a wrong letter never goes in"
+          : 'Voxxy: nobody writes those down — except the crew, in orange, somewhere along a wall of this hall. And there is label tape inside the cabinet lid, up at the top, where only Droid on Biggy’s shoulders can read it';
+    return [
+      {
+        id: 'power',
+        /*
+         * Michele, 25 Sep 2026: *"getting the router up is part of restoring the
+         * power, task 1 on it's own has no effect. Maybe task 1 could be 'power up
+         * the technical room'?"*
+         *
+         * He is right about the fiction and about the feedback. Three handles in
+         * the technical room put a supply on the busbar and the hall stays dark —
+         * the lights do not come on until the router has authorised — so a row
+         * that promised "the power back on" was writing a cheque the next task
+         * cashes. What the handles actually do is wake the room they are in, and
+         * that is what the player sees: the panel, the cabinet's pilot and the
+         * rack all come up, four metres apart, and nothing else does.
+         */
+        text: 'power up the technical room',
+        done: power,
+        who: ['droid'],
+        at: panelStand,
+        n: BREAKERS - breakersLeft,
+        of: BREAKERS,
+        hint: 'Droid: the handles are on the technical room wall, above everybody else’s reach. All of them up, or nothing down here wakes at all',
+      },
+      {
+        id: 'router',
+        text: `get the router on the air${step}`,
+        done: router.online,
+        who: router.cabinetOpen ? undefined : ['biggy'],
+        // Typed, not walked to: while the field is open the answer is not
+        // somewhere to go, and an arrow would be pointing at the robot's own feet.
+        at: router.prompting ? undefined : cabinetStand,
+        hint: routerHint,
+      },
+      {
+        id: 'cable',
+        text: `run the network cable to the badge printer${cable.snapped ? ' — the end is back on the rack' : ''}`,
+        done: cable.connected,
+        who: ['voxxy'],
+        at: cable.carrying ? printerStand : rackStand,
+        hint: 'Voxxy: the reel is shorter than the scenic route — straight down the hall, under the sponsor tables where only I fit. If it goes tight, walk back along it rather than lean on it',
+      },
+      {
+        id: 'store',
+        text: 'get the pickup store open',
+        done: rollerBroken,
+        who: ['biggy'],
+        at: storeStand,
+        hint: 'Voxxy: he cannot get up to what that shutter wants on his own. I take hold of him at the far end of the top lane and we run the whole length of it',
+      },
+    ];
+  }
+
   /**
    * THE FIELD ON SCREEN — `GameSnapshot.prompt`, and the other half of Michele's
    * *"I'd display an input text at center screen on e to make it easier."*
@@ -1631,6 +1989,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     update,
     props,
     progress,
+    tasks,
     typing,
     prompt,
     lights: () => lights,

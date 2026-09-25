@@ -24,6 +24,7 @@ import {
   TRAVEL_TIME_SCALE,
 } from './constants';
 import { VIEW_CLOSED, groundPlates } from './geometry';
+import { CRATE_AT, STAND_AT, STAND_FACE, openingAt, openingView } from './opening';
 import {
   botsCollide,
   circleRect,
@@ -160,6 +161,8 @@ const TITLE_CARD =
 const TITLE_OBJECTIVE =
   '<b>After Dark</b> — the night before Devoxx, a power cut, three robots, two floors of Kinepolis and one keynote to save.';
 const TITLE_KEYS = 'Press any key to start · 1/2/3/Tab: switch · WASD: move · E: use · Skip chapter: top right';
+/** While the crates are opening: the one thing the player can do is not watch. */
+const OPENING_KEYS = 'Any key to skip';
 
 /* ---------------------------------------------------------------------- rng */
 
@@ -256,6 +259,14 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   let runtime: ChapterRuntime | null = null;
   /** The tow bar, when somebody has hold of Biggy. See `tow.ts`. */
   let tow: TowState | null = null;
+  /**
+   * The opening, while it is running: the clock `src/sim/opening.ts` reads.
+   *
+   * `null` once the player has the keyboard — including immediately, when the
+   * game is built with `cards: false`, because every test and probe in the repo
+   * expects chapter 1 to be playable on the first frame.
+   */
+  let opening: number | null = null;
 
   interface CutState {
     view: ViewRect;
@@ -448,10 +459,16 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     }
   }
 
+  /**
+   * Put the three of them on their marks. A third number is the heading they
+   * face — chapter 1 uses it to stand them all down the corridor, which is the
+   * way they are about to go; a chapter that does not care leaves it out and
+   * keeps whatever facing the robots had.
+   */
   function place(
-    v: readonly [number, number],
-    d: readonly [number, number],
-    b: readonly [number, number],
+    v: readonly [number, number, number?],
+    d: readonly [number, number, number?],
+    b: readonly [number, number, number?],
   ): void {
     const V = byKind('voxxy');
     const D = byKind('droid');
@@ -462,6 +479,9 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     [V.x, V.y] = v;
     [D.x, D.y] = d;
     [B.x, B.y] = b;
+    if (v[2] !== undefined) V.face = v[2];
+    if (d[2] !== undefined) D.face = d[2];
+    if (b[2] !== undefined) B.face = b[2];
     for (const o of bots) {
       o.vx = 0;
       o.vy = 0;
@@ -732,9 +752,22 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     }
   }
 
-  function startChapter(n: number): void {
+  /**
+   * A chapter gets its OWN seed, drawn from the run's stream when it first starts
+   * and kept so the same chapter can be played again exactly as it was.
+   *
+   * Without this, `R` re-rolled everything the chapter generates — chapter 1's
+   * four-digit code most visibly — so a player who restarted after finding three
+   * of the four digits was punished for restarting by having the three answers
+   * taken away. The seed is drawn from `rng` rather than from the options, so the
+   * run as a whole stays one deterministic stream from one seed.
+   */
+  let chapterSeed = 0;
+  function startChapter(n: number, seed?: number): void {
     const def = CHAPTERS[n - 1];
     if (!def) throw new Error(`no chapter ${n}`);
+    chapterSeed = seed ?? Math.floor(rng() * 2 ** 32);
+    rng = mulberry32(chapterSeed);
     chapter = n;
     phase = 'play';
     cur = 0;
@@ -792,6 +825,88 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       phase = 'done';
       finalCard();
     }
+  }
+
+  /**
+   * THE OPENING: three robots arrive in crates, and then the game starts.
+   *
+   * Michele: *"I'd start with the three robots frontal, on pedestal or pallets
+   * (imballati). They light up, get down and we are ready to play"*, staged
+   * *"in the corridor where chapter 1 already starts"*, and skippable.
+   *
+   * Chapter 1 runs UNDERNEATH it: the venue is built, the corridor is dark and
+   * the chapter's own lamps are live, because staging the opening anywhere else
+   * would mean a second set to build and keep in step. What the opening changes
+   * is where the three of them are standing and who has the keyboard.
+   *
+   * `phase` stays `'intro'` throughout, which is the phase that already means
+   * "the game is on screen and the player is not driving yet" — so every chapter
+   * rule, every collider and every `E` is inert without a single new guard.
+   */
+  function startOpening(): void {
+    startChapter(1);
+    phase = 'intro';
+    opening = 0;
+    fade = 0;
+    // On their pallets, facing the camera. `face` is a sim heading and +y is
+    // toward the camera, so PI/2 is frontal — which is what he asked for.
+    for (const b of bots) {
+      const at = CRATE_AT[b.kind];
+      b.x = at.x;
+      b.y = at.y;
+      b.vx = 0;
+      b.vy = 0;
+      b.face = Math.PI / 2;
+    }
+    view = openingView(0, VIEW_CLOSED);
+    objective = TITLE_OBJECTIVE;
+    keysLine = OPENING_KEYS;
+  }
+
+  /**
+   * End it — because it ran out, or because the player skipped it.
+   *
+   * Either way the chapter is started again from scratch rather than nudged into
+   * place: `startChapter` is the one thing that knows where a chapter's robots
+   * belong and what it resets, and a skip that left the opening's staging behind
+   * would hand the player three robots standing in a row in the wrong place.
+   */
+  function endOpening(): void {
+    opening = null;
+    cut = null;
+    fade = 0;
+    startChapter(1);
+  }
+
+  /**
+   * `R` — start THIS chapter again, not the whole run.
+   *
+   * Michele, listing the controls he wants the instructions panel to teach:
+   * *"R to restart the chapter (not the whole game!)"*. It restarted the whole
+   * game: `restart()` sets `chapter = 0`, `phase = 'intro'` and puts the title
+   * card back up, so a player stuck two chapters in lost both of them by pressing
+   * the key the HUD told them to press.
+   *
+   * What is reset is what one chapter owns — the clock it is scored on, the
+   * robots' per-chapter flags, the tow, the walls, anything it blocked — and what
+   * survives is the run: the score of the chapters already finished, the list of
+   * chapters skipped, and the seed's current position, so a replay of the same
+   * chapter is the same chapter rather than a differently-generated one.
+   *
+   * `defaultScore` already writes with `??=`, so a replayed chapter keeps the
+   * first run's figures rather than overwriting them with a second attempt's.
+   */
+  function restartChapter(): void {
+    const n = chapter;
+    for (const b of bots) {
+      b.mounted = false;
+      b.braced = false;
+      b.boostCap = 0;
+      b.pushFlash = undefined;
+    }
+    t = 0;
+    fade = 0;
+    startChapter(n, chapterSeed);
   }
 
   function restart(): void {
@@ -888,6 +1003,66 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     if (fade > 0 && phase !== 'cut') fade = Math.max(0, fade - dt * FADE_IN_RATE);
     if (toast && t > toast.until) toast = null;
     if (card !== null) return;
+    if (opening !== null) {
+      opening += dt;
+      const o = openingAt(opening);
+      /*
+       * The opening KEEPS TICKING through the walk, and that is not tidiness.
+       * It used to stop the moment the robots stepped out, which meant the
+       * crates stopped being drawn on the same frame — three robots walked away
+       * from nothing, having just climbed out of something. The clock runs until
+       * the chapter takes over, so the crates stand there empty behind them, and
+       * the HUD stays out of the way for the whole shot rather than half of it.
+       *
+       * The camera is the walk's while the walk is running: `startCut` sets its
+       * own framing, and two things easing the same rect would fight.
+       */
+      if (phase === 'intro') view = openingView(opening, VIEW_CLOSED);
+      // The walk to the chapter's own marks is the cutscene walker, at the pace
+      // it derives from the slowest robot's own `max` — nothing here sets a
+      // speed. When it finishes, the player has the keyboard.
+      /*
+       * ONE ROBOT AT A TIME, AND ONE TRANSITION AT THE END.
+       *
+       * Michele asked for the presentation — *"1 for Voxxy, small and swift, 2
+       * for Droid, tall and thoughtful, 3 for biggy... And they come out one at
+       * a time?"* — and for the shape around it: *"Why not placing the crates on
+       * the west wall and using a single transition?"*
+       *
+       * So the stride out is driven here rather than handed to the cutscene
+       * walker: the walker moves all three together and brings its own fade, and
+       * three of those in a row is three transitions where he asked for one. The
+       * step is 17 px over `STEP_TIME`, which is under half of even Droid's top
+       * speed — `tests/opening.test.ts` measures that rather than trusting it.
+       */
+      for (const b of bots) {
+        const u = o.step[b.kind];
+        const from = CRATE_AT[b.kind];
+        const to = STAND_AT[b.kind];
+        // Smoothstep, both ends still. NOT an ease-out: `u(2 - u)` starts at
+        // twice its own mean speed, and `STEP_TIME` is derived against a peak of
+        // 1.5x (`STEP_PEAK`), which is this curve's.
+        const e = u * u * (3 - 2 * u);
+        b.x = from.x + (to.x - from.x) * e;
+        b.y = from.y + (to.y - from.y) * e;
+        b.face = u > 0 ? STAND_FACE : Math.PI / 2;
+      }
+      if (o.over) {
+        // The single transition: fade out, hand over, fade back in on the
+        // chapter's own framing and its own camera angle.
+        //
+        // It used to fire on `walking`, the instant the last robot was standing,
+        // which cut the shot at exactly the moment the camera was supposed to
+        // start pulling back — so `openingView`'s pull-back and the presentation
+        // light's hand-off, both written for it, had never once played. The clock
+        // now runs to `OVER_AT`: the pull-back, the emergency fitting flickering
+        // out over the crates and a beat with nothing lit but the three lamps the
+        // game is played by.
+        endOpening();
+        return;
+      }
+      return;
+    }
     if (phase === 'cut') {
       t += dt;
       cutUpdate(dt);
@@ -913,14 +1088,30 @@ export function createGame(opts: GameOptions = {}): DebugGame {
    * `phase` at 'done', where everything below but `R` falls through harmlessly.
    */
   function key(code: string): void {
+    /*
+     * Skippable from the first frame — Michele asked for that explicitly. It is
+     * the first key of the session for most players and it must not also do
+     * something else, so it is consumed here: a player mashing Space to get past
+     * the crates does not also toggle the tow bar on the frame they arrive.
+     */
+    if (opening !== null) {
+      endOpening();
+      return;
+    }
     if (card !== null) {
       card = null;
       if (chapter === 0) startChapter(1);
     }
-    // `R` is restart everywhere except inside a chapter's own text prompt, where it
-    // is the two Rs in `DevoxxForever` (`ChapterRuntime.typing`).
+    /*
+     * `R` restarts THE CHAPTER, except in the two places where there is no
+     * chapter to restart — the title card and the end card — where it still means
+     * "start the run again", which is what the end card's own "R to play again"
+     * offers. Inside a chapter's text prompt it is not a control at all: it is
+     * the two Rs of `DevoxxForever` (`ChapterRuntime.typing`).
+     */
     if (code === 'KeyR' && !(runtime?.typing?.() ?? false)) {
-      restart();
+      if (chapter >= 1 && phase === 'play') restartChapter();
+      else restart();
       return;
     }
     if (phase !== 'play' || !runtime) return;
@@ -995,6 +1186,13 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       objective,
       keys: keysLine,
       progress: r?.progress?.() ?? '',
+      // The opening's own clock, or null once the player is driving. The
+      // renderer reads it to pose the crates; it decides nothing.
+      opening: opening === null ? null : openingAt(opening),
+      // The list behind the meter, the panel's checklist and every hint. A
+      // chapter that publishes none gets an empty array, which the HUD reads as
+      // "no meter" rather than as "nothing left to do".
+      tasks: r?.tasks?.() ?? [],
       toast,
       fade,
       card,
@@ -1029,7 +1227,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   };
 
   if (opts.chapter !== undefined) startChapter(opts.chapter);
-  else if (showCards) showCard(TITLE_CARD);
+  else if (showCards) startOpening();
   else startChapter(1);
 
   /**

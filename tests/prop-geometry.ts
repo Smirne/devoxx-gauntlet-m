@@ -22,8 +22,10 @@
 
 import { FIRE_LEAF_H, fireDoorDraw } from '../src/render/fire-door';
 import { KEYPAD_TOP_M } from '../src/render/keypad';
+import { PANEL_H_M, PANEL_LIFT_M } from '../src/render/release-panel';
 import { GATE_H, LOCK_LEAF_H, gateDraw, lockDoorDraw } from '../src/render/doors';
 import { ROLLER_H, rollerDoorDraw, ROLLER_CLEAR_M } from '../src/render/roller-door';
+import { SEAT_TOP_M } from '../src/render/seats';
 import type { Prop, Rect } from '../src/sim/types';
 import { PX_PER_M } from '../src/sim/units';
 
@@ -69,7 +71,14 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
    * stands, and it does.
    */
   keypad: { h: KEYPAD_TOP_M, tl: true },
-  'projector-panel': { h: 0.9, tl: true, lift: 2.5 },
+  /*
+   * The door override is a modelled unit too (`src/render/release-panel.ts`),
+   * and its two numbers are read off that module rather than retyped here — the
+   * `KEYPAD_TOP_M` pattern, for the reason this file's header gives. They are
+   * the same 0.9 m and 2.5 m the table always carried: the change was the SHAPE
+   * inside them, not the band, so nothing the collider sweep measures moves.
+   */
+  'projector-panel': { h: PANEL_H_M, tl: true, lift: PANEL_LIFT_M },
   screen: { h: 5.2, tl: true },
   alcove: { h: 0.05, tl: true, flat: true },
   /*
@@ -146,8 +155,21 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
   'banner-hook': { h: 0.25 },
   banner: { h: 1.1, tl: true },
   spotlight: { h: 0.35 },
-  seatrow: { h: 0.55, tl: true },
-  seatblock: { h: 0.55, tl: true },
+  /*
+   * A seat row is no longer a 0.55 m slab, and that is a real change, not a fudge.
+   *
+   * It was drawn as one flat-topped cuboid per rect — the entry said so and
+   * `drawProp` obeyed it — while the venue's own auditoria were being seated with
+   * a modelled seat out of `src/render/venue/props.ts`. Michele, with cinema E
+   * under Droid's pool: *"This still needs a shape."* `src/render/seats.ts` draws
+   * both kinds now, from that same seat geometry, and `SEAT_TOP_M` is read off the
+   * model rather than retyped so this transcription cannot drift from it.
+   *
+   * The FOOTPRINT is unchanged and is still the sim's own rect — no seat is drawn
+   * outside it — which is the only thing the collider sweep asks about.
+   */
+  seatrow: { h: SEAT_TOP_M, tl: true },
+  seatblock: { h: SEAT_TOP_M, tl: true },
   /*
    * Drawn by their own functions rather than from the table — `drawBreaker`,
    * `drawTerminal`, `drawCabinet`, `drawCrate`, `drawJammed`, the cable. Their
@@ -156,6 +178,21 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
    */
   breaker: { h: 0.9, tl: true, lift: 0.6 },
   cabinet: { h: 1.75, tl: true, lift: 0.15 },
+  /*
+   * The router cabinet's pilot lamp: an annunciator strip across the top of the
+   * carcass, whose own top sits just under the cabinet's 1.90 m. It is bolted to
+   * a cabinet a robot already cannot walk through, so it carries no collider of
+   * its own and is excused by `isFloorDecalOrHung` on its lift, like the breaker
+   * handles and the beer taps.
+   */
+  pilot: { h: 0.1, tl: true, lift: 1.78 },
+  /** The crab sandwich: a tray on the catering counter, at counter height. */
+  crab: { h: 0.16, tl: true, lift: 1.06 },
+  /**
+   * The network rack's link lights: the same annunciator, at the rack's height.
+   * Hung, like the pilot — nothing walks into a row of LEDs on top of a rack.
+   */
+  'rack-lights': { h: 0.08, tl: true, lift: 1.86 },
   crate: { h: 0.34 },
   cable: { h: 0.02, flat: true },
 });

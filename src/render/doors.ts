@@ -270,13 +270,20 @@ export interface GateDraw {
  *
  * `p` is chapter 3's `gate` prop and `progress` is `gateSwing` in
  * `ch3-breakfast.ts`. Stephan stands at this gate all morning and opens it when he
- * has his soup, his speaker and his floor back — so it OPENS FOR THE DAY. It is
- * not smashed and it does not lift like a shutter: it is a barrier hung on one
- * post, and it swings a quarter turn back INTO the stairwell to lie flat along the
- * flight's west cheek, which is where a stair gate is pinned back when a building
- * is open. That is also out of everybody's way — the transition walks three robots
- * up the middle of the flight a moment later — and `ch3-breakfast.ts` pushes a
- * `gateleaf` wall exactly where it stops.
+ * has his soup, his speaker and his floor back — so it OPENS FOR THE DAY. It is not
+ * smashed and it does not lift like a shutter: it is a barrier hung on one post,
+ * and it swings a quarter turn to lie flat along the west edge of the approach,
+ * which is where a stair gate is pinned back when a building is open.
+ *
+ * **It swings SOUTH, out of the stairwell, and that is not a taste call.** Back
+ * into the shaft would have been the tidier drawing and it is wrong twice over: the
+ * flight starts climbing at `GF.gate`'s own edge and reaches 2.7 m within the
+ * leaf's length (`groundPlates` in `src/sim/geometry.ts`), so a barrier drawn at
+ * the height of its hinge would be buried two metres inside the treads — and the
+ * transition walks three robots up the middle of that flight a moment later. Out
+ * into the concourse it lies on flat lobby floor at one height, hard against the
+ * reception block's east face, in full view of a camera that is on that side.
+ * `ch3-breakfast.ts` pushes a `gateleaf` wall exactly where it stops.
  */
 export function gateDraw(p: Prop, walls: readonly Wall[]): GateDraw {
   const rect: Rect = { x: p.x, y: p.y, w: p.w ?? 112, h: p.h ?? 6 };
@@ -284,9 +291,8 @@ export function gateDraw(p: Prop, walls: readonly Wall[]): GateDraw {
   const y = rect.y + rect.h / 2;
   const hingeX = rect.x + GATE_POST_INSET;
   const len = rect.w - GATE_POST_INSET * 2;
-  // North is up the flight. The stair shaft's own west wall is right behind the
-  // hinge post, so the leaf ends up against it rather than out in the concourse.
-  const leaf = swingLeaf({ x: hingeX, y }, { x: 1, y: 0 }, { x: 0, y: -1 }, len, GATE_LEAF_T, u);
+  // South is out into the lobby — see the header for why it is not the other way.
+  const leaf = swingLeaf({ x: hingeX, y }, { x: 1, y: 0 }, { x: 0, y: 1 }, len, GATE_LEAF_T, u);
   return { leaf, posts: [{ x: hingeX, y }, { x: hingeX + len, y }], u, sealed };
 }
 

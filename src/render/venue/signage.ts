@@ -46,7 +46,7 @@
 
 import * as THREE from 'three';
 
-import { CY0, CY1, DOOR, F1, GF, R, TALKS, roomFrontage, rooms, roomDoor } from '../../sim/geometry';
+import { BAR_RECT, CY0, CY1, DOOR, F1, GF, LOBBY_RISE_M, R, TALKS, WIFI_TAG, WIFI_TAG_W, roomFrontage, rooms, roomDoor } from '../../sim/geometry';
 import { T, W } from '../../sim/constants';
 import type { RoomDef } from '../../sim/types';
 import { PX_PER_M, m } from '../../sim/units';
@@ -323,6 +323,34 @@ const cateringBoard: Paint = (ctx, w, h) => {
   ctx.fillText('one ladle per robot, please', 24, h * 0.85);
 };
 
+/**
+ * THE CRAB SANDWICH. Michele, 25 Sep 2026: *"We need to add the CRAB SANDWiCH
+ * somewhere. That's the most famous part of the infamous devoxx food."*
+ *
+ * It is a running joke with a queue attached, so it gets a sign of its own over
+ * the sandwich counter rather than a line buried in the catering board: the
+ * Dutch on top, because that is what the sign in the building says, and the
+ * English under it for everybody else. The chapter's own `crab` prop puts the
+ * glow on the counter under it; this is what tells you what the glow IS.
+ */
+const crabSign: Paint = (ctx, w, h) => {
+  ctx.fillStyle = '#7d2417';
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = 'rgba(255,255,255,0.14)';
+  ctx.fillRect(0, h - Math.max(2, h * 0.06), w, Math.max(2, h * 0.06));
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ffd9c2';
+  fitFont(ctx, 'BROODJE KRAB', w * 0.88, Math.round(h * 0.36), 800);
+  ctx.fillText('BROODJE KRAB', w / 2, h * 0.36);
+  ctx.fillStyle = '#f0d6c8';
+  ctx.font = `500 ${Math.round(h * 0.17)}px ${FONT}`;
+  ctx.fillText('the crab sandwich · yes, that one', w / 2, h * 0.68);
+  ctx.fillStyle = '#e0b8a6';
+  ctx.font = `400 ${Math.round(h * 0.14)}px ${FONT}`;
+  ctx.fillText('one per person · the queue starts behind you', w / 2, h * 0.88);
+};
+
 const wifiNotice: Paint = (ctx, w, h) => {
   ctx.fillStyle = '#1c4a96';
   ctx.fillRect(0, 0, w, h);
@@ -360,6 +388,34 @@ const barSign: Paint = (ctx, w, h) => {
  * it; this one, the one the cable errand ends beyond, had emergency greens and
  * concrete.
  */
+/**
+ * The ground-floor bar's own sign: the name, and the joke that is in the name.
+ *
+ * `finally` is the block that runs whatever happened in the `try` — which is
+ * exactly what a bar at the end of a conference day is, and it is the register
+ * the sponsor stands next door are written in. Under it, the two things a Devoxx
+ * attendee actually wants to know.
+ */
+const finallyBlockSign: Paint = (ctx, w, h) => {
+  ctx.fillStyle = '#141a18';
+  ctx.fillRect(0, 0, w, h);
+  // A hairline of bar light along the top, so it reads as a lit fascia rather
+  // than as a poster taped to the concrete.
+  ctx.fillStyle = 'rgba(255,200,120,0.22)';
+  ctx.fillRect(0, 0, w, Math.max(2, h * 0.035));
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#7f8b86';
+  ctx.font = `600 ${Math.round(h * 0.15)}px ${FONT}`;
+  ctx.fillText('} finally {', w / 2, h * 0.24);
+  ctx.fillStyle = '#ffc878';
+  fitFont(ctx, 'THE FINALLY BLOCK', w * 0.9, Math.round(h * 0.34), 800);
+  ctx.fillText('THE FINALLY BLOCK', w / 2, h * 0.55);
+  ctx.fillStyle = '#c8cdd4';
+  ctx.font = `400 ${Math.round(h * 0.15)}px ${FONT}`;
+  ctx.fillText('belgian beer · doors 18:00 · runs whatever happened in the try', w / 2, h * 0.84);
+};
+
 const receptionSign: Paint = (ctx, w, h) => {
   ctx.fillStyle = '#1c4a96';
   ctx.fillRect(0, 0, w, h);
@@ -388,6 +444,73 @@ const poloSign: Paint = (ctx, w, h) => {
   ctx.fillText('DEVOXX POLO & BADGE', w / 2, h * 0.38);
   ctx.font = `500 ${Math.round(h * 0.2)}px ${FONT}`;
   ctx.fillText('pickup at breakfast', w / 2, h * 0.74);
+};
+
+/**
+ * THE WIFI TAG — Michele, tonight: *"where is the wifi password graffiti? It
+ * should be visible!"*
+ *
+ * It was in the sim and nowhere else. Chapter 2 publishes it as a `poster` prop
+ * at x 400 on the hall's top wall, so the beat worked — Voxxy reads it, Droid
+ * complains about it — but the prop style draws every poster as a cream lightbox,
+ * so what the player saw was one more pale strip among the booths, not paint.
+ *
+ * So the VENUE paints it, not the chapter: graffiti is part of the building, it
+ * does not appear on a Tuesday because a chapter needs it, and painting it here
+ * also means it is on the wall in chapter 3 when the hall is lit and everyone can
+ * finally see what Bart did.
+ *
+ * Deliberately low `glow`: the orange has to carry across a blacked-out hall as
+ * *somebody painted something over there* — the reason to walk down that lane at
+ * all — while the password under it still needs Voxxy's cone. Orange strokes on a
+ * dark ground do that for free, because the same art drives the emissive map and
+ * the ground contributes nothing.
+ */
+const wifiTag: Paint = (ctx, w, h) => {
+  ctx.fillStyle = '#14161a';
+  ctx.fillRect(0, 0, w, h);
+
+  // The wifi symbol: three arcs and a dot, sprayed freehand, so the arcs do not
+  // share a centre to the pixel.
+  const cx = w * 0.13;
+  const cy = h * 0.72;
+  ctx.strokeStyle = '#e2661c';
+  ctx.lineCap = 'round';
+  for (let k = 0; k < 3; k++) {
+    ctx.beginPath();
+    ctx.lineWidth = h * 0.075;
+    ctx.arc(cx + k * h * 0.012, cy, h * (0.17 + k * 0.155), Math.PI * 1.18, Math.PI * 1.82);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#e2661c';
+  ctx.beginPath();
+  ctx.arc(cx, cy - h * 0.03, h * 0.055, 0, Math.PI * 2);
+  ctx.fill();
+
+  // The password itself, in a hand that is plainly a can and not a sign shop:
+  // drawn twice at a slight offset for the overspray, and set on a baseline that
+  // drifts, because nobody writes level on a wall at arm's length.
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  const size = fitFont(ctx, 'DevoxxForever', w * 0.58, Math.round(h * 0.42), 800);
+  ctx.font = `800 ${size}px ${FONT}`;
+  const x0 = w * 0.24;
+  ctx.globalAlpha = 0.28;
+  ctx.fillText('DevoxxForever', x0 + size * 0.05, h * 0.6 + size * 0.06);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#f07a26';
+  ctx.save();
+  ctx.translate(x0, h * 0.6);
+  ctx.rotate(-0.02);
+  ctx.fillText('DevoxxForever', 0, 0);
+  ctx.restore();
+
+  // The joke, small, under it. Michele wrote this line: "(And no, you can't
+  // change it)". It is the half of the tag that is NOT the answer, which is why
+  // it is allowed to be this much smaller.
+  ctx.fillStyle = 'rgba(226,102,28,0.85)';
+  ctx.font = `600 ${Math.round(h * 0.15)}px ${FONT}`;
+  ctx.fillText('(and no, you can\u2019t change it)', x0 + 2, h * 0.82);
 };
 
 /* ------------------------------------------------------------------ placing */
@@ -895,16 +1018,94 @@ export function buildSignage(
     ),
   );
 
+  /*
+   * The printed WiFi notice moved OUT OF THE WARDROBE.
+   *
+   * It hung at `GF.reception.y - 17`, which is y 371 — inside `GF.coatroom`
+   * (262..384). It was a sign nailed up inside a closed coat room. It goes on the
+   * reception counter's west run instead, facing the concourse, which is where a
+   * venue actually puts one and where somebody can read it.
+   */
   ground.add(
     signFace(
-      GF.reception.x + 42,
-      GF.reception.y - 17,
+      GF.reception.x - 1,
+      GF.reception.y + 30,
       1.7,
       0.58,
-      1.95,
-      0,
+      LOBBY_RISE_M + 1.35,
+      -Math.PI / 2,
       painter.material('wifi', 512, 175, '#1c4a96', wifiNotice),
       'wifi-sign',
+    ),
+  );
+
+  /*
+   * THE SPRAY TAG, on the hall's top wall at x 400 — the same place chapter 2
+   * publishes its `poster` prop, so the paint and the thing Voxxy reads are one
+   * object rather than two that nearly line up.
+   *
+   * 7.04 m of it (88 sim px, the prop's own width), centred 1.35 m up, on the
+   * wall's south face, which is the one the diorama camera sees.
+   */
+  ground.add(
+    signFace(
+      WIFI_TAG.x,
+      WIFI_TAG.y - 8 + T + 0.6,
+      WIFI_TAG_W / PX_PER_M,
+      1.7,
+      1.35,
+      0,
+      painter.material('wifi-tag', 1024, 198, '#14161a', wifiTag, 0.24),
+      'wifi-tag',
+    ),
+  );
+
+  /*
+   * THE BAR HAS A NAME AND NOWHERE TO PUT IT. Michele, 25 Sep 2026: *"The
+   * 'Finally block' should be identifiable, written somewhere."*
+   *
+   * It is called The Finally Block in every line chapter 3 writes — Biggy's
+   * refusal, Stephan's, the delivery toast — and on screen it was a grey counter
+   * with three taps on it. A prop's `label` is HUD text and nothing paints it, so
+   * the name only existed in the dialogue.
+   *
+   * On the wall behind the taps, which is where a bar's name goes, and lit like
+   * the rest of the hall's signage rather than glowing on its own: the bar is
+   * scenery until Biggy has a crate, and a sign that shouts is a sign a player
+   * walks over to for nothing.
+   */
+  ground.add(
+    signFace(
+      BAR_RECT.x + BAR_RECT.w / 2,
+      GF.hall.y + T + 0.6,
+      (BAR_RECT.w - 6) / PX_PER_M,
+      1.15,
+      2.35,
+      0,
+      painter.material('finally-block', 768, 226, '#141a18', finallyBlockSign),
+      'bar-sign-hall',
+    ),
+  );
+
+  /*
+   * ...and the crab sandwich has its own sign over the counter it is served from.
+   * The catering board next to it is 4.6 m of "share · celebrate · passion"; this
+   * is 2.6 m of the thing people actually queue for.
+   */
+  const sand = GF.food.sandwich;
+  ground.add(
+    signFace(
+      sand.x + sand.w / 2,
+      // The same plane as the catering board: the court's NORTH wall, above the
+      // counters. Its south edge is 9.6 m away across the queueing floor, which
+      // is where this sign spent its first ten minutes.
+      GF.food.court.y + 0.4,
+      2.6,
+      0.78,
+      2.42,
+      0,
+      painter.material('crab', 640, 192, '#7d2417', crabSign),
+      'crab-sign',
     ),
   );
 

@@ -334,6 +334,48 @@ export function stepBot(b: Bot, dt: number, walls: Wall[], onBlocked?: (b: Bot, 
 }
 
 /**
+ * Push a robot out of a person who is standing still — and it is a PERSON, not a
+ * body: they do not move, they do not fall over, they are simply somewhere a
+ * robot is not.
+ *
+ * Michele, 25 Sep 2026, with a screenshot of Voxxy standing inside one of them:
+ * *"voxy passes though a person?"* She did. The queues had this — they push a
+ * robot out and Biggy pays for it — but the three staff you ask for directions,
+ * Stephan himself and the keynote speaker were drawn and nothing else: the one
+ * complaint this game has collected more than once is walking through something
+ * that is drawn solid.
+ *
+ * A mounted or braced robot is left alone, the way every other contact in this
+ * file leaves it: braced means planted, and a mounted Droid is riding on Biggy's
+ * footprint rather than standing on his own.
+ *
+ * Returns true if there was a contact to resolve.
+ */
+export function standOff(b: Bot, p: { x: number; y: number; r: number }): boolean {
+  if (b.mounted || b.braced) return false;
+  const dx = b.x - p.x;
+  const dy = b.y - p.y;
+  const d = Math.hypot(dx, dy);
+  const min = b.r + p.r;
+  if (d >= min) return false;
+  // Dead centre: pick a direction rather than divide by zero. Along the robot's
+  // own travel, so it backs out the way it came in.
+  const sp = Math.hypot(b.vx, b.vy);
+  const nx = d > 1e-6 ? dx / d : sp > 1e-6 ? -b.vx / sp : 1;
+  const ny = d > 1e-6 ? dy / d : sp > 1e-6 ? -b.vy / sp : 0;
+  b.x = p.x + nx * min;
+  b.y = p.y + ny * min;
+  const vn = b.vx * nx + b.vy * ny;
+  // Only the component going INTO them is taken away: brushing past somebody
+  // must not stop a robot dead.
+  if (vn < 0) {
+    b.vx -= vn * nx;
+    b.vy -= vn * ny;
+  }
+  return true;
+}
+
+/**
  * Resolve one robot-robot contact: positional correction split by mass, then a
  * restitution impulse. A braced robot has `BRACED_MASS`, so it neither moves nor
  * takes an impulse — that is what "planted" means in this game.

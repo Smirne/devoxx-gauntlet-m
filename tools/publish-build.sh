@@ -21,13 +21,27 @@ git -C "$REPO" worktree add -f --detach "$OUT" "$REV" >/dev/null
 # Reuse the main checkout's install rather than paying for another one.
 ln -s "$REPO/node_modules" "$OUT/node_modules"
 
-( cd "$OUT" && npx vite build >/dev/null 2>&1 )
+# One page per build (see vite.config.ts): each bundle is then self-contained
+# and can be folded into its page. The 2.5D game lands in dist/, the 3D build
+# in dist-3d/.
+( cd "$OUT" && PAGE=main npx vite build >/dev/null 2>&1 )
+( cd "$OUT" && PAGE=3d npx vite build --outDir dist-3d >/dev/null 2>&1 )
 
 # The source map is a third of the payload and nothing reads it in a published build.
-rm -f "$OUT"/dist/assets/*.map
+rm -f "$OUT"/dist/assets/*.map "$OUT"/dist-3d/assets/*.map
+
+# Fold the bundle into the page, so `index.html` is the WHOLE build.
+#
+# GAUNTLET.md says to publish `dist/index.html`, and that was only true if the
+# file is self-contained — it was not. Publishing the page alone left the
+# artifact serving a new index.html against the PREVIOUS version's JS, which
+# 404s, so the game did not start at all (version 28; the console said
+# `Failed to load resource: 404 — index-CYf9neTo.js` and nothing else).
+node "$REPO/tools/inline-build.mjs" "$OUT/dist"
+node "$REPO/tools/inline-build.mjs" "$OUT/dist-3d" 3d.html
 
 echo "commit:   $SHA"
 echo "dist:     $OUT/dist"
-echo "page:     $OUT/dist/index.html"
-echo "assets:   $(cd "$OUT/dist" && ls assets | tr '\n' ' ')"
-echo "size:     $(du -sh "$OUT/dist" | cut -f1)"
+echo "page:     $OUT/dist/index.html  <- publish THIS, on its own; it is the whole build"
+echo "size:     $(du -sh "$OUT/dist/index.html" | cut -f1)"
+echo "3d page:  $OUT/dist-3d/3d.html  <- the 3D build, also one self-contained file ($(du -sh "$OUT/dist-3d/3d.html" | cut -f1))"

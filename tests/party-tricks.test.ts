@@ -459,7 +459,10 @@ describe('E falls through only where the chapter has no use for it', () => {
     const g = night();
     const bg = bot(g, 'biggy');
     g.debug.select('droid');
-    g.debug.place('droid', bg.x - bg.r - bot(g, 'droid').r - 1, bg.y);
+    // Approached from the EAST, the open corridor. The crate row stands against
+    // the WEST wall now (`src/sim/opening.ts`), so a mark west of Biggy's start
+    // is inside his own crate rather than in free air.
+    g.debug.place('droid', bg.x + bg.r + bot(g, 'droid').r + 1, bg.y);
     g.update(DT_MAX);
     g.key('KeyE');
     expect(bot(g, 'droid').mounted).toBe(true);
@@ -563,7 +566,10 @@ describe('E falls through only where the chapter has no use for it', () => {
     const g = createGame({ seed: 11, chapter: 1, cards: false });
     const bg = bot(g, 'biggy');
     g.debug.select('droid');
-    g.debug.place('droid', bg.x - bg.r - bot(g, 'droid').r - 1, bg.y);
+    // Approached from the EAST, the open corridor. The crate row stands against
+    // the WEST wall now (`src/sim/opening.ts`), so a mark west of Biggy's start
+    // is inside his own crate rather than in free air.
+    g.debug.place('droid', bg.x + bg.r + bot(g, 'droid').r + 1, bg.y);
     g.update(DT_MAX);
     g.key('KeyE');
     expect(flourishing(bot(g, 'droid'))).toBe(false);
@@ -577,7 +583,7 @@ describe('E falls through only where the chapter has no use for it', () => {
     g.debug.select('droid');
     // Inside the bubble (one Biggy of daylight past the reach) but outside the
     // reach itself: the climb refuses, in his voice, and keeps the key.
-    g.debug.place('droid', bg.x - bg.r - d.r - (MOUNT_REACH + bg.r), bg.y);
+    g.debug.place('droid', bg.x + bg.r + d.r + (MOUNT_REACH + bg.r), bg.y);
     g.update(DT_MAX);
     g.key('KeyE');
     expect(bot(g, 'droid').mounted).toBe(false);

@@ -16,8 +16,9 @@
  */
 
 import { CABLE_MAX, TOAST_MS } from '../sim/constants';
-import type { Bot, GameSnapshot, Prop, RobotKind } from '../sim/types';
+import type { Bot, GameSnapshot, Prop, RobotKind, Task } from '../sim/types';
 import { displayMps } from '../sim/units';
+import { CARDS as INTRO_CARDS } from '../sim/opening';
 
 export interface HudOptions {
   /**
@@ -25,6 +26,12 @@ export interface HudOptions {
    * overlay. Wire it to `Game.skipChapter()`.
    */
   onSkip?: () => void;
+  /**
+   * Where a sim point lands on the canvas — `DioramaScene.project`. The hint
+   * arrow needs it and nothing else does, so a HUD built without one simply
+   * stops the hint one step earlier instead of failing.
+   */
+  project?: (simX: number, simY: number, heightM?: number) => { x: number; y: number } | null;
 }
 
 /**
@@ -38,6 +45,19 @@ export type SpeakerAnchors = Partial<Record<RobotKind, { x: number; y: number }>
 export interface Hud {
   /** Call once per rendered frame with the current snapshot. */
   update(snap: GameSnapshot, anchors?: SpeakerAnchors): void;
+  /** `I` — show or hide the run sheet. */
+  toggleTasks(): void;
+  /** `Escape`, or a click anywhere off the panel. */
+  closeTasks(): void;
+  /**
+   * `H` — one more step of help on the task in hand.
+   *
+   * Escalating, and never past what the chapter published: whose job it is, then
+   * the line of help in that robot's voice, then an arrow at the place. A task
+   * with no `at` stops at the line, which is the honest answer rather than an
+   * arrow pointing at nothing.
+   */
+  nudge(): void;
   dispose(): void;
   /** The overlay root, for hosts that need to measure or reparent it. */
   readonly root: HTMLElement;
@@ -64,6 +84,44 @@ const LAMP_FALLBACK: Readonly<Record<RobotKind, [number, number, number]>> = {
   biggy: [70, 120, 255],
 };
 
+/**
+ * HOW FAR `H` CAN GO ON ONE TASK, and which step a press lands on.
+ *
+ * Pure, exported and tested, because it is the only part of the nudge that has a
+ * right answer: the DOM around it can only show what this returns.
+ *
+ * The ladder is 1 whose job it is, 2 the chapter's own line of help, 3 a ring on
+ * the place. A task with no `who` has no step 1 and one with no `at` has no step
+ * 3, so the escalation stops where the chapter's knowledge stops rather than
+ * inventing a step it cannot back up — and a task that publishes none of the
+ * three can still be asked, and says so, rather than swallowing the keypress.
+ */
+export function hintLines(task: Task): readonly string[] {
+  if (task.hint === undefined) return [];
+  return typeof task.hint === 'string' ? [task.hint] : task.hint;
+}
+
+/** Which rung the ring sits on: after every line the chapter published. */
+export function markLevel(task: Task): number {
+  // `Math.max(.., 1)` so a task with no hint at all keeps the ring on rung 3,
+  // where it has always been, instead of sliding down into the empty rung.
+  return 2 + Math.max(hintLines(task).length, 1);
+}
+
+export function nudgeStep(task: Task, was: number, canMark: boolean): number {
+  const lines = hintLines(task).length;
+  const hasMark = task.at !== undefined && canMark;
+  const ring = markLevel(task);
+  const top = hasMark ? ring : lines > 0 ? 1 + lines : 1;
+  let level = was + 1;
+  if (level === 1 && (task.who === undefined || task.who.length === 0)) level = 2;
+  if (level === 2 && lines === 0) level = ring;
+  return level > top ? top : level;
+}
+
+/** The switch key for each robot, so a hint can name the key it wants pressed. */
+const BOT_KEY: Readonly<Record<RobotKind, string>> = { voxxy: '1', droid: '2', biggy: '3' };
+
 /** Which robot a toast is spoken by, so it can be tinted in that robot's colour. */
 const SPEAKERS: ReadonlyArray<readonly [RegExp, RobotKind]> = [
   [/\bvoxxy\b/i, 'voxxy'],
@@ -85,7 +143,6 @@ function speakerOf(text: string): RobotKind | null {
 }
 
 /** Seconds of play after which the briefing paragraph folds to one line. */
-const BRIEF_FULL_S = 13;
 
 const ACCENT = '#ffb347';
 const MUTED = '#9aa0ab';
@@ -100,14 +157,8 @@ const CSS = `
   padding:8px 14px;background:linear-gradient(180deg,rgba(10,11,14,.96),rgba(10,11,14,.78));border-bottom:1px solid #2a2e36}
 .ad-brand{color:${ACCENT};font-weight:700;letter-spacing:.09em;font-size:12px;white-space:nowrap}
 .ad-chapter{color:${MUTED};font-size:12px;white-space:nowrap}
-.ad-obj{flex:1 1 340px;min-width:240px;cursor:pointer}
-/* The briefing is 60-84 words and it used to sit across the top of the frame for
-   the whole chapter — a permanent 12% text band over the diorama. It folds to one
-   line a few seconds in, and a click puts it back. The objective bar at the bottom
-   carries the live state, which is the part that actually ticks. */
-.ad-obj.ad-fold{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;
-  overflow:hidden;opacity:.72}
-.ad-obj b{color:${ACCENT};font-weight:600}
+/* The briefing moved off the top bar and into the run sheet — the bar carries the
+   chapter's name and the keys, and nothing that has to be read twice. */
 .ad-keys{color:${MUTED};font-size:12px}
 .ad-swag{color:${MUTED};font-size:12px;white-space:nowrap}
 .ad-skip{pointer-events:auto;margin-left:auto;background:#1c1f26;color:${ACCENT};border:1px solid ${ACCENT};
@@ -212,11 +263,11 @@ const CSS = `
 .ad-bubble{position:absolute;transform:translate(-50%,-100%);max-width:330px;width:max-content;
   padding:8px 13px;border-radius:11px;border:1px solid currentColor;
   background:rgba(10,11,14,.93);box-shadow:0 10px 30px rgba(0,0,0,.55);font-size:15px;line-height:1.28;
-  text-align:left;animation:ad-rise .22s cubic-bezier(.2,.9,.3,1) both}
+  text-align:left;animation:ad-rise-b .22s cubic-bezier(.2,.9,.3,1) both}
 .ad-bubble::after{content:'';position:absolute;left:50%;bottom:-7px;width:12px;height:12px;
   margin-left:-6px;transform:rotate(45deg);background:rgba(10,11,14,.93);
   border-right:1px solid currentColor;border-bottom:1px solid currentColor}
-.ad-bubble.ad-out{animation:ad-sink .34s ease-in forwards}
+.ad-bubble.ad-out{animation:ad-sink-b .34s ease-in forwards}
 
 .ad-toasts{position:absolute;left:50%;bottom:96px;transform:translateX(-50%);width:min(680px,74vw);
   display:flex;flex-direction:column;align-items:center;gap:6px}
@@ -227,16 +278,102 @@ const CSS = `
 .ad-toast.ad-out{animation:ad-sink .34s ease-in forwards}
 @keyframes ad-rise{from{opacity:0;transform:translateY(18px) scale(.985)}to{opacity:1;transform:none}}
 @keyframes ad-sink{to{opacity:0;transform:translateY(-10px)}}
+/* A SPEECH BUBBLE CARRIES ITS OWN TRANSFORM, so it needs its own keyframes.
+   .ad-bubble is anchored by its BOTTOM CENTRE - translate(-50%,-100%) - which is
+   what puts the tail on the robot. The shared ad-rise ends on transform:none and
+   runs with 'both', so that final frame persisted and silently cancelled the
+   anchor: every bubble jumped half its width right and its whole height down the
+   moment its entry animation finished. These keep the anchor in every frame. */
+@keyframes ad-rise-b{from{opacity:0;transform:translate(-50%,-100%) translateY(18px) scale(.985)}
+  to{opacity:1;transform:translate(-50%,-100%)}}
+@keyframes ad-sink-b{from{opacity:1;transform:translate(-50%,-100%)}
+  to{opacity:0;transform:translate(-50%,-100%) translateY(-10px)}}
 @media (prefers-reduced-motion:reduce){
   .ad-toast,.ad-toast.ad-out{animation-duration:.01s}
   .ad-fill{transition:none}
 }
+
+/* THE RUN SHEET AND THE NUDGE — I and H.
+   The meter lives in the bottom strip with the live progress line rather than
+   replacing it: the line says what is happening right now, the meter says how
+   much of the chapter is left, and they are different questions. */
+.ad-tasks{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:5px}
+.ad-pips{display:flex;gap:4px}
+.ad-pip{width:16px;height:4px;border-radius:2px;background:rgba(242,239,233,.2)}
+.ad-pip.ad-on{background:${ACCENT}}
+.ad-count{font-size:12px;letter-spacing:.06em;color:${MUTED};font-variant-numeric:tabular-nums}
+.ad-count b{color:#f2efe9;font-weight:600}
+.ad-ask{font-size:11px;letter-spacing:.06em;color:${MUTED};opacity:.8}
+
+/* The overlay root is pointer-events:none so the canvas keeps the pointer. The
+   sheet takes them back, or a click ON the panel would land on the canvas and
+   the click-outside rule would close the thing the player is reading. */
+.ad-sheet{pointer-events:auto;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:4;
+  width:min(560px,86vw);padding:18px 20px;border:1px solid ${ACCENT};border-radius:12px;
+  background:rgba(10,11,14,.97);box-shadow:0 24px 80px rgba(0,0,0,.7)}
+.ad-sheet h3{margin:0 0 4px;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:${ACCENT}}
+.ad-sheet .ad-sub{margin-bottom:10px;font-size:12px;color:${MUTED}}
+.ad-brief{margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid rgba(242,239,233,.12);
+  font-size:13px;line-height:1.45;color:#cdc9c2;max-height:34vh;overflow-y:auto}
+.ad-brief b{color:${ACCENT};font-weight:600}
+.ad-skeys{margin-top:12px;padding-top:11px;border-top:1px solid rgba(242,239,233,.12);
+  font-size:12px;line-height:1.5;color:${MUTED}}
+.ad-trow{display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-top:1px solid rgba(242,239,233,.09);
+  font-size:14px;line-height:1.3}
+.ad-trow:first-of-type{border-top:0}
+.ad-tick{flex:0 0 auto;width:15px;text-align:center;color:${MUTED}}
+.ad-trow.ad-did .ad-tick{color:${ACCENT}}
+.ad-trow.ad-did .ad-ttext{opacity:.5;text-decoration:line-through}
+.ad-ttext{flex:1 1 auto}
+.ad-twho{flex:0 0 auto;padding:1px 7px;border-radius:999px;font-size:11px;letter-spacing:.08em;
+  border:1px solid currentColor}
+.ad-tn{flex:0 0 auto;font-size:12px;color:${MUTED};font-variant-numeric:tabular-nums}
+
+/* The arrow is drawn at the target, not from the robot: an arrow that starts at
+   the robot has to be re-aimed every frame and reads as a tether. A ring that
+   sits ON the thing, in the colour of whoever has to go there, answers "where"
+   in one frame and says nothing about the route. */
+.ad-mark{position:absolute;z-index:3;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;
+  border:2px solid currentColor;pointer-events:none;animation:ad-ping 1.4s ease-out infinite}
+.ad-mark::after{content:'';position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;
+  border-radius:50%;background:currentColor}
+/* OFF SCREEN, the ring has nothing to sit on. Michele: "when showing the element,
+   the glow is fine if it's in the view. If it's outside, there should be something
+   pointing at it." So a chevron pinned to the edge, rotated to face it. */
+.ad-edge{position:absolute;z-index:3;width:0;height:0;margin:-13px 0 0 -13px;
+  border-left:15px solid currentColor;border-top:9px solid transparent;border-bottom:9px solid transparent;
+  pointer-events:none;filter:drop-shadow(0 0 6px currentColor);animation:ad-nudge 1.1s ease-in-out infinite}
+@keyframes ad-nudge{0%,100%{transform:rotate(var(--a)) translateX(0)}50%{transform:rotate(var(--a)) translateX(7px)}}
+@media (prefers-reduced-motion:reduce){.ad-edge{animation:none}}
+@keyframes ad-ping{0%{transform:scale(.55);opacity:1}70%{transform:scale(1);opacity:.35}100%{transform:scale(1.1);opacity:0}}
+@media (prefers-reduced-motion:reduce){.ad-mark{animation:none;opacity:.9}}
 
 .ad-card{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;
   background:rgba(6,7,10,.58)}
 .ad-card .ad-cardbox{max-width:min(760px,82vw);padding:20px 28px;border:1px solid ${ACCENT};border-radius:12px;
   background:rgba(10,11,14,.96);box-shadow:0 20px 70px rgba(0,0,0,.65);text-align:center;font-size:20px;line-height:1.35}
 .ad-card b{color:${ACCENT}}
+
+/* THE OPENING TITLE. Over the shot of the crates, not on a card over the game —
+   the point of staging the arrival in the corridor is that the player is looking
+   at the game from the first frame, and a modal in front of it would undo that. */
+.ad-titles{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;pointer-events:none;text-align:center;gap:10px}
+.ad-titles .ad-t1{font-size:min(9vw,74px);letter-spacing:.14em;font-weight:800;color:${ACCENT};
+  text-shadow:0 6px 40px rgba(0,0,0,.9),0 0 90px rgba(0,0,0,.8)}
+.ad-titles .ad-t2{font-size:min(2.6vw,18px);letter-spacing:.24em;color:#e9e6df;
+  text-shadow:0 3px 22px rgba(0,0,0,.95)}
+
+/* THE PRESENTATION CARD. One robot at a time, with its own switch key — the
+   opening teaches 1, 2 and 3 by using them rather than by listing them. Low in
+   the frame, because the robot it names is in the middle of it. */
+.ad-intro{position:absolute;left:0;right:0;bottom:12%;display:flex;align-items:center;
+  justify-content:center;gap:14px;pointer-events:none}
+.ad-intro .ad-ikey{display:grid;place-items:center;width:40px;height:40px;border-radius:9px;
+  border:2px solid currentColor;font-size:22px;font-weight:800;line-height:1}
+.ad-intro .ad-itext{text-align:left}
+.ad-intro .ad-iname{font-size:24px;font-weight:800;letter-spacing:.1em;line-height:1.1}
+.ad-intro .ad-iline{font-size:14px;letter-spacing:.06em;color:#e9e6df;opacity:.92}
 .ad-card small{display:block;font-size:13px;color:${MUTED};margin-top:8px}
 
 /* The objective wraps the top bar onto two or three lines at 1280x720, so nothing
@@ -460,6 +597,9 @@ function toastLifeMs(until: number, snapT: number): number {
   return Math.max(900, Math.min(8000, ms));
 }
 
+/** Clear air left between two bubbles that would otherwise touch, in px. */
+const BUBBLE_GAP = 6;
+
 interface LiveToast {
   node: HTMLElement;
   /** The line's text, so a repeat of the same sentence refreshes instead of stacking. */
@@ -499,13 +639,6 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   const brand = el('span', 'ad-brand', top);
   brand.textContent = 'AFTER DARK';
   const chapterEl = el('span', 'ad-chapter', top);
-  const objEl = el('span', 'ad-obj', top);
-  objEl.title = 'Click to fold or unfold the briefing';
-  let briefPinned: boolean | null = null;
-  const onBriefClick = (): void => {
-    briefPinned = objEl.classList.contains('ad-fold');
-  };
-  objEl.addEventListener('click', onBriefClick);
   const keysEl = el('span', 'ad-keys', top);
   const swagEl = el('span', 'ad-swag', top);
   const skip = el('button', 'ad-skip', top);
@@ -529,7 +662,57 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     c.dataset['k'] = `cell${i}`;
     cells.push(c);
   }
-  const padCap = el('div', 'ad-cap', pad);
+  /*
+   * THE RUN SHEET'S METER, in the bottom strip above the live progress line.
+   *
+   * `GameSnapshot.tasks` is the chapter's own list and this is the smallest
+   * honest view of it: one pip per task, filled as they land, and the count. It
+   * does not replace the progress line under it — that line says what is
+   * happening right now ("digits 2/4 · still dark: ..."), the meter says how much
+   * of the chapter is left, and those are different questions.
+   */
+  const taskBar = el('div', 'ad-tasks', pad);
+  const pipsWrap = el('div', 'ad-pips', taskBar);
+  const pips: HTMLElement[] = [];
+  const countEl = el('span', 'ad-count', taskBar);
+  const askEl = el('span', 'ad-ask', taskBar);
+  askEl.textContent = 'I run sheet · H hint';
+
+
+  /* the run sheet (I) and the hint mark (H) */
+  const sheet = el('div', 'ad-sheet ad-hide', root);
+  const sheetTitle = el('h3', '', sheet);
+  sheetTitle.textContent = 'Run sheet';
+  const sheetSub = el('div', 'ad-sub', sheet);
+  /*
+   * THE BRIEFING LIVES HERE NOW. Michele: *"I'd remove this: and add it to the
+   * panel on I. The bar stays only with key reminders?"*
+   *
+   * It was 60-84 words across the top of the frame — a permanent text band over
+   * the diorama that folded to one line and could be clicked back. In the panel
+   * it is read when it is wanted and takes no screen the rest of the time.
+   */
+  const sheetBrief = el('div', 'ad-brief', sheet);
+  const sheetRows = el('div', '', sheet);
+  /*
+   * THE KEYS, AGAIN, AT THE BOTTOM OF THE SHEET. Michele: *"runsheet should also
+   * have the commands recap."*
+   *
+   * They are still along the top bar, where they are a glance. Here they are a
+   * read: the panel is already the one place a player goes when they do not know
+   * what to do, and having to close it to find out which key climbs is exactly
+   * the moment it should answer.
+   */
+  const sheetKeys = el('div', 'ad-skeys', sheet);
+  const mark = el('div', 'ad-mark ad-hide', root);
+  const edge = el('div', 'ad-edge ad-hide', root);
+  let sheetOpen = false;
+  /**
+   * How much help the player has asked for on the task in hand, keyed by its id
+   * so it survives the task list being rebuilt every frame — and so moving on to
+   * the next task starts again from nothing.
+   */
+  const nudges = new Map<string, number>();
 
   /* the centre-screen text field (GameSnapshot.prompt) */
   const promptBox = el('div', 'ad-prompt ad-hide', root);
@@ -587,6 +770,29 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   let lastToastKey = '';
 
   /* full-screen card */
+  /**
+   * The opening's title, drawn over the first shot and gone before the crates
+   * open — so the thing it names is what the player is looking at when it
+   * clears. Its alpha is the sim's (`GameSnapshot.opening.title`), like every
+   * other number in this file.
+   */
+  const titles = el('div', 'ad-titles ad-hide', root);
+  const titleMain = el('div', 'ad-t1', titles);
+  const titleSub = el('div', 'ad-t2', titles);
+  titleMain.textContent = 'AFTER DARK';
+  titleSub.textContent = 'KINEPOLIS ANTWERP · THE NIGHT BEFORE DEVOXX';
+
+  /**
+   * The per-robot card: its switch key, its name and one line. Coloured with the
+   * robot's own lamp colour, which is the same colour its chip in the switcher
+   * carries, so the connection is made before the player has touched anything.
+   */
+  const intro = el('div', 'ad-intro ad-hide', root);
+  const introKey = el('div', 'ad-ikey', intro);
+  const introText = el('div', 'ad-itext', intro);
+  const introName = el('div', 'ad-iname', introText);
+  const introLine = el('div', 'ad-iline', introText);
+
   const card = el('div', 'ad-card ad-hide', root);
   const cardBox = el('div', 'ad-cardbox', card);
 
@@ -597,6 +803,10 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   const styleCache = new Map<string, string>();
   let lastChrome = -1;
   let disposed = false;
+  /** The last snapshot `update` was handed, for the two key-driven methods. */
+  let lastSnap: GameSnapshot | null = null;
+  /** The chapter whose briefing has already been put up. See `update`. */
+  let briefedFor = -1;
 
   function updateChips(snap: GameSnapshot): void {
     for (let i = 0; i < chips.length; i++) {
@@ -639,18 +849,26 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   }
 
   function updateKeypad(snap: GameSnapshot): void {
-    // The bottom-centre strip is every chapter's live progress readout; only
-    // chapter 1 also carries the four keypad cells above it.
-    const line = snap.progress;
-    const showPad = snap.chapter >= 1 && snap.phase !== 'done' && (line !== '' || snap.chapter === 1);
+    /*
+     * THE BOTTOM STRIP IS THE METER NOW, plus chapter 1's four keypad cells.
+     *
+     * It used to end in `GameSnapshot.progress` — a full sentence of live state
+     * ("digits 0/4 · still dark: orange + green, ... · keypad: drive up to the
+     * fire door to type"). Michele: *"This also can go, it's the old version of
+     * the meter"*, and he is right: the run sheet says the same things better —
+     * the sub-count is a row's `n / of`, and "still dark" is four rows that tick
+     * off. Two readouts of one fact is one too many.
+     *
+     * `progress` stays on the snapshot. Several chapter tests read it as the
+     * chapter's own state line (`tests/chapters.test.ts` — "router ✓",
+     * "password known", "(2/13)"), and those are real assertions about the sim
+     * that would be lost, not HUD assertions.
+     */
+    const showPad = snap.opening === null && snap.chapter >= 1 && snap.phase !== 'done' && snap.tasks.length > 0;
     pad.classList.toggle('ad-hide', !showPad);
     const show = snap.chapter === 1 && snap.phase !== 'done';
     cellsWrap.classList.toggle('ad-hide', !show);
-    if (!showPad) return;
-    if (!show) {
-      setText(padCap, line, textCache);
-      return;
-    }
+    if (!showPad || !show) return;
     // `Clue.slot` may be 0- or 1-based depending on the chapter; ordering by slot
     // makes both work.
     const ordered = snap.clues.slice().sort((a, b) => a.slot - b.slot);
@@ -663,7 +881,124 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
       cell.classList.toggle('ad-typed', typed !== '');
       cell.classList.toggle('ad-found', typed === '' && !!clue?.found);
     }
-    setText(padCap, line, textCache);
+  }
+
+  /* ------------------------------------------------ the run sheet, I and H */
+
+  /** The task the player is on: the first one not done. */
+  function current(snap: GameSnapshot): Task | undefined {
+    return snap.tasks.find((t) => !t.done);
+  }
+
+  /** A robot's own lamp colour, so every mention of it speaks the same language. */
+  function lampOf(snap: GameSnapshot, kind: RobotKind): string {
+    const bot = snap.bots.find((b) => b.kind === kind);
+    return rgb(bot?.light.c ?? LAMP_FALLBACK[kind]);
+  }
+
+  function updateTaskBar(snap: GameSnapshot): void {
+    const list = snap.tasks;
+    // A chapter that has not been taught to publish a list gets no meter — never
+    // an empty one, which would read as "nothing to do".
+    taskBar.classList.toggle('ad-hide', list.length === 0);
+    if (list.length === 0) return;
+    while (pips.length < list.length) pips.push(el('div', 'ad-pip', pipsWrap));
+    for (let i = 0; i < pips.length; i++) {
+      pips[i].classList.toggle('ad-hide', i >= list.length);
+      pips[i].classList.toggle('ad-on', i < list.length && list[i].done);
+    }
+    const done = list.reduce((n, t) => n + (t.done ? 1 : 0), 0);
+    setHtml(countEl, `<b>${done}</b> / ${list.length}`, htmlCache);
+  }
+
+  function updateSheet(snap: GameSnapshot): void {
+    const open = sheetOpen && snap.phase === 'play' && snap.opening === null && snap.tasks.length > 0;
+    sheet.classList.toggle('ad-hide', !open);
+    if (!open) return;
+    const done = snap.tasks.reduce((n, t) => n + (t.done ? 1 : 0), 0);
+    setText(sheetSub, `${CHAPTER_TITLES[snap.chapter] ?? ''} — ${done} of ${snap.tasks.length} done`, textCache);
+    setHtml(sheetBrief, snap.objective, htmlCache);
+    setText(sheetKeys, snap.keys, textCache);
+    // Rebuilt rather than diffed: the sheet is open only while the player is
+    // reading it, the lists are five rows long, and a diff here would be cost
+    // with no frame to spend it on.
+    sheetRows.textContent = '';
+    for (const t of snap.tasks) {
+      const row = el('div', `ad-trow${t.done ? ' ad-did' : ''}`, sheetRows);
+      const tick = el('span', 'ad-tick', row);
+      tick.textContent = t.done ? '\u2713' : '\u25cb';
+      const text = el('span', 'ad-ttext', row);
+      text.textContent = t.text;
+      if (t.of !== undefined) {
+        const n = el('span', 'ad-tn', row);
+        n.textContent = `${t.n ?? 0} / ${t.of}`;
+      }
+      /*
+       * NO ROBOT CHIP HERE. Michele: *"I'd leave out the robot name here
+       * (moreover some task need multiple robots). That's already a big hint"*.
+       *
+       * The sheet says what is left to do; working out who does it is the game.
+       * `who` stays in the data because `H` is where a player ASKS for that, and
+       * an answer you asked for is not a spoiler.
+       */
+    }
+  }
+
+  /**
+   * THE HINT MARK. A ring on the thing, in the colour of whoever has to go there.
+   *
+   * Drawn at the target rather than from the robot: an arrow that starts at the
+   * robot has to be re-aimed every frame and reads as a tether telling you the
+   * route. "Where" is the question a stuck player is asking, and a ring answers
+   * it in one frame and says nothing about how to get there.
+   */
+  function updateMark(snap: GameSnapshot): void {
+    const t = current(snap);
+    const level = t ? (nudges.get(t.id) ?? 0) : 0;
+    const at = t?.at;
+    const p = level >= 3 && at && opts.project ? opts.project(at.x, at.y, 0.4) : null;
+    if (p === null) {
+      mark.classList.add('ad-hide');
+      edge.classList.add('ad-hide');
+      return;
+    }
+    // One ring, so one colour: the first robot named, or the house accent when a
+    // task belongs to nobody in particular.
+    const who = t?.who;
+    const colour = who && who.length > 0 ? lampOf(snap, who[0]) : ACCENT;
+
+    /*
+     * ON SCREEN it is a ring on the thing. OFF SCREEN a ring is drawn outside the
+     * frame and the player sees nothing at all, which is worse than no hint —
+     * they asked and got silence. Michele: *"If it's outside, there should be
+     * something pointing at it."*
+     *
+     * So the target is clamped to an inset border and a chevron is pinned there,
+     * rotated along the line from the middle of the screen to where the thing
+     * actually is. The inset keeps the whole arrow on the canvas; the rotation is
+     * computed from the UNCLAMPED point, or every arrow on an edge would point
+     * along it instead of at the target.
+     */
+    const w = root.clientWidth || 1;
+    const h = root.clientHeight || 1;
+    const inset = 34;
+    const outside = p.x < inset || p.x > w - inset || p.y < inset || p.y > h - inset;
+    mark.classList.toggle('ad-hide', outside);
+    edge.classList.toggle('ad-hide', !outside);
+    if (!outside) {
+      mark.style.left = `${Math.round(p.x)}px`;
+      mark.style.top = `${Math.round(p.y)}px`;
+      mark.style.color = colour;
+      return;
+    }
+    const cx = w / 2;
+    const cy = h / 2;
+    const ang = Math.atan2(p.y - cy, p.x - cx);
+    edge.style.left = `${Math.round(Math.min(Math.max(p.x, inset), w - inset))}px`;
+    edge.style.top = `${Math.round(Math.min(Math.max(p.y, inset), h - inset))}px`;
+    edge.style.color = colour;
+    edge.style.setProperty('--a', `${ang}rad`);
+    edge.style.transform = `rotate(${ang}rad)`;
   }
 
   /**
@@ -736,6 +1071,51 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     });
   }
 
+  /**
+   * Put one line on screen, as a bubble over its speaker or in the stack.
+   *
+   * Extracted from `updateToasts` so `nudge()` can say something without
+   * inventing a second way of speaking: a hint is a line like any other and the
+   * player should not be able to tell where it came from.
+   */
+  function pushLine(text: string, snap: GameSnapshot, lifeMs: number): void {
+    const now = performance.now();
+    const speaker = speakerOf(text);
+    const node = el('div', speaker ? 'ad-bubble' : 'ad-toast');
+    const colour = toastColour(text, snap);
+    node.style.color = rgb(colour);
+    if (!speaker) {
+      node.style.background = `linear-gradient(90deg, ${rgba(colour, 0.2)}, rgba(10,11,14,.93) 58%)`;
+    }
+    const line = el('span', 'ad-line', node);
+    /*
+     * MARKUP, LIKE EVERY OTHER LINE THE SIM WRITES — and this was a bug.
+     *
+     * Michele: *"There's some html code in toast, not rendered."* The chapters
+     * have always written `<b>` into their toasts — the breaker circuits, the
+     * password, `SHIRTS &amp; GADGETS` — because the briefing and the objective
+     * take the same simple markup, and this one path set `textContent`. So the
+     * emphasis the sentence was built around arrived on screen as literal tags
+     * and an `&amp;`.
+     *
+     * Same trusted source as `setHtml`: these strings come from `src/sim`, which
+     * is ours. Nothing a player types ever reaches here.
+     */
+    line.innerHTML = text;
+    (speaker ? bubbles : toasts).appendChild(node);
+    live.push({ node, text, dieAt: now + lifeMs, removeAt: now + lifeMs + 340, out: false, speaker });
+    // Three lines is already a wall of text over the diorama: as a fourth
+    // arrives, the oldest starts its exit animation immediately.
+    for (let i = 0; i < live.length - 3; i++) {
+      const old = live[i];
+      if (old.out) continue;
+      old.out = true;
+      old.dieAt = now;
+      old.removeAt = now + 340;
+      old.node.classList.add('ad-out');
+    }
+  }
+
   function updateToasts(snap: GameSnapshot): void {
     const now = performance.now();
     const t = snap.toast;
@@ -753,27 +1133,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
           repeat.dieAt = now + life;
           repeat.removeAt = now + life + 340;
         } else {
-          const speaker = speakerOf(t.t);
-          const node = el('div', speaker ? 'ad-bubble' : 'ad-toast');
-          const colour = toastColour(t.t, snap);
-          node.style.color = rgb(colour);
-          if (!speaker) {
-            node.style.background = `linear-gradient(90deg, ${rgba(colour, 0.2)}, rgba(10,11,14,.93) 58%)`;
-          }
-          const line = el('span', 'ad-line', node);
-          line.textContent = t.t;
-          (speaker ? bubbles : toasts).appendChild(node);
-          live.push({ node, text: t.t, dieAt: now + life, removeAt: now + life + 340, out: false, speaker });
-          // Three lines is already a wall of text over the diorama: as a fourth
-          // arrives, the oldest starts its exit animation immediately.
-          for (let i = 0; i < live.length - 3; i++) {
-            const old = live[i];
-            if (old.out) continue;
-            old.out = true;
-            old.dieAt = now;
-            old.removeAt = now + 340;
-            old.node.classList.add('ad-out');
-          }
+          pushLine(t.t, snap, life);
         }
       }
     } else {
@@ -801,6 +1161,20 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     if (!anchors) return;
     const w = root.clientWidth || 1;
     const h = root.clientHeight || 1;
+    /*
+     * TWO ROBOTS STANDING TOGETHER SPEAK OVER EACH OTHER. Each bubble hangs at
+     * its own speaker's anchor, so when the robots are a metre apart on screen
+     * the boxes land on top of one another and the one underneath is unreadable
+     * — Michele: "sometimes the toast are multiple and not all are visible".
+     *
+     * So place them, then separate them. The lowest bubble keeps its spot (it is
+     * the one closest to its robot, and the tail has to point somewhere true);
+     * every bubble above it that would still touch it is lifted clear. Only
+     * boxes whose horizontal spans actually cross are pushed — bubbles side by
+     * side stay at their own height.
+     */
+    const placed: { l: number; r: number; top: number; bot: number }[] = [];
+    const rows: { lt: LiveToast; x: number; y: number; bw: number; bh: number }[] = [];
     for (const lt of live) {
       if (!lt.speaker) continue;
       const at = anchors[lt.speaker];
@@ -809,10 +1183,40 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
         continue;
       }
       lt.node.style.opacity = '';
-      const x = Math.min(Math.max(at.x, 180), w - 180);
-      const y = Math.min(Math.max(at.y - 18, 92), h - 40);
-      lt.node.style.left = `${Math.round(x)}px`;
-      lt.node.style.top = `${Math.round(y)}px`;
+      const bw = lt.node.offsetWidth || 0;
+      const bh = lt.node.offsetHeight || 0;
+      rows.push({
+        lt,
+        x: Math.min(Math.max(at.x, 180), w - 180),
+        y: Math.min(Math.max(at.y - 18, 92), h - 40),
+        bw,
+        bh,
+      });
+    }
+    rows.sort((a, b) => b.y - a.y);
+    for (const r of rows) {
+      let y = r.y;
+      const l = r.x - r.bw / 2;
+      const rt = r.x + r.bw / 2;
+      // Lift until nothing is left to clear. Each pass can expose a new
+      // neighbour above, so keep going rather than resolving once.
+      for (let guard = 0; guard < placed.length + 1; guard++) {
+        let lift = 0;
+        for (const q of placed) {
+          if (rt <= q.l || l >= q.r) continue;
+          const top = y - r.bh;
+          if (top >= q.bot || y <= q.top) continue;
+          lift = Math.max(lift, y - q.top + BUBBLE_GAP);
+        }
+        if (lift <= 0) break;
+        y -= lift;
+      }
+      // Never push one off the top of the canvas; an overlap there beats a
+      // bubble nobody can see at all.
+      y = Math.max(y, r.bh + 8);
+      placed.push({ l, r: rt, top: y - r.bh, bot: y });
+      r.lt.node.style.left = `${Math.round(r.x)}px`;
+      r.lt.node.style.top = `${Math.round(y)}px`;
     }
   }
 
@@ -828,15 +1232,57 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
 
   function update(snap: GameSnapshot, anchors?: SpeakerAnchors): void {
     if (disposed) return;
+    // `I` and `H` are keypresses, not frames, so they need the last snapshot the
+    // HUD was given rather than one of their own.
+    lastSnap = snap;
+    /*
+     * OPENED ONCE A CHAPTER, and only once. The briefing is no longer anywhere
+     * else, so a player who never presses `I` would never read it — but a panel
+     * that reopens every time the chapter state twitches is worse than the text
+     * band it replaced. `briefedFor` is the chapter it has already been shown
+     * for, so Esc, a click or `I` close it for good until the next one.
+     */
+    if (snap.phase === 'play' && snap.opening === null && snap.chapter !== briefedFor) {
+      briefedFor = snap.chapter;
+      sheetOpen = true;
+    }
 
     setText(chapterEl, CHAPTER_TITLES[snap.chapter] ?? CHAPTER_TITLES[0], textCache);
-    if (setHtml(objEl, snap.objective, htmlCache)) briefPinned = null;
-    // Unfolded while the player is still reading it, then folded to one line. A
-    // click pins it either way for the rest of the chapter.
-    const fold = briefPinned === null ? snap.phase === 'play' && snap.t > BRIEF_FULL_S : briefPinned;
-    objEl.classList.toggle('ad-fold', fold);
     setText(keysEl, snap.keys, textCache);
     setText(swagEl, snap.swag.length > 0 ? `swag ${snap.swag.length}/3` : '', textCache);
+
+    /*
+     * THE OPENING OWNS THE SCREEN.
+     *
+     * While the crates are on, everything that belongs to driving a robot is
+     * off: the switcher, the speed gauge, the clue cells and the live progress
+     * line. None of it is true yet — nobody is driving — and a speed gauge
+     * reading 0.0 / 5.8 m/s over three crated robots is the kind of detail that
+     * makes an opening look like a paused game rather than an opening.
+     */
+    const opening = snap.opening !== null;
+    titles.classList.toggle('ad-hide', !opening || snap.opening!.title <= 0.001);
+    if (opening) titles.style.opacity = snap.opening!.title.toFixed(3);
+    const who = snap.opening?.card ?? null;
+    intro.classList.toggle('ad-hide', who === null);
+    if (who !== null) {
+      const c = INTRO_CARDS[who];
+      const bot = snap.bots.find((b) => b.kind === who);
+      setText(introKey, String(c.key), textCache);
+      setText(introName, c.name, textCache);
+      setText(introLine, c.line, textCache);
+      if (bot) setStyle(intro, 'introcol', 'color', rgb(bot.light.c), styleCache);
+    }
+    left.classList.toggle('ad-hide', opening);
+    meters.classList.toggle('ad-hide', opening);
+    // The top bar keeps only the one thing that is true during the opening: that
+    // a key skips it. The chapter's name and briefing arrive when the chapter does.
+    chapterEl.classList.toggle('ad-hide', opening);
+    if (opening) {
+      sheet.classList.add('ad-hide');
+      mark.classList.add('ad-hide');
+      edge.classList.add('ad-hide');
+    }
 
     updateChips(snap);
     updateSpeed(snap);
@@ -845,6 +1291,9 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     updateMeters(snap);
     updateToasts(snap);
     placeBubbles(anchors);
+    updateTaskBar(snap);
+    updateSheet(snap);
+    updateMark(snap);
     updateCard(snap);
 
     // Cutscenes fade the world to black; the chrome goes with it, so a transition
@@ -866,7 +1315,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     if (disposed) return;
     disposed = true;
     skip.removeEventListener('click', onSkipClick);
-    objEl.removeEventListener('click', onBriefClick);
+    window.removeEventListener('click', onRootClick);
     live.length = 0;
     promptCells.length = 0;
     meterRows.clear();
@@ -877,5 +1326,75 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     style.remove();
   }
 
-  return { update, dispose, root };
+  function toggleTasks(): void {
+    sheetOpen = !sheetOpen;
+  }
+
+  function closeTasks(): void {
+    sheetOpen = false;
+  }
+
+  /*
+   * Michele: *"esc ok click outside should close the panel"*. `I` opens it and
+   * the two ways anybody expects to get rid of a panel close it.
+   *
+   * The click listener is on the OVERLAY ROOT rather than the window: the HUD
+   * root already sits over the canvas, and a listener on the window would also
+   * catch the click that the Skip button is in the middle of handling.
+   */
+  const onRootClick = (ev: MouseEvent): void => {
+    if (!sheetOpen) return;
+    if (sheet.contains(ev.target as Node)) return;
+    sheetOpen = false;
+  };
+  window.addEventListener('click', onRootClick);
+
+  /*
+   * ONE PRESS, ONE MORE STEP, AND NEVER PAST WHAT THE CHAPTER PUBLISHED.
+   *
+   * 1 — whose job it is. Most of being stuck in this game is having the wrong
+   *     robot selected, so the first answer is the cheapest one that is usually
+   *     right, and it is said in that robot's own voice and colour.
+   * 2 — the chapter's own line of help. Never the answer: the nudge that gets a
+   *     stuck player moving again. A task with a gate in front of it publishes
+   *     SEVERAL, nearest obstacle first, and they get a rung each (`Task.hint`).
+   * last — a ring on the place.
+   *
+   * A task with no `who` has no step 1 and one with no `at` has no step 3, so the
+   * escalation stops where the chapter's own knowledge stops rather than
+   * inventing a step it cannot back up. The count is kept per task id, so moving
+   * on to the next task starts again from nothing.
+   */
+  function nudge(): void {
+    const snap = lastSnap;
+    if (!snap || snap.phase !== 'play' || snap.opening !== null) return;
+    const t = current(snap);
+    if (!t) return;
+    const hasMark = t.at !== undefined && opts.project !== undefined;
+    const level = nudgeStep(t, nudges.get(t.id) ?? 0, opts.project !== undefined);
+    nudges.set(t.id, level);
+    const life = 4200;
+    if (level === 1 && t.who !== undefined && t.who.length > 0) {
+      // Every robot it needs, because plenty need two and naming one of them is
+      // a wrong answer rather than half an answer.
+      const names = t.who.map((k) => `${k[0].toUpperCase()}${k.slice(1)} (${BOT_KEY[k]})`);
+      pushLine(
+        t.who.length === 1
+          ? `${names[0]}: this one is mine.`
+          : `${names.join(' and ')} — this one takes both of us.`,
+        snap,
+        life,
+      );
+    } else if (level >= 2 && level - 2 < hintLines(t).length) {
+      // One rung per line, nearest obstacle first: the gate in front of the task
+      // before the task itself. See `Task.hint`.
+      pushLine(hintLines(t)[level - 2], snap, life);
+    } else if (level === markLevel(t) && hasMark) {
+      pushLine('Look for the ring.', snap, life);
+    } else {
+      pushLine('That is everything anybody knows about this one.', snap, life);
+    }
+  }
+
+  return { update, toggleTasks, closeTasks, nudge, dispose, root };
 }
