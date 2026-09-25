@@ -44,7 +44,9 @@ import {
   stairLanding,
   stairMidLanding,
   stairRamps,
+  toiletDoor,
 } from '../src/sim/geometry';
+import { mkBot } from '../src/sim/bot';
 import type { Rect, RoomDef, Vec2, Wall } from '../src/sim/types';
 import { ROBOT_HEIGHT_M } from '../src/sim/units';
 
@@ -785,12 +787,16 @@ describe('ground floor — the lobby, where Michele plotted it', () => {
     expect((north as Wall).h).toBeGreaterThan(e.h * 2);
   });
 
-  it('builds the toilets and the three BOF rooms inside their own footprints, one doorway each', () => {
+  /**
+   * The toilets used to be in this list with one doorway. They are SEALED now —
+   * Michele, 25 Sep: *"Cover the toilets."* — so their south face is asserted
+   * unbroken below instead of asserted open. Nothing in any chapter happens in
+   * there, and a room you cannot walk into is a room whose layout nobody can
+   * check against the plan.
+   */
+  it('builds the three BOF rooms inside their own footprint, one doorway each', () => {
     const walls = groundWalls();
-    for (const [kind, rect, rooms] of [
-      ['toilets', GF.toilets, 1],
-      ['bof', GF.bof, GF.bofSplits.length + 1],
-    ] as Array<[string, Rect, number]>) {
+    for (const [kind, rect, rooms] of [['bof', GF.bof, GF.bofSplits.length + 1]] as Array<[string, Rect, number]>) {
       const mine = walls.filter((w) => w.kind === kind);
       expect(mine.length, `${kind} walls`).toBeGreaterThan(3);
       for (const w of mine) {
@@ -811,17 +817,56 @@ describe('ground floor — the lobby, where Michele plotted it', () => {
     expect(GF.toilets.x + GF.toilets.w).toBeLessThanOrEqual(GF.bof.x);
   });
 
+  it('seals the toilet block — four faces, no gap, and a voice on the shut door', () => {
+    const walls = groundWalls();
+    const tl = GF.toilets;
+    const mine = walls.filter((w) => w.kind === 'toilets');
+    expect(mine.length, 'toilet walls').toBe(4);
+    for (const w of mine) {
+      expect(w.x).toBeGreaterThanOrEqual(tl.x);
+      expect(w.x + w.w).toBeLessThanOrEqual(tl.x + tl.w);
+      expect(w.y).toBeGreaterThanOrEqual(tl.y);
+      expect(w.y + w.h).toBeLessThanOrEqual(tl.y + tl.h);
+    }
+    // The south face is ONE run across the whole block: no gap to walk through.
+    const south = mine.filter((w) => w.y === tl.y + tl.h - T && w.h === T);
+    expect(south.length, 'the south face is in pieces again').toBe(1);
+    expect(south[0].x).toBe(tl.x);
+    expect(south[0].w).toBe(tl.w);
+    // Three voices, not one sentence with the name swapped (CLAUDE.md).
+    const said = (['voxxy', 'droid', 'biggy'] as const).map((k) => south[0].why?.(mkBot(k, 0, 0)) ?? '');
+    expect(new Set(said).size).toBe(3);
+    for (const line of said) expect(line.length).toBeGreaterThan(20);
+    // And the drawn doors sit inside that face, so the block still reads as toilets.
+    for (const leaf of toiletDoor()) {
+      expect(leaf.y).toBe(tl.y + tl.h - T);
+      expect(leaf.x).toBeGreaterThan(tl.x);
+      expect(leaf.x + leaf.w).toBeLessThan(tl.x + tl.w);
+    }
+  });
+
+  /**
+   * The gate closes the flight's EAST face — the foot, and the side the entrance
+   * is on. It was the south face until 25 Sep 2026, which put the barrier across
+   * the treads rather than in front of them; the plan's ascent arrow settles it
+   * (`GF.mainStair`, and Michele: *"Stairs should be facing the entrance"*).
+   */
   it('keeps the gate at the foot of the main staircase — its only reachable side', () => {
     const ms = GF.mainStair;
-    expect(GF.gate.x).toBe(ms.x);
-    expect(GF.gate.w).toBe(ms.w);
-    expect(GF.gate.y).toBe(ms.y + ms.h);
+    expect(GF.gate.y).toBe(ms.y);
+    expect(GF.gate.h).toBe(ms.h);
+    expect(GF.gate.x).toBe(ms.x + ms.w);
     // The wardrobe and the desk close the flight's whole west flank, which is why
-    // the south is the only way at it — and why Stephan stands exactly there.
+    // the east is the only way at it — and why Stephan stands exactly there.
     const west = [GF.coatroom, GF.reception];
     expect(Math.min(...west.map((r) => r.y))).toBeLessThanOrEqual(ms.y);
     expect(Math.max(...west.map((r) => r.y + r.h))).toBeGreaterThanOrEqual(ms.y + ms.h);
     for (const r of west) expect(r.x + r.w).toBeLessThanOrEqual(ms.x);
+    // And the gate faces the entrance across the concourse, which is what the
+    // whole quarter turn was for. Not far: a leaf the width of the stair would
+    // not fit in the gap, which is why the barrier has an opening in it instead.
+    expect(GF.entrance.x).toBeGreaterThan(GF.gate.x + GF.gate.w);
+    expect(GF.entrance.x - (GF.gate.x + GF.gate.w)).toBeLessThan(60);
   });
 
   it('never overlaps two blocks of the lobby', () => {

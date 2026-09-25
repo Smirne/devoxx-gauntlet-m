@@ -634,9 +634,31 @@ describe('the exhibition level is built on two levels', () => {
     expect(flight.min.y).toBeGreaterThan(lobbyY - 0.15);
     expect(flight.min.y).toBeLessThan(lobbyY + 0.05);
     expect(flight.min.y - hallY).toBeGreaterThan(0.3);
-    // ...and it climbs north, so the gate sits at its southern, downhill end.
+    /*
+     * ...and it climbs WEST, so the gate sits at its eastern, downhill end —
+     * facing the entrance, which is the whole point of the quarter turn.
+     *
+     * The flight itself is the proof, not just the gate: its highest tread is at
+     * the west edge of the footprint and its lowest at the east, and across the
+     * 15.7 m width nothing changes height at all.
+     */
     const g = gate.getWorldPosition(new THREE.Vector3());
-    expect(g.z).toBeGreaterThan(m(GF.mainStair.y + GF.mainStair.h) - 0.1);
+    expect(g.x).toBeGreaterThan(m(GF.mainStair.x + GF.mainStair.w) - 0.1);
     expect(g.y).toBeGreaterThan(lobbyY);
+    // The high end of the flight is west (low x) and the low end east (high x).
+    const ms = GF.mainStair;
+    const band = (x0: number, x1: number): number => {
+      let top = -Infinity;
+      main.traverse((o) => {
+        if (!(o as THREE.Mesh).isMesh) return;
+        const b = new THREE.Box3().setFromObject(o);
+        const cx = (b.min.x + b.max.x) / 2;
+        if (cx >= m(x0) && cx <= m(x1)) top = Math.max(top, b.max.y);
+      });
+      return top;
+    };
+    const west = band(ms.x, ms.x + ms.w * 0.25);
+    const east = band(ms.x + ms.w * 0.75, ms.x + ms.w);
+    expect(west).toBeGreaterThan(east + 2);
   });
 });

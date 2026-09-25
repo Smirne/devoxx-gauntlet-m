@@ -245,6 +245,33 @@ function stepAim(b: Bot, dt: number, il: number, sp: number): void {
   }
 }
 
+/**
+ * Is something OTHER than this robot's own stick moving it right now?
+ *
+ * True while it is being shoved, towed or knocked, and for the whole free slide
+ * afterwards; false while the player is driving it, and false through an ordinary
+ * coast to a stop. It is `stepAim`'s own answer — the rule two comments up, "a
+ * body that speeds up while nobody is steering it is being towed, shoved or
+ * knocked" — published rather than recomputed, because the renderer wanted the
+ * same fact and got it wrong on its own.
+ *
+ * What the renderer had was "the stick is empty", and a measured tap-and-release
+ * says that is not the same question. The gait reads a smoothed acceleration
+ * (a 1/6 s low-pass), so for a few frames after the player lets go the stick is
+ * empty AND the acceleration is still positive; driving Biggy for a third of a
+ * second and releasing fired 61% of a full shove roll and took a second to fade.
+ * The flag here has no filter to lag: `coast` ratchets down to the running
+ * minimum speed, so a genuine shove trips it on the frame it lands, and a coast,
+ * which can only ever slow down, never trips it at all.
+ *
+ * Nothing in the sim behaves differently for it — this is a read of state
+ * `stepAim` already keeps for the heading, and it stays the source of truth for
+ * `src/render`'s `shoved`.
+ */
+export function worldMoved(b: Bot): boolean {
+  return !aimOf(b).driven;
+}
+
 /* ---------------------------------------------------------------- integration */
 
 /**

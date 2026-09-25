@@ -3856,3 +3856,406 @@ working on a couple of things; the next merge is the same one-command operation.
   off, not deleted. The agent proposed bringing it back as a menu (Start, Continue, Credits, Controls).
   Michele: *"keep it out for the moment. Starting with the intro is cool."* The page starts on the
   crates intro, and the dormant code stays in `main3d.ts` in case a menu is wanted later.
+
+## 25 Sep 2026 — the main staircase, and the briefing that spoiled itself
+
+**What a human asked for.** Two lines, mid-session. *"You really don't wanna fix that main stairs,
+eh?"* — fair; it had been measured and deferred for a session and a half. And, on the panel that
+opens with each chapter: *"I'll hide this from the starting splash page, it's a kind of spoiler.
+Could show the meter? and a key to expand to this?"*
+
+**What the agent did — the staircase.** Re-measured it from the drawing rather than trusting the
+note, which turned out to agree: on `plans/exhibition-floor-stairs-annotated.png` the stair's tread
+lines run plan-east–west across x 308..511 over a 70 px depth, and the ascent arrow stands at
+x 410 with its head at y 976 — pointing plan-NORTH, away from the Main Entrance at the plan's
+bottom edge. This repo turns the plan a quarter turn (plan north → world west, confirmed against
+three landmarks: the entrance, the BOF rooms and the polo store), so the flight climbs **west** and
+is entered from the **east**, facing the doors. Ours climbed north, across its own treads.
+
+The footprint did not move a pixel; the axis did. `groundPlates()`'s main flight became `axis: 'x'`,
+`GF.gate` became a north–south rect on the east face, `stairFlight`'s `dir` went `'+z'` to `'+x'`,
+Stephan moved to the opening in the barrier, and the exit cutscene climbs west through it.
+
+**The turn changed what the gate is, and that was not a choice.** There are 55 px — 4.4 m — of
+concourse between the new gate line and the glazed entrance wall, and the barrier across the foot
+of the flight is 197 px. A leaf that long had nowhere to swing that was not inside the glass or
+buried two metres up the treads. So the building settled it: nobody hangs a 15.7 m barrier on one
+hinge, a stair that wide is closed by a run of posts with **one gate in it**, and that is exactly
+what Stephan has been unhooking in the chapter's own text since it was written. `GATE_MOUTH` is the
+opening, `gateDraw` reads the rect's long side for which way the run lies rather than carrying two
+hard-coded orientations, and the barrier either side of the mouth stays standing.
+
+**What was measured rather than argued.** The stair's step count. The run is 8.96 m now instead of
+15.76, and the 16 steps it had gave a 31 cm riser — 24 gives 21 cm, which is a staircase people walk
+up. Also the leaf's landing: swung right back it stops 11 px short of the glazing, which is why the
+mouth is 44 px and not 48.
+
+**A bug the change surfaced.** The two standing barrier runs were first pushed as `kind: 'gate'`
+walls, which is what they look like. `openness()` in `src/render/doors.ts` reads the wall list for a
+`gate` to decide whether the barrier is still sealed, so the renderer concluded the gate had never
+opened and drew the leaf shut across its own opening — with nothing in the sim behind it.
+`tests/colliders.test.ts` caught it as 40 cells of barrier you could walk through. They are
+`gatebar` now, and the comment says why.
+
+**What the agent did — the briefing.** The panel was doing two jobs with one layout. Opened *by the
+chapter* it is a briefing and should set the scene; listing "light the orange + green mix" before
+the player has seen a lamp hands them the answer to a puzzle they have not met. Opened *by `I`* it
+is a run sheet, asked for, and then the rows are the whole point. So it has two states: the
+briefing carries the objective, the count and the key that expands it; `I` turns it into the rows.
+
+Screenshotting it turned up the other half of his note — the briefing was opening *on top of the
+chapter card*, two panels saying the same thing through each other. It now waits for the card to be
+dismissed. Card, then briefing, then play.
+
+**Tests.** `geometry`, `surface`, `chapters` and `venue.smoke` turned to the new orientation rather
+than relaxed — `surface` gained an assertion that height does not change across the width of the
+stair, which is the thing that tells the two axes apart and is what was wrong before, and
+`venue.smoke` now measures the drawn flight's own treads west against east instead of only looking
+at where the gate is. Suite: **682 tests, 40 files, green**; `tsc --noEmit` clean; `After Dark ·
+ERRORS:0` on the built bundle.
+
+## 25 Sep 2026 — the crate that could eat a run, and the people
+
+**What a human asked for.** *"Yes fine"* to two things offered off the backlog: the chapter-3
+soft-lock, and then the people.
+
+### The crate
+
+`beerDone` needs all six crates on the bar, and a crate is a 0.32 m body in a hall built for 0.72 m
+robots — so there are places a crate fits and Biggy does not. The note said *"nothing prevents one
+ending up shoved under a booth"*, which is a guess; so the first thing was to stop guessing. A sweep
+of every cell of the ground floor against both radii found **exactly one** such place: the 15 px
+slot between the sandwich counter and the coffee counter, open at its south end and backed by the
+hall's north wall. Five cells out of 61,218.
+
+Then a second measurement narrowed it again. The slot is 30 px deep and `CRATE_REACH` is 26, so a
+crate in the MOUTH is still something Biggy can lean in and take from the open floor outside — at
+y 112 there is exactly one standing spot left, dead ahead at 25 px. Only past about y 108 does the
+last of them go. The test is aimed at the back of the slot for that reason, and says so.
+
+The guard is general rather than a plug in that one slot: the slot is a consequence of two counters
+standing a metre apart, any future prop can make another, and a chapter that can eat a crate is a
+chapter that can eat a run. It costs nothing per frame — a crate can only become stranded by coming
+to rest, so the check runs on the frame its velocity hits zero and never otherwise. `crateReachable`
+and `crateRescueSpot` live in `src/sim/crates.ts` rather than as closures inside `setup()`, because
+a closure is a thing no test can ask a question of.
+
+**A bug found on the way.** The first version pushed the standing barrier runs as `kind: 'gate'`
+walls, which is what they look like. `openness()` reads the wall list for a `gate` to decide whether
+the barrier is still sealed, so the renderer concluded the gate had never opened and drew the leaf
+shut across its own opening. `tests/colliders.test.ts` caught it as 40 cells of barrier you could
+walk through.
+
+### The people
+
+They were a cylinder with a sphere on top — no arms, no legs, nothing that moved — and there are
+thirty-six of them walking chapter 3 and eighty-four filling Room 8, so they are in almost every
+frame of the back half of the game. Ten points are "sense of place", and a venue full of chess pawns
+does not have one.
+
+**The sim had to change first, and that is the interesting part.** A body needs three things a
+position cannot give it: **identity**, because a body has to be the same body every frame; a
+**heading**, because a figure with a front has to have one; and a **speed**, because legs swing in
+proportion to it. All three are facts about a person rather than about a picture, so all three are
+the sim's — `Person.seed`, `Person.face`, `Person.speed` in `src/sim/types.ts`, with the chapters
+handing out seeds from a counter that only ever goes up.
+
+`seed` fixed a live bug nobody had reported. The old height jitter was derived from `x` and `y`, so
+a visitor **changed height as they walked** — the comment above it claimed the opposite, and was
+true only of people standing still. `tests/people.test.ts` now holds that: the same person in two
+places is the same height, two seeds in one place are not.
+
+**The gait is stateless, and that is a design choice rather than a shortcut.** There is no
+per-person phase kept anywhere: the phase is `t * cadence + seed` and the AMPLITUDE is what `speed`
+scales. A person who stops has their legs come to rest instead of freezing mid-stride, a person who
+starts walking picks up wherever the clock is, and the renderer never has to match a person in this
+frame to a person in the last one — which is just as well, because `snap.people` is rebuilt every
+frame and a visitor who sits down takes everybody's index with them.
+
+**Two things were measured rather than eyeballed.**
+- **The hair was a sweatband.** The sphere geometry has radius 0.5, so a scale of `k` is a radius of
+  `k/2`; the first pass centred the cap low enough that its top came out *below* the crown. Centred
+  at `H - 0.55 r` it sits on the top 44% of the skull, which is a hairline.
+- **Seated height.** A seated figure that keeps its standing hip is a standing figure with its knees
+  bent, and Room 8 read as a row of people hovering. Dropped to a hip of 0.62 m — 17 cm above where
+  a chair actually puts one, and deliberate: at the true height the seat backs cut the audience off
+  at the neck and a hall of floating heads reads as emptier than a hall of people. CLAUDE.md's
+  *"recognisable beats precise"*, applied to a crowd.
+
+**Cost, measured against the previous build rather than guessed.** Twelve meshes a figure, with
+every geometry and every material but the clothes shared. Headless Chromium on SwiftShader renders
+chapter 3 at 2 fps — and rendered it at 2 fps on `dbaee3e` too, with the old pawns, so the software
+rasteriser is the floor and the figures are not measurably on top of it.
+
+**Tests.** `tests/crate-rescue.test.ts` (4) and `tests/people.test.ts` (8) new. The people tests
+call `updateMatrixWorld` before every measurement, with a comment saying why: `Box3.setFromObject`
+only refreshes the object handed to it, not the chain above, and a figure that has never been
+rendered measures as its own local box — which would have made every pose look identical, the exact
+wrong way for that file to be wrong. Suite: **694 tests, 42 files, green**; `tsc --noEmit` clean;
+`After Dark · ERRORS:0` in all four chapters of the built bundle.
+
+## 25 Sep 2026 — sixty visitors, and the deadlock that was hiding behind thirty-six
+
+**What a human asked for.** *"Raise a bit, 60?"* — after the figures got bodies, and after the
+agent pointed out that the hall simulates thirty-six people while the chapter card claims three
+thousand walk in.
+
+**What the agent did.** `VISITORS` 36 → 60, and `SPAWN_EVERY` 0.9 → 0.55 with it, so the hall still
+*fills* in the same thirty-odd seconds rather than spending a minute half empty — the second number
+is part of the first change, not a separate opinion.
+
+**What that turned up, which is the whole of this entry.** Counting how many visitors actually
+reached the hall across five seeds gave 45 to 53 of 60, never all of them, and a cluster of thirteen
+standing at **exactly zero speed** at the top of the six steps. Tracking it over time showed it was
+not traffic: seventeen people knotted there from frame 3,500 to the end of the chapter and never
+moved again.
+
+`stepVisitor`'s rule was *"do not walk into the back of the person in front"*, implemented as
+`spd = blocked ? 0 : a.walk` — and nothing anywhere to start them again. A stands in front of B, B
+stands in front of A, and both are still there when the chapter ends. Then the number that mattered:
+**seven of the sixty were moving at all.** The hall was not a crowd with a jam in it, it was a room
+of statues with seven people walking through them — and it had been, at thirty-six, since the crowd
+was written. The old test's `>= 33 of 36` had been covering for it.
+
+The fix is what a pedestrian actually does: not stop, sidestep. A blocked visitor steers onto the
+perpendicular that leads away from whoever is in the way, at a little over half speed. Two people
+meeting head-on each see the other a touch off-centre and pass; dead level, `Person.seed` gives
+everybody a consistent hand to favour, which is what a corridor full of people settles into anyway.
+That seed exists because the renderer needed stable identity — it turned out to be the cheapest way
+to break a symmetry in the sim as well.
+
+Measured after: **60 of 60 in the hall, 0 stuck, 55–58 of 60 moving**, on six seeds.
+
+**What was NOT done.** The threshold in `tests/chapters.test.ts` was raised to 55 first, which
+passed on the default seed and would have gone red the moment anybody changed it. Checking five
+seeds is what turned a tuned number into a bug report. The assertion is `toBe(60)` now — everybody —
+because that is what the behaviour actually is once it works.
+
+**Cost.** The crowd's only quadratic term is each visitor's pass over the others: 3,600 distance
+checks a frame at sixty, against the 2,900 meshes the hall already draws. Headless Chromium renders
+chapter 3 at the same 2 fps it did at thirty-six and at the same 2 fps it did with the old pawns —
+the software rasteriser is the floor in all three.
+
+**Tests.** `tests/chapters.test.ts` gains "keeps the crowd walking instead of deadlocking it two
+abreast" — three seeds, more than forty of sixty moving, nobody parked in the doorway — with a
+comment drawing the line between dwelling (up to two seconds at a lane node, by design) and being
+frozen for good. Suite: **695 tests, 42 files, green**; `tsc --noEmit` clean; `After Dark ·
+ERRORS:0`.
+
+## 25 Sep 2026 — Biggy rolls when he is pushed, and the gate that decides it
+
+**What Michele asked for**, on 24 Sep and then deferred himself: *"ah Another thing to handle later.
+Biggy should really roll, at least when he's pushed!"* It had been sitting in
+`docs/playtest-notes.md` under "mechanics still owed" ever since. He said *"Ok next task?"* and this
+is the one he had named himself, so the agent took it without asking.
+
+**What the rig would not allow.** The obvious reading is to spin the gut. `buildBiggy` parents the
+belly shell, the hatches, the bumper, the shorts, the belt, the vents, the seam ring **and** the
+neck, the helmet and both shoulders to `torso` — so a literally rotating gut means re-parenting a
+model Michele has already signed off, to draw a thing that lasts two seconds. Instead the roll
+borrows the vocabulary of the party trick that already exists: `applyFlairBody` tips his whole body
+about the floor between his boots, and the pivot maths came out of it into `tipBiggy(rig, th,
+standH, axis, rise)` so both use one function. The shove tips him forward and back on `x` where the
+flourish rocks him sideways on `z`; the lid fails to stay level by about half, and the stubby arms
+trail, because it is the same lid on the same ball.
+
+The angle is integrated from **distance**, not from the clock: `v dt / (height * 0.415)` is what a
+ball that size turns through while it travels, so speeding him up makes him roll faster instead of
+flapping faster. That is the same rule the step cycle two hundred lines up already follows, and it
+is the difference between physics and an animation.
+
+**The part that was actually hard was the gate**, and it is the second time this week that a
+cosmetic task turned into a bug report. "Being pushed" first read as *the stick is empty and the
+smoothed acceleration is positive* — you cannot speed up under your own steam with nothing on the
+stick, so it looked airtight. It is not: `GaitState.accel` is a 1/6 s low-pass, so for a few frames
+after every release the stick is empty **and** the acceleration is still positive. Driven for a
+third of a second and let go, Biggy rolled at **0.61 of a full shove** and took a second to settle —
+exactly the "he lurches every time you let go" that the threshold had been added to prevent.
+
+Measured properly, driving the sim at `DT_MAX`:
+
+| case | peak accel | spurious roll |
+|---|---|---|
+| Voxxy shoving, contact resolved | 6.6 m/s² | — |
+| Droid shoving | 3.4 m/s² | — |
+| Biggy driving himself | 2.2 m/s² | none (stick held) |
+| 0.1 / 0.2 / 0.35 / 0.5 / 1.0 s tap, then release | — | **0.30 / 0.56 / 0.61 / 0.56 / 0.37** |
+
+So the threshold could not be rescued by raising it: a weak shove and a tap-and-release sit in the
+same band. **The sim already had the right answer and was keeping it private.** `stepAim` in
+`src/sim/bot.ts` maintains `driven` precisely to decide whether a let-go robot's heading follows its
+stick or its velocity — its own comment says *"a body that speeds up while nobody is steering it is
+being towed, shoved or knocked"* — and it has no filter to lag: `coast` ratchets down to the running
+minimum speed, so a shove trips it on the frame it lands and a coast, which can only ever slow down,
+never trips it at all. That is published as `worldMoved(bot)` (a read of existing state; no sim
+behaviour changed) and `scene.ts` asks it instead of guessing. `PUSH_ACC` and the whole asymmetric
+coast-fade went with it: the roll now dies with `amp`, which is the speed, so he stops rolling
+because he has stopped.
+
+**A comment that had to be retracted.** The old line in `scene.ts` read *"The sim does not have a
+flag for it and does not need one."* It did have one. Both that comment and the `shoved` doc in
+`robots/index.ts` now say what the wrong question cost, so the next person does not re-derive it.
+
+**Tests.** `tests/shove-roll.test.ts`, nine cases. The rig ones run one sim and feed the identical
+stream of speeds and headings to two rigs, one with `shoved` wired up and one holding it at 0, then
+measure the difference — the lean, the stride and the idle twitches are common to both and cancel,
+so what is left is the roll alone. A real shove swings the pelvis both ways and keeps rolling
+through the slide; driving himself, tapping the stick at five different hold times, and a wall
+bounce mid-coast all measure **exactly zero** difference; Voxxy and Droid measure zero when knocked,
+because a shoved Droid standing there offended is the right picture for Droid. The tap case was
+checked against the old derivation and fails on it, so it is not a vacuous zero.
+
+**Also closed: chapter 1, note 14** — *"lighting on south room is odd. I should be able to see the
+seats"*. The note had guessed this was already fixed by note 3 (the seats were missing geometry, not
+dim geometry) and it was: parked in cinema E, five rows read clearly under all three lamps and the
+clue ring. No lighting change was needed, and none was made — worth saying, because "adjust the
+lighting" was the obvious thing to do and would have been a change to something that was not broken.
+
+Suite **704 tests, 43 files, green**; `tsc --noEmit` clean; `After Dark · ERRORS:0` on the built
+bundle in chapter 2, with the shove driven through the real key handler.
+
+## 25 Sep 2026 — the audit that found a one-in-six soft-lock
+
+He asked what else there was to go on with, so the agent went through
+`docs/playtest-notes.md` row by row against the code rather than picking a feature.
+That file is what he reads to decide what is left, and it had drifted badly: **nine
+rows claimed open work that had already shipped.** Chapter 1's notes 9, 10, 11 and
+12 were still "in flight" days after the speed rescale and the falling-leaf
+animation had landed; four structural rows described code that has since been
+fixed — `weather()`'s white flakes (`MAX_WEAR_LUM_GAIN`), `buildLights`' missing
+range cull (`castPoly` filters occluders now), `gaitSpeed`'s `tanh` (removed, with
+the measurement that showed it was making all three robots skate), and the four
+helper sets that wanted promoting to `rig.ts` (promoted, rivet aim and all). Every
+row now carries the evidence rather than a status word, and the rows that are still
+true say **re-checked, and when**.
+
+Note 13 is the one that did not close: the transition's pace is fixed and held by a
+test, the zoom is fixed (`CUT_FRAME`), and *"too dark"* is untouched on purpose —
+chapter 1 is a dark building by design and it had a whole light pass after that
+note, so it is a mood decision and his. The cutscene was driven and re-shot on the
+V37 build so he judges the current one, not the one he played.
+
+**Then the audit turned up a real bug**, in a row that read like a footnote: *"`E`
+precedence at the Sticker Mine … the chapter-3 end-to-end test already works around
+it by clearing the sticker first."* A test working around something is worth
+opening, and underneath it was this. The keynote speaker's hiding place and the
+Sticker Mine's top-shelf swag are both derived as `inFrontOf(booth)`. When the
+chapter's RNG picked the Sticker Mine as the hiding booth, the two were **the same
+point** — and the minigames get `E` before the chapter does, so Voxxy pressing `E`
+at the speaker got the sticker's "I am 38 cm of robot" refusal, which consumes the
+key. Chapter 3 cannot be finished without the speaker, and nothing tells the player
+that walking Droid over for a sticker is what unblocks it.
+
+Measured over 200 seeds: **35 of them. One run in six.** Two test files had been
+papering over it — `tests/chapters.test.ts` and `tests/pilot.ts` both cleared the
+sticker first, and `pilot.ts`'s comment even stated the symptom (*"a run that skips
+it ends up collecting a sticker instead of a keynote speaker"*) without anyone
+treating it as a bug.
+
+**What was NOT done.** The obvious fix is to reorder the handlers so the chapter's
+own beats get `E` first. That is wrong here: Michele's rule for this chapter is that
+a refusal which names a reason keeps the key, because those refusals are answers and
+hopping instead would be a worse game. The second-obvious fix is to name the Sticker
+Mine as forbidden, which fixes today's collision and none of tomorrow's. What went in
+instead is the general shape: `Minigames.keySpots()` publishes the circles where the
+optional content will swallow a key, and the chapter's spine keeps `SPEAKER_CLEAR`
+out of them when it picks a hiding place. Either beat can move now and it stays
+correct.
+
+`tests/speaker-spot.test.ts`, two tests at two altitudes across sixty seeds each:
+the spots are apart, and Voxxy can collect the speaker **with the sticker still on
+its shelf** — the state the old code could not survive. Both go red on the old
+derivation. The two workarounds are gone: `chapters.test.ts` runs the errand with
+the collision live, and `pilot.ts` takes the sticker after the speaker instead of
+before, which keeps its swag count identical while exercising the fix.
+
+Suite **706 tests, 44 files, green**; `tsc --noEmit` clean.
+
+## 25 Sep 2026 — his decisions, and the line that finally had an address
+
+Michele went through the open list and settled nine of them. Three needed building.
+
+**The flicker, found because he gave a location.** *"Chapter 2/3 the passage between
+the reception zone and the main hall. There's a line that flicker when the robot is
+walking."* It had been on the list since 24 Sep as "queued, not yet reproduced" —
+three of his reports over three days are the same fault, and none of them survived a
+screenshot, because z-fighting sits perfectly still until a light crosses it. A robot
+walking past with a lamp is what makes it move.
+
+Measured off the built scene rather than looked for by eye: the raised lobby plate
+started 6 px west of `LOBBY_X` and the threshold's top tread ended there, both top
+faces at **y = -5.0000 exactly**, sharing a 0.48 m ribbon down the flight's whole
+22.6 m — plus the concrete riser caps above and below the flight, which the lip
+covered outright. The plate stops at `LOBBY_X` now. Abutting is fine; overlapping is
+not.
+
+The test is the class, not the instance: `tests/coplanar.test.ts` walks the built
+venue, takes every mesh's top face, and fails on any pair sharing a height to within
+a millimetre and overlapping in plan — but only in the height bands a robot walks in,
+because a dozen wall tops meet at corners by construction and a speckle at 2.4 m is
+not what anybody sees. It immediately turned up **a second one nobody had reported**:
+the first floor's corridor carpet ran straight over the main staircase's head,
+12.46 m² at y = 0.0000. Reverting the first fix makes the test report 23.04 m² of
+ribbon across three pairs, so it is not a vacuous pass.
+
+**The fire door's arc push**, which he chose over a shutter. For the one second of
+`FIRE_SWING_TIME` the `firedoor` collider has gone and the leaves' resting walls are
+not in yet, so a robot standing in the arc was passed straight through — and that
+robot is Voxxy nine times in ten, because the keypad she has just used is **on the
+door**. `sweepFireDoor` finds the closest point on each leaf's centre line, puts the
+robot out along the leaf's own normal, and gives it the leaf's speed at that radius:
+a point `r` along a leaf turning at `w` travels at `w r`, so the tip throws harder
+than the hinge, out of the arithmetic rather than out of a special case.
+
+Two things were wrong first and both were found by measuring:
+
+- The push direction was "whichever side of the leaf she is on". A robot standing
+  exactly on the line has no side, so the sign came out of rounding noise, and Voxxy
+  in the doorway was thrown **east**, deeper into the opening she was meant to be
+  cleared out of. A door pushes one way.
+- The first tests compared the **peak** speed from two radii and got 53.8 against
+  52.8 — which is not the push being flat, it is the robot sliding outward along the
+  leaf until both ride the tip. The measurement that means something is first
+  contact, and there it is exact: **31.3 px/s measured against the leaf edge's
+  31.26**. Two more test setups had to be thrown away before that: the subject cannot
+  be the robot that types (`g.key` goes to the driven robot and the code is only
+  accepted at the pad — the door never opened, `fireSwing` stayed 0.000 for forty
+  frames), and it cannot stand in the north leaf's quarter, because the keypad
+  housing ejects it before the swing starts and all three radii came back from
+  `place` at one corner, leaving an experiment with no radius in it.
+
+**The toilets**, *"cover the toilets"*: sealed rather than moved. One unbroken south
+face with a pair of shut leaves drawn in it and the pictogram over them; the two
+internal partitions went with the doorway. Nothing in any chapter happens in there,
+and a room nobody can walk into is a room whose position against the plan nobody can
+check — which is what he was asking for when he said it was not an important detail.
+`tests/geometry.test.ts` asserted one doorway; it now asserts the face is unbroken
+and that the shut door speaks in three voices.
+
+**Closed with no code**, on his word: the two clue spots that sit near each other and
+chapter 1's number hunt (*"keep as is"*), six beer crates rather than five
+(*"six is fine"*), the OutOfMemoryError at five crates (*"that's fine"*), and
+`pushBiggy`/`stepTow` ignoring Biggy's mass (*"fine as is I'd say"*) — the last of
+which would have retuned chapter 2's roller door, so it stays frozen.
+
+**Still his**, and he is replaying tonight for them: the two reception objects he
+would have to point at, chapter 1's mirror puzzle playing off camera, the crowd radii,
+chapter 3's leaking catering gate (measured again and drawn to scale this round — 11
+px of the doorway's 44 fit Biggy's centre with the queue standing, 27 px once Voxxy
+clears it, and he can already get within 25 px of the soup against a `POT_REACH` of
+70), the intermediate-challenge beat, and chapter 4's six minutes.
+
+Suite **711 tests, 45 files, green**; `tsc --noEmit` clean; `ERRORS:0` in all four
+chapters on the built bundle.
+- *Third merge of the 2.5D branch (10 commits).* In 3D only chapter 1 and the robots needed
+  anything.
+  - Biggy's roll when shoved: the gait now takes `shoved: worldMoved(b)`.
+  - The fire door's arc push. Michele had chosen, on the 2.5D side, that the swinging leaves shove
+    whatever is in their arc (*"arc push"*, over a shutter). The 3D build still drew the roll-up
+    shutter he had kept earlier, so in 3D a robot would have been pushed by nothing visible. Asked
+    which door 3D should have, he chose swinging leaves. The 3D door is now the sim's double door:
+    red steel leaves hinged at the jambs, posed from the door's `progress`, under a steel transom.
+    The folding barriers that stood in for the swung leaves are gone, because the leaves are now
+    the door itself.
+  - The ground-floor changes (main staircase turned, toilets sealed, the lobby z-fight) and
+    chapter 3's crowd are outside what the 3D build draws.

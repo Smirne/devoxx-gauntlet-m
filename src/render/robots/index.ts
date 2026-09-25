@@ -63,6 +63,18 @@ export interface RobotState {
   /** A one-shot pose to play: 'nope', 'reach' or 'squeeze'. */
   pose?: PoseName | null;
   /**
+   * How much of this robot's motion is somebody else's: **0 driving, 1 shoved.**
+   *
+   * Pass `worldMoved(bot) ? 1 : 0` from `src/sim/bot.ts` — shoved by another
+   * robot, towed, or still sliding after either. Do NOT derive it from an empty
+   * stick, which is what this used to say: a stick goes empty on every release
+   * and the gait's acceleration is smoothed, so the two together rolled Biggy on
+   * a tap (measured, in `worldMoved`'s comment). Only Biggy does anything with
+   * it, and what he does is roll (`applyShove` in `gait.ts`). Omitting it is a
+   * robot under its own steam, so every existing call site is unchanged.
+   */
+  shoved?: number;
+  /**
    * Voxxy's hop: **0 on the ground, 0 to 1 across the airtime.**
    *
    * Pass `hopPhase(bot)` from `src/sim/bot.ts` — that function returns exactly
@@ -157,5 +169,6 @@ export function updateRobot(rig: RobotRig, state: RobotState): void {
     pose: state.pose ?? null,
     hop: state.hop ?? 0,
     flair: state.flair ?? 0,
+    shoved: state.shoved ?? 0,
   });
 }

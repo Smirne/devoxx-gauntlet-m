@@ -1018,15 +1018,15 @@ describe('chapter 3 — breakfast', () => {
     expect(breakfast().delivered).toBe(true);
     expect(gateWall()).toBeDefined();
 
-    // Clear the top-shelf sticker out of the way first: it shares the booth grid with
-    // the speaker's hiding places, and `E` offers the swag before the conversation.
-    const sticker = g.snapshot().props.find((p) => p.kind === 'sticker');
-    g.debug.select('droid');
-    g.debug.place('droid', sticker!.x, sticker!.y + 20);
-    g.key('KeyE');
-    expect(g.snapshot().swag).toContain('sticker');
-
     // Find the speaker at the booth they are hiding behind, then lead them over.
+    //
+    // This used to CLEAR THE TOP-SHELF STICKER FIRST, because the minigames take `E`
+    // before the chapter does and on one seed in six the speaker was hiding at the
+    // sticker's own spot — so a Voxxy pressing `E` at the speaker got the sticker's
+    // refusal and the chapter could not be finished. That was a test working around a
+    // soft-lock. The speaker no longer hides inside a minigame's key circle
+    // (`SPEAKER_CLEAR` in `ch3-breakfast.ts`), so the sticker stays on its shelf here
+    // and this errand runs with the collision still live underneath it.
     const hiding = g.snapshot().people.find((p) => p.role === 'speaker');
     const booth = GF.booths.find((b) => b.name === breakfast().speaker.booth);
     expect(booth).toBeDefined();
@@ -1216,17 +1216,35 @@ describe('chapter 3 — breakfast', () => {
     }
   });
 
-  it('puts thirty-six visitors on the lane grid, with Stephan at the foot of the stairs', () => {
+  it('puts sixty visitors on the lane grid, with Stephan at the foot of the stairs', () => {
     const g = mk(3);
     steps(g, 1400);
     const breakfast = g.debug.chapter() as BreakfastState;
-    expect(breakfast.crowd).toBe(36);
-    expect(g.snapshot().people.filter((p) => p.role === 'visitor')).toHaveLength(36);
+    // Sixty since 25 Sep 2026, up from thirty-six — Michele, once the figures had
+    // bodies worth looking at: *"Raise a bit, 60?"* Hard-coded rather than read
+    // off the chapter's own constant on purpose: this is the number the card's
+    // "3,000 people walk in" is standing in for, and it should not be able to
+    // drift without somebody editing this line.
+    expect(breakfast.crowd).toBe(60);
+    expect(g.snapshot().people.filter((p) => p.role === 'visitor')).toHaveLength(60);
     const stephan = g.snapshot().people.find((p) => p.role === 'stephan');
     expect(stephan).toBeDefined();
-    // He stands where the gate is: south of the flight, past the reception desk.
-    expect((stephan as { y: number }).y).toBeGreaterThan(GF.mainStair.y + GF.mainStair.h);
-    expect((stephan as { x: number }).x).toBeGreaterThan(GF.reception.x + GF.reception.w);
+    /*
+     * He stands where the gate is: EAST of the flight, in the concourse between
+     * its foot and the entrance, and level with the opening in the barrier.
+     *
+     * This used to read `y > mainStair.y + mainStair.h` — south of the flight —
+     * which was true of the gate until the staircase was turned to face the
+     * entrance on 25 Sep 2026. Stephan did not move because somebody preferred
+     * him there; he moved because the foot of the stair did.
+     */
+    const st = stephan as { x: number; y: number };
+    expect(st.x).toBeGreaterThan(GF.mainStair.x + GF.mainStair.w);
+    expect(st.x).toBeLessThan(GF.entrance.x);
+    expect(st.y).toBeGreaterThan(GF.gate.y);
+    expect(st.y).toBeLessThan(GF.gate.y + GF.gate.h);
+    // ...and still past the reception desk, which is the read that has not changed.
+    expect(st.x).toBeGreaterThan(GF.reception.x + GF.reception.w);
   });
 
   /**
@@ -1270,7 +1288,7 @@ describe('chapter 3 — breakfast', () => {
     // And they get all the way in: a crowd stuck in single file at the threshold
     // leaves the hall empty, which is the whole chapter's stage.
     const crowd = g.snapshot().people.filter((p) => p.role === 'visitor');
-    expect(crowd).toHaveLength(36);
+    expect(crowd).toHaveLength(60);
     /*
      * Not `x < edge`. The six steps STRADDLE the hall's right edge — the hall
      * ends at x 1040 and `GF.smallStairs` runs 952..1045 — so a visitor caught
@@ -1289,7 +1307,17 @@ describe('chapter 3 — breakfast', () => {
     // arrivals keep coming, so at any given frame one or two are still on the
     // tread or a step behind it. What this asserts is the thing the comment above
     // says — the crowd got IN rather than jamming single file at the threshold.
-    expect(inTheHall.length, 'the crowd is still queueing at the threshold').toBeGreaterThanOrEqual(33);
+    /*
+     * ALL of them, not most of them.
+     *
+     * This read 33-of-36 and then 55-of-60, and both numbers were covering for a
+     * deadlock rather than for traffic: a blocked visitor used to stop dead with
+     * nothing to start them again, so two people facing each other stood there
+     * for the rest of the chapter. At sixty it knotted seventeen of them at the
+     * top of the steps permanently. They sidestep now (`stepVisitor`), and the
+     * honest number is everybody — measured at 60/60 on six different seeds.
+     */
+    expect(inTheHall.length, 'the crowd is still queueing at the threshold').toBe(60);
     // And nobody is through a wall somewhere else: whatever is not yet in the
     // hall is on the steps or immediately behind them, never off in the lobby.
     for (const p of crowd) {
@@ -1298,13 +1326,44 @@ describe('chapter 3 — breakfast', () => {
       expect(p.y, `a visitor is outside the hall at y=${Math.round(p.y)}`).toBeLessThanOrEqual(st.y + st.h + 6);
     }
     expect(new Set(crowd.map((p) => Math.round(p.y / 70))).size).toBeGreaterThan(3);
-    // 5,600 simulated frames of a 36-body crowd is a wall-clock budget, not a
+    // 5,600 simulated frames of a 60-body crowd is a wall-clock budget, not a
     // behaviour, and this test is the most expensive in the suite: 13.1 s on an
     // idle box and 38.9 s with four agents on it. The per-test 30 000 that used to
     // sit here was the whole bug — it was written when the global was vitest's 5 s
     // default, and once the global went to 30 s it stopped raising anything and
     // started PINNING this test to 30 s while the rest of the suite got more. The
     // budget belongs in `vitest.config.ts`, once, for everything.
+  });
+
+  /**
+   * THE CROWD KEEPS MOVING, which is not the same question as "does it arrive".
+   *
+   * A visitor who is blocked used to have their speed set to zero and nothing to
+   * set it back: A stands in front of B, B stands in front of A, and both of them
+   * are still there when the chapter ends. It was invisible at thirty-six because
+   * the hall was big enough that it mostly happened out of shot, and at sixty it
+   * was most of the crowd — **seven** of the sixty still moving after ninety
+   * seconds, the rest standing in a hall the chapter describes as three thousand
+   * people at breakfast.
+   *
+   * Dwelling is not standing still: `stepVisitor` gives everybody up to two
+   * seconds at a lane node, so a third of the crowd being stationary at any one
+   * instant is the design. Two thirds of them frozen for good is the bug, and
+   * this is the line between the two.
+   */
+  it('keeps the crowd walking instead of deadlocking it two abreast', () => {
+    for (const seed of [1, 7, 99]) {
+      const g = createGame({ chapter: 3, cards: false, seed });
+      steps(g, 5600);
+      const crowd = g.snapshot().people.filter((p) => p.role === 'visitor');
+      expect(crowd).toHaveLength(60);
+      const moving = crowd.filter((p) => (p.speed ?? 0) > 1).length;
+      expect(moving, `seed ${seed}: only ${moving} of the crowd is moving`).toBeGreaterThan(40);
+      // ...and nobody is parked in the doorway, which is where the knot formed.
+      const edge = GF.hall.x + GF.hall.w;
+      const jammed = crowd.filter((p) => p.x >= edge - 10 && (p.speed ?? 0) < 0.5);
+      expect(jammed, `seed ${seed}: ${jammed.length} stuck at the steps`).toHaveLength(0);
+    }
   });
 
   /* ----------------------------------------------------- the booth games

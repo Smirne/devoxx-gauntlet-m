@@ -20,7 +20,7 @@
 
 import * as THREE from 'three';
 
-import { flairPhase, hopPhase } from '../sim/bot';
+import { flairPhase, hopPhase, worldMoved } from '../sim/bot';
 import { riseAt } from '../sim/surface';
 import { BIGGY_ROLL_DUR, DEFS, DROID_STRETCH_DUR, JUMP_AIR, JUMP_RISE_M } from '../sim/constants';
 import { LEAD, SLOT, STEP_DELAY, STEP_TIME } from '../sim/opening';
@@ -309,7 +309,7 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
       }
     }
     r.rig.root.position.set(x, lift, z);
-    updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: b.face, dt, mounted, hop: u, flair: trick ? trick.flair : flairPhase(b), pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null });
+    updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: b.face, dt, mounted, hop: u, flair: trick ? trick.flair : flairPhase(b), shoved: worldMoved(b) ? 1 : 0, pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null });
     aimLamp(r, b);
   }
 }

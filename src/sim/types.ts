@@ -288,11 +288,36 @@ export interface Person {
   name?: string;
   colour?: string;
   hat?: boolean;
-  /** 'visitor' | 'queue' | 'stephan' | 'speaker' | 'staff' */
+  /** 'visitor' | 'queue' | 'seated' | 'stephan' | 'speaker' | 'staff' */
   role: string;
   /** Lane-walk target. */
   tx?: number;
   ty?: number;
+  /**
+   * A stable number for this person, for the whole chapter.
+   *
+   * The renderer builds a body out of it — height, build, skin and trousers,
+   * whether they are carrying a coffee — and it has to be the same body every
+   * frame. It was derived from `x` and `y` and therefore was not: a visitor
+   * changed height as they walked, which is the sort of thing nobody sees and
+   * everybody feels. Identity is the sim's to say, so the sim says it.
+   */
+  seed: number;
+  /**
+   * Which way they are facing, radians, sim frame — `atan2(dy, dx)`.
+   *
+   * Undefined means no opinion, and the renderer turns them to the camera, which
+   * is the right answer for somebody standing still being talked to.
+   */
+  face?: number;
+  /**
+   * How fast they are walking, sim px/s.
+   *
+   * The renderer's gait reads this and nothing else: legs swing in proportion to
+   * it and stop when it does. Same division of labour as the robots, whose gait
+   * is `src/render/robots/gait.ts` reading a speed the sim owns.
+   */
+  speed?: number;
 }
 
 /**

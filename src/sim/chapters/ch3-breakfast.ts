@@ -22,7 +22,7 @@
  *           also the only one who can lift a beer crate.
  *   Voxxy — clears a catering queue for five seconds, and finds the speaker.
  *
- * The crowd is not decoration: thirty-six visitors walk the hall's lane grid, and
+ * The crowd is not decoration: sixty visitors walk the hall's lane grid, and
  * shoving them costs complaints on the final card.
  *
  * ## The booth games
@@ -70,6 +70,8 @@ import {
   crateBrew,
   crateLoadAccel,
   crateLoadMass,
+  crateReachable,
+  crateRescueSpot,
   loadBiggy,
 } from '../crates';
 import { BAR_RECT, GF, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
@@ -108,9 +110,30 @@ const QUEUE_STEP = 30;
  * with `TRAVEL_TIME_SCALE` so the pot still goes cold in the same place.
  */
 const COOL_SECONDS = 150 * TRAVEL_TIME_SCALE;
-/** Visitors on the floor at once. */
-const VISITORS = 36;
-const SPAWN_EVERY = 0.9;
+/**
+ * Visitors on the floor at once.
+ *
+ * Sixty, raised from thirty-six on 25 Sep 2026. Michele, after the figures got
+ * bodies: *"Raise a bit, 60?"* — the hall is 22 m of floor with twelve sponsor
+ * booths in it, and at thirty-six you could cross the whole thing and pass two
+ * people while the chapter card claims three thousand walked in.
+ *
+ * It is the number of bodies the sim carries, not a crowd size: a visitor costs
+ * one lane-walk, one pass over the other visitors, one over the six crates, and
+ * one figure on screen. The pass over the other visitors is the only quadratic
+ * thing here, and sixty of them is 3,600 distance checks a frame, which is
+ * nothing beside the 2,900 meshes the hall already draws.
+ */
+const VISITORS = 60;
+/**
+ * Seconds between arrivals.
+ *
+ * Dropped from 0.9 with the count, so the hall still FILLS in the same
+ * thirty-odd seconds it used to. Sixty people through a door at the old rate is
+ * most of a minute of watching a half-empty room, which is a different change
+ * from the one that was asked for.
+ */
+const SPAWN_EVERY = 0.55;
 /** Closing speed above which a robot has knocked someone over rather than brushed them. px/s. */
 const BOWL_OVER = 110 * SPEED_SCALE;
 /** The jerk that counts as "Biggy hit something" while he is carrying the pot. px/s. */
@@ -197,6 +220,25 @@ const BEER_STACK: Rect = { x: 346, y: 128, w: 72, h: 40 };
  * own way; here the mark stays clear and the finished delivery reads as stowed.
  */
 const CELLAR: Vec2 = { x: 440, y: 106 };
+
+/**
+ * The floor in front of a sponsor stand — where somebody stands to be talked to.
+ *
+ * Two beats derive their position from a booth this way: the Sticker Mine's
+ * top-shelf swag and the keynote speaker's hiding place. They used to write the
+ * formula out twice, which is how they came to be **the same point on one seed in
+ * six** — see `hideBooth` below.
+ */
+const inFrontOf = (b: Rect): Vec2 => ({ x: b.x + b.w / 2, y: b.y + b.h + 14 });
+
+/**
+ * How far clear of a minigame's key circle the speaker has to hide, sim px.
+ *
+ * Not zero and not a hair: Voxxy has to be able to stand at the speaker and press
+ * `E` without being inside the sticker's reach, and she is 4.75 px of robot, so the
+ * two spots have to be further apart than one of her plus the slack a player leaves.
+ */
+const SPEAKER_CLEAR = 24;
 /** How close a robot has to get to the pallet to read what is printed on the wrap. */
 const LABEL_REACH = 90;
 /** The middle of the stack zone, and how close to it counts as "on the mark". */
@@ -299,6 +341,13 @@ interface Crate extends Bot {
   held: 'loose' | 'carried' | 'stacked';
   /** Which layer of the finished stack it is in, so the renderer can pile them up. */
   layer: number;
+  /**
+   * Was it moving last frame? The falling edge is when a crate can become stranded.
+   *
+   * A crate only ever ends up somewhere unreachable by coming to rest there, so
+   * that is the one frame worth paying for the check on — see `rescueStranded`.
+   */
+  rolling: boolean;
 }
 
 const VISITOR_COLOURS = ['#b9a58c', '#8c9bb9', '#c98c8c', '#9bb98c'] as const;
@@ -306,6 +355,8 @@ const QUEUE_COLOURS = ['#b9a58c', '#8c9bb9', '#b98c8c', '#9bb98c'] as const;
 
 /** A conference-goer walking the lane grid. A `Bot` only to reuse `botsCollide`. */
 interface Visitor extends Bot {
+  /** Stable identity for the renderer's body-builder. See `Person.seed`. */
+  seed: number;
   walk: number;
   route: Vec2[];
   dwell: number;
@@ -314,6 +365,8 @@ interface Visitor extends Bot {
 }
 
 interface QueuePerson {
+  /** Stable identity for the renderer's body-builder. See `Person.seed`. */
+  seed: number;
   x: number;
   y: number;
   /** Where this person stands when the queue is not making way. */
@@ -359,6 +412,18 @@ export interface MinigameState {
 interface Minigames {
   /** Returns true when the key was consumed, so the chapter does not also act on it. */
   key(code: string, b: Bot): boolean;
+  /**
+   * Where `key` will swallow `E`, as circles — so a chapter beat never lands on one.
+   *
+   * The minigames are optional swag and the chapter's beats are its spine, but the
+   * minigames get the key first (`mg.key(code, b)` is the second line of the
+   * chapter's own handler). That ordering is deliberate and stays: a refusal that
+   * names a reason is an answer, and Michele's rule for this chapter is that such a
+   * refusal keeps the key rather than falling through to a party trick. The price of
+   * the rule is that a spine beat standing inside one of these circles is
+   * unreachable, so the spine has to keep out of them.
+   */
+  keySpots(): readonly { x: number; y: number; r: number }[];
   update(dt: number): void;
   props(): Prop[];
   /** Debug/test seam: move the duck. */
@@ -422,7 +487,9 @@ function setupMinigames(ctx: ChapterCtx): Minigames {
   let duckDone = ctx.swag.includes('duck');
 
   const stB = booth('Sticker Mine');
-  const sticker = { x: stB.x + stB.w / 2, y: stB.y + stB.h + 14 };
+  const sticker = inFrontOf(stB);
+  /** How close a robot has to be for `E` to mean "the top shelf" and nothing else. */
+  const STICKER_REACH = 40;
   let stickerDone = ctx.swag.includes('sticker');
 
   const rxB = booth('Regex Racing');
@@ -450,7 +517,7 @@ function setupMinigames(ctx: ChapterCtx): Minigames {
    */
   function key(code: string, b: Bot): boolean {
     if (code !== 'KeyE') return false;
-    if (!stickerDone && dist(b, sticker) < 40) {
+    if (!stickerDone && dist(b, sticker) < STICKER_REACH) {
       if (b.kind === 'droid') {
         stickerDone = true;
         ctx.addSwag(
@@ -567,6 +634,9 @@ function setupMinigames(ctx: ChapterCtx): Minigames {
 
   return {
     key,
+    // Only the sticker swallows `E`. The duck is shoved by driving into it and the
+    // race is started by crossing its own line, so neither owns a key anywhere.
+    keySpots: () => [{ x: sticker.x, y: sticker.y, r: STICKER_REACH }],
     update,
     props,
     place(kind: string, x: number, y: number): boolean {
@@ -667,8 +737,14 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const GATE_CUT_DELAY = 0.5;
   /** The barrier's own thickness. Matches `GATE_LEAF_T` in `src/render/doors.ts`. */
   const GATE_LEAF_T = 4;
-  /** ...and how far in from each end its two posts stand (`GATE_POST_INSET`). */
-  const GATE_POST_INSET = 8;
+  /**
+   * ...and how wide the opening in it is (`GATE_MOUTH` in `src/render/doors.ts`).
+   *
+   * Both numbers are duplicated rather than imported because `src/sim` may not
+   * read `src/render` (CLAUDE.md). `tests/doors.test.ts` asserts the two copies
+   * against each other so they cannot drift.
+   */
+  const GATE_MOUTH = 44;
   const GATE_POST_R = 1.6;
 
   const gate: Wall = {
@@ -688,41 +764,73 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /** Sim time the exit cutscene starts, once Stephan has opened up. -1 until then. */
   let leaveAt = -1;
   /*
-   * WHERE THE BARRIER ENDS UP, and the post it leaves behind.
+   * WHERE THE BARRIER ENDS UP, and what it leaves behind.
    *
-   * The rects `gateDraw` poses at `progress = 1` (`src/render/doors.ts`): the leaf
-   * hinged on the west post and swung a quarter turn SOUTH, out of the stairwell
-   * and back along the west edge of the approach — where a stair gate is pinned
-   * back when a building is open — plus the east post, which does not move and
-   * which the `gate` wall was covering until now.
+   * The rects `gateDraw` poses at `progress = 1` (`src/render/doors.ts`), which
+   * since the staircase was turned to face the entrance is a **gate in a run of
+   * barrier** rather than one enormous leaf: the flight is 197 px — 15.7 m —
+   * across its foot, and the 55 px of concourse between it and the glazed wall has
+   * nowhere to put a leaf that long. `GATE_MOUTH` is the opening; the leaf is that
+   * wide, hinged on its north post and swung a quarter turn EAST into the
+   * concourse; both posts stay, and so does the barrier either side.
    *
-   * South rather than into the shaft, because the flight starts climbing at this
-   * line and is 2.7 m up within the leaf's own length (`groundPlates`): a barrier
+   * East rather than into the shaft, because the flight starts climbing at this
+   * line and is 3.9 m up within the leaf's own length (`groundPlates`): a barrier
    * lying in there would be buried in the treads, and the transition walks three
-   * robots up the middle of it a second and a half later. Out here it is hard
-   * against the reception block's east face, so the way up stays as wide as it was
-   * and nothing in the cutscene goes near it.
+   * robots up the middle of it a second and a half later. Out here it lies flat on
+   * the lobby floor with 11 px to spare in front of the glazing, and nothing in
+   * the cutscene goes near it.
    */
-  const gateY = GF.gate.y + GF.gate.h / 2;
-  const gateHingeX = GF.gate.x + GATE_POST_INSET;
-  const gateLen = GF.gate.w - GATE_POST_INSET * 2;
+  const gateX = GF.gate.x + GF.gate.w / 2;
+  /** The middle of the barrier: where the opening is, and where Stephan stands. */
+  const gateMouthY = GF.gate.y + (GF.gate.h - GATE_MOUTH) / 2;
   const gateOpenWalls: Wall[] = [
+    // The leaf, swung a quarter turn east into the concourse and resting there.
     {
-      x: gateHingeX - GATE_LEAF_T / 2,
-      y: gateY - GATE_LEAF_T / 2,
-      w: GATE_LEAF_T,
-      h: gateLen + GATE_LEAF_T,
+      x: gateX - GATE_LEAF_T / 2,
+      y: gateMouthY - GATE_LEAF_T / 2,
+      w: GATE_MOUTH + GATE_LEAF_T,
+      h: GATE_LEAF_T,
       kind: 'gateleaf',
-      why: (b) => `${b.name}: that is the gate itself, pinned back against the wall. The way up is the middle`,
+      why: (b) => `${b.name}: that is the gate itself, walked back out of the way. The way up is beside it`,
     },
-    {
-      x: gateHingeX + gateLen - GATE_POST_R,
-      y: gateY - GATE_POST_R,
-      w: GATE_POST_R * 2,
-      h: GATE_POST_R * 2,
-      kind: 'gatepost',
-      why: (b) => `${b.name}: the gate post. It stays where it is`,
-    },
+    // Both posts stay. So does the rest of the barrier, either side of the
+    // opening: Stephan opened a gate, he did not take the stair's whole front off.
+    ...[gateMouthY, gateMouthY + GATE_MOUTH].map(
+      (y): Wall => ({
+        x: gateX - GATE_POST_R,
+        y: y - GATE_POST_R,
+        w: GATE_POST_R * 2,
+        h: GATE_POST_R * 2,
+        kind: 'gatepost',
+        why: (b) => `${b.name}: the gate post. It stays where it is`,
+      }),
+    ),
+    ...(
+      [
+        [GF.gate.y, gateMouthY],
+        [gateMouthY + GATE_MOUTH, GF.gate.y + GF.gate.h],
+      ] as const
+    )
+      .filter(([a, b]) => b - a > 0.5)
+      .map(
+        ([a, b]): Wall => ({
+          x: gateX - GATE_LEAF_T / 2,
+          y: a,
+          w: GATE_LEAF_T,
+          h: b - a,
+          /*
+           * `gatebar`, NOT `gate`. `openness()` in `src/render/doors.ts` reads the
+           * wall list for a `gate` to decide whether the barrier is still sealed,
+           * so leaving these two runs under that kind told the renderer the gate
+           * had never opened and drew the leaf shut across its own opening — with
+           * nothing in the sim behind it, which `tests/colliders.test.ts` catches
+           * as a wall you can walk through.
+           */
+          kind: 'gatebar',
+          why: (bot) => `${bot.name}: the barrier still runs the width of the stair. The gate is the gap in the middle`,
+        }),
+      ),
   ];
 
   /*
@@ -776,6 +884,16 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let crabFound = false;
   let complaints = 0;
 
+  /**
+   * Hands out `Person.seed`. Monotonic for the whole chapter, never reused.
+   *
+   * A visitor who leaves and a visitor who arrives are different people and must
+   * not inherit a body; a counter that only ever goes up is the cheapest way of
+   * saying so, and it makes a chapter's crowd reproducible from the seed the run
+   * was started with.
+   */
+  let nextSeed = 1;
+
   /* --------------------------------------------------------------- the queues */
 
   const queues: Queue[] = [];
@@ -784,6 +902,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     for (let i = 0; i < n; i++) {
       const x = x0 + (i % 2 ? 5 : -5);
       q.people.push({
+        seed: nextSeed++,
         x,
         hx: x,
         y: food.court.y + food.court.h - 10 - i * 16,
@@ -818,23 +937,58 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     { x: 370, y: 215, r: 8, name: 'Devoxx crew', line: 'Mind the coffee queue with that pot. It bites.' },
   ];
 
-  // The speaker hides behind one of the *built* booths, never a table — the hint the
-  // NPCs give has to stay true, and a table booth would be visible from the aisle.
-  const built = GF.booths.filter((b) => !b.table);
+  /*
+   * WHERE THE SPEAKER HIDES, AND THE ONE STAND THEY MAY NOT HIDE BEHIND.
+   *
+   * Built booths only, never a table: the hint the NPCs give says *"one of the built
+   * ones, with walls"* and it has to stay true, and a table booth would be visible
+   * from the aisle anyway.
+   *
+   * The second filter is a **soft-lock**, found 25 Sep 2026 while auditing the note
+   * that said `E` at the Sticker Mine runs before the chapter's own handler. The
+   * speaker's spot and the sticker's are both `inFrontOf(booth)`, so when the RNG
+   * picked the Sticker Mine they were the SAME POINT — and Voxxy pressing `E` there
+   * got the sticker's "I am 38 cm of robot" refusal, which consumes the key, so the
+   * speaker could not be picked up at all until somebody happened to walk DROID over
+   * to take a sticker they had no reason to connect to the problem. Chapter 3 cannot
+   * be finished without the speaker. Measured over 200 seeds: **35 of them, one run
+   * in six.** `tests/chapters.test.ts` had been clearing the sticker first, which is
+   * a test working around a bug rather than catching it.
+   *
+   * Filtering the spot rather than naming the booth: either beat can move, and this
+   * stays correct when it does.
+   */
+  const noGo = mg.keySpots();
+  const built = GF.booths.filter(
+    (b) => !b.table && !noGo.some((s) => Math.hypot(inFrontOf(b).x - s.x, inFrontOf(b).y - s.y) < s.r + SPEAKER_CLEAR),
+  );
   const hideBooth = built[Math.floor(ctx.rng() * built.length)];
-  const speaker = { x: hideBooth.x + hideBooth.w / 2, y: hideBooth.y + hideBooth.h + 14, r: 7, following: false, onStage: false };
+  const speaker = { ...inFrontOf(hideBooth), r: 7, following: false, onStage: false };
 
   /*
    * Stephan, and the spot the soup has to reach him.
    *
-   * Both sit SOUTH of the main staircase, because that is the only side of it
-   * anyone can reach: the wardrobe and the reception desk close its west flank
-   * (`src/sim/geometry.ts`), and `GF.gate` — the gate he is standing at — closes
-   * the foot of the flight. Arrivals come in through the left-hand doors and walk
-   * straight past reception into him, which is the queue Devoxx actually has.
+   * Both sit EAST of the main staircase, because that is the foot of the flight
+   * and the only side of it anyone can reach: the wardrobe and the reception desk
+   * close its west flank (`src/sim/geometry.ts`), and `GF.gate` — the gate he is
+   * standing at — closes the east. He stands **at the opening**, not at the middle
+   * of the rect, which since the stair was turned are no longer the same point.
+   * Arrivals come in through the left-hand doors a few metres to his south-east
+   * and walk straight into him, which is the queue Devoxx actually has.
    */
   const stair = GF.mainStair;
-  const stephan = { x: stair.x + stair.w / 2, y: stair.y + stair.h + 26, r: 8 };
+  const gateMidY = GF.gate.y + GF.gate.h / 2;
+  const stephan = { x: stair.x + stair.w + 26, y: gateMidY, r: 8 };
+  /*
+   * The stage stays SOUTH of the stair, where it always was.
+   *
+   * Stephan moved to the east face with the gate; the stage did not follow him,
+   * because it cannot: the concourse east of the flight is 49 px — 3.9 m — of
+   * clear floor between the barrier and the glazed wall, which is a corridor two
+   * robots wide and not somewhere to stand a lectern, a soup pot and a keynote
+   * speaker. Down here is the open lobby in front of reception, it is in the same
+   * frame as the gate, and it is the ground a robot already crosses on the way in.
+   */
   const stage = { x: stair.x + 6, y: stair.y + stair.h + 40, w: 100, h: 110 };
 
   /* --------------------------------------------------------------- the crowd */
@@ -881,6 +1035,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     const gap = gaps[Math.min(gaps.length - 1, Math.floor(lane * gaps.length))];
     const inY = gap[0] + 6 + ctx.rng() * Math.max(0, gap[1] - gap[0] - 12);
     const v = mkBody('attendee', e.x, inY, { r: 5, mass: 0.5 }) as Visitor;
+    v.seed = nextSeed++;
     v.walk = (60 + ctx.rng() * 40) * SPEED_SCALE;
     v.colour = VISITOR_COLOURS[Math.floor(ctx.rng() * 4)];
     v.dwell = 0;
@@ -964,23 +1119,54 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       a.route.shift();
       return;
     }
-    // Do not walk into the back of the person in front: that is what makes a crowd
-    // look like a crowd rather than like particles.
-    let blocked = false;
+    /*
+     * Do not walk into the back of the person in front — GO ROUND THEM.
+     *
+     * This used to set the speed to zero and leave it there, which is a deadlock
+     * with no way out of it: A is in front of B and B is in front of A, both stop,
+     * and neither ever has a reason to move again. It survived at thirty-six
+     * visitors and showed up the moment the count went to sixty — a permanent
+     * knot of **seventeen** people at the top of the six steps, from frame 3,500
+     * to the end of the chapter, measured across five seeds. A third of the crowd
+     * stood in the doorway for the whole of breakfast.
+     *
+     * A blocked pedestrian does not stop, they sidestep, so that is what this
+     * does: steer onto the perpendicular that leads AWAY from whoever is in the
+     * way, at a little over half speed. Two people meeting head-on each see the
+     * other a touch off-centre and pass; dead level, `seed` gives everybody a
+     * consistent hand to favour, which is the same thing a corridor full of
+     * people settles into on its own.
+     */
+    let blocker: Visitor | null = null;
     for (const o of crowd) {
       if (o === a) continue;
       const ox = o.x - a.x;
       const oy = o.y - a.y;
       const od = Math.hypot(ox, oy);
       if (od < 12 && (ox * dx + oy * dy) / (od * d) > 0.6) {
-        blocked = true;
+        blocker = o;
         break;
       }
     }
-    const spd = blocked ? 0 : a.walk;
+    let ux = dx / d;
+    let uy = dy / d;
+    let spd = a.walk;
+    if (blocker) {
+      // The left-hand normal of the way they are trying to go.
+      const px = -uy;
+      const py = ux;
+      const lean = (blocker.x - a.x) * px + (blocker.y - a.y) * py;
+      const side = lean === 0 ? (a.seed % 2 === 0 ? 1 : -1) : lean > 0 ? -1 : 1;
+      ux = ux * 0.35 + px * side;
+      uy = uy * 0.35 + py * side;
+      const n = Math.hypot(ux, uy) || 1;
+      ux /= n;
+      uy /= n;
+      spd = a.walk * 0.55;
+    }
     const k = 1 - Math.exp(-8 * dt);
-    a.vx += ((dx / d) * spd - a.vx) * k;
-    a.vy += ((dy / d) * spd - a.vy) * k;
+    a.vx += (ux * spd - a.vx) * k;
+    a.vy += (uy * spd - a.vy) * k;
     a.x += a.vx * dt;
     a.y += a.vy * dt;
     pushOutOfWalls(a);
@@ -1006,6 +1192,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     c.i = i;
     c.held = 'loose';
     c.layer = 0;
+    c.rolling = false;
     crates.push(c);
   }
   let beerDone = false;
@@ -1058,6 +1245,27 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       a.x = c.x + (dx / d) * min;
       a.y = c.y + (dy / d) * min;
     }
+  }
+
+  /*
+   * A CRATE NOBODY CAN REACH. The rules are in `src/sim/crates.ts`, which is where
+   * a test can ask them a question; this is the chapter deciding what to say.
+   */
+  function rescueCrate(c: Crate): void {
+    const spot = crateRescueSpot(c.x, c.y, ctx.byKind('biggy').r, ctx.walls);
+    c.vx = 0;
+    c.vy = 0;
+    if (spot) {
+      c.x = spot.x;
+      c.y = spot.y;
+      ctx.flash(`Biggy: "${c.name} went somewhere my arms do not. Dragged it back out."`, 3600);
+      return;
+    }
+    // Nowhere within four metres. Should never happen on this floor, and if it
+    // ever does the pallet is somewhere the crate is definitely reachable from.
+    c.x = PALLET.x;
+    c.y = PALLET.y;
+    ctx.flash(`Biggy: "${c.name} is back on the pallet. Do not ask."`, 3600);
   }
 
   /** The nearest crate Biggy could get his arms round, or null. */
@@ -1180,11 +1388,24 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         c.vy = 0;
         continue;
       }
-      if (c.held === 'stacked') continue;
+      if (c.held === 'stacked') {
+        c.rolling = false;
+        continue;
+      }
       // A crate at rest has nothing to integrate and no wall to resolve: it got
       // there by being resolved already. Only a crate somebody has shoved pays
       // for `stepBot`, which walks the whole ground-floor wall list.
       if (c.vx !== 0 || c.vy !== 0) stepBot(c, dt, ctx.walls);
+      /*
+       * The one frame a crate can become stranded: the one it stops on.
+       *
+       * See `rescueCrate`. Checking here rather than on a timer is what keeps the
+       * guard free — a crate that has not moved cannot have moved somewhere new,
+       * and a crate that is still rolling has not arrived anywhere yet.
+       */
+      const rolling = c.vx !== 0 || c.vy !== 0;
+      if (c.rolling && !rolling && !crateReachable(c.x, c.y, ctx.byKind('biggy').r, ctx.walls)) rescueCrate(c);
+      c.rolling = rolling;
       for (const b of ctx.bots) {
         if (b.mounted) continue;
         const dx = c.x - b.x;
@@ -1490,11 +1711,19 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   /** The exit: up the main staircase Stephan has just opened. */
   function leave(): void {
-    // Up the flight, which climbs NORTH from the gate Stephan has just opened.
-    const route = (dx: number): Vec2[] => [
-      { x: stair.x + stair.w / 2 + dx, y: stair.y + stair.h + 34 },
-      { x: stair.x + stair.w / 2 + dx, y: stair.y + stair.h - 40 },
-      { x: stair.x + stair.w / 2 + dx, y: stair.y + 24 },
+    /*
+     * Up the flight, which climbs WEST from the gate Stephan has just opened, and
+     * through the OPENING in the barrier rather than through the barrier.
+     *
+     * The three lanes used to be 34 px either side of the centre line, which was
+     * fine across a 112 px gate and is 24 px too wide for a 44 px one. They queue
+     * through the mouth and fan out once they are on the treads, where there is
+     * 15.7 m of stair to fan out across.
+     */
+    const route = (dy: number): Vec2[] => [
+      { x: stair.x + stair.w + 34, y: gateMidY + dy * 0.4 },
+      { x: stair.x + stair.w - 10, y: gateMidY + dy * 0.4 },
+      { x: stair.x + 24, y: gateMidY + dy },
     ];
     ctx.startCut(
       [
@@ -1792,12 +2021,43 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   function people(): Person[] {
     const out: Person[] = [];
-    for (const a of crowd) out.push({ x: a.x, y: a.y, r: a.r, colour: a.colour, role: 'visitor' });
-    for (const q of queues) {
-      for (const p of q.people) out.push({ x: p.x, y: p.y, r: p.r, colour: p.colour, role: 'queue', tx: p.hx });
+    for (const a of crowd) {
+      out.push({ x: a.x, y: a.y, r: a.r, colour: a.colour, role: 'visitor', seed: a.seed, face: a.face, speed: speed(a) });
     }
-    for (const n of npcs) out.push({ x: n.x, y: n.y, r: n.r, name: n.name, colour: '#d9c3a5', role: 'staff' });
-    out.push({ x: stephan.x, y: stephan.y, r: stephan.r, name: 'Stephan', colour: '#e8d5b5', hat: true, role: 'stephan' });
+    for (const q of queues) {
+      for (const p of q.people) {
+        out.push({
+          x: p.x,
+          y: p.y,
+          r: p.r,
+          colour: p.colour,
+          role: 'queue',
+          tx: p.hx,
+          seed: p.seed,
+          // A queue faces the counter it is queueing at, which is north of it.
+          face: -Math.PI / 2,
+          // Shuffling sideways as the queue makes way: `hx` is where they belong.
+          speed: Math.min(1, Math.abs(p.x - p.hx) / 6) * 26 * SPEED_SCALE,
+        });
+      }
+    }
+    for (let i = 0; i < npcs.length; i++) {
+      const n = npcs[i];
+      out.push({ x: n.x, y: n.y, r: n.r, name: n.name, colour: '#d9c3a5', role: 'staff', seed: 900 + i });
+    }
+    out.push({
+      x: stephan.x,
+      y: stephan.y,
+      r: stephan.r,
+      name: 'Stephan',
+      colour: '#e8d5b5',
+      hat: true,
+      role: 'stephan',
+      seed: 910,
+      // He stands at the gate with his back to the stairs, looking at whoever is
+      // coming up the concourse — which since the staircase was turned is west.
+      face: Math.PI,
+    });
     // The speaker is only drawn once Voxxy is close enough to have spotted them.
     if (speaker.following || dist(ctx.byKind('voxxy'), speaker) < 90) {
       out.push({
@@ -1807,6 +2067,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         name: 'keynote speaker (TBA)',
         colour: '#f0e0c0',
         role: 'speaker',
+        seed: 911,
       });
     }
     return out;

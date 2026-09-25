@@ -65,6 +65,8 @@ interface Seat {
  * own movement is hand-integrated along the five legs below, like the prototype's.
  */
 interface Attendee extends Bot {
+  /** Stable identity for the renderer's body-builder. See `Person.seed`. */
+  seed: number;
   walk: number;
   colour: string;
   seat: Seat;
@@ -173,6 +175,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   seats.sort((a, b) => a.order - b.order);
 
   const crowd: Attendee[] = [];
+  /** Hands out `Person.seed` — monotonic, never reused. See `Person.seed`. */
+  let nextSeed = 1;
   const N = Math.min(84, seats.length);
   let t = 0;
   let complaints = 0;
@@ -198,6 +202,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     if (!seat) return;
     seat.taken = true;
     const a = mkBody('attendee', stair.x + 20, CY0 + 30 + ctx.rng() * 40, { r: 5, mass: 0.5 }) as Attendee;
+    a.seed = nextSeed++;
     a.walk = (70 + ctx.rng() * 40) * SPEED_SCALE;
     a.colour = ATTENDEE_COLOURS[Math.floor(ctx.rng() * 4)];
     a.seat = seat;
@@ -442,10 +447,40 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     const out: Person[] = [];
     for (const a of crowd) {
       const p: Vec2 = a.seated ? { x: a.seat.x, y: a.seat.y } : { x: a.x, y: a.y };
-      out.push({ x: p.x, y: p.y, r: a.seated ? 4 : a.r, colour: a.colour, role: a.seated ? 'seated' : 'visitor' });
+      out.push({
+        x: p.x,
+        y: p.y,
+        r: a.seated ? 4 : a.r,
+        colour: a.colour,
+        role: a.seated ? 'seated' : 'visitor',
+        seed: a.seed,
+        // Sat down, they all face the stage, which is the low-y end of the room.
+        face: a.seated ? -Math.PI / 2 : a.face,
+        speed: a.seated ? 0 : Math.hypot(a.vx, a.vy),
+      });
     }
-    out.push({ x: stephan.x, y: stephan.y, r: stephan.r, name: 'Stephan', colour: '#e8d5b5', hat: true, role: 'stephan' });
-    out.push({ x: speakerAt.x, y: speakerAt.y, r: speakerAt.r, name: 'speaker', colour: '#f0e0c0', role: 'speaker' });
+    // Both of them are on the stage looking back up the room at the audience.
+    out.push({
+      x: stephan.x,
+      y: stephan.y,
+      r: stephan.r,
+      name: 'Stephan',
+      colour: '#e8d5b5',
+      hat: true,
+      role: 'stephan',
+      seed: 910,
+      face: Math.PI / 2,
+    });
+    out.push({
+      x: speakerAt.x,
+      y: speakerAt.y,
+      r: speakerAt.r,
+      name: 'speaker',
+      colour: '#f0e0c0',
+      role: 'speaker',
+      seed: 911,
+      face: Math.PI / 2,
+    });
     return out;
   }
 
