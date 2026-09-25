@@ -3,7 +3,7 @@
  *
  * Michele, asking what was left: *"Should we start on graphics? people, details
  * etc."* The people were the answer. They were a cylinder with a sphere on top —
- * no arms, no legs, nothing that moved — and there are thirty-six of them walking
+ * no arms, no legs, nothing that moved — and there are sixty of them walking
  * chapter 3 and an auditorium filling up in chapter 4, so they are in almost every
  * frame of the back half of the game. Ten of the hundred points are "sense of
  * place", and a venue full of chess pawns does not have one.

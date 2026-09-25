@@ -22,7 +22,7 @@
  *           also the only one who can lift a beer crate.
  *   Voxxy — clears a catering queue for five seconds, and finds the speaker.
  *
- * The crowd is not decoration: thirty-six visitors walk the hall's lane grid, and
+ * The crowd is not decoration: sixty visitors walk the hall's lane grid, and
  * shoving them costs complaints on the final card.
  *
  * ## The booth games
@@ -110,9 +110,30 @@ const QUEUE_STEP = 30;
  * with `TRAVEL_TIME_SCALE` so the pot still goes cold in the same place.
  */
 const COOL_SECONDS = 150 * TRAVEL_TIME_SCALE;
-/** Visitors on the floor at once. */
-const VISITORS = 36;
-const SPAWN_EVERY = 0.9;
+/**
+ * Visitors on the floor at once.
+ *
+ * Sixty, raised from thirty-six on 25 Sep 2026. Michele, after the figures got
+ * bodies: *"Raise a bit, 60?"* — the hall is 22 m of floor with twelve sponsor
+ * booths in it, and at thirty-six you could cross the whole thing and pass two
+ * people while the chapter card claims three thousand walked in.
+ *
+ * It is the number of bodies the sim carries, not a crowd size: a visitor costs
+ * one lane-walk, one pass over the other visitors, one over the six crates, and
+ * one figure on screen. The pass over the other visitors is the only quadratic
+ * thing here, and sixty of them is 3,600 distance checks a frame, which is
+ * nothing beside the 2,900 meshes the hall already draws.
+ */
+const VISITORS = 60;
+/**
+ * Seconds between arrivals.
+ *
+ * Dropped from 0.9 with the count, so the hall still FILLS in the same
+ * thirty-odd seconds it used to. Sixty people through a door at the old rate is
+ * most of a minute of watching a half-empty room, which is a different change
+ * from the one that was asked for.
+ */
+const SPAWN_EVERY = 0.55;
 /** Closing speed above which a robot has knocked someone over rather than brushed them. px/s. */
 const BOWL_OVER = 110 * SPEED_SCALE;
 /** The jerk that counts as "Biggy hit something" while he is carrying the pot. px/s. */
@@ -1040,23 +1061,54 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       a.route.shift();
       return;
     }
-    // Do not walk into the back of the person in front: that is what makes a crowd
-    // look like a crowd rather than like particles.
-    let blocked = false;
+    /*
+     * Do not walk into the back of the person in front — GO ROUND THEM.
+     *
+     * This used to set the speed to zero and leave it there, which is a deadlock
+     * with no way out of it: A is in front of B and B is in front of A, both stop,
+     * and neither ever has a reason to move again. It survived at thirty-six
+     * visitors and showed up the moment the count went to sixty — a permanent
+     * knot of **seventeen** people at the top of the six steps, from frame 3,500
+     * to the end of the chapter, measured across five seeds. A third of the crowd
+     * stood in the doorway for the whole of breakfast.
+     *
+     * A blocked pedestrian does not stop, they sidestep, so that is what this
+     * does: steer onto the perpendicular that leads AWAY from whoever is in the
+     * way, at a little over half speed. Two people meeting head-on each see the
+     * other a touch off-centre and pass; dead level, `seed` gives everybody a
+     * consistent hand to favour, which is the same thing a corridor full of
+     * people settles into on its own.
+     */
+    let blocker: Visitor | null = null;
     for (const o of crowd) {
       if (o === a) continue;
       const ox = o.x - a.x;
       const oy = o.y - a.y;
       const od = Math.hypot(ox, oy);
       if (od < 12 && (ox * dx + oy * dy) / (od * d) > 0.6) {
-        blocked = true;
+        blocker = o;
         break;
       }
     }
-    const spd = blocked ? 0 : a.walk;
+    let ux = dx / d;
+    let uy = dy / d;
+    let spd = a.walk;
+    if (blocker) {
+      // The left-hand normal of the way they are trying to go.
+      const px = -uy;
+      const py = ux;
+      const lean = (blocker.x - a.x) * px + (blocker.y - a.y) * py;
+      const side = lean === 0 ? (a.seed % 2 === 0 ? 1 : -1) : lean > 0 ? -1 : 1;
+      ux = ux * 0.35 + px * side;
+      uy = uy * 0.35 + py * side;
+      const n = Math.hypot(ux, uy) || 1;
+      ux /= n;
+      uy /= n;
+      spd = a.walk * 0.55;
+    }
     const k = 1 - Math.exp(-8 * dt);
-    a.vx += ((dx / d) * spd - a.vx) * k;
-    a.vy += ((dy / d) * spd - a.vy) * k;
+    a.vx += (ux * spd - a.vx) * k;
+    a.vy += (uy * spd - a.vy) * k;
     a.x += a.vx * dt;
     a.y += a.vy * dt;
     pushOutOfWalls(a);
