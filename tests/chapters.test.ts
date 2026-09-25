@@ -266,12 +266,25 @@ describe('chapter 1 — night', () => {
     ).toBe(true);
     expect(parked).toHaveLength(3);
     const mouth = nicheMouth(F1.nicheBot);
+    /*
+     * ...and they end AT the head, in a queue, not stacked on the top step.
+     *
+     * This used to assert all three inside the mouth's 17.7 px, which is one robot
+     * wide — so it was asserting the heap, and it was also asserting the fault
+     * Michele filed twice: *"Robots still go throuh the handrail in the chapter
+     * transiction."* Three robots cannot be on that step without being in each
+     * other and without one of them having come over the balustrade. Voxxy takes
+     * the step; the other two queue east of the mouth, which is the open end and
+     * the way on (`stairExitRoutes`).
+     */
     for (const b of parked) {
       expect(b.y, `${b.kind} ends outside the corridor`).toBeGreaterThan(CY0);
       expect(b.y, `${b.kind} ends through the corridor wall`).toBeLessThan(CY1);
-      expect(b.x, `${b.kind} misses the stair mouth`).toBeGreaterThan(mouth.x - 2);
-      expect(b.x, `${b.kind} misses the stair mouth`).toBeLessThan(mouth.x + mouth.w + 2);
+      expect(b.x, `${b.kind} ends short of the stair`).toBeGreaterThan(mouth.x - 2);
+      expect(b.x, `${b.kind} ends past the head of the stair`).toBeLessThan(mouth.x + mouth.w + 45);
     }
+    const onStep = parked.filter((b) => b.x < mouth.x + mouth.w);
+    expect(onStep.map((b) => b.kind), 'the top step is one robot wide').toEqual(['voxxy']);
     expect(g.snapshot().floor).toBe('down');
   });
 
