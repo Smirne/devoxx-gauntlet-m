@@ -32,8 +32,10 @@ import { POSTERS, backlitGlass, cityscape, emitter, exitSign, menuBoard, neonTex
 
 /** Where chapter 1's geometry stops, sim px: just past the fire door. */
 // Past the secondary staircases (sim x 1005.5..1114.7, standing in the corridor
-// level with rooms 4 and 9), so chapter 1's walk-out has somewhere to go.
-export const X_END = 1140;
+// level with rooms 4 and 9), so chapter 1's walk-out has somewhere to go: the
+// cutscene turns in east of the flight (`stairExitRoutes`, up to x ~1153 plus
+// Biggy's radius), and the wall stops short of the corridor column at x 1198.
+export const X_END = 1190;
 
 export const HEIGHTS = Object.freeze({
   room: 7.2,
