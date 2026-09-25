@@ -1511,10 +1511,23 @@ export function boothCrate(b: Booth): Rect | null {
   return b.table ? { x: b.x + b.w / 2 - 9, y: b.y - 23, w: 18, h: 18 } : null;
 }
 
-/** The toilet block's two internal partitions. */
-export function toiletPartitions(): Rect[] {
+/**
+ * The shut toilet doors: two leaves in the middle of the block's south face.
+ *
+ * This replaced `toiletPartitions()`, which returned the two tiled dividers inside
+ * a room the player could walk into. The room is sealed now (see `groundWalls`),
+ * so what is left is the one thing that still has to read from the concourse: a
+ * door. Returned rather than drawn here, because `src/render` owns pictures and
+ * this file owns where things are.
+ */
+export function toiletDoor(): Rect[] {
   const tl = GF.toilets;
-  return [1, 2].map((k): Rect => ({ x: tl.x + (k * tl.w) / 3, y: tl.y + T, w: 3, h: tl.h - 34 }));
+  const cx = tl.x + tl.w / 2;
+  const y = tl.y + tl.h - T;
+  return [
+    { x: cx - 20, y, w: 19, h: T },
+    { x: cx + 1, y, w: 19, h: T },
+  ];
 }
 
 /** The wood-slat wall down one side of each BOF room. */
@@ -1874,12 +1887,37 @@ export function groundWalls(): Wall[] {
     w.push({ ...tb, low: true, kind: 'bof-table', why: (bb) => `${bb.name}: a workshop table. Tomorrow there are twenty laptops on it` });
   }
 
-  // The toilets: one block, one doorway onto the lobby.
+  /*
+   * The toilets: one block, and it is SHUT.
+   *
+   * Michele, 24 Sep: *"Toilets are just on the west side, but it's not an important
+   * detail. Cover it up."* Then, 25 Sep, plainly: *"Cover the toilets."*
+   *
+   * So they are covered rather than moved. The block used to have a 40 px doorway
+   * onto the lobby and two tiled partitions behind it, which is a room built to be
+   * walked into — and a room you can walk into is a room whose position and layout
+   * have to be right. Nothing in any chapter happens in there. The south face is
+   * solid now, with the doorway drawn as a pair of shut leaves and signed, so it
+   * still reads as the toilets from the concourse and nobody can go and check
+   * whether they are on the correct side of the building.
+   *
+   * The partitions go with the doorway: geometry nothing can ever see is geometry
+   * that only costs. `toiletDoor()` is what the renderer draws in their place.
+   */
   const tl = GF.toilets;
-  w.push(...shellOf(tl, 'toilets'), ...southDoors(tl, [[tl.x, tl.x + tl.w]], 40, 'toilets'));
-  for (const p of toiletPartitions()) {
-    w.push({ ...p, kind: 'toilet-partition', why: (bb) => `${bb.name}: tiled partition. Whatever is behind it, none of us needs it` });
-  }
+  w.push(...shellOf(tl, 'toilets'), {
+    x: tl.x,
+    y: tl.y + tl.h - T,
+    w: tl.w,
+    h: T,
+    kind: 'toilets',
+    why: (bb) =>
+      bb.kind === 'voxxy'
+        ? 'Voxxy: locked. There is a sign and a little sliding bolt and neither of them is for me'
+        : bb.kind === 'droid'
+          ? 'Droid: the toilets, shut for the night. Nothing on any of our lists is behind that door'
+          : 'Biggy: toilets. Locked. I am not the robot you send through a locked toilet door',
+  });
 
   /*
    * The entrance wall: a glass facade with one set of doors open in it.

@@ -57,6 +57,7 @@ import {
   stairLanding,
   stairMidLanding,
   stairRamps,
+  toiletDoor,
 } from '../../sim/geometry';
 import type { Rect, Wall } from '../../sim/types';
 import { PX_PER_M, m } from '../../sim/units';
@@ -1127,12 +1128,18 @@ function lobby(p: VenuePalette, overhead: THREE.Group): THREE.Group {
 
   /* --------------------------------------------------------------- toilets */
 
-  // The two partitions inside are sim walls (`toiletPartitions()`); this is the
-  // tiled back wall and the pictogram.
+  /*
+   * Shut, per Michele: *"Cover the toilets."* The block is sealed in the sim
+   * (`groundWalls`), so all that is drawn is what reads from the concourse — a pair
+   * of leaves in the south face and the pictogram over them. The tiled back wall
+   * stays: it is what shows over the top of the 2.4 m shell from a 31 deg camera,
+   * and without it the block reads as an empty open box.
+   */
   const tl = GF.toilets;
   g.add(slab({ x: tl.x + T, y: tl.y + T, w: tl.w - 2 * T, h: 4 }, RISE, WALL_H, p.tiling));
-  // The blue pictogram panel beside the doorway, on the lobby side.
-  g.add(slab({ x: tl.x + tl.w / 2 - 34, y: tl.y + tl.h - 2, w: 22, h: 2 }, RISE + 1.5, 0.5, p.signBlue));
+  for (const leaf of toiletDoor()) g.add(slab(leaf, RISE, DOOR_H, p.doorLeaf));
+  // The blue pictogram panel, centred over the doors on the lobby side.
+  g.add(slab({ x: tl.x + tl.w / 2 - 11, y: tl.y + tl.h - 2, w: 22, h: 2 }, RISE + 1.5, 0.5, p.signBlue));
 
   /* ------------------------------------------------------------- BOF rooms */
 
@@ -1176,16 +1183,30 @@ export function buildGround(
   overhead.name = 'overhead';
   const anchors = new Map<number | string, THREE.Object3D>();
 
-  // The hall plate at the datum, the lobby plate half a metre above it. The raised
-  // plate is thick enough to carry its own riser, so the level change is a solid
-  // mass from the hall side rather than a floating sheet.
-  // The raised plate stops at the building line: east of it is the forecourt's own
-  // paving, and when the two overlapped at the same height they z-fought (see
-  // `lobby()`'s forecourt note — Michele's "something is flickering at the
-  // entrance").
+  /*
+   * The hall plate at the datum, the lobby plate half a metre above it. The raised
+   * plate is thick enough to carry its own riser, so the level change is a solid
+   * mass from the hall side rather than a floating sheet.
+   *
+   * **Both of its ends are exact, and both were wrong once.** East, it stops at the
+   * building line: past that is the forecourt's own paving, and when the two
+   * overlapped at the same height they z-fought — `lobby()`'s forecourt note, and
+   * Michele's *"something is flickering at the entrance"*.
+   *
+   * West, it stops at `LOBBY_X`, where the threshold's top tread ends. It used to
+   * start 6 px short of that, and those 6 px were the same bug one join along:
+   * measured off the built scene, the plate's top face and the top tread's both sit
+   * at **y = -5.0000 exactly**, and they shared x 83.12..83.60 for the flight's whole
+   * 22.6 m — plus the concrete riser caps above and below the flight, which the lip
+   * covered completely. A 0.48 m ribbon of two coplanar faces running the full
+   * length of the level change, which is Michele's *"chapter 2/3, the passage
+   * between the reception zone and the main hall. There's a line that flickers when
+   * the robot is walking"*: a moving lamp sweeping a z-fight is what makes it
+   * flicker rather than just sit there. Abutting is fine; overlapping is not.
+   */
   const buildingLine = GF.entrance.x + GF.entrance.w;
   group.add(floorSlab({ x: 0, y: 0, w: LOBBY_X, h: H }, 0, p.lobbyFloor, 0.4));
-  group.add(floorSlab({ x: LOBBY_X - 6, y: 0, w: buildingLine - LOBBY_X + 6, h: H }, RISE, p.lobbyFloor, RISE + 0.3));
+  group.add(floorSlab({ x: LOBBY_X, y: 0, w: buildingLine - LOBBY_X, h: H }, RISE, p.lobbyFloor, RISE + 0.3));
   const hallFloor = floorSlab(GF.hall, 0.005, p.hallFloor, 0.1);
   hallFloor.name = 'hall-floor';
   group.add(hallFloor);
