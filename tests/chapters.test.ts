@@ -1690,3 +1690,69 @@ describe('the game rig', () => {
     expect(g.snapshot().active).toBe(0);
   });
 });
+
+/**
+ * An empty pot is a walk back to the counter, not the end of the run.
+ *
+ * Michele, 25 Sep 2026: *"if the soup is spilled, you can come back and take a
+ * new batch."* What was there was the worst kind of difficulty — a full-screen
+ * `R to try again` twenty seconds from the end of the chapter, for a mistake
+ * whose fix in the fiction is walking back to a counter with a vat on it.
+ *
+ * Both ways of ruining it are checked, because they were two separate `fail`
+ * calls: the pot spilled dry, and the pot gone cold.
+ */
+describe('chapter 3 — the soup is refillable', () => {
+  const start = (): DebugGame => {
+    const g = createGame({ seed: 20260930, chapter: 3, cards: false }) as DebugGame;
+    const st = (): BreakfastState => g.debug.chapter() as BreakfastState;
+    // Ladle, then pot.
+    g.debug.select('droid');
+    g.debug.place('droid', 176, 150);
+    g.key('KeyE');
+    expect(st().ladle).toBe(true);
+    g.debug.select('biggy');
+    g.debug.place('biggy', 105, 180);
+    g.key('KeyE');
+    expect(st().carrying).toBe(true);
+    return g;
+  };
+
+  it('sends Biggy back for another pot when he spills the last of it', () => {
+    const g = start();
+    const st = (): BreakfastState => g.debug.chapter() as BreakfastState;
+    /*
+     * Drive him into the catering counter until the pot is dry. A spill is caused
+     * by the jerk rather than by the speed (`SPILL_DV`), so this is a run-up and a
+     * wall, over and over — which is exactly how a player empties it by accident.
+     */
+    for (let i = 0; i < 24 && st().carrying; i++) {
+      g.debug.place('biggy', 138, 270);
+      g.setStick(0, -1);
+      steps(g, 120);
+    }
+    g.setStick(0, 0);
+    expect(st().carrying, 'he is still holding an empty pot').toBe(false);
+    expect(st().batches, 'the ruined pot was not counted').toBeGreaterThan(0);
+    expect(st().soup, 'the counter did not refill it').toBe(100);
+    expect(g.snapshot().phase, 'a spilled pot ended the run').toBe('play');
+    expect(st().ladle, 'he lost the ladle with the soup').toBe(true);
+
+    // ...and he can simply go and get another one.
+    g.debug.select('biggy');
+    g.debug.place('biggy', 105, 180);
+    g.key('KeyE');
+    expect(st().carrying, 'the counter would not fill it a second time').toBe(true);
+  });
+
+  it('does the same when it goes cold, rather than failing the chapter', () => {
+    const g = start();
+    const st = (): BreakfastState => g.debug.chapter() as BreakfastState;
+    // COOL_SECONDS is 150 s of game time at `TRAVEL_TIME_SCALE`, so this is the
+    // pot standing still for ten sim minutes, which is the honest way to do it.
+    for (let i = 0; i < 22000 && st().carrying; i++) g.update(DT_MAX);
+    expect(st().carrying, 'it never went cold').toBe(false);
+    expect(st().batches).toBeGreaterThan(0);
+    expect(g.snapshot().phase, 'a cold pot ended the run').toBe('play');
+  });
+});

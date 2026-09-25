@@ -578,6 +578,8 @@ export interface BreakfastState {
   soup: number;
   /** Percent of the original heat. */
   temp: number;
+  /** Pots spilled or gone cold and refilled — never a lost run (`ruined`). */
+  batches: number;
   complaints: number;
   speaker: { following: boolean; onStage: boolean; booth: string };
   queues: Array<{ label: string; open: number }>;
@@ -743,6 +745,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let soup = 100;
   let temp = 100;
   let pickupT = 0;
+  /** How many pots have been spilled or gone cold on the way over. Flavour, and a count. */
+  let batches = 0;
   let complaints = 0;
 
   /* --------------------------------------------------------------- the queues */
@@ -1194,18 +1198,91 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     }
   }
 
+  /* -------------------------------------------------------------- Stephan talks */
+
+  /** How many times he has been asked, so he does not say the same thing twice. */
+  let asked = 0;
+
+  /**
+   * What Stephan says when you walk up to him, which depends entirely on what is
+   * still outstanding — he is a man with a list.
+   *
+   * Two or three lines per state, cycled rather than randomised: a line you can
+   * get back to by pressing `E` again is a line the player can read properly, and
+   * nothing in this game is random that does not have to be.
+   */
+  function stephanSays(): string {
+    const pick = (lines: readonly string[]): string => `Stephan: "${lines[asked++ % lines.length]}"`;
+    if (gateOpen) return pick(['All is ready. All is ready! Up you go, the rooms are yours.', 'Go on. Before I find something else that is missing.']);
+    if (!delivered) {
+      if (carrying) return pick(['Is that my soup? Bring it here before it is a cold soup.', 'I can see it from here. Walk. Do not run.']);
+      if (ladle) return pick(['Where is my soup?', 'Tomato. At breakfast, yes. It is a tradition and I am the one who keeps it.']);
+      return pick(['Where is my soup?', 'The pot is on the counter and the ladle is on the shelf. I am not doing it myself, I am holding a staircase.']);
+    }
+    if (!speaker.onStage) {
+      if (speaker.following) return pick(['That is them? Good. Over here, please.', 'Hurry them along. The programme still says TBA and people are reading it.']);
+      return pick([
+        'The keynote speaker! Where is he? Or she. The programme says <b>TBA</b> and it has said TBA for a month.',
+        'Somebody saw them hiding from the queue behind a booth. One of the built ones.',
+      ]);
+    }
+    if (!beerDone) return pick([`Tonight's beer is standing in the middle of my aisle. It goes to ${BAR_NAME}.`, 'Three thousand people, one aisle, and a pallet of beer in it. Biggy.']);
+    return pick(['Soup. Speaker. Beer. Right — give me a moment with this barrier.']);
+  }
+
   /* ----------------------------------------------------------------- the soup */
 
   function spill(amount: number, why: string): void {
     if (!carrying || delivered) return;
     soup = Math.max(0, soup - amount);
-    ctx.flash(`Splash — ${why} (${Math.trunc(soup)}% left)`);
-    if (soup <= 0) ctx.fail('The pot is empty. Stephan gets a napkin.<small>R to try again · or Skip chapter</small>');
+    if (soup > 0) {
+      ctx.flash(`Splash — ${why} (${Math.trunc(soup)}% left)`);
+      return;
+    }
+    ruined('Biggy: "…that was all of it."');
+  }
+
+  /**
+   * THE POT IS RUINED — AND THAT IS NOT THE END OF THE RUN.
+   *
+   * Michele, 25 Sep 2026: *"if the soup is spilled, you can come back and take a
+   * new batch."* He is right, and what was there was the worst kind of
+   * difficulty: a full-screen `R to try again` twenty seconds from the end of the
+   * chapter, for a mistake whose fix in the fiction is walking back to a counter
+   * with a vat on it. There are three thousand people at a breakfast queue; the
+   * kitchen is not out of soup.
+   *
+   * So an empty pot and a cold pot both send Biggy back to the counter with the
+   * ladle he already has. The cost is the walk and the clock, which is a cost the
+   * player can see and can do something about, and Stephan's line at the end
+   * counts the batches — the joke is better than the failure was.
+   */
+  function ruined(line: string): void {
+    carrying = false;
+    batches++;
+    soup = 100;
+    temp = 100;
+    ctx.flash(`${line} Back to the counter, Biggy — they will fill it again.`, 4200);
   }
 
   ctx.objective(OBJECTIVE, KEYS);
+  /*
+   * THE CARD HAS TO SAY WHAT THE CHAPTER IS FOR. Michele, 25 Sep 2026: *"Intro
+   * for chapter 3 does not state the aim. Breakfast is ready, stephan wants his
+   * soup. And the keynote speaker (has it been announced yet?)"*
+   *
+   * It said *"Power, network, badges"* — which is chapter TWO's list, already
+   * done, and then a line about a queue. So the one screen the player actually
+   * reads named none of the three things they are about to be asked for. It names
+   * all three now, in Stephan's own order, and it keeps the TBA joke where the
+   * joke is: on the programme.
+   */
   ctx.card(
-    "<b>Power, network, badges.</b> The main entrance opens… and the queue for breakfast is already out of the door." +
+    '<b>Breakfast, and Stephan wants three things.</b> The doors are open, three thousand people are inside, ' +
+      'and the man at the foot of the main staircase is not unhooking that barrier until he has his ' +
+      '<b>tomato soup</b> — at breakfast, yes — until somebody finds the <b>keynote speaker</b>, who is still ' +
+      '<b>TBA</b> on the programme and hiding from the queue behind a booth, and until <b>tonight\u2019s beer</b> ' +
+      `is out of the aisle and behind the bar at ${BAR_NAME}.` +
       '<small>Press any key</small>',
   );
 
@@ -1236,6 +1313,26 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     ctx.switchKey(code);
     if (code !== 'KeyE') return true;
     if (mg.key(code, b)) return true;
+
+    /*
+     * TALK TO STEPHAN. Michele, 25 Sep 2026: *"you should be able to 'talk' with
+     * stephan. Lines like 'where's my soup' 'All is ready.. all is ready' 'the
+     * keynote speaker! Where is he'."*
+     *
+     * He is the whole chapter — three errands, all of them his — and he was a
+     * figure with a hat you walked up to and nothing happened. Any robot can
+     * talk to him, not only Voxxy: he is not a person you have to be charming to,
+     * he is a man waiting for his soup, and he will say so to whoever turns up.
+     *
+     * Biggy arriving WITH the pot is a delivery and not a chat, so that one case
+     * falls straight through to the branch below — being told "where is my soup"
+     * by the man you are handing the soup to is a worse joke than the one it
+     * would replace.
+     */
+    if (dist(b, stephan) < TALK_REACH + b.r && !(b.kind === 'biggy' && carrying && !delivered)) {
+      ctx.flash(stephanSays(), 4600);
+      return true;
+    }
 
     if (b.kind === 'droid') {
       if (!ladle && dist(d, shelfAt) < SHELF_REACH) {
@@ -1279,8 +1376,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       }
       if (carrying && !delivered && inRect(bg, stage)) {
         delivered = true;
+        const said =
+          soup > 70 ? 'Finally! Still hot.' : soup > 35 ? "Half a bowl. It's… something." : 'Is this a bowl or a hint?';
         ctx.flash(
-          `Stephan: "${soup > 70 ? 'Finally! Still hot.' : soup > 35 ? "Half a bowl. It's… something." : 'Is this a bowl or a hint?'}"`,
+          `Stephan: "${said}"${batches > 0 ? ` <i>(${batches === 1 ? 'the second pot' : `pot number ${batches + 1}`}, but who is counting)</i>` : ''}`,
           4000,
         );
         return true;
@@ -1434,11 +1533,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
     if (carrying && !delivered) {
       temp = Math.max(0, 100 - ((ctx.t - pickupT) / COOL_SECONDS) * 100);
-      if (temp <= 0) {
-        ctx.fail(
-          'Stone cold. Stephan drinks it anyway, out of politeness.<small>R to try again · or Skip chapter</small>',
-        );
-      }
+      // Stone cold is a ruined batch, not a lost run — see `ruined`.
+      if (temp <= 0) ruined('Stephan: "Cold. I am not drinking that, and neither is anybody else."');
     }
 
     /*
@@ -1673,7 +1769,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       : carrying
         ? `soup: carrying the pot · ${Math.round(soup)}% left at ${Math.round(temp)}°`
         : ladle
-          ? 'soup: ladle in hand — fill the pot at the counter'
+          ? `soup: ladle in hand — ${batches > 0 ? 'fill it again' : 'fill the pot'} at the counter`
           : 'soup: the ladle is on the high shelf (Droid)';
     const spk = speaker.onStage
       ? 'speaker ✓'
@@ -1738,7 +1834,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         at: carrying && !delivered ? stageAt : soupStand,
         hint: carrying
           ? 'Biggy: it goes cold while I walk and it comes out of the pot every time I hit something. Smooth lines — and let Voxxy open a queue before I am standing in it'
-          : 'Biggy: the pot is on the counter in the catering court, and I am not filling it with my hands. Ladle first',
+          : batches > 0
+            ? 'Biggy: back to the counter. They have a vat of it and there are three thousand people here — nobody is going to miss another pot'
+            : 'Biggy: the pot is on the counter in the catering court, and I am not filling it with my hands. Ladle first',
       },
       {
         id: 'speaker',
@@ -1808,6 +1906,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       ladle,
       carrying,
       delivered,
+      batches,
       soup,
       temp,
       complaints,
