@@ -224,6 +224,13 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
   const fireLeaves = new Map<string, THREE.Group>();
   const stencil = clueStencil();
 
+  /** Keep a door in the wall-hiding set exactly while it is shut (R shuts it again). */
+  function syncCollider(o: THREE.Object3D, shut: boolean): void {
+    const idx = colliders.indexOf(o);
+    if (shut && idx < 0) colliders.push(o);
+    else if (!shut && idx >= 0) colliders.splice(idx, 1);
+  }
+
   function key(p: Prop): string {
     return `${p.kind}:${Math.round(p.x)}:${Math.round(p.y)}`;
   }
@@ -460,6 +467,8 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
             // press, the reach takes ~0.6 s to get there (playtest: "the hint
             // colour changes too soon, it should wait until contact").
             if (p.state === 'done' && o.userData.doneAt === undefined) o.userData.doneAt = t;
+            // R restarts the chapter with the panel shut again: forget the throw.
+            if (p.state !== 'done') o.userData.doneAt = undefined;
             const done = p.state === 'done' && t - (o.userData.doneAt as number) > 0.6;
             const led = o.userData.led as THREE.Mesh;
             const blink = done ? 1 : Math.sin(t * 5) > 0 ? 1 : 0.15;
@@ -487,10 +496,7 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
             const e = THREE.MathUtils.smoothstep(p.progress ?? 0, 0, 1);
             const roomSign = p.y < (CY0 + CY1) / 2 ? -1 : 1;
             for (const leaf of o.children) leaf.rotation.y = (leaf.userData.side as number) * roomSign * e * 1.45;
-            if (e > 0.02) {
-              const idx = colliders.indexOf(o);
-              if (idx >= 0) colliders.splice(idx, 1);
-            }
+            syncCollider(o, e <= 0.02);
             break;
           }
           case 'jammed': {
@@ -513,8 +519,7 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
             const e = prog * prog * (3 - 2 * prog);
             o.rotation.x = e * (Math.PI / 2 - 0.04);
             o.position.y = e * 0.05;
-            const idx = colliders.indexOf(o);
-            if (prog > 0 && idx >= 0) colliders.splice(idx, 1);
+            syncCollider(o, prog <= 0);
             break;
           }
           default:
@@ -529,6 +534,15 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
       // (Michele kept it). So the two spots get a folded-back steel barrier
       // each, hinged at the door end and swinging out as the shutter lifts:
       // something you can see where the sim has something you bump into.
+      // After R the sim's leaves are gone again: fold ours away with them.
+      const liveLeaves = new Set(snap.walls.filter((w) => w.kind === 'fireleaf').map((w) => `fireleaf:${Math.round(w.y)}`));
+      for (const [k, g] of fireLeaves) {
+        if (liveLeaves.has(k)) continue;
+        parent.remove(g);
+        const idx = colliders.indexOf(g.children[0]);
+        if (idx >= 0) colliders.splice(idx, 1);
+        fireLeaves.delete(k);
+      }
       for (const w of snap.walls) {
         if (w.kind !== 'fireleaf') continue;
         const key = `fireleaf:${Math.round(w.y)}`;
@@ -569,6 +583,18 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
         }
         co.digit.visible = c.found;
         if (!c.found) (co.decal.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.4 + 0.3 * (0.5 + 0.5 * Math.sin(t * 1.6 + c.slot));
+        if (!c.found && co.solved) {
+          // A restarted chapter: the same clue, unfound again (the chapter
+          // keeps its seed, so the digit is the same one).
+          co.solved = false;
+          const dm = co.decal.material as THREE.MeshStandardMaterial;
+          dm.alphaMap = stencil;
+          dm.color.set(0xd8d2c0);
+          dm.emissive.setRGB(0.55, 0.52, 0.45);
+          co.decal.rotation.set(-Math.PI / 2, 0, 0);
+          dm.needsUpdate = true;
+          co.light.visible = false;
+        }
         if (c.found && !co.solved) {
           co.solved = true;
           const dm = co.decal.material as THREE.MeshStandardMaterial;
