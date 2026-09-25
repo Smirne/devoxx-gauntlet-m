@@ -315,6 +315,8 @@ const QUEUE_COLOURS = ['#b9a58c', '#8c9bb9', '#b98c8c', '#9bb98c'] as const;
 
 /** A conference-goer walking the lane grid. A `Bot` only to reuse `botsCollide`. */
 interface Visitor extends Bot {
+  /** Stable identity for the renderer's body-builder. See `Person.seed`. */
+  seed: number;
   walk: number;
   route: Vec2[];
   dwell: number;
@@ -323,6 +325,8 @@ interface Visitor extends Bot {
 }
 
 interface QueuePerson {
+  /** Stable identity for the renderer's body-builder. See `Person.seed`. */
+  seed: number;
   x: number;
   y: number;
   /** Where this person stands when the queue is not making way. */
@@ -823,6 +827,16 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let crabFound = false;
   let complaints = 0;
 
+  /**
+   * Hands out `Person.seed`. Monotonic for the whole chapter, never reused.
+   *
+   * A visitor who leaves and a visitor who arrives are different people and must
+   * not inherit a body; a counter that only ever goes up is the cheapest way of
+   * saying so, and it makes a chapter's crowd reproducible from the seed the run
+   * was started with.
+   */
+  let nextSeed = 1;
+
   /* --------------------------------------------------------------- the queues */
 
   const queues: Queue[] = [];
@@ -831,6 +845,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     for (let i = 0; i < n; i++) {
       const x = x0 + (i % 2 ? 5 : -5);
       q.people.push({
+        seed: nextSeed++,
         x,
         hx: x,
         y: food.court.y + food.court.h - 10 - i * 16,
@@ -941,6 +956,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     const gap = gaps[Math.min(gaps.length - 1, Math.floor(lane * gaps.length))];
     const inY = gap[0] + 6 + ctx.rng() * Math.max(0, gap[1] - gap[0] - 12);
     const v = mkBody('attendee', e.x, inY, { r: 5, mass: 0.5 }) as Visitor;
+    v.seed = nextSeed++;
     v.walk = (60 + ctx.rng() * 40) * SPEED_SCALE;
     v.colour = VISITOR_COLOURS[Math.floor(ctx.rng() * 4)];
     v.dwell = 0;
@@ -1895,12 +1911,43 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   function people(): Person[] {
     const out: Person[] = [];
-    for (const a of crowd) out.push({ x: a.x, y: a.y, r: a.r, colour: a.colour, role: 'visitor' });
-    for (const q of queues) {
-      for (const p of q.people) out.push({ x: p.x, y: p.y, r: p.r, colour: p.colour, role: 'queue', tx: p.hx });
+    for (const a of crowd) {
+      out.push({ x: a.x, y: a.y, r: a.r, colour: a.colour, role: 'visitor', seed: a.seed, face: a.face, speed: speed(a) });
     }
-    for (const n of npcs) out.push({ x: n.x, y: n.y, r: n.r, name: n.name, colour: '#d9c3a5', role: 'staff' });
-    out.push({ x: stephan.x, y: stephan.y, r: stephan.r, name: 'Stephan', colour: '#e8d5b5', hat: true, role: 'stephan' });
+    for (const q of queues) {
+      for (const p of q.people) {
+        out.push({
+          x: p.x,
+          y: p.y,
+          r: p.r,
+          colour: p.colour,
+          role: 'queue',
+          tx: p.hx,
+          seed: p.seed,
+          // A queue faces the counter it is queueing at, which is north of it.
+          face: -Math.PI / 2,
+          // Shuffling sideways as the queue makes way: `hx` is where they belong.
+          speed: Math.min(1, Math.abs(p.x - p.hx) / 6) * 26 * SPEED_SCALE,
+        });
+      }
+    }
+    for (let i = 0; i < npcs.length; i++) {
+      const n = npcs[i];
+      out.push({ x: n.x, y: n.y, r: n.r, name: n.name, colour: '#d9c3a5', role: 'staff', seed: 900 + i });
+    }
+    out.push({
+      x: stephan.x,
+      y: stephan.y,
+      r: stephan.r,
+      name: 'Stephan',
+      colour: '#e8d5b5',
+      hat: true,
+      role: 'stephan',
+      seed: 910,
+      // He stands at the gate with his back to the stairs, looking at whoever is
+      // coming up the concourse — which since the staircase was turned is west.
+      face: Math.PI,
+    });
     // The speaker is only drawn once Voxxy is close enough to have spotted them.
     if (speaker.following || dist(ctx.byKind('voxxy'), speaker) < 90) {
       out.push({
@@ -1910,6 +1957,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         name: 'keynote speaker (TBA)',
         colour: '#f0e0c0',
         role: 'speaker',
+        seed: 911,
       });
     }
     return out;
