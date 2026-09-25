@@ -748,12 +748,24 @@ export function floor1Walls(): Wall[] {
   const f = F1.foyer;
   w.push({ x: f.x - T, y: f.y, w: T, h: f.h }, { x: f.x + f.w, y: f.y, w: T, h: f.h }, { x: f.x - T, y: f.y + f.h, w: f.w + 2 * T, h: T });
   const k = F1.kiosk;
+  /*
+   * Glazed on the south and east only. The back (north, the menu board, facing
+   * the corridor) and the counter front either side of the hatch (west) are solid.
+   *
+   * Since the crates moved to the west end, the robots start 9 m from the kiosk,
+   * and with glass all round its clue could be lit from the starting marks: Voxxy
+   * turned on the spot, Biggy's flood was already on it (Michele, 25 Sep: "I just
+   * started the game, rotated Voxxy, hint solved"). A probe of every heading from
+   * the three marks lit it at the tightest tolerance too. Solid on the two sides
+   * that face the marks, the puzzle is the one written for it again: Voxxy in
+   * through her hatch, Biggy's flood through the glazing.
+   */
   w.push(
-    { x: k.x, y: k.y, w: k.w, h: T, glass: true },
+    { x: k.x, y: k.y, w: k.w, h: T },
     { x: k.x, y: k.y + k.h - T, w: k.w, h: T, glass: true },
     { x: k.x + k.w - T, y: k.y, w: T, h: k.h, glass: true },
-    { x: k.x, y: k.y, w: T, h: 16, glass: true },
-    { x: k.x, y: k.y + 40, w: T, h: 16, glass: true },
+    { x: k.x, y: k.y, w: T, h: 16 },
+    { x: k.x, y: k.y + 40, w: T, h: 16 },
     { x: k.x, y: k.y + 16, w: T, h: 24, hidden: true, skipFor: (b) => b.kind === 'voxxy', why: (b) => `${b.name}: the kiosk hatch is Voxxy-sized` },
   );
   // Top of the main staircase.

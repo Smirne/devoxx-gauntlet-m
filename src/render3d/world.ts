@@ -201,24 +201,26 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   const ORDER_3D: RobotKind[] = ['voxxy', 'droid', 'biggy'];
   const PULL_DELAY = 0.7;
   /**
-   * A crate front that swings open like a door, hinged at its outer edge (Droid's
-   * toward Voxxy), instead of the 2.5D model's tip-and-roll onto the floor
-   * (Michele: "the crates panel on the ground during the animation does not look
-   * fine"). In the diorama it lands face up and spells the word in pieces; seen
-   * at eye level it was a board lying at the robots' feet, flipping through the
-   * next crate on the way. 105 degrees out: clear of every robot's stand mark,
-   * the panels standing in the gaps between them.
+   * The crate front tips out and falls flat, as the 2.5D model's does, but stops
+   * there. The model then turns it over (so the diorama's camera, above, reads the
+   * word face up) and lets it settle just past flat onto the floor; at eye level
+   * that read as a flip and a board sinking into the ground (Michele: "I liked the
+   * way they opened and start falling, the problem is the final part... the panel
+   * should remain visible"). So: the same fall, no roll, lying on the floor.
    */
   function swingPanel(c: (typeof crates.crates)[number], t: number): void {
     c.setOpen(0);
-    const k = THREE.MathUtils.smoothstep(t, 0, 1);
-    const s = c.geom.centreX < 0 ? -1 : 1;
-    const half = c.geom.width / 2;
-    const a = s * k * 1.83;
+    const y0 = c.panel.position.y;
     const z0 = c.panel.position.z;
-    c.panel.rotation.set(0, a, 0);
-    c.panel.position.set(s * half * (1 - Math.cos(a)), c.panel.position.y, z0 + half * Math.sin(Math.abs(a)));
+    const k = THREE.MathUtils.clamp(t, 0, 1);
+    // Accelerating like a falling board, flat at the end.
+    const a = k * k * (Math.PI / 2);
+    c.panel.rotation.set(a, 0, 0);
+    // Lowered from the pallet to the floor as it goes, resting on its own
+    // thickness rather than half through the concrete.
+    c.panel.position.set(0, y0 * (1 - k) + PANEL_REST * k, z0 + k * 0.04);
   }
+  const PANEL_REST = 0.03;
   const _want = new THREE.Vector3();
   const _wantPos = new THREE.Vector3();
   /** The follow camera's yaw and pitch at the hand-off; see `stageOpening`. */
