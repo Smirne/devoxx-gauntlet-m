@@ -39,7 +39,13 @@ export interface Robot3D {
    * are driving readable in a building with the lights out.
    */
   spill: THREE.PointLight;
-  /** A camera-facing flare at the lamp, bright only when the lamp points at you. */
+  /**
+   * A camera-facing flare at the lamp, bright only when the lamp points at you.
+   * Small and tight: at 1.2 m with a wide halo it covered Biggy's whole face in
+   * the intro, where every robot faces the camera (Michele: "when seen from the
+   * front, robots have a strange light"), and the soft halo under the intro's
+   * depth of field read as a pink disc beside Voxxy.
+   */
   glare: THREE.Mesh | null;
   /** How much of the lamp shows in the fog. */
   fog: number;
@@ -188,11 +194,11 @@ export function createRobots(parent: THREE.Object3D, shadowSize: number): Map<Ro
         vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
         fragmentShader: /* glsl */ `uniform vec3 colour; uniform float strength; varying vec2 vUv;
           void main(){ vec2 d = vUv - .5; float r = length(d);
-            float core = exp(-r * r * 180.); float halo = exp(-r * r * 18.) * .25;
-            float star = exp(-abs(d.y) * 90.) * exp(-abs(d.x) * 5.) * .6;
-            gl_FragColor = vec4((colour + .6) * (core * 30. + halo * 3. + star * 6.) * strength, 1.); }`,
+            float core = exp(-r * r * 260.); float halo = exp(-r * r * 40.) * .25;
+            float star = exp(-abs(d.y) * 140.) * exp(-abs(d.x) * 9.) * .6;
+            gl_FragColor = vec4((colour + .6) * (core * 9. + halo * .8 + star * 1.5) * strength, 1.); }`,
       });
-      glare = new THREE.Mesh(new THREE.PlaneGeometry(kind === 'biggy' ? 1.2 : 0.8, kind === 'biggy' ? 1.2 : 0.8), gm);
+      glare = new THREE.Mesh(new THREE.PlaneGeometry(kind === 'biggy' ? 0.5 : 0.35, kind === 'biggy' ? 0.5 : 0.35), gm);
       glare.frustumCulled = false;
       parent.add(glare);
     }
@@ -330,7 +336,7 @@ export function updateGlare(robots: Map<RobotKind, Robot3D>, camera: THREE.Camer
     const dist = _toCam.length();
     _toCam.divideScalar(dist);
     const facing = Math.max(0, _dir.dot(_toCam));
-    (g.material as THREE.ShaderMaterial).uniforms.strength.value = Math.pow(facing, 6) * Math.min(1, dist / 2);
+    (g.material as THREE.ShaderMaterial).uniforms.strength.value = Math.pow(facing, 16) * Math.min(1, dist / 2);
     g.quaternion.copy(camera.quaternion);
   }
 }
