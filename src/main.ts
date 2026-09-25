@@ -196,6 +196,8 @@ function pushStick(): void {
 }
 
 let muted = false;
+/** `N` — the score only, on top of `muted`. */
+let musicOff = false;
 
 /** Reused every frame: the three robots' screen positions for the HUD's bubbles. */
 const anchors: SpeakerAnchors = {};
@@ -259,6 +261,18 @@ function onKeyDown(ev: KeyboardEvent): void {
   if (code === 'KeyM') {
     muted = !muted;
     audio.mute(muted);
+  }
+  /*
+   * `N` is the music on its own.
+   *
+   * `M` kills the whole mix, which is the wrong switch for the one thing a player
+   * may well want off while still hearing the game — a score is a preference in a
+   * way a breaking door is not. Neither letter is in `DevoxxForever`, so neither
+   * needs the `typing` guard the overlay keys have.
+   */
+  if (code === 'KeyN') {
+    musicOff = !musicOff;
+    audio.muteMusic(musicOff);
   }
   /*
    * `I` and `H` are the overlay's own keys and the sim never hears them.
@@ -524,6 +538,7 @@ function updateAudio(snap: GameSnapshot, dt: number): void {
     lastBreakerV = 0;
     lastPilot = '';
     audio.setAmbient(snap.chapter);
+    audio.setMusic(snap.chapter);
     if (snap.chapter > 1) audio.play('transition');
   }
   if (snap.phase !== lastPhase) {

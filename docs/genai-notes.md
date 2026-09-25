@@ -3496,3 +3496,64 @@ as needing a live repro rather than guessed at. Music is still queued.
 `opening`, `chapters`, `tasks`, `tasks-panel`, `venue.smoke`, `crates` and `colliders` extended or
 turned with the changes. Suite: **653 tests, 40 files, green**, `tsc --noEmit` clean, `After Dark ·
 ERRORS:0` on the built bundle in chapters 2 and 3 and the intro.
+
+## 25 Sep 2026 — music
+
+**What a human asked for.** One word, queued for two sessions: *"music"*.
+
+**What the agent did.** `src/render/music.ts`: a four-bar score per chapter, played by oscillators
+on the `AudioContext` `audio.ts` already owns. No file could be loaded even if one existed —
+CLAUDE.md forbids external audio assets — so the music is written as data and synthesised, the same
+way every sound effect in the game already was.
+
+The line the module is built on is the one the repo draws everywhere else: the score is pure data
+and pure functions (`SCORES`, `barNotes()`, `chordNote()`), and the player below it is graph
+plumbing. That split is what lets a test say something true about music in an environment with no
+sound card — `tests/music.test.ts` asserts that no part ever plays a note outside its chapter's key
+over three times round the loop, that the patterns are whole bars, that the build-up parts arrive on
+the bar they claim, and that the loudest instant of the fullest bar leaves the sound effects room on
+top of it. Whether it is any *good* is Michele's call and no test pretends otherwise.
+
+Four scores, and they carry the story rather than decorate it:
+- **Chapter 1** A minor, 68 bpm, **no percussion at all** — the one chapter with nothing keeping
+  time. Am9 / Fmaj7 / Dm7 / Esus never resolves, so the loop comes round without sounding finished.
+- **Chapter 2** the same key, because it is the same night; everything else changes. 100 bpm, a
+  sixteenth bass pulse, Am / C / F / G climbing instead of circling — and the drums are not in the
+  first loop at all. `from: 2` brings the kick in, `from: 4` the hats, `from: 6` the rim: the music
+  comes up the way the building does.
+- **Chapter 3** the first daylight in the game, so the first major key. C, 112 bpm, shaker instead
+  of hats, sevenths on everything. Cmaj7 / Am7 / Dm7 / G7 is the most ordinary progression there is,
+  which is the point — nothing is broken yet.
+- **Chapter 4** C major, 84 bpm, and the only progression in the game that lands on its tonic,
+  because this is the one chapter that is allowed to arrive somewhere.
+
+**Decisions with a reason.**
+- **A deck per score, not a score on a shared bus.** Notes are scheduled up to `LOOKAHEAD` seconds
+  ahead, so at a chapter change the old chapter still has nearly two bars booked. Swapping the score
+  on one gain node would have played chapter 1's A minor over chapter 3's C major for two seconds.
+  Each score gets its own fader and the outgoing one fades out with everything already hanging off
+  it — the same trick `fadeOutBed()` plays for the ambient beds.
+- **A 1.9 s lookahead, not the 0.2 s every tutorial uses.** A hidden tab has its timers clamped to
+  about a second; a short lookahead drops the beat the moment a judge tabs away to read the README.
+  For the same reason the pump is a `setInterval` and not the render loop: `requestAnimationFrame`
+  does not fire at all in a hidden tab, and the music would stop dead instead of carrying on.
+- **`N` mutes the music alone**, on top of `M`. A score is a preference in a way a breaking door is
+  not. The scheduler keeps running under the mute so the bar clock stays with the game — turning it
+  back on drops you where the music would have been, not at the start of its build-up.
+- **`setMusic` is separate from `setAmbient`** although `main.ts` calls both on the same edge. A bed
+  is the room and a score is the mood, and they are allowed to disagree: chapter 2's hall keeps its
+  empty-room tone all the way through while the score underneath it grows a drum kit.
+
+**What was measured rather than argued.** The build-ups were first written at `from: 6` and
+`from: 10`. Probing the built bundle with a wrapped `AudioContext.prototype.createOscillator` showed
+that at 100 bpm that put chapter 2's hats 14 seconds in and the rim at 24 — patient to the point of
+never arriving for most players. Pulled to 4 and 6, re-probed, and the noise voices now appear
+inside the first loop. `scratchpad/intro-light/shot.mjs` gained `--autoplay-policy=no-user-gesture-
+required` so a probe exercises the audio at all instead of silently skipping a suspended context.
+
+**Verified.** All four chapters and all three chapter swaps driven in the built bundle: `After Dark
+· ERRORS:0`, empty `window.__afterdark.errors`, 177 oscillator and 41 noise voices scheduled over
+16 seconds of chapter 2. Suite: **682 tests, 40 files, green**; `tsc --noEmit` clean.
+
+**Still open.** The second flicker report (a tall element by the stairs) still needs a live repro —
+unchanged from the last session, and still not guessed at.
