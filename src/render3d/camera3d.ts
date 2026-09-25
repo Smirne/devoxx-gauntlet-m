@@ -16,11 +16,11 @@ import * as THREE from 'three';
 import type { RobotKind } from '../sim/types';
 import { ROBOT_HEIGHT_M } from '../sim/units';
 
-const DIST: Record<RobotKind, number> = { voxxy: 3.1, droid: 4.4, biggy: 4.2 };
+export const DIST: Record<RobotKind, number> = { voxxy: 3.1, droid: 4.4, biggy: 4.2 };
 // Droid's orbit centre sits higher than the others' (0.95 of his 2.1 m): he is
 // the tall one, and his puzzles are high (Michele, 24 Sep, after trying a
 // chase camera and asking for the original one back with just this change).
-const PIVOT: Record<RobotKind, number> = { voxxy: 0.85, droid: 0.95, biggy: 0.8 };
+export const PIVOT: Record<RobotKind, number> = { voxxy: 0.85, droid: 0.95, biggy: 0.8 };
 
 export class ThirdPersonCamera {
   readonly camera: THREE.PerspectiveCamera;
@@ -38,6 +38,14 @@ export class ThirdPersonCamera {
   private dist = 3.5;
   private kind: RobotKind | null = null;
   private snapNext = true;
+  /**
+   * A pitch to ease back to once the robot is under way, then forgotten. The
+   * opening hands over looking down over the crates (from the usual pitch the
+   * camera sat behind them, and the first playable frame was a crate); this lets
+   * it settle to the normal framing as the robot walks clear. Any mouse look
+   * cancels it: after that the pitch is the player's.
+   */
+  settlePitch: number | null = null;
 
   constructor(aspect: number) {
     this.camera = new THREE.PerspectiveCamera(58, aspect, 0.05, 420);
@@ -47,6 +55,7 @@ export class ThirdPersonCamera {
     this.yaw -= dx * 0.0035;
     this.pitch = THREE.MathUtils.clamp(this.pitch + dy * 0.0028, -0.25, 1.15);
     this.lastUser = this.time;
+    this.settlePitch = null;
   }
 
   onWheel(dy: number): void {
@@ -114,6 +123,11 @@ export class ThirdPersonCamera {
         d = Math.atan2(Math.sin(d), Math.cos(d));
         this.yaw += d * Math.min(1, dt * 1.6 * Math.min(1, speed / 2));
       }
+    }
+
+    if (this.settlePitch !== null && speed > 0.3) {
+      this.pitch += (this.settlePitch - this.pitch) * Math.min(1, dt * 0.9);
+      if (Math.abs(this.settlePitch - this.pitch) < 0.01) this.settlePitch = null;
     }
 
     const wantDist = DIST[kind] * this.zoom;
