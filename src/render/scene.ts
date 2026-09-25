@@ -34,7 +34,7 @@ import { JAM_LEAF_H, JAM_SKEW, JAM_SKID, JAM_TIP } from '../sim/chapters/ch1-nig
 import type { GameSnapshot, Person, Plate, Prop, RobotKind, ViewRect } from '../sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M, STOREY_H_M, m } from '../sim/units';
 
-import { createCamera, OPENING_AZIMUTH_RAD, type DioramaCamera } from './camera';
+import { createCamera, OPENING_AZIMUTH_RAD, OPENING_BAND, type DioramaCamera } from './camera';
 import { FIRE_LEAF_H, FIRE_LEAF_T, fireDoorDraw } from './fire-door';
 import { buildKeypad, type KeypadModel } from './keypad';
 import { buildCrates, type CratesModel } from './crates';
@@ -2757,6 +2757,11 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     if (wantAzimuth !== lastAzimuth) {
       lastAzimuth = wantAzimuth;
       diorama.setAzimuth(wantAzimuth);
+      // And its own vertical band. The framed box always includes the band, so
+      // the band — not `VIEW_CRATES` — is what decides how close the opening can
+      // get; see `OPENING_BAND`.
+      if (wantAzimuth === undefined) diorama.setBand();
+      else diorama.setBand(OPENING_BAND[0], OPENING_BAND[1]);
     }
 
     placeRobots(snap, dt, floorY);

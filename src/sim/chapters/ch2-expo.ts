@@ -1197,8 +1197,20 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     // wall: still true, and nothing left to say about it.
     if (!router.posterLit || router.known) return;
     router.known = true;
+    /*
+     * SHE RECOGNISES IT BEFORE SHE READS IT OUT. Michele: *"wifi password: when
+     * lighted by a robot for the first time, that robot could have a toast, 'Oh
+     * yeah, that password..'"*
+     *
+     * It narrated what the beam found, which is the camera talking. Opening on
+     * her reaction makes it hers, and it makes the joke land harder: a robot that
+     * has been round this venue before already knows the password is dreadful and
+     * is only annoyed to be reminded. The line is still one toast, because the
+     * password has to arrive with it — two would stack and the second would be
+     * the one she is talking over.
+     */
     ctx.flash(
-      'Voxxy holds the beam on the paint. A wifi symbol, a metre of orange, and under it: ' +
+      'Voxxy: oh — <i>that</i> password. A wifi symbol, a metre of orange, and under it ' +
         '<b>DevoxxForever</b> — <i>(and no, you can\u2019t change it)</i>. Bart. Now the terminal in the ' +
         'technical room',
       4600,

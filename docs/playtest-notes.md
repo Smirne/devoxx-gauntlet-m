@@ -433,6 +433,73 @@ Still open on that block from the 24 Sep list: the sign direction, and *"this el
 reception is not needed"* — the dark slab in front of the counter, which I could not identify from
 the note alone and will ask about rather than guess at.
 
+## Michele, 25 Sep — playing Version 30
+
+Version 28 never started (the bundle was never uploaded with the page; see `GAUNTLET.md`), so
+this is the first real play of the night's work.
+
+| his note | state |
+| --- | --- |
+| *"I'd leave out the robot name here (moreover some task need multiple robots). That's already a big hint"* | **Done.** Worse than a hint: `Task.who` was one kind filled from `need[0]`, so a two-colour mix displayed one robot — a wrong answer. `who` is a list now, the chip is gone, and `H` names every robot a task needs. |
+| *"esc ok click outside should close the panel"* | **Done.** The sheet takes pointer events back from the `pointer-events:none` overlay, or a click on it would land on the canvas and close it. |
+| *"Colours are a bit off: Droid and biggy are whitey-grey"* | **Done.** One gain per rig instead of a per-panel target — see below. |
+| *"I'd zoom a little bit to make robots and crates bigger"* | **Done**, after finding the rect was never what decided it — see below. |
+| *"I'd remove this: and add it to the panel on I. The bar stays only with key reminders?"* | **Done.** The briefing is in the run sheet; the bar carries the chapter name and the keys. |
+| *"we lost the intro text. We should display it somewhere. Maybe animation, transiction to game, popup appears?"* | **Done**, and that is exactly the shape: the sheet opens itself once per chapter, the first frame of play after the transition, and Esc / a click / `I` close it for good until the next chapter. |
+| *"This also can go, it's the old version of the meter"* | **Done.** `GameSnapshot.progress` is no longer drawn. The field stays: several chapter tests read it as the chapter's own state line, and those are sim assertions that would be lost. |
+| *"runsheet should also have the commands recap"* | **Done**, at the foot of the sheet. Still on the top bar too — there it is a glance, here it is a read, and the panel is where a player goes when they do not know what to do. |
+| *"when showing the element, the glow is fine if it's in the view. If it's outside, there should be something pointing at it"* | **Done.** Off screen the ring becomes a chevron pinned to an inset border, rotated along the line from the middle of the frame to the UNCLAMPED point — clamping first would have every edge arrow pointing along the edge. |
+| *"wifi password: when lighted by a robot for the first time, that robot could have a toast, 'Oh yeah, that password..'"* | **Done.** It narrated what the beam found, which is the camera talking; it opens on her reaction now. |
+| *"also the 'this one is mine' hint does not work too well when multiple robots are involved"* | **Done** with the `who` list: *"Voxxy (1) and Droid (2) — this one takes both of us."* |
+| *"Robots still go through the handrail in the chapter transiction"* | **Open.** Queued since 24 Sep. One waypoint through the 1.30 m pocket, plus an assertion that no cutscene leg crosses a wall. |
+| *"there might be also intermediate challenges (eg: open the door for clue 3 with Droid and biggy). They might need a clue too?"* | **Open.** The shape that fits: let `Task.hint` be a LIST, so `H` walks several lines before the ring and a chapter can publish the intermediate step as its own clue without adding a row to the sheet. |
+| *"There's a light on the crates, robot exit fully visible. Light (emergency light?) flickers and stops, robots light up -> transition to game"* | **Open, and it is the right answer** — see below. |
+| *"We'll need to add music!"* | **Open.** |
+| *"We need to add the CRAB SANDWICH somewhere. That's the most famous part of the infamous devoxx food."* | **Open**, noted for later work. Chapter 3's catering court is where it belongs. |
+
+### Why the robots were whitey-grey
+
+The lift scaled **each panel** to a target luminance of its own, `floor + range * sqrt(lum)`. That
+is tone compression, not lighting, and it did two things nobody wanted: it squashed each robot's
+internal contrast, and it exposed a charcoal robot to the same brightness as the pale tan crates he
+is standing in front of. `robots/droid-robot.png` is dark charcoal with warm amber accents; the
+lift was taking his main panel from luminance 0.053 to **0.201**, a mid grey.
+
+Saturation was never the fault — it was preserved exactly. **Brightness was.** A low-saturation
+colour made four times brighter reads as grey, which is why Voxxy (saturation 0.99) survived it and
+Droid (0.47) and Biggy (0.54) did not.
+
+Now: **one gain per rig**, set so the robot's mean panel luminance reaches `PRESENT_TARGET`, applied
+to every panel alike. Dark stays dark relative to light, every hue holds, and the robot is the robot
+with a light on it. Never below 1, never above `PRESENT_MAX_GAIN`, and the cap is **proportional**,
+not per channel — dividing each channel by its own excess is exactly what turns a saturated colour
+white. Voxxy gets a gain of 1.0, which is right: he is the orange one and needs no help.
+
+### Why the zoom did nothing until it did
+
+`frame()` fits a box that is the view rect **crossed with a fixed vertical band** (`BAND_LOW` to
+`BAND_HIGH`, 4.3 m). While that band is in the box it is the binding dimension and the rect has no
+say: measured through `__afterdark.project()`, shrinking `VIEW_CRATES` from 92 to 76 moved the
+crates **3%** on screen, and 76 to 60 moved them 3% again.
+
+The opening frames three crates in an empty corridor with nothing above them worth keeping, so it
+gets its own band (`OPENING_BAND`, 3.1 m) the same way it already gets its own azimuth. `setBand()`
+follows `setAzimuth()` exactly, restore convention included. `tests/intro-light.test.ts` pins the
+thing that was silently false — that the rect now changes the framing at all — rather than merely
+that the override exists.
+
+### The emergency light — Michele's idea, and it is better than what is there
+
+*"If we want to handle the light change, we could do this. There's a light on the crates, robot exit
+fully visible. Light (emergency light?) flickers and stops, robots light up -> transition to game."*
+
+This dissolves the tension the presentation light exists to fudge. Right now the intro has to fake
+"fully visible in a blackout", which is why it needed tuning twice. With his version there IS a
+light: the robots are lit because something is lighting them, it dies on camera, their own lamps
+come up, and the cut to a dark corridor is **motivated** rather than a fade. It also explains the
+blackout to a player who has just arrived, and it costs nothing in the sim — the presentation light
+already takes a 0..1, so the flicker is a curve on the number that is already there.
+
 ### The intro, restaged against the west wall
 
 Michele's own proposal, taken whole: *"Why not placing the crates on the west wall and using a single

@@ -627,6 +627,8 @@ export interface AfterDarkHandle {
   errors: string[];
   /** The three.js scene root. A probe hook — see `DioramaScene.debugRoot`. */
   debugRoot(): unknown;
+  /** Where a sim point lands on the canvas. The same hook the HUD's hint uses. */
+  project(x: number, y: number, h?: number): { x: number; y: number } | null;
   dispose(): void;
 }
 
@@ -634,6 +636,7 @@ const handle: AfterDarkHandle = {
   game,
   snapshot: () => game.snapshot(),
   debugRoot: () => scene.debugRoot(),
+  project: (x: number, y: number, h = 0) => scene.project(x, y, h),
   startChapter: (n: number) => game.startChapter(n),
   topDown: (on: boolean) => scene.setTopDown(on),
   fog: (on: boolean) => scene.setFogEnabled(on),

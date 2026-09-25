@@ -238,10 +238,15 @@ export const TITLE_OUT = 0.45;
  * The HEIGHT is what does it. The camera fits this rect to the viewport, which is
  * wider than it is tall, so a portrait rect like this one is height-limited and
  * the width is whatever the aspect makes of it — widening it changes nothing and
- * shortening it zooms. The crates and the three standing marks together occupy
- * y 314..386, so 76 is that plus a margin, centred on the row.
+ * shortening it zooms.
+ *
+ * Measured rather than guessed, through `__afterdark.project()`: at h 76 the
+ * crates and the three standing marks covered 579 x 470 of a 1600 x 987 frame —
+ * 36% of its width and 48% of its height, which is why the row still read small
+ * in a lot of black. At 60 that becomes roughly 730 x 590, with the bottom of it
+ * still clear of the presentation card.
  */
-export const VIEW_CRATES: ViewRect = { x: CRATE_ROW.x - 26, y: CRATE_ROW.y - 38, w: 58, h: 76 };
+export const VIEW_CRATES: ViewRect = { x: CRATE_ROW.x - 26, y: CRATE_ROW.y - 30, w: 58, h: 60 };
 
 /** How long the camera takes to pull back from the crates to the corridor. */
 export const PULL_BACK = 1.6;
