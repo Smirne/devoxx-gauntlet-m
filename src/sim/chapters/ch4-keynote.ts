@@ -17,7 +17,7 @@
 
 import { CY0, CY1, F1, R, VIEW_DEVOXX, floor1Walls, roomDoor } from '../geometry';
 import { PUSH_LEAN_MIN, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
-import { botsCollide, circleRect, dist, inRect, mkBody, speed, stepBot } from '../bot';
+import { botsCollide, circleRect, dist, inRect, mkBody, speed, standOff, stepBot } from '../bot';
 import type { Bot, Person, Prop, Rect, Task, Vec2 } from '../types';
 
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
@@ -312,6 +312,13 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     ctx.pushBiggy(dt);
     const bg = ctx.byKind('biggy');
     const v = ctx.byKind('voxxy');
+
+    // Stephan and the speaker are standing on the stage floor, not painted on
+    // it — the same fix as chapter 3's ("voxy passes though a person?").
+    for (const b of ctx.bots) {
+      standOff(b, stephan);
+      standOff(b, speakerAt);
+    }
 
     stepBot(crate, dt, ctx.walls);
     for (const b of ctx.bots) botsCollide(b, crate, 0.1);
