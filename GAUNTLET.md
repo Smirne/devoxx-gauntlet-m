@@ -198,7 +198,15 @@ the link.**
   creates a second artifact and the link Michele has bookmarked goes stale.
 - Build from the **committed** state, never the working tree — parallel agents are usually
   mid-write. `tools/publish-build.sh` does this: it builds `HEAD` in a throwaway git worktree
-  and prints the `dist/` path to publish.
+  and prints the path to publish.
+- **Publish that `index.html` and nothing else — it is the whole build.** The script folds the
+  JS and CSS into the page (`tools/inline-build.mjs`) precisely so this is true. Do not go
+  looking for an `assets/` folder to publish alongside it; there isn't one. Version 28 shipped
+  a page whose bundle had never been uploaded, so the artifact served the *previous* version's
+  JS, 404'd, and the game did not start. One line in the console said so:
+  `Failed to load resource: 404 — index-CYf9neTo.js`. **If Michele reports a build that does
+  not start, open the console first** — a 404 on the bundle is this, and it is a republish,
+  not a code bug.
 - Say in the message which commit it is, and what is *known to be wrong* in it. A build posted
   without its caveats invites Michele to re-report things the round already knows about.
 - The debug URL API is the useful part for review, so repeat it: `?chapter=N`, `?topdown=1`,
