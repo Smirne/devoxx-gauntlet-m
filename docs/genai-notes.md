@@ -4259,3 +4259,7 @@ chapters on the built bundle.
     the door itself.
   - The ground-floor changes (main staircase turned, toilets sealed, the lobby z-fight) and
     chapter 3's crowd are outside what the 3D build draws.
+- *The shutter goes to chapter 2.* Michele: *"Keep the [shutter] design for chap2."* The roll-up
+  shutter that was chapter 1's 3D fire door is saved as `src/render3d/shutter.ts`
+  (`rollerShutter`, `poseShutter`) for the store's roller door in chapter 2. Nothing builds it until
+  the 3D build has that chapter.
