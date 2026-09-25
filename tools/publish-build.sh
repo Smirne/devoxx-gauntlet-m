@@ -26,8 +26,16 @@ ln -s "$REPO/node_modules" "$OUT/node_modules"
 # The source map is a third of the payload and nothing reads it in a published build.
 rm -f "$OUT"/dist/assets/*.map
 
+# Fold the bundle into the page, so `index.html` is the WHOLE build.
+#
+# GAUNTLET.md says to publish `dist/index.html`, and that was only true if the
+# file is self-contained — it was not. Publishing the page alone left the
+# artifact serving a new index.html against the PREVIOUS version's JS, which
+# 404s, so the game did not start at all (version 28; the console said
+# `Failed to load resource: 404 — index-CYf9neTo.js` and nothing else).
+node "$REPO/tools/inline-build.mjs" "$OUT/dist"
+
 echo "commit:   $SHA"
 echo "dist:     $OUT/dist"
-echo "page:     $OUT/dist/index.html"
-echo "assets:   $(cd "$OUT/dist" && ls assets | tr '\n' ' ')"
-echo "size:     $(du -sh "$OUT/dist" | cut -f1)"
+echo "page:     $OUT/dist/index.html  <- publish THIS, on its own; it is the whole build"
+echo "size:     $(du -sh "$OUT/dist/index.html" | cut -f1)"
