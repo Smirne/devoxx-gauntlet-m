@@ -4284,3 +4284,29 @@ chapters on the built bundle.
   - *"How do I close the start-of-chapter panel? I thought any key would do."* In 3D any key now
     closes it except I, H and the view keys (M, N, P, Q). A movement key closes it and moves.
     `main.ts` still closes it only with Escape or I; the 2.5D side may want the same change.
+- *Evening playtest round (25 Sep).*
+  - *Clue 2 "too easy... rotated Voxxy, hint solved".* A probe over every heading from the three
+    starting marks lit the kiosk clue at any tolerance, 2.5D's 5 px included. Since the crates moved
+    to the west end, the robots start 9 m from a kiosk with glass on all four sides. Fixed in the sim:
+    the kiosk's back (menu board) and its counter front either side of the hatch are now solid, with
+    glass on the south and east. The probe now finds no heading from the marks that lights it, and
+    the puzzle is the one it was written as: Voxxy in through the hatch, Biggy's flood through the
+    glass. Moving the clue out of the kiosk was rejected, because that would lose the hatch puzzle.
+    The 2.5D renderer will now draw those two sides with its generic solid-wall code; left for the
+    2.5D side to style.
+  - *Tolerance.* `CLUE_SPOT_3D` is now 7 px: at 10, clue 4 went without Voxxy ever entering the
+    alcove.
+  - *Droid's "eyes" behind his head.* His skull mesh was wound inward. From behind, its back was
+    culled and the eye beads showed through. It is now wound outward, in the shared rig, so 2.5D
+    gets the fix too.
+  - *Droid sinking into Biggy.* In 3D he now rides 10 cm above the crown.
+  - *"Where's the keypad?"* The 3D pad still had its keys on its narrow west end, although the sim
+    had turned it to face the corridor. It now faces the corridor, has a backlit bezel that pulses
+    until the code is in, and a lamp in front of it.
+  - *"A floating camera + wall part".* The CCTV at x 60 and the north cable tray. From the high
+    hand-off camera both hung in mid-air in the first frame; the CCTV moved and the tray is gone.
+  - *Crate fronts.* *"I liked the way they opened and started falling, the problem is the final
+    part."* 3D keeps the fall and drops the roll: the front lies flat and stays on the floor.
+  - *The exit.* *"The cutscene camera should show the 3 characters from above/behind."* 3D now has a
+    cutscene camera that jumps under the sim's black fade and drifts behind the three as they walk.
+    The fade itself, 0.45 s after the leaves finish swinging, is the sim's and was left as is.

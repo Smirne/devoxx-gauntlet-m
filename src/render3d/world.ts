@@ -395,7 +395,9 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
         _cutLook.copy(c.position).add(c.getWorldDirection(new THREE.Vector3()).multiplyScalar(4));
         inCut = true;
       }
-      const k = 1 - Math.exp(-dt * 1.6);
+      // Under the black (the sim moves them to their marks there) the camera
+      // jumps with them; after it, it drifts along as they walk.
+      const k = snap.fade > 0.9 ? 1 : 1 - Math.exp(-dt * 1.6);
       _cutPos.lerp(_cutT, k);
       _cutLook.lerp(_cutT.set(_cutC.x + 1.8, 0.4, _cutC.z), k);
       c.position.copy(_cutPos);
