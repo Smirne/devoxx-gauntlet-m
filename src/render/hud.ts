@@ -129,7 +129,6 @@ function speakerOf(text: string): RobotKind | null {
 }
 
 /** Seconds of play after which the briefing paragraph folds to one line. */
-const BRIEF_FULL_S = 13;
 
 const ACCENT = '#ffb347';
 const MUTED = '#9aa0ab';
@@ -144,14 +143,8 @@ const CSS = `
   padding:8px 14px;background:linear-gradient(180deg,rgba(10,11,14,.96),rgba(10,11,14,.78));border-bottom:1px solid #2a2e36}
 .ad-brand{color:${ACCENT};font-weight:700;letter-spacing:.09em;font-size:12px;white-space:nowrap}
 .ad-chapter{color:${MUTED};font-size:12px;white-space:nowrap}
-.ad-obj{flex:1 1 340px;min-width:240px;cursor:pointer}
-/* The briefing is 60-84 words and it used to sit across the top of the frame for
-   the whole chapter — a permanent 12% text band over the diorama. It folds to one
-   line a few seconds in, and a click puts it back. The objective bar at the bottom
-   carries the live state, which is the part that actually ticks. */
-.ad-obj.ad-fold{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;
-  overflow:hidden;opacity:.72}
-.ad-obj b{color:${ACCENT};font-weight:600}
+/* The briefing moved off the top bar and into the run sheet — the bar carries the
+   chapter's name and the keys, and nothing that has to be read twice. */
 .ad-keys{color:${MUTED};font-size:12px}
 .ad-swag{color:${MUTED};font-size:12px;white-space:nowrap}
 .ad-skip{pointer-events:auto;margin-left:auto;background:#1c1f26;color:${ACCENT};border:1px solid ${ACCENT};
@@ -305,7 +298,12 @@ const CSS = `
   width:min(560px,86vw);padding:18px 20px;border:1px solid ${ACCENT};border-radius:12px;
   background:rgba(10,11,14,.97);box-shadow:0 24px 80px rgba(0,0,0,.7)}
 .ad-sheet h3{margin:0 0 4px;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:${ACCENT}}
-.ad-sheet .ad-sub{margin-bottom:12px;font-size:12px;color:${MUTED}}
+.ad-sheet .ad-sub{margin-bottom:10px;font-size:12px;color:${MUTED}}
+.ad-brief{margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid rgba(242,239,233,.12);
+  font-size:13px;line-height:1.45;color:#cdc9c2;max-height:34vh;overflow-y:auto}
+.ad-brief b{color:${ACCENT};font-weight:600}
+.ad-skeys{margin-top:12px;padding-top:11px;border-top:1px solid rgba(242,239,233,.12);
+  font-size:12px;line-height:1.5;color:${MUTED}}
 .ad-trow{display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-top:1px solid rgba(242,239,233,.09);
   font-size:14px;line-height:1.3}
 .ad-trow:first-of-type{border-top:0}
@@ -325,6 +323,14 @@ const CSS = `
   border:2px solid currentColor;pointer-events:none;animation:ad-ping 1.4s ease-out infinite}
 .ad-mark::after{content:'';position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;
   border-radius:50%;background:currentColor}
+/* OFF SCREEN, the ring has nothing to sit on. Michele: "when showing the element,
+   the glow is fine if it's in the view. If it's outside, there should be something
+   pointing at it." So a chevron pinned to the edge, rotated to face it. */
+.ad-edge{position:absolute;z-index:3;width:0;height:0;margin:-13px 0 0 -13px;
+  border-left:15px solid currentColor;border-top:9px solid transparent;border-bottom:9px solid transparent;
+  pointer-events:none;filter:drop-shadow(0 0 6px currentColor);animation:ad-nudge 1.1s ease-in-out infinite}
+@keyframes ad-nudge{0%,100%{transform:rotate(var(--a)) translateX(0)}50%{transform:rotate(var(--a)) translateX(7px)}}
+@media (prefers-reduced-motion:reduce){.ad-edge{animation:none}}
 @keyframes ad-ping{0%{transform:scale(.55);opacity:1}70%{transform:scale(1);opacity:.35}100%{transform:scale(1.1);opacity:0}}
 @media (prefers-reduced-motion:reduce){.ad-mark{animation:none;opacity:.9}}
 
@@ -619,13 +625,6 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   const brand = el('span', 'ad-brand', top);
   brand.textContent = 'AFTER DARK';
   const chapterEl = el('span', 'ad-chapter', top);
-  const objEl = el('span', 'ad-obj', top);
-  objEl.title = 'Click to fold or unfold the briefing';
-  let briefPinned: boolean | null = null;
-  const onBriefClick = (): void => {
-    briefPinned = objEl.classList.contains('ad-fold');
-  };
-  objEl.addEventListener('click', onBriefClick);
   const keysEl = el('span', 'ad-keys', top);
   const swagEl = el('span', 'ad-swag', top);
   const skip = el('button', 'ad-skip', top);
@@ -665,16 +664,34 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   const askEl = el('span', 'ad-ask', taskBar);
   askEl.textContent = 'I run sheet · H hint';
 
-  const padCap = el('div', 'ad-cap', pad);
 
   /* the run sheet (I) and the hint mark (H) */
   const sheet = el('div', 'ad-sheet ad-hide', root);
-  const sheetSub = el('div', 'ad-sub', sheet);
   const sheetTitle = el('h3', '', sheet);
   sheetTitle.textContent = 'Run sheet';
-  sheet.insertBefore(sheetTitle, sheetSub);
+  const sheetSub = el('div', 'ad-sub', sheet);
+  /*
+   * THE BRIEFING LIVES HERE NOW. Michele: *"I'd remove this: and add it to the
+   * panel on I. The bar stays only with key reminders?"*
+   *
+   * It was 60-84 words across the top of the frame — a permanent text band over
+   * the diorama that folded to one line and could be clicked back. In the panel
+   * it is read when it is wanted and takes no screen the rest of the time.
+   */
+  const sheetBrief = el('div', 'ad-brief', sheet);
   const sheetRows = el('div', '', sheet);
+  /*
+   * THE KEYS, AGAIN, AT THE BOTTOM OF THE SHEET. Michele: *"runsheet should also
+   * have the commands recap."*
+   *
+   * They are still along the top bar, where they are a glance. Here they are a
+   * read: the panel is already the one place a player goes when they do not know
+   * what to do, and having to close it to find out which key climbs is exactly
+   * the moment it should answer.
+   */
+  const sheetKeys = el('div', 'ad-skeys', sheet);
   const mark = el('div', 'ad-mark ad-hide', root);
+  const edge = el('div', 'ad-edge ad-hide', root);
   let sheetOpen = false;
   /**
    * How much help the player has asked for on the task in hand, keyed by its id
@@ -774,6 +791,8 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   let disposed = false;
   /** The last snapshot `update` was handed, for the two key-driven methods. */
   let lastSnap: GameSnapshot | null = null;
+  /** The chapter whose briefing has already been put up. See `update`. */
+  let briefedFor = -1;
 
   function updateChips(snap: GameSnapshot): void {
     for (let i = 0; i < chips.length; i++) {
@@ -816,19 +835,26 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   }
 
   function updateKeypad(snap: GameSnapshot): void {
-    // The bottom-centre strip is every chapter's live progress readout; only
-    // chapter 1 also carries the four keypad cells above it.
-    const line = snap.progress;
-    const showPad =
-      snap.opening === null && snap.chapter >= 1 && snap.phase !== 'done' && (line !== '' || snap.chapter === 1);
+    /*
+     * THE BOTTOM STRIP IS THE METER NOW, plus chapter 1's four keypad cells.
+     *
+     * It used to end in `GameSnapshot.progress` — a full sentence of live state
+     * ("digits 0/4 · still dark: orange + green, ... · keypad: drive up to the
+     * fire door to type"). Michele: *"This also can go, it's the old version of
+     * the meter"*, and he is right: the run sheet says the same things better —
+     * the sub-count is a row's `n / of`, and "still dark" is four rows that tick
+     * off. Two readouts of one fact is one too many.
+     *
+     * `progress` stays on the snapshot. Several chapter tests read it as the
+     * chapter's own state line (`tests/chapters.test.ts` — "router ✓",
+     * "password known", "(2/13)"), and those are real assertions about the sim
+     * that would be lost, not HUD assertions.
+     */
+    const showPad = snap.opening === null && snap.chapter >= 1 && snap.phase !== 'done' && snap.tasks.length > 0;
     pad.classList.toggle('ad-hide', !showPad);
     const show = snap.chapter === 1 && snap.phase !== 'done';
     cellsWrap.classList.toggle('ad-hide', !show);
-    if (!showPad) return;
-    if (!show) {
-      setText(padCap, line, textCache);
-      return;
-    }
+    if (!showPad || !show) return;
     // `Clue.slot` may be 0- or 1-based depending on the chapter; ordering by slot
     // makes both work.
     const ordered = snap.clues.slice().sort((a, b) => a.slot - b.slot);
@@ -841,7 +867,6 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
       cell.classList.toggle('ad-typed', typed !== '');
       cell.classList.toggle('ad-found', typed === '' && !!clue?.found);
     }
-    setText(padCap, line, textCache);
   }
 
   /* ------------------------------------------------ the run sheet, I and H */
@@ -878,6 +903,8 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     if (!open) return;
     const done = snap.tasks.reduce((n, t) => n + (t.done ? 1 : 0), 0);
     setText(sheetSub, `${CHAPTER_TITLES[snap.chapter] ?? ''} — ${done} of ${snap.tasks.length} done`, textCache);
+    setHtml(sheetBrief, snap.objective, htmlCache);
+    setText(sheetKeys, snap.keys, textCache);
     // Rebuilt rather than diffed: the sheet is open only while the player is
     // reading it, the lists are five rows long, and a diff here would be cost
     // with no frame to spend it on.
@@ -916,14 +943,48 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     const level = t ? (nudges.get(t.id) ?? 0) : 0;
     const at = t?.at;
     const p = level >= 3 && at && opts.project ? opts.project(at.x, at.y, 0.4) : null;
-    mark.classList.toggle('ad-hide', p === null);
-    if (p === null) return;
-    mark.style.left = `${Math.round(p.x)}px`;
-    mark.style.top = `${Math.round(p.y)}px`;
+    if (p === null) {
+      mark.classList.add('ad-hide');
+      edge.classList.add('ad-hide');
+      return;
+    }
     // One ring, so one colour: the first robot named, or the house accent when a
     // task belongs to nobody in particular.
     const who = t?.who;
-    mark.style.color = who && who.length > 0 ? lampOf(snap, who[0]) : ACCENT;
+    const colour = who && who.length > 0 ? lampOf(snap, who[0]) : ACCENT;
+
+    /*
+     * ON SCREEN it is a ring on the thing. OFF SCREEN a ring is drawn outside the
+     * frame and the player sees nothing at all, which is worse than no hint —
+     * they asked and got silence. Michele: *"If it's outside, there should be
+     * something pointing at it."*
+     *
+     * So the target is clamped to an inset border and a chevron is pinned there,
+     * rotated along the line from the middle of the screen to where the thing
+     * actually is. The inset keeps the whole arrow on the canvas; the rotation is
+     * computed from the UNCLAMPED point, or every arrow on an edge would point
+     * along it instead of at the target.
+     */
+    const w = root.clientWidth || 1;
+    const h = root.clientHeight || 1;
+    const inset = 34;
+    const outside = p.x < inset || p.x > w - inset || p.y < inset || p.y > h - inset;
+    mark.classList.toggle('ad-hide', outside);
+    edge.classList.toggle('ad-hide', !outside);
+    if (!outside) {
+      mark.style.left = `${Math.round(p.x)}px`;
+      mark.style.top = `${Math.round(p.y)}px`;
+      mark.style.color = colour;
+      return;
+    }
+    const cx = w / 2;
+    const cy = h / 2;
+    const ang = Math.atan2(p.y - cy, p.x - cx);
+    edge.style.left = `${Math.round(Math.min(Math.max(p.x, inset), w - inset))}px`;
+    edge.style.top = `${Math.round(Math.min(Math.max(p.y, inset), h - inset))}px`;
+    edge.style.color = colour;
+    edge.style.setProperty('--a', `${ang}rad`);
+    edge.style.transform = `rotate(${ang}rad)`;
   }
 
   /**
@@ -1147,13 +1208,19 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     // `I` and `H` are keypresses, not frames, so they need the last snapshot the
     // HUD was given rather than one of their own.
     lastSnap = snap;
+    /*
+     * OPENED ONCE A CHAPTER, and only once. The briefing is no longer anywhere
+     * else, so a player who never presses `I` would never read it — but a panel
+     * that reopens every time the chapter state twitches is worse than the text
+     * band it replaced. `briefedFor` is the chapter it has already been shown
+     * for, so Esc, a click or `I` close it for good until the next one.
+     */
+    if (snap.phase === 'play' && snap.opening === null && snap.chapter !== briefedFor) {
+      briefedFor = snap.chapter;
+      sheetOpen = true;
+    }
 
     setText(chapterEl, CHAPTER_TITLES[snap.chapter] ?? CHAPTER_TITLES[0], textCache);
-    if (setHtml(objEl, snap.objective, htmlCache)) briefPinned = null;
-    // Unfolded while the player is still reading it, then folded to one line. A
-    // click pins it either way for the rest of the chapter.
-    const fold = briefPinned === null ? snap.phase === 'play' && snap.t > BRIEF_FULL_S : briefPinned;
-    objEl.classList.toggle('ad-fold', fold);
     setText(keysEl, snap.keys, textCache);
     setText(swagEl, snap.swag.length > 0 ? `swag ${snap.swag.length}/3` : '', textCache);
 
@@ -1184,10 +1251,10 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     // The top bar keeps only the one thing that is true during the opening: that
     // a key skips it. The chapter's name and briefing arrive when the chapter does.
     chapterEl.classList.toggle('ad-hide', opening);
-    objEl.classList.toggle('ad-hide', opening);
     if (opening) {
       sheet.classList.add('ad-hide');
       mark.classList.add('ad-hide');
+      edge.classList.add('ad-hide');
     }
 
     updateChips(snap);
@@ -1221,7 +1288,6 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     if (disposed) return;
     disposed = true;
     skip.removeEventListener('click', onSkipClick);
-    objEl.removeEventListener('click', onBriefClick);
     window.removeEventListener('click', onRootClick);
     live.length = 0;
     promptCells.length = 0;

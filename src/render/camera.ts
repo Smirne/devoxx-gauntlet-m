@@ -127,6 +127,23 @@ export const DIORAMA_ELEVATIONS_DEG: readonly number[] = Object.freeze(
 const BAND_LOW = -0.4;
 const BAND_HIGH = 3.9;
 
+/**
+ * The band the OPENING is framed against, and the reason it is a knob at all.
+ *
+ * The band is part of the framed box, so it sets a floor under how far the
+ * camera can ever come in: shrinking `VIEW_CRATES` from 92 to 60 moved the
+ * crates by 3% on screen, because 4.3 m of vertical band was the binding
+ * dimension the whole time and the rect never got a say. Measured through
+ * `__afterdark.project()` — Michele: *"I'd zoom a little bit to make robots and
+ * crates bigger."*
+ *
+ * The opening frames three crates on a pallet in an empty corridor. The tallest
+ * is Droid's at 2.56 m and there is no set above them worth keeping in shot, so
+ * the band is just them: 3.1 m against 4.3 is a 1.4x zoom before the rect is
+ * even considered, and the rect then does what it looks like it should.
+ */
+export const OPENING_BAND: readonly [number, number] = [-0.2, 2.9];
+
 /** Breathing room around the framed rect. */
 const FIT_MARGIN = 1.06;
 
@@ -194,6 +211,11 @@ export interface DioramaCamera {
    * override rather than a second setting.
    */
   setAzimuth(rad?: number): void;
+  /**
+   * Frame against a different vertical band for one shot. Either argument
+   * non-finite (or the call made with none) restores the default band.
+   */
+  setBand(lo?: number, hi?: number): void;
   /** The yaw in force right now, radians. `DIORAMA_AZIMUTH_RAD` unless a shot moved it. */
   azimuth(): number;
   /** Kick the camera. `amount` is 0..1 and stacks; anything above 1 is clamped. */
@@ -226,6 +248,8 @@ export function createCamera(aspect: number): DioramaCamera {
   let elevation = (BASE_ELEVATION_DEG * Math.PI) / 180;
   /** The yaw in force. The play azimuth until a shot borrows another one. */
   let azimuth = DIORAMA_AZIMUTH_RAD;
+  let bandLow = BAND_LOW;
+  let bandHigh = BAND_HIGH;
   let lastView: ViewRect = { x: 0, y: 0, w: SIM_W, h: SIM_H };
   let lastAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
   let lastFloor: 'up' | 'down' = 'up';
@@ -278,8 +302,8 @@ export function createCamera(aspect: number): DioramaCamera {
     const z0 = m(view.y);
     const z1 = m(view.y + view.h);
     const floorY = lastFloor === 'down' ? -STOREY_H_M : 0;
-    const y0 = floorY + BAND_LOW;
-    const y1 = floorY + BAND_HIGH;
+    const y0 = floorY + bandLow;
+    const y1 = floorY + bandHigh;
     centre.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
 
     // Project the eight corners of the framed box onto the camera's screen axes
@@ -347,6 +371,16 @@ export function createCamera(aspect: number): DioramaCamera {
     },
     azimuth(): number {
       return azimuth;
+    },
+    setBand(lo?: number, hi?: number): void {
+      // Same convention as `setAzimuth`: anything not finite means "back to the
+      // default band", so a shot clears its override with a bare `setBand()`.
+      const nLo = typeof lo === 'number' && Number.isFinite(lo) ? lo : BAND_LOW;
+      const nHi = typeof hi === 'number' && Number.isFinite(hi) ? hi : BAND_HIGH;
+      if (nLo === bandLow && nHi === bandHigh) return;
+      bandLow = nLo;
+      bandHigh = nHi;
+      frame(lastView, lastAspect);
     },
     shake(amount: number): void {
       if (!(amount > 0)) return;

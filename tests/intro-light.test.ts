@@ -42,6 +42,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DIORAMA_AZIMUTH_RAD,
   OPENING_AZIMUTH_RAD,
+  OPENING_BAND,
   createCamera,
   dioramaToCameraAtDeg,
 } from '../src/render/camera';
@@ -476,6 +477,54 @@ describe('the diorama camera azimuth', () => {
     // Explicitly clearing an override nobody set must be a no-op, so a caller
     // can end every shot with `setAzimuth()` and not have to know.
     cleared.setAzimuth();
+    cleared.frame(VIEW, 16 / 9, 'up');
+    expect(camState(cleared.cam)).toEqual(camState(untouched.cam));
+  });
+
+  /*
+   * THE BAND IS WHAT ACTUALLY DECIDES HOW CLOSE THE OPENING GETS.
+   *
+   * `frame()` fits a box that is the view rect CROSSED WITH a fixed vertical
+   * band, so while the band was 4.3 m tall it was the binding dimension and the
+   * rect had no say: shrinking `VIEW_CRATES` from 92 to 60 moved the crates 3% on
+   * screen. That is the bug this pins — not "the override exists" but "the rect
+   * now does something", which is the thing that was silently false.
+   */
+  it('lets the view rect matter again once the band is the shot\'s own', () => {
+    const wide: ViewRect = { x: 0, y: 300, w: 120, h: 100 };
+    const tight: ViewRect = { x: 30, y: 330, w: 60, h: 40 };
+    const half = (c: THREE.OrthographicCamera): number => c.top - c.bottom;
+
+    // With the default band, shrinking the rect barely moves the framing.
+    const dflt = createCamera(16 / 9);
+    dflt.frame(wide, 16 / 9, 'down');
+    const dfltWide = half(dflt.cam);
+    dflt.frame(tight, 16 / 9, 'down');
+    const dfltRatio = dfltWide / half(dflt.cam);
+
+    // With the opening's own band, the same shrink actually zooms.
+    const shot = createCamera(16 / 9);
+    shot.setBand(OPENING_BAND[0], OPENING_BAND[1]);
+    shot.frame(wide, 16 / 9, 'down');
+    const shotWide = half(shot.cam);
+    shot.frame(tight, 16 / 9, 'down');
+    const shotRatio = shotWide / half(shot.cam);
+
+    expect(shotRatio, 'the tighter rect did not zoom in').toBeGreaterThan(1.05);
+    expect(shotRatio, 'the band is still swamping the rect').toBeGreaterThan(dfltRatio);
+  });
+
+  it('gives the default band back exactly, so no other shot is disturbed', () => {
+    const untouched = createCamera(16 / 9);
+    untouched.setChapter(1);
+    untouched.frame(VIEW, 16 / 9, 'up');
+
+    const cleared = createCamera(16 / 9);
+    cleared.setChapter(1);
+    cleared.setBand(OPENING_BAND[0], OPENING_BAND[1]);
+    cleared.frame(VIEW, 16 / 9, 'up');
+    // A bare `setBand()` restores, the same way `setAzimuth()` does.
+    cleared.setBand();
     cleared.frame(VIEW, 16 / 9, 'up');
     expect(camState(cleared.cam)).toEqual(camState(untouched.cam));
   });
