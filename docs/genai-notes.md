@@ -3833,3 +3833,22 @@ working on a couple of things; the next merge is the same one-command operation.
   short of it. `CLUE_SPOT` is back to 5, the 2.5D branch's value, so the next merge has nothing to
   reconcile. `GameOptions.clueSpot` lets a build pass its own size, and the 3D build passes 10
   (`CLUE_SPOT_3D`, the radius its floor ring is drawn at).
+- *The 3D intro, second pass.* Michele: *"too slow and static... add actions (voxxy exits and
+  jumps...)"*, *"when the crate opens, robots are on the side. Why?"*, and a first playable frame
+  that was all crate. What the agent found:
+  - The camera sat off axis, 40% of the way toward the middle of the row, so a robot standing a
+    stride in front of its crate appeared beside it.
+  - The follow camera took over at its usual pitch a stride behind the robots, which put it inside
+    the crates.
+
+  The fix is in the 3D renderer only; the sim's opening and its timings are unchanged.
+  - The camera is square on to each robot, follows it out of its crate and dollies in.
+  - Each robot does its own `E` trick as soon as it is out: Voxxy hops twice, Droid stretches,
+    Biggy rolls. The camera holds between two robots while one trick overlaps the next crate
+    opening.
+  - The hand-off looks down over the crates and settles to the usual pitch once the robot walks.
+    The crates are now camera colliders.
+  - The lamp flare was a 1.2 m star that covered Biggy's face whenever a robot faced the camera,
+    which the intro makes them do. It is now small and tight.
+
+  Shortening the timings themselves was not done, because the 2.5D build plays the same opening.
