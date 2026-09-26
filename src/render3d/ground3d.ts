@@ -44,7 +44,9 @@ export interface Ground3D {
   /** Where the environment capture is taken from. */
   probe: THREE.Vector3;
   /** The hall's lighting circuit: 0 dark, 1 up (the sim's `breaker` prop reaching `done`). */
-  setPower(on: number, t: number): void;
+  setPower(on: number, t: number, instant?: boolean): void;
+  /** Walls that exist in one chapter and not the other (chapter 2's roller door and cabinet are props there, walls after). */
+  setChapter(n: number): void;
   update(t: number, dt: number): void;
 }
 
@@ -184,6 +186,21 @@ export function buildGround(mats: Materials): Ground3D {
     solid.add(s.mat, box(m(w.w), s.h, m(w.h), V(m(w.x + w.w / 2), base + s.h / 2, m(w.y + w.h / 2)), 2.5));
   }
   colliders.push(...solid.build(group));
+  // What chapter 3 has as plain walls and chapter 2 draws as moving props.
+  const later = new THREE.Group();
+  group.add(later);
+  {
+    const two = new Set(groundWallsFor(2).map((w) => `${w.x}:${w.y}:${w.w}:${w.h}`));
+    const extra = new Buckets();
+    for (const w of groundWallsFor(3)) {
+      if (two.has(`${w.x}:${w.y}:${w.w}:${w.h}`)) continue;
+      const st = styleOf(w, mats, concrete);
+      if (!st || w.glass) continue;
+      extra.add(st.mat, box(m(w.w), st.h, m(w.h), V(m(w.x + w.w / 2), groundRiseM(w.x + w.w / 2) + st.h / 2, m(w.y + w.h / 2)), 2.5));
+    }
+    extra.build(later);
+  }
+  later.visible = false;
 
   /* ------------------------------------------------------------- ceiling */
   {
@@ -264,18 +281,21 @@ export function buildGround(mats: Materials): Ground3D {
   // hall from the lobby end when the power comes on.
   const bays: Array<{ light: THREE.SpotLight; lamp: THREE.Mesh; at: number }> = [];
   const lampMat = new THREE.MeshBasicMaterial({ color: 0x000000, toneMapped: false });
-  for (let ix = 0; ix < 4; ix++) {
+  // Four across the hall, three more over the lobby, two rows of each.
+  const bayXs = [GF.hall.x + 130, GF.hall.x + 370, GF.hall.x + 610, GF.hall.x + 850, 1220, 1480, 1740];
+  for (const x of bayXs) {
     for (let iz = 0; iz < 2; iz++) {
-      const x = GF.hall.x + 130 + ix * 240;
       const z = GF.hall.y + 150 + iz * 300;
       const light = new THREE.SpotLight(0xfff1dc, 0, 30, 1.1, 0.7, 1.3);
       light.position.set(m(x), HALL_H - 0.6, m(z));
+      const ix = bayXs.indexOf(x);
       light.target.position.set(m(x), 0, m(z));
       group.add(light, light.target);
       const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.55, 0.25, 20), lampMat.clone());
       lamp.position.set(m(x), HALL_H - 0.5, m(z));
       group.add(lamp);
-      bays.push({ light, lamp, at: 1 - x / (GF.hall.x + GF.hall.w) });
+      bays.push({ light, lamp, at: Math.max(0, 1 - x / (GF.hall.x + GF.hall.w)) });
+      void ix;
       volumeSpots.push({ light, fog: 0.08 });
     }
   }
@@ -284,7 +304,8 @@ export function buildGround(mats: Materials): Ground3D {
   const fill = new THREE.HemisphereLight(0xfff4e6, 0x3a3430, 0);
   group.add(fill);
   let power = 0;
-  let poweredAt = -1;
+  /** When the circuit closed (world clock), or null while it is open. */
+  let poweredAt: number | null = null;
 
   return {
     group,
@@ -294,21 +315,24 @@ export function buildGround(mats: Materials): Ground3D {
     volumeSpots,
     bounds: { min: V(0, -1, 0), max: V(m(GX), HALL_H + 1, m(GZ)) },
     probe: V(m(GF.hall.x + GF.hall.w / 2), 1.8, m(GF.hall.y + GF.hall.h / 2)),
-    setPower(on: number, t: number): void {
-      if (on > 0 && power === 0) poweredAt = t;
-      if (on === 0) poweredAt = -1;
+    setChapter(n: number): void {
+      later.visible = n >= 3;
+    },
+    setPower(on: number, t: number, instant = false): void {
+      if (on > 0 && power === 0) poweredAt = instant ? t - 60 : t;
+      if (on === 0) poweredAt = null;
       power = on;
     },
     update(t: number, dt: number): void {
       for (const u of updaters) u(t, dt);
       for (const b of bays) {
         // Booth by booth: each bay strikes 0.25 s after the one nearer the lobby.
-        const k = poweredAt < 0 ? 0 : THREE.MathUtils.clamp((t - poweredAt - b.at * 2.2) / 0.5, 0, 1);
+        const k = poweredAt === null ? 0 : THREE.MathUtils.clamp((t - poweredAt - b.at * 2.2) / 0.5, 0, 1);
         const flick = k > 0 && k < 1 ? (Math.sin(t * 60 + b.at * 40) > 0 ? 1 : 0.2) : 1;
         b.light.intensity = 2400 * k * flick;
         (b.lamp.material as THREE.MeshBasicMaterial).color.setRGB(1, 0.95, 0.85).multiplyScalar(8 * k * flick);
       }
-      const lit = poweredAt < 0 ? 0 : THREE.MathUtils.clamp((t - poweredAt - 1.2) / 1.2, 0, 1);
+      const lit = poweredAt === null ? 0 : THREE.MathUtils.clamp((t - poweredAt - 1.2) / 1.2, 0, 1);
       fill.intensity = 1.1 * lit;
       boothBoards.forEach((mat, i) => mat.color.setScalar(0.08 + 2.2 * lit * (0.92 + 0.08 * Math.sin(t * 2 + i))));
       void dt;

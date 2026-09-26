@@ -17,6 +17,7 @@ import { LightPool } from './lightpool';
 import { createMaterials } from './materials';
 import { Pipeline, QUALITY, type QualityName, type VolumeSpot } from './pipeline';
 import { buildGround, type Ground3D } from './ground3d';
+import { createPeople } from './people3d';
 import { createProps, type Props3D } from './props3d';
 import { createRobots, updateGlare, updateRobots, type Robot3D } from './robots3d';
 import { HEIGHTS, SIGN_SPANS, X_END, buildVenue, type Venue3D } from './venue';
@@ -359,6 +360,9 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   const propsRoot2 = new THREE.Group();
   scene.add(propsRoot2);
   let onGround = false;
+  const peopleRoot = new THREE.Group();
+  scene.add(peopleRoot);
+  const people = createPeople(peopleRoot);
   function switchFloor(g: boolean): void {
     onGround = g;
     if (g && !ground) {
@@ -398,7 +402,11 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     if ((snap.chapter >= 2) !== onGround) switchFloor(snap.chapter >= 2);
     if (!envBaked) bakeEnv();
     if (onGround && ground) {
-      ground.setPower(world.debugPower || snap.props.some((q) => q.kind === 'breaker' && q.state === 'done') ? 1 : 0, time);
+      // Chapter 2 lights the hall when its circuit closes; chapter 3 is the
+      // morning, doors open, and the hall is lit from the start.
+      const lit = world.debugPower || snap.chapter >= 3 || snap.props.some((q) => q.kind === 'breaker' && q.state === 'done');
+      ground.setPower(lit ? 1 : 0, time, snap.chapter >= 3);
+      ground.setChapter(snap.chapter);
       ground.update(time, dt);
     } else {
       venue.update(time, dt);
@@ -406,6 +414,8 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     }
     updateRobots(robots, snap, dt);
     props.update(snap, time, dt);
+    peopleRoot.visible = onGround;
+    if (onGround) people.update(snap, time);
     // Props are built lazily from the first snapshots; patch whatever exists.
     if (patchedFrames < 3) {
       applyBoxProjection(scene, probeBox);

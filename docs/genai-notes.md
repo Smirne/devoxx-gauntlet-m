@@ -4357,3 +4357,36 @@ of chapter 3 yet.
     legs go out to the dome's flanks and hang down its sides.
   - *"The intro was slower."* Its timings are the sim's and did not change. Most likely it was the
     machine; noted in case it recurs.
+
+### 3D chapter 3, first pass (26 Sep 2026)
+
+**What Michele asked.** *"Push on to 3."*
+
+**What the agent did.**
+- *The crowd:* `people3d.ts` pools the 2.5D build's own figures (`buildPerson`, posed from
+  seed, heading and speed), placed on the sim's floor plates. No new model; the same people in both
+  builds.
+- *Props, in `props-ground.ts`:*
+  - the tomato soup station under a neon word;
+  - the ladle on its high shelf, gone once Droid has it;
+  - the pot and the soup riding on Biggy's lid;
+  - the broodje krab;
+  - Stephan's gate, whose glass flaps fold away on the sim's swing;
+  - The Finally Block (a black bar with a neon name, taps, and four Belgian glass shapes by `v`);
+  - beer crates, stacking on Biggy by layer;
+  - the booth games: the rubber duck, its target, the race markers and the top-shelf sticker.
+- *Stable identities:* props that move (the pot, the duck, a named crate) get a stable key instead
+  of their position. Whatever the snapshot stops carrying hides, so chapter 2's shutter and
+  pallets are gone in chapter 3.
+- *Morning:* the hall is lit from the start, with bays over the lobby too. The walls chapter 3 has
+  that chapter 2 drew as props appear in chapter 3. The end card now follows chapter 3.
+
+**A bug worth recording.** The hall stayed dark in chapter 3. "Circuit open" was stored as a start
+time of -1, and "lit from the start" set the start time 60 s in the past, which is also negative in
+the first minute of a session. It is now an explicit null. Found by exposing the ground floor to
+the page and calling it directly: it lit when called by hand, so the fault was in how the world
+drove it.
+
+**Not done yet.** No playthrough of chapter 3 in 3D. The ceiling and the far walls are dark even
+when lit. There is no daylight through the entrance glass. Stephan and the speaker are drawn as
+ordinary figures with their role colours.
