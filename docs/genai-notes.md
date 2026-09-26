@@ -4113,3 +4113,36 @@ venue, no new floor, no new kind of light source.
 **Tests.** `tests/dark-rig.test.ts` (10) sweeps the corridor rather than asserting one pose: station B
 is proved impossible for Voxxy from ~900 positions, station A impossible for one body from ~1,600,
 and both are proved possible from the poses the notes claim. Suite 736 green.
+
+## 26 Sep 2026 — the cheap extras, 5 · 6 · 7
+
+**Human decision.** Michele, of the seven small additions the agent had listed: *"The cheap gain are
+ok"* and *"Let's try 5 6 7 too."*
+
+- **5 · the rubber duck listens.** `E` at the Rubber Duck Inc stand: the robot says the problem out
+  loud, the duck says nothing, and the robot "works it out" — the answer being the chapter's own
+  hint for whatever is still open, picked for the robot standing there so it is never a hint about
+  somebody else's job. It reads `tasks()`, so it can never drift from what `H` would have said. It
+  only listens while the duck is still ON its stand: once shoved down the lane it is a puck, which
+  also keeps its `keySpots` circle fixed so the chapter's own beats can be kept out of it.
+- **6 · lanyard colours mean something.** `src/sim/lanyards.ts`: crew red, speaker teal, attendee
+  grey-blue, chair orange, on `Person.lanyard` and painted by the renderer. It is a fact about a
+  person and not a render flourish, which is why it lives in the sim — the reason you can pick the
+  keynote speaker out of three thousand people is the ribbon round their neck, and chapter 3's middle
+  act is doing exactly that. The speaker hint now says so.
+- **7 · "GC pause" when Biggy stops.** `src/sim/quips.ts`, ticked by `game.ts` after the chapter, so
+  it is true in all four rather than being one chapter's joke. It needs a real run-up (1.2 s above
+  55% of his top speed) and fires **once a chapter**, and it waits for a clear screen: the first cut
+  of the test ran him down the exhibition hall, he hit a sponsor table, and the toast explaining
+  what he walked into is not a screen a joke may talk over. That became the rule and the test.
+
+**Still open from the same list:** 1 (colour legend as an in-world AV rider), 2 (wrong-name badge
+from the printer), 3 (the CFP rejection wall under Voxxy's beam). 4 (speaker in the wrong room) is
+**withdrawn** — Michele: *"the speaker is the keynote? Rooms are on a separate floor."* He is right
+on both counts: chapter 3's speaker IS the keynote speaker, and rooms 4 and 8 are on floor 1 while
+the hall is on the ground floor, so the gag as written could not happen. If it comes back it will be
+a TRACK speaker in chapter 4's floor-1 corridor, outside the wrong door — which is a different joke.
+
+**Tests.** `tests/extras.test.ts` (6): the ribbons are four distinct colours and everybody in the
+hall wears one with Stephan the only chair; the duck answers at its stand and refuses once shoved;
+the GC pause fires after a run and never twice in a chapter. Suite 742 green.

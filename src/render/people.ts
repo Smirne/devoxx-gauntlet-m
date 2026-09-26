@@ -135,6 +135,14 @@ interface Shared {
   hair: THREE.MeshStandardMaterial[];
   shadow: THREE.MeshBasicMaterial;
   lanyard: THREE.MeshStandardMaterial;
+  /**
+   * One material per lanyard colour the sim has asked for, built on demand.
+   *
+   * The ribbons mean something (`src/sim/lanyards.ts`: crew red, speaker teal,
+   * attendee grey-blue, chair orange) and there are four of them, so a map rather
+   * than a material per figure — three thousand figures share four ribbons.
+   */
+  ribbons: Map<string, THREE.MeshStandardMaterial>;
   cup: THREE.MeshStandardMaterial;
   refs: number;
 }
@@ -158,6 +166,7 @@ function acquire(): Shared {
     hair: HAIR.map((c) => std(c, 0.95)),
     shadow: new THREE.MeshBasicMaterial({ color: 0x05070c, transparent: true, opacity: 0.3, depthWrite: false }),
     lanyard: std('#d9741f', 0.7),
+    ribbons: new Map(),
     cup: std('#f2efe9', 0.6),
     refs: 1,
   };
@@ -175,6 +184,8 @@ function release(): void {
   for (const list of [shared.skin, shared.trouser, shared.hair]) for (const mm of list) mm.dispose();
   shared.shadow.dispose();
   shared.lanyard.dispose();
+  for (const mm of shared.ribbons.values()) mm.dispose();
+  shared.ribbons.clear();
   shared.cup.dispose();
   shared = null;
 }
@@ -335,7 +346,23 @@ export function buildPerson(): PersonModel {
 
     const carry = seated ? 'none' : CARRY[Math.floor(rnd(seed, 7) * CARRY.length) % CARRY.length];
     pack.visible = carry === 'pack';
-    lanyard.visible = carry === 'lanyard';
+    /*
+     * The badge ribbon. Everybody the sim gives one to wears one — it is how you
+     * tell a speaker from an attendee across a hall, and chapter 3 asks you to do
+     * that — while `carry` keeps deciding the rucksack and the coffee. Seated
+     * rows keep theirs on: people do not take their badge off to watch a keynote.
+     */
+    lanyard.visible = p.lanyard !== undefined || carry === 'lanyard';
+    if (p.lanyard !== undefined) {
+      let mm = s.ribbons.get(p.lanyard);
+      if (!mm) {
+        mm = new THREE.MeshStandardMaterial({ color: new THREE.Color(p.lanyard), roughness: 0.7, metalness: 0.02 });
+        s.ribbons.set(p.lanyard, mm);
+      }
+      lanyard.material = mm;
+    } else {
+      lanyard.material = s.lanyard;
+    }
     cup.visible = carry === 'coffee';
     if (pack.visible) {
       pack.scale.set(halfW * 1.5, 0.26 * H, 0.1 * H);

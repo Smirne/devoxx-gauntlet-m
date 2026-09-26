@@ -18,6 +18,7 @@
 import { CY0, CY1, F1, R, VIEW_DEVOXX, VIEW_REEL, floor1Walls, roomDoor } from '../geometry';
 import { PUSH_LEAN_MIN, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
 import { botsCollide, circleRect, dist, inRect, mkBody, speed, standOff, stepBot } from '../bot';
+import { LANYARD, lanyardFor } from '../lanyards';
 import { buildReel, reelAt, reelLength } from '../reel';
 import type { Bot, Person, Prop, Rect, ReelCard, ReelView, Task, Vec2 } from '../types';
 
@@ -505,6 +506,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         r: a.seated ? 4 : a.r,
         colour: a.colour,
         role: a.seated ? 'seated' : 'visitor',
+        lanyard: lanyardFor('visitor'),
         seed: a.seed,
         // Sat down, they all face the stage, which is the low-y end of the room.
         face: a.seated ? -Math.PI / 2 : a.face,
@@ -520,6 +522,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       colour: '#e8d5b5',
       hat: true,
       role: 'stephan',
+      lanyard: LANYARD.chair,
       seed: 910,
       face: Math.PI / 2,
     });
@@ -530,6 +533,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       name: 'speaker',
       colour: '#f0e0c0',
       role: 'speaker',
+      lanyard: LANYARD.speaker,
       seed: 911,
       face: Math.PI / 2,
     });

@@ -290,6 +290,15 @@ export interface Person {
   hat?: boolean;
   /** 'visitor' | 'queue' | 'seated' | 'stephan' | 'speaker' | 'staff' */
   role: string;
+  /**
+   * The colour of the badge ribbon round their neck, or nothing for somebody not
+   * wearing one — `src/sim/lanyards.ts` says which colour means what.
+   *
+   * It is on the person rather than derived from `role` in the renderer because it
+   * is how you tell a speaker from an attendee at forty metres, and chapter 3 asks
+   * you to do exactly that.
+   */
+  lanyard?: string;
   /** Lane-walk target. */
   tx?: number;
   ty?: number;

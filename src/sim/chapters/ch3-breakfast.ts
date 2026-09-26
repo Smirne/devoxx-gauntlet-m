@@ -75,6 +75,7 @@ import {
   loadBiggy,
 } from '../crates';
 import { BAR_RECT, GF, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
+import { LANYARD } from '../lanyards';
 import { botsCollide, circleRect, dist, inRect, mkBody, speed, standOff, stepBot } from '../bot';
 import type { Bot, Person, Prop, Rect, Task, Vec2, Wall } from '../types';
 
@@ -452,7 +453,12 @@ interface Minigames {
   won(): number;
 }
 
-function setupMinigames(ctx: ChapterCtx): Minigames {
+/**
+ * `hints()` is the chapter's own task list, handed in as a function because the
+ * rubber duck reads it and `tasks()` is defined further down `setup`. Nothing here
+ * decides what a hint says — the duck repeats the chapter's own line back at you.
+ */
+function setupMinigames(ctx: ChapterCtx, hints: () => readonly Task[]): Minigames {
   const booth = (name: string): { x: number; y: number; w: number; h: number } => {
     const b = GF.booths.find((o) => o.name === name);
     if (!b) throw new Error(`no booth ${name}`);
@@ -501,6 +507,25 @@ function setupMinigames(ctx: ChapterCtx): Minigames {
     drag: 1.1,
   });
   const duckTarget = { x: duckB.x - 85, y: duckB.y - 30, r: 22 };
+  /** Where the duck sits before anybody shoves it — the only place it listens. */
+  const duckHome: Vec2 = { x: duck.x, y: duck.y };
+  /**
+   * How close a robot has to be to rubber-duck at it, px, and how far the duck may
+   * have wandered from its stand and still be a duck you talk to.
+   *
+   * Michele, 26 Sep 2026, from the list of cheap extras: *"Let's try 5 6 7 too"* —
+   * number 5 was **the duck listens**. Rubber-duck debugging is the oldest joke in
+   * the building and the only one that is also a game mechanic: you say the problem
+   * out loud and the answer turns up on its own. So the duck gives you the same line
+   * `H` gives you, in the robot's voice, for whatever the chapter is waiting on.
+   *
+   * It only works while the duck is still ON its stand, and that is not a
+   * restriction, it is the honest reading: once it has been shoved down the lane it
+   * is a puck. It also keeps `keySpots` a fixed circle, so the chapter's own beats
+   * can be kept out of it the way they are kept out of the sticker's.
+   */
+  const DUCK_REACH = 26;
+  const DUCK_HOME_SLACK = 30;
   // Swag already won stays won: `ctx.swag` outlives the chapter object, so a
   // replay of chapter 3 (R, or Skip back into it) does not re-award anything.
   let duckDone = ctx.swag.includes('duck');
@@ -534,8 +559,37 @@ function setupMinigames(ctx: ChapterCtx): Minigames {
    * A gate, so each robot says why in its own voice (CLAUDE.md) — and now there is
    * somebody behind the counter who could hand it down and is enjoying not to.
    */
+  /** The line the duck answers with: the chapter's own hint for what is still open. */
+  function duckHint(b: Bot): string {
+    const open = hints().filter((t) => !t.done);
+    // The one this robot can actually do, if there is one — a hint about somebody
+    // else's job is a hint about the wrong problem (`Task.hint`).
+    const mine = open.find((t) => t.who?.includes(b.kind)) ?? open[0];
+    if (!mine) return 'Biggy: "Everything is done." The duck agrees.';
+    const line = Array.isArray(mine.hint) ? mine.hint[0] : mine.hint;
+    return typeof line === 'string' && line.length > 0 ? line : `Still open: ${mine.text}.`;
+  }
+
   function key(code: string, b: Bot): boolean {
     if (code !== 'KeyE') return false;
+
+    /*
+     * RUBBER-DUCK DEBUGGING, at the stand that sells them. The robot says the
+     * problem out loud to a plastic duck; the duck says nothing; the robot works
+     * it out. The line it "works out" is the chapter's own hint, so this can never
+     * drift from what `H` would have said.
+     */
+    if (dist(b, duck) < DUCK_REACH && dist(duck, duckHome) < DUCK_HOME_SLACK) {
+      const said =
+        b.kind === 'voxxy'
+          ? 'Voxxy explains the whole thing to a rubber duck, at speed. The duck says nothing.'
+          : b.kind === 'droid'
+            ? 'Droid states the problem to the duck, twice, in order. The duck declines to comment.'
+            : 'Biggy tells the duck everything. The duck looks up at him and waits.';
+      ctx.flash(`${said}<br>${duckHint(b)}`, 6000);
+      return true;
+    }
+
     if (!stickerDone && dist(b, sticker) < STICKER_REACH) {
       if (b.kind === 'droid') {
         stickerDone = true;
@@ -655,7 +709,12 @@ function setupMinigames(ctx: ChapterCtx): Minigames {
     key,
     // Only the sticker swallows `E`. The duck is shoved by driving into it and the
     // race is started by crossing its own line, so neither owns a key anywhere.
-    keySpots: () => [{ x: sticker.x, y: sticker.y, r: STICKER_REACH }],
+    keySpots: () => [
+      { x: sticker.x, y: sticker.y, r: STICKER_REACH },
+      // The duck's stand. The duck itself moves; the circle where it answers to
+      // `E` does not, which is what lets the chapter's beats be kept out of it.
+      { x: duckHome.x, y: duckHome.y, r: DUCK_REACH },
+    ],
     update,
     props,
     place(kind: string, x: number, y: number): boolean {
@@ -876,7 +935,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           : `Biggy: "I have been through a bar before. They still talk about it. Round the end."`,
   });
 
-  const mg = setupMinigames(ctx);
+  const mg = setupMinigames(ctx, () => tasks());
 
   const food = GF.food;
   const station: Vec2 = { x: food.soup.x + 45, y: food.soup.y + 15 };
@@ -2185,7 +2244,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   function people(): Person[] {
     const out: Person[] = [];
     for (const a of crowd) {
-      out.push({ x: a.x, y: a.y, r: a.r, colour: a.colour, role: 'visitor', seed: a.seed, face: a.face, speed: speed(a) });
+      out.push({
+        x: a.x,
+        y: a.y,
+        r: a.r,
+        colour: a.colour,
+        role: 'visitor',
+        lanyard: LANYARD.attendee,
+        seed: a.seed,
+        face: a.face,
+        speed: speed(a),
+      });
     }
     for (const q of queues) {
       for (const p of q.people) {
@@ -2195,6 +2264,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           r: p.r,
           colour: p.colour,
           role: 'queue',
+          lanyard: LANYARD.attendee,
           tx: p.hx,
           seed: p.seed,
           // A queue faces the counter it is queueing at, which is north of it.
@@ -2206,7 +2276,16 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     }
     for (let i = 0; i < npcs.length; i++) {
       const n = npcs[i];
-      out.push({ x: n.x, y: n.y, r: n.r, name: n.name, colour: '#d9c3a5', role: 'staff', seed: 900 + i });
+      out.push({
+        x: n.x,
+        y: n.y,
+        r: n.r,
+        name: n.name,
+        colour: '#d9c3a5',
+        role: 'staff',
+        lanyard: LANYARD.crew,
+        seed: 900 + i,
+      });
     }
     out.push({
       x: stephan.x,
@@ -2216,6 +2295,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       colour: '#e8d5b5',
       hat: true,
       role: 'stephan',
+      lanyard: LANYARD.chair,
       seed: 910,
       // He stands at the gate with his back to the stairs, looking at whoever is
       // coming up the concourse — which since the staircase was turned is west.
@@ -2230,6 +2310,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         name: 'keynote speaker (TBA)',
         colour: '#f0e0c0',
         role: 'speaker',
+        lanyard: LANYARD.speaker,
         seed: 911,
       });
     }
@@ -2341,7 +2422,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
          * END UP is not a secret at all.
          */
         at: speaker.following ? stageAt : undefined,
-        hint: 'Voxxy: they are hiding from the queues behind one of the booths with WALLS — you can see straight under the cloth tables, so it is none of those',
+        hint: 'Voxxy: they are hiding from the queues behind one of the booths with WALLS — you can see straight under the cloth tables, so it is none of those. Look for the teal lanyard: it is the one thing about them that is not hiding',
       },
       {
         id: 'beer',

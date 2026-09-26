@@ -55,6 +55,7 @@ import type {
   Wall,
 } from './types';
 import { CHAPTERS, type ChapterCtx, type ChapterRuntime, type ChapterState, type PrevVel } from './chapters';
+import { makeQuips } from './quips';
 
 export const CHAPTER_COUNT = 4;
 
@@ -764,6 +765,11 @@ export function createGame(opts: GameOptions = {}): DebugGame {
    * run as a whole stays one deterministic stream from one seed.
    */
   let chapterSeed = 0;
+  /**
+   * The running joke about Biggy's momentum — `src/sim/quips.ts`. It is state, so
+   * it is made once and reset with the chapter, like everything else here.
+   */
+  const quips = makeQuips();
   function startChapter(n: number, seed?: number): void {
     const def = CHAPTERS[n - 1];
     if (!def) throw new Error(`no chapter ${n}`);
@@ -776,6 +782,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     cut = null;
     dropTow();
     blockedAt.clear();
+    quips.reset();
     walls.length = 0;
     restoreIdentity();
     runtime = def.setup(ctx);
@@ -1075,6 +1082,14 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     if (phase !== 'play' || !runtime) return;
     t += dt;
     runtime.update(dt);
+    /*
+     * After the chapter, never before: a chapter that has just ended the run has
+     * the floor, and a toast about Biggy's heap on top of the final card would be
+     * the worst timed joke in the building. It also waits for a clear screen:
+     * `flash` REPLACES whatever is showing, and a gag that talks over the line
+     * telling you why you are blocked is not a gag.
+     */
+    if (card === null && toast === null) quips.tick(bots, dt, flash);
   }
 
   /**
