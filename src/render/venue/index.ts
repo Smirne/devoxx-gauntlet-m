@@ -37,7 +37,21 @@ import { SignPainter, buildSignage } from './signage';
 export { createVenuePalette } from './materials';
 export type { VenueMaterialName, VenuePalette } from './materials';
 /** The sectional-model heights, so props built by other pieces sit at venue scale. */
-export { BREAKER_D, BREAKER_H, BREAKER_Y, DOOR_H, GLASS_H, LOW_H, NEAR_CUT_H, SHELL_H, WALL_H } from './props';
+export {
+  BARRIER_H,
+  BREAKER_D,
+  BREAKER_H,
+  BREAKER_Y,
+  DOOR_H,
+  GLASS_H,
+  LOW_H,
+  NEAR_CUT_H,
+  SHELL_H,
+  WALL_H,
+  barrierPanelGeometry,
+  barrierRun,
+  disposeGeometries,
+} from './props';
 export { zaalPosterX, zaalSignX } from './signage';
 
 export interface Venue {

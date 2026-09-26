@@ -68,14 +68,23 @@ import {
   CABINET_LEAF_T,
   CABINET_LEAVES,
   GATE_H,
-  GATE_LEAF_T,
   GATE_POST_R,
   LOCK_LEAF_T,
   cabinetDoorDraw,
   gateDraw,
   lockDoorDraw,
 } from './doors';
-import { BREAKER_D, BREAKER_H, BREAKER_Y, WALL_H, buildVenue, type Venue } from './venue';
+import {
+  BREAKER_D,
+  BREAKER_H,
+  BREAKER_Y,
+  WALL_H,
+  barrierPanelGeometry,
+  barrierRun,
+  buildVenue,
+  disposeGeometries,
+  type Venue,
+} from './venue';
 
 const KINDS: readonly RobotKind[] = ['voxxy', 'droid', 'biggy'];
 
@@ -720,10 +729,16 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   gateGroup.visible = false;
   const gateMat = new THREE.MeshStandardMaterial({ color: 0x4d6c8a, roughness: 0.45, metalness: 0.65 });
   const gatePivot = new THREE.Group();
-  const gateBar = new THREE.Mesh(boxGeo, gateMat);
-  gateBar.name = 'gate-leaf';
-  gateBar.castShadow = true;
-  gatePivot.add(gateBar);
+  /*
+   * The leaf is a barrier panel, not a bar: `barrierPanelGeometry` in
+   * `venue/props.ts` builds it along local +z standing on y = 0, which is the axis
+   * this pivot already worked in. Its length is fixed for the chapter, so it is
+   * built on the first frame that draws it and kept.
+   */
+  const gateLeaf = new THREE.Group();
+  gateLeaf.name = 'gate-leaf';
+  gatePivot.add(gateLeaf);
+  let gateLeafLen = 0;
   gateGroup.add(gatePivot);
   const gatePosts: THREE.Mesh[] = [];
   for (let i = 0; i < 2; i++) {
@@ -743,13 +758,14 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    * swings, so these two carry it while the prop is up — the sim pushes walls
    * under exactly these rects (`gatebar` in `ch3-breakfast.ts`).
    */
-  const gateRuns: THREE.Mesh[] = [];
+  const gateRuns: THREE.Group[] = [];
+  const gateRunKeys: string[] = [];
   for (let i = 0; i < 2; i++) {
-    const run = new THREE.Mesh(boxGeo, gateMat);
+    const run = new THREE.Group();
     run.name = `gate-run-${i}`;
-    run.castShadow = true;
     run.visible = false;
     gateRuns.push(run);
+    gateRunKeys.push('');
     gateGroup.add(run);
   }
   dressing.add(gateGroup);
@@ -2443,21 +2459,33 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     gateGroup.visible = true;
     const base = surfaceY(floorY, d.leaf.hinge.x, d.leaf.hinge.y);
 
-    gatePivot.position.set(m(d.leaf.hinge.x), base + GATE_H / 2, m(d.leaf.hinge.y));
+    // The panel stands ON the pivot's floor now rather than being a box centred on
+    // it, so the pivot sits at the hinge's own surface height.
+    gatePivot.position.set(m(d.leaf.hinge.x), base, m(d.leaf.hinge.y));
     gatePivot.rotation.y = yawFromSimHeading(Math.atan2(d.leaf.axis.y, d.leaf.axis.x));
-    gateBar.scale.set(m(GATE_LEAF_T), GATE_H, m(d.leaf.len));
-    gateBar.position.set(0, 0, m(d.leaf.len) / 2);
+    if (gateLeafLen !== d.leaf.len) {
+      disposeGeometries(gateLeaf);
+      gateLeaf.clear();
+      const panel = new THREE.Mesh(barrierPanelGeometry(m(d.leaf.len), GATE_H), gateMat);
+      panel.castShadow = true;
+      gateLeaf.add(panel);
+      gateLeafLen = d.leaf.len;
+    }
 
     for (let i = 0; i < gateRuns.length; i++) {
       const r = d.runs[i];
-      gateRuns[i].visible = r !== undefined;
+      const run = gateRuns[i];
+      run.visible = r !== undefined;
       if (!r) continue;
-      gateRuns[i].scale.set(m(r.w), GATE_H, m(r.h));
-      gateRuns[i].position.set(
-        m(r.x + r.w / 2),
-        surfaceY(floorY, r.x + r.w / 2, r.y + r.h / 2) + GATE_H / 2,
-        m(r.y + r.h / 2),
-      );
+      // Rebuilt only when the run's own rect moves, which is never inside a
+      // chapter: a run of barriers is geometry, not a scaled box.
+      const key = `${r.x},${r.y},${r.w},${r.h},${floorY}`;
+      if (gateRunKeys[i] !== key) {
+        disposeGeometries(run);
+        run.clear();
+        run.add(barrierRun(r, surfaceY(floorY, r.x + r.w / 2, r.y + r.h / 2), gateMat, GATE_H));
+        gateRunKeys[i] = key;
+      }
     }
 
     for (let i = 0; i < gatePosts.length; i++) {
