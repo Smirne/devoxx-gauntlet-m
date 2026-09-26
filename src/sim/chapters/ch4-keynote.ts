@@ -15,10 +15,11 @@
  * the room over `ARRIVAL`. Miss it and the keynote starts with a half-built stage.
  */
 
-import { CY0, CY1, F1, R, VIEW_DEVOXX, floor1Walls, roomDoor } from '../geometry';
+import { CY0, CY1, F1, R, VIEW_DEVOXX, VIEW_REEL, floor1Walls, roomDoor } from '../geometry';
 import { PUSH_LEAN_MIN, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
 import { botsCollide, circleRect, dist, inRect, mkBody, speed, standOff, stepBot } from '../bot';
-import type { Bot, Person, Prop, Rect, Task, Vec2 } from '../types';
+import { buildReel, reelAt, reelLength } from '../reel';
+import type { Bot, Person, Prop, Rect, ReelCard, ReelView, Task, Vec2 } from '../types';
 
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 
@@ -90,6 +91,8 @@ export interface KeynoteState {
   complaints: number;
   /** Seconds of slack left when the stage was finished. */
   spare: number;
+  /** Seconds into the opening video, or -1 while it is not playing. */
+  reelT: number;
 }
 
 const KEYS = '1/2/3/Tab: switch · WASD · E: use / hold Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint';
@@ -299,6 +302,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * place to be jumping around in.
    */
   function key(code: string): boolean {
+    if (reelKey()) return true;
     const b = ctx.bots[ctx.cur];
     ctx.switchKey(code);
     if (code !== 'KeyE' || b.kind !== 'droid') return false;
@@ -309,9 +313,57 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     return true;
   }
 
+  /* -------------------------------------------------------- the opening video
+   *
+   * Michele: *"Devoxx usually starts with a video. We could have one recapping the
+   * robots adventures.. or bloopers?"*, then *"Movie approved, build it."*
+   *
+   * The game ends the way the conference starts. The three of them reach the stage,
+   * the house screen behind them wakes up, and Devoxx's opening video plays — cut
+   * from the night the player has just had (`src/sim/reel.ts`). Only then does the
+   * final card come up.
+   *
+   * The chapter owns the clock and the cards; the renderer is handed one card and a
+   * fade. `setView` pulls in on the screen for the length of it, because the payoff
+   * of a video is being able to read it.
+   */
+  let reelCards: ReelCard[] = [];
+  let reelT = -1;
+
+  function startReel(): void {
+    reelCards = buildReel(ctx.score, ctx.swag, ctx.t);
+    reelT = 0;
+    ctx.setView(VIEW_REEL);
+    ctx.flash('The house screen wakes up. <b>Devoxx opening video</b> \u2014 any key to skip', 3200);
+  }
+
+  /** True if the reel took the key. Any key skips to the final card. */
+  function reelKey(): boolean {
+    if (reelT < 0) return false;
+    endReel();
+    return true;
+  }
+
+  function endReel(): void {
+    reelT = -1;
+    ctx.setView(VIEW_DEVOXX);
+    ctx.finish();
+  }
+
   /* ------------------------------------------------------------------- update */
 
   function update(dt: number): void {
+    if (reelT >= 0) {
+      /*
+       * The room is finished: nobody drives and no job is live. The CROWD keeps
+       * walking, though — three thousand people do not freeze because a video
+       * started, and a still room under a playing screen reads as a crash.
+       */
+      reelT += dt;
+      for (const a of crowd) stepAttendee(a, dt);
+      if (reelT >= reelLength(reelCards)) endReel();
+      return;
+    }
     t += dt;
     ctx.stepAll(dt);
     ctx.pushBiggy(dt);
@@ -385,7 +437,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       ctx.score.spare = Math.trunc(spare);
       ctx.score.keynoteComplaints = complaints;
       ctx.score.late = full ? 1 : 0;
-      ctx.finish();
+      startReel();
     } else if (full && !ready) {
       ended = true;
       ctx.fail(
@@ -573,6 +625,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     people,
     progress,
     tasks,
+    /** The opening video, while it is running. `null` every other frame. */
+    reel: (): ReelView | null => (reelT < 0 ? null : reelAt(reelCards, reelT)),
     placeProp(kind: string, x: number, y: number): boolean {
       if (kind !== 'cake') return false;
       crate.x = x;
@@ -592,6 +646,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       crowd: crowd.length,
       complaints,
       spare,
+      reelT,
     }),
   };
 }

@@ -1994,6 +1994,15 @@ export function groundWallsFor(chapter: number): Wall[] {
 export const VIEW_CLOSED: ViewRect = { x: 0, y: 14, w: 900, h: 672 };
 /** Chapter 4: the Devoxx section with the fire door shut behind. */
 export const VIEW_DEVOXX: ViewRect = { x: 590, y: 14, w: 1310, h: 672 };
+/**
+ * Chapter 4's last shot: the house screen and the stage under it.
+ *
+ * The opening video plays on Room 8's own cinema screen once the three of them are
+ * on the stage (`src/sim/reel.ts`), and a video you cannot read is not a payoff —
+ * so the camera comes in off `VIEW_DEVOXX` to the screen's own end of the room.
+ * Room 8 is x 1195..1578, its screen sits along y 24 and the stage just under it.
+ */
+export const VIEW_REEL: ViewRect = { x: 1232, y: 6, w: 310, h: 210 };
 /** The whole cinema level — only during the first cutscene. */
 export const VIEW_F1: ViewRect = { x: 0, y: 14, w: 1900, h: 672 };
 /** Chapters 2 and 3: the whole hall plus the lobby. */

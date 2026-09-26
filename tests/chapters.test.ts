@@ -1614,9 +1614,79 @@ describe('chapter 4 — keynote', () => {
     g.debug.place('droid', stage!.x + 90, sy);
     g.debug.place('biggy', stage!.x + 160, sy);
     steps(g, 1);
+
+    /*
+     * ...AND THEN THE OPENING VIDEO, which is what the game now ends on.
+     *
+     * Michele: *"Devoxx usually starts with a video... Movie approved, build it."*
+     * The three of them reach the stage, Room 8's house screen wakes up and plays
+     * the night's bloopers (`src/sim/reel.ts`), and the final card comes after it.
+     * The run is already scored at this point — the reel is reading numbers, not
+     * making them.
+     */
+    const reel = g.snapshot().reel;
+    expect(reel, 'no opening video').not.toBeNull();
+    expect(g.snapshot().phase).toBe('play');
+    expect(reel!.card?.title).toBe('DEVOXX BELGIUM');
+    // It ends on the running joke, and it is a real length rather than a frame.
+    expect(reel!.len).toBeGreaterThan(8);
+    let sawEnd = false;
+    for (let i = 0; i < Math.ceil(reel!.len / DT_MAX) + 4; i++) {
+      g.update(DT_MAX);
+      const r = g.snapshot().reel;
+      if (r?.card?.kind === 'end') sawEnd = true;
+    }
+    expect(sawEnd, 'the reel never reached its last card').toBe(true);
+    expect(g.snapshot().reel, 'the reel outlived the game').toBeNull();
     expect(g.snapshot().phase).toBe('done');
     expect(g.snapshot().card).toContain('Keynote starts');
     expect(g.snapshot().score.points).toBeGreaterThan(0);
+  });
+
+  /**
+   * A VIDEO YOU CANNOT SKIP IS A VIDEO NOBODY WATCHES TWICE.
+   *
+   * Four chapters in, a judge with ten minutes, and a player who has just seen it —
+   * any key cuts to the final card, which is the rule every card in this game
+   * already follows.
+   */
+  it('lets any key skip the opening video straight to the final card', () => {
+    const g = mk(4);
+    const key = (): KeynoteState => g.debug.chapter() as KeynoteState;
+    const mark = g.snapshot().props.find((p) => p.kind === 'cake-mark');
+    const markX = mark!.x + (mark!.w ?? 0) / 2;
+    g.debug.placeProp('cake', markX, mark!.y + 58);
+    g.debug.select('biggy');
+    g.debug.place('biggy', markX, mark!.y + 98);
+    g.setStick(0, -1);
+    until(g, () => key().cake, 200);
+    g.setStick(0, 0);
+    g.debug.select('droid');
+    for (const h of g.snapshot().props.filter((p) => p.kind === 'banner-hook')) {
+      g.debug.place('droid', h.x, h.y + 22);
+      g.key('KeyE');
+    }
+    g.debug.select('voxxy');
+    for (const sp of g.snapshot().props.filter((p) => p.kind === 'spotlight')) {
+      g.debug.place('voxxy', sp.x, sp.y);
+      steps(g, 1);
+    }
+    const stage = g.snapshot().props.find((p) => p.kind === 'stage');
+    const sy = stage!.y + (stage!.h ?? 0) / 2;
+    g.debug.place('voxxy', stage!.x + 20, sy);
+    g.debug.place('droid', stage!.x + 90, sy);
+    g.debug.place('biggy', stage!.x + 160, sy);
+    steps(g, 1);
+    expect(g.snapshot().reel, 'the video never started').not.toBeNull();
+
+    // Two seconds in — long enough that a player has seen the first card and
+    // decided they have had enough of it.
+    steps(g, 60);
+    expect(g.snapshot().reel).not.toBeNull();
+    g.key('Space');
+    expect(g.snapshot().reel, 'the key did not stop the video').toBeNull();
+    expect(g.snapshot().phase).toBe('done');
+    expect(g.snapshot().card).toContain('Keynote starts');
   });
 
   it('blocks the seat blocks and leaves the aisles open', () => {

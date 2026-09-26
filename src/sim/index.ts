@@ -11,6 +11,7 @@ export * from './geometry';
 export * from './surface';
 export * from './bot';
 export * from './contacts';
+export * from './reel';
 export * from './crates';
 export * from './lights';
 export * from './game';

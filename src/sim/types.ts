@@ -441,6 +441,31 @@ import type { OpeningView } from './opening';
 
 /** Everything the renderer reads for one frame. */
 /**
+ * One card of the Devoxx opening video that plays on Room 8's screen when the
+ * three robots reach the stage — see `src/sim/reel.ts`.
+ */
+export interface ReelCard {
+  title: string;
+  sub: string;
+  /** Seconds this card holds, excluding the black beat after it. */
+  hold: number;
+  kind: 'title' | 'stat' | 'blooper' | 'end';
+}
+
+/** The reel's state this frame. `card: null` is the black beat between two cards. */
+export interface ReelView {
+  /** Seconds since the reel started. */
+  t: number;
+  /** The whole reel's length, so a renderer can show how far in it is. */
+  len: number;
+  /** Index of the card being held, or of the gap after it. */
+  index: number;
+  card: ReelCard | null;
+  /** 0..1, the card's own fade. */
+  alpha: number;
+}
+
+/**
  * One contact the solver resolved, as telemetry for the physics view.
  *
  * Written by the three places that resolve one — the wall bounce in `stepBot`,
@@ -550,6 +575,12 @@ export interface GameSnapshot {
    * reads it back; see `src/sim/contacts.ts`.
    */
   contacts: readonly Contact[];
+  /**
+   * The Devoxx opening video, while it is playing on Room 8's screen — the
+   * blooper reel of the run that has just finished (`src/sim/reel.ts`). `null`
+   * every other frame of the game.
+   */
+  reel: ReelView | null;
 }
 
 /** The headless game. `src/render` holds one of these and only reads its snapshot. */

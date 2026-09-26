@@ -562,7 +562,10 @@ describe('chapter 4 — keynote', () => {
     g.debug.place('droid', stage!.x + 90, sy);
     g.debug.place('biggy', stage!.x + 160, sy);
     steps(g, 1);
-    expect(g.snapshot().phase).toBe('done');
+    // The run is over and Devoxx's opening video is playing on the house screen;
+    // the card follows it (`src/sim/reel.ts`). The rows are what this test is for,
+    // and they are still the rows.
+    expect(g.snapshot().reel, 'the opening video did not start').not.toBeNull();
     expect(row(g, 'stage').done, 'all three are on the stage and the row says they are not').toBe(true);
     expect(row(g, 'stage').n).toBe(3);
     expect(ids(g), 'chapter 4 renamed its rows on the way through').toEqual(before);

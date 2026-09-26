@@ -51,6 +51,7 @@ import { createLightLayer, type LightLayer } from './lighting';
 import { PANEL_H_M, PANEL_LIFT_M, buildReleasePanel, type ReleasePanelModel } from './release-panel';
 import { buildPerson, type PersonModel } from './people';
 import { createPhysicsOverlay } from './physics-view';
+import { createReelScreen } from './reel';
 import { buildPrinter, type PrinterModel } from './printer';
 import {
   createRobot,
@@ -784,6 +785,14 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    */
   const physics = createPhysicsOverlay();
   scene.add(physics.group);
+
+  /*
+   * Room 8's house screen, playing chapter 4's opening video. It hides itself on
+   * every frame the sim publishes no reel, which is every frame but the last
+   * twenty seconds of the game.
+   */
+  const reelScreen = createReelScreen();
+  dressing.add(reelScreen.root);
 
   /* ------------------------------------------------- the jammed cinema door
    *
@@ -1656,6 +1665,19 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    */
   function updateFocus(snap: GameSnapshot, dt: number): ViewRect {
     const view = snap.view;
+    /*
+     * THE OPENING VIDEO FRAMES ITSELF.
+     *
+     * Chapter 4 sets `VIEW_REEL` over the house screen while the video plays, and
+     * there is nobody left to follow: the room is finished and all three robots
+     * are standing on the stage. Taking the chapter's rect whole is also the only
+     * way the cards are readable — the play camera's follow window is sized for
+     * driving, not for reading fifteen metres of screen.
+     */
+    if (snap.reel !== null) {
+      focusReady = false;
+      return view;
+    }
     // A cutscene that has a framing of its own; chapters without one keep the wide
     // shot they always had, which is also the untouched path for cards and the end.
     const cut = snap.phase === 'cut' ? CUT_FRAME[snap.chapter] : undefined;
@@ -2924,6 +2946,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     placeRobots(snap, dt, floorY);
     drawDressing(snap, floorY);
     physics.update(snap, dt, (x: number, y: number) => surfaceY(floorY, x, y));
+    reelScreen.update(snap, floorY);
     updateActiveRing(snap, floorY);
     updateTow(snap, floorY);
     updateXray(snap);

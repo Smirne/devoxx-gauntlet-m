@@ -1107,6 +1107,20 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       if (chapter === 0) startChapter(1);
     }
     /*
+     * WHILE A CHAPTER IS PLAYING A VIDEO, EVERY KEY MEANS SKIP.
+     *
+     * Chapter 4's opening video (`src/sim/reel.ts`) runs with the room finished and
+     * nothing else live, so a key cannot mean anything else — and "any key" has to
+     * be true of the keys the shell handles here as well, or `Space` toggles the
+     * tow bar behind a video the player is trying to get past and `R` restarts the
+     * chapter they have just won. The chapter is asked, it stops its own reel, and
+     * the final card is up before the next frame.
+     */
+    if (phase === 'play' && runtime && (runtime.reel?.() ?? null) !== null) {
+      runtime.key(code);
+      return;
+    }
+    /*
      * `R` restarts THE CHAPTER, except in the two places where there is no
      * chapter to restart — the title card and the end card — where it still means
      * "start the run again", which is what the end card's own "R to play again"
@@ -1209,6 +1223,8 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       // Everything the solver resolved this frame, for the physics view. Live
       // array, owned by the sim, empty on any frame nothing touched anything.
       contacts: contacts(),
+      // The opening video, while chapter 4 is running it. See `src/sim/reel.ts`.
+      reel: r?.reel?.() ?? null,
     };
   }
 

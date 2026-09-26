@@ -22,6 +22,7 @@ import type {
   Person,
   Plate,
   Prop,
+  ReelView,
   RobotKind,
   Task,
   TextPrompt,
@@ -188,6 +189,11 @@ export interface ChapterRuntime {
    * chapter has no such body.
    */
   placeProp?(kind: string, x: number, y: number): boolean;
+  /**
+   * The opening video on Room 8's screen, while chapter 4 is playing it. Every
+   * other chapter, and every other frame of chapter 4, returns null or nothing.
+   */
+  reel?(): ReelView | null;
   /** Read-only internals, for tests and the debug overlay. */
   state(): ChapterState;
 }
