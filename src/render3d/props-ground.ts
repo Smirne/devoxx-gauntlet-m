@@ -212,7 +212,16 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         const tex = wayfinding(b ? [['', a], ['', b]] : [['', a]]);
         const base = p.x > 1045 ? 0.5 : 0;
         const along = pw >= ph;
-        const panel = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.8), new THREE.MeshStandardMaterial({ map: tex, emissive: new THREE.Color(1, 1, 1), emissiveMap: tex, emissiveIntensity: 0.6, side: THREE.DoubleSide }));
+        // Two faces back to back, each reading the right way round: a sign in
+        // the middle of a hall is approached from either side.
+        const panel = new THREE.Group();
+        const face = new THREE.MeshStandardMaterial({ map: tex, emissive: new THREE.Color(1, 1, 1), emissiveMap: tex, emissiveIntensity: 0.6 });
+        for (const yaw of [0, Math.PI]) {
+          const f = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.8), face);
+          f.rotation.y = yaw;
+          f.position.z = yaw === 0 ? 0.01 : -0.01;
+          panel.add(f);
+        }
         panel.position.set(cx, base + 2.3, cz);
         if (!along) panel.rotation.y = Math.PI / 2;
         const post = new THREE.Mesh(box(0.06, 1.9, 0.06, V(cx, base + 0.95, cz)), mats.steel);
