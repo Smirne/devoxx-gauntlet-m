@@ -36,6 +36,8 @@ export interface World3D {
   photo: boolean;
   /** Debug: refresh cinema E's mirror (on by default). */
   mirrorOn: boolean;
+  /** Screenshot/debug only: light the ground floor's hall as if the circuit were closed. */
+  debugPower: boolean;
   resize(w: number, h: number): void;
   /** Sim px (x, y) at `hM` metres up -> canvas CSS px, or null behind the camera. */
   project(x: number, y: number, hM: number): { x: number; y: number } | null;
@@ -396,7 +398,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     if ((snap.chapter >= 2) !== onGround) switchFloor(snap.chapter >= 2);
     if (!envBaked) bakeEnv();
     if (onGround && ground) {
-      ground.setPower(snap.props.some((q) => q.kind === 'breaker' && q.state === 'done') ? 1 : 0, time);
+      ground.setPower(world.debugPower || snap.props.some((q) => q.kind === 'breaker' && q.state === 'done') ? 1 : 0, time);
       ground.update(time, dt);
     } else {
       venue.update(time, dt);
@@ -561,6 +563,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     pipeline,
     photo: false,
     mirrorOn: true,
+    debugPower: false,
     cam,
     render,
     resize,

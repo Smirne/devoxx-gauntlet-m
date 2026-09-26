@@ -4310,3 +4310,37 @@ chapters on the built bundle.
   - *The exit.* *"The cutscene camera should show the 3 characters from above/behind."* 3D now has a
     cutscene camera that jumps under the sim's black fade and drifts behind the three as they walk.
     The fade itself, 0.45 s after the leaves finish swinging, is the sim's and was left as is.
+
+### 3D chapter 2, first pass (26 Sep 2026)
+
+**What Michele asked.** *"Can we start chapter 2 next? Anything pending on one? I can play it later."*
+
+**What the agent did.** A first playable pass of the exhibition hall in 3D, built the way chapter 1
+was: everything solid comes from the sim (`groundWallsFor(2)`, `groundPlates()`, `GF`), and the
+renderer only reads the chapter's props.
+- `src/render3d/ground3d.ts` builds the ground floor:
+  - floors at the sim's heights: the hall at 0, the lobby 0.5 m up with its steps, the main flight
+    to the cinema level;
+  - walls by kind: booth totems, columns, stair shafts as rooms, the back-of-house, the glass
+    entrance front;
+  - a trussed ceiling, exit signs, a coloured floor tile per stand, and a name board over each
+    sponsor's stand;
+  - a grid of high bays that strike across the hall when the sim's `breaker` prop reaches `done`,
+    which in this chapter means the router has closed the circuit.
+- `src/render3d/props-ground.ts` draws the chapter's chain from the props:
+  - the breaker board, high up for Droid;
+  - the rack and its link lights;
+  - the router cabinet, whose leaves swing on the sim's clock, and its pilot lamp;
+  - the router and password terminals, with the typed fraction filling in;
+  - the DevoxxForever spray tag, faint until a beam finds it;
+  - the cable run, as a tube following the sim's points;
+  - the badge printer;
+  - the lit floor plates and wayfinding signs;
+  - Biggy's roller door, which uses the shutter kept from chapter 1 for exactly this;
+  - the t-shirt pallets and the registration gate.
+- `world.ts` switches floors on the chapter change: which floor is shown, fog box, reflections,
+  environment capture, and a props set per floor. `main3d.ts` now plays chapter 2 and ends after it.
+
+**Not done yet.** No playtest of the full chain in 3D. The dark hall before the power comes on may
+be too dark to steer by. There is no lobby or reception dressing beyond the walls, and nothing
+of chapter 3 yet.

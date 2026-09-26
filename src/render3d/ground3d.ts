@@ -200,6 +200,47 @@ export function buildGround(mats: Materials): Ground3D {
     truss.build(group, false);
   }
 
+  /* ------------------------------------------------------------- booths */
+  // Each stand: its own floor tile in a sponsor colour, and a name board hung
+  // over it, dark until the hall's circuit closes and then lit with the bays.
+  const boothBoards: THREE.MeshBasicMaterial[] = [];
+  {
+    const tiles = new Buckets();
+    const PALETTE = [0x2b59c3, 0xe0662b, 0x2fa36b, 0x9b3fc4, 0xd8b12a, 0x1fa3b8];
+    const tileMats = PALETTE.map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.95 }));
+    GF.booths.forEach((b, i) => {
+      tiles.add(tileMats[i % tileMats.length], box(m(b.w), 0.02, m(b.h), V(m(b.x + b.w / 2), 0.012, m(b.y + b.h / 2)), 2));
+      const c = document.createElement('canvas');
+      c.width = 512;
+      c.height = 128;
+      const x = c.getContext('2d')!;
+      x.fillStyle = '#000';
+      x.fillRect(0, 0, 512, 128);
+      x.fillStyle = '#fff';
+      x.font = 'bold 60px "Helvetica Neue", Arial, sans-serif';
+      x.textAlign = 'center';
+      x.textBaseline = 'middle';
+      x.fillText(b.name, 256, 66, 490);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0x000000, toneMapped: false });
+      boothBoards.push(mat);
+      const bw = Math.min(m(b.w) * 0.9, 5);
+      for (const yaw of [0, Math.PI]) {
+        const board = new THREE.Mesh(new THREE.PlaneGeometry(bw, bw / 4), mat);
+        board.position.set(m(b.x + b.w / 2), 3.6, m(b.y + b.h / 2) + (yaw === 0 ? 0.03 : -0.03));
+        board.rotation.y = yaw;
+        group.add(board);
+      }
+      const frame = new THREE.Mesh(box(bw + 0.1, bw / 4 + 0.1, 0.05, V(m(b.x + b.w / 2), 3.6, m(b.y + b.h / 2))), mats.darkMetal);
+      group.add(frame);
+      // Hangers to the trusses.
+      group.add(new THREE.Mesh(box(0.02, HALL_H - 3.6 - bw / 8, 0.02, V(m(b.x + b.w / 2) - bw / 3, (HALL_H + 3.6 + bw / 8) / 2, m(b.y + b.h / 2))), mats.steel));
+      group.add(new THREE.Mesh(box(0.02, HALL_H - 3.6 - bw / 8, 0.02, V(m(b.x + b.w / 2) + bw / 3, (HALL_H + 3.6 + bw / 8) / 2, m(b.y + b.h / 2))), mats.steel));
+    });
+    tiles.build(group, false);
+  }
+
   /* ------------------------------------------------------------- lights */
   // Emergency: a few green exit signs, always on. The hall itself is dark until
   // the lighting circuit closes (the sim's `breaker` prop reaching `done`).
@@ -227,7 +268,7 @@ export function buildGround(mats: Materials): Ground3D {
     for (let iz = 0; iz < 2; iz++) {
       const x = GF.hall.x + 130 + ix * 240;
       const z = GF.hall.y + 150 + iz * 300;
-      const light = new THREE.SpotLight(0xfff1dc, 0, 26, 0.95, 0.6, 1.4);
+      const light = new THREE.SpotLight(0xfff1dc, 0, 30, 1.1, 0.7, 1.3);
       light.position.set(m(x), HALL_H - 0.6, m(z));
       light.target.position.set(m(x), 0, m(z));
       group.add(light, light.target);
@@ -238,6 +279,10 @@ export function buildGround(mats: Materials): Ground3D {
       volumeSpots.push({ light, fog: 0.08 });
     }
   }
+  // The general fill a lit hall has from its whole ceiling of fittings: off in
+  // the blackout, up with the bays. A hemisphere so floors and walls separate.
+  const fill = new THREE.HemisphereLight(0xfff4e6, 0x3a3430, 0);
+  group.add(fill);
   let power = 0;
   let poweredAt = -1;
 
@@ -260,9 +305,12 @@ export function buildGround(mats: Materials): Ground3D {
         // Booth by booth: each bay strikes 0.25 s after the one nearer the lobby.
         const k = poweredAt < 0 ? 0 : THREE.MathUtils.clamp((t - poweredAt - b.at * 2.2) / 0.5, 0, 1);
         const flick = k > 0 && k < 1 ? (Math.sin(t * 60 + b.at * 40) > 0 ? 1 : 0.2) : 1;
-        b.light.intensity = 900 * k * flick;
+        b.light.intensity = 2400 * k * flick;
         (b.lamp.material as THREE.MeshBasicMaterial).color.setRGB(1, 0.95, 0.85).multiplyScalar(8 * k * flick);
       }
+      const lit = poweredAt < 0 ? 0 : THREE.MathUtils.clamp((t - poweredAt - 1.2) / 1.2, 0, 1);
+      fill.intensity = 1.1 * lit;
+      boothBoards.forEach((mat, i) => mat.color.setScalar(0.08 + 2.2 * lit * (0.92 + 0.08 * Math.sin(t * 2 + i))));
       void dt;
     },
   };
