@@ -4146,3 +4146,29 @@ a TRACK speaker in chapter 4's floor-1 corridor, outside the wrong door — whic
 **Tests.** `tests/extras.test.ts` (6): the ribbons are four distinct colours and everybody in the
 hall wears one with Stephan the only chair; the duck answers at its stand and refuses once shoved;
 the GC pause fires after a run and never twice in a chapter. Suite 742 green.
+
+## 26 Sep 2026 — the cheap extras, 1 · 2 · 3
+
+**Human decision.** Michele: *"The cheap gain are ok."*
+
+- **1 · the colour legend, as an in-world AV rider.** A laminated sheet taped to the closed
+  corridor's north wall, a few strides east of the opening marks: *"house rig: Voxxy orange spot ·
+  Droid green wash · Biggy blue flood. A mark lights when every colour it is written for is on it at
+  the same time."* Any robot walking past reads it, once — it is a legend, not a puzzle, and it is in
+  chapter 1 because that is the chapter that teaches the mix. An AV rider is the document a touring
+  show sends the venue, so the legend is something the building would really have.
+- **2 · the wrong-name badge.** The first thing a badge printer does when it comes up is print one
+  test badge, and the first thing it gets wrong is a name: `VOXY`, one X. It lands `BADGE_WARMUP`
+  seconds after the printer comes online, and that delay is load-bearing — without it the joke
+  replaces "cable in — the run is made", which is the line that tells the player the job worked. When
+  the store and the printer finish on the same frame, the curtain line carries the badge instead.
+- **3 · the CFP rejection wall.** Six rejected talk slips pinned up past cinema D's door, readable
+  only under **Voxxy's cone** inside 70 px and with her skirt filtered out — the same rule chapter
+  2's spray tag is read under, so the beam is doing the reading rather than the standing. One slip
+  every 3.5 s, cycling. They are jokes about the shape of a programme, never about a real talk or a
+  real person.
+
+**Tests.** `tests/extras.test.ts` is now 9: the rider's toast names all three colours, Biggy's flood
+on the CFP wall gets nothing while Voxxy's cone gets a slip, and the badge is measured by playing
+chapter 2's chain to the printer and then checking that "Cable in" survived and `VOXY` arrived after
+it. Suite 745 green.

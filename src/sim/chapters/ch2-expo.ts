@@ -249,6 +249,19 @@ const RECEPTION_HAIL = 150;
 const TECH_DOOR_HAIL = 120;
 /** Seconds between the terminal's "that is not it" readouts, so a mashed key is not a wall of toast. */
 const TYPO_COOLDOWN = 1.2;
+/**
+ * The test badge, and the joke it makes. Cheap extra 2, approved 26 Sep 2026.
+ *
+ * Her name is the one word in the building that the venue's own kit cannot get
+ * right, which is every conference badge story anybody has ever told.
+ */
+const BADGE_TOAST =
+  'The printer chatters and drops its first test badge in the tray: <b>VOXY</b>.<br>' +
+  'Voxxy: "One X. It is TWO. It has always been two. I wired that machine myself."';
+/** Seconds between the printer coming up and the test badge landing in the tray. */
+const BADGE_WARMUP = 3;
+/** The same joke, folded into the curtain line when both land on one frame. */
+const BADGE_TAIL = ' — and its first test badge says <b>VOXY</b>, with one X. Voxxy has notes.';
 const BREAKERS = 3;
 /**
  * How long the panel goes on striking after a handle is thrown, seconds.
@@ -436,6 +449,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let breakerStrike = 0;
   let rollerBroken = false;
   /** When both tasks were first done, sim seconds — see `CURTAIN`. Null until then. */
+  /** Has the printer's first test badge been mentioned? It is worth one outing. */
+  let badgeSaid = false;
+  /** Sim time the badge drops, set when the printer comes up. -1 until then. */
+  let badgeAt = -1;
   let curtainAt: number | null = null;
   /** Whether the shutter was the LAST of the two, so the curtain line names it. */
   let rollerLast = false;
@@ -1381,13 +1398,39 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      * The clock starts on the frame BOTH are true rather than on either one, so
      * it is the same three seconds in either finishing order.
      */
+    /*
+     * THE TEST BADGE. Michele, 26 Sep 2026, of the cheap extras: *"The cheap gain
+     * are ok"* — number 2 was **the wrong-name badge from the printer**.
+     *
+     * The first thing any badge printer in the world does when it comes up is
+     * print one test badge, and the first thing it gets wrong is a name. Voxxy is
+     * the one who wired it, so Voxxy is the one who has to look at it.
+     *
+     * It fires the moment the printer is online and the roller is still shut. When
+     * both land on the same frame the curtain line below carries the badge instead
+     * — one toast replaces another, and being told the store is open is not worth
+     * losing to a joke about spelling.
+     */
+    if (!badgeSaid && printerOnline() && !rollerBroken) {
+      // A printer that is warming up is not a printer that has printed. The wait
+      // is also what keeps the joke off the top of "cable in — the run is made",
+      // which is the line that tells the player the job they just did worked.
+      if (badgeAt < 0) badgeAt = ctx.t + BADGE_WARMUP;
+      if (ctx.t >= badgeAt) {
+        badgeSaid = true;
+        ctx.flash(BADGE_TOAST, 5200);
+      }
+    }
+
     if (printerOnline() && rollerBroken) {
       if (curtainAt === null) {
         curtainAt = ctx.t;
+        const badge = badgeSaid ? '' : BADGE_TAIL;
+        badgeSaid = true;
         ctx.flash(
-          rollerLast
+          (rollerLast
             ? 'The shutter goes up on three thousand Devoxx shirts. The printer is already chattering next door'
-            : 'The printer wakes up next door. Behind you the store is open, and the shirts are in there',
+            : 'The printer wakes up next door. Behind you the store is open, and the shirts are in there') + badge,
           Math.round(CURTAIN * 1000),
         );
       } else if (ctx.t - curtainAt >= CURTAIN) {

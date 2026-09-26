@@ -16,7 +16,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { DT_MAX, createGame, type DebugGame, type BreakfastState } from '../src/sim';
+import { GF, type ExpoState } from '../src/sim';
 import { LANYARD, lanyardFor } from '../src/sim/lanyards';
+import { walkTo } from './pilot';
 
 const SEED = 20260930;
 const mk = (chapter: number): DebugGame => createGame({ seed: SEED, chapter, cards: false });
@@ -121,5 +123,87 @@ describe('the GC pause', () => {
     g.debug.select('biggy');
     steps(g, 300);
     expect(said(g)).not.toContain('GC pause');
+  });
+});
+
+describe('the two things on chapter 1’s walls', () => {
+  it('shows the AV rider to whoever walks past it, once', () => {
+    const g = mk(1);
+    // A few strides east of the marks, on the corridor's north side.
+    g.debug.place('voxxy', 85, 320);
+    steps(g, 3);
+    const first = said(g);
+    expect(first).toContain('AV RIDER');
+    // The legend itself: the three colours, so a player who reads one toast in the
+    // whole chapter reads the one that explains the mechanic.
+    expect(first).toContain('orange');
+    expect(first).toContain('green');
+    expect(first).toContain('blue');
+  });
+
+  it('gives the CFP slips to Voxxy’s beam and to nobody else', () => {
+    const g = mk(1);
+    // Biggy parked on the same spot, lighting the same wall with a flood: nothing.
+    g.debug.place('biggy', 375, 380, Math.PI / 2);
+    g.debug.select('biggy');
+    steps(g, 20);
+    expect(said(g)).not.toContain('CFP');
+
+    // Voxxy, close, with her cone on it.
+    g.debug.place('voxxy', 375, 375, Math.PI / 2);
+    g.debug.select('voxxy');
+    steps(g, 3);
+    expect(said(g)).toContain('rejected CFP slips');
+  });
+});
+
+describe('the printer’s test badge', () => {
+  it('spells her name wrong, a few seconds after the printer wakes up', () => {
+    const g = mk(2);
+    const panel = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
+    const rack = { x: GF.rack.x + 10, y: GF.rack.y + 12 };
+    const printer = { x: GF.printer.x + 10, y: GF.printer.y + 6 };
+    const hub = { x: GF.cabinet.x + GF.cabinet.w / 2, y: GF.cabinet.y + GF.cabinet.h + 2 };
+
+    // The chain, the short way: breakers, cabinet, Droid up for the label, Droid
+    // down to type it, then the cable. Nothing here is a cheat — it is the same
+    // route `tests/chapters.test.ts` plays end to end.
+    g.debug.select('droid');
+    g.debug.place('droid', panel.x + 20, panel.y + 30);
+    for (let i = 0; i < 3; i++) g.key('KeyE');
+    g.debug.select('biggy');
+    g.debug.place('biggy', hub.x, hub.y + 30);
+    g.key('KeyE');
+    g.debug.place('biggy', 300, 640);
+    g.debug.place('droid', 284, 640);
+    g.debug.select('droid');
+    g.key('KeyE');
+    g.debug.place('biggy', hub.x, hub.y + 20);
+    steps(g, 1);
+    g.key('KeyE');
+    g.key('KeyE');
+    g.debug.select('droid');
+    g.debug.place('droid', hub.x, hub.y + 20);
+    g.key('KeyE');
+    expect(walkTo(g, 'voxxy', { x: rack.x, y: rack.y - 24 })).toBe(true);
+    g.key('KeyE');
+    expect(walkTo(g, 'voxxy', { x: printer.x, y: printer.y + 34 })).toBe(true);
+    g.key('KeyE');
+    expect((g.debug.chapter() as ExpoState).printerOnline).toBe(true);
+
+    // It does NOT talk over "cable in — the run is made": the printer warms up
+    // first, which is both true of printers and the reason the line survives.
+    expect(said(g)).toContain('Cable in');
+    let heard = '';
+    for (let i = 0; i < 200; i++) {
+      g.update(DT_MAX);
+      const t = said(g);
+      if (t.includes('VOXY')) {
+        heard = t;
+        break;
+      }
+    }
+    expect(heard).toContain('VOXY');
+    expect(heard).toContain('One X');
   });
 });
