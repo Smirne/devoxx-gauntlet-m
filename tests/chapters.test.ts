@@ -1366,6 +1366,96 @@ describe('chapter 3 — breakfast', () => {
     }
   });
 
+  /**
+   * THEY FACE THE WAY THEY ARE WALKING, AND THEY ACTUALLY GET SOMEWHERE.
+   *
+   * Two faults from Michele's replay of 26 Sep, both of them invisible while the
+   * crowd was pawns and both of them visible the moment the renderer gave a person
+   * a front, a back and a rucksack.
+   *
+   * *"Some seem to walk backward or have the backpack on front."* — `Visitor extends
+   * Bot`, `mkBot` sets `face` to 0, and `stepVisitor` never touched it again, so all
+   * sixty of them faced due east regardless of where they were going.
+   *
+   * *"The small stair between reception and main hall seem to block them."* — it is
+   * not the stair, which carries no walls at all. What blocks them is fabric they
+   * press against while their velocity keeps pointing into it: measured, ten of
+   * sixty standing in a 10 px-spaced line at x 1428 — the east face of `GF.gate`,
+   * Stephan's barrier, plus a body's radius — with a full walking speed on the
+   * clock and no ground gained for a hundred seconds. Which is why this asserts
+   * DISPLACEMENT and not `speed`: speed said they were walking briskly.
+   */
+  it('faces the crowd the way it walks, and never lets it walk on the spot', () => {
+    // Seed 4, not the suite's: it is the stream the ten gate-crawlers were measured
+    // on, and a fault that only some seeds walk into needs the seed that does.
+    const g = createGame({ seed: 4, chapter: 3, cards: false });
+    steps(g, 3000);
+    let prev = new Map(
+      g.snapshot().people.filter((p) => p.role === 'visitor').map((p) => [p.seed, { x: p.x, y: p.y }]),
+    );
+    expect(prev.size).toBe(60);
+
+    /*
+     * FORTY SECONDS OF FLOOR, PER PERSON.
+     *
+     * Not `speed`, which is what made this fault so hard to see: the ten at the
+     * gate had a full walking pace on the clock the whole time. Ground covered is
+     * the honest measure, and dwelling does not hide in it — everybody is somewhere
+     * else two seconds later, so the crowd's own floor is 240 px over this window,
+     * measured across four seeds, against the crawlers' nothing at all.
+     */
+    const path = new Map<number, number>();
+    for (let w = 0; w < 40; w++) {
+      steps(g, 30);
+      const now = new Map<number, { x: number; y: number }>();
+      for (const p of g.snapshot().people) {
+        if (p.role !== 'visitor') continue;
+        now.set(p.seed, { x: p.x, y: p.y });
+        const was = prev.get(p.seed);
+        if (was) path.set(p.seed, (path.get(p.seed) ?? 0) + Math.hypot(p.x - was.x, p.y - was.y));
+      }
+      prev = now;
+    }
+    const parked = [...path.entries()].filter(([, d]) => d < 80);
+    expect(parked.map(([k, d]) => `${k} covered ${Math.round(d)} px`), 'somebody is leaning on the fabric').toEqual([]);
+
+    /*
+     * ...AND THE CROWD FACES ITS TRAVEL.
+     *
+     * A third of a second, not a second: a second of walking has a turn in it and
+     * the net line across a turn is nobody's heading. Nor is it every last body —
+     * `face` follows VELOCITY, while the last thing to touch a position each frame
+     * is the push-out that parts a pair or clears a booth, so somebody being shoved
+     * sideways by the person next to them legitimately travels off their own nose.
+     * The fault was the aggregate: `mkBot` sets `face` to 0 and nothing in
+     * `stepVisitor` ever set it again, so the whole crowd faced due east and only
+     * the quarter of them walking east agreed with it by luck.
+     */
+    const was = new Map(
+      g.snapshot().people.filter((p) => p.role === 'visitor').map((p) => [p.seed, { x: p.x, y: p.y }]),
+    );
+    steps(g, 10);
+    const faces = new Set<number>();
+    let walking = 0;
+    let facing = 0;
+    for (const p of g.snapshot().people) {
+      if (p.role !== 'visitor') continue;
+      const w0 = was.get(p.seed);
+      if (!w0) continue;
+      const dx = p.x - w0.x;
+      const dy = p.y - w0.y;
+      if (Math.hypot(dx, dy) < 3) continue;
+      walking++;
+      faces.add(Math.round((p.face ?? 0) * 4));
+      const err = Math.atan2(dy, dx) - (p.face ?? 0);
+      if (Math.abs(Math.atan2(Math.sin(err), Math.cos(err))) < 0.7) facing++;
+    }
+    expect(walking, 'nobody is walking at all').toBeGreaterThan(20);
+    expect(facing / walking, `only ${facing} of ${walking} face their travel`).toBeGreaterThan(0.85);
+    // Sixty headings, not one: the bug pointed every single one of them at 0.
+    expect(faces.size, 'the whole crowd shares one heading').toBeGreaterThan(4);
+  });
+
   /* ----------------------------------------------------- the booth games
    *
    * Moved out of chapter 2 on Michele's call, 24 Sep 2026: *"Minigames should be

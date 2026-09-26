@@ -240,6 +240,17 @@ const LEG_H = 0.36;
 export const SEAT_TOP_M = BACK_Y + BACK_H / 2;
 
 /**
+ * The top of the cushion — where a seated person's hip actually is.
+ *
+ * Exported for the same reason `SEAT_TOP_M` is: `src/render/people.ts` seats the
+ * audience on these, and a literal there against a literal here is the drift this
+ * file's neighbours keep being caught by. It used to be a guessed 0.62 over there,
+ * and shortening the figures turned that guess into people perching above their
+ * own seats.
+ */
+export const SEAT_CUSHION_TOP_M = CUSHION_Y + CUSHION_H;
+
+/**
  * One cinema seat, origin at the floor between its feet, **facing +z**: a cushion
  * and a taller back, which is all that reads from a diorama camera once a few
  * hundred of them are lined up. Rooms rotate the whole block to face their screen.
