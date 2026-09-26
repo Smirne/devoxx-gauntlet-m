@@ -35,6 +35,7 @@ import {
   syncMount,
   toggleMount as climbBiggy,
 } from './bot';
+import { clearContacts, contacts } from './contacts';
 import { canGrab, grab as takeHold, stepTow, towPlace, type TowState } from './tow';
 import type {
   Bot,
@@ -1000,6 +1001,9 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     // Clamped again here even though the caller is supposed to: one stalled frame
     // must never be able to tunnel Biggy through a wall.
     const dt = Math.min(Math.max(dtRaw, 0), DT_MAX);
+    // Last frame's contacts go now, so a snapshot only ever carries its own. Pure
+    // telemetry for the physics view — nothing in the sim reads it. See `contacts.ts`.
+    clearContacts();
     if (fade > 0 && phase !== 'cut') fade = Math.max(0, fade - dt * FADE_IN_RATE);
     if (toast && t > toast.until) toast = null;
     if (card !== null) return;
@@ -1202,6 +1206,9 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       prompt: r?.prompt?.() ?? null,
       score,
       swag,
+      // Everything the solver resolved this frame, for the physics view. Live
+      // array, owned by the sim, empty on any frame nothing touched anything.
+      contacts: contacts(),
     };
   }
 

@@ -440,6 +440,33 @@ export interface Task {
 import type { OpeningView } from './opening';
 
 /** Everything the renderer reads for one frame. */
+/**
+ * One contact the solver resolved, as telemetry for the physics view.
+ *
+ * Written by the three places that resolve one — the wall bounce in `stepBot`,
+ * `botsCollide` and `standOff` — collected in `src/sim/contacts.ts` and published
+ * on the snapshot. Nothing in the sim reads it back.
+ */
+export interface Contact {
+  /** Where the two bodies touched, sim px — on the surface, not at either centre. */
+  x: number;
+  y: number;
+  /** Unit normal, pointing OUT of whatever was hit and into the body that hit it. */
+  nx: number;
+  ny: number;
+  /** Closing speed along the normal before the solve, px/s. Always >= 0. */
+  rv: number;
+  /**
+   * The impulse the solver applied, in mass-px/s — the momentum this contact
+   * actually took out of the body, which is the number the physics view draws.
+   */
+  j: number;
+  /** What was hit. A `person` never moves; a `wall` never moves; a `bot` does. */
+  kind: 'wall' | 'bot' | 'person';
+  /** The robot that took the impulse, for the readout's own line. */
+  who: RobotKind | string;
+}
+
 export interface GameSnapshot {
   chapter: number;
   phase: Phase;
@@ -515,6 +542,14 @@ export interface GameSnapshot {
   entered: string;
   score: Record<string, number>;
   swag: string[];
+  /**
+   * Every contact the solver resolved this frame — where, which way, how hard.
+   *
+   * Telemetry for the physics view (`P`), and the one thing that readout cannot
+   * work out for itself without redoing the solver in drawing code. The sim never
+   * reads it back; see `src/sim/contacts.ts`.
+   */
+  contacts: readonly Contact[];
 }
 
 /** The headless game. `src/render` holds one of these and only reads its snapshot. */

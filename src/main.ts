@@ -21,6 +21,7 @@
  *                exact: image (px, py) is sim (px * 1900/w, py * 700/h) over the
  *                drawn band, with no offset to guess.
  *   ?nofog=1     drop the fog-of-war mask only
+ *   ?physics=1   start with the physics view up (`P` toggles it in play)
  *   ?seed=N      seed the sim RNG, so clue digits and crowds replay exactly
  *   ?warm=N      advance the sim N fixed steps before the first drawn frame
  *   ?pose=voxxy|droid|biggy   one robot alone, front three-quarter, on a plinth
@@ -45,6 +46,7 @@ import { PX_PER_M, ROBOT_HEIGHT_M } from './sim/units';
 
 import { createAudio, type Audio } from './render/audio';
 import { createHud, type Hud, type SpeakerAnchors } from './render/hud';
+import { createPhysicsPanel, type PhysicsPanel } from './render/physics-view';
 import { STEP_FREQ_BASE, STEP_FREQ_PER_MPS, gaitSpeed } from './render/robots';
 import { createScene, type DioramaScene } from './render/scene';
 
@@ -127,6 +129,8 @@ const startIn = chapterParam !== undefined && chapterParam >= 1 && chapterParam 
 const seed = int('seed');
 const warm = Math.max(0, Math.min(int('warm') ?? 0, 20000));
 const wantTopDown = flag('topdown');
+/** `?physics=1` — start with the physics view up, for a shot of it. `P` toggles. */
+const wantPhysics = flag('physics');
 const wantFog = !flag('nofog');
 const hideHud = flag('nohud');
 
@@ -162,9 +166,17 @@ const hud: Hud = createHud(app, {
   project: (x, y, h) => scene.project(x, y, h),
 });
 const audio: Audio = createAudio();
+/*
+ * The physics view's readout. The drawing half lives in the scene
+ * (`scene.setPhysicsView`) because it is world geometry; this is the panel of
+ * numbers beside it, and both are switched together by `P`.
+ */
+const physicsPanel: PhysicsPanel = createPhysicsPanel(app);
 
 scene.setFogEnabled(wantFog);
 scene.setTopDown(wantTopDown);
+scene.setPhysicsView(wantPhysics);
+physicsPanel.setEnabled(wantPhysics);
 scene.posePortrait(pose);
 
 function resize(): void {
@@ -285,6 +297,18 @@ function onKeyDown(ev: KeyboardEvent): void {
   if (!game.snapshot().typing) {
     if (code === 'KeyI') hud.toggleTasks();
     if (code === 'KeyH') hud.nudge();
+    /*
+     * `P` — the physics view. Twenty of the hundred points are physics realism and
+     * none of it was visible; this draws the collision circles, the velocity
+     * arrows and the impulse of every contact the solver resolved this frame, with
+     * the numbers beside them. It reads the snapshot and changes nothing, so it can
+     * be turned on and off mid-run without touching the run.
+     */
+    if (code === 'KeyP') {
+      const on = !physicsPanel.enabled();
+      scene.setPhysicsView(on);
+      physicsPanel.setEnabled(on);
+    }
   }
   // Escape closes the run sheet wherever it is, including mid-password: it is the
   // one key nobody has to be told about.
@@ -619,6 +643,7 @@ function frame(now: number): void {
     }
     hud.update(snap, anchors);
   }
+  physicsPanel.update(snap, dt);
   updateAudio(snap, dt);
 
   if (Math.abs(snap.fade - lastFade) > 0.004) {

@@ -50,6 +50,7 @@ const OPEN_CRATE_LIT = 0.16;
 import { createLightLayer, type LightLayer } from './lighting';
 import { PANEL_H_M, PANEL_LIFT_M, buildReleasePanel, type ReleasePanelModel } from './release-panel';
 import { buildPerson, type PersonModel } from './people';
+import { createPhysicsOverlay } from './physics-view';
 import { buildPrinter, type PrinterModel } from './printer';
 import {
   createRobot,
@@ -493,6 +494,11 @@ export interface DioramaScene {
   setTopDown(on: boolean): void;
   /** `?nofog=1` — drop the fog-of-war mask, leave the rest of the lighting alone. */
   setFogEnabled(on: boolean): void;
+  /**
+   * `P` — the physics view: collision circles, velocity arrows and this frame's
+   * contact impulses, drawn over the diorama. See `src/render/physics-view.ts`.
+   */
+  setPhysicsView(on: boolean): void;
   /** `?pose=voxxy|droid|biggy` — one robot alone, front three-quarter. Null returns to play. */
   posePortrait(kind: RobotKind | null): void;
   /**
@@ -770,6 +776,14 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   }
   dressing.add(gateGroup);
   const venueGate = venue.ground.getObjectByName('main-stair-gate') ?? null;
+
+  /*
+   * The physics view's own overlay, parented to the scene root rather than to the
+   * dressing: it is drawn over everything on purpose (`depthTest: false`), and it
+   * must not be hidden with a floor when the camera changes storey.
+   */
+  const physics = createPhysicsOverlay();
+  scene.add(physics.group);
 
   /* ------------------------------------------------- the jammed cinema door
    *
@@ -2818,6 +2832,9 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     venue.ground.visible = snap.floor === 'down';
     placeRobots(snap, dt, floorY);
     drawDressing(snap, floorY);
+    // The physics view works in the plan camera too, and reads better there than
+    // anywhere: circles and impulses on a flat map is what the sim actually is.
+    physics.update(snap, dt, (x: number, y: number) => surfaceY(floorY, x, y));
     activeRing.visible = false;
     // The plan view is for measuring the map against `plans/`, not for playing:
     // every marker that exists to help the player is off, the bar included.
@@ -2906,6 +2923,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
 
     placeRobots(snap, dt, floorY);
     drawDressing(snap, floorY);
+    physics.update(snap, dt, (x: number, y: number) => surfaceY(floorY, x, y));
     updateActiveRing(snap, floorY);
     updateTow(snap, floorY);
     updateXray(snap);
@@ -2956,6 +2974,9 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     setFogEnabled(on: boolean): void {
       fogOn = on;
       lights.setFogEnabled(on);
+    },
+    setPhysicsView(on: boolean): void {
+      physics.setEnabled(on);
     },
     posePortrait(kind: RobotKind | null): void {
       if (portrait === kind) return;

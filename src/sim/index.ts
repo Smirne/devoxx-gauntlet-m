@@ -10,6 +10,7 @@ export * from './units';
 export * from './geometry';
 export * from './surface';
 export * from './bot';
+export * from './contacts';
 export * from './crates';
 export * from './lights';
 export * from './game';

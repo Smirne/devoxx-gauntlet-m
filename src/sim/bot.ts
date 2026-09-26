@@ -37,6 +37,7 @@ import {
   REST_WALL_OTHER,
   STOP_SNAP,
 } from './constants';
+import { logContact } from './contacts';
 import { m } from './units';
 import type { Bot, Hit, Rect, RobotKind, Vec2, Wall } from './types';
 
@@ -355,6 +356,17 @@ export function stepBot(b: Bot, dt: number, walls: Wall[], onBlocked?: (b: Bot, 
       const rest = b.kind === 'biggy' ? REST_WALL_BIGGY : REST_WALL_OTHER;
       b.vx -= (1 + rest) * vn * hit.nx;
       b.vy -= (1 + rest) * vn * hit.ny;
+      // Telemetry only — see `contacts.ts`. Nothing in the sim reads it back.
+      logContact({
+        x: b.x - hit.nx * b.r,
+        y: b.y - hit.ny * b.r,
+        nx: hit.nx,
+        ny: hit.ny,
+        rv: -vn,
+        j: (1 + rest) * -vn * b.mass,
+        kind: 'wall',
+        who: b.kind,
+      });
     }
     if (w.why && onBlocked) onBlocked(b, w);
   }
@@ -398,6 +410,7 @@ export function standOff(b: Bot, p: { x: number; y: number; r: number }): boolea
   if (vn < 0) {
     b.vx -= vn * nx;
     b.vy -= vn * ny;
+    logContact({ x: p.x + nx * p.r, y: p.y + ny * p.r, nx, ny, rv: -vn, j: -vn * b.mass, kind: 'person', who: b.kind });
   }
   return true;
 }
@@ -438,6 +451,7 @@ export function botsCollide(a: Bot, b: Bot, e: number = REST_BOT): { rv: number 
     b.vx += (j * nx) / mb;
     b.vy += (j * ny) / mb;
   }
+  logContact({ x: a.x + nx * a.r, y: a.y + ny * a.r, nx: -nx, ny: -ny, rv: -rv, j, kind: 'bot', who: a.name });
   return { rv: -rv };
 }
 
