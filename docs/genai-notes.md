@@ -4024,3 +4024,43 @@ but just the minimun needed"*, *"a temporary barrier is fine"*, and *"do the che
 Rejected: nothing of his; the agent threw away two of its own fixes (moving both bodies
 in the depenetration, dropping a route leg on first contact) after measuring what they
 did to the crowd.
+
+## 26 Sep 2026, later — the physics view, and 53 MB of screenshots
+
+**`P`, the physics view.** Michele: *"Add the physics view."* The point of it is
+scoring: physics realism is twenty of the hundred points and every bit of it was
+invisible, because a judge watching the game sees robots moving, not a seven-to-one
+mass ratio. It draws each robot's collision circle at its own frozen radius, its
+velocity as an arrow scaled against that robot's own top speed, and every contact
+of the frame as a splash on the contact normal sized by the impulse — with the
+numbers beside it, including the restitution constants that make Biggy bounce off a
+wall where the other two do not.
+
+The agent's one real decision here was **not to derive anything in drawing code**.
+The circles and arrows are already on the snapshot (`Bot.r`, `Bot.vx/vy`), but the
+impulse is not — and re-deriving it in the renderer would have been the fault this
+repo keeps catching itself in, with the added sting that the readout would drift
+from the solver it claims to be showing, which is worthless for the points it
+exists for. So the solver publishes what it applied: `src/sim/contacts.ts`,
+written by the three places that resolve a contact, cleared by `game.update` at the
+top of every frame. It is telemetry and nothing reads it back, and
+`tests/contacts.test.ts` plays the same seed twice — once with the log being read,
+once without — to prove the game does not change because somebody pressed `P`.
+
+Two things the measurement corrected on the way:
+
+- the overlay first went into `renderTopDown` rather than the play camera, because
+  the two render paths share the same two lines above the insertion point. A probe
+  that read the geometry's draw range found 4096 zeroes where the rings should be.
+- the first test counted vertices by scanning the buffer for non-zeroes, which
+  *passed* for the wrong reason: the buffer is preallocated and never cleared, so a
+  splash that had expired was still sitting in it. `drawRange` is what the GPU is
+  told to read and is therefore what a test about drawing should ask.
+
+**The shots.** *"Yes prune the shots."* `tools/progress/shots` was 53 MB of 285
+PNGs and `pieces.json` references ten of them; the rest are gone and the page
+regenerates unchanged. The working tree is 4 MB now. The agent did **not** rewrite
+history to get them out of `.git` (still 83 MB): that is a force-push of every
+branch on a public submission repo four days from the deadline, which is a human's
+call to make and not a builder's, and it is the one thing in this session that was
+deliberately left undone.
