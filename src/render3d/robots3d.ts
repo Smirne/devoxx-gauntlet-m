@@ -273,6 +273,28 @@ function glance(rig: RobotRig, t: number): void {
   rig.bones.head.rotation.y += lag * 0.2;
 }
 
+/**
+ * Droid riding, as the 3D chase camera sees him: legs pressed down Biggy's flanks.
+ *
+ * The rig's mounted pose throws the knees wide (hips rolled 0.92) so that from
+ * the 2.5D diorama's camera, high above, the legs clear Biggy's outline at all.
+ * From behind at eye level the same pose reads as a pair of wings (Michele:
+ * "Droid's legs are too open in this view... should be pressed on Biggy?"). So
+ * the 3D build closes them: less roll, thighs down along the dome, shins tucked
+ * against it. Applied after the gait, over the same bones.
+ */
+function gripBiggy(rig: RobotRig): void {
+  for (const L of ['L', 'R'] as const) {
+    // Out to the dome's flanks, then down them: knees at the shell's widest,
+    // shins hanging against its sides.
+    rig.bones[`hip${L}`].rotation.z = L === 'L' ? 0.72 : -0.72;
+    rig.bones[`thigh${L}`].rotation.x = -0.15;
+    rig.bones[`shin${L}`].rotation.z = L === 'L' ? -0.85 : 0.85;
+    rig.bones[`shin${L}`].rotation.x = 0.35;
+    rig.bones[`foot${L}`].rotation.x = 0;
+  }
+}
+
 /** Place and animate the robots from the snapshot, and aim their lamps. */
 export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot, dt: number): void {
   const droid = robots.get('droid');
@@ -337,6 +359,7 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
     const face = snap.opening ? STAND_FACE : b.face;
     updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: face, dt, mounted, hop: u, flair: trick ? trick.flair : flairPhase(b), shoved: worldMoved(b) ? 1 : 0, pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null });
     if (b.kind === 'droid' && snap.opening) glance(r.rig, snap.opening.t);
+    if (b.kind === 'droid' && mounted) gripBiggy(r.rig);
     aimLamp(r, b, face);
   }
 }
