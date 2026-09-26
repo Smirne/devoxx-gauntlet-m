@@ -274,23 +274,76 @@ function glance(rig: RobotRig, t: number): void {
 }
 
 /**
- * Droid riding, as the 3D chase camera sees him: legs pressed down Biggy's flanks.
+ * Droid riding, as the 3D chase camera sees him: legs pressed down Biggy's sides.
  *
- * The rig's mounted pose throws the knees wide (hips rolled 0.92) so that from
- * the 2.5D diorama's camera, high above, the legs clear Biggy's outline at all.
- * From behind at eye level the same pose reads as a pair of wings (Michele:
- * "Droid's legs are too open in this view... should be pressed on Biggy?"). So
- * the 3D build closes them: less roll, thighs down along the dome, shins tucked
- * against it. Applied after the gait, over the same bones.
+ * The rig's mounted pose throws the knees wide so that, from the 2.5D diorama's
+ * camera above, they clear Biggy's outline at all; from behind at eye level
+ * that read as wings. Hand-tuned angles then put the shins INSIDE the ball
+ * (Michele: "pressed is fine, but they should not disappear into Biggy's
+ * body!"). So the pose is solved against Biggy's real shape — his belly is a
+ * 0.6 m sphere at 0.735 m (`src/render/robots/biggy.ts`), his lid a dome on top
+ * — once, the first time Droid is up there: the hip roll and shin angle that
+ * keep knee and ankle just outside the body, as close to it as they can get.
  */
-function gripBiggy(rig: RobotRig): void {
+const BELLY = { cy: 0.735, r: 0.6 };
+const LID = { cy: 1.06, r: 0.42 };
+/** A limb's own half-thickness plus a hair: how far outside the shell a joint sits. */
+const SKIN = 0.07;
+let grip: { hip: number; thigh: number; shin: number; shinRoll: number } | null = null;
+
+function outside(p: THREE.Vector3, lift: number): number {
+  // Signed clearance from Biggy's body, Droid-root space (Biggy's axis is the y axis).
+  const r = Math.hypot(p.x, p.z);
+  const dBelly = Math.hypot(r, p.y + lift - BELLY.cy) - BELLY.r;
+  const dLid = Math.hypot(r, p.y + lift - LID.cy) - LID.r;
+  return Math.min(dBelly, dLid) - SKIN;
+}
+
+function solveGrip(rig: RobotRig, lift: number): void {
+  const b = rig.bones;
+  const pts = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  let best = Infinity;
+  let pick = { hip: 0.9, thigh: -0.2, shin: 0.4, shinRoll: -0.4 };
+  for (let hip = 0.3; hip <= 1.5; hip += 0.06) {
+    for (const thigh of [-0.45, -0.3, -0.15, 0]) {
+      for (let shinRoll = -1.2; shinRoll <= 0.4; shinRoll += 0.08) {
+        for (const shin of [0.15, 0.4, 0.7]) {
+          b.hipL.rotation.z = hip;
+          b.thighL.rotation.x = thigh;
+          b.shinL.rotation.set(shin, 0, shinRoll);
+          rig.root.updateMatrixWorld(true);
+          b.shinL.getWorldPosition(pts[0]);
+          b.footL.getWorldPosition(pts[2]);
+          pts[1].copy(pts[0]).add(pts[2]).multiplyScalar(0.5);
+          let ok = true;
+          let cost = 0;
+          for (const q of pts) {
+            rig.root.worldToLocal(q);
+            const c = outside(q, lift);
+            if (c < 0) ok = false;
+            cost += Math.abs(c);
+          }
+          // Prefer the leg hanging down the flank over sticking out sideways.
+          cost += 0.15 * Math.abs(pts[2].x);
+          if (ok && cost < best) {
+            best = cost;
+            pick = { hip, thigh, shin, shinRoll };
+          }
+        }
+      }
+    }
+  }
+  grip = pick;
+}
+
+function gripBiggy(rig: RobotRig, lift: number): void {
+  if (!grip) solveGrip(rig, lift);
+  const g = grip!;
   for (const L of ['L', 'R'] as const) {
-    // Out to the dome's flanks, then down them: knees at the shell's widest,
-    // shins hanging against its sides.
-    rig.bones[`hip${L}`].rotation.z = L === 'L' ? 0.72 : -0.72;
-    rig.bones[`thigh${L}`].rotation.x = -0.15;
-    rig.bones[`shin${L}`].rotation.z = L === 'L' ? -0.85 : 0.85;
-    rig.bones[`shin${L}`].rotation.x = 0.35;
+    const s = L === 'L' ? 1 : -1;
+    rig.bones[`hip${L}`].rotation.z = s * g.hip;
+    rig.bones[`thigh${L}`].rotation.x = g.thigh;
+    rig.bones[`shin${L}`].rotation.set(g.shin, 0, s * g.shinRoll);
     rig.bones[`foot${L}`].rotation.x = 0;
   }
 }
@@ -359,7 +412,8 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
     const face = snap.opening ? STAND_FACE : b.face;
     updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: face, dt, mounted, hop: u, flair: trick ? trick.flair : flairPhase(b), shoved: worldMoved(b) ? 1 : 0, pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null });
     if (b.kind === 'droid' && snap.opening) glance(r.rig, snap.opening.t);
-    if (b.kind === 'droid' && mounted) gripBiggy(r.rig);
+    // Solved at the final riding height, not wherever the climb has got to.
+    if (b.kind === 'droid' && mounted) gripBiggy(r.rig, mountLift(r.rig));
     aimLamp(r, b, face);
   }
 }

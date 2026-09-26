@@ -4390,3 +4390,9 @@ drove it.
 **Not done yet.** No playthrough of chapter 3 in 3D. The ceiling and the far walls are dark even
 when lit. There is no daylight through the entrance glass. Stephan and the speaker are drawn as
 ordinary figures with their role colours.
+- *Droid riding, second pass.* *"Pressed is fine, but they should not disappear into Biggy's
+  body!"* Hand-tuned angles had put the shins inside the ball. The pose is now solved once against
+  Biggy's real shape: his belly is a 0.6 m sphere at 0.735 m (`biggy.ts`) and his lid a dome above
+  it. A small search over hip roll, thigh and shin angles keeps knee, mid-shin and ankle just
+  outside the body, as close to it as they get, and prefers legs hanging down the flank to legs
+  sticking out. It is solved at the final riding height rather than mid-climb.
