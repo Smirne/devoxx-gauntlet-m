@@ -51,6 +51,12 @@ export interface Hud {
   /** `Escape`, or a click anywhere off the panel. */
   closeTasks(): void;
   /**
+   * Left/right arrow while the sheet is open: turn between its two pages, the
+   * night (the story, the run's goal) and this chapter (briefing, tasks). Returns
+   * false when the sheet is shut, so the shell can spend the key on movement.
+   */
+  pageTasks(dir: number): boolean;
+  /**
    * `H` — one more step of help on the task in hand.
    *
    * Escalating, and never past what the chapter published: whose job it is, then
@@ -706,9 +712,16 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
    * objective + chapter briefing in the I panel?"* — the crate opening had
    * replaced the title card, which was the only place it was told.
    */
+  /*
+   * TWO PAGES, NOT ONE LONG PANEL. Michele, on the two stacked: *"too big / too
+   * much to read... Maybe on I we can switch between main text and chapters with
+   * arrow left/right?"* — and the night first. Page 0 is the story, page 1 the
+   * chapter; the arrows turn, and a line under the title says so.
+   */
   const sheetStory = el('div', 'ad-brief ad-story', sheet);
   sheetStory.innerHTML = `<div class="ad-shead">The night</div>${STORY}<div class="ad-goal">${GOAL}</div>`;
-  el('div', 'ad-shead', sheet).textContent = 'This chapter';
+  const chapterHead = el('div', 'ad-shead', sheet);
+  chapterHead.textContent = 'This chapter';
   const sheetBrief = el('div', 'ad-brief', sheet);
   const sheetRows = el('div', '', sheet);
   /*
@@ -742,6 +755,8 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   const mark = el('div', 'ad-mark ad-hide', root);
   const edge = el('div', 'ad-edge ad-hide', root);
   let sheetOpen = false;
+  /** Which page: 0 the night, 1 this chapter. */
+  let sheetPage = 1;
   /** Is the sheet showing its rows, or only the briefing and the meter? See `sheetPeek`. */
   let sheetFull = false;
   /**
@@ -956,18 +971,26 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     const done = snap.tasks.reduce((n, t) => n + (t.done ? 1 : 0), 0);
     setText(sheetSub, `${CHAPTER_TITLES[snap.chapter] ?? ''} — ${done} of ${snap.tasks.length} done`, textCache);
     setHtml(sheetBrief, snap.objective, htmlCache);
+    const story = sheetPage === 0;
+    sheetStory.classList.toggle('ad-hide', !story);
+    chapterHead.classList.toggle('ad-hide', story);
+    sheetBrief.classList.toggle('ad-hide', story);
     setText(sheetKeys, snap.keys, textCache);
     // Rebuilt rather than diffed: the sheet is open only while the player is
     // reading it, the lists are five rows long, and a diff here would be cost
     // with no frame to spend it on.
-    sheetTitle.textContent = sheetFull ? 'Run sheet' : 'Briefing';
-    sheetPeek.classList.toggle('ad-hide', sheetFull);
-    sheetRows.classList.toggle('ad-hide', !sheetFull);
+    sheetTitle.textContent = story ? 'Briefing \u00b7 the night' : sheetFull ? 'Run sheet' : 'Briefing';
+    sheetPeek.classList.toggle('ad-hide', sheetFull && !story);
+    sheetRows.classList.toggle('ad-hide', !sheetFull || story);
+    if (story) {
+      setHtml(sheetPeek, `<span>\u2192 this chapter</span><span class="ad-key">\u2190 \u2192 turn the page</span>`, htmlCache);
+      return;
+    }
     if (!sheetFull) {
       setHtml(
         sheetPeek,
         `<span><b>${snap.tasks.length}</b> things to do here, <b>${done}</b> done</span>` +
-          `<span class="ad-key">I \u2014 the run sheet</span>`,
+          `<span class="ad-key">\u2190 the night \u00b7 I \u2014 the run sheet</span>`,
         htmlCache,
       );
       setText(sheetKeys, snap.keys, textCache);
@@ -1307,6 +1330,8 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
       sheetOpen = true;
       // The chapter opens the BRIEFING. `I` is what turns it into the run sheet.
       sheetFull = false;
+      // The run opens on the night; every later chapter on its own page.
+      sheetPage = snap.chapter === 1 ? 0 : 1;
     }
 
     setText(chapterEl, CHAPTER_TITLES[snap.chapter] ?? CHAPTER_TITLES[0], textCache);
@@ -1396,7 +1421,16 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
    * `sheetPeek`). From anywhere else `I` goes straight to the rows, because a
    * player who presses it has asked for them.
    */
+  function pageTasks(dir: number): boolean {
+    if (!sheetOpen) return false;
+    sheetPage = dir < 0 ? 0 : 1;
+    return true;
+  }
   function toggleTasks(): void {
+    if (sheetOpen && sheetPage === 0) {
+      sheetPage = 1;
+      return;
+    }
     if (sheetOpen && !sheetFull) {
       sheetFull = true;
       return;
@@ -1471,5 +1505,5 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     }
   }
 
-  return { update, toggleTasks, closeTasks, nudge, dispose, root };
+  return { update, toggleTasks, closeTasks, pageTasks, nudge, dispose, root };
 }

@@ -247,6 +247,12 @@ function onKeyDown(ev: KeyboardEvent): void {
    * reach of the terminal it is being typed into. Key-UP is never suppressed, or a
    * key held when the prompt opened would stay held for ever.
    */
+  // With the run sheet open, left/right turn its page (the night / this
+  // chapter) instead of steering.
+  if ((code === 'ArrowLeft' || code === 'ArrowRight') && hud.pageTasks(code === 'ArrowLeft' ? -1 : 1)) {
+    ev.preventDefault();
+    return;
+  }
   const axis = game.snapshot().typing ? undefined : MOVE[code];
   if (axis) {
     held[axis] = true;
