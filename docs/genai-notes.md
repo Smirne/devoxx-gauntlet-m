@@ -4344,3 +4344,16 @@ renderer only reads the chapter's props.
 **Not done yet.** No playtest of the full chain in 3D. The dark hall before the power comes on may
 be too dark to steer by. There is no lobby or reception dressing beyond the walls, and nothing
 of chapter 3 yet.
+- *Evening round, 26 Sep.*
+  - *Kiosk.* *"White walls are too anonymous... a full stencil for a popcorn booth?"* A funfair
+    stencil first; then *"not aligned with the rest of the style... keep the neon, more cyberpunk"*:
+    black metal panels, the bucket as magenta tubes, kernels as amber rings, POPCORN as a
+    magenta/cyan glitch double, and a hazard kick band.
+  - *Run sheet.* *"The panel with both is too big / too much to read... switch between main text
+    and chapters with arrow left/right?"* It now has two pages, the night and this chapter. The run
+    opens on the night, and ← → turn the page while it is open, in both builds.
+  - *Droid riding.* *"Legs too open in this view... should be pressed on Biggy?"* The rig's
+    mounted pose throws the knees wide for the 2.5D camera above. The 3D build overrides it: the
+    legs go out to the dome's flanks and hang down its sides.
+  - *"The intro was slower."* Its timings are the sim's and did not change. Most likely it was the
+    machine; noted in case it recurs.
