@@ -106,7 +106,7 @@ installHudTheme();
 // does: no chapter, cards on. Screenshot runs go straight to chapter 1 unless
 // they ask for the opening with ?cards=1.
 const withOpening = !shotMode || flag('cards');
-const game: DebugGame = createGame({ seed: int('seed'), chapter: withOpening ? undefined : 1, cards: withOpening, clueSpot: CLUE_SPOT_3D });
+const game: DebugGame = createGame({ seed: int('seed'), chapter: withOpening ? undefined : (int('chapter') ?? 1), cards: withOpening, clueSpot: CLUE_SPOT_3D });
 
 /*
  * The old 3D title (a dolly down the corridor under "press any key") is
@@ -335,8 +335,8 @@ function showEnd(): void {
   const card = document.createElement('div');
   card.className = 'ad3d-end';
   card.innerHTML =
-    '<h1>END OF THE 3D PROOF OF CONCEPT</h1><p>The fire door is open. Chapter 2, the exhibition hall, exists only in the 2.5D build for now.</p>' +
-    '<p><button type="button" id="ad3d-replay">Replay chapter 1</button></p>';
+    '<h1>END OF THE 3D BUILD, FOR NOW</h1><p>The hall is lit and the t-shirts are out. Chapters 3 and 4 exist only in the 2.5D build so far.</p>' +
+    '<p><button type="button" id="ad3d-replay">Play again</button></p>';
   app.appendChild(card);
   card.querySelector('#ad3d-replay')?.addEventListener('click', () => window.location.reload());
 }
@@ -359,7 +359,7 @@ function frame(dt: number): void {
   pushStick(dt);
   game.update(dt);
   const snap = game.snapshot();
-  if (snap.chapter > 1) {
+  if (snap.chapter > 2) {
     showEnd();
     return;
   }

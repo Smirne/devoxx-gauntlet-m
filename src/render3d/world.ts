@@ -16,6 +16,7 @@ import { buildDetails } from './details';
 import { LightPool } from './lightpool';
 import { createMaterials } from './materials';
 import { Pipeline, QUALITY, type QualityName, type VolumeSpot } from './pipeline';
+import { buildGround, type Ground3D } from './ground3d';
 import { createProps, type Props3D } from './props3d';
 import { createRobots, updateGlare, updateRobots, type Robot3D } from './robots3d';
 import { HEIGHTS, SIGN_SPANS, X_END, buildVenue, type Venue3D } from './venue';
@@ -87,7 +88,12 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   // The lamp flares are aimed at the real camera; mirrored, they became big
   // out-of-place blobs on the floor.
   for (const r of robots.values()) if (r.glare) pipeline.reflectors.push(r.glare);
-  const props: Props3D = createProps(scene, mats);
+  // One props set per floor: chapter 1's doors and clues are built into their
+  // own group, and hidden with it when the robots go downstairs.
+  const propsRoot1 = new THREE.Group();
+  scene.add(propsRoot1);
+  const props1: Props3D = createProps(propsRoot1, mats);
+  let props: Props3D = props1;
   // Point lights beyond the robots' own spills go through a fixed pool.
   const pool = new LightPool(scene, 14, [...robots.values()].map((r) => r.spill));
   pool.collect(scene);
@@ -340,12 +346,62 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     }
   }
 
+  /*
+   * THE GROUND FLOOR, chapters 2 and 3. Both floors live in the sim's one plan,
+   * so they overlap in x/z: the one the robots are on is shown, the other hidden.
+   * The ground floor is built on the first frame that needs it (then kept), and
+   * the fog box, the reflections and the environment capture follow the switch.
+   */
+  let ground: Ground3D | null = null;
+  let props2: Props3D | null = null;
+  const propsRoot2 = new THREE.Group();
+  scene.add(propsRoot2);
+  let onGround = false;
+  function switchFloor(g: boolean): void {
+    onGround = g;
+    if (g && !ground) {
+      ground = buildGround(mats);
+      scene.add(ground.group);
+      props2 = createProps(propsRoot2, mats, 'ground');
+    }
+    venue.group.visible = !g;
+    details.group.visible = !g;
+    propsRoot1.visible = !g;
+    propsRoot2.visible = g;
+    if (ground) ground.group.visible = g;
+    props = g && props2 ? props2 : props1;
+    if (g && ground) {
+      pipeline.reflectors = [...ground.reflectors];
+      pipeline.setFogBox(ground.bounds.min, ground.bounds.max);
+      PROBE.copy(ground.probe);
+      probeBox.min.copy(ground.bounds.min).setY(0);
+      probeBox.max.copy(ground.bounds.max);
+    } else {
+      pipeline.reflectors = [...venue.reflectors, ...details.reflectors];
+      pipeline.setFogBox(new THREE.Vector3(m(8), -1, m(6)), new THREE.Vector3(m(X_END + 8), 9, m(694)));
+      PROBE.set(m(300), 1.8, m(350));
+      probeBox.min.set(0, 0, m(CY0));
+      probeBox.max.set(m(F1.fireX), HEIGHTS.corridor, m(CY1));
+    }
+    for (const r of robots.values()) if (r.glare) pipeline.reflectors.push(r.glare);
+    pool.collect(scene);
+    envBaked = false;
+    patchedFrames = 0;
+    cam.cut();
+  }
+
   function render(snap: GameSnapshot, dt: number, intro = false): void {
     time += dt;
     adapt();
+    if ((snap.chapter >= 2) !== onGround) switchFloor(snap.chapter >= 2);
     if (!envBaked) bakeEnv();
-    venue.update(time, dt);
-    details.update(time);
+    if (onGround && ground) {
+      ground.setPower(snap.props.some((q) => q.kind === 'breaker' && q.state === 'done') ? 1 : 0, time);
+      ground.update(time, dt);
+    } else {
+      venue.update(time, dt);
+      details.update(time);
+    }
     updateRobots(robots, snap, dt);
     props.update(snap, time, dt);
     // Props are built lazily from the first snapshots; patch whatever exists.
@@ -417,7 +473,8 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       _pos.copy(rob.rig.root.position);
       const speed = Math.hypot(active.vx, active.vy) / PX_PER_M;
       // The crates are walls to the camera too, so it can never end up inside one.
-      cam.update(dt, active.kind, _pos, active.face, speed, [...venue.colliders, ...props.colliders, ...(crates.root.visible ? [crates.root] : [])]);
+      const solid = onGround && ground ? ground.colliders : venue.colliders;
+      cam.update(dt, active.kind, _pos, active.face, speed, [...solid, ...props.colliders, ...(crates.root.visible ? [crates.root] : [])]);
     }
 
     // Mirror bounces from the sim.
@@ -444,11 +501,11 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     const eye = cam.camera.position;
     volSpots.length = 0;
     for (const r of robots.values()) if (r.fog > 0) volSpots.push({ light: r.lamp, fog: r.fog });
-    const others: VolumeSpot[] = [...venue.volumeSpots];
+    const others: VolumeSpot[] = [...(onGround && ground ? ground.volumeSpots : venue.volumeSpots)];
     for (const s of mirrorSpots) if (s.intensity > 0) others.push({ light: s, fog: 0.03 });
     others.sort((a, b) => a.light.position.distanceToSquared(eye) - b.light.position.distanceToSquared(eye));
     volSpots.push(...others);
-    const pts = [...venue.volumePoints, ...props.volumePoints];
+    const pts = [...(onGround && ground ? ground.volumePoints : venue.volumePoints), ...props.volumePoints];
     pts.sort((a, b) => a.position.distanceToSquared(eye) - b.position.distanceToSquared(eye));
     pipeline.setVolumeLights(volSpots, pts);
 
@@ -458,7 +515,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     // at its door, since that is the only place it can be seen from. After the
     // frame, so the shadow maps it samples exist and are this frame's.
     const mir = venue.mirror;
-    if (mir && world.mirrorOn) {
+    if (mir && world.mirrorOn && !onGround) {
       const e = mir.room;
       const cx = eye.x * PX_PER_M;
       const cz = eye.z * PX_PER_M;
