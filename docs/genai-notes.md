@@ -3948,3 +3948,79 @@ clears it, and he can already get within 25 px of the soup against a `POT_REACH`
 
 Suite **711 tests, 45 files, green**; `tsc --noEmit` clean; `ERRORS:0` in all four
 chapters on the built bundle.
+
+## 26 Sep 2026 — the crowd he photographed, the wall on the stairs, and a gate that is now a gate
+
+Four screenshots came back from his replay, one line each, and every one of them was
+a bug report with a picture attached. The agent's job this session was to find what
+each picture was actually showing, which in three cases out of four was not what the
+line said.
+
+**"Some seem to walk backward or have the backpack on front."** They did — all sixty
+of them. `Visitor extends Bot`, `mkBot` sets `face` to 0, and `stepVisitor` never
+touched it again, so the whole crowd pointed due east however it walked. Invisible
+while the crowd were pawns; visible the frame the renderer gave a person a front, a
+back and a rucksack. One line of sim, and a test that reads 9 of 40 facing their
+travel with the line removed and 40 of 40 with it in.
+
+**"The small stair between reception and main hall seem to block them."** It is not
+the stair: the crossing carries no walls at all, measured. Three faults behind that
+one picture, and the third is the interesting one.
+
+- Nothing depenetrated the crowd from itself — two visitors stood at exactly
+  (945, 453), one body drawn twice. A pair parts now, half the overlap, moving only
+  the body whose step it is, so the wall push-out can still catch it. The first
+  version moved both and walked people **through** the stair wall under crowd
+  pressure: measured, one at y 594, twenty px past the steps' own edge.
+- A visitor who had sidestepped off the lane grid clipped the end-of-row booth
+  beside the stairwell and crawled its face. Grazing drops the leg being walked now —
+  but only after half a second of touching without gaining ground, because threading
+  a door bay grazes a leaf too, and dropping on first touch stranded eight of sixty
+  inside the doorway.
+- And the one nobody would have guessed: a visitor who ran out of route east of the
+  hall was handed a **hall** lane node, so they walked west into `GF.gate` — Stephan's
+  barrier — and stood on its east face. Ten of sixty in a 10 px-spaced line at
+  x 1428, at a full walking speed on the clock, for a hundred seconds. `speed` said
+  they were walking briskly, which is why the durable test measures **ground covered**
+  instead: the crowd's own floor is 240 px over forty seconds, against the crawlers'
+  nothing.
+
+**"Stairs are great, but there's a wall!"** — and there was: a 15.7 m slab 1.55 m
+tall with nine posts on its face. It already opened at the end of chapter 3; what was
+wrong was that it read as the edge of the building rather than as something one man
+unhooks. `barrierRun` builds what stands at the foot of a staircase on a conference
+morning — 2 m barriers hooked together, waist high, feet on the floor, rails you can
+see the treads through — and chapter 3's prop is posed out of the same kit, so the
+thing that opens is the thing that was standing there.
+
+**"The printer in particular, it should be clear it's the objective of a task."** The
+recognisable printer — hopper, feed slot, screen, lamp, lanyard spool — has existed
+since his earlier *"printer should be recognizable"*, and it was only ever chapter 2's
+prop. Every other chapter drew a white slab. It is the same model everywhere now, and
+it turned out to be **floating**: `printer.ts` guessed a 1.02 m counter while the desk
+is a `low` wall the renderer draws at 0.78, so the machine hovered 24 cm over its own
+desk. Two modules with a number for the same surface, only one of them drawing it.
+
+**"Increase the queue but just the minimun needed."** One person per queue. The front
+rank stands two abreast 11 px either side of the centre line, where each body blocks
+Biggy's centre within 15 px, and the pair covers a 44 px doorway with 4 px to spare at
+each jamb. Measured on the beer test's own fill, from where Biggy actually stands:
+136 px from the soup with the queues standing and not one reachable cell inside the
+court, 24 px once Voxxy clears the queue, against a `POT_REACH` of 70. `beer-bar.test.ts`
+asserts that now instead of carrying a comment explaining why it could not. The scan
+line it used to measure went with it — three pixels outside the wall is open floor in
+both states, which is why it read 11 px through the leaking gate and 7 through the
+sealed one.
+
+**The fresh-clone check** he asked for: cloned from the remote into an empty
+directory, `corepack enable`, `pnpm install` (1.4 s on a warm store), `pnpm test`
+**712 passing in 45 files**, `pnpm build` clean, `pnpm dev` serves, and all four
+chapters run from the built bundle with `ERRORS:0`. One finding: `.git` is **83 MB**
+because `tools/progress/shots` (53 MB) is in history. The working tree without it is
+4 MB. Pruning is still his call.
+
+Human decisions this session: the four screenshot findings above, *"increase the queue
+but just the minimun needed"*, *"a temporary barrier is fine"*, and *"do the check"*.
+Rejected: nothing of his; the agent threw away two of its own fixes (moving both bodies
+in the depenetration, dropping a route leg on first contact) after measuring what they
+did to the crowd.
