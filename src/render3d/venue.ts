@@ -207,6 +207,66 @@ function wallSlab(b: Buckets, r: Rect, y0: number, y1: number, pick: (reg: Regio
   }
 }
 
+/** The kiosk's stencil: striped skirt, a bucket of popcorn, POPCORN in marquee type. */
+function popcornArt(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 1024;
+  c.height = 1024;
+  const x = c.getContext('2d')!;
+  x.fillStyle = '#f4ecd8';
+  x.fillRect(0, 0, 1024, 1024);
+  // Candy stripes on the lower third.
+  for (let i = 0; i < 16; i++) {
+    x.fillStyle = i % 2 ? '#f4ecd8' : '#c8102e';
+    x.fillRect(i * 64, 660, 64, 364);
+  }
+  x.fillStyle = '#7a0a1c';
+  x.fillRect(0, 650, 1024, 18);
+  // The bucket: red-and-white striped, tapering, heaped with popcorn.
+  x.save();
+  x.translate(512, 0);
+  x.beginPath();
+  x.moveTo(-150, 330);
+  x.lineTo(150, 330);
+  x.lineTo(110, 640);
+  x.lineTo(-110, 640);
+  x.closePath();
+  x.clip();
+  for (let i = -6; i < 6; i++) {
+    x.fillStyle = i % 2 ? '#fff' : '#c8102e';
+    x.fillRect(i * 50, 320, 50, 330);
+  }
+  x.restore();
+  x.fillStyle = '#ffe9a6';
+  for (let i = 0; i < 38; i++) {
+    const a = (i / 38) * Math.PI;
+    const r = 60 + ((i * 37) % 50);
+    x.beginPath();
+    x.arc(512 + Math.cos(a) * 150 * (0.3 + (i % 5) / 6), 330 - Math.sin(a) * r * 0.6, 26 + (i % 3) * 6, 0, Math.PI * 2);
+    x.fill();
+  }
+  x.strokeStyle = '#d9b44a';
+  x.lineWidth = 3;
+  for (let i = 0; i < 38; i += 2) {
+    const a = (i / 38) * Math.PI;
+    x.beginPath();
+    x.arc(512 + Math.cos(a) * 120, 330 - Math.sin(a) * 50, 20, 0, Math.PI * 2);
+    x.stroke();
+  }
+  // Marquee type across the top.
+  x.fillStyle = '#c8102e';
+  x.font = 'bold 150px "Arial Black", Impact, sans-serif';
+  x.textAlign = 'center';
+  x.textBaseline = 'middle';
+  x.fillText('POPCORN', 512, 120);
+  x.fillStyle = '#1d1d1d';
+  x.font = 'bold 44px "Helvetica Neue", Arial, sans-serif';
+  x.fillText('ZOUT · ZOET · MIXED', 512, 225);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 /** The foyer's window opening: sim y span of the glazing, and its sill/head heights. */
 function foyerWindow(): { sy0: number; sy1: number; y0: number; y1: number } {
   // The north two thirds of the west wall; the south third is the back bar's pier.
@@ -686,6 +746,11 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     // Its solid sides — the back under the menu board and the counter front
     // either side of the hatch, which face the robots' starting marks: kiosk
     // height, not a corridor wall.
+    // Dressed as a popcorn stand, not left as bare panels (Michele: "white
+    // walls are too anonymous... a full stencil for a popcorn booth?"): a
+    // red-and-white striped skirt, a bucket spilling over, POPCORN in big
+    // cinema letters, stencilled on every outward face.
+    const art = popcornArt();
     for (const w of walls) {
       if (w.glass || w.hidden || !inKiosk(w)) continue;
       const kb = new THREE.Mesh(box(m(w.w), H, m(w.h), V(m(w.x + w.w / 2), H / 2, m(w.y + w.h / 2))), mats.counter);
@@ -693,6 +758,24 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
       kb.receiveShadow = true;
       group.add(kb);
       colliders.push(kb);
+      const along = w.w >= w.h;
+      const len = m(along ? w.w : w.h);
+      // The outward face: north (-z) for the back, west (-x) for the counter front.
+      // Square art at its own aspect: repeated along a long face, cropped on a
+      // narrow one, never stretched.
+      const tex = art.clone();
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.repeat.set(Math.max(0.45, len / (H - 0.2)), 1);
+      tex.offset.x = (1 - tex.repeat.x) / 2;
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(len, H - 0.2), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, emissive: new THREE.Color(1, 1, 1), emissiveMap: tex, emissiveIntensity: 0.12 }));
+      if (along) {
+        face.position.set(m(w.x + w.w / 2), H / 2, m(w.y) - 0.012);
+        face.rotation.y = Math.PI;
+      } else {
+        face.position.set(m(w.x) - 0.012, H / 2, m(w.y + w.h / 2));
+        face.rotation.y = -Math.PI / 2;
+      }
+      group.add(face);
     }
     // Glass walls from the sim's glass slabs.
     for (const w of walls) {
