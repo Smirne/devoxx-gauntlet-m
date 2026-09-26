@@ -4064,3 +4064,52 @@ history to get them out of `.git` (still 83 MB): that is a force-push of every
 branch on a public submission repo four days from the deadline, which is a human's
 call to make and not a builder's, and it is the one thing in this session that was
 deliberately left undone.
+
+## 26 Sep 2026 — bodies cast shadows, and the rig that proves it (chapter 5)
+
+**Human decision.** Michele, on the two darkness puzzles the agent had proposed: *"A puzzle needing
+darkness, with biggy obstucting a lamp is fine, but where would you place it?"* and then *"Can you
+make a poc / demonstration for the two no light games?"*
+
+**What the agent did.**
+
+- Taught `src/sim/lights.ts` to occlude on **bodies** as well as walls: `rayCircle` clips each ray of
+  a visibility fan against a list of circles, so a robot standing in a beam casts a real umbra. It is
+  **opt-in per cast** — `buildLights(bots, walls, mirrors)` still means exactly what it meant, because
+  chapters 1 and 2 were measured and playtested against light that only walls could stop.
+- Built the rig as **chapter 5**, reachable only from `?chapter=5` and deliberately outside
+  `CHAPTER_COUNT`, so Skip chapter and the end of chapter 4 can never land on it.
+- **Station A — the photocell pair.** Two cells and a sign in a row, 70 px out from the work lamp
+  (Droid, parked on a pad). Both cells dark, sign still lit. One body cannot do it: a disc that
+  touches both outer rays from that distance also covers the middle one. It takes two, and each has
+  to stand back far enough that its shadow is a stripe rather than a curtain.
+- **Station B — the wide sensor bar.** 80 px of sensor, all of it dark at once. A body of radius `r`
+  at distance `d` shadows a half-angle `asin(r/d)`, and `d` can never be less than the two radii
+  added together — so every robot has a *widest possible shadow*. Voxxy's tops out 6.5 px short of
+  the bar's end from anywhere in the building; Biggy's clears it, pressed against the lamp. That is
+  Michele's "Biggy obstructing a lamp", made arithmetic.
+
+**Answer to "where would you place it?"** — the closed cinema section's own corridor, chapter 1's
+ground and the only part of the building that is dark by architecture rather than by the hour. No new
+venue, no new floor, no new kind of light source.
+
+**What was tried and rejected.**
+
+- *A static "work lamp" light source.* `LightSource.owner` is a `RobotKind`, and widening it ripples
+  through the renderer and the clue-colour code. Parking Droid on a marked pad gives the same fixed
+  geometry for nothing.
+- *Colour-blind photocells.* Voxxy and Biggy carry headlights that point where they last moved, so a
+  cell that counted any colour would be lit by the very robot sent to shade it. The cells read the
+  work lamp's green, which is also just what a photocell is.
+- *Clipping rays against bodies and stopping there.* This is the bug worth writing down. A pool is 72
+  rays over the full circle — 5° apart — and a robot 11 px from the lamp subtends 50° of it, so the
+  polygon had one vertex at 6 px next to one at 95 px and the straight EDGE between them swept 8 px
+  of floor at the far end, cutting out a whole sector of LIT floor. Measured, not guessed: Voxxy
+  parked on the axis darkened all 17 of station B's samples, including ones 44° off an axis her 25°
+  shadow cannot reach — the sweep caught it as a false solve. The fix is a vertex PAIR at each umbra
+  edge (`POLY_EXTRA`), which also meant growing the renderer's fan buffers, since a truncated polygon
+  is not drawn wrong, it is drawn closed across the room.
+
+**Tests.** `tests/dark-rig.test.ts` (10) sweeps the corridor rather than asserting one pose: station B
+is proved impossible for Voxxy from ~900 positions, station A impossible for one body from ~1,600,
+and both are proved possible from the poses the notes claim. Suite 736 green.

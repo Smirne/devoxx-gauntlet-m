@@ -11,7 +11,9 @@
  * The gauntlet's critics drive the build through the address bar, so a fidelity
  * screenshot is deterministic and needs no automation client:
  *
- *   ?chapter=N   start in chapter 1..4, skipping the title card
+ *   ?chapter=N   start in chapter 1..4, skipping the title card — or 5 for the
+ *                shadow rig, the body-occlusion proof of concept that is not part
+ *                of the run (`src/sim/chapters/demo-dark.ts`)
  *   ?topdown=1   the flat plan-view debug camera of the current floor. The sim
  *                rect 0,0..1900,700 is drawn at its own 19:7 aspect, anchored to
  *                the canvas' TOP-LEFT corner — not centred, because a headless
@@ -125,7 +127,7 @@ const poseParam = params.get('pose');
 const pose: RobotKind | null = KINDS.includes(poseParam as RobotKind) ? (poseParam as RobotKind) : null;
 
 const chapterParam = int('chapter');
-const startIn = chapterParam !== undefined && chapterParam >= 1 && chapterParam <= 4 ? chapterParam : undefined;
+const startIn = chapterParam !== undefined && chapterParam >= 1 && chapterParam <= 5 ? chapterParam : undefined;
 const seed = int('seed');
 const warm = Math.max(0, Math.min(int('warm') ?? 0, 20000));
 const wantTopDown = flag('topdown');

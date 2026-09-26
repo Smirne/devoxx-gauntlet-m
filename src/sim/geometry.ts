@@ -2014,6 +2014,8 @@ export const CHAPTER_TITLES = [
   '2 · Expo — the exhibition hall',
   '3 · Breakfast — doors open',
   '4 · Keynote — Room 8',
+  // `?chapter=5` only — the shadow rig (`src/sim/chapters/demo-dark.ts`).
+  '5 · Demo — shadow rig',
 ] as const;
 
 /** Talk titles on the corridor signage, per Devoxx room. */

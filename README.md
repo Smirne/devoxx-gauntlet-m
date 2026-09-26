@@ -123,6 +123,7 @@ screenshot is deterministic and needs no automation client:
 | Query | What it does |
 |---|---|
 | `?chapter=N` | Start in chapter 1..4, skipping the title card |
+| `?chapter=5` | The **shadow rig** — a proof of concept, not part of the run: two stations in the closed cinema corridor that demonstrate body-occluded light (`src/sim/chapters/demo-dark.ts`) |
 | `?topdown=1` | Flat plan-view debug camera of the current floor, north up, flat lit, no fog. The sim rect `0,0..1900,700` is drawn at its own 19:7 aspect **anchored to the top-left of the canvas**, so a plan overlay needs no offset |
 | `?nofog=1` | Drop the fog-of-war mask only |
 | `?seed=N` | Seed the sim RNG, so clue digits and crowds replay exactly |

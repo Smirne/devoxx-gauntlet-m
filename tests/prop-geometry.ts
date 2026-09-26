@@ -170,6 +170,12 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
    */
   seatrow: { h: SEAT_TOP_M, tl: true },
   seatblock: { h: SEAT_TOP_M, tl: true },
+
+  /* the shadow rig — `?chapter=5` only */
+  'lamp-pad': { h: 0.04, flat: true, fw: 1.3, fd: 1.3 },
+  photocell: { h: 0.28, fw: 0.4, fd: 0.4 },
+  'beam-sign': { h: 0.5, fw: 0.9, fd: 0.12, lift: 0.3 },
+  'sensor-bar': { h: 0.05, tl: true, flat: true },
   /*
    * Drawn by their own functions rather than from the table — `drawBreaker`,
    * `drawTerminal`, `drawCabinet`, `drawCrate`, `drawJammed`, the cable. Their

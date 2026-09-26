@@ -408,6 +408,16 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
    */
   seatrow: { h: SEAT_TOP_M, color: 0x3c2f3a, tl: true },
   seatblock: { h: SEAT_TOP_M, color: 0x3c2f3a, tl: true },
+
+  /* the shadow rig — `?chapter=5` only, `src/sim/chapters/demo-dark.ts` */
+  /** Where the work lamp stands. A painted circle, so it reads through a shadow. */
+  'lamp-pad': { h: 0.04, color: 0x2f7d4f, flat: true, fw: 1.3, fd: 1.3 },
+  /** A cell on a short post: it has to be visible when the beam is OFF it. */
+  photocell: { h: 0.28, color: 0x1b2430, fw: 0.4, fd: 0.4, glow: 0x123a2a },
+  /** The sign between the two cells, the one thing on the rig that must stay lit. */
+  'beam-sign': { h: 0.5, color: 0xe9e4d6, fw: 0.9, fd: 0.12, lift: 0.3, glow: 0x2a3a52 },
+  /** The wide bar. Flat, because what matters is the strip of floor it covers. */
+  'sensor-bar': { h: 0.05, color: 0x8e6b2a, tl: true, flat: true },
 };
 
 const PROP_FALLBACK: PropSpec = { h: 0.7, color: 0x5a6069 };
