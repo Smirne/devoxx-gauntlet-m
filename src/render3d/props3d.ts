@@ -459,16 +459,22 @@ export function createProps(parent: THREE.Object3D, mats: Materials, floor: 'fir
     update(snap: GameSnapshot, t: number, dt: number): void {
       // The ground floor's props are chapter 2's, drawn by props-ground.ts.
       if (groundProps) {
+        // Chapters 2 and 3 share this floor and this set: whatever the snapshot
+        // no longer carries (chapter 2's shutter, a crate Biggy picked up) hides.
+        const seen = new Set<THREE.Object3D>();
         for (const p of snap.props) {
-          const k = key(p);
+          const k = groundProps.key?.(p) ?? key(p);
           let o = byKey.get(k);
           if (o === undefined) {
             o = groundProps.build(p) ?? new THREE.Object3D();
             byKey.set(k, o);
             parent.add(o);
           }
+          o.visible = true;
+          seen.add(o);
           groundProps.update(o, p, t, dt);
         }
+        for (const o of byKey.values()) if (!seen.has(o)) o.visible = false;
         volumePoints.length = 0;
         return;
       }

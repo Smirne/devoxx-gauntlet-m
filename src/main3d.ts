@@ -341,7 +341,7 @@ function showEnd(): void {
   const card = document.createElement('div');
   card.className = 'ad3d-end';
   card.innerHTML =
-    '<h1>END OF THE 3D BUILD, FOR NOW</h1><p>The hall is lit and the t-shirts are out. Chapters 3 and 4 exist only in the 2.5D build so far.</p>' +
+    '<h1>END OF THE 3D BUILD, FOR NOW</h1><p>Breakfast is served and the stairs are open. Chapter 4, the keynote, exists only in the 2.5D build so far.</p>' +
     '<p><button type="button" id="ad3d-replay">Play again</button></p>';
   app.appendChild(card);
   card.querySelector('#ad3d-replay')?.addEventListener('click', () => window.location.reload());
@@ -365,7 +365,7 @@ function frame(dt: number): void {
   pushStick(dt);
   game.update(dt);
   const snap = game.snapshot();
-  if (snap.chapter > 2) {
+  if (snap.chapter > 3) {
     showEnd();
     return;
   }

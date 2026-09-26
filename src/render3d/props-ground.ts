@@ -16,7 +16,7 @@ import * as THREE from 'three';
 
 import { GF } from '../sim/geometry';
 import type { Prop } from '../sim/types';
-import { m } from '../sim/units';
+import { ROBOT_HEIGHT_M, m } from '../sim/units';
 
 import type { Materials } from './materials';
 import { box } from './materials';
@@ -103,6 +103,8 @@ function sprayTag(): THREE.CanvasTexture {
 }
 
 export interface GroundProps {
+  /** A stable identity for props that move (the pot on Biggy, the duck, a beer crate). */
+  key?(p: Prop): string | undefined;
   build(p: Prop): THREE.Object3D | null;
   update(o: THREE.Object3D, p: Prop, t: number, dt: number): void;
   colliders: THREE.Object3D[];
@@ -295,6 +297,7 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         return g;
       }
       case 'crate': {
+        if (p.label?.startsWith('beer')) return buildCh3(p, pw, ph);
         // Pallets of crated Devoxx t-shirts behind the shutter.
         const h = 0.5 * (p.v ?? 1) + 0.15;
         const pallet = new THREE.Mesh(box(w, 0.14, d, V(cx, 0.07, cz)), mats.counter);
@@ -310,14 +313,203 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         // flap barriers, shut tonight.
         const base = 0.5;
         const n = Math.max(2, Math.round(d / 1.2));
+        const flaps: THREE.Mesh[] = [];
+        g.userData = { flaps };
         for (let i = 0; i <= n; i++) {
           const z = m(p.y) + (d * i) / n;
           g.add(new THREE.Mesh(box(0.25, 1.0, 0.16, V(cx, base + 0.5, z)), mats.steel));
           if (i < n) {
-            const flap = new THREE.Mesh(box(0.03, 0.6, d / n - 0.3, V(cx, base + 0.7, z + d / n / 2)), mats.glass);
+            const flap = new THREE.Mesh(box(0.03, 0.6, d / n - 0.3, V(0, 0, 0)), mats.glass);
+            flap.position.set(cx, base + 0.7, z + d / n / 2);
             g.add(flap);
+            flaps.push(flap);
           }
         }
+        return g;
+      }
+      default:
+        return buildCh3(p, pw, ph);
+    }
+  }
+
+  function key(p: Prop): string | undefined {
+    switch (p.kind) {
+      case 'pot':
+      case 'soup':
+      case 'duck':
+      case 'cable':
+        return p.kind;
+      case 'race-marker':
+        return `race:${p.v ?? 0}`;
+      case 'crate':
+        return p.label?.startsWith('beer') ? `beer:${p.label}` : undefined;
+      default:
+        return undefined;
+    }
+  }
+
+  /** A neon word on a dark backing board, for chapter 3's counters. */
+  function neonBoard(text: string, w: number, col: string): THREE.Group {
+    const g = new THREE.Group();
+    const c = document.createElement('canvas');
+    c.width = 1024;
+    c.height = 192;
+    const x = c.getContext('2d')!;
+    x.fillStyle = '#000';
+    x.fillRect(0, 0, 1024, 192);
+    x.font = 'bold 110px "Arial Black", Impact, sans-serif';
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.shadowColor = col;
+    x.shadowBlur = 24;
+    x.fillStyle = col;
+    x.fillText(text, 512, 100, 980);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const back = new THREE.Mesh(new THREE.BoxGeometry(w + 0.1, w / 5.33 + 0.1, 0.05), mats.darkMetal);
+    const face = emitter(tex, w, w / 5.33, 2.4, 0xffffff);
+    face.position.z = 0.03;
+    g.add(back, face);
+    return g;
+  }
+
+  const beerMat = new THREE.MeshPhysicalMaterial({ color: 0xc88a1a, roughness: 0.15, emissive: new THREE.Color(0.35, 0.18, 0.02), emissiveIntensity: 0.6 });
+  const crateMats = [0x2f5d2f, 0x7a1f1f, 0x1f3f7a, 0x6a4a1a, 0x444444, 0x5a2a6a].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7 }));
+
+  function buildCh3(p: Prop, pw: number, ph: number): THREE.Object3D | null {
+    const g = new THREE.Group();
+    const w = m(pw);
+    const d = m(ph);
+    switch (p.kind) {
+      case 'soup-station': {
+        // The tomato soup: a big pot on the catering counter and a neon word over it.
+        g.position.set(m(p.x + pw / 2), 1.0, m(p.y + ph / 2));
+        const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.38, 0.5, 24), mats.steel);
+        pot.position.y = 0.25;
+        const soup = new THREE.Mesh(new THREE.CircleGeometry(0.39, 24), new THREE.MeshStandardMaterial({ color: 0xb3261e, emissive: new THREE.Color(0.5, 0.08, 0.04), emissiveIntensity: 0.8, roughness: 0.3 }));
+        soup.rotation.x = -Math.PI / 2;
+        soup.position.y = 0.46;
+        const board = neonBoard('TOMATO SOUP', 2.2, '#ff3b2f');
+        board.position.set(0, 1.9, -0.2);
+        g.add(pot, soup, board);
+        return g;
+      }
+      case 'ladle': {
+        // The high shelf, and the ladle on it until Droid takes it down.
+        g.position.set(m(p.x + pw / 2), 0, m(p.y + ph / 2));
+        const shelf = new THREE.Mesh(box(w, 0.05, d * 0.8, V(0, 2.35, 0)), mats.steel);
+        const ladle = new THREE.Group();
+        const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.09, 14, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), mats.steel);
+        bowl.position.set(0, 2.47, 0);
+        const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.5, 8), mats.steel);
+        handle.rotation.z = 1.1;
+        handle.position.set(0.22, 2.55, 0);
+        ladle.add(bowl, handle);
+        const glow = new THREE.PointLight(0xffb05a, 6, 2.5, 2);
+        glow.position.set(0, 2.7, 0.4);
+        g.add(shelf, ladle, glow);
+        g.userData = { ladle, glow };
+        return g;
+      }
+      case 'crab': {
+        g.position.set(m(p.x + pw / 2), 1.0, m(p.y + ph / 2));
+        const bread = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.22, 4, 10), new THREE.MeshStandardMaterial({ color: 0xd9a35a, roughness: 0.8 }));
+        bread.rotation.z = Math.PI / 2;
+        bread.position.y = 0.08;
+        const fill = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 0.1), new THREE.MeshStandardMaterial({ color: 0xff8a6a, roughness: 0.6 }));
+        fill.position.y = 0.1;
+        const board = neonBoard('BROODJE KRAB', 1.2, '#ff8a3d');
+        board.position.set(0, 0.7, -0.15);
+        g.add(bread, fill, board);
+        return g;
+      }
+      case 'bar-counter': {
+        // The Finally Block, in centre coordinates per the sim's own note.
+        g.position.set(m(p.x), 0, m(p.y));
+        const counter = new THREE.Mesh(box(w, 1.1, d, V(0, 0.55, 0)), mats.blackGloss);
+        counter.castShadow = true;
+        const strip = new THREE.Mesh(new THREE.BoxGeometry(w * 0.98, 0.04, 0.04), glowMat());
+        strip.position.set(0, 1.08, d / 2 + 0.02);
+        const board = neonBoard((p.label ?? 'THE BAR').split('—')[0].trim().toUpperCase(), Math.min(4, w * 0.8), '#ffcc33');
+        board.position.set(0, 3.0, 0);
+        g.add(counter, strip, board);
+        g.userData = { strip };
+        return g;
+      }
+      case 'beer-tap': {
+        g.position.set(m(p.x), 1.1, m(p.y));
+        const col = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.35, 12), mats.steel);
+        col.position.y = 0.17;
+        const handle = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.16, 0.04), new THREE.MeshStandardMaterial({ color: 0xf0c040, emissive: new THREE.Color(0.4, 0.3, 0.05), emissiveIntensity: 1 }));
+        handle.position.set(0, 0.42, 0.03);
+        g.add(col, handle);
+        return g;
+      }
+      case 'beer-glass': {
+        // Four Belgian shapes by `v`: tulip, goblet, flute, chalice.
+        g.position.set(m(p.x), 1.1, m(p.y));
+        const k = (p.v ?? 0) % 4;
+        const prof: Array<[number, number]> =
+          k === 0 ? [[0.02, 0], [0.02, 0.06], [0.05, 0.1], [0.04, 0.2]] : k === 1 ? [[0.03, 0], [0.01, 0.08], [0.06, 0.12], [0.06, 0.18]] : k === 2 ? [[0.02, 0], [0.025, 0.25]] : [[0.03, 0], [0.01, 0.07], [0.07, 0.1], [0.06, 0.16]];
+        g.add(new THREE.Mesh(new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), 14), beerMat));
+        return g;
+      }
+      case 'duck': {
+        // The shuffleboard duck: a big rubber duck, centre coordinates.
+        g.position.set(m(p.x), 0, m(p.y));
+        const yellow = new THREE.MeshStandardMaterial({ color: 0xffd21a, roughness: 0.35 });
+        const body = new THREE.Mesh(new THREE.SphereGeometry(w * 0.45, 18, 12), yellow);
+        body.scale.set(1, 0.7, 1.25);
+        body.position.y = w * 0.32;
+        const head = new THREE.Mesh(new THREE.SphereGeometry(w * 0.26, 16, 12), yellow);
+        head.position.set(0, w * 0.72, w * 0.3);
+        const beak = new THREE.Mesh(new THREE.ConeGeometry(w * 0.08, w * 0.18, 10), new THREE.MeshStandardMaterial({ color: 0xff7a1a }));
+        beak.rotation.x = Math.PI / 2;
+        beak.position.set(0, w * 0.7, w * 0.58);
+        g.add(body, head, beak);
+        return g;
+      }
+      case 'duck-target':
+      case 'race-marker': {
+        g.position.set(m(p.x), 0.02, m(p.y));
+        const ring = new THREE.Mesh(new THREE.RingGeometry(w * 0.35, w * 0.5, 32), new THREE.MeshBasicMaterial({ color: 0x000000, toneMapped: false, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+        ring.rotation.x = -Math.PI / 2;
+        g.add(ring);
+        if (p.kind === 'race-marker') {
+          const n = emitter(canvasText([String(p.v ?? '')], { w: 128, h: 128 }), w * 0.5, w * 0.5, 2, 0xffffff);
+          n.rotation.x = -Math.PI / 2;
+          n.position.y = 0.01;
+          g.add(n);
+        }
+        g.userData = { ring };
+        return g;
+      }
+      case 'sticker': {
+        g.position.set(m(p.x + pw / 2), 2.4, m(p.y + ph / 2));
+        g.add(emitter(canvasText(['DEVOXX', '2026'], { w: 256, h: 160, bg: '#000', fg: '#ff7a1a' }), 0.4, 0.25, 2, 0xffffff));
+        return g;
+      }
+      case 'pot': {
+        // The soup, riding on Biggy's lid.
+        const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.27, 0.36, 20), mats.steel);
+        pot.position.y = 0.18;
+        g.add(pot);
+        return g;
+      }
+      case 'soup': {
+        const surf = new THREE.Mesh(new THREE.CircleGeometry(0.28, 20), new THREE.MeshStandardMaterial({ color: 0xb3261e, emissive: new THREE.Color(0.6, 0.1, 0.05), emissiveIntensity: 0.6 }));
+        surf.rotation.x = -Math.PI / 2;
+        g.add(surf);
+        return g;
+      }
+      case 'crate': {
+        if (!p.label?.startsWith('beer')) return null;
+        // A beer crate, centre coordinates, stacked by `v`.
+        const i = Array.from(p.label).reduce((a, ch) => a + ch.charCodeAt(0), 0) % crateMats.length;
+        const body = new THREE.Mesh(box(w, 0.32, d, V(0, 0.16, 0)), crateMats[i]);
+        body.castShadow = true;
+        const bottles = new THREE.Mesh(box(w * 0.85, 0.1, d * 0.85, V(0, 0.36, 0)), new THREE.MeshStandardMaterial({ color: 0x3a2208, roughness: 0.2 }));
+        g.add(body, bottles);
         return g;
       }
       default:
@@ -433,11 +625,43 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
       case 'roller':
         poseShutter(u.shutter as THREE.Group, p.progress ?? (p.state === 'broken' ? 1 : 0), 3.2);
         break;
+      case 'gate': {
+        // Stephan's gate: the glass flaps fold away as the sim swings it open.
+        const e = THREE.MathUtils.smoothstep(p.progress ?? (p.state === 'open' ? 1 : 0), 0, 1);
+        for (const f of (u.flaps ?? []) as THREE.Mesh[]) f.scale.z = Math.max(0.02, 1 - e);
+        break;
+      }
+      case 'ladle':
+        (u.ladle as THREE.Object3D).visible = p.state !== 'done';
+        (u.glow as THREE.PointLight).intensity = p.state === 'done' ? 0 : 5 + 3 * Math.sin(t * 3);
+        break;
+      case 'bar-counter':
+      case 'duck-target':
+      case 'race-marker': {
+        const mat = ((u.strip ?? u.ring) as THREE.Mesh).material as THREE.MeshBasicMaterial;
+        mat.color.copy(stateColour(p.state, tmp, p.state === 'idle' ? 0.8 : 3 * (p.state === 'active' ? 0.7 + 0.3 * Math.sin(t * 4) : 1)));
+        break;
+      }
+      case 'pot':
+      case 'soup':
+        // Carried on Biggy's lid; the sim puts it a little north of his centre.
+        o.position.set(m(p.x), ROBOT_HEIGHT_M.biggy + (p.kind === 'soup' ? 0.02 + 0.32 * (p.v ?? 1) : 0), m(p.y + 8));
+        break;
+      case 'duck':
+        o.position.set(m(p.x), 0, m(p.y));
+        break;
+      case 'crate':
+        if (p.label?.startsWith('beer')) {
+          const onBiggy = p.state === 'active' || p.state === 'broken';
+          const layer = Math.max(0, (p.v ?? 1) - 1);
+          o.position.set(m(p.x), (onBiggy ? ROBOT_HEIGHT_M.biggy : 0) + layer * 0.34, m(p.y));
+        }
+        break;
       default:
         break;
     }
   }
 
   void GF;
-  return { build, update, colliders };
+  return { key, build, update, colliders };
 }
