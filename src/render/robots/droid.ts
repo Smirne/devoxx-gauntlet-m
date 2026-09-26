@@ -684,6 +684,12 @@ export function buildDroid(): RobotRig {
   const EYE_Y = HEAD_TOP - 0.52 * HEAD_H;
   const eyeV = (HEAD_TOP - EYE_Y) / SKULL_H;
   const { z: eyeZ, yaw: eyeYaw } = onSkull(eyeV, EYE_X);
+  // The two beads ride one group, `parts.eyes`, so a renderer can slide them
+  // sideways in their sockets together — a glance (the 3D intro does).
+  const eyes = new THREE.Group();
+  eyes.name = 'eyes';
+  head.add(eyes);
+  parts.eyes = eyes;
   for (const sx of [-1, 1] as const) {
     // Socket and bead share one axis at x = EYE_X, so the spacing the sheet
     // measures is the spacing the render has. Offsetting the bead along the
@@ -694,7 +700,7 @@ export function buildDroid(): RobotRig {
     head.add(socket);
     const bead = part(new THREE.SphereGeometry(EYE_R, 14, 10), eyeGlow);
     bead.position.set(sx * EYE_X, EYE_Y, eyeZ - 0.0085);
-    head.add(bead);
+    eyes.add(bead);
   }
 
   /*

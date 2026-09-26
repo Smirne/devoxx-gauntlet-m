@@ -256,6 +256,23 @@ function openingTrick(kind: RobotKind, t: number): { hop: number; flair: number 
   return { hop: 0, flair: phase(out + 0.1, kind === 'droid' ? DROID_STRETCH_DUR : BIGGY_ROLL_DUR) };
 }
 
+/**
+ * Droid's glance in the intro: eyes left, eyes right, back — "the thoughtful
+ * one" having a look round before he steps out (Michele: "make droid move its
+ * eyes sideways"). The beads slide in their sockets and the head follows a
+ * little behind, which is what makes it read at the intro's distance. Timed off
+ * his own slot; drawn only.
+ */
+function glance(rig: RobotRig, t: number): void {
+  const s = t - (LEAD + SLOT);
+  const ss = THREE.MathUtils.smoothstep;
+  const g = -ss(s, 0.7, 0.95) + 2 * ss(s, 1.45, 1.75) - ss(s, 2.25, 2.55);
+  const eyes = rig.parts.eyes;
+  if (eyes) eyes.position.x = g * 0.011;
+  const lag = -ss(s, 0.8, 1.1) + 2 * ss(s, 1.55, 1.95) - ss(s, 2.35, 2.7);
+  rig.bones.head.rotation.y += lag * 0.2;
+}
+
 /** Place and animate the robots from the snapshot, and aim their lamps. */
 export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot, dt: number): void {
   const droid = robots.get('droid');
@@ -319,6 +336,7 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
     // the step (Michele: "I'd keep them frontal"). Facing east throughout.
     const face = snap.opening ? STAND_FACE : b.face;
     updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: face, dt, mounted, hop: u, flair: trick ? trick.flair : flairPhase(b), shoved: worldMoved(b) ? 1 : 0, pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null });
+    if (b.kind === 'droid' && snap.opening) glance(r.rig, snap.opening.t);
     aimLamp(r, b, face);
   }
 }
