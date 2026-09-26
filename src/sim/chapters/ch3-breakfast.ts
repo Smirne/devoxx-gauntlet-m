@@ -103,6 +103,16 @@ const QUEUE_OPEN = 5 * TRAVEL_TIME_SCALE;
 /** Sideways shuffle of a queue that is making way. */
 const QUEUE_STEP = 30;
 /**
+ * How far either side of the queue's centre line the FRONT RANK stands.
+ *
+ * A catering doorway is 44 px and a queuer is 6, so a body at 11 px off centre
+ * blocks Biggy's centre (r 9) from 76 to 106 px; the pair of them covers the whole
+ * opening with 4 px to spare at each jamb. Measured, not chosen: at the old 5 px
+ * the two files left an 11 px window of clear centre line beside them. See
+ * `mkQueue`, and `tests/beer-bar.test.ts`, which does the fill.
+ */
+const QUEUE_SPREAD = 11;
+/**
  * Seconds for the soup to go from boiling to stone cold.
  *
  * The clock is really a distance: it is how far Biggy may carry the pot before it
@@ -906,20 +916,36 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /* --------------------------------------------------------------- the queues */
 
   const queues: Queue[] = [];
+  /**
+   * One queue: a FRONT RANK across the doorway, and a tail of singles behind it.
+   *
+   * The rank is the gate. Michele had already ruled on the gate itself — *"That is
+   * a good gate and it stays"* — but the fill in `tests/beer-bar.test.ts` measured
+   * what was actually standing there: two files 10 px apart in a 44 px doorway,
+   * which at Biggy's radius leaves an 11 px window of clear centre line beside
+   * them. He could drive in and fill the pot without Voxxy saying a word, and the
+   * test said so in a comment rather than asserting a seal that was not true.
+   *
+   * Michele, 26 Sep 2026: *"increase the queue but just the minimun needed."* The
+   * minimum is ONE extra person per queue. Two of them abreast at `QUEUE_SPREAD`
+   * either side of the centre line each block Biggy's centre within 15 px, and
+   * 2 x 15 px overlapping across a 44 px opening leaves nothing to drive through.
+   * Everybody behind them stands as they always did — a queue is a file, not a
+   * phalanx, and widening the whole thing would read as a wall of people.
+   *
+   * The same pair is what makes the clearing worth something: shifted `QUEUE_STEP`
+   * west they take the west half of the doorway with them and leave the east half
+   * open, which is the beat — Voxxy asks, the queue shuffles, Biggy gets in.
+   */
   const mkQueue = (x0: number, n: number, label: string): void => {
     const q: Queue = { label, x: x0, people: [], open: 0 };
-    for (let i = 0; i < n; i++) {
-      const x = x0 + (i % 2 ? 5 : -5);
-      q.people.push({
-        seed: nextSeed++,
-        x,
-        hx: x,
-        y: food.court.y + food.court.h - 10 - i * 16,
-        r: 6,
-        colour: QUEUE_COLOURS[(i * 7) % 4],
-        cd: 0,
-      });
-    }
+    const front = food.court.y + food.court.h - 10;
+    const stand = (x: number, y: number, i: number): void => {
+      q.people.push({ seed: nextSeed++, x, hx: x, y, r: 6, colour: QUEUE_COLOURS[(i * 7) % 4], cd: 0 });
+    };
+    stand(x0 - QUEUE_SPREAD, front, 0);
+    stand(x0 + QUEUE_SPREAD, front, 1);
+    for (let i = 1; i < n; i++) stand(x0 + (i % 2 ? 5 : -5), front - i * 16, i + 1);
     queues.push(q);
   };
   mkQueue(102, 7, 'soup queue');

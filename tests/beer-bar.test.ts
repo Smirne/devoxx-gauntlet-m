@@ -220,19 +220,27 @@ describe('the beer delivery has its own path', () => {
   });
 
   /*
-   * A MEASUREMENT THAT IS NOT A PASS MARK, and a note for whoever owns the soup.
+   * THE SOUP'S GATE, WHICH IS NOW A GATE.
    *
-   * While measuring the beer's route this fill also measured the soup's gate, and
-   * the gate is softer than the chapter reads: a catering doorway is 44 px wide,
-   * the queue standing in it is two files 10 px apart, and at Biggy's radius that
-   * leaves a clear window of about 11 px of centre line beside the people — enough
-   * to drive through without Voxxy saying a word. Clearing the queue still helps,
-   * and that is what is asserted here: the window is strictly wider once they make
-   * way. The absolute "he cannot get in at all" is NOT asserted, because it is not
-   * true today and a test that claimed it would be a false pass.
+   * This test used to say the opposite, and said it on purpose: the same fill that
+   * measures the beer's path measured the soup's gate and found it soft. A catering
+   * doorway is 44 px, the queue standing in it was two files 10 px apart, and at
+   * Biggy's radius that left about 11 px of clear centre line beside the people —
+   * he could drive in and fill the pot without Voxxy saying a word. So the test
+   * asserted only that clearing a queue WIDENS the opening, and carried a comment
+   * saying why it did not assert the seal a reader expects.
+   *
+   * Michele, 26 Sep 2026: *"increase the queue but just the minimun needed."* One
+   * more person per queue, standing abreast of the first (`QUEUE_SPREAD` in
+   * `ch3-breakfast.ts`), and the doorway is shut to him: measured, the nearest
+   * floor he can reach is 136 px from the soup station against a `POT_REACH` of
+   * 70, and not one cell inside the catering court is reachable at all. Clear the
+   * queue and the same fill puts him 24 px from it.
    */
-  it('widens the catering doorway when Voxxy clears the queue — it does not seal it', () => {
+  it('seals the catering doorway against Biggy, and opens it when Voxxy clears the queue', () => {
     const g = mk();
+    const soup = g.snapshot().props.find((p) => p.kind === 'soup-station');
+    if (!soup) throw new Error('no soup station');
     // Everything here is read off the people standing in the doorway rather than
     // off a constant, so the measurement still means something if somebody moves
     // the catering block.
@@ -240,35 +248,63 @@ describe('the beer delivery has its own path', () => {
       .snapshot()
       .people.filter((p) => p.role === 'queue')
       .sort((p, q) => p.x - q.x);
-    const first = file.filter((p) => p.x <= file[0].x + 30);
-    const qx = first.reduce((a2, p) => a2 + p.x, 0) / first.length;
+    const qx = GF.food.court.x + (GF.food.gaps[0][0] + GF.food.gaps[0][1]) / 2 - GF.food.court.x;
+    expect(file.length).toBeGreaterThan(15);
     // The scan line is the doorway itself — the outer face of the catering block's
     // south wall, where the queue's front rank is what narrows the opening.
     const y = GF.food.court.y + GF.food.court.h + 3;
 
-    const window = (): number => {
-      const big = bot(g, 'biggy');
-      const snap = g.snapshot();
-      const walls = (snap.walls as Wall[]).filter((w) => !(w.skipFor && w.skipFor(big)));
-      const discs = snap.people.filter((p) => p.role === 'queue').map((p) => ({ x: p.x, y: p.y, r: p.r }));
-      const blocked = blockedGrid(walls, discs, R);
-      let best = 0;
-      let run = 0;
-      for (let x = qx - 45; x <= qx + 45; x++) {
-        run = blocked[cell({ x, y })] ? 0 : run + 1;
-        best = Math.max(best, run);
+    /** How near the soup he can actually get, walking from where he stands. */
+    const nearestToSoup = (blocked: Uint8Array): { best: number; inCourt: number } => {
+      const from = bot(g, 'biggy');
+      const seen = new Uint8Array(NX * NY);
+      const queue = new Int32Array(NX * NY);
+      let head = 0;
+      let tail = 0;
+      const s0 = cell(from);
+      expect(blocked[s0], 'Biggy is standing inside something').toBe(0);
+      seen[s0] = 1;
+      queue[tail++] = s0;
+      let best = Infinity;
+      let inCourt = 0;
+      while (head < tail) {
+        const c = queue[head++];
+        const i = c % NX;
+        const j = (c - i) / NX;
+        const p = at(i, j);
+        best = Math.min(best, Math.hypot(p.x - soup.x, p.y - soup.y));
+        if (inRectPt(p, GF.food.court)) inCourt++;
+        for (const k of [i + 1 < NX ? c + 1 : -1, i > 0 ? c - 1 : -1, j + 1 < NY ? c + NX : -1, j > 0 ? c - NX : -1]) {
+          if (k < 0 || blocked[k] || seen[k]) continue;
+          seen[k] = 1;
+          queue[tail++] = k;
+        }
       }
-      return best;
+      return { best, inCourt };
     };
 
-    const shut = window();
+    /*
+     * The measure is the FILL, not a scan line across the opening. A scan line
+     * three pixels outside the wall is open floor in both states and says nothing:
+     * it reported 11 px through the old gate and 7 px through the sealed one,
+     * because the rank stands ten pixels inside the doorway and the line was
+     * measuring the shadow it casts, not the way through. What decides whether
+     * Biggy gets his soup is whether a body his size can WALK there.
+     */
+    const before = nearestToSoup(biggyGrid(g).blocked);
+    expect(before.inCourt, 'Biggy can walk into the catering court past the queue').toBe(0);
+    // The pot's own reach is 70 px; this is the number that makes the gate a gate.
+    expect(before.best, `Biggy can get ${Math.round(before.best)} px from the soup`).toBeGreaterThan(100);
+
     g.debug.select('voxxy');
     g.debug.place('voxxy', qx, y + 20);
     g.key('KeyE');
     expect(breakfastOf(g).queues.some((q) => q.open > 0), 'Voxxy did not clear a queue').toBe(true);
     for (let i = 0; i < 40; i++) g.update(DT_MAX);
-    const open = window();
-    expect(open, `doorway window ${shut}px shut, ${open}px open`).toBeGreaterThan(shut);
+
+    const after = nearestToSoup(biggyGrid(g).blocked);
+    expect(after.inCourt, 'the cleared queue does not let him in').toBeGreaterThan(0);
+    expect(after.best, `${Math.round(after.best)} px from the soup with the queue aside`).toBeLessThan(70);
   });
 
   it('puts the bar outside the catering block, and makes its counter solid', () => {
