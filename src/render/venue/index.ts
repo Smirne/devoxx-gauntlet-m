@@ -124,6 +124,7 @@ export function buildVenue(): Venue {
       gf.overhead.visible = visible;
     },
     dispose: (): void => {
+      gf.dispose();
       disposeGeometries(group);
       signs.dispose();
       palette.dispose();
