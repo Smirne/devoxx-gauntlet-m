@@ -207,61 +207,100 @@ function wallSlab(b: Buckets, r: Rect, y0: number, y1: number, pick: (reg: Regio
   }
 }
 
-/** The kiosk's stencil: striped skirt, a bucket of popcorn, POPCORN in marquee type. */
+/**
+ * The kiosk's stencil, in this build's own language: black panels and neon line
+ * art, not a funfair (Michele: "the idea is good, but not aligned with the rest of
+ * the style... make the appearance more cyberpunky"). A bucket drawn as glowing
+ * outlines with its stripes as tubes, kernels as hollow rings, POPCORN in a
+ * split magenta/cyan glitch, a hazard-stripe kick band, and scan lines. The
+ * canvas is the emissive map: the panel itself stays dark metal.
+ */
 function popcornArt(): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = 1024;
   c.height = 1024;
   const x = c.getContext('2d')!;
-  x.fillStyle = '#f4ecd8';
+  x.fillStyle = '#000';
   x.fillRect(0, 0, 1024, 1024);
-  // Candy stripes on the lower third.
-  for (let i = 0; i < 16; i++) {
-    x.fillStyle = i % 2 ? '#f4ecd8' : '#c8102e';
-    x.fillRect(i * 64, 660, 64, 364);
-  }
-  x.fillStyle = '#7a0a1c';
-  x.fillRect(0, 650, 1024, 18);
-  // The bucket: red-and-white striped, tapering, heaped with popcorn.
-  x.save();
-  x.translate(512, 0);
+  const MAG = '#ff2bd6';
+  const CY = '#19e6ff';
+  const AMB = '#ffb21a';
+  const tube = (col: string, w: number): void => {
+    x.strokeStyle = col;
+    x.shadowColor = col;
+    x.shadowBlur = 22;
+    x.lineWidth = w;
+  };
+  // The bucket: an outline and its stripes, all tubes.
+  const top = 340;
+  const bot = 700;
+  tube(MAG, 10);
   x.beginPath();
-  x.moveTo(-150, 330);
-  x.lineTo(150, 330);
-  x.lineTo(110, 640);
-  x.lineTo(-110, 640);
+  x.moveTo(512 - 160, top);
+  x.lineTo(512 + 160, top);
+  x.lineTo(512 + 115, bot);
+  x.lineTo(512 - 115, bot);
   x.closePath();
-  x.clip();
-  for (let i = -6; i < 6; i++) {
-    x.fillStyle = i % 2 ? '#fff' : '#c8102e';
-    x.fillRect(i * 50, 320, 50, 330);
-  }
-  x.restore();
-  x.fillStyle = '#ffe9a6';
-  for (let i = 0; i < 38; i++) {
-    const a = (i / 38) * Math.PI;
-    const r = 60 + ((i * 37) % 50);
+  x.stroke();
+  tube(MAG, 5);
+  for (let i = -3; i <= 3; i++) {
     x.beginPath();
-    x.arc(512 + Math.cos(a) * 150 * (0.3 + (i % 5) / 6), 330 - Math.sin(a) * r * 0.6, 26 + (i % 3) * 6, 0, Math.PI * 2);
-    x.fill();
-  }
-  x.strokeStyle = '#d9b44a';
-  x.lineWidth = 3;
-  for (let i = 0; i < 38; i += 2) {
-    const a = (i / 38) * Math.PI;
-    x.beginPath();
-    x.arc(512 + Math.cos(a) * 120, 330 - Math.sin(a) * 50, 20, 0, Math.PI * 2);
+    x.moveTo(512 + i * 40, top + 14);
+    x.lineTo(512 + i * 29, bot - 12);
     x.stroke();
   }
-  // Marquee type across the top.
-  x.fillStyle = '#c8102e';
-  x.font = 'bold 150px "Arial Black", Impact, sans-serif';
+  // Kernels: hollow amber rings heaped over the rim.
+  tube(AMB, 5);
+  for (let i = 0; i < 22; i++) {
+    const a = (i / 21) * Math.PI;
+    const r = 26 + ((i * 7) % 3) * 8;
+    x.beginPath();
+    x.arc(512 + Math.cos(a) * (150 - (i % 4) * 14), top - 18 - Math.sin(a) * (60 + (i % 5) * 12), r, 0, Math.PI * 2);
+    x.stroke();
+  }
+  // POPCORN, a glitched double: magenta offset, cyan on top.
   x.textAlign = 'center';
   x.textBaseline = 'middle';
-  x.fillText('POPCORN', 512, 120);
-  x.fillStyle = '#1d1d1d';
-  x.font = 'bold 44px "Helvetica Neue", Arial, sans-serif';
-  x.fillText('ZOUT · ZOET · MIXED', 512, 225);
+  x.font = 'bold 150px "Arial Black", Impact, sans-serif';
+  x.shadowBlur = 26;
+  x.shadowColor = MAG;
+  x.fillStyle = MAG;
+  x.fillText('POPCORN', 518, 128);
+  x.shadowColor = CY;
+  x.fillStyle = CY;
+  x.fillText('POPCORN', 506, 122);
+  x.shadowBlur = 0;
+  x.fillStyle = '#000';
+  for (let y = 60; y < 190; y += 9) x.fillRect(0, y, 1024, 3);
+  x.shadowBlur = 12;
+  x.shadowColor = CY;
+  x.fillStyle = CY;
+  x.font = 'bold 40px "Courier New", monospace';
+  x.fillText('ZOUT // ZOET // MIXED  ·  24/7', 512, 238);
+  // Hazard kick band.
+  x.shadowBlur = 0;
+  for (let i = -2; i < 34; i++) {
+    x.fillStyle = i % 2 ? '#000' : AMB;
+    x.beginPath();
+    x.moveTo(i * 36, 1024);
+    x.lineTo(i * 36 + 36, 1024);
+    x.lineTo(i * 36 + 72, 930);
+    x.lineTo(i * 36 + 36, 930);
+    x.fill();
+  }
+  tube(CY, 4);
+  x.beginPath();
+  x.moveTo(0, 915);
+  x.lineTo(1024, 915);
+  x.stroke();
+  // A little grime: dark speckle over everything, so it is paint, not a screen.
+  x.shadowBlur = 0;
+  x.fillStyle = 'rgba(0,0,0,0.55)';
+  for (let i = 0; i < 900; i++) {
+    const px = (i * 733) % 1024;
+    const py = (i * 419) % 1024;
+    x.fillRect(px, py, 2 + (i % 4), 2 + (i % 3));
+  }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
@@ -753,7 +792,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     const art = popcornArt();
     for (const w of walls) {
       if (w.glass || w.hidden || !inKiosk(w)) continue;
-      const kb = new THREE.Mesh(box(m(w.w), H, m(w.h), V(m(w.x + w.w / 2), H / 2, m(w.y + w.h / 2))), mats.counter);
+      const kb = new THREE.Mesh(box(m(w.w), H, m(w.h), V(m(w.x + w.w / 2), H / 2, m(w.y + w.h / 2))), mats.darkMetal);
       kb.castShadow = true;
       kb.receiveShadow = true;
       group.add(kb);
@@ -767,7 +806,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
       tex.wrapS = THREE.RepeatWrapping;
       tex.repeat.set(Math.max(0.45, len / (H - 0.2)), 1);
       tex.offset.x = (1 - tex.repeat.x) / 2;
-      const face = new THREE.Mesh(new THREE.PlaneGeometry(len, H - 0.2), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, emissive: new THREE.Color(1, 1, 1), emissiveMap: tex, emissiveIntensity: 0.12 }));
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(len, H - 0.2), new THREE.MeshStandardMaterial({ color: 0x0b0c10, roughness: 0.45, metalness: 0.6, emissive: new THREE.Color(1, 1, 1), emissiveMap: tex, emissiveIntensity: 2.2 }));
       if (along) {
         face.position.set(m(w.x + w.w / 2), H / 2, m(w.y) - 0.012);
         face.rotation.y = Math.PI;
