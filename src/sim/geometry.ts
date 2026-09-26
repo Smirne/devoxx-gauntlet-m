@@ -1484,11 +1484,22 @@ export const LOBBY_COLUMNS: readonly Rect[] = Object.freeze(
 );
 
 /** Planters along the arrivals concourse. Low: light crosses them, robots do not. */
+/**
+ * Planters on the lobby plate.
+ *
+ * There were two. The one at **(1110, 350) is gone** — Michele, with a screenshot
+ * of it: *"this element before reception is not needed"*, and then *"there's a
+ * bench standing on the way to the reception"*. A 4.5 x 1.9 m planter with a dark
+ * top, and it stood at x 1082..1138 immediately east of the threshold steps
+ * (`LOBBY_X` is 1045) on the line somebody walks when they come up off the hall
+ * floor and turn for the desk at x 1174. It was not beside the route, it was ON
+ * it, which is why he read it as a bench rather than as planting.
+ *
+ * The one at (1430, 250) stays: it is over by the entrance, clear of every desire
+ * line, and a lobby with no planting at all reads as a car park.
+ */
 export const LOBBY_PLANTERS: readonly Rect[] = Object.freeze(
-  ([
-    [1110, 350],
-    [1430, 250],
-  ] as Array<[number, number]>).map(([x, y]): Rect => ({ x: x - 28, y: y - 12, w: 56, h: 24 })),
+  ([[1430, 250]] as Array<[number, number]>).map(([x, y]): Rect => ({ x: x - 28, y: y - 12, w: 56, h: 24 })),
 );
 
 /* ------------------------------------------------ the second round of the same

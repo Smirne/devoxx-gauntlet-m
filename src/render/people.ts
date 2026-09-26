@@ -45,9 +45,22 @@ import * as THREE from 'three';
 
 import { m } from '../sim/units';
 import type { Person } from '../sim/types';
+import { SEAT_CUSHION_TOP_M } from './venue/props';
 
-/** A person's height, metres, before their own seed stretches or squashes it. */
-export const PERSON_H = 1.72;
+/**
+ * A person's height, metres, before their own seed stretches or squashes it.
+ *
+ * **1.60, not the 1.72 a real adult is.** Michele, looking at the crowd on the
+ * threshold: *"Reduce size a little bit."* The figures are drawn beside robots
+ * that are caricatures — Voxxy is 38 cm of robot and Biggy is a ball — and at a
+ * true 1.72 the crowd read as the biggest thing in the hall. This is a diorama and
+ * the people are its scale figures, so they get the diorama's scale rather than
+ * the world's: *"recognisable beats precise"* (`CLAUDE.md`), one more time.
+ *
+ * The seed still spreads them ±8% about this, so the crowd is a crowd of different
+ * people and not a row of one.
+ */
+export const PERSON_H = 1.6;
 
 /** Steps per second at a normal walking pace, shared by everybody. */
 const CADENCE = 2.15;
@@ -56,15 +69,21 @@ const WALK_REF = 26;
 /** Full leg excursion, radians. */
 const SWING = 0.62;
 /**
- * Hip height on an auditorium seat, metres. What a seated figure is dropped to.
+ * Hip height on an auditorium seat, metres — what a seated figure is dropped to.
  *
- * A chair puts a hip at about 0.45 m and this is 0.62, which is 17 cm of cheating
- * and deliberate. At the true height the room's own seat backs cut the audience
- * off at the neck, and a hall full of floating heads reads as emptier than a hall
- * full of people — CLAUDE.md's *"recognisable beats precise"*, applied to a
- * crowd. At 0.62 the shoulders clear the row in front and Room 8 looks full.
+ * **The seat's own cushion top, not a number.** This used to be a hand-picked
+ * 0.62: a real chair puts a hip near 0.45, that cut the audience off at the neck
+ * behind the row in front, and 0.62 was the compromise that made Room 8 look full.
+ * Shortening the figures to 1.60 (`PERSON_H`) turned the compromise into a fault —
+ * the drop from standing fell to 14.7 cm and they perched above their own seats.
+ *
+ * Reading `SEAT_CUSHION_TOP_M` off the seat model instead makes the question
+ * disappear: 0.54 m is where the cushion is, so it is where a hip goes, and it
+ * stays right if anybody re-models the seat. The shoulders still clear the row in
+ * front at this height — measured, and `tests/people.test.ts` holds both ends of
+ * it (a visible drop from standing, and a head still above the seat back).
  */
-const SEAT_HIP_M = 0.62;
+const SEAT_HIP_M = SEAT_CUSHION_TOP_M;
 
 /**
  * Skin, in five tones, shared.

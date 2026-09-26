@@ -153,8 +153,16 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string
 }
 
 /** A left- or right-pointing arrow block, as on the Kinepolis wayfinding signs. */
-function arrow(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, down: boolean): void {
+function arrow(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, down: boolean, flip = false): void {
   const s = size / 2;
+  ctx.save();
+  if (flip) {
+    // Mirror about the arrow's own centre: a left arrow becomes a right one
+    // without a second copy of the path.
+    ctx.translate(cx, cy);
+    ctx.scale(-1, 1);
+    ctx.translate(-cx, -cy);
+  }
   ctx.beginPath();
   if (down) {
     ctx.moveTo(cx - s * 0.45, cy - s);
@@ -175,6 +183,7 @@ function arrow(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: numb
   }
   ctx.closePath();
   ctx.fill();
+  ctx.restore();
 }
 
 /* ------------------------------------------------------------ sign painters */
@@ -423,15 +432,34 @@ const receptionSign: Paint = (ctx, w, h) => {
   ctx.lineWidth = 4;
   ctx.strokeRect(5, 5, w - 10, h - 10);
   ctx.fillStyle = '#ffffff';
-  arrow(ctx, w * 0.12, h * 0.5, h * 0.44, false);
+  /*
+   * THE ARROW POINTS THE READER'S RIGHT, AND THAT IS NOT A STYLE CHOICE.
+   *
+   * Michele, twice: *"Reception signal points the wrong way"*, and then with a
+   * screenshot, *"the arrow is pointing towards the hall"*. It was.
+   *
+   * The plate hangs on the south face of `GF.concreteWall` at the head of the
+   * steps, so it is read by somebody standing in the hall and facing NORTH. In sim
+   * coordinates +y is down, so facing -y puts +x — east — on the reader's right.
+   * The sign is at x 1060; `GF.reception` is at x 1174..1300. Reception is east of
+   * it, which is the reader's right; the hall is west, which is the reader's left,
+   * and left is where the arrow was pointing.
+   *
+   * So the arrow moved to the right-hand end and turned round, and the text moved
+   * left to make room for it. The block itself was never wrong — reception IS west
+   * of the main staircase, which is what the plan draws; this sign is east of
+   * reception, which is the other thing entirely and is what made the note
+   * confusing for two days.
+   */
+  arrow(ctx, w * 0.9, h * 0.5, h * 0.44, false, true);
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   const size = fitFont(ctx, 'RECEPTION', w * 0.6, Math.round(h * 0.42), 700);
   ctx.font = `700 ${size}px ${FONT}`;
-  ctx.fillText('RECEPTION', w * 0.24, h * 0.36);
+  ctx.fillText('RECEPTION', w * 0.07, h * 0.36);
   ctx.fillStyle = 'rgba(255,255,255,0.8)';
   ctx.font = `400 ${Math.round(h * 0.22)}px ${FONT}`;
-  ctx.fillText('badges  ·  wardrobe  ·  up the steps', w * 0.24, h * 0.72);
+  ctx.fillText('badges  ·  wardrobe  ·  up the steps', w * 0.07, h * 0.72);
 };
 
 const poloSign: Paint = (ctx, w, h) => {

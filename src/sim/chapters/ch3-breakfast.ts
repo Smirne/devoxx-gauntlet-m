@@ -55,7 +55,7 @@
  * is how the rest of this game works.
  */
 
-import { PUSH_LEAN_MIN, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
+import { FACE_MIN_SPEED, PUSH_LEAN_MIN, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
 import {
   CRATE_DELIVERY,
   CRATE_DRAG,
@@ -239,6 +239,13 @@ const inFrontOf = (b: Rect): Vec2 => ({ x: b.x + b.w / 2, y: b.y + b.h + 14 });
  * two spots have to be further apart than one of her plus the slack a player leaves.
  */
 const SPEAKER_CLEAR = 24;
+/**
+ * How long a visitor has to be grazing built fabric without gaining ground before
+ * the leg they are walking, rather than the crowd around them, is what gets blamed.
+ * Half a second: long enough to thread a door bay, short enough that nobody crawls
+ * the face of a booth for a visible moment. See `stepVisitor`.
+ */
+const GRAZE_STALL = 0.5;
 /** How close a robot has to get to the pallet to read what is printed on the wrap. */
 const LABEL_REACH = 90;
 /** The middle of the stack zone, and how close to it counts as "on the mark". */
@@ -362,6 +369,8 @@ interface Visitor extends Bot {
   dwell: number;
   hitCd: number;
   colour: string;
+  /** Seconds spent grazing built fabric without getting any closer. See `stepVisitor`. */
+  stall: number;
 }
 
 interface QueuePerson {
@@ -1015,15 +1024,39 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * turn at the wardrobe and go DOWN THE STEPS into the hall: the small staircase
    * is the only way through the hall's right edge, so the crowd has to use it too.
    */
+  /**
+   * The way in, from anywhere on the concourse: SOUTH OF THE GATE, then down the steps.
+   *
+   * Both the arrival and the re-acquire below need this, and they need the same one.
+   * `GF.gate` — Stephan's barrier across the foot of the main staircase — is a
+   * 6 x 197 px slab at x 1417, standing in the concourse for the whole of breakfast,
+   * and a visitor aimed west at their own y walks into its east face and crawls it:
+   * measured, ten of sixty standing in a 10 px-spaced line at x 1428, the gate's
+   * face plus a body's radius, for a hundred seconds.
+   *
+   * So the first leg is always SOUTHWARD, to the clear band below the gate's foot,
+   * and only then west. `lane` (0..1) spreads them across that band and across the
+   * 22 m of steps, so the whole crowd is not single file through one waypoint.
+   */
+  function arrivalLegs(x: number, lane: number): Vec2[] {
+    const st = GF.smallStairs;
+    const doorY = 520 + (lane - 0.5) * 90;
+    const step = st.y + 34 + lane * (st.h - 68);
+    return [
+      { x, y: doorY },
+      { x: 1240, y: doorY },
+      { x: st.x + st.w + 20, y: step },
+      { x: GF.hall.x + GF.hall.w - 40, y: step },
+    ];
+  }
+
   function spawnVisitor(): void {
     const e = GF.entrance;
-    const st = GF.smallStairs;
     // Which door leaf, and which part of the 22 m wide steps, this one takes. One
     // shared route would put three thousand people in single file: they all aim at
     // the same waypoint, and "do not walk into the back of the person in front"
     // then turns the only threshold into a stationary conga line.
     const lane = ctx.rng();
-    const step = st.y + 34 + lane * (st.h - 68);
     /*
      * ...and which of the three DOOR BAYS. The entrance is one opening in the
      * plot and three bays on the ground: the mullions between them and the
@@ -1040,13 +1073,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     v.colour = VISITOR_COLOURS[Math.floor(ctx.rng() * 4)];
     v.dwell = 0;
     v.hitCd = 0;
+    v.stall = 0;
     v.route = [
       // Straight through the bay first, then turn: the leaf is standing open in it.
       { x: e.x - 24, y: inY },
       { x: e.x - 40, y: inY },
-      { x: 1240, y: 520 + (lane - 0.5) * 90 },
-      { x: st.x + st.w + 20, y: step },
-      { x: GF.hall.x + GF.hall.w - 40, y: step },
+      ...arrivalLegs(e.x - 40, lane),
     ];
     crowd.push(v);
   }
@@ -1062,7 +1094,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * for the robots, minus the bounce: a visitor has no velocity response, it just
    * cannot be inside a slab.
    */
-  function pushOutOfWalls(a: { x: number; y: number; r: number }): void {
+  /** True when it actually had to move `a` — the caller uses that. */
+  function pushOutOfWalls(a: { x: number; y: number; r: number }): boolean {
+    let moved = false;
     for (const w of ctx.walls) {
       if (w.hidden) continue;
       const cx = a.x < w.x ? w.x : a.x > w.x + w.w ? w.x + w.w : a.x;
@@ -1071,6 +1105,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       const dy = a.y - cy;
       const d2 = dx * dx + dy * dy;
       if (d2 > a.r * a.r) continue;
+      moved = true;
       if (d2 > 1e-6) {
         const d = Math.sqrt(d2);
         a.x = cx + (dx / d) * a.r;
@@ -1088,6 +1123,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       else if (min === up) a.y = w.y - a.r;
       else a.y = w.y + w.h + a.r;
     }
+    return moved;
   }
 
   function stepVisitor(a: Visitor, dt: number): void {
@@ -1098,6 +1134,24 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       return;
     }
     if (!a.route.length) {
+      /*
+       * NOT IN YET? THEN THE ONLY ROUTE IS THE STEPS.
+       *
+       * The lane grid is a HALL grid — `GF.laneX` stops at 1010 and `GF.laneY`
+       * runs the hall's depth — so handing it to a visitor who is still out on the
+       * concourse aims them at a node on the far side of the hall's east wall.
+       * They walked the wall's face until it let them past: measured, one crossing
+       * it at y 627, sixty px south of the steps that are the only way through it.
+       *
+       * So anybody who runs out of route east of that edge takes the arrival route
+       * again — up to the stairs and down them — from wherever they now stand.
+       */
+      if (a.x > GF.hall.x + GF.hall.w) {
+        // `seed`, not `rng`: the same person keeps the same lane every time they
+        // have to take the route again, which is what a person does.
+        a.route.push(...arrivalLegs(a.x, (a.seed % 17) / 17));
+        return;
+      }
       // Pick a neighbouring lane node and amble to it. No pathfinding, no goals —
       // a trade show floor is Brownian motion with coffee.
       const n = nearestNode(a.x, a.y);
@@ -1143,6 +1197,32 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       const ox = o.x - a.x;
       const oy = o.y - a.y;
       const od = Math.hypot(ox, oy);
+      /*
+       * ...AND TWO PEOPLE ARE NEVER IN THE SAME PLACE.
+       *
+       * The sidestep above steers, and steering alone lets a dense stream merge:
+       * measured at the threshold steps, two visitors were standing at exactly
+       * (945, 453) — one body drawn twice. Nothing in this chapter depenetrated
+       * the crowd from itself, because when they were pawns nobody could tell.
+       *
+       * So the same pass that looks for a blocker also parts an overlapping pair,
+       * which is `botsCollide`'s positional half without its restitution: a crowd
+       * should part, not bounce. It costs nothing — the loop was already here, and
+       * this is the branch it was missing.
+       *
+       * It moves ONLY `a`, by half the overlap, and leaves `o` where it is: `o`
+       * takes its own half when its turn to be stepped comes, and the pair is
+       * symmetric over a frame either way. Pushing `o` here instead put a body
+       * outside its own step, after the wall push-out that would have caught it —
+       * so crowd pressure walked people THROUGH the stair wall (measured: a
+       * visitor at y 594, twenty px south of the steps' own edge). A body is only
+       * ever moved while it can still be un-moved by the wall list.
+       */
+      if (od > 0 && od < a.r + o.r) {
+        const push = (a.r + o.r - od) / 2;
+        a.x -= (ox / od) * push;
+        a.y -= (oy / od) * push;
+      }
       if (od < 12 && (ox * dx + oy * dy) / (od * d) > 0.6) {
         blocker = o;
         break;
@@ -1169,8 +1249,65 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     a.vy += (uy * spd - a.vy) * k;
     a.x += a.vx * dt;
     a.y += a.vy * dt;
-    pushOutOfWalls(a);
+    /*
+     * ...AND THEY FACE THE WAY THEY ARE WALKING.
+     *
+     * Michele, with a screenshot of the threshold steps: *"Some seem to walk
+     * backward or have the backpack on front."* They did, all sixty of them.
+     * `Visitor extends Bot`, so every one of them carried `Bot.face`, and `mkBot`
+     * sets that to **0** — due east — while nothing in this function ever touched
+     * it again. `stepBot`'s `stepAim` is what keeps a robot's heading honest and
+     * a visitor is not stepped by `stepBot`. So the renderer, which had just
+     * started drawing people with a front, a back and a rucksack, pointed every
+     * single one of them east regardless of where they were going.
+     *
+     * Invisible until the crowd stopped being pawns, which is the shape this
+     * chapter keeps producing: the renderer knowing about something the sim does
+     * not. The threshold shows it first because that is where they turn.
+     *
+     * Below `FACE_MIN_SPEED` the heading holds: somebody who has stopped to look
+     * at a booth keeps the way they were pointing rather than spinning on drift.
+     */
+    if (speed(a) > FACE_MIN_SPEED) a.face = Math.atan2(a.vy, a.vx);
+    /*
+     * TOUCHING A BOOTH MEANS THE ROUTE IS STALE — TAKE A NEW ONE.
+     *
+     * Michele: *"The small stair between reception and main hall seem to block
+     * them."* It is not the stair. The crossing is `GF.smallStairs`, 93 x 283 px,
+     * and the wall list over it is **empty**: measured, nothing stands in it at all.
+     *
+     * What jams is the corner beside it. A leg of the lane grid is axis-aligned,
+     * but a visitor who has sidestepped is no longer ON the lane, so the straight
+     * line from where they actually are to the next node clips the end-of-row booth
+     * at x 880..940 — twelve pixels from the stairwell and they are sixteen across.
+     * The push-out then slid them along the booth's face and they kept aiming at
+     * the same node, so they crawled the wall instead of walking the floor:
+     * measured, a standing line of them at x 936..948 with the 283 px opening
+     * beside it empty.
+     *
+     * Grazing something means the line you were walking may no longer be a line you
+     * can walk, so the leg is dropped and the next tick either takes the next
+     * waypoint or re-acquires the grid from where they now stand. It is what a
+     * person does when they bump into a stand.
+     *
+     * But ONLY once the graze has actually cost them ground. Dropping a leg on the
+     * first touch reads as a bug at the doors: the three entrance bays have their
+     * mullions and their standing-open leaves in the wall list, so a visitor
+     * threading a bay grazes one for a frame or two while still walking straight
+     * in. Dropping the leg there threw away the arrival route inside the doorway
+     * and left them ambling the lane grid from the wrong side of the concourse —
+     * measured, eight of sixty parked at x 1428 with the hall empty in front of
+     * them. So the touch has to come with no progress, for `GRAZE_STALL` of it,
+     * before the leg is what gets blamed.
+     */
+    const grazed = pushOutOfWalls(a);
     pushOutOfCrates(a);
+    if (grazed && Math.hypot(t.x - a.x, t.y - a.y) > d - a.walk * dt * 0.25) a.stall += dt;
+    else a.stall = 0;
+    if (a.stall > GRAZE_STALL) {
+      a.stall = 0;
+      a.route.shift();
+    }
   }
 
   /* --------------------------------------------------------- the beer delivery */
