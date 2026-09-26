@@ -12,6 +12,7 @@ import * as THREE from 'three';
 
 import { CY0, CY1, floor1Walls } from '../sim/geometry';
 import { clueLitBy } from '../sim/lights';
+import { createGroundProps, type GroundProps } from './props-ground';
 
 /**
  * The 3D build's clue patch, sim px (the sim's default is 5, which the 2.5D build
@@ -213,9 +214,10 @@ function fireDoorLeaves(mats: Materials, depth: number): THREE.Group {
   return g;
 }
 
-export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
+export function createProps(parent: THREE.Object3D, mats: Materials, floor: 'first' | 'ground' = 'first'): Props3D {
   const byKey = new Map<string, THREE.Object3D>();
   const colliders: THREE.Object3D[] = [];
+  const groundProps: GroundProps | null = floor === 'ground' ? createGroundProps(mats, colliders) : null;
   const volumePoints: VolumePoint[] = [];
   /** Emitters that exist from the moment their prop is built. */
   const staticPoints: VolumePoint[] = [];
@@ -455,6 +457,21 @@ export function createProps(parent: THREE.Object3D, mats: Materials): Props3D {
     colliders,
     volumePoints,
     update(snap: GameSnapshot, t: number, dt: number): void {
+      // The ground floor's props are chapter 2's, drawn by props-ground.ts.
+      if (groundProps) {
+        for (const p of snap.props) {
+          const k = key(p);
+          let o = byKey.get(k);
+          if (o === undefined) {
+            o = groundProps.build(p) ?? new THREE.Object3D();
+            byKey.set(k, o);
+            parent.add(o);
+          }
+          groundProps.update(o, p, t, dt);
+        }
+        volumePoints.length = 0;
+        return;
+      }
       if (!seatsBuilt && snap.props.some((p) => p.kind === 'seatrow')) {
         buildSeats(snap.props);
         seatsBuilt = true;
