@@ -60,6 +60,7 @@ import {
   toiletDoor,
 } from '../../sim/geometry';
 import type { Rect, Wall } from '../../sim/types';
+import { buildPrinter } from '../printer';
 import { PX_PER_M, m } from '../../sim/units';
 import type { VenuePalette } from './materials';
 import {
@@ -127,6 +128,11 @@ export interface GroundBuild {
   anchors: Map<number | string, THREE.Object3D>;
   /** Everything above head height, so a top-down debug shot can hide it. */
   overhead: THREE.Group;
+  /**
+   * Teardown for the few pieces down here that own materials of their own rather
+   * than borrowing the palette's — today, the badge printer's model.
+   */
+  dispose(): void;
 }
 
 /** The walking surface a thing at this sim x stands on. */
@@ -793,7 +799,7 @@ function booths(p: VenuePalette, art: SignPainter): THREE.Group {
  * and the wardrobe's hand-in top are sim walls (`wallStyle` gives them the white);
  * everything here is what stands on, behind and above them.
  */
-function reception(p: VenuePalette, overhead: THREE.Group): THREE.Group {
+function reception(p: VenuePalette, overhead: THREE.Group, owned: Array<() => void>): THREE.Group {
   const g = new THREE.Group();
   g.name = 'reception';
   const r = GF.reception;
@@ -821,9 +827,26 @@ function reception(p: VenuePalette, overhead: THREE.Group): THREE.Group {
     }
   }
 
-  const printer = slab(GF.printer, RISE + LOW_H, 0.28, p.printerWhite);
-  printer.name = 'badge-printer';
-  g.add(printer);
+  /*
+   * THE BADGE PRINTER — the real machine, in every chapter.
+   *
+   * Michele, 26 Sep 2026, with a shot of the counter: *"object at the recpeption
+   * still miss shape. The printer in particular, it should be clear it's the
+   * objective of a task."* It was a `printerWhite` slab 28 cm tall, which is what
+   * this line drew, and the recognisable machine — hopper, feed slot, screen,
+   * status lamp, lanyard spool — only ever existed as chapter 2's PROP
+   * (`src/render/printer.ts`, built after his *"printer should be recognizable and
+   * glowing as a hint"*). So the one chapter that makes the printer an objective
+   * had a printer and every other chapter had a white brick on the desk.
+   *
+   * It is the same model now, standing here dark with no chapter behind it, and
+   * `scene.ts` still hides it by name while chapter 2 poses the live one in the
+   * same footprint.
+   */
+  const printer = buildPrinter();
+  printer.pose({ kind: 'printer', ...GF.printer, state: 'idle' }, RISE);
+  g.add(printer.root);
+  owned.push(printer.dispose);
   /*
    * Cream-shaded table lamps ALONG THE TWO RUNS, not floating in the middle.
    *
@@ -837,8 +860,16 @@ function reception(p: VenuePalette, overhead: THREE.Group): THREE.Group {
     [r.x + r.w - 14, southMid],
     [r.x + COUNTER / 2, r.y + 26],
   ] as const) {
-    g.add(postAt(lx, ly, 0.03, 0.26, RISE + LOW_H, p.brass, 8));
-    g.add(boxAt(lx, ly, 9, 9, RISE + LOW_H + 0.26, 0.2, p.lampWarm));
+    // Base, stem, shade. The shade was a 9 x 9 px box — a pale yellow tile lying on
+    // the desk at this camera's pitch, and the other half of Michele's *"object at
+    // the recpeption still miss shape"*. A tapered drum is three vertices' worth of
+    // difference and it reads as a lamp from across the hall.
+    g.add(postAt(lx, ly, 0.07, 0.025, RISE + LOW_H, p.brass, 12));
+    g.add(postAt(lx, ly, 0.014, 0.26, RISE + LOW_H, p.brass, 8));
+    const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.145, 0.2, 14), p.lampWarm);
+    shade.position.set(m(lx), RISE + LOW_H + 0.24 + 0.1, m(ly));
+    shade.castShadow = true;
+    g.add(shade);
   }
 
   /*
@@ -1188,6 +1219,8 @@ export function buildGround(
   const overhead = new THREE.Group();
   overhead.name = 'overhead';
   const anchors = new Map<number | string, THREE.Object3D>();
+  /** Teardown for the pieces down here that own their own materials. See `GroundBuild`. */
+  const owned: Array<() => void> = [];
 
   /*
    * The hall plate at the datum, the lobby plate half a metre above it. The raised
@@ -1234,7 +1267,7 @@ export function buildGround(
   group.add(threshold(p, anchors));
   group.add(catering(p));
   group.add(booths(p, painter));
-  group.add(reception(p, overhead));
+  group.add(reception(p, overhead, owned));
   group.add(staircases(p, anchors));
 
   // The red accent panels down the hall's long walls — the empty-hall
@@ -1359,5 +1392,5 @@ export function buildGround(
     group.add(a);
   }
 
-  return { group, anchors, overhead };
+  return { group, anchors, overhead, dispose: (): void => owned.forEach((f) => f()) };
 }
