@@ -766,7 +766,7 @@ export function floor1Walls(): Wall[] {
     { x: k.x + k.w - T, y: k.y, w: T, h: k.h, glass: true },
     { x: k.x, y: k.y, w: T, h: 16 },
     { x: k.x, y: k.y + 40, w: T, h: 16 },
-    { x: k.x, y: k.y + 16, w: T, h: 24, hidden: true, skipFor: (b) => b.kind === 'voxxy', why: (b) => `${b.name}: the kiosk hatch is Voxxy-sized` },
+    { x: k.x, y: k.y + 16, w: T, h: 24, hidden: true, open: true, skipFor: (b) => b.kind === 'voxxy', why: (b) => `${b.name}: the kiosk hatch is Voxxy-sized` },
   );
   // Top of the main staircase.
   w.push({ x: F1.mainStair.x + F1.mainStair.w, y: CY0, w: T, h: CY1 - CY0, stair: 0 });

@@ -158,6 +158,12 @@ export interface Wall extends Rect {
   low?: boolean;
   /** Not drawn (invisible collider, e.g. the Voxxy-sized kiosk hatch). */
   hidden?: boolean;
+  /**
+   * An opening that stops robots but not light — the kiosk hatch is a hole a
+   * Voxxy fits through, and a lamp shone at a hole lights what is behind it
+   * (Michele, 27 Sep: "his light should pass also from the opening").
+   */
+  open?: boolean;
   /** Robots for which this wall does not exist at all. */
   skipFor?: (b: Bot) => boolean;
   /**

@@ -121,6 +121,7 @@ export function castPoly(
     (w) =>
       !w.glass &&
       !w.low &&
+      !w.open &&
       px + range > w.x &&
       px - range < w.x + w.w &&
       py + range > w.y &&

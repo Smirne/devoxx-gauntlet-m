@@ -4396,3 +4396,9 @@ ordinary figures with their role colours.
   it. A small search over hip roll, thigh and shin angles keeps knee, mid-shin and ankle just
   outside the body, as close to it as they get, and prefers legs hanging down the flank to legs
   sticking out. It is solved at the final riding height rather than mid-climb.
+- *Kiosk hatch passes light (27 Sep).* *"The hint is triggered only if Biggy goes by the glass
+  window. His light should pass also from the opening I guess?"* The hatch is an invisible collider,
+  so that only Voxxy fits through, and the light code treated every wall that was neither glass nor
+  low as opaque. The sim's `Wall` gained `open`: stops robots, passes light. It is set on the hatch.
+  Probed: Biggy standing outside the hatch now lights the clue, and no heading from the three
+  starting marks does, at either tolerance.
