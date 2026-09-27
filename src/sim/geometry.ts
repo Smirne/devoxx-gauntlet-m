@@ -1873,10 +1873,29 @@ export function groundWalls(): Wall[] {
     },
   );
 
-  // The main staircase. Its south face is left open for the gate a chapter adds
-  // there (`GF.gate`); the reception block closes its west side.
+  /*
+   * The main staircase, open at the FOOT — which is its east face.
+   *
+   * It used to take `shellOf`, which opens the south face of everything it is
+   * given, and that was right while the flight ran north–south. The staircase took
+   * a quarter turn on 25 Sep 2026 — Michele: *"Stairs should be facing the
+   * entrance"* — and `GF.gate` turned with it, to the east face, where the foot of
+   * the flight now is. The shell did not, and nobody noticed for two days because
+   * the thing standing in the open face was a barrier: the flight was walled off
+   * along the whole of its foot and open along its south cheek instead, three
+   * metres up in the air, so Stephan's barrier was guarding a wall and the exit
+   * cutscene walked three robots straight through a balustrade.
+   *
+   * North and south are its cheeks, west is the head of the flight (you are 3.9 m
+   * up by then — `groundPlates`), and the east face is the way in, which is what
+   * the nastri stand across and what they give back when they wind in.
+   */
   const ms = GF.mainStair;
-  w.push(...shellOf(ms, 'mainstair'));
+  w.push(
+    { x: ms.x, y: ms.y, w: ms.w, h: T, kind: 'mainstair' },
+    { x: ms.x, y: ms.y + ms.h - T, w: ms.w, h: T, kind: 'mainstair' },
+    { x: ms.x, y: ms.y + T, w: T, h: ms.h - 2 * T, kind: 'mainstair' },
+  );
 
   // The BOF rooms: three workshop rooms off the lobby, one doorway each.
   const b = GF.bof;

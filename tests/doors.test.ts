@@ -228,12 +228,12 @@ describe('chapter 2 · the router cabinet is walked open', () => {
 /* ============================================= chapter 3 · the stair gate */
 
 describe('chapter 3 · Stephan opens the stairs instead of the gate blinking out', () => {
-  it('draws the shut barrier and both its posts over solid sim', () => {
+  it('draws the shut line — nine posts and eight belts — over solid sim', () => {
     const g = mk(3);
     steps(g, 2);
     for (const r of gateSolids(propOf(g, 'gate'), g.debug.walls())) {
       const c = coverage(r, g.debug.walls());
-      expect(c.covered, `the shut gate is drawn over ${c.total - c.covered} unwalled cells at ${r.x},${r.y}`).toBe(
+      expect(c.covered, `the shut line is drawn over ${c.total - c.covered} unwalled cells at ${r.x},${r.y}`).toBe(
         c.total,
       );
     }
@@ -258,7 +258,7 @@ describe('chapter 3 · Stephan opens the stairs instead of the gate blinking out
      * assertion that the hold exists at all: the swing is FINISHED and the chapter
      * is still in `play`, with the fade still down.
      */
-    expect(st.gateSwing, 'the barrier never finished swinging').toBe(1);
+    expect(st.gateSwing, 'the wave never got through all eight belts').toBe(1);
     expect(g.snapshot().phase, 'the cutscene started before the gate had opened on screen').toBe('play');
     expect(g.snapshot().fade, 'the hall faded out during the swing').toBeLessThan(0.01);
     // ...and it does hand over once the hold is up, rather than hanging on the hall.
@@ -292,7 +292,7 @@ describe('chapter 3 · Stephan opens the stairs instead of the gate blinking out
     expect(gate().progress, 'and it does land on 1').toBe(1);
   });
 
-  it('puts the swung barrier where the sim has a wall, and gives the flight back', () => {
+  it('leaves nothing drawn without a wall under it, and gives the flight back', () => {
     const g = mk(3);
     steps(g, 2);
     playToStairGate(g);
@@ -317,7 +317,7 @@ describe('chapter 3 · Stephan opens the stairs instead of the gate blinking out
     expect(standableIn(mouth, walls, biggy), 'Stephan opened the gate and the stairs are still shut').not.toBeNull();
   });
 
-  it('draws no barrier at the stair foot once it is open — the walk-through bug, asserted', () => {
+  it('draws no belt across the stair foot once it is open — the walk-through bug, asserted', () => {
     const g = mk(3);
     steps(g, 2);
     playToStairGate(g);

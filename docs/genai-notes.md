@@ -4172,3 +4172,55 @@ the GC pause fires after a run and never twice in a chapter. Suite 742 green.
 on the CFP wall gets nothing while Voxxy's cone gets a slip, and the badge is measured by playing
 chapter 2's chain to the printer and then checking that "Cable in" survived and `VOXY` arrived after
 it. Suite 745 green.
+
+## 27 Sep 2026 — «Nastri»: the stair barrier, and the wall it was guarding
+
+**Human decision, twice in one day.** Michele, looking at the shut barrier in chapter 3:
+*"Stephan is powerful, but i don't think he can remove a wall. I'd use something simpler, like
+«Nastri»"*. The agent drew him a diagram of what the barrier then did (a 15.76 m run of steel with
+a 3.52 m gate hung in the middle, of which only the gate moved), and he ruled: *"Nastri is fine. We
+could also have some kind of scene/effect where stephan pull one spot and the 8 nastri retract one
+by one."* Eight is his number, and the implementation uses it: **nine posts, eight belts**.
+
+**What the agent built.** `src/sim/nastri.ts` — post positions, belt spans, release order and each
+belt's own retraction, all in the sim, because the belts are *colliders* as well as a picture and
+`src/render` may read `src/sim` but never the reverse. `gateDraw` in `src/render/doors.ts` is now a
+thin read of it; the swing, the hinge and `GATE_MOUTH` are gone. Stephan takes the clip in front of
+him (`pullT = 0.5`, which is where he stands) and the release ranks by distance from his hand, so
+the wave alternates outward — 3, 4, 2, 5, 1, 6, 0, 7 — and no two belts let go on the same frame.
+Each belt winds into the post *farther* from him, so the gap opens at his end and grows away.
+`ch3-breakfast.ts` pushes nine post walls and eight belt walls when he opens up and drops each belt
+wall on the frame `beltUp` turns false; the renderer stops drawing it on that same frame, off the
+same number.
+
+**What it cost, and what it found.**
+
+- **The stair's shell still opened SOUTH.** `shellOf` opens the south face of whatever it is given,
+  which was right while the main staircase ran north–south. The flight took a quarter turn on
+  25 Sep and `GF.gate` turned with it to the east face — the foot — and the shell did not. So the
+  foot of the flight was walled along its whole length and the open face was the south cheek, three
+  metres up: **Stephan's barrier was guarding a wall**, and the exit cutscene walked three robots
+  through a balustrade. Found by a new test asking whether Biggy fits between two posts, which is
+  the question the nastri made worth asking. Fixed in `groundWalls()`; 753 tests green after it.
+- **A one-frame pop in every door in the game.** `openness()` treated "clock at zero and state
+  open" as fully open. The frame `done()` fires is exactly that, so the barrier was drawn fully
+  retracted for one frame with all eight belts still walls in the sim. "No clock" now means
+  `progress === undefined`, which is what the sentence always meant.
+- **The crowd-barrier kit is gone** from `venue/props.ts` (`barrierPanelGeometry`, `barrierRun`) and
+  a belt-post kit replaces it: a weighted disc, a chrome column, a cassette head, and 7 cm of
+  webbing in Devoxx orange. The two colours live in the palette so the chapter's prop and the
+  venue's static line cannot drift apart when they swap places at a chapter boundary. Post chrome is
+  `metalness: 0.5` on purpose — real chrome at 0.9 is black in a room with no environment map, and
+  every room in this game is that room.
+
+**Tests.** `tests/nastri.test.ts`, six: the line is nine posts and eight belts and all of it is
+inside `GF.gate`; the release runs outward from Stephan one belt at a time; every belt finishes by
+the end of the wave and no two land together; **through the whole wave, frame by frame, a belt is
+drawn if and only if the sim has a wall under it**; the widest robot fits through every gap; and the
+exit cutscene walks the three of them out *between* the posts — measured on the robots' own
+positions, because a cutscene ignores walls and no collider test can catch that. Suite 753 green.
+
+**Rejected.** Keeping the posts out of the collider list so the flight would be one clean opening.
+It would have made the gaps a lie: a chrome post is a thing you steer around, and the cutscene
+would have been free to walk through one. The lanes moved instead — nine posts across a 15.76 m
+line puts a post exactly on the centre, and the old middle lane walked Droid straight through it.

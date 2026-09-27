@@ -751,9 +751,22 @@ Both queued behind the opening sequence at his instruction: *"Fix this after the
   usually ends) both ate the wind-up and swallowed the line. The wind-up is now always counted and
   the line waits up to 4 s for a clear screen.
 - *"add P for physics view in the commands"* — done, on all five chapters' key lines.
-- *"still a wall here"*, with Voxxy at the foot of the main staircase in chapter 3. **Asked back:**
-  the barrier is meant to be shut until Stephan unhooks it at the end of the chapter, which is what
-  he asked for on 26 Sep. Needs confirming whether he was before or after that beat.
+- *"still a wall here"*, with Voxxy at the foot of the main staircase in chapter 3. He came back
+  with *"stair: screenshot was shot before"* — so the behaviour was right — and then with the real
+  objection, which is about the fiction: *"Stephan is powerful, but i don't think he can remove a
+  wall. I'd use something simpler, like «Nastri»"*, and after seeing a diagram of what was actually
+  there, *"Nastri is fine. We could also have some kind of scene/effect where stephan pull one spot
+  and the 8 nastri retract one by one."* **Built.** Nine belt posts, eight webbing belts, and
+  Stephan unclips the one in front of him: the release runs outward from his hand, one belt at a
+  time, each winding into its own post. Every position is in `src/sim/nastri.ts` because the belts
+  are colliders too. And he was more right than he knew — see below.
+- **The wall he was pointing at may not have been the barrier at all.** Writing a test that asked
+  whether Biggy fits between two posts turned up a two-day-old bug: the main staircase's shell still
+  opened SOUTH, from before the flight was turned to face the entrance on 25 Sep. The foot of the
+  flight — its east face, where the barrier stands — was walled along its whole 15.76 m, and the
+  open side was the south cheek, three metres up in the air. **Stephan's barrier was guarding a
+  wall.** Fixed in `groundWalls()`: north and south are the flight's cheeks, west is the head of it,
+  and the east face is the way in, which is what the nastri stand across.
 - *"People should maybe pass at the reception to get a badge. Celestino should be there"* — queued.
 - *"?chapter=5 leads me to the start scene, is this correct?"* It is not, and the clamp was fine:
   the published build runs inside the artifact host, which does not pass the outer page's query

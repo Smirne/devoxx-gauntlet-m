@@ -108,18 +108,15 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
    */
   roller: { h: ROLLER_H, tl: true },
   /*
-   * And the registration gate, for the same reason and with the same history:
+   * And the stair nastri, for the same reason and with the same history:
    * `ch3-breakfast.ts` removes the `gate` wall in `done()` and goes on publishing
    * the prop, so a 1.1 m box at that rect was a barrier standing across a stair
-   * foot the sim had already opened. It swings back along the flight's west cheek
-   * now, and `propBox` asks `gateDraw`.
+   * foot the sim had already opened.
    *
-   * The box below is the LEAF. The gate's two posts do not move and are separately
-   * covered — by the `gate` wall while it is shut, and by `gateleaf`/`gatepost`
-   * once it is open — and a single box round leaf AND far post would claim the
-   * whole 8 m stair mouth as solid, which is the opposite of what this sweep is
-   * for. `tests/doors.test.ts` checks every rect `gateSolids` returns, posts
-   * included, against the wall list in both states.
+   * It is a line of belt posts now (`src/sim/nastri.ts`), and `propBox` below asks
+   * `gateDraw` for the belts that are still across it. Empty once the eighth has
+   * wound home, which is the roller door's answer to the same question: a prop with
+   * nothing left in the robot band claims nothing.
    */
   gate: { h: GATE_H, tl: true },
   lane: { h: 0.04, tl: true, flat: true },
@@ -260,9 +257,28 @@ export function propBox(p: Prop): { rect: Rect; lo: number; hi: number } | null 
   if (p.kind === 'lock') {
     return { rect: lockDoorDraw(p, []).leaf.rect, lo: 0, hi: spec.h };
   }
-  /* ...and the stair gate's leaf. See its entry above for why the posts are not in here. */
+  /*
+   * ...and the stair nastri: the belts still clipped across it, as one box.
+   *
+   * The posts are deliberately NOT in here. A box round the belts AND the two end
+   * posts is the same box, but a box that included a post standing alone would
+   * claim a 15.76 m stair mouth as solid on the strength of a 13 cm column — the
+   * opposite of what this sweep is for. `tests/doors.test.ts` checks every rect
+   * `gateSolids` returns, posts included, against the sim's own wall list in both
+   * states, which is the measurement that actually matters.
+   *
+   * Mid-wave a single box does bridge a belt that has already wound home. That is
+   * the honest limit of one rect per prop, and it is why the per-belt check lives
+   * in `doors.test.ts` rather than here.
+   */
   if (p.kind === 'gate') {
-    return { rect: gateDraw(p, []).leaf.rect, lo: 0, hi: spec.h };
+    const up = gateDraw(p, []).belts.filter((b) => b.up);
+    if (up.length === 0) return { rect: { x: p.x, y: p.y, w: 0, h: 0 }, lo: 0, hi: 0 };
+    const x0 = Math.min(...up.map((b) => b.rect.x));
+    const y0 = Math.min(...up.map((b) => b.rect.y));
+    const x1 = Math.max(...up.map((b) => b.rect.x + b.rect.w));
+    const y1 = Math.max(...up.map((b) => b.rect.y + b.rect.h));
+    return { rect: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, lo: 0, hi: spec.h };
   }
   const wPx = p.w !== undefined ? p.w : (spec.fw ?? 0.8) * PX_PER_M;
   const dPx = p.h !== undefined ? p.h : (spec.fd ?? 0.8) * PX_PER_M;

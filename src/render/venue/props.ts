@@ -30,6 +30,7 @@
 
 import * as THREE from 'three';
 
+import { BELT_H, GATE_H, nastriRun } from '../../sim/nastri';
 import type { Rect } from '../../sim/types';
 import { m } from '../../sim/units';
 import type { VenuePalette } from './materials';
@@ -516,99 +517,104 @@ export function networkRack(r: Rect, base: number, p: VenuePalette): THREE.Group
   return g;
 }
 
-/* ------------------------------------------------ crowd-control barrier
-
+/* ------------------------------------------- the stair nastri (belt posts)
  *
  * Michele, 26 Sep 2026, with a screenshot of the main staircase: *"stairs are
  * great, but there's a wall! a temporary barrier is fine, that should be openend
- * at the end of chapter 3"*.
+ * at the end of chapter 3"*. Then, 27 Sep, looking at the temporary barrier that
+ * answered him: *"Stephan is powerful, but i don't think he can remove a wall. I'd
+ * use something simpler, like «Nastri»"* — and *"We could also have some kind of
+ * scene/effect where stephan pull one spot and the 8 nastri retract one by one."*
  *
- * He was right about what was drawn. The barrier across the foot of the flight was
- * a 15.7 m slab 1.55 m tall with nine posts stuck to its face — a boundary wall
- * that happens to open, and it read as part of the building rather than as
- * something Stephan unhooks. What stands at the foot of a staircase on a
- * conference morning is a line of hooked-together steel barriers: 2 m each, waist
- * high, feet on the floor, and you can see the treads through them.
+ * Both notes are about the same thing and the second one finishes the first. What
+ * stood there was a 15.7 m slab 1.55 m tall; then it was a run of hooked steel
+ * crowd barriers, 2 m each, which is a real thing a venue owns but still 15.7 m of
+ * steel for one man to walk anywhere. What actually closes a staircase a building
+ * means to reopen in one gesture is a line of **belt posts**: a weighted disc, a
+ * chrome column, and a webbing belt that winds back into the post's own head when
+ * you unclip it. Nine posts, eight belts, and opening it is a wave.
  *
- * So that is what this builds, and it is the same kit twice: `ground.ts` lays a
- * run of it across `GF.gate` for the venue, and `scene.ts` poses chapter 3's prop
- * — the two fixed runs and the leaf Stephan swings — out of the same panel. One
- * definition, because two barriers in one doorway that do not match is exactly the
- * duplicate this renderer keeps having to be told about.
+ * `src/sim/nastri.ts` owns every position — it has to, because the belts are
+ * colliders as well as a picture. This file is only the look, and it is the same
+ * kit twice: `ground.ts` lays a static line across `GF.gate` for the venue, and
+ * `scene.ts` poses chapter 3's prop out of it, so the thing Stephan unclips is the
+ * thing that was standing there.
  */
 
-/** Waist high. `GATE_H` in `src/render/doors.ts` is this number — see there. */
-export const BARRIER_H = 1.1;
-/** One barrier off the lorry. A run is made OF them; it is not cast in one piece. */
-const BARRIER_SECTION_M = 2;
-/** The hooked joint between two of them — a visible break, which is the point. */
-const BARRIER_JOINT_M = 0.14;
-const BARRIER_LEG = 0.06;
-const BARRIER_RAIL = 0.05;
-const BARRIER_BAR = 0.028;
-/** Centre height of the bottom rail. The infill runs from here to the top one. */
-const BARRIER_LOW = 0.3;
-/** The feet, which stick out ACROSS the run — how a free-standing barrier stands up. */
-const BARRIER_FOOT_W = 0.42;
-const BARRIER_FOOT_H = 0.05;
+/** The post's own height, metres — `GATE_H` in `src/sim/nastri.ts`, see there. */
+const POST_H = GATE_H;
+/** The weighted disc it stands on. A belt post does not bolt down; it is ballast. */
+const BASE_R = 0.165;
+const BASE_H = 0.035;
+/** The column, and the cassette head that the webbing lives in. */
+const COL_R = 0.026;
+const HEAD_R = 0.038;
+const HEAD_H = 0.075;
+/** The webbing: 5 cm of nylon tape, and about a millimetre of it edge on. */
+const BELT_W = 0.05;
+const BELT_T = 0.012;
 
 /**
- * ONE panel, merged into a single geometry: along local **+z** from 0 to `lenM`,
- * standing on y = 0, its thickness on local x.
+ * ONE post, merged: disc, column, cassette head. Standing on y = 0, centred on x/z.
  *
- * +z is the leaf's own axis in `scene.ts` (`gateBar` is scaled z by the leaf length
- * and pushed half of it forward), so the same geometry serves the swinging leaf and
- * a section of the fixed run without a second convention.
+ * Built once and shared by every post in the game — there are nine of them in one
+ * line and they are identical, which is exactly what a shared geometry is for.
  */
-export function barrierPanelGeometry(lenM: number, h = BARRIER_H): THREE.BufferGeometry {
+export function beltPostGeometry(h = POST_H): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
-  const bar = (y: number, z: number, sx: number, sy: number, sz: number): void => {
-    const g = new THREE.BoxGeometry(sx, sy, sz);
-    g.translate(0, y, z);
+  const at = (g: THREE.BufferGeometry, y: number): void => {
+    g.translate(0, y, 0);
     parts.push(g);
   };
-  for (const z of [BARRIER_LEG / 2, lenM - BARRIER_LEG / 2]) {
-    bar(h / 2, z, BARRIER_LEG, h, BARRIER_LEG);
-    bar(BARRIER_FOOT_H / 2, z, BARRIER_FOOT_W, BARRIER_FOOT_H, BARRIER_LEG * 1.4);
-  }
-  const top = h - BARRIER_RAIL / 2;
-  bar(top, lenM / 2, BARRIER_RAIL, BARRIER_RAIL, lenM);
-  bar(BARRIER_LOW, lenM / 2, BARRIER_RAIL, BARRIER_RAIL, lenM);
-  const n = Math.max(2, Math.round(lenM / 0.3));
-  for (let i = 1; i < n; i++) {
-    bar((top + BARRIER_LOW) / 2, (lenM * i) / n, BARRIER_BAR, top - BARRIER_LOW, BARRIER_BAR);
-  }
+  at(new THREE.CylinderGeometry(BASE_R, BASE_R * 1.05, BASE_H, 14), BASE_H / 2);
+  const col = h - HEAD_H;
+  at(new THREE.CylinderGeometry(COL_R, COL_R * 1.15, col - BASE_H, 10), BASE_H + (col - BASE_H) / 2);
+  at(new THREE.CylinderGeometry(HEAD_R, HEAD_R, HEAD_H, 10), col + HEAD_H / 2);
   return mergeSimple(parts);
 }
 
 /**
- * A RUN of them along a sim rect's long side, in world coordinates.
+ * ONE belt, along local **+z** from 0 to `lenM`, its centre line on y = 0.
  *
- * The rect decides the direction, the same way `gateDraw` reads it: the barriers
- * stand along the long side. Section length is the span divided into whole 2 m
- * barriers, so a run always ends on a leg rather than on a sawn-off panel.
+ * +z is the run's own axis in `scene.ts` and in `nastriRunGroup` below, the same
+ * convention the barrier panels used before it, so a belt that is winding in is a
+ * scale on z and nothing else.
  */
-export function barrierRun(r: Rect, base: number, mat: THREE.MeshStandardMaterial, h = BARRIER_H): THREE.Group {
-  // The group's own origin is the run's centre at mid-height, which is where the
-  // slab this replaced put it: `venue.smoke` reads the gate's world position to
-  // prove it stands at the foot of the flight and on the lobby plate.
+export function beltGeometry(lenM: number): THREE.BufferGeometry {
+  const g = new THREE.BoxGeometry(BELT_T, BELT_W, Math.max(0.01, lenM));
+  g.translate(0, 0, Math.max(0.01, lenM) / 2);
+  return g;
+}
+
+/**
+ * A whole line of them, in world coordinates, every belt clipped across.
+ *
+ * `ground.ts` builds the venue's static line with this. The group's origin is the
+ * run's centre at mid-height, which is where the slab this replaced put it:
+ * `tests/venue.smoke.test.ts` reads the gate's world position to prove it stands at
+ * the foot of the flight and on the lobby plate.
+ */
+export function nastriRunGroup(
+  rect: Rect,
+  base: number,
+  post: THREE.MeshStandardMaterial,
+  belt: THREE.MeshStandardMaterial,
+): THREE.Group {
   const g = new THREE.Group();
-  const vertical = r.h >= r.w;
-  const spanM = m(vertical ? r.h : r.w);
-  g.position.set(m(r.x + r.w / 2), base + h / 2, m(r.y + r.h / 2));
-  const n = Math.max(1, Math.round(spanM / BARRIER_SECTION_M));
-  const pitch = spanM / n;
-  const geo = barrierPanelGeometry(Math.max(0.2, pitch - BARRIER_JOINT_M), h);
-  for (let i = 0; i < n; i++) {
-    const mesh = new THREE.Mesh(geo, mat);
+  const run = nastriRun(rect);
+  g.position.set(m(rect.x + rect.w / 2), base + POST_H / 2, m(rect.y + rect.h / 2));
+  const geo = beltPostGeometry();
+  for (const v of run.posts) {
+    const mesh = new THREE.Mesh(geo, post);
     mesh.castShadow = true;
-    const at = -spanM / 2 + i * pitch + BARRIER_JOINT_M / 2;
-    if (vertical) mesh.position.set(0, -h / 2, at);
-    else {
-      mesh.position.set(at, -h / 2, 0);
-      // Local +z onto world +x: a barrier along an east-west rect.
-      mesh.rotation.y = Math.PI / 2;
-    }
+    mesh.position.set(m(v.x) - g.position.x, -POST_H / 2, m(v.y) - g.position.z);
+    g.add(mesh);
+  }
+  for (const n of run.belts) {
+    const len = Math.hypot(m(n.b.x - n.a.x), m(n.b.y - n.a.y));
+    const mesh = new THREE.Mesh(beltGeometry(len), belt);
+    mesh.position.set(m(n.a.x) - g.position.x, BELT_H - POST_H / 2, m(n.a.y) - g.position.z);
+    mesh.rotation.y = Math.atan2(m(n.b.x - n.a.x), m(n.b.y - n.a.y));
     g.add(mesh);
   }
   return g;

@@ -76,6 +76,7 @@ import {
 } from '../crates';
 import { BAR_RECT, GF, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
 import { LANYARD } from '../lanyards';
+import { beltUp, nastriRun } from '../nastri';
 import { botsCollide, circleRect, dist, inRect, mkBody, speed, standOff, stepBot } from '../bot';
 import type { Bot, Person, Prop, Rect, Task, Vec2, Wall } from '../types';
 
@@ -813,18 +814,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * `play`, still driveable — for the swing plus this, and only then hands over.
    */
   const GATE_CUT_DELAY = 0.5;
-  /** The barrier's own thickness. Matches `GATE_LEAF_T` in `src/render/doors.ts`. */
-  const GATE_LEAF_T = 4;
-  /**
-   * ...and how wide the opening in it is (`GATE_MOUTH` in `src/render/doors.ts`).
+  /*
+   * The barrier itself is `src/sim/nastri.ts` — nine belt posts and eight webbing
+   * belts, with every position, the release order and each belt's own retraction in
+   * that one module.
    *
-   * Both numbers are duplicated rather than imported because `src/sim` may not
-   * read `src/render` (CLAUDE.md). `tests/doors.test.ts` asserts the two copies
-   * against each other so they cannot drift.
+   * It used to be three numbers copied out of `src/render/doors.ts` with a test
+   * holding the copies against each other, because `src/sim` may not read
+   * `src/render` (CLAUDE.md). The arithmetic moved the other way instead: the belts
+   * are colliders as well as a picture, so the sim owns them and the renderer reads
+   * the sim, which is the direction that was always allowed.
    */
-  const GATE_MOUTH = 44;
-  const GATE_POST_R = 1.6;
-
   const gate: Wall = {
     ...GF.gate,
     kind: 'gate',
@@ -842,74 +842,56 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /** Sim time the exit cutscene starts, once Stephan has opened up. -1 until then. */
   let leaveAt = -1;
   /*
-   * WHERE THE BARRIER ENDS UP, and what it leaves behind.
+   * WHAT IS LEFT WHEN IT IS OPEN, and what goes away as it opens.
    *
-   * The rects `gateDraw` poses at `progress = 1` (`src/render/doors.ts`), which
-   * since the staircase was turned to face the entrance is a **gate in a run of
-   * barrier** rather than one enormous leaf: the flight is 197 px — 15.7 m —
-   * across its foot, and the 55 px of concourse between it and the glazed wall has
-   * nowhere to put a leaf that long. `GATE_MOUTH` is the opening; the leaf is that
-   * wide, hinged on its north post and swung a quarter turn EAST into the
-   * concourse; both posts stay, and so does the barrier either side.
+   * Michele, 27 Sep 2026, on the steel run this replaced: *"Stephan is powerful,
+   * but i don't think he can remove a wall. I'd use something simpler, like
+   * «Nastri»"*, and then *"We could also have some kind of scene/effect where
+   * stephan pull one spot and the 8 nastri retract one by one."*
    *
-   * East rather than into the shaft, because the flight starts climbing at this
-   * line and is 3.9 m up within the leaf's own length (`groundPlates`): a barrier
-   * lying in there would be buried in the treads, and the transition walks three
-   * robots up the middle of it a second and a half later. Out here it lies flat on
-   * the lobby floor with 11 px to spare in front of the glazing, and nothing in
-   * the cutscene goes near it.
+   * So: the nine posts STAY, for good — they are 13 cm of chrome each and a venue
+   * leaves them standing all day. The eight belts go, one at a time, each on the
+   * frame it finishes winding into its own post (`beltUp`). Between the posts there
+   * is 1.94 m of clear floor, which is what gives the flight back: the widest robot
+   * in the game is 1.44 m across.
+   *
+   * `pullT` is 0.5 because that is where Stephan stands — `stephan` below is at the
+   * middle of this line — so the release runs outward from his hand in both
+   * directions, alternating, and no two belts share a rank.
    */
-  const gateX = GF.gate.x + GF.gate.w / 2;
-  /** The middle of the barrier: where the opening is, and where Stephan stands. */
-  const gateMouthY = GF.gate.y + (GF.gate.h - GATE_MOUTH) / 2;
-  const gateOpenWalls: Wall[] = [
-    // The leaf, swung a quarter turn east into the concourse and resting there.
-    {
-      x: gateX - GATE_LEAF_T / 2,
-      y: gateMouthY - GATE_LEAF_T / 2,
-      w: GATE_MOUTH + GATE_LEAF_T,
-      h: GATE_LEAF_T,
-      kind: 'gateleaf',
-      why: (b) => `${b.name}: that is the gate itself, walked back out of the way. The way up is beside it`,
+  const run = nastriRun(GF.gate, 0.5);
+  const gatePostWalls: Wall[] = run.postRects.map(
+    (r): Wall => ({
+      ...r,
+      kind: 'gatepost',
+      why: (b) =>
+        b.kind === 'voxxy'
+          ? `${b.name}: a belt post. Thirteen centimetres of chrome, and there is nearly two metres of floor either side of it`
+          : b.kind === 'droid'
+            ? `${b.name}: the post stays. The belt was the barrier; this is what held it`
+            : `${b.name}: post. I am wider than most things and still narrower than that gap — line up and go through`,
+    }),
+  );
+  /**
+   * The belts, each with the rank that says when it lets go.
+   *
+   * `live` is the wall while it is still across the line and `null` once `update`
+   * has taken it away, so the list stays parallel to what the renderer is drawing
+   * from the same `gateSwing` — one number, two readers, no second opinion.
+   */
+  const gateBeltWalls: Array<{ rank: number; live: Wall | null }> = run.belts.map((n) => ({
+    rank: n.rank,
+    live: {
+      ...n.rect,
+      kind: 'gatebelt',
+      why: (b) =>
+        b.kind === 'voxxy'
+          ? `${b.name}: that one is still clipped. Wait — Stephan is working down the line`
+          : b.kind === 'droid'
+            ? `${b.name}: this nastro has not wound in yet. Four seconds of patience, at most`
+            : `${b.name}: a webbing belt would not stop me, and I am not going to be the robot that finds out in front of Stephan`,
     },
-    // Both posts stay. So does the rest of the barrier, either side of the
-    // opening: Stephan opened a gate, he did not take the stair's whole front off.
-    ...[gateMouthY, gateMouthY + GATE_MOUTH].map(
-      (y): Wall => ({
-        x: gateX - GATE_POST_R,
-        y: y - GATE_POST_R,
-        w: GATE_POST_R * 2,
-        h: GATE_POST_R * 2,
-        kind: 'gatepost',
-        why: (b) => `${b.name}: the gate post. It stays where it is`,
-      }),
-    ),
-    ...(
-      [
-        [GF.gate.y, gateMouthY],
-        [gateMouthY + GATE_MOUTH, GF.gate.y + GF.gate.h],
-      ] as const
-    )
-      .filter(([a, b]) => b - a > 0.5)
-      .map(
-        ([a, b]): Wall => ({
-          x: gateX - GATE_LEAF_T / 2,
-          y: a,
-          w: GATE_LEAF_T,
-          h: b - a,
-          /*
-           * `gatebar`, NOT `gate`. `openness()` in `src/render/doors.ts` reads the
-           * wall list for a `gate` to decide whether the barrier is still sealed,
-           * so leaving these two runs under that kind told the renderer the gate
-           * had never opened and drew the leaf shut across its own opening — with
-           * nothing in the sim behind it, which `tests/colliders.test.ts` catches
-           * as a wall you can walk through.
-           */
-          kind: 'gatebar',
-          why: (bot) => `${bot.name}: the barrier still runs the width of the stair. The gate is the gap in the middle`,
-        }),
-      ),
-  ];
+  }));
 
   /*
    * The bar itself, as a collider.
@@ -1918,15 +1900,23 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   function done(): void {
     gateOpen = true;
     ctx.removeWall(gate);
-    // The barrier does not vanish, it moves: the foot of the flight is free from
-    // this frame and the leaf is solid where it comes to rest. `gateSwing` is only
-    // the picture.
-    for (const w of gateOpenWalls) ctx.walls.push(w);
+    /*
+     * Stephan's own wall comes off and the barrier's does not — the posts for good,
+     * the belts until each has wound home (`update`). The line is not open on this
+     * frame and it is not meant to be: what opened on this frame is Stephan, and
+     * `gateSwing` is the eight belts letting go one after another behind him.
+     */
+    for (const w of gatePostWalls) ctx.walls.push(w);
+    for (const b of gateBeltWalls) if (b.live) ctx.walls.push(b.live);
     ctx.score.soup = Math.trunc(soup);
     ctx.score.temp = Math.trunc(temp);
     ctx.score.complaints = complaints;
     ctx.score.breakfastT = Math.round(ctx.t);
-    ctx.flash('Stephan unhooks the barrier and walks it back against the wall: "Soup. Speaker. Fine — the stairs are open." Up you go', 4000);
+    ctx.flash(
+      'Stephan takes the clip in front of him and lets go: "Soup. Speaker. Fine — the stairs are open." ' +
+        'Eight belts snap back into their posts, one after the other. Up you go',
+      4000,
+    );
     // Watch him open it first. See `GATE_CUT_DELAY`.
     leaveAt = ctx.t + GATE_SWING_TIME + GATE_CUT_DELAY;
   }
@@ -1934,24 +1924,33 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /** The exit: up the main staircase Stephan has just opened. */
   function leave(): void {
     /*
-     * Up the flight, which climbs WEST from the gate Stephan has just opened, and
-     * through the OPENING in the barrier rather than through the barrier.
+     * Up the flight, which climbs WEST from the line Stephan has just opened, and
+     * through the GAPS BETWEEN THE POSTS rather than through a post.
      *
-     * The three lanes used to be 34 px either side of the centre line, which was
-     * fine across a 112 px gate and is 24 px too wide for a 44 px one. They queue
-     * through the mouth and fan out once they are on the treads, where there is
-     * 15.7 m of stair to fan out across.
+     * The three lanes were 34 px either side of the centre line, which was right
+     * when the barrier was a run of steel with one 44 px gate cut in the middle of
+     * it and is wrong now for a reason the arithmetic will not forgive: eight belts
+     * means nine posts, and nine posts across a 15.76 m line puts a post EXACTLY on
+     * the centre. The old middle lane walked Droid straight through it.
+     *
+     * So the lanes are three of the run's own gaps, read off `run` rather than
+     * guessed — the three either side of Stephan, who is standing at the middle of
+     * the line, so they file past him. Cutscene walks ignore walls (`cutUpdate` in
+     * `game.ts`), which is exactly why this has to be right here: nothing would have
+     * stopped them, and a robot clipping through a chrome post in the last shot of
+     * the chapter is something a viewer sees and no collider test does.
      */
-    const route = (dy: number): Vec2[] => [
-      { x: stair.x + stair.w + 34, y: gateMidY + dy * 0.4 },
-      { x: stair.x + stair.w - 10, y: gateMidY + dy * 0.4 },
-      { x: stair.x + 24, y: gateMidY + dy },
+    const gapY = (i: number): number => (run.belts[i].a.y + run.belts[i].b.y) / 2;
+    const route = (cross: number, fan: number): Vec2[] => [
+      { x: stair.x + stair.w + 34, y: cross },
+      { x: stair.x + stair.w - 10, y: cross },
+      { x: stair.x + 24, y: gateMidY + fan },
     ];
     ctx.startCut(
       [
-        { kind: 'voxxy', pts: route(-34) },
-        { kind: 'droid', pts: route(0) },
-        { kind: 'biggy', pts: route(34) },
+        { kind: 'voxxy', pts: route(gapY(3), -34) },
+        { kind: 'droid', pts: route(gapY(4), 0) },
+        { kind: 'biggy', pts: route(gapY(5), 34) },
       ],
       () => ctx.startChapter(4),
       VIEW_GROUND,
@@ -1959,7 +1958,19 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   }
 
   function update(dt: number): void {
-    if (gateOpen && gateSwing < 1) gateSwing = Math.min(1, gateSwing + dt / GATE_SWING_TIME);
+    if (gateOpen && gateSwing < 1) {
+      gateSwing = Math.min(1, gateSwing + dt / GATE_SWING_TIME);
+      // Each belt stops being a collider on the frame it finishes winding in, which
+      // is the same frame the renderer stops drawing it: both ask `beltUp` of the
+      // same `gateSwing`, so a belt cannot be a picture without a wall or a wall
+      // without a picture.
+      for (const b of gateBeltWalls) {
+        if (b.live && !beltUp(gateSwing, b.rank)) {
+          ctx.removeWall(b.live);
+          b.live = null;
+        }
+      }
+    }
     if (leaveAt >= 0 && ctx.t >= leaveAt) {
       leaveAt = -1;
       leave();

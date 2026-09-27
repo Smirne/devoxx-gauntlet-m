@@ -38,7 +38,6 @@ export { createVenuePalette } from './materials';
 export type { VenueMaterialName, VenuePalette } from './materials';
 /** The sectional-model heights, so props built by other pieces sit at venue scale. */
 export {
-  BARRIER_H,
   BREAKER_D,
   BREAKER_H,
   BREAKER_Y,
@@ -48,9 +47,10 @@ export {
   NEAR_CUT_H,
   SHELL_H,
   WALL_H,
-  barrierPanelGeometry,
-  barrierRun,
+  beltGeometry,
+  beltPostGeometry,
   disposeGeometries,
+  nastriRunGroup,
 } from './props';
 export { zaalPosterX, zaalSignX } from './signage';
 

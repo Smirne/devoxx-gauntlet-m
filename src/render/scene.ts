@@ -69,8 +69,8 @@ import {
   CABINET_LEAF_LIFT,
   CABINET_LEAF_T,
   CABINET_LEAVES,
-  GATE_H,
-  GATE_POST_R,
+  BELT_H,
+  GATE_BELTS,
   LOCK_LEAF_T,
   cabinetDoorDraw,
   gateDraw,
@@ -81,10 +81,9 @@ import {
   BREAKER_H,
   BREAKER_Y,
   WALL_H,
-  barrierPanelGeometry,
-  barrierRun,
+  beltGeometry,
+  beltPostGeometry,
   buildVenue,
-  disposeGeometries,
   type Venue,
 } from './venue';
 
@@ -733,57 +732,49 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     return g;
   });
 
-  /* ------------------------------------------- the registration gate, chapter 3
+  /* --------------------------------------- the stair nastri, chapter 3
    *
-   * The barrier Stephan stands at, its two posts, and the swing that opens the
-   * Devoxx rooms for the day. `buildVenue()` draws a static one in the same place
-   * — `main-stair-gate` — and it is hidden for as long as a chapter publishes this
-   * prop, exactly as the venue's shutter is: two gates in one doorway is the
-   * duplicate the breaker panel and cinema E's screen were each caught doing.
+   * The belt barrier Stephan stands at, and the wave that opens the Devoxx rooms
+   * for the day: nine posts, eight webbing belts, and each belt winds into its own
+   * post as he unclips down the line. `buildVenue()` draws a static one in the same
+   * place — `main-stair-gate` — and it is hidden for as long as a chapter publishes
+   * this prop, exactly as the venue's shutter is: two barriers in one doorway is
+   * the duplicate the breaker panel and cinema E's screen were each caught doing.
+   *
+   * There is no pivot and no leaf any more. Michele, 27 Sep 2026: *"Stephan is
+   * powerful, but i don't think he can remove a wall. I'd use something simpler,
+   * like «Nastri»"*, and then *"We could also have some kind of scene/effect where
+   * stephan pull one spot and the 8 nastri retract one by one."* A belt has one
+   * number — how much of it is left — so the whole animation is a scale on z.
    */
   const gateGroup = new THREE.Group();
   gateGroup.name = 'stair-gate';
   gateGroup.visible = false;
-  const gateMat = new THREE.MeshStandardMaterial({ color: 0x4d6c8a, roughness: 0.45, metalness: 0.65 });
-  const gatePivot = new THREE.Group();
-  /*
-   * The leaf is a barrier panel, not a bar: `barrierPanelGeometry` in
-   * `venue/props.ts` builds it along local +z standing on y = 0, which is the axis
-   * this pivot already worked in. Its length is fixed for the chapter, so it is
-   * built on the first frame that draws it and kept.
-   */
-  const gateLeaf = new THREE.Group();
-  gateLeaf.name = 'gate-leaf';
-  gatePivot.add(gateLeaf);
-  let gateLeafLen = 0;
-  gateGroup.add(gatePivot);
+  const gatePostMat = new THREE.MeshStandardMaterial({ color: 0xb9c2cb, roughness: 0.22, metalness: 0.9 });
+  const gateBeltMat = new THREE.MeshStandardMaterial({ color: 0xe1561c, roughness: 0.85 });
+  const gatePostGeo = beltPostGeometry();
   const gatePosts: THREE.Mesh[] = [];
-  for (let i = 0; i < 2; i++) {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(GATE_POST_R / PX_PER_M, GATE_POST_R / PX_PER_M, 1, 10), gateMat);
+  for (let i = 0; i <= GATE_BELTS; i++) {
+    const post = new THREE.Mesh(gatePostGeo, gatePostMat);
     post.name = `gate-post-${i}`;
     post.castShadow = true;
     gatePosts.push(post);
     gateGroup.add(post);
   }
   /*
-   * The fixed barrier either side of the opening.
-   *
-   * The gate stopped being one leaf the width of the stair when the staircase was
-   * turned to face the entrance (`GATE_MOUTH` in `src/render/doors.ts`): 15.7 m of
-   * barrier has one gate in it, and the rest of the run does not move. Hiding the
-   * venue's static `main-stair-gate` therefore hides more than the part that
-   * swings, so these two carry it while the prop is up — the sim pushes walls
-   * under exactly these rects (`gatebar` in `ch3-breakfast.ts`).
+   * The belts. One mesh each, built at full length on the first frame that draws
+   * them and then SCALED: a belt winding into its post is 2 m of tape becoming
+   * 0 m of tape, which is the one thing a scale is honest about. The geometry runs
+   * from the mesh's own origin along +z (`beltGeometry`), so the origin is parked at
+   * the anchor post and the far end walks home on its own.
    */
-  const gateRuns: THREE.Group[] = [];
-  const gateRunKeys: string[] = [];
-  for (let i = 0; i < 2; i++) {
-    const run = new THREE.Group();
-    run.name = `gate-run-${i}`;
-    run.visible = false;
-    gateRuns.push(run);
-    gateRunKeys.push('');
-    gateGroup.add(run);
+  const gateBelts: THREE.Mesh[] = [];
+  let gateBeltLen = 0;
+  for (let i = 0; i < GATE_BELTS; i++) {
+    const belt = new THREE.Mesh(new THREE.BufferGeometry(), gateBeltMat);
+    belt.name = `gate-belt-${i}`;
+    gateBelts.push(belt);
+    gateGroup.add(belt);
   }
   dressing.add(gateGroup);
   const venueGate = venue.ground.getObjectByName('main-stair-gate') ?? null;
@@ -2491,55 +2482,49 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   }
 
   /**
-   * Chapter 3's registration gate: two posts and a barrier Stephan walks back.
+   * Chapter 3's stair nastri: nine posts, and eight belts winding home one by one.
    *
-   * Every number comes out of `gateDraw` (`src/render/doors.ts`), posed from
-   * `gateSwing` in `ch3-breakfast.ts`. The static gate `buildVenue()` builds in
-   * this doorway is hidden for as long as a chapter publishes this prop — two
-   * barriers in one doorway, one of which never opens, is exactly the duplicate
-   * the venue's shutter was caught doing behind chapter 2's.
+   * Every number comes out of `gateDraw` (`src/render/doors.ts`), which reads them
+   * from `src/sim/nastri.ts`, posed from `gateSwing` in `ch3-breakfast.ts`. The
+   * static line `buildVenue()` builds in this doorway is hidden for as long as a
+   * chapter publishes this prop — two barriers in one doorway, one of which never
+   * opens, is exactly the duplicate the venue's shutter was caught doing behind
+   * chapter 2's.
    */
   function drawGate(p: Prop, floorY: number, walls: GameSnapshot['walls']): void {
     if (venueGate) venueGate.visible = false;
     const d = gateDraw(p, walls);
     gateGroup.visible = true;
-    const base = surfaceY(floorY, d.leaf.hinge.x, d.leaf.hinge.y);
-
-    // The panel stands ON the pivot's floor now rather than being a box centred on
-    // it, so the pivot sits at the hinge's own surface height.
-    gatePivot.position.set(m(d.leaf.hinge.x), base, m(d.leaf.hinge.y));
-    gatePivot.rotation.y = yawFromSimHeading(Math.atan2(d.leaf.axis.y, d.leaf.axis.x));
-    if (gateLeafLen !== d.leaf.len) {
-      disposeGeometries(gateLeaf);
-      gateLeaf.clear();
-      const panel = new THREE.Mesh(barrierPanelGeometry(m(d.leaf.len), GATE_H), gateMat);
-      panel.castShadow = true;
-      gateLeaf.add(panel);
-      gateLeafLen = d.leaf.len;
-    }
-
-    for (let i = 0; i < gateRuns.length; i++) {
-      const r = d.runs[i];
-      const run = gateRuns[i];
-      run.visible = r !== undefined;
-      if (!r) continue;
-      // Rebuilt only when the run's own rect moves, which is never inside a
-      // chapter: a run of barriers is geometry, not a scaled box.
-      const key = `${r.x},${r.y},${r.w},${r.h},${floorY}`;
-      if (gateRunKeys[i] !== key) {
-        disposeGeometries(run);
-        run.clear();
-        run.add(barrierRun(r, surfaceY(floorY, r.x + r.w / 2, r.y + r.h / 2), gateMat, GATE_H));
-        gateRunKeys[i] = key;
-      }
-    }
 
     for (let i = 0; i < gatePosts.length; i++) {
       const v = d.posts[i];
-      // A post is 15 cm taller than the bar it carries, which is what makes a
-      // barrier read as a barrier rather than as a plank floating in a doorway.
-      gatePosts[i].scale.set(1, GATE_H + 0.15, 1);
-      gatePosts[i].position.set(m(v.x), base + (GATE_H + 0.15) / 2, m(v.y));
+      gatePosts[i].position.set(m(v.x), surfaceY(floorY, v.x, v.y), m(v.y));
+    }
+
+    for (let i = 0; i < gateBelts.length; i++) {
+      const n = d.belts[i];
+      const mesh = gateBelts[i];
+      mesh.visible = n.up;
+      if (!n.up) continue;
+      const len = Math.hypot(m(n.b.x - n.a.x), m(n.b.y - n.a.y));
+      // Every belt in the run is the same length, so one geometry does for all
+      // eight and it is only rebuilt if the line itself changes — never in a
+      // chapter. The retraction is the scale below.
+      if (gateBeltLen !== len) {
+        for (const o of gateBelts) {
+          o.geometry.dispose();
+          o.geometry = beltGeometry(len);
+        }
+        gateBeltLen = len;
+      }
+      // Anchored at the post it winds INTO, pointing at the other one, and shortened
+      // to what `gateDraw` says is still across the line. `1 - k` and not the rect's
+      // own span because a scale is exact and a measured rect is a rounding.
+      const far = n.anchor === n.a ? n.b : n.a;
+      const base = surfaceY(floorY, n.anchor.x, n.anchor.y);
+      mesh.position.set(m(n.anchor.x), base + BELT_H, m(n.anchor.y));
+      mesh.rotation.y = Math.atan2(m(far.x - n.anchor.x), m(far.y - n.anchor.y));
+      mesh.scale.set(1, 1, Math.max(0.001, 1 - n.k));
     }
   }
 
@@ -3037,8 +3022,10 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       peoplePool.dispose();
       for (const pm of peopleModels) pm.dispose();
       lockPool.dispose();
-      gateMat.dispose();
-      for (const post of gatePosts) post.geometry.dispose();
+      gatePostMat.dispose();
+      gateBeltMat.dispose();
+      gatePostGeo.dispose();
+      for (const belt of gateBelts) belt.geometry.dispose();
       // Nothing may outlive the scene that published it — a stale plate list would
       // otherwise answer `surfaceY` for whatever is built next (see that function).
       framePlates = [];

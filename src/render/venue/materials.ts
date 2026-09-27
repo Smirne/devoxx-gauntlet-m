@@ -37,6 +37,18 @@ export interface MaterialSpec {
 }
 
 /**
+ * The two colours of a belt post, shared with `scene.ts`.
+ *
+ * Chapter 3 poses its own barrier out of its own materials — the chapter's prop
+ * and the venue's static line are two objects built in two files — and the one
+ * thing that must never differ between them is the colour. They swap places at
+ * every chapter boundary, and a belt that changes shade when the chapter changes
+ * is the duplicate this renderer keeps being told about, wearing a different hat.
+ */
+export const POST_CHROME = '#c6ced6';
+export const BELT_ORANGE = '#e1561c';
+
+/**
  * The whole palette. Keys are grouped by where they are used; adding one here is
  * all that is needed to make it available to `floor1.ts`, `ground.ts`,
  * `props.ts` and `signage.ts`.
@@ -113,8 +125,26 @@ const SPECS = {
   wood: { color: '#7c5b38', roughness: 0.8 },
   whitePanel: { color: '#e4e2dd', roughness: 0.7 },
   blackMetal: { color: '#16181c', roughness: 0.55, metalness: 0.4 },
-  /** Biggy-blue structural steel: truss, gate, railings. */
+  /** Biggy-blue structural steel: truss, railings. */
   steelBlue: { color: '#5f7387', roughness: 0.5, metalness: 0.55 },
+  /**
+   * The chrome column of a belt post. Brighter than the building it stands in.
+   *
+   * Metalness is deliberately middling. A post is real chrome, and real chrome at
+   * 0.9 is black in a room with nothing to reflect — which is every room in this
+   * game: the hall is night-lit off a handful of lamps and there is no environment
+   * map. Half-metal catches those lamps and reads as a chrome post; full metal
+   * reads as a peg of coal.
+   */
+  postChrome: { color: POST_CHROME, roughness: 0.3, metalness: 0.5 },
+  /**
+   * The webbing of a belt post's nastro — Devoxx orange, the signage's own colour.
+   *
+   * It is the only thing across the foot of the main staircase and the hall is
+   * night-lit, so it carries the whole read of "you do not go up yet". A grey tape
+   * on a grey post in a grey lobby is a line nobody sees until they walk into it.
+   */
+  beltWebbing: { color: BELT_ORANGE, roughness: 0.85 },
 
   /* ------------------------------------------------------------ expo stuff */
   boothWall: { color: '#2a2f38', roughness: 0.85 },

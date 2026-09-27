@@ -81,7 +81,7 @@ import {
   SHELL_H,
   WALL_H,
   anchorAt,
-  barrierRun,
+  nastriRunGroup,
   boxAt,
   clothTable,
   floorSlab,
@@ -1042,14 +1042,18 @@ function staircases(p: VenuePalette, anchors: Map<number | string, THREE.Object3
   /*
    * The barrier across the foot. Chapter 3 decides when it opens; this is its look.
    *
-   * A run of hooked-together crowd barriers, not a wall — Michele, 26 Sep 2026:
-   * *"stairs are great, but there's a wall! a temporary barrier is fine, that
-   * should be openend at the end of chapter 3"*. It was a 15.7 m slab 1.55 m tall
-   * with nine posts on its face, which reads as the edge of the building. See
-   * `barrierRun` in `props.ts`; chapter 3's prop is posed out of the same kit, so
-   * the thing Stephan unhooks is the thing that was standing there.
+   * Two rounds of Michele on this one line. 26 Sep 2026: *"stairs are great, but
+   * there's a wall! a temporary barrier is fine, that should be openend at the end
+   * of chapter 3"* — it was a 15.7 m slab 1.55 m tall. Then 27 Sep, on the run of
+   * steel crowd barriers that answered him: *"Stephan is powerful, but i don't
+   * think he can remove a wall. I'd use something simpler, like «Nastri»"*.
+   *
+   * So it is a line of belt posts: nine of them, eight webbing belts, and every
+   * position out of `src/sim/nastri.ts` because those belts are colliders too.
+   * Chapter 3's prop is posed out of the same kit (`nastriRunGroup` in `props.ts`),
+   * so the thing Stephan unclips is the thing that was standing there.
    */
-  const gate = barrierRun(GF.gate, RISE, p.steelBlue);
+  const gate = nastriRunGroup(GF.gate, RISE, p.postChrome, p.beltWebbing);
   gate.name = 'main-stair-gate';
   g.add(gate);
 
