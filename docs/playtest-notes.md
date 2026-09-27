@@ -738,3 +738,20 @@ at the bold line. If he ever wants the shaft's full length, that is the number.
 | *"The robots enter the stair when an handrail is, passing through it. They should walk around it."* | The exit cutscene walks straight lines between waypoints and asks no wall a question — which was harmless until `NICHE_RAIL` made the balustrade at the head of the stair a real collider this same day. So the route now crosses a wall the player cannot cross. | One waypoint, not a pathfinder: the route enters the well by turning in off the corridor at the east end, which is the pocket the rail leaves (16.2 px, 1.30 m). `tests/stairs-driven.test.ts` already drives that entry, so the number to aim at is measured. Worth also asserting that no cutscene leg crosses a wall — the class of bug is "a route written before a collider existed", and it will happen again. |
 
 Both queued behind the opening sequence at his instruction: *"Fix this after the animation preview."*
+
+## Michele, 27 Sep — V42, first pass
+
+- *"i cannot find it, where is it?"* (the AV rider). **My bug, not his.** The sheet sat 58 px from
+  the nearest opening mark and its reach was 64, so the toast fired on the FIRST FRAME of chapter 1
+  and was buried under the next thing anybody did. Moved to x 110 with a 46 px reach: the closest
+  robot at the start is 77 px away, so you walk up to the wall and walking up to it is what reads
+  it. `tests/extras.test.ts` now asserts it does NOT fire before anybody has moved.
+- *"I can't get biggy to roll, i need voxxy?"* He does not — but he could not HEAR it. The quip
+  skipped its tick entirely while any toast was up, so a wall bump (which is how a heavy robot's run
+  usually ends) both ate the wind-up and swallowed the line. The wind-up is now always counted and
+  the line waits up to 4 s for a clear screen.
+- *"add P for physics view in the commands"* — done, on all five chapters' key lines.
+- *"still a wall here"*, with Voxxy at the foot of the main staircase in chapter 3. **Asked back:**
+  the barrier is meant to be shut until Stephan unhooks it at the end of the chapter, which is what
+  he asked for on 26 Sep. Needs confirming whether he was before or after that beat.
+- *"People should maybe pass at the reception to get a badge. Celestino should be there"* — queued.

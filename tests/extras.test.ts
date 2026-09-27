@@ -127,10 +127,16 @@ describe('the GC pause', () => {
 });
 
 describe('the two things on chapter 1’s walls', () => {
-  it('shows the AV rider to whoever walks past it, once', () => {
+  it('shows the AV rider to whoever walks UP to it, and not before', () => {
     const g = mk(1);
-    // A few strides east of the marks, on the corridor's north side.
-    g.debug.place('voxxy', 85, 320);
+    // Nobody has moved yet: the opening marks are outside its reach on purpose.
+    // At the first cut they were inside it, so the toast fired on frame one and
+    // was buried before the player could be looking at it.
+    steps(g, 3);
+    expect(said(g)).not.toContain('AV RIDER');
+
+    // Now walk up to the wall.
+    g.debug.place('voxxy', 110, 320);
     steps(g, 3);
     const first = said(g);
     expect(first).toContain('AV RIDER');

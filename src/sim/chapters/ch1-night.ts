@@ -282,7 +282,7 @@ const OBJECTIVE =
   'rooms has a keypad: find the <b>4 digits</b>, each visible only under the right <b>mix of lights</b>. ' +
   'Droid can climb on Biggy (E). Biggy can smash the jammed door with a straight run across the corridor. ' +
   'In the last cinema the <b>screen is a mirror</b>: light that hits it comes back into the room.';
-const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb / hold Biggy / Voxxy jumps · 4-9 at the keypad (Backspace) · R: restart \u00b7 I: run sheet \u00b7 H: hint';
+const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb / hold Biggy / Voxxy jumps · 4-9 at the keypad (Backspace) · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('up');
@@ -1011,10 +1011,20 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * only part of the building dark enough that reading anything is an act.
    */
 
-  /** The AV rider, taped to the corridor's north wall a few strides off the marks. */
-  const riderAt: Vec2 = { x: 85, y: 289 };
+  /**
+   * The AV rider, taped to the corridor's north wall a few strides off the marks.
+   *
+   * **x 110, not 85, and 46 px of reach, not 64.** Michele, replaying V42: *"i
+   * cannot find it, where is it?"* — and he could not, because at the old numbers
+   * the nearest opening mark was 58 px away, inside the reach, so the toast fired
+   * on the FIRST FRAME of the chapter and was gone under the next thing anybody
+   * did. A line nobody can be looking at yet is a line nobody reads. Now the sheet
+   * is 77 px from the closest robot at the start: you walk up to the wall, and
+   * walking up to it is what reads it.
+   */
+  const riderAt: Vec2 = { x: 110, y: 289 };
   /** Any robot, close enough to read a sheet of A4. It is a legend, not a puzzle. */
-  const RIDER_READ = 64;
+  const RIDER_READ = 46;
   let riderSeen = false;
 
   /** The CFP wall, on the south side, past cinema D's door. */
@@ -1130,12 +1140,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         // `poster` is a top-left kind, and both of these are measured from their
         // middle — the point a robot has to get close to is the middle of a sheet.
         kind: 'poster',
-        x: riderAt.x - 17,
+        x: riderAt.x - 20,
         y: riderAt.y,
-        w: 34,
+        w: 40,
         h: 3,
         state: riderSeen ? 'done' : 'idle',
-        label: 'AV RIDER',
+        label: 'AV RIDER · lamp colours',
       },
       {
         kind: 'poster',

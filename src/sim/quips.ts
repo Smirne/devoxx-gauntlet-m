@@ -34,21 +34,54 @@ const LINES: readonly string[] = [
 ];
 
 export interface Quips {
-  /** One frame. `say` is the chapter's toast — this never builds one itself. */
-  tick(bots: readonly Bot[], dt: number, say: (text: string) => void): void;
+  /**
+   * One frame. `say` is the chapter's toast — this never builds one itself — and
+   * `clear` says whether the screen is free to be spoken on.
+   *
+   * The two are separate on purpose, and it is the whole difference between a gag
+   * you can find and one you cannot. Michele, replaying: *"I can't get biggy to
+   * roll"*. He could; what he could not do was HEAR it. The first cut skipped the
+   * tick entirely while any toast was up, so a wall bump — which is exactly how a
+   * heavy robot's run ends — both ate the wind-up and swallowed the punchline. Now
+   * the wind-up is always counted and the line WAITS for a clear screen.
+   */
+  tick(bots: readonly Bot[], dt: number, say: (text: string) => void, clear: boolean): void;
   /** A new chapter: the gag is available again, and the wind-up starts over. */
   reset(): void;
 }
+
+/**
+ * How long a line that has been earned waits for a clear screen, seconds.
+ *
+ * Long enough to outlast the "why am I blocked" toast that a heavy robot's run
+ * usually ends with (2.5 s), short enough that the joke still belongs to the stop
+ * it is about rather than turning up a room later.
+ */
+const HOLD = 4;
 
 export function makeQuips(): Quips {
   let wound = 0;
   let spent = false;
   let line = 0;
+  /** Seconds left to find a gap to speak in, or 0 when there is nothing to say. */
+  let waiting = 0;
 
   return {
-    tick(bots, dt, say): void {
+    tick(bots, dt, say, clear): void {
       const b = bots.find((o) => o.kind === 'biggy');
       if (!b || b.mounted) return;
+
+      // An earned line, looking for a gap. This runs before the speed test so a
+      // player who sets off again does not lose the line he already earned.
+      if (waiting > 0) {
+        waiting = Math.max(0, waiting - dt);
+        if (clear) {
+          waiting = 0;
+          say(LINES[line % LINES.length]);
+          line++;
+        }
+      }
+
       const sp = Math.hypot(b.vx, b.vy);
       if (sp > b.max * FAST) {
         wound += dt;
@@ -58,14 +91,21 @@ export function makeQuips(): Quips {
       if (sp > STOP_SNAP) return;
       if (!spent && wound >= WIND_UP) {
         spent = true;
-        say(LINES[line % LINES.length]);
-        line++;
+        // Say it now if the screen is free, or queue it if something else is
+        // talking — the thing he just ran into, most likely.
+        if (clear) {
+          say(LINES[line % LINES.length]);
+          line++;
+        } else {
+          waiting = HOLD;
+        }
       }
       wound = 0;
     },
     reset(): void {
       wound = 0;
       spent = false;
+      waiting = 0;
     },
   };
 }

@@ -1085,11 +1085,15 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     /*
      * After the chapter, never before: a chapter that has just ended the run has
      * the floor, and a toast about Biggy's heap on top of the final card would be
-     * the worst timed joke in the building. It also waits for a clear screen:
-     * `flash` REPLACES whatever is showing, and a gag that talks over the line
-     * telling you why you are blocked is not a gag.
+     * the worst timed joke in the building.
+     *
+     * It is TICKED every frame and told separately whether the screen is free:
+     * `flash` replaces whatever is showing, and a gag that talks over the line
+     * telling you why you are blocked is not a gag — but skipping the tick
+     * outright, which is what this used to do, also threw away the wind-up every
+     * time Biggy's run ended the way a heavy robot's run usually ends.
      */
-    if (card === null && toast === null) quips.tick(bots, dt, flash);
+    quips.tick(bots, dt, flash, toast === null);
   }
 
   /**
