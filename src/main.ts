@@ -42,7 +42,7 @@ import './style.css';
 
 import { flairPhase } from './sim/bot';
 import { DT_MAX } from './sim/constants';
-import { createGame, type DebugGame } from './sim/game';
+import { DEMO_CHAPTER, createGame, type DebugGame } from './sim/game';
 import type { GameSnapshot, RobotKind } from './sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M } from './sim/units';
 
@@ -311,6 +311,20 @@ function onKeyDown(ev: KeyboardEvent): void {
       scene.setPhysicsView(on);
       physicsPanel.setEnabled(on);
     }
+    /*
+     * `Shift+D` — the shadow rig, the body-occlusion demo (`DEMO_CHAPTER`).
+     *
+     * `?chapter=5` is the documented way in and it works from a clone, but not
+     * from the published build: that runs inside the artifact host, which does not
+     * pass the outer page's query string down to the page, so every `?` switch in
+     * the README is silently ignored there. Michele found it the only way anybody
+     * would — *"?chapter=5 leads me to the start scene, is this correct?"*
+     *
+     * Shifted rather than a bare letter, because it RESTARTS the game into another
+     * chapter: `D` alone is a movement key, and half the keyboard is already spoken
+     * for by the keypad, the password and the three robots.
+     */
+    if (code === 'KeyD' && ev.shiftKey) game.startChapter(DEMO_CHAPTER);
   }
   // Escape closes the run sheet wherever it is, including mid-password: it is the
   // one key nobody has to be told about.

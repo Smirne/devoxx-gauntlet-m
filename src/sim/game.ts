@@ -59,6 +59,21 @@ import { makeQuips } from './quips';
 
 export const CHAPTER_COUNT = 4;
 
+/**
+ * The shadow rig (`src/sim/chapters/demo-dark.ts`), one past the run.
+ *
+ * It is a manifest entry rather than a chapter: `startChapter` can reach it, Skip
+ * and the end of chapter 4 cannot, because both are bounded by `CHAPTER_COUNT`.
+ *
+ * Exported because a URL is not a reliable way to reach it. Michele, 27 Sep 2026:
+ * *"?chapter=5 leads me to the start scene, is this correct?"* — it is not, and it
+ * is not a bug in the clamp either: the published build runs inside the artifact
+ * host, which does not pass the outer page's query string down to the page, so
+ * `?chapter=`, `?topdown=` and the rest are only read when the game is served from
+ * its own origin (a clone, `pnpm dev`). The shell binds a key to this instead.
+ */
+export const DEMO_CHAPTER = CHAPTER_COUNT + 1;
+
 /** Robot order in `bots`, and therefore what 1/2/3 select. */
 const ORDER: readonly RobotKind[] = ['voxxy', 'droid', 'biggy'];
 
@@ -780,6 +795,17 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     cur = 0;
     toast = null;
     cut = null;
+    /*
+     * Any opening still running belongs to the chapter being left.
+     *
+     * `endOpening` used to be the only way out of it, so a `startChapter` from
+     * anywhere else — the shell's `Shift+D` into the shadow rig, a test starting a
+     * chapter mid-intro — set the chapter up correctly and then never ticked it:
+     * `update` sees `opening !== null` first and returns. The fade is deliberately
+     * NOT reset here; a chapter transition sets it and `update` decays it, and
+     * clearing it would turn every transition into a cut.
+     */
+    opening = null;
     dropTow();
     blockedAt.clear();
     quips.reset();

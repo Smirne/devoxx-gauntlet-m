@@ -755,3 +755,14 @@ Both queued behind the opening sequence at his instruction: *"Fix this after the
   the barrier is meant to be shut until Stephan unhooks it at the end of the chapter, which is what
   he asked for on 26 Sep. Needs confirming whether he was before or after that beat.
 - *"People should maybe pass at the reception to get a badge. Celestino should be there"* — queued.
+- *"?chapter=5 leads me to the start scene, is this correct?"* It is not, and the clamp was fine:
+  the published build runs inside the artifact host, which does not pass the outer page's query
+  string down to the page, so **every `?` switch is silently ignored there**. Bound **`Shift+D`** to
+  the shadow rig instead — it works from the title screen, which is where anybody would press it.
+  That needed `startChapter` to clear a running `opening`: it did not, so a start from the title set
+  the chapter up correctly and then never ticked it (`update` sees `opening !== null` first).
+- *"How do I activate Biggy's rolling? I tried running but it keeps walking."* Working as specified —
+  his own spec, 25 Sep: *"Biggy should really roll, at least when he's pushed!"* He rolls when the
+  motion is somebody else's (`worldMoved`): shoved, towed or knocked, plus the free slide after.
+  Driving him yourself is a walk. **Open question for him:** should self-driving above some speed
+  roll him too?

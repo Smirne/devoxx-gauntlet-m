@@ -16,7 +16,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { DT_MAX, createGame, type DebugGame, type BreakfastState } from '../src/sim';
-import { GF, type ExpoState } from '../src/sim';
+import { DEMO_CHAPTER, GF, type ExpoState } from '../src/sim';
 import { LANYARD, lanyardFor } from '../src/sim/lanyards';
 import { walkTo } from './pilot';
 
@@ -211,5 +211,35 @@ describe('the printer’s test badge', () => {
     }
     expect(heard).toContain('VOXY');
     expect(heard).toContain('One X');
+  });
+});
+
+describe('reaching the shadow rig without a URL', () => {
+  /*
+   * `?chapter=5` works from a clone and not from the published build: the artifact
+   * host does not pass the outer page's query string down to the page. Michele,
+   * 27 Sep: *"?chapter=5 leads me to the start scene, is this correct?"* — so the
+   * shell binds a key, and the key has to work from the title screen, which is
+   * where anybody would press it.
+   */
+  it('starts the rig from the opening, not just from a chapter', () => {
+    // cards: true and no chapter — the real thing: the crates, the walk out.
+    const g = createGame({ seed: SEED });
+    steps(g, 10);
+    expect(g.snapshot().chapter).not.toBe(DEMO_CHAPTER);
+    g.startChapter(DEMO_CHAPTER);
+    // The card the rig opens on, then it must actually TICK — the opening used to
+    // survive `startChapter` and swallow every frame after it.
+    g.key('Space');
+    steps(g, 10);
+    expect(g.snapshot().chapter).toBe(DEMO_CHAPTER);
+    expect(g.snapshot().tasks.map((t) => t.id)).toEqual(['darkA', 'darkB']);
+    expect(g.snapshot().lights.length).toBeGreaterThan(0);
+  });
+
+  it('is still outside the run: Skip from chapter 4 never lands on it', () => {
+    const g = mk(4);
+    g.skipChapter();
+    expect(g.snapshot().chapter).toBe(4);
   });
 });
