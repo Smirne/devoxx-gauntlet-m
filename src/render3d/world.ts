@@ -20,7 +20,7 @@ import { buildGround, type Ground3D } from './ground3d';
 import { createPeople } from './people3d';
 import { createProps, type Props3D } from './props3d';
 import { createRobots, updateGlare, updateRobots, type Robot3D } from './robots3d';
-import { HEIGHTS, SIGN_SPANS, X_END, buildVenue, type Venue3D } from './venue';
+import { CORRIDOR_END, HEIGHTS, SIGN_SPANS, buildVenue, type Venue3D } from './venue';
 import { CY0, CY1, F1 } from '../sim/geometry';
 import { CRATE_AT, CRATE_ROW, LEAD, OVER_AT, SLOT, STAND_AT, WALK_AT } from '../sim/opening';
 import { buildCrates } from '../render/crates';
@@ -81,7 +81,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   const venue: Venue3D = buildVenue(mats, pipeline.reflection);
   scene.add(venue.group);
   pipeline.reflectors = venue.reflectors;
-  pipeline.setFogBox(new THREE.Vector3(m(8), -1, m(6)), new THREE.Vector3(m(X_END + 8), 9, m(694)));
+  pipeline.setFogBox(new THREE.Vector3(m(8), -1, m(6)), new THREE.Vector3(m(CORRIDOR_END + 8), 9, m(694)));
   // Wall furniture keeps clear of what the venue already hung: posters, the ad,
   // the extinguisher cabinets (sim x ranges, per wall side).
   const details = buildDetails(mats, pipeline.reflection, [...SIGN_SPANS, venue.adSpan, ...(venue.candySpan ? [venue.candySpan] : [])]);
@@ -384,7 +384,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       probeBox.max.copy(ground.bounds.max);
     } else {
       pipeline.reflectors = [...venue.reflectors, ...details.reflectors];
-      pipeline.setFogBox(new THREE.Vector3(m(8), -1, m(6)), new THREE.Vector3(m(X_END + 8), 9, m(694)));
+      pipeline.setFogBox(new THREE.Vector3(m(8), -1, m(6)), new THREE.Vector3(m(CORRIDOR_END + 8), 9, m(694)));
       PROBE.set(m(300), 1.8, m(350));
       probeBox.min.set(0, 0, m(CY0));
       probeBox.max.set(m(F1.fireX), HEIGHTS.corridor, m(CY1));

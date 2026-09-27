@@ -36,6 +36,14 @@ import { POSTERS, backlitGlass, cityscape, emitter, exitSign, menuBoard, neonTex
 // cutscene turns in east of the flight (`stairExitRoutes`, up to x ~1153 plus
 // Biggy's radius), and the wall stops short of the corridor column at x 1198.
 export const X_END = 1190;
+/**
+ * Where the CORRIDOR stops, sim px: its real end, the main staircase between
+ * rooms 6 and 7 (`F1.mainStair`). The rooms past `X_END` are shut tonight and
+ * not built — their doors are closed leaves — but the corridor itself runs on,
+ * because a corridor ending in a wall a stride past the stairs read as a dead
+ * end (Michele, 27 Sep: "the main corridor seems closed, it's not!").
+ */
+export const CORRIDOR_END = F1.mainStair.x + F1.mainStair.w + T;
 
 /** A wall slab that belongs to the foyer kiosk (drawn by `buildKiosk`, not the wall loop). */
 const inKiosk = (w: { x: number; y: number; w: number; h: number }): boolean => {
@@ -55,7 +63,7 @@ export const HEIGHTS = Object.freeze({
 type Region = 'corridor' | 'foyer' | 'room' | 'void';
 
 function regionAt(sx: number, sy: number): Region {
-  if (sx >= 0 && sx <= X_END + 20 && sy >= CY0 && sy <= CY1) return 'corridor';
+  if (sx >= 0 && sx <= CORRIDOR_END + 20 && sy >= CY0 && sy <= CY1) return 'corridor';
   for (const n of [F1.nicheTop, F1.nicheBot]) if (sx >= n.x && sx <= n.x + n.w && sy >= n.y && sy <= n.y + n.h) return 'corridor';
   const f = F1.foyer;
   if (sx >= f.x && sx <= f.x + f.w && sy >= f.y && sy <= f.y + f.h) return 'foyer';
@@ -68,7 +76,7 @@ const inBuild = (r: RoomDef): boolean => r.x + r.w <= X_END;
 /** A room whose DOORWAY is inside the build, even if the room runs past it. */
 const doorInBuild = (r: RoomDef): boolean => {
   const d = roomDoor(r);
-  return d.x + d.w <= X_END;
+  return d.x + d.w <= CORRIDOR_END;
 };
 
 export interface Venue3D {
@@ -313,8 +321,8 @@ function foyerWindow(): { sy0: number; sy1: number; y0: number; y1: number } {
 }
 
 function clipX(r: Rect): Rect | null {
-  if (r.x >= X_END) return null;
-  return { ...r, w: Math.min(r.x + r.w, X_END) - r.x };
+  if (r.x >= CORRIDOR_END) return null;
+  return { ...r, w: Math.min(r.x + r.w, CORRIDOR_END) - r.x };
 }
 
 /* ------------------------------------------------------------------ build */
@@ -360,7 +368,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     // The Devoxx half's navy carpet, with a hole over each stair flight (from
     // its west end to the top step, which is floor level: `nicheMouth`).
     const x0 = F1.fireX + 7;
-    const x1 = X_END + 40;
+    const x1 = F1.mainStair.x;
     const rect = (ax: number, ay: number, bx: number, by: number): void =>
       carpet.add(mats.carpet, quad(V(m(ax), 0.002, m(by)), V(m(bx), 0.002, m(by)), V(m(bx), 0.002, m(ay)), V(m(ax), 0.002, m(ay)), 2.5));
     const n = F1.nicheTop;
@@ -409,8 +417,8 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     wallSlab(shell, { x: d.x, y, w: d.w, h: T }, HEIGHTS.door, HEIGHTS.room, pick);
   }
   wallSlab(shell, { x: F1.foyer.x, y: CY1, w: F1.foyer.w, h: T }, HEIGHTS.foyerOpening, HEIGHTS.room, pick);
-  // The end of the world: a wall just behind the fire door.
-  wallSlab(shell, { x: X_END, y: CY0 - T, w: 8, h: CY1 - CY0 + 2 * T }, 0, HEIGHTS.room, () => mats.plaster);
+  // The end of the corridor, past the main staircase, down to the storey below.
+  wallSlab(shell, { x: CORRIDOR_END, y: CY0 - T, w: 8, h: CY1 - CY0 + 2 * T }, -STOREY_H_M, HEIGHTS.room, () => mats.plaster);
 
   // Door jamb trims (steel) so the openings read as doors.
   const trims = new Buckets();
@@ -424,12 +432,32 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   }
   trims.build(group);
 
+  // The main staircase at the corridor's end: a full-width flight down to the
+  // lobby, stepped from the top at the corridor floor to a storey below.
+  {
+    const ms = F1.mainStair;
+    const steps = new Buckets();
+    const n = 18;
+    for (let i = 0; i < n; i++) {
+      const top = -((i + 1) / n) * STOREY_H_M;
+      const x0 = ms.x + (ms.w * i) / n;
+      steps.add(mats.terrazzo, box(m(ms.w / n), 0.18, m(CY1 - CY0), V(m(x0 + ms.w / n / 2), top - 0.09 + STOREY_H_M / n, m((CY0 + CY1) / 2)), 2));
+    }
+    steps.add(mats.darkMetal, box(m(CORRIDOR_END - ms.x), 0.1, m(CY1 - CY0), V(m((ms.x + CORRIDOR_END) / 2), -STOREY_H_M - 0.05, m((CY0 + CY1) / 2)), 2));
+    for (const z of [CY0 - T / 2, CY1 + T / 2]) {
+      steps.add(mats.plaster, box(m(CORRIDOR_END - ms.x), STOREY_H_M, m(T), V(m((ms.x + CORRIDOR_END) / 2), -STOREY_H_M / 2, m(z)), 2.5));
+    }
+    // A handrail across the head of the flight, and one down each side.
+    steps.add(mats.steel, box(0.06, 0.06, m(CY1 - CY0) - 0.4, V(m(ms.x) - 0.05, 1.0, m((CY0 + CY1) / 2)), 2));
+    steps.build(group);
+  }
+
   /* -------------------------------------------------------------- ceilings */
 
   const ceil = new Buckets();
   const c0 = m(CY0);
   const c1 = m(CY1);
-  const xEnd = m(X_END + 8);
+  const xEnd = m(CORRIDOR_END + 8);
   // Corridor: a flat soffit between two curved coves (CAPTIONS.md: "pale curved
   // plaster vaults springing from square dark columns along both sides").
   const coveW = 1.6;
@@ -461,7 +489,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   ceil.add(mats.ceiling, quad(V(m(f.x), HEIGHTS.foyer, m(f.y)), V(m(f.x + f.w), HEIGHTS.foyer, m(f.y)), V(m(f.x + f.w), HEIGHTS.foyer, m(f.y + f.h)), V(m(f.x), HEIGHTS.foyer, m(f.y + f.h)), 3));
   // Transverse ribs across the corridor at every column line.
   const ribs = new Buckets();
-  const colXs = walls.filter((w) => w.kind === 'corridor-column' && w.x < X_END).map((w) => w.x + w.w / 2);
+  const colXs = walls.filter((w) => w.kind === 'corridor-column' && w.x < CORRIDOR_END).map((w) => w.x + w.w / 2);
   for (const x of colXs) ribs.add(mats.plaster, box(0.5, 0.45, c1 - c0, V(m(x), HEIGHTS.corridor - 0.2, (c0 + c1) / 2)));
   ribs.build(group);
   const ceilings = ceil.build(group, { cast: true });
@@ -470,7 +498,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
 
   const cols = new Buckets();
   for (const w of walls) {
-    if (w.x >= X_END) continue;
+    if (w.x >= CORRIDOR_END) continue;
     if (w.kind === 'corridor-column') {
       const cx = m(w.x + w.w / 2);
       const cz = m(w.y + w.h / 2);
@@ -1087,7 +1115,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   let plinthN = 0;
   const placed: number[] = [];
   for (const w of walls) {
-    if (w.kind !== 'corridor-plinth' || w.x >= X_END) continue;
+    if (w.kind !== 'corridor-plinth' || w.x >= CORRIDOR_END) continue;
     const cx = m(w.x + w.w / 2);
     const cz = m(w.y + w.h / 2);
     if (placed.some((x) => Math.abs(x - cx) < 1)) continue;
@@ -1361,7 +1389,9 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   // The Devoxx half has power: warm downlights down its corridor. Cones point
   // straight down and stop at the floor, so nothing leaks through the shutter
   // while it is shut — and when it rolls up, the light is waiting.
-  for (const x of [668, 760, 840, 930, 1060]) {
+  // ...on down the corridor to the main staircase: the corridor runs on, lit,
+  // past the stairs, rather than stopping at a wall.
+  for (const x of [668, 760, 840, 930, 1060, 1240, 1420, 1600, 1780]) {
     const spot = new THREE.SpotLight(0xffd7a8, 700, 9, 0.62, 0.5, 2);
     spot.position.set(m(x), HEIGHTS.corridor - 0.1, m((CY0 + CY1) / 2));
     spot.target.position.set(m(x), 0, m((CY0 + CY1) / 2));
@@ -1396,7 +1426,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
 
   // Red emergency lights at the ceiling line, one per bay, dim and steady.
   const emerg: THREE.Vector3[] = [];
-  for (let x = 40; x < X_END; x += 120) {
+  for (let x = 40; x < CORRIDOR_END - 20; x += 120) {
     emerg.push(V(m(x), HEIGHTS.cove - 0.1, m(CY0) + 0.25), V(m(x + 60), HEIGHTS.cove - 0.1, m(CY1) - 0.25));
   }
   const emGeo = new THREE.BoxGeometry(0.4, 0.1, 0.12);

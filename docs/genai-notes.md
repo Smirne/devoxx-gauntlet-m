@@ -4402,3 +4402,9 @@ ordinary figures with their role colours.
   low as opaque. The sim's `Wall` gained `open`: stops robots, passes light. It is set on the hatch.
   Probed: Biggy standing outside the hatch now lights the clue, and no heading from the three
   starting marks does, at either tolerance.
+- *"The main corridor seems closed, it's not!"* (27 Sep). The 3D build ended in a wall at x 1190,
+  just past the secondary stairs. The corridor now runs to its real end, the main staircase
+  between rooms 6 and 7 (`CORRIDOR_END`, from `F1.mainStair`), with a full-width flight down.
+  Rooms 4–9 stay unbuilt but have shut double doors; the corridor gets its floor, coves, ribs,
+  columns, emergency lights and a line of warm downlights. Michele also passed the chapter 1 fire
+  door and staircase animations: *"fine"*.
