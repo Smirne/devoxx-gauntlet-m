@@ -4224,3 +4224,67 @@ positions, because a cutscene ignores walls and no collider test can catch that.
 It would have made the gaps a lie: a chrome post is a thing you steer around, and the cutscene
 would have been free to walk through one. The lanes moved instead — nine posts across a 15.76 m
 line puts a post exactly on the centre, and the old middle lane walked Droid straight through it.
+
+## 28 Sep 2026 — the day's second round: the roll, the soup, the bar and the rig
+
+**What he asked for.** Fourteen playtest notes in one sitting. Seven went into the previous commit
+(the crowd, the badge desk, Stephan's clothes, the keynote speaker, the soup's drop mark); this is
+the rest, plus two from the same pass that had been carried — the cake and a flicker by room 7.
+
+**What the agent did.**
+
+- **Biggy rolls when he runs.** `src/render/robots/gait.ts`. The roll existed and was gated on
+  `worldMoved` — somebody else pushing him. Michele had asked four times why he could not make it
+  happen and the fourth time said how: *"I tried running."* The gate is SPEED now (`st.roll` is a
+  smoothstep on it, and the walk is switched off at the source — `moving` and `amp` both scale by
+  `1 - roll`), and `shoved` only chooses the window: 1.5–3 m/s for a shove, 2.2–3.4 m/s for a run
+  under his own power, nothing at all with the soup pot in his hands (`GaitParams.carrying`, read
+  off the published `pot` prop rather than a new sim flag — the pot is only published while
+  somebody is carrying it, so it already IS the flag).
+- **The soup is drawn.** `drawLadle`, `drawPot`, `drawSpill` in `src/render/scene.ts`, and stains in
+  `src/sim/chapters/ch3-breakfast.ts`. The sim keeps the puddles because they are facts about the
+  run — where the body was, how much came out — and the list is bounded at fourteen.
+- **The bar pays off.** One clock in the chapter (`beerAt`) drives everything: `pour` 0→1 across
+  3.4 s after a 0.7 s beat, published on each tap's `v`; the glassware fills off the same number;
+  Biggy's flourish is set directly rather than through `partyTrick`, because the toast is the
+  chapter's and not the player's — it does not check the stick, the rest timer or Droid's feet, and
+  it does not speak his `E` line. Three kegs stand inside the `bar-counter` rect, which is a `low`
+  wall, so nothing can walk where they are and they need no collider.
+- **The shadow rig says where to stand.** Two painted lanes from each lamp pad to its sensors, red
+  cells while lit, and a sensor bar that lights from its own supply.
+
+**What it cost, and what it found.**
+
+- **The drive threshold could not come off `DEFS.biggy.max`.** The first cut used 2.6–3.8 m/s,
+  reasoning from his 4.7 m/s top speed. A headless probe then drove him flat out across the
+  exhibition hall: he reaches the far wall at **2.88 m/s**. Rooms are shorter than top speeds, so
+  the window is 2.2–3.4 and the number is in the comment beside it.
+- **The ladle was the walk-through prop chapter 3 carried.** `KNOWN_WALKTHROUGH[3]` had listed
+  `ladle` since the sweep was written: the renderer drew it as a 0.9 m slab standing on the floor
+  under the shelf, with no collider, because nobody had ever drawn the shelf. Putting the ladle ON
+  the 1.35 m shelf took it off both lists, and the sweep's own "this list cannot go stale"
+  assertion is what forced the edit.
+- **The pot disappeared behind the robot carrying it.** First cut put it in front along his
+  heading, which is correct and invisible: this camera is fixed on the +z side, so a robot walking
+  north carries the pot behind his own lid. It is biased half a heading plus one camera-ward unit
+  now — in front when he walks at you, round to the near side when he walks away.
+- **Headless probes of chapter 3 run at about one frame a second.** Sixty visitors in swiftshader,
+  and the game's clock is the rAF loop, so a probe that sleeps for the pour measures nothing. The
+  beer probe polls the STATE instead of the clock. (Chrome also stops producing frames when the page
+  is static, so a probe that waits on a still scene waits for ever — the robot has to be moving, or
+  the sim is not running at all.)
+
+**Tests.** `tests/soup.test.ts` (4, new): the ladle prop is the shelf rect and empties when Droid
+takes it; the pot is published at the carrier's own centre and follows him; a splash leaves a puddle
+where the body was, and six ruined pots stay under the bound. `tests/beer-bar.test.ts` (+4): the
+taps are shut until the delivery is finished, all three run on one clock, Biggy raises one glass
+once and puts it down, and every keg is inside the counter's rect. `tests/shove-roll.test.ts` (+3):
+a manoeuvre walks, a run tucks (thigh past -1.3 rad, pelvis turning through whole revolutions), and
+the pot forbids both. `tests/dark-rig.test.ts` (+2): each station paints a lane from its pad to its
+own sensors, and a lit cell is red. `tests/colliders.test.ts`, `tests/prop-geometry.ts`: four new
+kinds classified (`spill`, `keg`, `toast`, and the ladle's new band). Suite **769 green**.
+
+**Rejected.** Hanging a `sign` prop over each station of the shadow rig to name it. A chapter's
+`sign` is a blue panel and nothing paints text on one — only the venue's own `SignPainter` does — so
+two more would have been two blank boards over a rig that was already hard to read. The lanes and
+the red cells carry it instead.

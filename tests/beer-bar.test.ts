@@ -516,3 +516,82 @@ describe('playing the delivery', () => {
     expect(new Set(stacked.map((c) => c.v)).size).toBe(2);
   });
 });
+
+/* ======================================================== the bar pays off */
+
+/**
+ * WHAT HAPPENS WHEN THE SIXTH CRATE LANDS.
+ *
+ * Michele, 28 Sep 2026: *"When all is delivered, something should happen (Spiller
+ * start and biggy toasts?)"* — *spillare*, to pour. Until this round the last
+ * crate set a flag, printed a line, and left the bar exactly as it had been since
+ * the chapter opened: three taps that had always said "ready", four glasses that
+ * were always empty, and a robot who walked away.
+ *
+ * The payoff is one clock in `ch3-breakfast.ts` (`beerAt`) and everything reads
+ * off it, which is what these tests pin: a beat of nothing, then the taps run and
+ * the glassware fills together, then Biggy raises one and puts it down again. The
+ * renderer owns none of the timing — it draws a stream when a tap's `v` is between
+ * 0 and 1, and that is the whole of its judgement.
+ */
+describe('the bar pays off when the last crate lands', () => {
+  const taps = (g: DebugGame): Prop[] => g.snapshot().props.filter((p) => p.kind === 'beer-tap');
+  const pour = (g: DebugGame): number => Math.max(...taps(g).map((p) => p.v ?? 0));
+  const toastProp = (g: DebugGame): Prop | undefined => g.snapshot().props.find((p) => p.kind === 'toast');
+  const run = (g: DebugGame, seconds: number): void => {
+    for (let i = 0; i * DT_MAX < seconds; i++) g.update(DT_MAX);
+  };
+
+  it('keeps the taps shut until the delivery is finished', () => {
+    const g = mk();
+    run(g, 3);
+    expect(pour(g)).toBe(0);
+    expect(toastProp(g)).toBeUndefined();
+    // ...and the glasses are all empty, which is the state the renderer fills from.
+    for (const gl of g.snapshot().props.filter((p) => p.kind === 'beer-glass')) expect(gl.state).toBe('active');
+  });
+
+  it('runs the taps and fills the glassware on one clock', () => {
+    const g = mk();
+    clearTheDelivery(g);
+    expect(breakfastOf(g).beer.done).toBe(true);
+    // The beat first: a tap that opens on the same frame as the flash line reads
+    // as part of the HUD rather than as something happening in the room.
+    expect(pour(g)).toBe(0);
+    run(g, 1.2);
+    const started = pour(g);
+    expect(started).toBeGreaterThan(0);
+    expect(started).toBeLessThan(1);
+    run(g, 4);
+    expect(pour(g)).toBe(1);
+    // All three taps run together — one clock, three taps.
+    const vs = taps(g).map((p) => p.v ?? 0);
+    expect(new Set(vs.map((v) => v.toFixed(6))).size).toBe(1);
+    for (const gl of g.snapshot().props.filter((p) => p.kind === 'beer-glass')) expect(gl.state).toBe('done');
+  });
+
+  it('has Biggy raise one, once, and put it down again', () => {
+    const g = mk();
+    clearTheDelivery(g);
+    const big = (): Bot => bot(g, 'biggy');
+    expect(toastProp(g)).toBeUndefined();
+    run(g, 3);
+    const held = toastProp(g);
+    expect(held, 'Biggy never raised a glass').toBeTruthy();
+    // It is in his hand, not on the floor across the hall: the sim publishes it at
+    // his own centre and the renderer puts it where a hand is.
+    expect(Math.hypot((held as Prop).x - big().x, (held as Prop).y - big().y)).toBeLessThan(1);
+    // And it is a flourish on the robot, not a line in the HUD.
+    expect(big().flair ?? 0).toBeGreaterThan(0);
+    run(g, 8);
+    expect(toastProp(g), 'the glass never came down').toBeUndefined();
+  });
+
+  it('pours three kegs of it, behind the counter where nothing can stand', () => {
+    const g = mk();
+    const bar = g.snapshot().walls.find((w) => w.kind === 'bar') as Wall;
+    const kegs = g.snapshot().props.filter((p) => p.kind === 'keg');
+    expect(kegs.length).toBeGreaterThanOrEqual(2);
+    for (const k of kegs) expect(inRectPt({ x: k.x, y: k.y }, bar)).toBe(true);
+  });
+});

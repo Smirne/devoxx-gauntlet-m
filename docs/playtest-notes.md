@@ -779,3 +779,58 @@ Both queued behind the opening sequence at his instruction: *"Fix this after the
   motion is somebody else's (`worldMoved`): shoved, towed or knocked, plus the free slide after.
   Driving him yourself is a walk. **Open question for him:** should self-driving above some speed
   roll him too?
+
+## Michele, 28 Sep — V45, and the round after it
+
+Fourteen notes in one sitting, worked in two commits. The first seven (the crowd, the badge desk,
+Stephan's clothes, the keynote speaker, the soup's drop mark) are in *Chapter 3 playtest round*; the
+rest are here.
+
+- *"How do I activate Biggy's rolling? I tried running but it keeps walking."* — asked four times
+  across two rounds, and the fourth time it stopped being a question about controls. **He was
+  running.** The feature was gated on somebody ELSE pushing him (`worldMoved`), which was his own
+  25 Sep spec — *"at least when he's pushed"* — read as "only". A ball at 3 m/s is rolling whoever
+  set it going, so speed is the gate now and `shoved` only decides how much of it: 1.5 m/s when a
+  shove starts him, 2.2 m/s when he commits to a run himself, full tuck at 3.4. **The top of that
+  range is a measurement, not a taste.** Driven flat out across the exhibition hall from the crates,
+  Biggy hits the far wall at **2.88 m/s** — he never reaches his own 4.7 m/s top speed indoors, so a
+  threshold set off `DEFS.biggy.max` is one no player ever crosses. Verified on the build, not on a
+  unit test: headless probe, chapter 5's corridor, 4.47 m/s — legs folded into the gut, the whole
+  body turning about the gut's centre, the lid riding round and coming back up. He does NOT roll
+  with the soup pot in his hands.
+- *"Soup ladle should be visible - visual hint."* — it was a grey 0.9 m slab standing on the FLOOR
+  under the shelf, in the middle of the robot band, and it is why chapter 3 carried a walk-through
+  prop. It is a modelled ladle now — bowl down, handle up — sitting on the 1.35 m shelf slab the
+  venue already builds, lit until Droid takes it and gone from the shelf after.
+- *"Soup graphics(including spilling and leaving spill on the ground"* — the pot is a pot: steel
+  wall, rim, two ears, tomato soup whose LEVEL is the sim's `soup` and whose colour and steam are
+  the sim's `temp`. It rides at chest height, **biased towards the camera** so it does not disappear
+  behind his own lid when he walks north. Every splash leaves a puddle on the floor where the body
+  was, sized by how much came out, and they stay for the rest of the chapter — by the third batch
+  the corner he keeps clipping is drawn in tomato.
+- *"Beer game: rember to refine crates - kegs - beer brand and bar. When all is delivered, something
+  should happen (Spiller start and biggy toasts?)"* — *spillare*, to pour. **Both halves built.**
+  The taps are modelled (column, spout, handle, brand badge), the four Belgian glasses are four
+  silhouettes (tulip, goblet, flute, chalice — the sim was already naming them by number and nothing
+  was drawing them), and three kegs stand behind the counter where nothing can walk. When the sixth
+  crate lands: a beat, then the three taps run together, the glassware fills, and Biggy raises one.
+  The crates themselves are still a coloured box — that half of the note is **not done**.
+- *"I can't play chapter=5, i don't understand where the sensors / what to block."* — every word of
+  the rig was in the objective and the run sheet, and none of it was on the floor. Each station now
+  paints its beam from the lamp pad to its sensors, a cell that still needs shading is RED (it
+  published `idle`, the one state the renderer does not tint — the thing you were looking for was
+  the thing that was not drawn), and the sensor bar lights from its own supply instead of being a
+  brown strip in a blackout.
+- *"Cake: make it look like a cake. Pushing should be a bit easier"* and *"the hint should be first
+  on the cake, if biggy is next to it, it should point to the stage"* — two tiers on a board with a
+  Devoxx-orange ribbon and three lit candles; the shove is 1500 (was 900) and the lean gate is
+  gentler; the arrow points at the crate until he is beside it and at the mark after.
+- *"chap 4 this flickers. Next to 7"* — 93 pairs of coincident vertical faces on the first floor,
+  worst 10 m². Door jambs were being widened into the wall they sit in. The whole frame is offset
+  3.2 cm proud instead: **5 pairs left, worst 0.05 m²**, and `tests/coplanar.test.ts` now measures
+  vertical planes as well as horizontal ones.
+
+### Still open from this round
+
+- The beer CRATES are still boxes; only the bar around them was refined.
+- Chapter 4 runs about six minutes — his note, not yet acted on.

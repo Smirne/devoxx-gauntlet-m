@@ -31,7 +31,7 @@ import { flairPhase, hopPhase, worldMoved } from '../sim/bot';
 import { JUMP_RISE_M, MOUNT_OFFSET_Y, W as SIM_W, H as SIM_H } from '../sim/constants';
 import { riseAt, riseForBody } from '../sim/surface';
 import { JAM_LEAF_H, JAM_SKEW, JAM_SKID, JAM_TIP } from '../sim/chapters/ch1-night';
-import type { GameSnapshot, Person, Plate, Prop, RobotKind, ViewRect } from '../sim/types';
+import type { Bot, GameSnapshot, Person, Plate, Prop, RobotKind, ViewRect } from '../sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M, STOREY_H_M, m } from '../sim/units';
 
 import { createCamera, OPENING_AZIMUTH_RAD, OPENING_BAND, type DioramaCamera } from './camera';
@@ -359,12 +359,25 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
    * the sim names the beer, not the silhouette.
    */
   'bar-counter': { h: 1.05, color: 0x6b4a2f },
-  'beer-tap': { h: 0.34, color: 0xc9a227, lift: 1.05, glow: 0x4a3405 },
-  'beer-glass': { h: 0.16, color: 0xf2e2b0, lift: 1.05, glow: 0x3a3320 },
-  ladle: { h: 0.9, color: 0x9aa3ad, tl: true },
+  // Drawn by `drawTap` and `drawGlass`; the band is what the collider sweep reads.
+  'beer-tap': { h: 0.51, color: 0xc9a227, lift: 1.05, glow: 0x4a3405 },
+  'beer-glass': { h: 0.32, color: 0xf2e2b0, lift: 1.05, glow: 0x3a3320 },
+  /*
+   * THE SOUP IS NOT DRAWN FROM THIS TABLE ANY MORE — `drawLadle`, `drawPot` and
+   * `drawSpill` do it. The entries stay because the table is also the list of
+   * kinds this renderer knows, and because the footprint each one claims is what
+   * `tests/prop-geometry.ts` transcribes; the heights are the models' own.
+   */
+  ladle: { h: 0.52, color: 0xc6ced6, tl: true, lift: 1.41 },
   dropzone: { h: 0.04, color: 0x2f7d4f, tl: true, flat: true },
-  pot: { h: 0.45, color: 0x8e5a3a },
-  soup: { h: 0.12, color: 0xd9452f },
+  pot: { h: 0.3, color: 0x9aa3ad, lift: 0.95 },
+  soup: { h: 0.12, color: 0xd9452f, lift: 0.97 },
+  /** Spilled soup on the floor — a decal, and one per splash. */
+  spill: { h: 0.02, color: 0x8f2412, flat: true },
+  /** Behind the counter, where nothing stands — `drawKeg`. */
+  keg: { h: 0.64, color: 0xc6ced6 },
+  /** The glass Biggy raises — carried, like the pot. `drawToast`. */
+  toast: { h: 0.48, color: 0xd98a16, lift: 0.9 },
   /*
    * HUNG, not planted. `tests/colliders.test.ts` caught this the night it learned
    * to sweep what chapters draw: a `sign` is a 4.8 m blue panel 2.2 m tall, it was
@@ -416,7 +429,10 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
   /** The sign between the two cells, the one thing on the rig that must stay lit. */
   'beam-sign': { h: 0.5, color: 0xe9e4d6, fw: 0.9, fd: 0.12, lift: 0.3, glow: 0x2a3a52 },
   /** The wide bar. Flat, because what matters is the strip of floor it covers. */
-  'sensor-bar': { h: 0.05, color: 0x8e6b2a, tl: true, flat: true },
+  // Lit from its own supply: the bar is the thing you are looking FOR in a dark
+  // corridor, and `STATE_EMISSIVE` only lights a prop once something has happened
+  // to it. Michele: *"I don't understand where the sensors / what to block."*
+  'sensor-bar': { h: 0.05, color: 0x8e6b2a, tl: true, flat: true, glow: 0x4a3405 },
 };
 
 const PROP_FALLBACK: PropSpec = { h: 0.7, color: 0x5a6069 };
@@ -784,6 +800,370 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    * dressing: it is drawn over everything on purpose (`depthTest: false`), and it
    * must not be hidden with a floor when the camera changes storey.
    */
+  /* ------------------------------------------------- chapter 4's cake
+   *
+   * Michele, 28 Sep 2026: *"Cake: make it look like a cake."* It was a 1.36 m
+   * cream-coloured box, which is what `PROPS` draws anything it has no model for,
+   * and the chapter's whole first job is pushing it up an aisle — so the thing the
+   * player spends a minute of chapter 4 shoving looked like a packing crate and
+   * the toast calling it CAKE read as a joke nobody had drawn.
+   *
+   * Two tiers on a board, a Devoxx-orange ribbon round each, and three candles.
+   * Round, because at this camera a cylinder is the one silhouette that cannot be
+   * mistaken for a crate — which is exactly the note.
+   */
+  const cakeGroup = new THREE.Group();
+  cakeGroup.name = 'keynote-cake';
+  cakeGroup.visible = false;
+  const cakeIcing = new THREE.MeshStandardMaterial({ color: 0xf2e7d5, roughness: 0.8 });
+  const cakeRibbon = new THREE.MeshStandardMaterial({ color: 0xe1561c, roughness: 0.7 });
+  const cakeBoard = new THREE.MeshStandardMaterial({ color: 0xb9c2cb, roughness: 0.35, metalness: 0.6 });
+  const cakeFlame = new THREE.MeshStandardMaterial({
+    color: 0xffd9a0,
+    emissive: new THREE.Color(0xffc266),
+    emissiveIntensity: 2,
+    roughness: 0.4,
+  });
+  {
+    const disc = (r: number, h: number, y: number, mat: THREE.MeshStandardMaterial): void => {
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 20), mat);
+      mesh.position.y = y + h / 2;
+      mesh.castShadow = true;
+      cakeGroup.add(mesh);
+    };
+    disc(0.68, 0.04, 0, cakeBoard);
+    disc(0.58, 0.2, 0.04, cakeIcing);
+    disc(0.6, 0.035, 0.205, cakeRibbon);
+    disc(0.38, 0.17, 0.24, cakeIcing);
+    disc(0.4, 0.03, 0.395, cakeRibbon);
+    disc(0.3, 0.03, 0.41, cakeIcing);
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + 0.4;
+      const wick = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.1, 6), cakeIcing);
+      wick.position.set(Math.cos(a) * 0.17, 0.49, Math.sin(a) * 0.17);
+      cakeGroup.add(wick);
+      const flame = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 5), cakeFlame);
+      flame.position.set(Math.cos(a) * 0.17, 0.56, Math.sin(a) * 0.17);
+      cakeGroup.add(flame);
+    }
+  }
+  dressing.add(cakeGroup);
+
+  /* --------------------------------------------- chapter 3's soup, drawn
+   *
+   * Michele, 28 Sep 2026, twice in a row: *"Soup ladle should be visible - visual
+   * hint."* and *"Soup graphics(including spilling and leaving spill on the
+   * ground"*. All three of those were boxes out of `PROPS`: the ladle was a grey
+   * 0.9 m slab standing on the floor under the shelf, the pot was a brown box
+   * parked a metre and a half behind the robot carrying it, and a spill was a line
+   * in the flash bar and nothing else.
+   *
+   * So: a pot with a rim, two handles and tomato soup in it whose LEVEL is the
+   * sim's `soup` and whose COLOUR is the sim's `temp`; a ladle on the high shelf
+   * with its bowl down and its handle up, lit until Droid takes it; and a puddle
+   * on the floor for every splash. Nothing here decides anything — the level, the
+   * heat, the puddle's position and its size are all the sim's.
+   */
+  const potSteel = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, roughness: 0.34, metalness: 0.62 });
+  const potDark = new THREE.MeshStandardMaterial({ color: 0x4a5158, roughness: 0.5, metalness: 0.4 });
+  const soupMat = new THREE.MeshStandardMaterial({
+    color: 0xd9452f,
+    emissive: new THREE.Color(0x5a1206),
+    emissiveIntensity: 1,
+    roughness: 0.32,
+  });
+  const steamMat = new THREE.MeshStandardMaterial({
+    color: 0xe8e2da,
+    emissive: new THREE.Color(0x6a6660),
+    emissiveIntensity: 0.6,
+    roughness: 1,
+    transparent: true,
+    opacity: 0.32,
+    depthWrite: false,
+  });
+  /**
+   * The pot: 0.46 m across, which is a pot and not the sim's rect.
+   *
+   * The sim publishes `w: 20` px — 1.6 m — because that rect is a HUD row and a
+   * reach, not a vessel; a 1.6 m stockpot held by a 1.45 m robot is the joke
+   * nobody asked for. So it is modelled once at kitchen size and never scaled,
+   * exactly as the cake is.
+   */
+  const POT_R = 0.26;
+  const POT_H = 0.3;
+  /**
+   * How high a carried pot rides, and how high the high shelf is.
+   *
+   * `POT_CARRY_H` is chest height on a 1.45 m Biggy — the pot's base, so its rim
+   * comes just under his lid. `SHELF_TOP_H` is the shelf slab `src/render/venue/
+   * ground.ts` already builds at 1.35 m: the ladle stands ON it, which is what
+   * puts it out of Voxxy's 1.15 m reach and inside Droid's.
+   */
+  const POT_CARRY_H = 0.95;
+  const SHELF_TOP_H = 1.41;
+  /**
+   * The bar's counter top, and how high the toast goes.
+   *
+   * `BAR_TOP_H` is the 1.05 m the `bar-counter` entry has always drawn the counter
+   * at, so a tap and a glass stand ON it rather than in it. The toast starts at
+   * Biggy's hand and finishes over his lid (he is 1.45 m).
+   */
+  const BAR_TOP_H = 1.05;
+  const TOAST_LOW_H = 0.9;
+  const TOAST_HIGH_H = 1.78;
+  /**
+   * How much bigger than life the bar's fittings are drawn.
+   *
+   * A tap is 20 cm and a Belgian glass is 15, against a camera that frames a
+   * 152 m hall: at true scale the whole bar top is a few grey pixels, and the
+   * errand that takes a third of chapter 3 ends at something the player cannot
+   * see. The counter, the kegs and every collider stay at their real size — this
+   * is the crockery only.
+   */
+  const BAR_FITTING_SCALE = 1.6;
+  const potGroup = new THREE.Group();
+  potGroup.name = 'soup-pot';
+  potGroup.visible = false;
+  const potSoup = new THREE.Mesh(new THREE.CylinderGeometry(POT_R - 0.02, POT_R - 0.02, 1, 18), soupMat);
+  const potSteam: THREE.Mesh[] = [];
+  {
+    const wall = new THREE.Mesh(new THREE.CylinderGeometry(POT_R, POT_R * 0.94, POT_H, 20, 1, true), potSteel);
+    wall.material.side = THREE.DoubleSide;
+    wall.position.y = POT_H / 2;
+    wall.castShadow = true;
+    potGroup.add(wall);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(POT_R * 0.94, POT_R * 0.94, 0.02, 20), potDark);
+    base.position.y = 0.01;
+    potGroup.add(base);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(POT_R, 0.018, 6, 20), potSteel);
+    rim.rotation.x = Math.PI / 2;
+    rim.position.y = POT_H;
+    potGroup.add(rim);
+    // Two ears, because a pot you carry has handles and they are what say "carry".
+    for (const side of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.016, 6, 12, Math.PI), potDark);
+      ear.position.set(side * (POT_R + 0.03), POT_H * 0.72, 0);
+      ear.rotation.y = Math.PI / 2;
+      ear.rotation.z = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+      potGroup.add(ear);
+    }
+    // The soup itself: one disc, scaled on y from the pot's floor so the level
+    // goes down as the sim's does.
+    potSoup.position.y = 0.02;
+    potGroup.add(potSoup);
+    for (let i = 0; i < 3; i++) {
+      const wisp = new THREE.Mesh(new THREE.SphereGeometry(0.05 + i * 0.015, 7, 6), steamMat);
+      potSteam.push(wisp);
+      potGroup.add(wisp);
+    }
+  }
+  dressing.add(potGroup);
+
+  /** The ladle on the high shelf: bowl down, handle up, and lit until it is taken. */
+  const ladleGroup = new THREE.Group();
+  ladleGroup.name = 'soup-ladle';
+  ladleGroup.visible = false;
+  const ladleMat = new THREE.MeshStandardMaterial({
+    color: 0xc6ced6,
+    emissive: new THREE.Color(0x000000),
+    roughness: 0.3,
+    metalness: 0.55,
+  });
+  {
+    const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), ladleMat);
+    bowl.material.side = THREE.DoubleSide;
+    bowl.position.y = 0.075;
+    bowl.castShadow = true;
+    ladleGroup.add(bowl);
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.46, 8), ladleMat);
+    // Leaning up and out of the shelf: a vertical handle reads as a pipe, and a
+    // flat one disappears at this camera. 40 degrees is the one that reads.
+    shaft.position.set(0.1, 0.24, 0.0);
+    shaft.rotation.z = -0.7;
+    shaft.castShadow = true;
+    ladleGroup.add(shaft);
+    const hook = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.012, 5, 10, Math.PI), ladleMat);
+    hook.position.set(0.31, 0.43, 0);
+    hook.rotation.set(Math.PI / 2, 0, -0.7);
+    ladleGroup.add(hook);
+  }
+  dressing.add(ladleGroup);
+
+  /**
+   * Spilled soup. One puddle per splash, and they stay for the rest of the chapter.
+   *
+   * A pool rather than one group, because the chapter can leave fourteen of them
+   * (`MAX_STAINS`) and each is a different size at a different place. Every puddle
+   * is a disc plus three satellites off its own seed, so two spills never look like
+   * the same decal stamped twice, and it is `flat`-style depth work — biased depth
+   * test, no depth write — for the same reason every other floor decal is.
+   */
+  const spillMat = new THREE.MeshStandardMaterial({
+    color: 0x8f2412,
+    emissive: new THREE.Color(0x2a0803),
+    emissiveIntensity: 1,
+    roughness: 0.25,
+    transparent: true,
+    opacity: 0.85,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -3,
+    polygonOffsetUnits: -6,
+  });
+  const spillPool = makePool<THREE.Group>(dressing, () => {
+    const g = new THREE.Group();
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.012, 22), spillMat);
+    disc.name = 'puddle';
+    g.add(disc);
+    for (let i = 0; i < 3; i++) {
+      const drop = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.01, 10), spillMat);
+      drop.name = `drop-${i}`;
+      g.add(drop);
+    }
+    return g;
+  });
+
+  /* ------------------------------------------- chapter 3's bar, drawn
+   *
+   * Michele, 28 Sep 2026: *"Beer game: rember to refine crates - kegs - beer brand
+   * and bar. When all is delivered, something should happen (Spiller start and
+   * biggy toasts?)"* — *spillare*, to pour. The taps were 34 cm gold boxes, the
+   * Belgian glassware was four 16 cm cream boxes, there were no kegs at all, and
+   * the last crate landing changed nothing anybody could see.
+   *
+   * So: a modelled tap with a spout and a handle, four real Belgian silhouettes,
+   * three kegs behind the counter, a stream of beer out of each tap while the sim
+   * says it is pouring, and the glass Biggy holds up when it is done. Every one of
+   * those is driven by the sim's own `pour` number (`ch3-breakfast.ts`); nothing
+   * here has a clock of its own.
+   */
+  const chromeMat = new THREE.MeshStandardMaterial({ color: 0xc6ced6, roughness: 0.26, metalness: 0.75 });
+  const tapHandleMat = new THREE.MeshStandardMaterial({ color: 0xe1561c, roughness: 0.55 });
+  const beerMat = new THREE.MeshStandardMaterial({
+    color: 0xd98a16,
+    emissive: new THREE.Color(0x3a2103),
+    emissiveIntensity: 1,
+    roughness: 0.2,
+    transparent: true,
+    opacity: 0.92,
+  });
+  const foamMat = new THREE.MeshStandardMaterial({ color: 0xf6efdf, roughness: 0.9 });
+  const glassMat = new THREE.MeshStandardMaterial({
+    color: 0xdfe8ee,
+    roughness: 0.08,
+    metalness: 0.05,
+    transparent: true,
+    opacity: 0.34,
+    depthWrite: false,
+  });
+
+  /**
+   * The four Belgian shapes the sim names by number: tulip, goblet, flute, chalice.
+   *
+   * `ch3-breakfast.ts` sends `v = 0..3` and says in its own comment that it does
+   * not know what a goblet looks like — this is where that is known. Each is a
+   * foot, a stem and a bowl, and the bowl's two radii are the whole silhouette.
+   */
+  const GLASSWARE: ReadonlyArray<{ foot: number; stem: number; rb: number; rt: number; h: number }> = [
+    { foot: 0.045, stem: 0.05, rb: 0.033, rt: 0.055, h: 0.1 },
+    { foot: 0.05, stem: 0.035, rb: 0.045, rt: 0.066, h: 0.088 },
+    { foot: 0.038, stem: 0.075, rb: 0.024, rt: 0.04, h: 0.115 },
+    { foot: 0.055, stem: 0.028, rb: 0.058, rt: 0.072, h: 0.082 },
+  ];
+
+  /** One Belgian glass, with the beer in it. `fill` 0..1, and the foam rides on top. */
+  function buildGlass(shape: number): { root: THREE.Group; fill: (f: number) => void } {
+    const g = GLASSWARE[shape];
+    const root = new THREE.Group();
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(g.foot, g.foot, 0.01, 14), glassMat);
+    foot.position.y = 0.005;
+    root.add(foot);
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, g.stem, 8), glassMat);
+    stem.position.y = 0.01 + g.stem / 2;
+    root.add(stem);
+    const bowlY = 0.01 + g.stem;
+    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(g.rt, g.rb, g.h, 16, 1, true), glassMat);
+    bowl.material.side = THREE.DoubleSide;
+    bowl.position.y = bowlY + g.h / 2;
+    root.add(bowl);
+    const beer = new THREE.Mesh(new THREE.CylinderGeometry(g.rt * 0.94, g.rb * 0.94, 1, 16), beerMat);
+    root.add(beer);
+    const foam = new THREE.Mesh(new THREE.CylinderGeometry(g.rt * 0.95, g.rt * 0.95, 0.012, 16), foamMat);
+    root.add(foam);
+    return {
+      root,
+      fill(f: number): void {
+        const beerH = Math.max(0.001, f * g.h * 0.86);
+        beer.scale.set(1, beerH, 1);
+        beer.position.y = bowlY + beerH / 2;
+        beer.visible = f > 0.01;
+        foam.visible = f > 0.06;
+        foam.position.y = bowlY + beerH + 0.006;
+      },
+    };
+  }
+
+  const tapPool = makePool<THREE.Group>(dressing, () => {
+    const root = new THREE.Group();
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.03, 0.2, 10), chromeMat);
+    col.position.y = 0.1;
+    col.castShadow = true;
+    root.add(col);
+    // The spout comes forward off the column and turns down, which is the shape
+    // that says "tap" at this camera rather than "bollard".
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.075, 8), chromeMat);
+    arm.rotation.x = Math.PI / 2;
+    arm.position.set(0, 0.195, 0.038);
+    root.add(arm);
+    const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.012, 0.05, 8), chromeMat);
+    spout.position.set(0, 0.17, 0.072);
+    root.add(spout);
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.08, 6), chromeMat);
+    handle.position.set(0, 0.24, -0.02);
+    handle.rotation.x = 0.4;
+    root.add(handle);
+    // The brand badge on the handle: the one bit of colour on a chrome bar.
+    const badge = new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 6), tapHandleMat);
+    badge.position.set(0, 0.285, -0.04);
+    root.add(badge);
+    const stream = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 1, 6), beerMat);
+    stream.name = 'stream';
+    root.add(stream);
+    return root;
+  });
+
+  const kegPool = makePool<THREE.Group>(dressing, () => {
+    const root = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.5, 16), chromeMat);
+    body.position.y = 0.29;
+    body.castShadow = true;
+    root.add(body);
+    for (const y of [0.04, 0.55]) {
+      const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.23, 0.08, 16), chromeMat);
+      rim.position.y = y;
+      root.add(rim);
+    }
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.06, 8), chromeMat);
+    neck.position.y = 0.6;
+    root.add(neck);
+    return root;
+  });
+
+  /** Each built glass's own fill function, keyed by the group it belongs to. */
+  const glassFills = new Map<THREE.Object3D, (f: number) => void>();
+  /** The four glasses on the counter, and the one Biggy holds up. */
+  const glassPool = makePool<THREE.Group>(dressing, () => {
+    const root = new THREE.Group();
+    for (let i = 0; i < GLASSWARE.length; i++) {
+      const gl = buildGlass(i);
+      gl.root.name = `glass-${i}`;
+      gl.root.visible = false;
+      root.add(gl.root);
+      glassFills.set(gl.root, gl.fill);
+    }
+    return root;
+  });
+
   const physics = createPhysicsOverlay();
   scene.add(physics.group);
 
@@ -2529,6 +2909,222 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   }
 
   /**
+   * Chapter 4's cake, on its board, wherever Biggy has shoved it to.
+   *
+   * The sim publishes a 1.36 m circle (`crate` in `ch4-keynote.ts`, r 17 px) and
+   * this is that circle with a cake on it: the group is modelled at the sim's own
+   * radius, so nothing is scaled and the candles do not stretch when the prop
+   * does. It turns slowly as it travels — a board being shoved across a floor
+   * does not track straight, and the turn is what stops it reading as a decal.
+   */
+  function drawCake(p: Prop, floorY: number): void {
+    cakeGroup.visible = true;
+    const at = { x: p.x + (p.w ?? 0) / 2, y: p.y + (p.h ?? 0) / 2 };
+    cakeGroup.position.set(m(at.x), surfaceY(floorY, at.x, at.y), m(at.y));
+    cakeGroup.rotation.y = m(at.x + at.y) * 0.35;
+    const lit = p.state === 'done';
+    cakeFlame.emissiveIntensity = lit ? 3 : 2;
+    cakeRibbon.emissive.setHex(lit ? 0x2f7d4f : 0x000000);
+    cakeRibbon.emissiveIntensity = lit ? 0.5 : 0;
+  }
+
+  /**
+   * The soup pot, in the hands of whoever the sim says is carrying it.
+   *
+   * The prop's x,y is the CARRIER's own centre (`ch3-breakfast.ts` publishes it
+   * there on purpose), so the height and the offset are this file's: chest high
+   * and a little out in front, along the robot's heading, which is where a robot
+   * with both hands full holds a thing. The `soup` prop carries how much is left
+   * and this one carries the temperature, so the level and the colour are both
+   * read off the sim and neither is a guess.
+   */
+  function drawPot(p: Prop, level: number, floorY: number, t: number, holder: Bot | undefined): void {
+    potGroup.visible = true;
+    const heat = Math.max(0, Math.min(1, p.v ?? 1));
+    const face = holder ? holder.face : Math.PI / 2;
+    // Out in front of the body, not inside it: his own radius plus the pot's.
+    const reach = holder ? m(holder.r) * 0.75 + POT_R : POT_R;
+    /*
+     * ...and BIASED TOWARDS THE CAMERA, which is the half of this that makes it
+     * visible. The diorama camera is fixed on the +z side of the room, so a pot
+     * held straight in front of a robot walking north sits behind his own lid and
+     * the player sees a robot carrying nothing. Half his heading plus one camera-
+     * ward unit keeps it in front while he walks at the camera and swings it round
+     * to the near side when he walks away — the same pot, always in shot.
+     */
+    const bx = Math.cos(face) * 0.5;
+    const bz = Math.sin(face) * 0.5 + 1;
+    const bl = Math.hypot(bx, bz) || 1;
+    const x = m(p.x) + (bx / bl) * reach;
+    const z = m(p.y) + (bz / bl) * reach;
+    potGroup.position.set(x, surfaceY(floorY, p.x, p.y) + POT_CARRY_H, z);
+    potGroup.rotation.y = yawFromSimHeading(face);
+    /*
+     * A CARRIED POT IS NEVER LEVEL. The tilt is the carrier's own turn rate — the
+     * pot lags the body through a corner, which is exactly the moment the chapter
+     * punishes (`SPILL_DV`), so the picture and the rule agree.
+     */
+    const swing = holder ? Math.max(-0.16, Math.min(0.16, (holder.vx * Math.sin(face) - holder.vy * Math.cos(face)) / (12.5 * 4))) : 0;
+    potGroup.rotation.z = swing;
+    const fill = Math.max(0, Math.min(1, level));
+    const hM = Math.max(0.012, fill * (POT_H - 0.05));
+    potSoup.scale.set(1, hM, 1);
+    potSoup.position.y = 0.02 + hM / 2;
+    potSoup.visible = fill > 0.005;
+    // Hot is a bright tomato that lights its own steam; stone cold is a dull skin.
+    soupMat.color.setHex(heat > 0.5 ? 0xe14a2b : 0xa33a26);
+    soupMat.emissive.setHex(0x5a1206);
+    soupMat.emissiveIntensity = 0.25 + heat * 0.9;
+    for (let i = 0; i < potSteam.length; i++) {
+      const wisp = potSteam[i];
+      // Steam only while it is worth drinking, and it climbs on its own clock.
+      wisp.visible = heat > 0.22 && fill > 0.02;
+      const u = ((t * 0.45 + i / potSteam.length) % 1);
+      wisp.position.set(Math.sin(u * 5 + i) * 0.05, POT_H + 0.05 + u * 0.42, Math.cos(u * 4 + i) * 0.05);
+      const s = 0.5 + u * 0.9;
+      wisp.scale.setScalar(s);
+    }
+    steamMat.opacity = 0.3 * heat;
+  }
+
+  /**
+   * The ladle on the high shelf — the thing Michele could not see.
+   *
+   * It sits on the shelf slab the venue already draws at 1.35 m (`ground.ts`),
+   * lit while it is still up there so it reads across a dim hall, and gone once
+   * Droid has it: the shelf is empty after that, which is the honest picture and
+   * also the one that says the job is done.
+   */
+  function drawLadle(p: Prop, floorY: number): void {
+    const taken = p.state === 'done';
+    ladleGroup.visible = !taken;
+    if (taken) return;
+    const cx = p.x + (p.w ?? 0) / 2;
+    const cy = p.y + (p.h ?? 0) / 2;
+    ladleGroup.position.set(m(cx), surfaceY(floorY, cx, cy) + SHELF_TOP_H, m(cy));
+    // Turned across the shelf so the handle comes at the camera rather than into it.
+    ladleGroup.rotation.y = -Math.PI / 4;
+    ladleMat.emissive.setHex(0x2a3a46);
+    ladleMat.emissiveIntensity = 0.9;
+  }
+
+  /**
+   * One tap on the bar, and the beer coming out of it while the sim says it is.
+   *
+   * `p.v` is the pour: 0 before the last crate lands, 1 once the glasses are full.
+   * The stream is drawn only in between — a tap that runs for ever is a flood, and
+   * a tap that never runs is what Michele was looking at.
+   */
+  function drawTap(p: Prop, floorY: number): void {
+    const root = tapPool.get();
+    const base = surfaceY(floorY, p.x, p.y) + BAR_TOP_H;
+    root.position.set(m(p.x), base, m(p.y));
+    // Facing the player's side of the counter, which is the +z (south) face.
+    root.rotation.y = 0;
+    /*
+     * HALF AGAIN LIFE SIZE, and deliberately. A beer tap is 20 cm of chrome and
+     * the diorama camera is up in the roof: at true scale the three of them are
+     * four pixels of grey on a counter that is the whole point of the errand.
+     * CLAUDE.md's standing call — *"I vote funny, robots must be recognizable"* —
+     * is about robots, but it is the same question, and this is the answer that
+     * makes the bar read as a bar in the shot the player actually gets.
+     */
+    root.scale.setScalar(BAR_FITTING_SCALE);
+    const pour = Math.max(0, Math.min(1, p.v ?? 0));
+    const stream = root.getObjectByName('stream') as THREE.Mesh | null;
+    if (stream) {
+      const running = pour > 0.001 && pour < 0.999;
+      stream.visible = running;
+      if (running) {
+        // From the spout's lip down to the counter: one cylinder, no particles.
+        const len = 0.14;
+        stream.scale.set(1, len, 1);
+        stream.position.set(0, 0.145 - len / 2, 0.072);
+      }
+    }
+  }
+
+  /** One Belgian glass on the counter: the shape the sim names, filled by the pour. */
+  function drawGlass(p: Prop, fill: number, floorY: number): void {
+    const root = glassPool.get();
+    root.position.set(m(p.x), surfaceY(floorY, p.x, p.y) + BAR_TOP_H, m(p.y));
+    root.rotation.y = 0;
+    // Same exaggeration as the taps, for the same reason — see `drawTap`.
+    root.scale.setScalar(BAR_FITTING_SCALE);
+    const want = Math.max(0, Math.min(GLASSWARE.length - 1, Math.round(p.v ?? 0)));
+    for (let i = 0; i < root.children.length; i++) {
+      const child = root.children[i];
+      child.visible = i === want;
+      if (i === want) glassFills.get(child)?.(fill);
+    }
+  }
+
+  /** A keg behind the counter. */
+  function drawKeg(p: Prop, floorY: number): void {
+    const root = kegPool.get();
+    root.position.set(m(p.x), surfaceY(floorY, p.x, p.y), m(p.y));
+    root.rotation.y = m(p.x) * 0.7;
+  }
+
+  /**
+   * The glass Biggy raises when the bar is stocked.
+   *
+   * Published at his feet (the sim has no hands); this puts it out at arm's length
+   * and lifts it as the toast goes up, holds, and brings it down — `p.v` is the
+   * whole beat, so nothing here counts time.
+   */
+  function drawToast(p: Prop, floorY: number, holder: Bot | undefined): void {
+    const root = glassPool.get();
+    const u = Math.max(0, Math.min(1, p.v ?? 0));
+    // Up in the first fifth, down in the last fifth, held in between.
+    const lift = Math.min(1, u / 0.2, (1 - u) / 0.2, 1);
+    const face = holder ? holder.face : Math.PI / 2;
+    // Clear of a body that is 1.44 m across, and biased towards the camera for
+    // the same reason the soup pot is: a glass held up behind his own lid is a
+    // glass nobody sees.
+    const reach = (holder ? m(holder.r) : 0.72) + 0.22;
+    const bx = Math.cos(face) * 0.5;
+    const bz = Math.sin(face) * 0.5 + 1;
+    const bl = Math.hypot(bx, bz) || 1;
+    root.position.set(
+      m(p.x) + (bx / bl) * reach,
+      surfaceY(floorY, p.x, p.y) + TOAST_LOW_H + lift * (TOAST_HIGH_H - TOAST_LOW_H),
+      m(p.y) + (bz / bl) * reach,
+    );
+    root.rotation.y = yawFromSimHeading(face);
+    // Held out and tipped back a little, the way a toast is.
+    root.rotation.z = -0.25 * lift;
+    // Chapter 3's own glassware, at the size a robot with stubby arms holds.
+    root.scale.setScalar(BAR_FITTING_SCALE * 1.5);
+    for (let i = 0; i < root.children.length; i++) {
+      const child = root.children[i];
+      child.visible = i === 1;
+      if (i === 1) glassFills.get(child)?.(0.8);
+    }
+  }
+
+  /** One puddle of spilled soup, at the sim's own place and size. */
+  function drawSpill(p: Prop, floorY: number): void {
+    const g = spillPool.get();
+    const r = m((p.w ?? 12) / 2);
+    g.position.set(m(p.x), surfaceY(floorY, p.x, p.y) + 0.012, m(p.y));
+    // One seed off the position, so a puddle keeps its own shape frame to frame.
+    const seed = Math.abs(Math.sin(p.x * 12.9898 + p.y * 78.233)) * 43758.5453;
+    const frac = (n: number): number => (seed * n) % 1;
+    const disc = g.children[0];
+    disc.scale.set(r, 1, r * (0.72 + frac(3) * 0.5));
+    disc.rotation.y = frac(7) * Math.PI;
+    for (let i = 1; i < g.children.length; i++) {
+      const drop = g.children[i];
+      const a = frac(11 + i * 3) * Math.PI * 2;
+      const d = r * (0.85 + frac(17 + i) * 0.7);
+      const rr = r * (0.16 + frac(23 + i) * 0.22);
+      drop.position.set(Math.cos(a) * d, 0, Math.sin(a) * d);
+      drop.scale.set(rr, 1, rr * 0.8);
+    }
+  }
+
+  /**
    * One person, posed.
    *
    * The pool hands back a `THREE.Group`; `peopleModels` is the parallel list of
@@ -2628,6 +3224,18 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
 
   function drawDressing(snap: GameSnapshot, floorY: number): void {
     propPool.begin();
+    spillPool.begin();
+    tapPool.begin();
+    kegPool.begin();
+    glassPool.begin();
+    potGroup.visible = false;
+    ladleGroup.visible = false;
+    // The pot is two props — the vessel and what is in it — so the level is read
+    // before the loop rather than depending on which of the two comes first.
+    const potLevel = snap.props.find((o) => o.kind === 'soup')?.v ?? 1;
+    // How full the glassware is: the taps' own pour, so the bar has one clock.
+    const barPour = snap.props.find((o) => o.kind === 'beer-tap')?.v ?? 0;
+    const biggy = snap.bots.find((b) => b.kind === 'biggy');
     peoplePool.begin();
     peopleN = 0;
     lockPool.begin();
@@ -2660,6 +3268,15 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       else if (p.kind === 'cabinet') drawCabinet(p, floorY);
       else if (p.kind === 'lock') drawLock(p, floorY, snap.walls);
       else if (p.kind === 'gate') drawGate(p, floorY, snap.walls);
+      else if (p.kind === 'cake') drawCake(p, floorY);
+      else if (p.kind === 'pot') drawPot(p, potLevel, floorY, snap.t, biggy);
+      else if (p.kind === 'soup') continue; // the level in the pot, drawn by `drawPot`
+      else if (p.kind === 'ladle') drawLadle(p, floorY);
+      else if (p.kind === 'beer-tap') drawTap(p, floorY);
+      else if (p.kind === 'beer-glass') drawGlass(p, barPour, floorY);
+      else if (p.kind === 'keg') drawKeg(p, floorY);
+      else if (p.kind === 'toast') drawToast(p, floorY, biggy);
+      else if (p.kind === 'spill') drawSpill(p, floorY);
       else if (p.kind === 'crate') drawCrate(p, floorY);
       else if (p.kind === 'keypad') drawKeypad(p, floorY);
       else if (p.kind === 'printer') drawPrinter(p, floorY);
@@ -2667,8 +3284,13 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       else if (SEAT_KINDS.has(p.kind)) drawSeats(p, floorY);
       else drawProp(p, floorY);
     }
+    if (!snap.props.some((o) => o.kind === 'cake')) cakeGroup.visible = false;
     for (const person of snap.people) drawPerson(person, floorY, snap.t);
     propPool.end();
+    spillPool.end();
+    tapPool.end();
+    kegPool.end();
+    glassPool.end();
     peoplePool.end();
     lockPool.end();
     seatField.end();
@@ -2697,6 +3319,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
 
   function placeRobots(snap: GameSnapshot, dt: number, floorY: number): void {
     const show = snap.chapter >= 1;
+    const potCarried = snap.props.some((p) => p.kind === 'pot');
     for (const b of snap.bots) {
       const rig = rigs.get(b.kind);
       if (!rig) continue;
@@ -2812,6 +3435,13 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
          * not this file's.
          */
         shoved: worldMoved(b) ? 1 : 0,
+        /*
+         * BOTH HANDS FULL. Chapter 3's pot is published only while somebody is
+         * carrying it, so the prop IS the flag — no new sim field for a thing the
+         * sim already says. All the rig does with it is refuse to roll (a ball
+         * with a pot of hot soup on it is the one picture that errand is not).
+         */
+        carrying: potCarried && b.kind === 'biggy',
       });
     }
   }
@@ -3018,10 +3648,19 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
         (mark.digit.material as THREE.Material).dispose();
       }
       propPool.dispose();
+      spillPool.dispose();
+      tapPool.dispose();
+      kegPool.dispose();
+      glassPool.dispose();
       seatField.dispose();
       peoplePool.dispose();
       for (const pm of peopleModels) pm.dispose();
       lockPool.dispose();
+      cakeIcing.dispose();
+      cakeRibbon.dispose();
+      cakeBoard.dispose();
+      cakeFlame.dispose();
+      cakeGroup.traverse((o) => { const mm = o as THREE.Mesh; if (mm.isMesh) mm.geometry.dispose(); });
       gatePostMat.dispose();
       gateBeltMat.dispose();
       gatePostGeo.dispose();

@@ -237,8 +237,24 @@ function doorway(r: RoomDef, p: VenuePalette, overhead: THREE.Group): THREE.Grou
   // frame standing on a 1.15 m wall would be the tallest thing between the camera
   // and the corridor, which is the one thing the cutaway exists to avoid.
   const jambH = far ? DOOR_H + 0.12 : NEAR_CUT_H + NEAR_CAP_T + 0.1;
-  g.add(slab({ x: d.cx - DOOR / 2 - jamb, y: wallY, w: jamb, h: T }, 0, jambH, p.doorFrame));
-  g.add(slab({ x: d.cx + DOOR / 2, y: wallY, w: jamb, h: T }, 0, jambH, p.doorFrame));
+  /*
+   * THE FRAME STANDS PROUD OF THE PLASTER, and that is a flicker fix as well as
+   * a piece of architecture.
+   *
+   * Michele, 28 Sep 2026, with a photograph of the corridor by room 7: *"chap 4
+   * this flickers."* A jamb filled the wall's own slot exactly, so its corridor
+   * face and the wall's corridor face were the same plane over 0.89 m² — sixteen
+   * of them down the corridor, one per Devoxx door — and the depth buffer picked
+   * a winner per pixel per frame. Same fault as the lobby plate
+   * (`tests/coplanar.test.ts`), one axis over.
+   *
+   * A real door frame is proud of the wall it is set in, so this one is too: 3 cm
+   * into the corridor, which is both correct and more than the depth buffer's
+   * noise at this camera's range.
+   */
+  const jy = far ? wallY + JAMB_PROUD : wallY - JAMB_PROUD;
+  g.add(slab({ x: d.cx - DOOR / 2 - jamb, y: jy, w: jamb, h: T }, 0, jambH, p.doorFrame));
+  g.add(slab({ x: d.cx + DOOR / 2, y: jy, w: jamb, h: T }, 0, jambH, p.doorFrame));
   if (far) {
     overhead.add(slab({ x: d.cx - DOOR / 2, y: wallY, w: DOOR, h: T }, DOOR_H, WALL_H - DOOR_H, p.corridorWall));
   }
@@ -543,8 +559,22 @@ function mainStaircase(p: VenuePalette, overhead: THREE.Group): THREE.Group {
       g.add(postAt(s.x + 2 + (j * (s.w - 4)) / 3, y, 0.05, 0.95, 0, p.steelRail, 8));
     }
   }
-  // The dark well edge, so the opening reads as a hole in the floor from above.
-  for (const y of [s.y - T, s.y + s.h]) g.add(slab({ x: s.x, y, w: s.w, h: T }, -0.02, 0.9, p.corridorColumn));
+  /*
+   * The dark well edge, so the opening reads as a hole in the floor from above.
+   *
+   * Held `JAMB_PROUD` clear of the corridor walls it runs between. Flush, its
+   * outer face was the same plane as the wall's own over **10 m²** — the largest
+   * single coincidence in the building, right beside room 7, and the one Michele
+   * photographed: *"chap 4 this flickers. Next to 7"*.
+   */
+  // 1.5x the frames' offset, not 1x: the door jambs either side of the stair head
+  // are shifted by exactly `JAMB_PROUD` themselves, so moving this by the same
+  // amount simply traded one coincidence for another (measured: 0.35 m² against
+  // rooms 6 and 7). Different pieces, different offsets.
+  const wellGap = JAMB_PROUD * 1.5;
+  for (const y of [s.y - T + wellGap, s.y + s.h]) {
+    g.add(slab({ x: s.x, y, w: s.w, h: T - wellGap }, -0.02, 0.9, p.corridorColumn));
+  }
 
   // The white tensile "tree" canopy over the stair head, uplit blue.
   overhead.add(tensileTree(s.x + 14, s.y + 24, 2.2, 1.6, 2.5, p.canopyFabric));
@@ -595,12 +625,29 @@ function corridorDressing(p: VenuePalette, overhead: THREE.Group): THREE.Group {
     // rendered complete while the numeral panel beside it was clipped made the
     // poster the dominant colour block on the wall — the reverse of the Kinepolis
     // photograph, where the numeral panel is what you read from 60 m away.
-    const box = slab({ x: zaalPosterX(Number(r.n)) - POSTER_W_PX / 2, y, w: POSTER_W_PX, h: 2 }, 0.55, 1.2, p.posterGlow);
+    // Half a jamb's offset off the wall face, for the usual reason: room 9's box
+    // landed exactly on a column's face and the pair flickered.
+    const box = slab(
+      { x: zaalPosterX(Number(r.n)) - POSTER_W_PX / 2, y: y + (r.side < 0 ? JAMB_PROUD : -JAMB_PROUD) / 2, w: POSTER_W_PX, h: 2 },
+      0.55,
+      1.2,
+      p.posterGlow,
+    );
     box.name = `poster-box-${r.n}`;
     g.add(box);
   }
   return g;
 }
+
+/**
+ * How far a door frame stands out of the wall it is set in, sim px (3.2 cm).
+ *
+ * Also the gap every other dressing piece keeps from a wall face it runs along:
+ * two faces in one plane is the flicker this building keeps producing, and 3 cm
+ * is past the depth buffer's noise at this camera's range while being small
+ * enough that nobody reads it as a step. See `doorway` and `mainStaircase`.
+ */
+const JAMB_PROUD = 0.4;
 
 /** How steeply the vault rakes up off the wall head. See `corridorVault`. */
 const VAULT_RAKE_RAD = 0.75;
@@ -765,7 +812,15 @@ export function buildFloor1(p: VenuePalette): Floor1Build {
   // `scene.ts` hides this static leaf and draws the sim's own screen and leaves
   // instead (`src/render/fire-door.ts`). Chapter 4 publishes no such prop — the
   // cinema section is simply sealed again — so there this stays the door.
-  const fireLeaf = slab({ x: F1.fireX, y: CY0, w: 14, h: CY1 - CY0 }, 0, WALL_H, p.fireDoor);
+  // Held clear of both corridor walls by `JAMB_PROUD`, for the same reason the
+  // door frames are: a leaf that spans exactly wall to wall shares a plane with
+  // each of them, which is 2.74 m² of flicker either side of it.
+  const fireLeaf = slab(
+    { x: F1.fireX, y: CY0 + JAMB_PROUD, w: 14, h: CY1 - CY0 - 2 * JAMB_PROUD },
+    0,
+    WALL_H,
+    p.fireDoor,
+  );
   fireLeaf.name = 'fire-leaf';
   fire.add(fireLeaf);
   const keypad = slab({ x: F1.fireX - 18, y: CY0 + 8, w: 16, h: 6 }, 1.0, 0.42, p.keypad);

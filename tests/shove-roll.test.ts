@@ -259,3 +259,81 @@ describe('only Biggy is a ball', () => {
     });
   }
 });
+
+/* ================================================ ...and when he runs himself */
+
+/**
+ * ROLLING UNDER HIS OWN POWER, which is what Michele was actually asking for.
+ *
+ * Four rounds of *"I can't get biggy to roll"* were answered by making the SHOVE
+ * roll him, and the fourth note said what the other three had meant: *"How do I
+ * activate Biggy's rolling? I tried running but it keeps walking."* He was
+ * running — driving Biggy himself — and the feature was gated on somebody else
+ * doing the pushing.
+ *
+ * A ball at 3 m/s is rolling whoever set it going, so the gate is SPEED and the
+ * only thing `shoved` still decides is how much of it: 1.5 m/s for a shove, which
+ * starts down at the floor, and `DRIVE_ROLL_*` — 2.2 to 3.4 m/s — for a run he has
+ * to commit to. The top of that range is a measurement, not a preference: driven
+ * flat out across the exhibition hall Biggy reaches the far wall at 2.88 m/s, so a
+ * threshold set off his 4.7 m/s top speed is one no player ever crosses.
+ *
+ * These read the RIG rather than a flag: the tuck is the pose, so the pose is what
+ * is asserted — the thighs fold into the gut and the body turns through whole
+ * revolutions instead of taking little steps.
+ */
+describe('Biggy rolling when he runs', () => {
+  /** Drive one Biggy for `seconds`, and report the rig at the end of it. */
+  function sprint(seconds: number, opts: { carrying?: boolean } = {}): {
+    v: number;
+    thigh: number;
+    pelvisSwing: number;
+  } {
+    const bg = mkBot('biggy', 300, 160);
+    const rig = createRobot('biggy');
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i * DT < seconds; i++) {
+      bg.ix = 1;
+      bg.iy = 0;
+      stepBot(bg, DT, []);
+      updateRobot(rig, {
+        speedMps: speed(bg) / PX_PER_M,
+        heading: bg.face,
+        dt: DT,
+        shoved: 0,
+        carrying: opts.carrying ?? false,
+      });
+      if (i * DT > seconds - 1) {
+        lo = Math.min(lo, rig.bones.pelvis.rotation.x);
+        hi = Math.max(hi, rig.bones.pelvis.rotation.x);
+      }
+    }
+    return { v: speed(bg) / PX_PER_M, thigh: rig.bones.thighL.rotation.x, pelvisSwing: hi - lo };
+  }
+
+  it('walks while he is manoeuvring, under the threshold', () => {
+    // 0.8 s of stick is 2.0 m/s: below `DRIVE_ROLL_MIN_MPS`, and a waddle.
+    const t = sprint(0.8);
+    expect(t.v).toBeLessThan(2.2);
+    // A walking pelvis pitches by a few degrees; a rolling one goes round.
+    expect(t.pelvisSwing).toBeLessThan(0.5);
+  });
+
+  it('tucks into a ball once he is actually running', () => {
+    // Four seconds of held stick is 4.3 m/s — past the full tuck at 3.4.
+    const t = sprint(4);
+    expect(t.v).toBeGreaterThan(3.4);
+    // Legs folded into the gut (the tuck is -1.45 rad at the thigh)...
+    expect(t.thigh).toBeLessThan(-1.3);
+    // ...and the body turning through whole revolutions rather than stepping.
+    expect(t.pelvisSwing).toBeGreaterThan(2);
+  });
+
+  it('never rolls with the soup pot in his hands', () => {
+    const t = sprint(4, { carrying: true });
+    expect(t.v).toBeGreaterThan(3.4);
+    expect(t.thigh).toBeGreaterThan(-1.3);
+    expect(t.pelvisSwing).toBeLessThan(0.5);
+  });
+});

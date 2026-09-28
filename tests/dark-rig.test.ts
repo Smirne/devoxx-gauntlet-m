@@ -189,3 +189,52 @@ describe('the rig is not part of the run', () => {
     expect(snap.lights.length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * THE RIG HAS TO BE READABLE, which is a different question from whether it works.
+ *
+ * Michele, 28 Sep 2026, with a screenshot of it: *"I can't play chapter=5, i don't
+ * understand where the sensors / what to block."* Every word of the rig was in the
+ * objective and the run sheet; none of it was on the floor. Two 40 cm boxes and a
+ * brown strip, in a corridor whose only light is a robot you have not parked yet.
+ *
+ * So each station paints its beam on the floor, from its pad to its sensors, and a
+ * cell that still needs shading says so in the red the rest of the game uses for
+ * "this is what is wrong". Both are pinned here: they are the answer to the note,
+ * and a renderer change that drops either of them puts the rig back where it was.
+ */
+describe('the rig says where to stand', () => {
+  it('paints a lane from each pad to its own sensors', () => {
+    const g = mk();
+    g.update(DT_MAX);
+    const lanes = g.snapshot().props.filter((p) => p.kind === 'lane');
+    expect(lanes, 'the two stations paint no beam on the floor').toHaveLength(2);
+    const [a, b] = lanes.sort((p, q) => p.x - q.x);
+    // Station A's lane spans its two cells and reaches from the pad to them.
+    expect(a.x).toBeLessThanOrEqual(DARK_RIG.cellL.x);
+    expect(a.x + (a.w ?? 0)).toBeGreaterThanOrEqual(DARK_RIG.cellR.x);
+    expect(a.y).toBeCloseTo(DARK_RIG.padA.y, 6);
+    expect(a.y + (a.h ?? 0)).toBeCloseTo(DARK_RIG.cellL.y, 6);
+    // Station B's spans the whole bar, which is the thing that has to go dark.
+    expect(b.x).toBeLessThanOrEqual(DARK_RIG.bar.x0);
+    expect(b.x + (b.w ?? 0)).toBeGreaterThanOrEqual(DARK_RIG.bar.x1);
+    expect(b.y + (b.h ?? 0)).toBeCloseTo(DARK_RIG.bar.y, 6);
+  });
+
+  it('shows a cell that still needs shading in red, and green once it is dark', () => {
+    const g = mk();
+    g.update(DT_MAX);
+    const cells = (): string[] => g.snapshot().props.filter((p) => p.kind === 'photocell').map((p) => p.state ?? '');
+    // Nobody on the pad: the lamp is elsewhere, the cells read dark, and a dark
+    // cell is a solved cell — `done` either way, never the untinted `idle`.
+    for (const s of cells()) expect(s === 'done' || s === 'broken').toBe(true);
+
+    // Park the lamp and stand clear: both cells are lit now, and both say so.
+    g.debug.place('droid', DARK_RIG.padA.x, DARK_RIG.padA.y);
+    g.debug.place('voxxy', DARK_RIG.padA.x - 120, DARK_RIG.padA.y - 20);
+    g.debug.place('biggy', DARK_RIG.padA.x + 140, DARK_RIG.padA.y - 20);
+    g.update(DT_MAX);
+    expect(rig(g).cellsDark, 'the cells should be lit with nobody in the beam').toBe(0);
+    expect(cells()).toEqual(['broken', 'broken']);
+  });
+});

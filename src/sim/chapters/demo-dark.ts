@@ -250,9 +250,16 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   function props(): Prop[] {
     const out: Prop[] = [
-      { kind: 'lamp-pad', x: PAD_A.x, y: PAD_A.y, state: doneA ? 'done' : onPad(PAD_A) ? 'active' : 'idle', label: 'A · LAMP' },
-      { kind: 'lamp-pad', x: PAD_B.x, y: PAD_B.y, state: doneB ? 'done' : onPad(PAD_B) ? 'active' : 'idle', label: 'B · LAMP' },
-      { kind: 'beam-sign', x: sign.x, y: sign.y, state: green(sign) ? 'done' : 'broken', label: 'KEEP LIT' },
+      { kind: 'lamp-pad', x: PAD_A.x, y: PAD_A.y, state: doneA ? 'done' : onPad(PAD_A) ? 'active' : 'idle', label: 'A · park DROID here (the lamp)' },
+      { kind: 'lamp-pad', x: PAD_B.x, y: PAD_B.y, state: doneB ? 'done' : onPad(PAD_B) ? 'active' : 'idle', label: 'B · park DROID here (the lamp)' },
+      { kind: 'beam-sign', x: sign.x, y: sign.y, state: green(sign) ? 'done' : 'broken', label: 'KEEP THIS SIGN LIT' },
+      /*
+       * No hung signs over the two stations, and that is deliberate rather than an
+       * omission: a chapter's `sign` prop is a blue panel and nothing paints text on
+       * it (only the venue's own `SignPainter` does), so two more would have been
+       * two blank boards over a rig that was already hard to read. What names each
+       * station is the run sheet, the two lanes below, and the cells going red.
+       */
       {
         kind: 'sensor-bar',
         x: bar.x0,
@@ -261,11 +268,62 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         h: 6,
         state: doneB ? 'done' : barDark() === barSamples.length ? 'active' : 'idle',
         v: barDark() / barSamples.length,
-        label: `${barDark()}/${barSamples.length} dark`,
+        label: `B · sensor bar — ${barDark()}/${barSamples.length} dark`,
+      },
+      /*
+       * THE TWO BEAM LANES, PAINTED ON THE FLOOR.
+       *
+       * Michele, 28 Sep 2026, with a screenshot of this rig: *"I can't play
+       * chapter=5, i don't understand where the sensors / what to block."* Every
+       * word of the rig was in the objective and the run sheet and none of it was
+       * on the floor: two 40 cm boxes and a brown strip, in a corridor whose only
+       * light is a robot you have not parked yet.
+       *
+       * So each station's beam is a painted lane from its pad to its sensors — the
+       * same `lane` decal chapter 2 marks its cable run with. It answers both
+       * halves of the note at once: the sensors are at the far end of the lane, and
+       * what you block is the lane. The lane is DRAWN, not simulated: the shadow is
+       * still `buildLights` clipping rays against bodies, and a robot standing in
+       * the paint is not what the sensors read.
+       */
+      {
+        kind: 'lane',
+        x: PAD_A.x - CELL_OFF - 6,
+        y: PAD_A.y,
+        w: CELL_OFF * 2 + 12,
+        h: SENSOR_D,
+        // `active` and not `idle`: `idle` is the one state the renderer does not
+        // tint, and an untinted olive lane in a blacked-out corridor is exactly
+        // the invisible hint this lane exists to replace.
+        state: doneA ? 'done' : 'active',
+        label: 'A · stand in the beam',
+      },
+      {
+        kind: 'lane',
+        x: bar.x0 - 6,
+        y: PAD_B.y,
+        w: bar.x1 - bar.x0 + 12,
+        h: SENSOR_D,
+        state: doneB ? 'done' : 'active',
+        label: 'B · stand in the beam',
       },
     ];
     for (const c of [cellL, cellR]) {
-      out.push({ kind: 'photocell', x: c.x, y: c.y, state: green(c) ? 'idle' : 'done' });
+      /*
+       * A CELL THAT STILL NEEDS SHADING SAYS SO IN RED.
+       *
+       * It used to publish `idle` while lit, and `idle` is the one state the
+       * renderer does not tint — so the thing you are looking for was the thing
+       * that was not drawn. `broken` is the red the rest of the game uses for "this
+       * is what is wrong", and it goes green the moment the cell reads dark.
+       */
+      out.push({
+        kind: 'photocell',
+        x: c.x,
+        y: c.y,
+        state: green(c) ? 'broken' : 'done',
+        label: green(c) ? 'A · cell LIT — shade it' : 'A · cell dark ✓',
+      });
     }
     return out;
   }

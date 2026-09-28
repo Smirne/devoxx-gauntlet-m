@@ -55,7 +55,7 @@
  * is how the rest of this game works.
  */
 
-import { FACE_MIN_SPEED, PUSH_LEAN_MIN, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
+import { BIGGY_ROLL_DUR, FACE_MIN_SPEED, PUSH_LEAN_MIN, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
 import {
   CRATE_DELIVERY,
   CRATE_DRAG,
@@ -150,6 +150,8 @@ const SPAWN_EVERY = 0.55;
 const BOWL_OVER = 110 * SPEED_SCALE;
 /** The jerk that counts as "Biggy hit something" while he is carrying the pot. px/s. */
 const SPILL_DV = 90 * SPEED_SCALE;
+/** How many spills stay on the floor. The oldest goes first — see `stains`. */
+const MAX_STAINS = 14;
 const SPILL_MIN_SPEED = 60 * SPEED_SCALE;
 /** The speaker's walking pace once Voxxy has talked them out from behind the booth. px/s. */
 const SPEAKER_WALK = 150 * SPEED_SCALE;
@@ -329,6 +331,24 @@ const STACK_STEP = 13;
  */
 const BAR_TOP = BAR.y + BAR.h - 7;
 const TAPS: readonly Vec2[] = [352, 368, 384].map((x) => ({ x, y: BAR_TOP }));
+/**
+ * The pour, in seconds: the beat before the taps run, how long they run for, when
+ * Biggy raises his, and how long he holds it up.
+ *
+ * Real seconds and not px/s, so the 23 Sep rescale does not touch them. The beat
+ * exists because a tap that starts on the same frame as the flash line reads as
+ * part of the HUD rather than as something happening in the room.
+ */
+const POUR_LEAD = 0.7;
+const POUR_RUN = 3.4;
+const TOAST_AT = 2.2;
+const TOAST_HOLD = 3.4;
+/**
+ * The kegs behind the bar. BEHIND it: the counter is a `low` wall, so nothing can
+ * stand where these are, which is both what a cellar looks like and why they need
+ * no collider of their own.
+ */
+const KEGS: readonly Vec2[] = [344, 358, 420].map((x) => ({ x, y: BAR.y + 7 }));
 /** Belgian glassware, one shape per beer. */
 const GLASSES: readonly Vec2[] = [400, 408, 416, 424].map((x) => ({ x, y: BAR_TOP }));
 
@@ -974,6 +994,21 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const station: Vec2 = { x: food.soup.x + 45, y: food.soup.y + 15 };
   const shelfAt: Vec2 = { x: food.shelf.x + 11, y: food.shelf.y + 8 };
   let ladle = false;
+  /**
+   * WHERE THE SOUP WENT — one stain on the floor per splash, and they stay.
+   *
+   * Michele, 28 Sep 2026: *"Soup graphics(including spilling and leaving spill on
+   * the ground"*. A spill that only prints a line in the flash bar is a number
+   * going down; a spill that leaves a puddle at the corner Biggy clipped is the
+   * chapter telling its own story back to the player, and by the third batch the
+   * route he keeps getting wrong is drawn on the floor in tomato.
+   *
+   * The sim owns them because they are facts about the run, not decoration: the
+   * position is where the body was when it happened, and the radius is how much
+   * came out. `MAX_STAINS` is a memory bound and nothing more — the oldest goes
+   * when the list is full, which is also the one furthest back in the story.
+   */
+  const stains: Array<{ x: number; y: number; r: number }> = [];
   let carrying = false;
   let delivered = false;
   let soup = 100;
@@ -1573,6 +1608,21 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     crates.push(c);
   }
   let beerDone = false;
+  /**
+   * WHEN THE LAST CRATE LANDED — the clock the bar's payoff runs on.
+   *
+   * Michele, 28 Sep 2026: *"When all is delivered, something should happen
+   * (Spiller start and biggy toasts?)"* — *spillare*, to pour. Until now the
+   * sixth crate set `beerDone`, printed a line and left the bar exactly as it
+   * was: the taps that had been "ready" since the chapter opened stayed ready,
+   * and the only thing that happened was a flag going true.
+   *
+   * So the bar pays off on its own clock: a beat, then the three taps run, the
+   * glassware fills, and Biggy raises one. `-1` until the last crate is on.
+   */
+  let beerAt = -1;
+  /** Has he raised it yet? The toast fires once, on its own beat. */
+  let toasted = false;
   /** Heap errors thrown this run. It goes on the final card. */
   let oom = 0;
   let oomCardShown = false;
@@ -1736,6 +1786,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     const done = held('stacked').length;
     if (done >= CRATE_DELIVERY) {
       beerDone = true;
+      beerAt = ctx.t;
       ctx.flash(
         `Biggy: "${CRATE_DELIVERY} crates on the bar, ${oom} heap error${oom === 1 ? '' : 's'}. ` +
           `${BAR_NAME} is stocked and the aisle is yours, Stephan."`,
@@ -1865,6 +1916,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   function spill(amount: number, why: string): void {
     if (!carrying || delivered) return;
     soup = Math.max(0, soup - amount);
+    // The splash that empties the pot puts the REST of the pot on the floor, so it
+    // leaves a lake and not the same little mark as a graze.
+    stain(soup <= 0 ? Math.max(amount, 22) : amount);
     if (soup > 0) {
       ctx.flash(`Splash — ${why} (${Math.trunc(soup)}% left)`);
       return;
@@ -1887,7 +1941,20 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * player can see and can do something about, and Stephan's line at the end
    * counts the batches — the joke is better than the failure was.
    */
+  /** Put what came out of the pot on the floor, where the body is standing. */
+  function stain(amount: number): void {
+    const bg = ctx.byKind('biggy');
+    // A 4% bump is a splash at his feet; the last of a pot is a lake. The spread
+    // is the body's own radius plus the amount, so the two read as the same event.
+    const r = Math.min(26, 7 + amount * 0.7);
+    if (stains.length >= MAX_STAINS) stains.shift();
+    stains.push({ x: bg.x, y: bg.y + bg.r * 0.6, r });
+  }
+
   function ruined(line: string): void {
+    // No stain here. This runs for the cold pot too, and soup going cold is not
+    // soup going on the floor — the splash that empties it has already left its
+    // own lake (`spill`).
     carrying = false;
     batches++;
     soup = 100;
@@ -2298,6 +2365,28 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       }
     }
 
+    /*
+     * THE BAR PAYS OFF — the taps run and Biggy raises one.
+     *
+     * The pour itself is in `props()`, because it is a picture and nothing else;
+     * this is the one beat that changes the sim, and it is a flourish on a robot.
+     * `flair` is set directly rather than through `partyTrick` on purpose: the
+     * toast is the chapter's, not the player's, so it does not check the stick,
+     * the rest timer or Droid's feet, and it does not speak Biggy's `E` line.
+     */
+    if (beerDone && !toasted && ctx.t - beerAt >= TOAST_AT) {
+      toasted = true;
+      const bg = ctx.byKind('biggy');
+      if (!bg.mounted) {
+        bg.flair = BIGGY_ROLL_DUR;
+        bg.flairDur = BIGGY_ROLL_DUR;
+      }
+      ctx.flash(
+        `Biggy raises one at ${BAR_NAME}: "To tonight. ${CRATE_DELIVERY} crates, ${oom} heap error${oom === 1 ? '' : 's'}, ` +
+          'and not a drop before doors."',
+        4200,
+      );
+    }
     if (delivered && speaker.onStage && beerDone && !gateOpen) done();
   }
 
@@ -2404,8 +2493,49 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         label: 'Belgian beers may cause hangovers and OutOfMemoryErrors',
       },
     ];
+    /*
+     * THE POUR. 0 until the last crate is on the bar, then it runs for `POUR_RUN`
+     * and stays at 1: what the taps are doing and how full the glassware is, as
+     * one number both of them carry. The renderer draws a stream out of a tap
+     * whose `v` is between 0 and 1 and a full glass at 1 — it never has to know
+     * what a crate is.
+     */
+    const pour = beerAt < 0 ? 0 : Math.max(0, Math.min(1, (ctx.t - beerAt - POUR_LEAD) / POUR_RUN));
     for (const t of TAPS) {
-      out.push({ kind: 'beer-tap', x: t.x, y: t.y, w: 3, h: 3, state: beerDone ? 'done' : 'active', label: 'tap' });
+      out.push({
+        kind: 'beer-tap',
+        x: t.x,
+        y: t.y,
+        w: 3,
+        h: 3,
+        v: pour,
+        state: beerDone ? 'done' : 'active',
+        label: pour > 0 && pour < 1 ? 'tap · pouring' : 'tap',
+      });
+    }
+    // The cellar end of it: three kegs behind the counter, where nothing stands.
+    for (const k of KEGS) {
+      out.push({ kind: 'keg', x: k.x, y: k.y, w: 9, h: 9, state: beerDone ? 'done' : 'active', label: `${BAR_NAME} · keg` });
+    }
+    /*
+     * ...and the glass Biggy holds up, for as long as he holds it up.
+     *
+     * Published as its own prop rather than as part of him, because the sim has no
+     * idea what a hand is: it is at his feet on the floor plan and the renderer
+     * puts it where his hand is, exactly as it does with the soup pot.
+     */
+    if (toasted && ctx.t - beerAt < TOAST_AT + TOAST_HOLD) {
+      const bgt = ctx.byKind('biggy');
+      out.push({
+        kind: 'toast',
+        x: bgt.x,
+        y: bgt.y,
+        w: 6,
+        h: 6,
+        v: Math.max(0, Math.min(1, (ctx.t - beerAt - TOAST_AT) / TOAST_HOLD)),
+        state: 'done',
+        label: 'Biggy raises one',
+      });
     }
     GLASSES.forEach((gl, k) => {
       out.push({
@@ -2418,6 +2548,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         // flute, a chalice. `v` is which, so a renderer can turn four numbers into
         // four silhouettes without the sim knowing what a goblet looks like.
         v: k,
+        // `done` is a full glass and `active` an empty one; the renderer takes HOW
+        // full from the taps' own `v`, so one pour clock drives the whole bar.
         state: beerDone ? 'done' : 'active',
         label: 'Belgian glassware',
       });
@@ -2459,9 +2591,24 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       });
     });
     if (carrying && !delivered) {
-      // The pot rides on Biggy's shoulder; `v` carries what each meter needs.
-      out.push({ kind: 'pot', x: bg.x, y: bg.y - bg.r - 8, w: 20, h: 20, v: temp / 100, state: 'active', label: 'tomato soup · temperature' });
-      out.push({ kind: 'soup', x: bg.x, y: bg.y - bg.r - 8, w: 16, h: 16, v: soup / 100, state: 'active', label: 'soup in the pot' });
+      /*
+       * The pot rides ON Biggy, so it is published at his own centre and the
+       * renderer lifts it to his shoulder — a prop's x,y is a floor position and
+       * the height of a carried thing is the renderer's business, exactly as a
+       * hopping robot's height is. It used to be pushed 20 px north of him, which
+       * drew a cooking pot standing on the floor a metre and a half behind the
+       * robot who was supposed to be holding it.
+       *
+       * Two props for one pot, because `v` is one number and the HUD needs both
+       * meters: `pot` carries the TEMPERATURE and `soup` HOW MUCH IS LEFT. The
+       * renderer draws the vessel from the first and the level in it from the
+       * second (`drawPot`), so nothing is drawn twice.
+       */
+      out.push({ kind: 'pot', x: bg.x, y: bg.y, w: 20, h: 20, v: temp / 100, state: 'active', label: 'tomato soup · temperature' });
+      out.push({ kind: 'soup', x: bg.x, y: bg.y, w: 16, h: 16, v: soup / 100, state: 'active', label: 'soup in the pot' });
+    }
+    for (const sp of stains) {
+      out.push({ kind: 'spill', x: sp.x, y: sp.y, w: sp.r * 2, h: sp.r * 2, state: 'active', label: 'spilled soup' });
     }
     for (const q of queues) {
       out.push({

@@ -137,12 +137,44 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
    * beer glass that is a metre off the floor without first walking into the bar.
    */
   'bar-counter': { h: 1.05 },
-  'beer-tap': { h: 0.34, lift: 1.05 },
-  'beer-glass': { h: 0.16, lift: 1.05 },
-  ladle: { h: 0.9, tl: true },
+  /*
+   * The taps and the glassware are modelled now (`drawTap`, `drawGlass` in
+   * src/render/scene.ts) — a tap with a spout and a handle, and the four Belgian
+   * silhouettes the sim names by number. Both still stand ON the counter, which is
+   * what `lift: 1.05` says and the only thing this sweep measures.
+   */
+  'beer-tap': { h: 0.51, lift: 1.05 },
+  'beer-glass': { h: 0.32, lift: 1.05 },
+  /*
+   * The kegs stand BEHIND the counter, inside the `bar-counter` rect, which is a
+   * `low` wall in the sim — so nothing can stand where they are and they need no
+   * collider of their own. That is asserted by the sweep rather than asked for:
+   * a keg that ever ends up in front of the bar fails here.
+   */
+  keg: { h: 0.64 },
+  /** Carried, like the pot: the glass Biggy raises when the bar is stocked. */
+  toast: { h: 0.48, lift: 0.9 },
+  /*
+   * The ladle is ON the shelf now, which is where it always was in the fiction.
+   *
+   * It was `{ h: 0.9, tl: true }` — a grey slab standing on the FLOOR under the
+   * shelf, in the middle of the robot band, which is why chapter 3's walk-through
+   * list carried it. Michele: *"Soup ladle should be visible - visual hint."* It is
+   * a modelled ladle sitting on the 1.35 m shelf slab `src/render/venue/ground.ts`
+   * builds, so its own band starts at `SHELF_TOP_H` and clears `BAND_HI` — nothing
+   * walks into a ladle on a shelf, which is the point of putting it there.
+   */
+  ladle: { h: 0.52, tl: true, lift: 1.41 },
   dropzone: { h: 0.04, tl: true, flat: true },
-  pot: { h: 0.45 },
-  soup: { h: 0.12 },
+  /*
+   * The pot and what is in it are CARRIED — chest height on the robot holding them
+   * (`POT_CARRY_H` in `src/render/scene.ts`), published at his own centre. Above
+   * the band, because the collider under a carried pot is the robot carrying it.
+   */
+  pot: { h: 0.3, lift: 0.95 },
+  soup: { h: 0.12, lift: 0.97 },
+  /** Spilled soup: a puddle, and a puddle is a decal. */
+  spill: { h: 0.02, flat: true },
   sign: { h: 2.2, fw: 4.8, fd: 0.14, lift: 2.2 },
   /* chapter 4 */
   cake: { h: 0.55 },

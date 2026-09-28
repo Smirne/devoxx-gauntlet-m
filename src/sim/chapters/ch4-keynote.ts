@@ -16,7 +16,7 @@
  */
 
 import { CY0, CY1, F1, R, VIEW_DEVOXX, VIEW_REEL, floor1Walls, roomDoor } from '../geometry';
-import { PUSH_LEAN_MIN, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
+import { SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
 import { botsCollide, circleRect, dist, inRect, mkBody, speed, standOff, stepBot } from '../bot';
 import { LANYARD, lanyardFor } from '../lanyards';
 import { buildReel, reelAt, reelLength } from '../reel';
@@ -46,7 +46,21 @@ const SPOT_REACH = 22;
  * An acceleration is a velocity per second, and the rescale moved the velocity axis
  * and left the time axis alone, so it carries `SPEED_SCALE` like every speed does.
  */
-const CRATE_FORCE = 900 * SPEED_SCALE;
+const CRATE_FORCE = 1500 * SPEED_SCALE;
+/**
+ * How far past touching Biggy can be and still be pushing, sim px.
+ *
+ * Michele, 28 Sep 2026: *"Pushing should be a bit easier, i didn't manage."* The
+ * window was 6 px on top of the two radii and the lean had to be within 72° of
+ * dead on (`PUSH_LEAN_MIN`), so a shove that was a hair off-centre slid round the
+ * board instead of moving it and there was no feedback saying why. This is 16,
+ * the lean is `CAKE_LEAN`, and the force is two thirds up — a cake on a wheeled
+ * board is not a crate of beer, and the chapter's first job should not be the
+ * hardest thing in the game.
+ */
+const CAKE_TOUCH = 16;
+/** ...and how square to it he has to be pushing. Wider than a robot-on-robot shove. */
+const CAKE_LEAN = 0.12;
 /** Closing speed above which a robot has knocked an attendee over. px/s. */
 const BOWL_OVER = 120 * SPEED_SCALE;
 /** The crate has to be actually moving to be blamed for shoving someone. px/s. */
@@ -388,7 +402,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       const nx = dx / dd;
       const ny = dy / dd;
       const lean = bg.ix * nx + bg.iy * ny;
-      if (dd < bg.r + crate.r + 6 && lean > PUSH_LEAN_MIN) {
+      if (dd < bg.r + crate.r + CAKE_TOUCH && lean > CAKE_LEAN) {
         crate.vx += nx * lean * CRATE_FORCE * dt;
         crate.vy += ny * lean * CRATE_FORCE * dt;
       }
@@ -585,7 +599,19 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         text: 'push the cake crate onto its mark',
         done: cakeOnMark(),
         who: ['biggy'],
-        at: { x: crateMark.x + crateMark.w / 2, y: crateMark.y + crateMark.h / 2 },
+        /*
+         * THE CAKE FIRST, THEN THE STAGE.
+         *
+         * Michele, 28 Sep 2026: *"the hint should be first on the cake, if biggy
+         * is next to it, it should point to the stage."* He is right about the
+         * order — an arrow to the mark is an arrow to an empty rectangle while
+         * the thing that has to get there is still round the corner in the
+         * corridor, and chapter 4 is on a clock. So it points at the cake until
+         * he is on it, and at the mark from the moment he is.
+         */
+        at: dist(ctx.byKind('biggy'), crate) < ctx.byKind('biggy').r + crate.r + CAKE_TOUCH * 2
+          ? { x: crateMark.x + crateMark.w / 2, y: crateMark.y + crateMark.h / 2 }
+          : { x: crate.x, y: crate.y },
         hint: 'Biggy: it only moves for me, and only if I lean into it rather than brush past it. Up an aisle — it does not go over the seats any more than I do',
       },
       {
