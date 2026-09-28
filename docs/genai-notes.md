@@ -4447,3 +4447,8 @@ ordinary figures with their role colours.
     bob under him read as a trampoline. Laden, Biggy's gait keeps a quarter of its bob, sway and
     twist, and 40% of its lean. This is presentation only: the collision bounce is a frozen
     constant and was not touched.
+  - *"The door eats the foot in some places."* The sim publishes the fallen leaf of cinema E's door
+    as a plate, placed where the 2.5D leaf lands: skidded, skewed, 0.48 m thick. The 3D leaf falls
+    straight and thin, so the plate lifted robots in some places and left them sunk in others. In
+    3D, robots now ignore that plate and stand on the drawn leaf, found by a downward ray against it.
+    The 2.5D build keeps the plate.
