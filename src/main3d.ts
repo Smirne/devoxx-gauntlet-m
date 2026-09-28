@@ -1,15 +1,15 @@
 /**
- * main3d.ts — the full-3D proof of concept's entry point (`3d.html`).
+ * main3d.ts — the 3D build's entry point (`3d.html`), which is the entry.
  *
  * Same sim, same HUD, same audio as the 2.5D diorama (`src/main.ts`); a
  * different renderer (`src/render3d`): a third-person camera inside the
  * building, an HDR pipeline with reflections, volumetric light, bloom and a
- * filmic grade. Chapter 1 only — the closed cinema section is what this proof
- * of concept builds; the chapter-2 hand-off shows an end card.
+ * filmic grade. All four chapters.
  *
  * ## Debug URL
  *
- *   ?q=low|medium|high|ultra   render quality (default high)
+ *   ?q=low|medium|high|ultra   render quality (default: picked from the GPU)
+ *   ?resume=N                  start in chapter N with its briefing (quality changes use it)
  *   ?seed=N                    sim RNG seed
  *   ?warm=N                    sim steps before the first frame
  *   ?nohud=1                   hide the DOM overlay

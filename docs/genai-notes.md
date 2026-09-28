@@ -8,6 +8,62 @@ file is that documentation, kept as the build goes rather than reconstructed at 
 interesting part is not "an AI wrote it" — it is which decisions stayed human, and what had to be
 put in place before an agent could be trusted with the rest.
 
+## In one page
+
+*The rest of this file is the log: one entry per session, 5,000 lines of it. This is the summary.*
+
+**What was built, by whom.** Every line of code, test and document was written by a coding agent
+working in the repository: about 56,000 lines of TypeScript under `src/`, 19,000 of tests (782
+acceptance tests), and 274 commits between 21 and 28 September 2026. One human, Michele, did three
+things the agent never did:
+
+- **decided** — what the game is, which way to lean when two goals pulled apart, when a rule could be
+  broken;
+- **looked** — every playtest note that changed the game came from a person playing it;
+- **supplied the world** — the floor plans, the model sheets, and photographs of the venue and of
+  the people in it.
+
+**The method that made an agent trustworthy on this.**
+
+- *The simulation is the only truth, and the tests are written against it.* The 2D sim is headless
+  and tested, and both renderers (the 2.5D diorama and the 3D build) only read it. So "the robot
+  walked through a wall" is a failing test, not an argument. The test in `tests/colliders.test.ts`
+  that rejects anything drawn without a collider caught the agent's own mistakes several times,
+  down to an inflatable Duke's arm.
+- *Images are the specification.* Plans and model sheets go to the agent as images, measured in
+  pixels and asserted in tests. When the prose and the drawing disagreed, the drawing won (the
+  staircases were moved for that).
+- *Builder, then critic on fresh context* ([`GAUNTLET.md`](../GAUNTLET.md)). The critic never sees
+  the diff, only the running build. In the 3D phase the agent critiqued its own renders before
+  asking for a human's eye, and wrote down what it found, fixed and left.
+- *Frozen physics constants*, asserted by tests. They were unfrozen exactly once, by the human,
+  after a playtest.
+
+**What the human decided that the agent would not have.**
+
+- "I vote funny, robots must be recognizable."
+- Leaving the stairs where the drawing puts them, not where the notes said.
+- Rescaling every speed by 0.25 after the first playtest.
+- Going 3D.
+- Putting real people from the Devoxx community in, by first name, from photographs.
+- Giving speakers a teal lanyard and the keynote a multicolour one.
+
+**What was rejected, and why.**
+
+- The first sculpted Stephan was "a beanie with some stuff on top". The fix was a head whose
+  hair is its own surface.
+- A camera that could end up inside the robot's head.
+- An attendee-grey lanyard the agent chose for the famous speakers to protect a puzzle; the human
+  reversed it with a better rule.
+- Many "it is solvable in the tests but not by a person" puzzles, each fixed by making the sim say
+  *why* a robot is blocked, in that robot's voice.
+
+**Honest limits.**
+
+- YouTube could not be reached from the agent's sandbox, so music was described to it, not heard.
+- Every render the agent judged was a headless software-GPU screenshot. Frame rate and feel on real
+  hardware came only from the human.
+
 ## Tools
 
 | Tool | Used for |

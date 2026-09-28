@@ -15,8 +15,19 @@ the pinned version.
 
 ```bash
 pnpm install
-pnpm dev        # Vite dev server, then open http://localhost:5173
+pnpm dev        # Vite dev server, then open http://localhost:5173/3d.html
 ```
+
+**The entry is the 3D build: `http://localhost:5173/3d.html`.** A third-person camera inside the
+building, all four chapters, an HDR pipeline with reflections, volumetric light and a filmic grade.
+The original 2.5D diorama build of the same game — same simulation, same chapters, a fixed
+isometric camera per room — is still at `http://localhost:5173/`, and is where the physics view
+(`P`) lives.
+
+The first time it runs, the 3D build picks a render quality from the GPU the browser reports (low
+for software renderers and phones, medium for integrated graphics, high otherwise). The **Quality**
+button bottom-left, or `Q`, changes it; the page reloads straight back into the chapter you were in.
+If the frame rate stays low, the button says so.
 
 ```bash
 pnpm test       # vitest — the sim's acceptance tests, including the frozen physics constants
@@ -27,10 +38,25 @@ pnpm preview    # serve the production bundle
 No API keys, no asset downloads, no native build step: everything — geometry, robots, lighting and
 audio, music included — is generated in code at startup.
 
-**Full-3D proof of concept (this branch):** open `http://localhost:5173/3d.html` for chapter 1 in
-third person with the night-city render pipeline. See `docs/3d-poc.md`.
+## Controls (3D build)
 
-## Controls
+| Key / mouse | What it does |
+|---|---|
+| `W` `A` `S` `D` or arrow keys | Drive the selected robot (`W` forward, `A`/`D` turn) |
+| Mouse (click to lock the pointer) | Look around; the camera drifts back behind the robot while you drive |
+| Mouse wheel | Zoom the camera |
+| `1` `2` `3` / `Tab` | Switch to Voxxy / Droid / Biggy / the next robot |
+| `E` | Act — fix, carry, take, talk, and mount Biggy when Droid stands beside him |
+| number keys | Type the code, **standing at the fire-door keypad** |
+| `I` | The run sheet: every job in the chapter, who does it, what is done |
+| `H` | A hint, and an arrow to where it points |
+| `Q` / **Quality** button | Change render quality (reloads into the same chapter) |
+| `P` | Photo mode: hide the HUD, depth of field on the robot |
+| `M` / `N` | Mute everything / music on or off |
+| `R` | Restart the chapter |
+| **Skip chapter ▸** (top right) | Jump to the next chapter |
+
+## Controls (2.5D diorama build)
 
 | Key | What it does |
 |---|---|
@@ -109,7 +135,7 @@ is in [docs/after-dark-full-design.md](docs/after-dark-full-design.md).
 In active development for the 30 September 2026 deadline; this README describes the game as designed
 and built so far.
 
-- **Playable now, end to end:** all four chapters, both cutscenes, the optional booth mini-games, the
+- **Playable now, end to end, in both builds:** all four chapters, both cutscenes, the optional booth mini-games, the
   simulation (movement, collisions, pushes, the door and cable thresholds), the light and shadow
   model, the venue geometry for both floors, the three robot models, the HUD and the synthesised
   audio — with the test suite green (`pnpm test`) and zero console errors on a full run.
@@ -143,6 +169,13 @@ including the title screen.
 
 `document.title` always reads `After Dark · ERRORS:<count>` and `<pre id="console-log">` carries the
 lines, so "no console errors" can be read straight out of `--dump-dom`.
+
+## Who you will meet
+
+Stephan (who runs Devoxx) at the stairs, Celestino on the badge desk, and — on the hall floor, then in
+Room 8's front row for the keynote — Mario, Venkat, Josh, Lize and Aurélie: first names and friendly
+caricatures, drawn from photographs, with nothing that needs anybody's permission. Duke, the Java
+mascot (artwork released by Sun under a BSD licence), stands inflated in the lobby.
 
 ## Licence
 
