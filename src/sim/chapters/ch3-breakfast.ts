@@ -1131,6 +1131,63 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       collar: '#f2efe9',
       face: Math.PI / 2,
     },
+    /*
+     * THREE REGULARS, OUT ON THE HALL FLOOR.
+     *
+     * Michele, 28 Sep 2026, one photograph each: *"i also need mario fusco
+     * somewhere in the hall"*, *"and Venkat (no shoes!)"*, *"Josh Long"*. First
+     * names and a caricature, the rule Stephan and Celestino already follow:
+     * Mario's grey beard and track jacket, Venkat talking barefoot as he always
+     * does, Josh in his grey tee saying "bootiful". Nothing here needs permission.
+     *
+     * Where: open carpet the robots already cross — Mario and Venkat on the
+     * wide strip along the hall's east wall, between the threshold from the lobby
+     * and the booths, Josh in the open band west of the booth rows. Measured
+     * clear of every wall and every other person by 22 px and 45 px.
+     *
+     * Their ribbons are the ATTENDEE grey, not speaker teal, though all three
+     * are speakers: teal is the one colour in the hall that means the keynote
+     * speaker who is missing (`SPEAKER_TEAL`), and chapter 3's middle act is
+     * finding the only person wearing it. Three famous faces in teal would be
+     * three wrong answers.
+     */
+    {
+      x: 985,
+      y: 440,
+      r: 8,
+      name: 'Mario',
+      line: 'Soup is a side effect, and Stephan is its only consumer. Keep it pure until it reaches him — Biggy has the hands for a pot.',
+      colour: '#1c1c20',
+      collar: '#8a1f28',
+      face: Math.PI,
+      glasses: true,
+      lanyard: LANYARD.attendee,
+    },
+    {
+      x: 990,
+      y: 600,
+      r: 8,
+      name: 'Venkat',
+      line: 'Shoes? At the hotel. On carpet you feel every cable before you trip on it. Short feedback loops, my friend — the shortest.',
+      colour: '#56585b',
+      collar: '#3a3b3d',
+      face: Math.PI,
+      glasses: true,
+      mic: true,
+      barefoot: true,
+      lanyard: LANYARD.attendee,
+    },
+    {
+      x: 250,
+      y: 420,
+      r: 8,
+      name: 'Josh',
+      line: 'Bootiful robots! The keynote speaker? Not at a table — try the booths with walls. Start there, ship it, then go to production.',
+      colour: '#c9c8c4',
+      face: 0,
+      glasses: true,
+      lanyard: LANYARD.attendee,
+    },
   ];
 
   /*
@@ -2694,7 +2751,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         collar: n.collar,
         face: n.face,
         role: 'staff',
-        lanyard: LANYARD.crew,
+        lanyard: n.lanyard ?? LANYARD.crew,
+        glasses: n.glasses,
+        mic: n.mic,
+        barefoot: n.barefoot,
         seed: 900 + i,
       });
     }

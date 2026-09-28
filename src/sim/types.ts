@@ -319,6 +319,8 @@ export interface Person {
   collar?: string;
   glasses?: boolean;
   mic?: boolean;
+  /** Bare feet under the trousers: Venkat, who talks barefoot. */
+  barefoot?: boolean;
   /**
    * An open laptop, held in both hands in front of them.
    *

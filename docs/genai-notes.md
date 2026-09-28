@@ -5059,3 +5059,31 @@ have matched the room around them, and would have cost more than the entire rest
     It was a smooth cap. It is now a low grey cap with forty short seeded tufts over the crown,
     brushed up and forward, grey at the sides and darker on top as in the photo. The first
     attempt was too tall and punk; the second is short and tousled.
+  - *"Stephan looks like he has a beanie with some stuff on top."* The agent agreed with the
+    diagnosis: a cap is a hat, whatever its colour, because its edge circles the head at one
+    height. Hair is now the head's own surface. Each close-up head is one sculpted sphere
+    (`sculptHead`):
+    - a hairline that is high at the forehead, recedes at the temples, is cropped over the ears
+      and drops at the nape;
+    - vertices above the hairline pushed out by a textured thickness and coloured as hair, with
+      salt specks;
+    - beard shadow painted onto the jaw;
+    - a narrower, longer face with a nose.
+    Every figure in 3D is also softened: rounded torso and limbs, a neck, and shoes. The 2.5D
+    figure code is unchanged.
+  - *Mario, Venkat, Josh.* Michele sent a photo of each: "Mario Fusco somewhere in the hall (the
+    second photo is older, the hair are short now)", "and Venkat (no shoes!)", then "Josh Long".
+    They are three talkable NPCs on the chapter 3 hall floor, first names only, each with one
+    line in character. The spots were measured clear of every wall by 22 px and of every person
+    by 45 px. The 3D close-ups:
+    - Mario: short dark hair greying at the sides, dark frames, a long grey-white beard under a
+      dark moustache, a black track jacket with red piping over a maroon tee with a lightning
+      bolt, arms folded.
+    - Venkat: wire frames, a thick moustache, a headset, a dark grey polo with a small emblem, and
+      bare feet. Everyone else got shoes so that the bare feet read.
+    - Josh: receding brown hair, black frames, a gingery beard, a grin, arms folded, and a light
+      grey tee with a green leaf and his word "bootiful". It is not the product logo, following
+      the "nothing that needs permission" rule.
+    All three wear the attendee ribbon, not speaker teal. Teal is the one colour in the hall that
+    means the missing keynote speaker, and three famous faces in teal would be three wrong
+    answers to chapter 3. The agent decided this; Michele can overrule it.
