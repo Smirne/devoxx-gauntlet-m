@@ -4594,3 +4594,24 @@ ordinary figures with their role colours.
     the rig's own position, so it rides with him.
   - *Cable reel.* "Should not disappear when Voxxy takes it (but roll)." The reel stays and turns
     with every metre paid out, and its coil thins toward empty.
+- *Sixth batch, 28 Sep: stands, breakers, the lever, chapter 2 polish.*
+  - *Stands.* "Stands are unfinished, it should be clear when you're passing under them." Built
+    booths were their footprint extruded in concrete to the 7.2 m roof. They are now 2.6 m sponsor
+    pods printed on every side in the 2.5D build's `BOOTH_SCHEMES` (name, strapline, DEVOXX
+    BELGIUM), with a header strip that lights with the hall. The face carrying the spray tag is
+    left bare. Half tables were a solid 1.05 m box that 1.15 m Voxxy drove through. They are now
+    1.3 m tables on legs, with a cloth valance, a laptop and a sticker bowl, open underneath. While
+    the robot being driven is under one, its top fades to 15% and a steel rim stays solid, so the
+    table still reads.
+  - *The lever.* "The arm should reach the lever, the door should start opening only after the
+    lever is pulled." Sim: cinema B's leaf waits `LEVER_REACH_TIME` (0.75 s) after the panel is
+    thrown; two door tests now wait for it too. 3D: during a reach, Droid turns to the target and
+    his shoulder pitches to its height. The panel's lever throws on contact over 0.2 s.
+  - *Breaker board.* Was a rusty slab with three blocks, floating 0.64 m off the wall. It is now a
+    grey distribution board on the wall: door swung open with a 400 V warning, three rows of DIN
+    breakers, conduits to the ceiling, and three red main isolators. Each is thrown up through the
+    front as Droid's hand arrives, flashing as it lands, and his reach is aimed at that handle.
+  - *Chapter 2 survey.* Rendered five viewpoints of the lit hall. The reception now has a lit
+    orange REGISTRATION banner hung over the desk, so the cable run's goal reads from the hall. The
+    technical room has its own fluorescent batten, which strikes and flickers on when the supply
+    lands.

@@ -223,7 +223,14 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         const lamp = new THREE.PointLight(0xffffff, 0, 3.5, 2);
         lamp.position.set(0, Y, back + 0.8);
         g.add(lamp);
-        g.userData = { handles, led, lamp, flash, back, lastUp: 0, changedAt: -1e9 };
+        // The room's own light: a fluorescent batten under the ceiling, dead
+        // until the supply lands, then striking on the way tubes do.
+        const tubeMat = new THREE.MeshBasicMaterial({ color: 0x000000, toneMapped: false });
+        const tube = new THREE.Mesh(box(1.4, 0.06, 0.1, V(m(GF.tech.x + GF.tech.w / 2) - cx, 3.15, m(GF.tech.y + GF.tech.h / 2) - cz)), tubeMat);
+        const tubeLight = new THREE.PointLight(0xdfe8ff, 0, 9, 2);
+        tubeLight.position.set(m(GF.tech.x + GF.tech.w / 2) - cx, 2.95, m(GF.tech.y + GF.tech.h / 2) - cz);
+        g.add(tube, tubeLight);
+        g.userData = { handles, led, lamp, flash, back, tubeMat, tubeLight, onAt: -1, lastUp: 0, changedAt: -1e9 };
         return g;
       }
       case 'rack-lights':
@@ -344,7 +351,21 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
           badges.push(bdg);
         }
         g.add(body, lid, hopper, blanks, slot, tray, led, lcd);
-        g.userData = { led, badges, lcdCanvas, lcdTex, lcdText: '', onlineAt: undefined as number | undefined };
+        // A banner hung over the reception desk, so the goal of the cable run
+        // reads from the hall: REGISTRATION, in Devoxx orange, double-faced.
+        const rc = GF.reception;
+        const bannerTex = canvasText(['REGISTRATION', 'BADGES'], { w: 512, h: 160, bg: '#f7931e', fg: '#141414' });
+        const bannerMat = new THREE.MeshStandardMaterial({ map: bannerTex, emissive: new THREE.Color(1, 1, 1), emissiveMap: bannerTex, emissiveIntensity: 0.1, side: THREE.DoubleSide });
+        const banner = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.0), bannerMat);
+        const bx = m(rc.x + rc.w / 2) - cx;
+        const bz = m(rc.y + rc.h / 2) - cz;
+        banner.position.set(bx, 3.3 - (g.position.y - groundRiseM(rc.x + rc.w / 2)), bz);
+        g.add(banner);
+        for (const sx of [-1.3, 1.3]) {
+          const wire = new THREE.Mesh(box(0.01, 3, 0.01, V(bx + sx, banner.position.y + 2, bz)), trim);
+          g.add(wire);
+        }
+        g.userData = { led, badges, lcdCanvas, lcdTex, lcdText: '', bannerMat, onlineAt: undefined as number | undefined };
         return g;
       }
       case 'lane':
@@ -843,6 +864,14 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
           (fl.material as THREE.MeshBasicMaterial).color.setRGB(1, 0.85, 0.5).multiplyScalar(30 * spark);
           fl.scale.setScalar(0.6 + spark);
         }
+        // The tube: struck when the supply is on (the board's state leaves idle).
+        const on = p.state !== 'idle';
+        if (on && (u.onAt as number) < 0) u.onAt = t;
+        if (!on) u.onAt = -1;
+        const ton = on ? t - (u.onAt as number) : -1;
+        const tubeK = ton < 0 ? 0 : ton > 1.1 ? 1 : Math.sin(ton * 47) > 0.2 ? 0.9 : 0.05;
+        (u.tubeMat as THREE.MeshBasicMaterial).color.setRGB(0.9, 0.95, 1).multiplyScalar(6 * tubeK);
+        (u.tubeLight as THREE.PointLight).intensity = 35 * tubeK;
         const strike = p.progress ?? 0;
         stateColour(p.state === 'idle' && up > 0 ? 'active' : p.state, tmp, 6 + 20 * strike);
         (u.led.material as THREE.MeshBasicMaterial).color.copy(tmp);
@@ -892,6 +921,7 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
           x.fillText(text, 8, 21);
           (u.lcdTex as THREE.CanvasTexture).needsUpdate = true;
         }
+        (u.bannerMat as THREE.MeshStandardMaterial).emissiveIntensity = p.state === 'idle' ? 0.15 : 0.55 + (p.state === 'active' ? 0.15 * Math.sin(t * 3) : 0.2);
         if (p.state === 'done' && u.onlineAt === undefined) u.onlineAt = t;
         if (p.state !== 'done') u.onlineAt = undefined;
         // Once online, a badge every 1.1 s: out of the slot, down onto the stack.
