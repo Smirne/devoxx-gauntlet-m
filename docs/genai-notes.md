@@ -5544,7 +5544,9 @@ Michele, one line: *"Droid swap. Droid is already slow, so don't scatter the let
   70 px nearer the gaps: **39.5 s**. The honest figure is about **40 s against 25–31 s** for the
   banner's two hooks walked the same way (31 with the hosts where they used to stand, which the
   pilot bumps into; 25 with them moved) — ten to fifteen seconds more, nearly all of it the three
-  carries, which are the job.
+  carries, which are the job. The 2.5D line's own one-stick driver (`tests/chapter4-length.test.ts`,
+  merged in afterwards, and it drives the sign now) agrees: Droid's leg **20.1 s → 30.7 s**, the whole
+  chapter **92.3 s → 101.3 s**, against its 150 s budget and Michele's three-minute figure.
 - *The 2.5D stage ate the letters.* It was drawn as a 0.45 m box while the sim's stage is floor, so
   the robots had always stood sunk to the shins in it; with letters on it, the bottom 45 cm of every
   glyph vanished and the orange X read as a Y. It is a 5 cm dais now, as the 3D build had already
@@ -5566,6 +5568,12 @@ robot; solid; no room behind the sign; the stage waits for the sign; driven from
 in `chapters`, `tasks`, `party-tricks` and `curtain-call` were rewritten against the sign, never
 loosened. Mutation check: with the letters' colliders removed, three tests fail, the collider sweep
 among them. Suite **812 green**, build clean.
+
+**Then both live branches moved again, and were merged under the letters.** The 2.5D line's full
+room, one-stick chapter-4 length and ship-gate run (its Droid legs ported to the sign), and the 3D
+line's front row of hall speakers, README and venue photos. One seam that was not a conflict: the
+front row was published seated but without the curtain call's `cheer`, so five famous faces sat still
+while the room applauded; `tests/curtain-call.test.ts` caught it and they clap now. **820 green**.
 
 - **Venue photos, Duke, Lize and Aurélie, and speaker lanyards** (28 Sep 2026). Michele sent five
   venue photos: the main stairs from the side; the Devoxx sign with ceiling ducts, box truss and

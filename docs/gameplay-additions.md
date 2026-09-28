@@ -159,7 +159,9 @@ deleted the spotlights that had just got their beams. An order puzzle on the sta
 spell DEVOXX.
 
 **What it cost.** About 40 s of Droid's time from the top of the stairs against 25–31 s for the two
-hooks, measured with the same test pilot (`tests/letters.test.ts` holds it under 50). Two layout
+hooks, measured with the same test pilot (`tests/letters.test.ts` holds it under 50). On the one-stick
+driver in `tests/chapter4-length.test.ts`: Droid 20.1 s → 30.7 s, chapter 4 92.3 s → 101.3 s, inside
+its 150 s budget. Two layout
 changes paid for it: Stephan and the speaker now stand beside the sign rather than mid-stage, which
 left Droid a 4 px lane, and the 2.5D stage is a 5 cm dais like the 3D one, because at 0.45 m it hid the
 bottom of every letter.
