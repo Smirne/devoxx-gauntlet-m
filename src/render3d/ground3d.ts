@@ -16,7 +16,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-import { GF, MAIN_STAIR_TOP_M, WIFI_TAG, groundPlates, groundRiseM, groundWallsFor, stairDoors, stairMidLanding, stairRamps } from '../sim/geometry';
+import { DUKE, GF, LOBBY_RISE_M, MAIN_STAIR_TOP_M, WIFI_TAG, groundPlates, groundRiseM, groundWallsFor, stairDoors, stairMidLanding, stairRamps } from '../sim/geometry';
 import { DOOR_H, stairFlight } from '../render/venue/props';
 import type { Plate, Wall } from '../sim/types';
 import { m } from '../sim/units';
@@ -24,6 +24,7 @@ import { m } from '../sim/units';
 import type { Materials } from './materials';
 import { box } from './materials';
 import { exitSign } from './signs';
+import { buildDuke } from './duke';
 import { BOOTH_SCHEMES } from '../render/venue/signage';
 import type { VolumePoint } from './pipeline';
 
@@ -116,8 +117,14 @@ function styleOf(w: Wall, mats: Materials, concrete: THREE.Material): { h: numbe
       return { h: 2.6, mat: mats.acoustic };
     case 'accent-panel':
       return { h: 3.0, mat: mats.enamel };
+    // The main flight's sides are drawn by `mainStairSides`, off the photos.
     case 'mainstair':
-      return { h: 1.1, mat: mats.steel };
+    // Duke is his own model (duke.ts); the entrance's frames and doors are `facade`.
+    case 'duke':
+    case 'facade':
+    case 'mullion':
+    case 'door-leaf':
+      return null;
     default:
       if (w.low) return { h: k.includes('planter') ? 0.8 : k === 'bollard' ? 0.9 : 1.05, mat: k.includes('planter') || k === 'bollard' ? mats.darkMetal : mats.counter };
       return { h: HALL_H, mat: concrete };
@@ -258,6 +265,204 @@ function shafts(group: THREE.Group, mats: Materials, concrete: THREE.Material): 
   return out;
 }
 
+/**
+ * THE ENTRANCE — Michele's photograph of it (28 Sep): a wall of glass doors in
+ * slim white frames, a transom over them, green running-man signs above the
+ * bays, and daylight and trees through the glass.
+ *
+ * The sim's walls are the footprint (`facade` glazing, `mullion` reveals,
+ * `door-leaf` open leaves); this draws them as that, plus the frame grid, the
+ * spandrel above the glass, and what is outside: a backdrop across the
+ * forecourt's far edge, bright in the morning and a dim street at night.
+ */
+let outsideMorning = false;
+export function setOutsideMorning(on: boolean): void {
+  outsideMorning = on;
+}
+function facade(group: THREE.Group, mats: Materials, updaters: Array<(t: number, dt: number) => void>): THREE.Object3D[] {
+  const out: THREE.Object3D[] = [];
+  const frame = new THREE.MeshStandardMaterial({ color: 0xe8e8e4, roughness: 0.35, metalness: 0.4 });
+  const b = new Buckets();
+  const GLASS_H = 4.2;
+  const TRANSOM = 2.7;
+  const walls = groundWallsFor(2);
+  const base = LOBBY_RISE_M;
+  for (const w of walls) {
+    if (w.kind === 'facade') {
+      const x = m(w.x + w.w / 2);
+      const za = m(w.y);
+      const zb = m(w.y + w.h);
+      const pane = new THREE.Mesh(new THREE.PlaneGeometry(zb - za, GLASS_H), mats.glass);
+      pane.rotation.y = Math.PI / 2;
+      pane.position.set(x, base + GLASS_H / 2, (za + zb) / 2);
+      pane.renderOrder = 2;
+      group.add(pane);
+      out.push(pane);
+      // Mullions every 1.5 m, rails at the floor, the transom and the head.
+      for (let z = za; z <= zb + 0.01; z += (zb - za) / Math.max(1, Math.round((zb - za) / 1.5))) b.add(frame, box(0.1, GLASS_H, 0.08, V(x, base + GLASS_H / 2, z)));
+      for (const y of [0.05, TRANSOM, GLASS_H]) b.add(frame, box(0.1, 0.08, zb - za, V(x, base + y, (za + zb) / 2)));
+    } else if (w.kind === 'mullion') {
+      // The reveal between two door bays: a glazed side screen in a slim white
+      // frame (a solid white slab read as a fin standing in the doorway).
+      const cx = m(w.x + w.w / 2);
+      const cz = m(w.y + w.h / 2);
+      const L = m(w.w);
+      const pane = new THREE.Mesh(new THREE.PlaneGeometry(L, TRANSOM), mats.glass);
+      pane.position.set(cx, base + TRANSOM / 2, cz);
+      pane.renderOrder = 2;
+      group.add(pane);
+      for (const y of [0.04, TRANSOM, GLASS_H]) b.add(frame, box(L, 0.08, 0.08, V(cx, base + y, cz)));
+      for (const s of [-1, 1]) b.add(frame, box(0.08, GLASS_H, 0.08, V(cx + (s * L) / 2, base + GLASS_H / 2, cz)));
+    } else if (w.kind === 'door-leaf') {
+      // A glass leaf, standing open, in its white frame.
+      const cx = m(w.x + w.w / 2);
+      const cz = m(w.y + w.h / 2);
+      const L = m(Math.max(w.w, w.h));
+      const along = w.w >= w.h;
+      const DH = TRANSOM - 0.1;
+      const leaf = new THREE.Mesh(new THREE.PlaneGeometry(L, DH), mats.glass);
+      leaf.position.set(cx, base + DH / 2, cz);
+      if (!along) leaf.rotation.y = Math.PI / 2;
+      leaf.renderOrder = 2;
+      group.add(leaf);
+      const fw = along ? L : 0.06;
+      const fd = along ? 0.06 : L;
+      for (const y of [0.04, DH]) b.add(frame, box(fw, 0.08, fd, V(cx, base + y, cz)));
+      for (const s of [-1, 1]) b.add(frame, box(along ? 0.06 : 0.06, DH, along ? 0.06 : 0.06, V(cx + (along ? (s * L) / 2 : 0), base + DH / 2, cz + (along ? 0 : (s * L) / 2))));
+      // The push bar.
+      b.add(mats.steel, box(along ? L * 0.8 : 0.04, 0.04, along ? 0.04 : L * 0.8, V(cx, base + 1.05, cz)));
+    }
+  }
+  // Across the entrance gap: a transom over the open bays, and the exit signs.
+  const e = GF.entrance;
+  const ex = m(e.x + e.w / 2);
+  const tr = new THREE.Mesh(new THREE.PlaneGeometry(m(e.h), GLASS_H - TRANSOM), mats.glass);
+  tr.rotation.y = Math.PI / 2;
+  tr.position.set(ex, base + (GLASS_H + TRANSOM) / 2, m(e.y + e.h / 2));
+  group.add(tr);
+  for (const y of [TRANSOM, GLASS_H]) b.add(frame, box(0.12, 0.1, m(e.h), V(ex, base + y, m(e.y + e.h / 2))));
+  const signMat = new THREE.MeshBasicMaterial({ map: exitSign(), toneMapped: false, color: new THREE.Color(2, 2, 2) });
+  for (const f of [0.2, 0.5, 0.8]) {
+    const sg = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.23), signMat);
+    sg.position.set(ex - 0.12, base + TRANSOM + 0.35, m(e.y + e.h * f));
+    sg.rotation.y = -Math.PI / 2;
+    group.add(sg);
+    b.add(mats.darkMetal, box(0.08, 0.28, 0.68, V(ex - 0.08, base + TRANSOM + 0.35, m(e.y + e.h * f))));
+  }
+  // The spandrel over the glass, up to the roof.
+  b.add(mats.darkMetal, box(0.2, HALL_H - GLASS_H - base, m(GZ), V(m(e.x + e.w / 2), base + GLASS_H + (HALL_H - GLASS_H - base) / 2, m(GZ) / 2)));
+  out.push(...b.build(group));
+
+  // OUTSIDE: sky and trees on a backdrop at the forecourt's far edge.
+  const c = document.createElement('canvas');
+  c.width = 1024;
+  c.height = 256;
+  const x = c.getContext('2d')!;
+  const sky = x.createLinearGradient(0, 0, 0, 256);
+  sky.addColorStop(0, '#dfe8ee');
+  sky.addColorStop(1, '#f5f5f0');
+  x.fillStyle = sky;
+  x.fillRect(0, 0, 1024, 256);
+  // Trees: soft grey-green blobs along the bottom, as the photo's blurred ones.
+  let seed = 7;
+  const rnd = (): number => {
+    seed = (seed * 16807) % 2147483647;
+    return seed / 2147483647;
+  };
+  for (let i = 0; i < 90; i++) {
+    const tx = rnd() * 1024;
+    const ty = 120 + rnd() * 100;
+    const r = 18 + rnd() * 40;
+    x.fillStyle = `rgba(${90 + rnd() * 40 | 0},${110 + rnd() * 40 | 0},${90 + rnd() * 30 | 0},0.35)`;
+    x.beginPath();
+    x.arc(tx, ty, r, 0, Math.PI * 2);
+    x.fill();
+  }
+  x.fillStyle = '#b9bbb5';
+  x.fillRect(0, 226, 1024, 30);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const outMat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+  const back = new THREE.Mesh(new THREE.PlaneGeometry(m(GZ), 14), outMat);
+  back.position.set(m(GX) - 0.5, 6, m(GZ) / 2);
+  back.rotation.y = -Math.PI / 2;
+  group.add(back);
+  updaters.push(() => {
+    // Morning: bright daylight through the glass. Night: a dim blue street.
+    if (outsideMorning) outMat.color.setRGB(1.6, 1.6, 1.6);
+    else outMat.color.setRGB(0.05, 0.07, 0.12);
+  });
+  return out;
+}
+
+/**
+ * The main staircase from the side — Michele's photograph (28 Sep): a white
+ * stepped side panel, the underside of the flight showing as a sawtooth, and a
+ * glass balustrade in steel posts with a handrail following the pitch.
+ */
+function mainStairSides(group: THREE.Group, mats: Materials): THREE.Object3D[] {
+  const ms = GF.mainStair;
+  const out: THREE.Object3D[] = [];
+  const white = new THREE.MeshStandardMaterial({ color: 0xe9e7e2, roughness: 0.7 });
+  const xTop = m(ms.x);
+  const xFoot = m(ms.x + ms.w);
+  const hTop = MAIN_STAIR_TOP_M;
+  const hFoot = LOBBY_RISE_M;
+  const n = Math.max(3, Math.round((hTop - hFoot) / 0.17));
+  const T = 0.48;
+  const b = new Buckets();
+  for (const side of [ms.y, ms.y + ms.h]) {
+    const shape = new THREE.Shape();
+    shape.moveTo(xFoot, 0);
+    shape.lineTo(xTop, 0);
+    shape.lineTo(xTop, hTop);
+    for (let k = 0; k < n; k++) {
+      const xa = xTop + ((xFoot - xTop) * k) / n;
+      const xb = xTop + ((xFoot - xTop) * (k + 1)) / n;
+      const h = hTop - ((hTop - hFoot) * k) / n;
+      const h2 = hTop - ((hTop - hFoot) * (k + 1)) / n;
+      shape.lineTo(xa, h);
+      shape.lineTo(xb, h);
+      shape.lineTo(xb, h2);
+    }
+    shape.lineTo(xFoot, 0);
+    // A thin panel just OUTSIDE the flight's footprint: laid over the treads'
+    // own side faces it z-fought them into stripes.
+    const PT = 0.05;
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: PT, bevelEnabled: false });
+    const z = side === ms.y ? m(side) - PT - 0.01 : m(side) + 0.01;
+    geo.translate(0, 0, z);
+    b.add(white, geo);
+    const L = Math.hypot(xFoot - xTop, hTop - hFoot);
+    const ang = Math.atan2(hTop - hFoot, xFoot - xTop);
+    // Glass balustrade on the flight's edge: a parallelogram of glass, a steel
+    // handrail 1 m above the nosings, posts every ~1.2 m.
+    const zr = side === ms.y ? m(side) + T / 2 : m(side) - T / 2;
+    const gpos = new Float32Array([xTop, hTop, zr, xFoot, hFoot, zr, xFoot, hFoot + 1, zr, xTop, hTop + 1, zr]);
+    const gg = new THREE.BufferGeometry();
+    gg.setAttribute('position', new THREE.BufferAttribute(gpos, 3));
+    gg.setIndex([0, 1, 2, 0, 2, 3]);
+    gg.computeVertexNormals();
+    const glass = new THREE.Mesh(gg, mats.glass);
+    glass.renderOrder = 2;
+    group.add(glass);
+    const rail = new THREE.CylinderGeometry(0.03, 0.03, L, 10);
+    rail.rotateZ(Math.PI / 2 - ang);
+    rail.translate((xTop + xFoot) / 2, (hTop + hFoot) / 2 + 1.02, zr);
+    b.add(mats.steel, rail);
+    const posts = Math.round(L / 1.2);
+    for (let i = 0; i <= posts; i++) {
+      const px = xTop + ((xFoot - xTop) * i) / posts;
+      const py = hTop + ((hFoot - hTop) * i) / posts;
+      b.add(mats.steel, box(0.04, 1.02, 0.04, V(px, py + 0.51, zr)));
+    }
+  }
+  // The top end: white, floor to the landing.
+  b.add(white, box(m(6), hTop, m(ms.h), V(xTop + m(3), hTop / 2, m(ms.y + ms.h / 2))));
+  out.push(...b.build(group));
+  return out;
+}
+
 export function buildGround(mats: Materials): Ground3D {
   const group = new THREE.Group();
   group.name = 'ground-floor';
@@ -314,6 +519,22 @@ export function buildGround(mats: Materials): Ground3D {
   }
   colliders.push(...solid.build(group));
   colliders.push(...shafts(group, mats, concrete));
+  colliders.push(...facade(group, mats, updaters));
+  colliders.push(...mainStairSides(group, mats));
+  {
+    // Duke, on his sim footprint, facing the doors.
+    const duke = buildDuke();
+    duke.root.position.set(m(DUKE.x), groundRiseM(DUKE.x), m(DUKE.y));
+    duke.root.rotation.y = Math.PI / 2;
+    group.add(duke.root);
+    // A display spot on him, as a sponsor would light an inflatable: black
+    // vinyl in a dark lobby otherwise vanishes and leaves a white bell.
+    const spot = new THREE.SpotLight(0xfff2e0, 420, 12, 0.45, 0.5, 1.4);
+    spot.position.set(m(DUKE.x) + 3, groundRiseM(DUKE.x) + 5.5, m(DUKE.y) + 1.5);
+    spot.target.position.set(m(DUKE.x), groundRiseM(DUKE.x) + 1.6, m(DUKE.y));
+    group.add(spot, spot.target);
+    updaters.push((t) => duke.update(t));
+  }
   // What chapter 3 has as plain walls and chapter 2 draws as moving props.
   const later = new THREE.Group();
   group.add(later);
@@ -332,17 +553,85 @@ export function buildGround(mats: Materials): Ground3D {
 
   /* ------------------------------------------------------------- ceiling */
   {
-    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(m(GX), m(GZ)), mats.ceiling);
+    // Black, as the photographs have it: services are what you see up there.
+    const ceilMat = new THREE.MeshStandardMaterial({ color: 0x0c0c0e, roughness: 0.95 });
+    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(m(GX), m(GZ)), ceilMat);
     ceil.rotation.x = Math.PI / 2;
     ceil.position.set(m(GX) / 2, HALL_H, m(GZ) / 2);
     group.add(ceil);
     colliders.push(ceil);
-    // Roof trusses over the hall: an exhibition shed's ceiling is structure.
+    // Roof trusses over the hall — aluminium box truss, four chords laced with
+    // diagonals, as in Michele's photo of the Devoxx sign (28 Sep) — and the
+    // silver spiral ducts running the length of the shed under them.
     const truss = new Buckets();
+    const chordGeo = (len: number, x: number, y: number, z0: number): THREE.BufferGeometry => {
+      const g = new THREE.CylinderGeometry(0.025, 0.025, len, 6);
+      g.rotateX(Math.PI / 2);
+      g.translate(x, y, z0 + len / 2);
+      return g;
+    };
+    const strut = (a: THREE.Vector3, b: THREE.Vector3): THREE.BufferGeometry => {
+      const d = b.clone().sub(a);
+      const g = new THREE.CylinderGeometry(0.012, 0.012, d.length(), 4);
+      g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.clone().normalize()));
+      g.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+      return g;
+    };
+    const TW = 0.42;
+    const ty = HALL_H - 0.9;
+    const z0 = m(GF.hall.y);
+    const len = m(GF.hall.h);
     for (let x = GF.hall.x + 60; x < GF.hall.x + GF.hall.w; x += 120) {
-      truss.add(mats.darkMetal, box(0.35, 0.6, m(GF.hall.h), V(m(x), HALL_H - 0.4, m(GF.hall.y + GF.hall.h / 2)), 2));
+      const cx = m(x);
+      for (const [dx, dy] of [
+        [-1, -1],
+        [1, -1],
+        [-1, 1],
+        [1, 1],
+      ]) truss.add(mats.steel, chordGeo(len, cx + (dx * TW) / 2, ty + (dy * TW) / 2, z0));
+      for (let z = z0, k = 0; z < z0 + len - 0.5; z += 0.5, k++) {
+        const za = z;
+        const zb = z + 0.5;
+        const up = k % 2 === 0;
+        for (const dx of [-1, 1]) {
+          truss.add(mats.steel, strut(V(cx + (dx * TW) / 2, ty + (up ? -1 : 1) * TW / 2, za), V(cx + (dx * TW) / 2, ty + (up ? 1 : -1) * TW / 2, zb)));
+        }
+        truss.add(mats.steel, strut(V(cx + (up ? -1 : 1) * TW / 2, ty - TW / 2, za), V(cx + (up ? 1 : -1) * TW / 2, ty - TW / 2, zb)));
+      }
     }
     truss.build(group, false);
+    // Spiral ducts: two runs along the hall and over the lobby, seams every
+    // 1.5 m, with a drop and a round diffuser every 12 m.
+    const ducts = new Buckets();
+    const ductMat = mats.steel;
+    const DR = 0.42;
+    const dy = HALL_H - 1.9;
+    for (const zPx of [GF.hall.y + 225, GF.hall.y + 525]) {
+      const z = m(zPx);
+      const x0 = m(GF.hall.x + 10);
+      const x1 = m(1460);
+      const run = new THREE.CylinderGeometry(DR, DR, x1 - x0, 20, 1, true);
+      run.rotateZ(Math.PI / 2);
+      run.translate((x0 + x1) / 2, dy, z);
+      ducts.add(ductMat, run);
+      for (let x = x0 + 0.75; x < x1; x += 1.5) {
+        const seam = new THREE.CylinderGeometry(DR + 0.02, DR + 0.02, 0.05, 20, 1, true);
+        seam.rotateZ(Math.PI / 2);
+        seam.translate(x, dy, z);
+        ducts.add(ductMat, seam);
+      }
+      for (let x = x0 + 6; x < x1 - 2; x += 12) {
+        const drop = new THREE.CylinderGeometry(0.2, 0.2, 0.9, 14, 1, true);
+        drop.translate(x, dy - DR - 0.45, z);
+        ducts.add(ductMat, drop);
+        const diff = new THREE.CylinderGeometry(0.34, 0.22, 0.12, 18);
+        diff.translate(x, dy - DR - 0.95, z);
+        ducts.add(mats.darkMetal, diff);
+      }
+      // Hangers up to the roof.
+      for (let x = x0 + 3; x < x1; x += 6) ducts.add(mats.darkMetal, box(0.02, HALL_H - dy - DR, 0.02, V(x, (HALL_H + dy + DR) / 2, z)));
+    }
+    ducts.build(group, false);
   }
 
   /* ------------------------------------------------------------- booths */
@@ -458,7 +747,9 @@ export function buildGround(mats: Materials): Ground3D {
       }
       // A high table.
       const cloth = new THREE.MeshStandardMaterial({ color: new THREE.Color(sch.brand), roughness: 0.9, transparent: true, opacity: 1 });
-      const top = new THREE.MeshStandardMaterial({ color: 0xe9e4da, roughness: 0.5, transparent: true, opacity: 1 });
+      // Warm grey laminate, matt: a white gloss top under a high bay burnt out to
+      // a glowing slab (survey, 28 Sep).
+      const top = new THREE.MeshStandardMaterial({ color: 0x625d57, roughness: 0.85, transparent: true, opacity: 1 });
       const tableMats = [cloth, top];
       const g = new THREE.Group();
       g.add(new THREE.Mesh(box(bw, 0.05, bd, V(cx, TABLE_TOP, cz)), top));
@@ -513,7 +804,7 @@ export function buildGround(mats: Materials): Ground3D {
   // The hall's working lights: a grid of high bays, switched by intensity (a
   // visibility toggle recompiles every material), and brought up across the
   // hall from the lobby end when the power comes on.
-  const bays: Array<{ light: THREE.SpotLight; lamp: THREE.Mesh; at: number }> = [];
+  const bays: Array<{ light: THREE.SpotLight; lamp: THREE.Mesh; ring: THREE.MeshBasicMaterial; at: number }> = [];
   const lampMat = new THREE.MeshBasicMaterial({ color: 0x000000, toneMapped: false });
   // Four across the hall, three more over the lobby, two rows of each.
   const bayXs = [GF.hall.x + 130, GF.hall.x + 370, GF.hall.x + 610, GF.hall.x + 850, 1220, 1480, 1740];
@@ -525,10 +816,21 @@ export function buildGround(mats: Materials): Ground3D {
       const ix = bayXs.indexOf(x);
       light.target.position.set(m(x), 0, m(z));
       group.add(light, light.target);
-      const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.55, 0.25, 20), lampMat.clone());
-      lamp.position.set(m(x), HALL_H - 0.5, m(z));
-      group.add(lamp);
-      bays.push({ light, lamp, at: Math.max(0, 1 - x / (GF.hall.x + GF.hall.w)) });
+      // A big disc pendant, as in the photographs: a dark shade, a glowing
+      // face underneath, and a warm orange ring round its rim.
+      const PY = HALL_H - 1.5;
+      const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.9, 0.1, 32), mats.darkMetal);
+      shade.position.set(m(x), PY + 0.05, m(z));
+      const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.02, 32), lampMat.clone());
+      lamp.position.set(m(x), PY - 0.01, m(z));
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0x000000, toneMapped: false });
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.86, 0.03, 8, 40), ringMat);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.set(m(x), PY, m(z));
+      const cable = new THREE.Mesh(box(0.015, HALL_H - PY, 0.015, V(m(x), (HALL_H + PY) / 2, m(z))), mats.darkMetal);
+      group.add(shade, lamp, ring, cable);
+      light.position.y = PY - 0.1;
+      bays.push({ light, lamp, ring: ringMat, at: Math.max(0, 1 - x / (GF.hall.x + GF.hall.w)) });
       void ix;
       volumeSpots.push({ light, fog: 0.08 });
     }
@@ -558,6 +860,7 @@ export function buildGround(mats: Materials): Ground3D {
     setChapter(n: number): void {
       later.visible = n >= 3;
       morning = n >= 3;
+      setOutsideMorning(n >= 3);
     },
     setPower(on: number, t: number, instant = false): void {
       if (on > 0 && power === 0) poweredAt = instant ? t - 60 : t;
@@ -575,7 +878,8 @@ export function buildGround(mats: Materials): Ground3D {
         const k = poweredAt === null ? 0 : THREE.MathUtils.clamp((t - poweredAt - b.at * 2.2) / 0.5, 0, 1);
         const flick = k > 0 && k < 1 ? (Math.sin(t * 60 + b.at * 40) > 0 ? 1 : 0.2) : 1;
         b.light.intensity = 2400 * k * flick;
-        (b.lamp.material as THREE.MeshBasicMaterial).color.setRGB(1, 0.95, 0.85).multiplyScalar(8 * k * flick);
+        (b.lamp.material as THREE.MeshBasicMaterial).color.setRGB(1, 0.95, 0.85).multiplyScalar(6 * k * flick);
+        b.ring.color.setRGB(1, 0.45, 0.12).multiplyScalar(5 * k * flick);
       }
       const lit = poweredAt === null ? 0 : THREE.MathUtils.clamp((t - poweredAt - 1.2) / 1.2, 0, 1);
       fill.intensity = (morning ? 2.4 : 1.1) * lit;

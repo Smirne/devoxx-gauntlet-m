@@ -613,7 +613,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       colour: '#1f9e9b',
       hat: true,
       role: 'speaker',
-      lanyard: LANYARD.speaker,
+      lanyard: LANYARD.keynote,
       seed: 911,
       face: Math.PI / 2,
     });

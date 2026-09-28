@@ -298,9 +298,9 @@ const SOUP_HANDOVER = 34;
  */
 const SPEAKER_HANDOVER = 38;
 /**
- * The keynote speaker's teal — hoodie, cap and lanyard, all of it.
+ * The keynote speaker's teal — hoodie and cap; the ribbon is `LANYARD.keynote`.
  *
- * `LANYARD.speaker` is this colour and nothing else in the hall wears it. At the
+ * Nothing else in the hall wears the hoodie, and the ribbon is `LANYARD.keynote`, the only multicolour one. At the
  * zoom this game is played at a person is thirty pixels tall, so one colour worn
  * head to foot is the only kind of "recognisable" that survives, and it is what
  * Michele asked for when he could not find them: *"therse should also be
@@ -1145,11 +1145,14 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      * and the booths, Josh in the open band west of the booth rows. Measured
      * clear of every wall and every other person by 22 px and 45 px.
      *
-     * Their ribbons are the ATTENDEE grey, not speaker teal, though all three
-     * are speakers: teal is the one colour in the hall that means the keynote
-     * speaker who is missing (`SPEAKER_TEAL`), and chapter 3's middle act is
-     * finding the only person wearing it. Three famous faces in teal would be
-     * three wrong answers.
+     * They wear the SPEAKER ribbon, teal, like every speaker in the building.
+     * Michele, 28 Sep: *"I think they should have speakers badge, and the
+     * keynote another color, maybe multicolor?"* — the missing keynote speaker
+     * wears the multicolour one (`LANYARD.keynote`), which is what keeps the
+     * search a search: teal is two hundred people, multicolour is one.
+     *
+     * Lize and Aurélie joined the same afternoon (a photograph each), on the
+     * open carpet along the hall's south edge.
      */
     {
       x: 985,
@@ -1161,7 +1164,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       collar: '#8a1f28',
       face: Math.PI,
       glasses: true,
-      lanyard: LANYARD.attendee,
+      lanyard: LANYARD.speaker,
     },
     {
       x: 990,
@@ -1175,7 +1178,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       glasses: true,
       mic: true,
       barefoot: true,
-      lanyard: LANYARD.attendee,
+      lanyard: LANYARD.speaker,
     },
     {
       x: 250,
@@ -1186,7 +1189,29 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       colour: '#c9c8c4',
       face: 0,
       glasses: true,
-      lanyard: LANYARD.attendee,
+      lanyard: LANYARD.speaker,
+    },
+    {
+      x: 330,
+      y: 615,
+      r: 8,
+      name: 'Lize',
+      line: 'Robots on the night shift, with no one prompting them? I have a talk about exactly this. Ask the soup what it wants — then check its answer.',
+      colour: '#b3202e',
+      face: -Math.PI / 2,
+      mic: true,
+      lanyard: LANYARD.speaker,
+    },
+    {
+      x: 560,
+      y: 650,
+      r: 8,
+      name: 'Aurélie',
+      line: 'I drew you three already, as Gophers. The speaker? Behind a booth with walls — I sketch everything, and I saw a multicolour lanyard go by.',
+      colour: '#1e2a44',
+      face: -Math.PI / 2,
+      glasses: true,
+      lanyard: LANYARD.speaker,
     },
   ];
 
@@ -2830,7 +2855,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
        */
       laptop: true,
       role: 'speaker',
-      lanyard: LANYARD.speaker,
+      lanyard: LANYARD.keynote,
       /*
        * They WALK when they are walking.
        *
@@ -2963,7 +2988,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
          * person is still round the back of it, and you still have to walk round.
          */
         at: speaker.following ? speakerAt : { x: speaker.x, y: speaker.y },
-        hint: 'Voxxy: they are hiding from the queues behind one of the booths with WALLS — you can see straight under the cloth tables, so it is none of those. Look for the teal lanyard: it is the one thing about them that is not hiding',
+        hint: 'Voxxy: they are hiding from the queues behind one of the booths with WALLS — you can see straight under the cloth tables, so it is none of those. Look for the multicolour lanyard and the teal hoodie: they are the one thing about them that is not hiding',
       },
       {
         id: 'beer',

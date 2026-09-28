@@ -5157,3 +5157,45 @@ have matched the room around them, and would have cost more than the entire rest
     - hair is now a shell with a hairline, high at the forehead and low at the nape, with a
       ragged fringe. It had been the same "beanie" cap Stephan's first head had;
     - every figure has hands that swing with its arms, and two eyes.
+- **Venue photos, Duke, Lize and Aurélie, and speaker lanyards** (28 Sep 2026). Michele sent five
+  venue photos: the main stairs from the side; the Devoxx sign with ceiling ducts, box truss and
+  disc pendants; two of Stephan ("remember the MIC"); Duke on the keynote screen ("should appear
+  somewhere"); and the entrance. He then added "We should add Lize Raes" and "Aurélie Vache",
+  and "they should have speakers badge, and the keynote another color, maybe multicolor?"
+  - *Stephan*: hair cropped short and grey all over, receding at the temples; lighter skin;
+    thinner amber frames; the mic is now a slim skin-tone boom hooked over his left ear with a
+    small capsule at the corner of his mouth, as in every photo. The polo has short sleeves
+    with tipped cuffs, hung on the arm pivots so they swing.
+  - *Lanyards (a sim change, decided by Michele):*
+    - a fifth ribbon, `LANYARD.keynote`, multicolour, worn only by the missing keynote speaker
+      in chapter 3 and on stage in chapter 4;
+    - every named speaker (Mario, Venkat, Josh, Lize, Aurélie) now wears speaker teal. This
+      reverses the agent's earlier choice of attendee grey, which it had only made to protect
+      teal's meaning;
+    - the chapter 3 hint now says "multicolour lanyard and teal hoodie";
+    - renderers paint that ribbon's key as rainbow bands;
+    - the distinct-colours test now counts five ribbons, and a new check requires exactly one
+      keynote ribbon.
+  - *Lize and Aurélie*, as NPCs on the hall's south strip. The sculpt gained `longHair`, a hair
+    curtain from the crown that frames the face, closes as it falls, drapes over the shoulders,
+    waves, and flares or flicks at the ends.
+    - Lize: long wavy auburn hair, blue eyes, a wide smile, a cheek mic, and a red wrap dress
+      with a V-neck, sash and skirt.
+    - Aurélie: dark jaw-length hair with a fringe and flicked ends, thin violet frames, a
+      closed smile, and a navy tee with a scoop neck.
+  - *Duke* (the artwork is BSD-licensed): a 2.9 m inflatable in the lobby south of the main stair,
+    facing the doors, swaying, one arm waving, under a display spot. He is solid in the sim
+    (`DUKE`, a `duke` wall with its own blocked line for Biggy), so nothing walks through him.
+    His first shape was a sharp cone that read as a gnome, and the dome fixed it. He also waves
+    from the corner of Room 8's holding slide.
+  - *Entrance*: the facade is glass in slim white frames, with mullions every 1.5 m, a transom,
+    glazed side screens where the sim has reveals (they had been solid white fins), open glass
+    leaves with push bars, and green exit signs over the bays. Outside is a sky-and-trees
+    backdrop, bright in chapter 3 and a dim street in chapter 2.
+  - *Hall ceiling*: black, with aluminium box truss (four chords, laced), two runs of spiral
+    duct with seams, drops and diffusers, and the high bays redrawn as the photo's large disc
+    pendants with a warm orange rim.
+  - *Main stair*: white stepped side panels, with a glass balustrade on steel posts and a
+    handrail following the pitch. The first pass z-fought the treads into stripes; the panels
+    now stand just outside the footprint.
+  - A sponsor table top that burnt white under a pendant is now matt grey.

@@ -340,6 +340,11 @@ interface Portrait {
   hides: string[];
   /** Bare feet: the skin goes on the feet too. */
   barefoot?: boolean;
+  /**
+   * Short sleeves: bare forearms in `skin`, and this sleeve (with its tipped cuff)
+   * over the top of each arm. Built onto the arm pivots, so it swings with them.
+   */
+  sleeve?: { cloth: THREE.Material; cuff: THREE.Material };
 }
 
 function canvasTex(w: number, h: number, draw: (x: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
@@ -429,13 +434,18 @@ function buildStephan(torso: THREE.Mesh, H: number): Portrait {
    * shape?" — he was a ball wearing glasses.
    */
   const head = sculptHead({
-    skin: '#d9a07c',
-    hairTop: '#4a4642',
-    hairSide: '#8f8a83',
-    line: [0.5, 0.36, 0.12, -0.42],
-    thickTop: 0.14,
-    thickSide: 0.035,
-    salt: 0.3,
+    /*
+     * Michele's second set of photographs (28 Sep): the hair is CROPPED, short
+     * and grey all over, receding at the temples — not the tousled top the first
+     * pass gave him — and his skin is lighter than the stage-lit first photo.
+     */
+    skin: '#e2b08e',
+    hairTop: '#7d7872',
+    hairSide: '#a29d96',
+    line: [0.56, 0.4, 0.1, -0.45],
+    thickTop: 0.065,
+    thickSide: 0.025,
+    salt: 0.4,
     stubble: 0.6,
     narrow: 0.88,
     long: 1.2,
@@ -445,11 +455,13 @@ function buildStephan(torso: THREE.Mesh, H: number): Portrait {
   // Eyes narrowed by the grin.
   eyes(head, 0.1, '#3a2c20', 0.8);
   brows(head, '#4a4642', 0.055, 0.14, 0.32);
-  specs(head, '#b8742c', 0.58, 0.35, 0.055);
+  specs(head, '#a8682a', 0.58, 0.34, 0.045);
   // The grin: wide, corners well up, teeth showing.
   smile(head, 0.56, true, 0.11, 0.08);
-  // The headset on his left (+x): ear pad, boom, mic at the corner of the mouth.
-  headset(head, '#e2d2c0');
+  // THE MIC ("Remember the MIC"): a slim skin-tone boom hooked over his left
+  // ear (+x), running along the cheek to a small capsule just off the corner
+  // of the mouth — his in every photograph.
+  headset(head, '#d6b89a', { tube: 0.017, tip: 0.045, pad: 0.05, at: [0.5, -0.3], off: 0.035 });
   g.add(head);
 
   // The polo collar: two flaps folded down either side of the neck, the tipping
@@ -511,7 +523,9 @@ function buildStephan(torso: THREE.Mesh, H: number): Portrait {
   );
   logo.position.set(halfW * 0.5, shoulder - H * 0.1, front + 0.004);
   g.add(logo);
-  return { group: g, head, skin: std('#d9a07c', 0.8), hides: ['glasses', 'mic', 'collar', 'head', 'hair'] };
+  // Short polo sleeves, their cuffs tipped like the collar.
+  const cuff = new THREE.MeshStandardMaterial({ map: tipped, roughness: 0.8 });
+  return { group: g, head, skin: std('#e2b08e', 0.8), hides: ['glasses', 'mic', 'collar', 'head', 'hair'], sleeve: { cloth: std('#434a3c', 0.85), cuff } };
 }
 
 /**
@@ -661,16 +675,21 @@ function moustache(head: THREE.Mesh, colour: string, w: number, h: number): void
 const surf0 = (head: THREE.Mesh, x: number, y: number): number => surfOf(head)(x, y);
 
 /** A headset: pad over the left ear, boom along the cheek, mic at the mouth. */
-function headset(head: THREE.Mesh, colour: string): void {
+function headset(head: THREE.Mesh, colour: string, o: { tube?: number; tip?: number; pad?: number; at?: [number, number]; off?: number } = {}): void {
   const mat = std(colour, 0.5);
-  const tipAt = new THREE.Vector3(0.44, -0.42, surf0(head, 0.44, -0.42) + 0.06);
-  const path = new THREE.QuadraticBezierCurve3(new THREE.Vector3(0.96, -0.05, 0.05), new THREE.Vector3(0.98, -0.5, 0.62), tipAt);
-  head.add(new THREE.Mesh(new THREE.TubeGeometry(path, 16, 0.026, 6), mat));
-  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.072, 10, 8), mat);
+  const [tx, ty] = o.at ?? [0.44, -0.42];
+  const tipAt = new THREE.Vector3(tx, ty, surf0(head, tx, ty) + (o.off ?? 0.06));
+  // Hugging the cheek: the control point sits just off the face's own side.
+  const mid = new THREE.Vector3(0.9, (ty - 0.05) / 2, 0.5);
+  mid.z = Math.max(mid.z, surf0(head, 0.85, mid.y) + 0.04);
+  const path = new THREE.QuadraticBezierCurve3(new THREE.Vector3(0.97, 0.02, 0.02), mid, tipAt);
+  head.add(new THREE.Mesh(new THREE.TubeGeometry(path, 20, o.tube ?? 0.026, 6), mat));
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(o.tip ?? 0.072, 10, 8), mat);
+  tip.scale.set(1.3, 1, 1);
   tip.position.copy(tipAt);
   head.add(tip);
-  const pad = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), mat);
-  pad.position.set(0.98, -0.02, 0.02);
+  const pad = new THREE.Mesh(new THREE.SphereGeometry(o.pad ?? 0.11, 10, 8), mat);
+  pad.position.set(0.98, 0.02, 0.0);
   head.add(pad);
 }
 
@@ -796,7 +815,7 @@ function buildMario(torso: THREE.Mesh, H: number): Portrait {
   const jacket = std('#1c1c20', 0.7);
   const skin = std(skinC, 0.8);
   foldedArms(g, torso, H, jacket, jacket, skin, red);
-  return { group: g, head, body: jacket, skin, hides: ['glasses', 'mic', 'collar', 'head', 'hair', 'arm-l', 'arm-r', 'hand-l', 'hand-r', 'lanyard', 'cup', 'laptop-deck', 'laptop-lid'] };
+  return { group: g, head, body: jacket, skin, hides: ['glasses', 'mic', 'collar', 'head', 'hair', 'arm-l', 'arm-r', 'hand-l', 'hand-r', 'cup', 'laptop-deck', 'laptop-lid'] };
 }
 
 /**
@@ -845,7 +864,7 @@ function buildVenkat(torso: THREE.Mesh, H: number): Portrait {
   const emblem = new THREE.Mesh(new THREE.CircleGeometry(H * 0.014, 12), std('#b8322c', 0.6));
   emblem.position.set(halfW * 0.45, shoulder - H * 0.08, front + 0.004);
   g.add(emblem);
-  return { group: g, head, body: polo, skin: std(skinC, 0.8), hides: ['glasses', 'mic', 'collar', 'head', 'hair', 'lanyard'], barefoot: true };
+  return { group: g, head, body: polo, skin: std(skinC, 0.8), hides: ['glasses', 'mic', 'collar', 'head', 'hair'], barefoot: true };
 }
 
 /**
@@ -917,12 +936,208 @@ function buildJosh(torso: THREE.Mesh, H: number): Portrait {
   g.add(print);
   const skin = std(skinC, 0.8);
   foldedArms(g, torso, H, tee, skin, skin);
-  return { group: g, head, body: tee, skin, hides: ['glasses', 'mic', 'collar', 'head', 'hair', 'arm-l', 'arm-r', 'hand-l', 'hand-r', 'lanyard', 'cup', 'laptop-deck', 'laptop-lid'] };
+  return { group: g, head, body: tee, skin, hides: ['glasses', 'mic', 'collar', 'head', 'hair', 'arm-l', 'arm-r', 'hand-l', 'hand-r', 'cup', 'laptop-deck', 'laptop-lid'] };
+}
+
+/**
+ * Short sleeves on the figure's own arms: the arm goes to skin, and a sleeve
+ * with a tipped cuff is hung on each arm's pivot over its top third.
+ */
+function dressSleeves(yaw: THREE.Group, pt: Portrait): void {
+  const sl = pt.sleeve as NonNullable<Portrait['sleeve']>;
+  let made = pt.group.userData.sleeves as THREE.Object3D[] | undefined;
+  if (!made) {
+    made = [];
+    for (const side of ['l', 'r']) {
+      const arm = yaw.getObjectByName(`arm-${side}`) as THREE.Mesh;
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(LIMB_GEO, sl.cloth);
+      body.name = 'sleeve';
+      const band = new THREE.Mesh(LIMB_GEO, sl.cuff);
+      band.name = 'cuff';
+      g.add(body, band);
+      (arm.parent as THREE.Object3D).add(g);
+      made.push(g);
+    }
+    pt.group.userData.sleeves = made;
+  }
+  for (const [i, side] of ['l', 'r'].entries()) {
+    const arm = yaw.getObjectByName(`arm-${side}`) as THREE.Mesh;
+    arm.material = pt.skin;
+    const g = made[i];
+    g.visible = arm.visible;
+    const len = arm.scale.y * 0.38;
+    const body = g.children[0] as THREE.Mesh;
+    body.scale.set(arm.scale.x * 1.3, len, arm.scale.z * 1.3);
+    body.position.set(0, -len / 2 + arm.scale.x * 0.2, 0);
+    const band = g.children[1] as THREE.Mesh;
+    band.scale.set(arm.scale.x * 1.34, len * 0.2, arm.scale.z * 1.34);
+    band.position.set(0, -len + arm.scale.x * 0.2 + len * 0.1, 0);
+  }
+}
+
+/**
+ * LONG HAIR: a curtain that falls from the crown, frames the face and drapes
+ * over the shoulders — which the skull-hugging sculpt cannot do. Built in head
+ * radii round the back and sides (the face's gap narrows as it falls, so the
+ * hair comes forward over the shoulders), waved, flared at the ends, and
+ * streaked in two colours. `flick` turns the ends out (Aurélie's).
+ */
+function longHair(head: THREE.Mesh, o: { colour: string; streak: string; length: number; gap: number; wave: number; flare: number; flick?: number; parted?: boolean }): void {
+  const U = 40;
+  const V = 26;
+  const pos: number[] = [];
+  const col: number[] = [];
+  const idx: number[] = [];
+  const c1 = new THREE.Color(o.colour);
+  const c2 = new THREE.Color(o.streak);
+  const c = new THREE.Color();
+  const top = 0.72;
+  for (let j = 0; j <= V; j++) {
+    const v = j / V;
+    const y = top - v * (top + o.length);
+    // The face's gap: wide at the temples, closing as the hair falls past the chin.
+    const gap = o.gap * (1 - 0.55 * smooth(-0.6, -1.6, y));
+    for (let i = 0; i <= U; i++) {
+      const u = i / U;
+      const th = -Math.PI + gap + u * (2 * Math.PI - 2 * gap); // 0 = the back (-z)
+      const skull = y > -0.2 ? Math.sqrt(Math.max(0.05, 1 - Math.min(0.97, y * y * (y > 0 ? 1 : 0.4)))) : 0.92;
+      const below = Math.max(0, -0.4 - y);
+      let r = skull * 1.1 + o.flare * below * 0.35 + (o.flick ?? 0) * smooth(o.length - 0.35, o.length, -y) * 0.6;
+      r += o.wave * Math.sin(y * 7 + th * 3) * smooth(0.2, -0.6, y);
+      // A little higher at the sides where it sits over the ears.
+      const x = Math.sin(th) * r;
+      const z = -Math.cos(th) * r * 0.95;
+      pos.push(x, y, z);
+      const st = 0.5 + 0.5 * Math.sin(th * 11 + y * 2.3);
+      c.copy(c1).lerp(c2, st * 0.6).multiplyScalar(0.85 + 0.3 * hash(i, j, 3));
+      col.push(c.r, c.g, c.b);
+    }
+  }
+  for (let j = 0; j < V; j++) {
+    for (let i = 0; i < U; i++) {
+      const a = j * (U + 1) + i;
+      const b = a + U + 1;
+      idx.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, side: THREE.DoubleSide }));
+  mesh.castShadow = true;
+  head.add(mesh);
+  if (o.parted) {
+    // The centre parting: a thin line of scalp down the crown.
+    const part = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.02, 0.9), std(head.userData.skin as string, 0.7));
+    part.position.set(0, 0.99, 0.2);
+    part.rotation.x = 0.4;
+    head.add(part);
+  }
+}
+
+/**
+ * LIZE — two photographs: long wavy auburn hair with a centre parting, pale
+ * skin, light blue eyes, a wide smile, and a headset mic at the cheek; on
+ * stage in a red wrap dress with a V neck and a sash. First name, a
+ * caricature, nothing that needs permission.
+ */
+function buildLize(torso: THREE.Mesh, H: number): Portrait {
+  const g = new THREE.Group();
+  const skinC = '#f0cdb6';
+  const head = sculptHead({
+    skin: skinC,
+    hairTop: '#6e3b22',
+    hairSide: '#7a4428',
+    line: [0.6, 0.45, 0.2, -0.5],
+    thickTop: 0.07,
+    thickSide: 0.04,
+    salt: 0,
+    stubble: 0,
+    narrow: 0.88,
+    long: 1.16,
+    face: { brow: 0.04, socket: 0.05, cheek: 0.07, jawTaper: 0.3, chin: 0.05, nose: 0.17, noseW: 0.1, crownFlat: 0.06, blush: 0.2, ears: 0.9 },
+  });
+  eyes(head, 0.1, '#5d88aa', 0.85);
+  brows(head, '#7a4a30', 0.04, 0.12, 0.32);
+  smile(head, 0.52, true, 0.11, 0.08);
+  headset(head, '#e0c2a6', { tube: 0.016, tip: 0.045, pad: 0.05, at: [0.5, -0.32], off: 0.035 });
+  longHair(head, { colour: '#6a3520', streak: '#9a5a32', length: 2.5, gap: 0.95, wave: 0.07, flare: 0.5 });
+  g.add(head);
+  const halfW = torso.scale.x / 2;
+  const front = torso.scale.z / 2;
+  const shoulder = torso.position.y + torso.scale.y / 2;
+  const hip = torso.position.y - torso.scale.y / 2;
+  const red = std('#b3202e', 0.55);
+  const skin = std(skinC, 0.8);
+  // The wrap's V: skin from the collarbones to the sash's crossing.
+  const v = new THREE.Shape();
+  v.moveTo(-halfW * 0.42, 0);
+  v.lineTo(halfW * 0.42, 0);
+  v.lineTo(0, -(shoulder - hip) * 0.5);
+  v.closePath();
+  const vee = new THREE.Mesh(new THREE.ShapeGeometry(v), skin);
+  vee.position.set(0, shoulder - 0.002, front + 0.004);
+  g.add(vee);
+  // The sash at the waist, a deeper red, and the skirt falling from it.
+  const sash = new THREE.Mesh(new THREE.BoxGeometry(halfW * 2.08, H * 0.05, front * 2.08), std('#8e1622', 0.5));
+  sash.position.set(0, hip + (shoulder - hip) * 0.22, 0);
+  g.add(sash);
+  const skirtH = hip * 0.72;
+  const skirt = new THREE.Mesh(new THREE.CylinderGeometry(halfW * 1.02, halfW * 1.45, skirtH, 20, 3, true), red);
+  skirt.material.side = THREE.DoubleSide;
+  skirt.scale.z = front / halfW + 0.15;
+  skirt.position.set(0, hip - skirtH / 2 + H * 0.03, 0);
+  skirt.castShadow = true;
+  g.add(skirt);
+  return { group: g, head, body: red, skin, hides: ['glasses', 'mic', 'collar', 'head', 'hair'] };
+}
+
+/**
+ * AURÉLIE — the photograph: dark brown hair to the jaw with a fringe, its ends
+ * flicked out in every direction, thin violet rectangular frames, a warm
+ * closed-mouth smile, a navy T-shirt.
+ */
+function buildAurelie(torso: THREE.Mesh, _H: number): Portrait {
+  const g = new THREE.Group();
+  const skinC = '#efc9ae';
+  const head = sculptHead({
+    skin: skinC,
+    hairTop: '#3b2a20',
+    hairSide: '#44302a',
+    // A fringe: the hairline comes low on the forehead.
+    line: [0.3, 0.3, 0.15, -0.5],
+    thickTop: 0.12,
+    thickSide: 0.06,
+    salt: 0,
+    stubble: 0,
+    narrow: 0.94,
+    long: 1.08,
+    face: { brow: 0.04, socket: 0.05, cheek: 0.09, jawTaper: 0.22, chin: 0.04, nose: 0.2, noseW: 0.11, crownFlat: 0.02, blush: 0.16, ears: 0.9 },
+  });
+  eyes(head, 0.08, '#4a3326', 0.8);
+  brows(head, '#2b1e18', 0.04, 0.06, 0.29);
+  specs(head, '#6f4a9a', 0.6, 0.3, 0.03, true);
+  smile(head, 0.4, false, 0.03, 0.06);
+  longHair(head, { colour: '#3b2a20', streak: '#5e4232', length: 1.45, gap: 1.05, wave: 0.05, flare: 0.7, flick: 0.9 });
+  g.add(head);
+  const skin = std(skinC, 0.8);
+  const navy = std('#1e2a44', 0.85);
+  const halfW = torso.scale.x / 2;
+  const front = torso.scale.z / 2;
+  const shoulder = torso.position.y + torso.scale.y / 2;
+  // The scoop neck.
+  const neck = new THREE.Mesh(new THREE.CircleGeometry(halfW * 0.4, 16, Math.PI, Math.PI), skin);
+  neck.position.set(0, shoulder - 0.002, front + 0.004);
+  g.add(neck);
+  return { group: g, head, body: navy, skin, hides: ['glasses', 'mic', 'collar', 'head', 'hair'], sleeve: { cloth: navy, cuff: navy } };
 }
 
 type Builder = (torso: THREE.Mesh, H: number) => Portrait;
 /** Who gets a portrait: Stephan by role, the rest by name on a named NPC. */
-const BY_NAME: Readonly<Record<string, Builder>> = { Celestino: buildCelestino, Mario: buildMario, Venkat: buildVenkat, Josh: buildJosh };
+const BY_NAME: Readonly<Record<string, Builder>> = { Celestino: buildCelestino, Mario: buildMario, Venkat: buildVenkat, Josh: buildJosh, Lize: buildLize, 'Aurélie': buildAurelie };
 
 /* --------------------------------------------------------------------- pool */
 
@@ -970,6 +1185,8 @@ export function createPeople(parent: THREE.Object3D): People3D {
         if (pt && pt.group.userData.who !== who) {
           // A pooled figure that was one of them and is now somebody else.
           torso.material = pt.group.userData.cloth as THREE.Material;
+          for (const n of ['arm-l', 'arm-r']) (yaw.getObjectByName(n) as THREE.Mesh).material = pt.group.userData.cloth as THREE.Material;
+          for (const sl of (pt.group.userData.sleeves as THREE.Object3D[] | undefined) ?? []) sl.removeFromParent();
           yaw.remove(pt.group);
           portraits.delete(pm);
           pt = undefined;
@@ -989,6 +1206,7 @@ export function createPeople(parent: THREE.Object3D): People3D {
         neck.material = pt.skin;
         if (pt.body) torso.material = pt.body;
         if (pt.barefoot) placeFeet(yaw, H, pt.skin);
+        if (pt.sleeve) dressSleeves(yaw, pt);
       }
       for (let i = people.length; i < models.length; i++) models[i].root.visible = false;
     },

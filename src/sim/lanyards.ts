@@ -20,8 +20,19 @@ export const LANYARD: Readonly<Record<string, string>> = Object.freeze({
   attendee: '#8fa3bd',
   /** Devoxx red: the crew behind a counter, and the volunteers on the doors. */
   crew: '#c0392b',
-  /** Teal: about two hundred of these, and exactly one of them is late. */
+  /** Teal: about two hundred of these — every speaker in the building. */
   speaker: '#28a3a0',
+  /**
+   * The keynote's own ribbon: MULTICOLOUR, one of a kind.
+   *
+   * Michele, 28 Sep 2026: *"I think they should have speakers badge, and the
+   * keynote another color, maybe multicolor?"* — the famous faces on the hall
+   * floor are speakers and wear teal like every other speaker, and the one
+   * person chapter 3 is looking for wears a ribbon nobody else does. This hex is
+   * the ribbon's key (and its average, for anything that paints one flat
+   * colour); a renderer that sees it paints a rainbow.
+   */
+  keynote: '#c8409a',
   /** Devoxx orange, one per conference. */
   chair: '#e08a1e',
 });

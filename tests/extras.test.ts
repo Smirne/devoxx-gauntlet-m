@@ -34,8 +34,10 @@ describe('lanyards', () => {
     expect(lanyardFor('speaker')).toBe(LANYARD.speaker);
     expect(lanyardFor('stephan')).toBe(LANYARD.chair);
     expect(lanyardFor('visitor')).toBe(LANYARD.attendee);
-    // Four distinct colours, or the whole idea says nothing.
-    expect(new Set(Object.values(LANYARD)).size).toBe(4);
+    // Every ribbon a distinct colour, or the whole idea says nothing. Five since
+    // 28 Sep 2026: the keynote's own multicolour one joined the four.
+    expect(new Set(Object.values(LANYARD)).size).toBe(Object.keys(LANYARD).length);
+    expect(Object.keys(LANYARD)).toHaveLength(5);
   });
 
   it('puts one on every person who has been past the desk, with Stephan the only chair', () => {
@@ -56,6 +58,8 @@ describe('lanyards', () => {
     expect(served.length).toBeGreaterThan(8);
     expect(served.every((p) => p.lanyard !== undefined), 'somebody got in without a badge').toBe(true);
     expect(people.filter((p) => p.lanyard === LANYARD.chair)).toHaveLength(1);
+    // ...and exactly one keynote speaker: the multicolour ribbon is the search.
+    expect(people.filter((p) => p.lanyard === LANYARD.keynote)).toHaveLength(1);
     expect(people.filter((p) => p.lanyard === LANYARD.crew).length).toBeGreaterThan(0);
   });
 });
