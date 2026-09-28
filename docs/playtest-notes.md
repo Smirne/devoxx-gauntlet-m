@@ -1032,3 +1032,20 @@ one full run, chapter 1 to the card:
 
 (That clock is the sim's, not a player's — the choreography places robots where a solved puzzle
 needs them. `tests/chapter4-length.test.ts` is the one that drives.)
+
+### ...and the same run in the real build
+
+The headless test proves the sim; the gate also wants the renderer. The same
+choreography was driven through the published bundle in headless Chromium — the opening crate
+sequence, the code, both cutscenes, all four rooms, the opening video and the score card — with the
+page's own error counter read at the end:
+
+```
+frames 2602    1 night 21.0s · 2 expo 10.4s · 3 breakfast 37.2s · 4 keynote 1.5s · video 15.8s
+phase  done    "Keynote starts. 7/9 — Night 0s · Expo 16s (cable 0 px) · Soup 100% at 100° …"
+title  After Dark · ERRORS:0
+```
+
+Zero console errors on every leg, and a screenshot per chapter. 7/9 on the card: the run drops
+points for the five catering complaints it never stopped to clear and for the stage finished with
+374 s of slack rather than at a run.
