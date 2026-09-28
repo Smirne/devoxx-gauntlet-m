@@ -5126,3 +5126,34 @@ have matched the room around them, and would have cost more than the entire rest
     Room 8's closed door leaf opens, chapter 1's props hide, and the robot lamps dim for the
     lit room. Stephan and the speaker wear their chapter 3 outfits (polo, glasses, mic; teal
     hoodie). Before this change they were a beige figure and a cream one.
+- **Faces: Stephan and Josh, then the whole crowd** (28 Sep 2026). Michele: "Can we work on
+  Stephan and Josh face shape? The other seem fine, a general improvement on graphics would be
+  welcome." (He also asked what the session needed from Google Drive. The answer was nothing:
+  the agent had only passed on a notice that the connector is not authorised.)
+  - *The diagnosis.* Every close-up head was a ball with features glued to the front: glasses
+    floating at a fixed depth, eyes like two marbles on the surface, a slit for a mouth, and no
+    bone structure.
+  - *The sculpt* (`sculptHead`, `FaceShape`) gained parameters for bone structure:
+    - brow ridge, eye sockets and cheekbones;
+    - a jaw with separate taper and corner width, and a forward chin;
+    - a nose with its own width, and a flatter crown;
+    - painted socket shade, warm cheeks and nose, and beard shadow on the upper lip;
+    - ear size and splay.
+  - *Features sit on the face.* The mesh carries `surf(x, y)`, its real depth found by a ray, so
+    each feature is placed against the face itself:
+    - the eyes are sunk into their sockets, with an upper lid in the skin and a catchlight;
+    - the brows rest on the ridge;
+    - the glasses clear the nose bridge, the lenses wrap slightly, and the temples run back to
+      the ears;
+    - the mouth is a crescent laid onto the face's curve, with the corners raised, teeth, and a
+      lower lip.
+  - *Stephan* has a long face with high cheekbones lifted by the grin, a tapering jaw, a definite
+    chin, a straight nose, and grey stubble up to the lip. His frames are slimmer and his eyes
+    narrowed by the smile.
+  - *Josh* has a broad, square jaw, full rosy cheeks, a high forehead, ears that stand out, and a
+    ginger beard shadow over the lip and jaw with a big grin.
+  - The others kept their proportions but got the new eyes, brows and mouths.
+  - *The crowd*, which is every other figure:
+    - hair is now a shell with a hairline, high at the forehead and low at the nape, with a
+      ragged fringe. It had been the same "beanie" cap Stephan's first head had;
+    - every figure has hands that swing with its arms, and two eyes.

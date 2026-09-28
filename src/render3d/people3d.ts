@@ -42,18 +42,63 @@ const HEAD_GEO = new THREE.SphereGeometry(0.5, 20, 14);
 const NECK_GEO = new THREE.CylinderGeometry(0.5, 0.55, 1, 12);
 const SHOE_GEO = new RoundedBoxGeometry(1, 1, 1, 2, 0.35);
 const SHOE_MAT = new THREE.MeshStandardMaterial({ color: new THREE.Color('#26221f'), roughness: 0.55 });
+const HAND_GEO = new THREE.SphereGeometry(0.5, 10, 8);
+/** The crowd's eyes: two dark dots, enough for a face to look somewhere. */
+const EYE_GEO = new THREE.SphereGeometry(0.5, 8, 6);
+const EYE_MAT = new THREE.MeshStandardMaterial({ color: new THREE.Color('#1b1714'), roughness: 0.3 });
+
+/**
+ * The crowd's hair: a shell over the skull with a HAIRLINE, not a cap.
+ *
+ * The shared figure's hair is a squashed sphere lifted over the head, and at
+ * 3D distance it had the same fault Stephan's first head had — a band round
+ * the skull at one height, a beanie (Michele, 28 Sep). This keeps its size and
+ * pose (the figure scales and places it) but tucks every vertex below a line
+ * that is high at the forehead and low at the nape into the head, and roughens
+ * what is left so it catches the light like hair.
+ */
+const HAIR_GEO = ((): THREE.BufferGeometry => {
+  const g = new THREE.SphereGeometry(0.5, 28, 20);
+  const pos = g.getAttribute('position');
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i) * 2;
+    const y = pos.getY(i) * 2;
+    const z = pos.getZ(i) * 2;
+    // Figure-local: +z is the face. Forehead line high, nape low.
+    const line = 0.05 + 0.3 * Math.max(0, z) - 0.55 * Math.max(0, -z) - 0.15 * (1 - Math.abs(z)) * Math.abs(x);
+    const h = Math.sin(Math.round(x * 9) * 127.1 + Math.round(y * 9) * 311.7 + Math.round(z * 9) * 74.7) * 43758.5453;
+    const n = h - Math.floor(h);
+    const k = y + (n - 0.5) * 0.12 > line ? 1 + 0.04 * n : 0.8;
+    pos.setXYZ(i, pos.getX(i) * k, pos.getY(i) * k, pos.getZ(i) * k);
+  }
+  g.computeVertexNormals();
+  return g;
+})();
 
 /** Swap the shared figure's boxes for rounded ones, once per pooled model. */
 function soften(yaw: THREE.Group): THREE.Mesh {
   (yaw.getObjectByName('torso') as THREE.Mesh).geometry = TORSO_GEO;
   for (const n of ['leg-l', 'leg-r', 'arm-l', 'arm-r']) (yaw.getObjectByName(n) as THREE.Mesh).geometry = LIMB_GEO;
   (yaw.getObjectByName('head') as THREE.Mesh).geometry = HEAD_GEO;
-  (yaw.getObjectByName('hair') as THREE.Mesh).geometry = HEAD_GEO;
+  (yaw.getObjectByName('hair') as THREE.Mesh).geometry = HAIR_GEO;
+  // Hands, at the end of each arm, riding its pivot so they swing with it.
+  for (const side of ['l', 'r']) {
+    const arm = yaw.getObjectByName(`arm-${side}`) as THREE.Mesh;
+    const hand = new THREE.Mesh(HAND_GEO);
+    hand.name = `hand-${side}`;
+    hand.castShadow = true;
+    (arm.parent as THREE.Object3D).add(hand);
+  }
   for (const side of ['l', 'r']) {
     const shoe = new THREE.Mesh(SHOE_GEO, SHOE_MAT);
     shoe.name = `shoe-${side}`;
     shoe.castShadow = true;
     (yaw.getObjectByName(`leg-${side}-pivot`) as THREE.Object3D).add(shoe);
+  }
+  for (const side of ['l', 'r']) {
+    const eye = new THREE.Mesh(EYE_GEO, EYE_MAT);
+    eye.name = `eye-${side}`;
+    yaw.add(eye);
   }
   const neck = new THREE.Mesh(NECK_GEO);
   neck.name = 'neck';
@@ -85,6 +130,20 @@ function placeNeck(yaw: THREE.Group, neck: THREE.Mesh): void {
   neck.scale.set(R * 0.8, Math.max(0.01, top - bottom), R * 0.8);
   neck.position.set(0, (top + bottom) / 2, 0);
   neck.material = head.material;
+  for (const [side, sx] of [
+    ['l', -1],
+    ['r', 1],
+  ] as const) {
+    const eye = yaw.getObjectByName(`eye-${side}`) as THREE.Mesh;
+    eye.scale.set(R * 0.17, R * 0.22, R * 0.1);
+    eye.position.set(head.position.x + sx * R * 0.34, head.position.y + R * 0.08, head.position.z + R * 0.92);
+    eye.visible = head.visible;
+    const arm = yaw.getObjectByName(`arm-${side}`) as THREE.Mesh;
+    const hand = yaw.getObjectByName(`hand-${side}`) as THREE.Mesh;
+    hand.material = head.material;
+    hand.scale.set(arm.scale.x * 1.15, arm.scale.x * 1.35, arm.scale.z * 1.05);
+    hand.position.set(0, -arm.scale.y - arm.scale.x * 0.4, 0);
+  }
 }
 
 /* ----------------------------------------------------------- sculpted heads */
@@ -108,7 +167,42 @@ interface HeadSpec {
   long: number;
   /** The beard's colour, where `stubble` paints it (dark grey by default). */
   beard?: string;
+  /** The bones under the skin; every field has a mild default. See `FACE`. */
+  face?: Partial<FaceShape>;
 }
+
+/**
+ * The FACE, not just the head: what turns a ball with features stuck on it into
+ * somebody. Michele, 28 Sep 2026: *"Can we work on Stephan and Josh face
+ * shape?"* — the close-ups were spheres with a nose bump, the glasses floating
+ * in front and the eyes two marbles on the surface. All in head radii.
+ */
+interface FaceShape {
+  /** Brow ridge standing forward over the eyes. */
+  brow: number;
+  /** How deep the eyes sit under it. */
+  socket: number;
+  /** Cheekbones (and, pushed up, a grin's cheeks). */
+  cheek: number;
+  /** How fast the jaw narrows to the chin: high is a pointed chin, low a square jaw. */
+  jawTaper: number;
+  /** A wider lower face at the jaw's corners. */
+  jawWidth: number;
+  /** The chin pushed forward. */
+  chin: number;
+  /** The nose's reach, and its width. */
+  nose: number;
+  noseW: number;
+  /** The crown flattened, less of an egg. */
+  crownFlat: number;
+  /** Warmth on the cheeks and nose. */
+  blush: number;
+  /** Beard shadow on the upper lip, as a share of `stubble`. */
+  lip: number;
+  /** Ear size, and how far they stand off the head. */
+  ears: number;
+}
+const FACE: FaceShape = { brow: 0.05, socket: 0.05, cheek: 0.03, jawTaper: 0.18, jawWidth: 0, chin: 0.03, nose: 0.16, noseW: 0.13, crownFlat: 0.05, blush: 0.08, lip: 0, ears: 1 };
 
 const smooth = (a: number, b: number, x: number): number => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -118,6 +212,7 @@ const hash = (x: number, y: number, z: number): number => {
   const h = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453;
   return h - Math.floor(h);
 };
+const bump = (u: number, v: number): number => Math.exp(-(u * u + v * v));
 
 /**
  * One mesh for skull, face and hair, instead of a head with a cap on it.
@@ -128,25 +223,33 @@ const hash = (x: number, y: number, z: number): number => {
  * out a little where there is hair and not at all where there is not, with a
  * hairline that is high at the forehead, recedes at the temples, is cropped
  * short over the ears and drops at the nape. So that is what this builds: a
- * unit sphere, shaped into a face (narrower, a longer jaw, a nose), with every
- * vertex above the hairline pushed out by a textured thickness and coloured
- * hair, and the rest coloured skin — with the beard shadow painted onto the jaw
- * rather than a shell laid over it.
+ * unit sphere, shaped into a face (`FaceShape`: brow, sockets, cheekbones,
+ * nose, jaw and chin), with every vertex above the hairline pushed out by a
+ * textured thickness and coloured hair, and the rest coloured skin — with the
+ * beard shadow, the sockets' shade and the cheeks' warmth painted in.
+ *
+ * `userData.surf(x, y)` is the face's own depth at a point, so the features
+ * (eyes, brows, glasses, mouth) sit ON it rather than at a guessed z.
  */
 function sculptHead(spec: HeadSpec): THREE.Mesh {
-  const geo = new THREE.SphereGeometry(1, 56, 40);
+  const f: FaceShape = { ...FACE, ...spec.face };
+  const geo = new THREE.SphereGeometry(1, 72, 54);
   const pos = geo.getAttribute('position');
   const col = new Float32Array(pos.count * 3);
   const skin = new THREE.Color(spec.skin);
   const top = new THREE.Color(spec.hairTop);
   const side = new THREE.Color(spec.hairSide);
   const beard = new THREE.Color(spec.beard ?? '#4d4640');
+  const warm = new THREE.Color('#d0645a');
   const c = new THREE.Color();
   const [front, temple, over, nape] = spec.line;
   for (let i = 0; i < pos.count; i++) {
     let x = pos.getX(i);
     let y = pos.getY(i);
     let z = pos.getZ(i);
+    const ux = x;
+    const uy = y;
+    const uz = z;
     const a = Math.abs(Math.atan2(x, z));
     // The hairline, round the head: forehead -> temple -> over the ear -> nape.
     const line = a < 0.9 ? front + (temple - front) * (a / 0.9) : a < 1.6 ? temple + (over - temple) * ((a - 0.9) / 0.7) : over + (nape - over) * ((a - 1.6) / (Math.PI - 1.6));
@@ -154,25 +257,41 @@ function sculptHead(spec: HeadSpec): THREE.Mesh {
     const hair = smooth(line - 0.02, line + 0.07, y + (n - 0.5) * 0.05);
     const crown = smooth(0.25, 0.85, y);
     const thick = hair * (spec.thickSide + (spec.thickTop - spec.thickSide) * crown) * (0.75 + 0.5 * n);
-    // The face: narrower, the jaw longer and tapering to the chin, and a nose.
+    const facing = smooth(0.35, 0.85, uz);
+    // The skull: a flatter crown.
+    if (y > 0.55) y = 0.55 + (y - 0.55) * (1 - f.crownFlat);
+    // The face's width, then the jaw: wider at its corners, narrowing to the chin.
     x *= spec.narrow;
-    if (y < -0.2) {
-      const k = 1 - 0.18 * (-0.2 - y);
-      x *= k;
-      z *= 1 - 0.08 * (-0.2 - y);
+    if (y < -0.15) {
+      const d = -0.15 - y;
+      x *= 1 - f.jawTaper * d + f.jawWidth * d * (1 - d) * 2;
+      z *= 1 - 0.08 * d;
     }
     y *= y < 0 ? spec.long : 1;
-    if (z > 0.6) z += 0.16 * Math.exp(-((x / 0.13) ** 2 + ((y + 0.08) / 0.22) ** 2));
+    // Bones under the skin, all on the front of the head.
+    const ax = Math.abs(x);
+    z += f.brow * bump(ax / 0.42, (uy - 0.3) / 0.08) * facing;
+    const sock = bump((ax - 0.3) / 0.14, (uy - 0.1) / 0.11) * facing;
+    z -= f.socket * sock;
+    const cheek = bump((ax - 0.52) / 0.2, (uy + 0.08) / 0.16) * facing;
+    x += Math.sign(x) * f.cheek * 0.6 * cheek;
+    z += f.cheek * cheek;
+    z += f.chin * bump(x / 0.26, (uy + 0.86) / 0.14) * facing;
+    if (uz > 0.5) z += f.nose * Math.exp(-((x / f.noseW) ** 2)) * (bump(0, (uy + 0.1) / 0.17) + 0.45 * bump(0, (uy - 0.12) / 0.12));
     const r = 1 + thick;
     pos.setXYZ(i, x * r, y * r, z * r);
-    // Colour: hair (darker on the crown, salt through it), else skin, with the
-    // beard shadow on the lower face and jaw.
+    // Colour: hair (darker on the crown, salt through it), else skin — shaded
+    // in the sockets, warm on the cheeks and nose, beard shadow on the jaw and,
+    // for some, the upper lip.
     c.copy(side).lerp(top, crown);
     if (n > 1 - spec.salt) c.lerp(new THREE.Color('#bdb8b0'), 0.6);
     c.multiplyScalar(0.9 + 0.2 * hash(i, 1, 2));
     const sk = skin.clone();
-    const jaw = smooth(-0.1, -0.45, pos.getY(i)) * smooth(-0.35, 0.2, pos.getZ(i));
-    if (spec.stubble > 0) sk.lerp(beard, jaw * spec.stubble * (0.7 + 0.3 * hash(i, 5, 7)));
+    sk.multiplyScalar(1 - 0.22 * sock);
+    sk.lerp(warm, f.blush * (cheek + 0.6 * bump(ux / 0.12, (uy + 0.1) / 0.15)) * facing);
+    const jaw = smooth(-0.1, -0.45, uy) * smooth(-0.35, 0.2, uz);
+    const lip = f.lip * bump(ux / 0.3, (uy + 0.3) / 0.07) * facing;
+    if (spec.stubble > 0) sk.lerp(beard, Math.min(1, jaw + lip) * spec.stubble * (0.7 + 0.3 * hash(i, 5, 7)));
     c.lerp(sk, 1 - hair);
     col[i * 3] = c.r;
     col[i * 3 + 1] = c.g;
@@ -180,18 +299,32 @@ function sculptHead(spec: HeadSpec): THREE.Mesh {
   }
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 }));
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62 }));
   mesh.castShadow = true;
-  // Ears, in the skin colour.
-  const earMat = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.8 });
+  // The face's depth at (x, y), for putting things on it.
+  const ray = new THREE.Raycaster();
+  const probe = new THREE.Mesh(geo);
+  const surf = (x: number, y: number): number => {
+    ray.set(new THREE.Vector3(x, y, 3), new THREE.Vector3(0, 0, -1));
+    const hit = ray.intersectObject(probe, false)[0];
+    return hit ? hit.point.z : Math.sqrt(Math.max(0, 1 - x * x - y * y));
+  };
+  mesh.userData.surf = surf;
+  mesh.userData.skin = spec.skin;
+  // Ears, in the skin colour, cupped and set back.
+  const earMat = new THREE.MeshStandardMaterial({ color: skin.clone().lerp(warm, 0.08), roughness: 0.7 });
   for (const sx of [-1, 1]) {
-    const ear = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), earMat);
-    ear.scale.set(0.12, 0.24, 0.16);
-    ear.position.set(sx * 0.95 * spec.narrow, -0.08, -0.02);
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 10), earMat);
+    ear.scale.set(0.1 * f.ears, 0.25 * f.ears, 0.16 * f.ears);
+    ear.position.set(sx * (0.94 * spec.narrow + 0.03 * (f.ears - 1)), -0.06, -0.04);
+    ear.rotation.y = sx * 0.35 * f.ears;
     mesh.add(ear);
   }
   return mesh;
 }
+
+/** A sculpted head's face depth at (x, y), in head radii. */
+const surfOf = (head: THREE.Mesh): ((x: number, y: number) => number) => head.userData.surf as (x: number, y: number) => number;
 
 /* ----------------------------------------------------------------- portraits */
 
@@ -245,18 +378,35 @@ function roundRectRing(w: number, h: number, t: number): THREE.ExtrudeGeometry {
 
 const std = (c: string, rough = 0.6): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color: new THREE.Color(c), roughness: rough });
 
-/** Eyes on a sculpted head (unit radius, so these are in head radii). */
-function eyes(head: THREE.Mesh, y: number, colour = '#1f1a16'): void {
-  const white = std('#f1ece4', 0.4);
-  const iris = std(colour, 0.3);
+/**
+ * Eyes, set INTO the face: the whites sunk into the socket, a dark iris with a
+ * catchlight, and an upper lid in the skin over the top third, which is what
+ * stops them reading as two marbles glued to a ball.
+ */
+function eyes(head: THREE.Mesh, y: number, colour = '#1f1a16', open = 1): void {
+  const surf = surfOf(head);
+  const white = std('#efe9e0', 0.35);
+  const iris = std(colour, 0.25);
+  const lid = std(head.userData.skin as string, 0.7);
+  const glint = new THREE.MeshBasicMaterial({ color: 0xffffff });
   for (const sx of [-1, 1]) {
-    const w = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), white);
-    w.scale.set(1, 0.7, 0.5);
-    w.position.set(sx * 0.3, y, 0.9);
+    const x = sx * 0.3;
+    const z = surf(x, y);
+    const w = new THREE.Mesh(new THREE.SphereGeometry(0.11, 14, 10), white);
+    w.scale.set(1, 0.72 * open, 0.55);
+    w.position.set(x, y, z - 0.03);
     head.add(w);
-    const p = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), iris);
-    p.position.set(sx * 0.3, y, 0.95);
+    const p = new THREE.Mesh(new THREE.SphereGeometry(0.058, 12, 8), iris);
+    p.scale.set(1, 1, 0.5);
+    p.position.set(x, y - 0.005, z + 0.028);
     head.add(p);
+    const g = new THREE.Mesh(new THREE.SphereGeometry(0.014, 6, 4), glint);
+    g.position.set(x + 0.02, y + 0.02, z + 0.052);
+    head.add(g);
+    const l = new THREE.Mesh(new THREE.SphereGeometry(0.125, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.42), lid);
+    l.scale.set(1, 0.8, 0.62);
+    l.position.set(x, y + 0.005, z - 0.035);
+    head.add(l);
   }
 }
 
@@ -271,6 +421,13 @@ function eyes(head: THREE.Mesh, y: number, colour = '#1f1a16'): void {
  */
 function buildStephan(torso: THREE.Mesh, H: number): Portrait {
   const g = new THREE.Group();
+  /*
+   * The face: longer than it is wide, high cheekbones pushed up by the grin, a
+   * tapering jaw to a definite chin, a straight nose, and the brow sitting low
+   * over the eyes behind the frames. Warm, outdoorsy skin, grey stubble right
+   * up to the lip line. Michele, 28 Sep: "Can we work on Stephan and Josh face
+   * shape?" — he was a ball wearing glasses.
+   */
   const head = sculptHead({
     skin: '#d9a07c',
     hairTop: '#4a4642',
@@ -279,47 +436,20 @@ function buildStephan(torso: THREE.Mesh, H: number): Portrait {
     thickTop: 0.14,
     thickSide: 0.035,
     salt: 0.3,
-    stubble: 0.55,
-    narrow: 0.92,
-    long: 1.14,
+    stubble: 0.6,
+    narrow: 0.88,
+    long: 1.2,
+    beard: '#5a534c',
+    face: { brow: 0.08, socket: 0.07, cheek: 0.09, jawTaper: 0.34, jawWidth: 0.04, chin: 0.07, nose: 0.27, noseW: 0.11, crownFlat: 0.1, blush: 0.14, lip: 0.45, ears: 1.05 },
   });
-  eyes(head, 0.1);
-  const amber = new THREE.MeshStandardMaterial({ color: new THREE.Color('#b8742c'), roughness: 0.35, metalness: 0.05 });
-  const lens = roundRectRing(0.62, 0.38, 0.065);
-  for (const sx of [-1, 1]) {
-    const f = new THREE.Mesh(lens, amber);
-    f.position.set(sx * 0.33, 0.1, 0.97);
-    head.add(f);
-    const temple = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.95), amber);
-    temple.position.set(sx * 0.66, 0.14, 0.48);
-    temple.rotation.y = sx * -0.22;
-    head.add(temple);
-    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.05, 0.05), std('#4a4642', 0.9));
-    brow.position.set(sx * 0.32, 0.33, 0.93);
-    brow.rotation.z = sx * -0.12;
-    head.add(brow);
-  }
-  const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.05, 0.04), amber);
-  bridge.position.set(0, 0.18, 1.02);
-  head.add(bridge);
-  // The grin: open, teeth showing.
-  const mouth = new THREE.Mesh(new THREE.SphereGeometry(0.5, 14, 6, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), std('#4a1f18', 0.8));
-  mouth.scale.set(0.42, 0.22, 0.14);
-  mouth.position.set(0, -0.36, 0.9);
-  head.add(mouth);
-  const teeth = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.05), std('#f3eee5', 0.5));
-  teeth.position.set(0, -0.37, 0.95);
-  head.add(teeth);
+  // Eyes narrowed by the grin.
+  eyes(head, 0.1, '#3a2c20', 0.8);
+  brows(head, '#4a4642', 0.055, 0.14, 0.32);
+  specs(head, '#b8742c', 0.58, 0.35, 0.055);
+  // The grin: wide, corners well up, teeth showing.
+  smile(head, 0.56, true, 0.11, 0.08);
   // The headset on his left (+x): ear pad, boom, mic at the corner of the mouth.
-  const skinish = std('#e2d2c0', 0.5);
-  const boomPath = new THREE.QuadraticBezierCurve3(new THREE.Vector3(0.96, -0.05, 0.05), new THREE.Vector3(0.95, -0.48, 0.62), new THREE.Vector3(0.42, -0.44, 0.97));
-  head.add(new THREE.Mesh(new THREE.TubeGeometry(boomPath, 12, 0.03, 6), skinish));
-  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), std('#efe6da', 0.5));
-  tip.position.copy(boomPath.getPoint(1));
-  head.add(tip);
-  const pad = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), skinish);
-  pad.position.set(0.98, -0.02, 0.02);
-  head.add(pad);
+  headset(head, '#e2d2c0');
   g.add(head);
 
   // The polo collar: two flaps folded down either side of the neck, the tipping
@@ -405,14 +535,8 @@ function buildCelestino(torso: THREE.Mesh, H: number): Portrait {
     long: 1.1,
   });
   eyes(head, 0.1, '#3b2a1e');
-  for (const sx of [-1, 1]) {
-    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.06, 0.05), std('#2a221d', 0.9));
-    brow.position.set(sx * 0.32, 0.3, 0.93);
-    head.add(brow);
-  }
-  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.04, 0.04), std('#8a4a3c', 0.8));
-  mouth.position.set(0, -0.36, 0.95);
-  head.add(mouth);
+  brows(head, '#2a221d', 0.06, 0.04, 0.3);
+  smile(head, 0.3, false, 0.025, 0.02);
   g.add(head);
   const halfW = torso.scale.x / 2;
   const front = torso.scale.z / 2;
@@ -452,62 +576,100 @@ function buildCelestino(torso: THREE.Mesh, H: number): Portrait {
 
 /* ------------------------------------------------- the three on the hall floor */
 
-/** Rectangular frames on a sculpted head: `metal` for thin wire, else acetate. */
+/**
+ * Rectangular frames on a sculpted head: `metal` for thin wire, else acetate.
+ * Seated on the face — in front of the brow and the nose bridge, each lens
+ * turned a little to wrap — with the temples running back to the ears.
+ */
 function specs(head: THREE.Mesh, colour: string, w: number, h: number, t: number, metal = false): void {
-  const m = new THREE.MeshStandardMaterial({ color: new THREE.Color(colour), roughness: metal ? 0.3 : 0.4, metalness: metal ? 0.7 : 0.05 });
+  const surf = surfOf(head);
+  const m = new THREE.MeshStandardMaterial({ color: new THREE.Color(colour), roughness: metal ? 0.3 : 0.35, metalness: metal ? 0.7 : 0.05 });
   const ring = roundRectRing(w, h, t);
+  const y = 0.1;
+  const z = Math.max(surf(0, 0.14) + 0.01, surf(0.33, y) + 0.07, surf(0.33, 0.3) + 0.02);
   for (const sx of [-1, 1]) {
     const f = new THREE.Mesh(ring, m);
-    f.position.set(sx * 0.33, 0.1, 0.97);
+    f.position.set(sx * 0.33, y, z - 0.03);
+    f.rotation.y = sx * 0.12;
     head.add(f);
-    const temple = new THREE.Mesh(new THREE.BoxGeometry(t * 0.8, t, 0.95), m);
-    temple.position.set(sx * 0.6, 0.14, 0.45);
-    temple.rotation.y = sx * -0.2;
+    // The temple: from the lens's outer corner back over the ear.
+    const a = new THREE.Vector3(sx * (0.33 + w / 2 - 0.02), y + h * 0.3, z - 0.07);
+    const b = new THREE.Vector3(sx * 0.93, y + 0.02, -0.1);
+    const temple = new THREE.Mesh(new THREE.BoxGeometry(t * 0.7, t * 0.9, a.distanceTo(b)), m);
+    temple.position.copy(a).add(b).multiplyScalar(0.5);
+    temple.lookAt(b);
     head.add(temple);
   }
-  const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.12, t * 0.8, t * 0.6), m);
-  bridge.position.set(0, 0.16, 1.01);
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.1, t * 0.8, t * 0.6), m);
+  bridge.position.set(0, y + h * 0.15, z);
   head.add(bridge);
 }
 
-function brows(head: THREE.Mesh, colour: string, thick = 0.06, tilt = 0.1): void {
+function brows(head: THREE.Mesh, colour: string, thick = 0.06, tilt = 0.1, y = 0.31): void {
+  const surf = surfOf(head);
+  const mat = std(colour, 0.9);
   for (const sx of [-1, 1]) {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(0.28, thick, 0.05), std(colour, 0.9));
-    b.position.set(sx * 0.32, 0.33, 0.93);
-    b.rotation.z = sx * -tilt;
+    const b = new THREE.Mesh(new RoundedBoxGeometry(0.28, thick, 0.06, 1, thick * 0.4), mat);
+    b.position.set(sx * 0.31, y, surf(sx * 0.31, y) + 0.005);
+    b.rotation.set(-0.15, sx * 0.25, sx * -tilt);
     head.add(b);
   }
 }
 
-/** A smile: a dark crescent, with teeth when it is a grin. */
-function smile(head: THREE.Mesh, w: number, teeth: boolean): void {
-  const m = new THREE.Mesh(new THREE.SphereGeometry(0.5, 14, 6, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), std('#4a1f18', 0.8));
-  m.scale.set(w, 0.16, 0.12);
-  m.position.set(0, -0.38, 0.92);
-  head.add(m);
-  if (!teeth) return;
-  const t = new THREE.Mesh(new THREE.BoxGeometry(w * 0.7, 0.05, 0.05), std('#f3eee5', 0.5));
-  t.position.set(0, -0.39, 0.96);
-  head.add(t);
+/** A flat shape laid onto the face: every vertex lifted to the surface. */
+function onFace(head: THREE.Mesh, shape: THREE.Shape, mat: THREE.Material, lift: number): THREE.Mesh {
+  const surf = surfOf(head);
+  const geo = new THREE.ShapeGeometry(shape, 16);
+  const pos = geo.getAttribute('position');
+  for (let i = 0; i < pos.count; i++) pos.setZ(i, surf(pos.getX(i), pos.getY(i)) + lift);
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, mat);
+  head.add(mesh);
+  return mesh;
+}
+
+/**
+ * A mouth, drawn on the face's own curve: a crescent with its corners turned up
+ * by `up`, open by `open`, and a band of teeth across the top when it is a grin.
+ */
+function smile(head: THREE.Mesh, w: number, teeth: boolean, open = 0.1, up = 0.05, y0 = -0.4): void {
+  const hw = w / 2;
+  const crescent = (drop: number): THREE.Shape => {
+    const s = new THREE.Shape();
+    s.moveTo(-hw, y0 + up);
+    s.quadraticCurveTo(0, y0 - up * 0.3, hw, y0 + up);
+    s.quadraticCurveTo(0, y0 - drop * 2, -hw, y0 + up);
+    return s;
+  };
+  onFace(head, crescent(Math.max(0.02, open)), std('#3e1812', 0.85), 0.02);
+  if (teeth && open > 0.04) onFace(head, crescent(open * 0.45), std('#f3eee5', 0.45), 0.024);
+  // The lower lip's line, a little warmer than the skin round it.
+  const lip = new THREE.Shape();
+  lip.moveTo(-hw * 0.7, y0 - open * 0.95);
+  lip.quadraticCurveTo(0, y0 - open * 1.35, hw * 0.7, y0 - open * 0.95);
+  lip.quadraticCurveTo(0, y0 - open * 1.1 - 0.05, -hw * 0.7, y0 - open * 0.95);
+  onFace(head, lip, std('#b0625a', 0.6), 0.016);
 }
 
 /** A moustache over the lip: a soft bar, fuller in the middle. */
 function moustache(head: THREE.Mesh, colour: string, w: number, h: number): void {
   const m = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 10), std(colour, 0.95));
   m.scale.set(w, h, 0.16);
-  m.position.set(0, -0.27, 0.95);
+  m.position.set(0, -0.27, surf0(head, 0, -0.27) + 0.01);
   head.add(m);
 }
+const surf0 = (head: THREE.Mesh, x: number, y: number): number => surfOf(head)(x, y);
 
 /** A headset: pad over the left ear, boom along the cheek, mic at the mouth. */
 function headset(head: THREE.Mesh, colour: string): void {
   const mat = std(colour, 0.5);
-  const path = new THREE.QuadraticBezierCurve3(new THREE.Vector3(0.96, -0.05, 0.05), new THREE.Vector3(0.95, -0.48, 0.62), new THREE.Vector3(0.42, -0.44, 0.97));
-  head.add(new THREE.Mesh(new THREE.TubeGeometry(path, 12, 0.028, 6), mat));
-  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.075, 10, 8), mat);
-  tip.position.copy(path.getPoint(1));
+  const tipAt = new THREE.Vector3(0.44, -0.42, surf0(head, 0.44, -0.42) + 0.06);
+  const path = new THREE.QuadraticBezierCurve3(new THREE.Vector3(0.96, -0.05, 0.05), new THREE.Vector3(0.98, -0.5, 0.62), tipAt);
+  head.add(new THREE.Mesh(new THREE.TubeGeometry(path, 16, 0.026, 6), mat));
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.072, 10, 8), mat);
+  tip.position.copy(tipAt);
   head.add(tip);
-  const pad = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), mat);
+  const pad = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), mat);
   pad.position.set(0.98, -0.02, 0.02);
   head.add(pad);
 }
@@ -634,7 +796,7 @@ function buildMario(torso: THREE.Mesh, H: number): Portrait {
   const jacket = std('#1c1c20', 0.7);
   const skin = std(skinC, 0.8);
   foldedArms(g, torso, H, jacket, jacket, skin, red);
-  return { group: g, head, body: jacket, skin, hides: ['glasses', 'mic', 'collar', 'head', 'hair', 'arm-l', 'arm-r', 'lanyard', 'cup', 'laptop-deck', 'laptop-lid'] };
+  return { group: g, head, body: jacket, skin, hides: ['glasses', 'mic', 'collar', 'head', 'hair', 'arm-l', 'arm-r', 'hand-l', 'hand-r', 'lanyard', 'cup', 'laptop-deck', 'laptop-lid'] };
 }
 
 /**
@@ -662,7 +824,7 @@ function buildVenkat(torso: THREE.Mesh, H: number): Portrait {
   specs(head, '#9a9690', 0.58, 0.36, 0.035, true);
   brows(head, '#181514', 0.07, 0.08);
   moustache(head, '#141110', 0.62, 0.17);
-  smile(head, 0.34, false);
+  smile(head, 0.34, false, 0.03, 0.03);
   headset(head, '#c9a888');
   g.add(head);
   const halfW = torso.scale.x / 2;
@@ -703,14 +865,20 @@ function buildJosh(torso: THREE.Mesh, H: number): Portrait {
     thickSide: 0.03,
     salt: 0,
     stubble: 0.75,
-    narrow: 0.95,
-    long: 1.12,
+    narrow: 1.0,
+    long: 1.06,
     beard: '#8e5d3c',
+    /*
+     * Broad and square: a wide jaw that barely narrows, full cheeks lifted by
+     * the grin, a rounded chin under the beard, a high forehead where the hair
+     * has gone back, ears that stand out. Rosy.
+     */
+    face: { brow: 0.05, socket: 0.05, cheek: 0.1, jawTaper: 0.02, jawWidth: 0.28, chin: 0.05, nose: 0.21, noseW: 0.15, crownFlat: 0.14, blush: 0.22, lip: 0.55, ears: 1.25 },
   });
-  eyes(head, 0.1, '#3b3a44');
+  eyes(head, 0.1, '#4a5a66', 0.75);
   specs(head, '#151518', 0.64, 0.36, 0.08);
-  brows(head, '#6a4a33', 0.05, 0.05);
-  smile(head, 0.44, true);
+  brows(head, '#6a4a33', 0.05, 0.02, 0.31);
+  smile(head, 0.6, true, 0.13, 0.09);
   g.add(head);
   const halfW = torso.scale.x / 2;
   const front = torso.scale.z / 2;
@@ -749,7 +917,7 @@ function buildJosh(torso: THREE.Mesh, H: number): Portrait {
   g.add(print);
   const skin = std(skinC, 0.8);
   foldedArms(g, torso, H, tee, skin, skin);
-  return { group: g, head, body: tee, skin, hides: ['glasses', 'mic', 'collar', 'head', 'hair', 'arm-l', 'arm-r', 'lanyard', 'cup', 'laptop-deck', 'laptop-lid'] };
+  return { group: g, head, body: tee, skin, hides: ['glasses', 'mic', 'collar', 'head', 'hair', 'arm-l', 'arm-r', 'hand-l', 'hand-r', 'lanyard', 'cup', 'laptop-deck', 'laptop-lid'] };
 }
 
 type Builder = (torso: THREE.Mesh, H: number) => Portrait;
@@ -794,7 +962,7 @@ export function createPeople(parent: THREE.Object3D): People3D {
         const torso = yaw.getObjectByName('torso') as THREE.Mesh;
         const R = head.scale.x / 2;
         const H = head.position.y + R;
-        for (const n of ['head', 'hair', 'arm-l', 'arm-r']) (yaw.getObjectByName(n) as THREE.Object3D).visible = true;
+        for (const n of ['head', 'hair', 'arm-l', 'arm-r', 'hand-l', 'hand-r', 'eye-l', 'eye-r']) (yaw.getObjectByName(n) as THREE.Object3D).visible = true;
 
         let pt = portraits.get(pm);
         const who = p.role === 'stephan' ? 'Stephan' : p.role === 'staff' && p.name && BY_NAME[p.name] ? p.name : null;
@@ -810,11 +978,12 @@ export function createPeople(parent: THREE.Object3D): People3D {
         if (!pt) {
           pt = who === 'Stephan' ? buildStephan(torso, H) : BY_NAME[who](torso, H);
           pt.group.userData.who = who;
+          pt.head.name = `portrait-${who}`;
           pt.group.userData.cloth = torso.material;
           yaw.add(pt.group);
           portraits.set(pm, pt);
         }
-        for (const n of pt.hides) (yaw.getObjectByName(n) as THREE.Object3D).visible = false;
+        for (const n of [...pt.hides, 'eye-l', 'eye-r']) (yaw.getObjectByName(n) as THREE.Object3D).visible = false;
         pt.head.scale.setScalar(R);
         pt.head.position.copy(head.position);
         neck.material = pt.skin;
