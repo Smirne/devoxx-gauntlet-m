@@ -14,7 +14,7 @@
 
 import * as THREE from 'three';
 
-import { GF, groundWallsFor } from '../sim/geometry';
+import { GF, groundPlates, groundRiseM, groundWallsFor } from '../sim/geometry';
 import type { Prop } from '../sim/types';
 import { ROBOT_HEIGHT_M, m } from '../sim/units';
 
@@ -100,6 +100,32 @@ function sprayTag(): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
+}
+
+const PLATES = groundPlates();
+/**
+ * The top of whatever is drawn at sim (x, y) on the ground floor, metres: the
+ * lobby, or a tread of a flight as `ground3d.ts`'s `stepsFor` draws it (each
+ * tread at the height of its higher edge). The cable ran at 0 or 0.5 m and
+ * disappeared into the small staircase (Michele, 28 Sep: "at a certain point
+ * the cable vanished, while crossing the stairs").
+ */
+function floorTop(x: number, y: number): number {
+  let top = 0;
+  for (const p of PLATES) {
+    if (p.rot || x < p.x || x > p.x + p.w || y < p.y || y > p.y + p.h) continue;
+    const hi = p.hi ?? p.lo;
+    if (hi === p.lo) {
+      top = Math.max(top, p.lo);
+      continue;
+    }
+    const n = Math.max(3, Math.round(Math.abs(hi - p.lo) / 0.17));
+    const u = p.axis === 'y' ? (y - p.y) / p.h : (x - p.x) / p.w;
+    const i = Math.min(n - 1, Math.max(0, Math.floor(u * n)));
+    const at = (v: number): number => p.lo + (hi - p.lo) * v;
+    top = Math.max(top, at(i / n), at((i + 1) / n));
+  }
+  return top;
 }
 
 export interface GroundProps {
@@ -213,19 +239,57 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         return g;
       }
       case 'printer': {
-        // The badge printer on the reception counter.
-        g.position.set(cx, 1.05, cz);
-        const body = new THREE.Mesh(box(w * 0.9, 0.34, d * 0.9, V(0, 0.17, 0)), mats.enamel);
+        // The badge printer, ON the reception counter. The desk stands on the
+        // lobby, so its top is 1.05 m above the lobby floor, not the hall's; at
+        // 1.05 m absolute the old box sat half inside the counter. A card
+        // printer, a size up so it reads from the follow camera: a dark body, a
+        // hopper of blank cards on its back, a slot in front, an LCD, and a tray
+        // where printed badges stack up (Michele: "printer still to be refined").
+        g.position.set(cx, groundRiseM(p.x + pw / 2) + 1.05, cz);
+        const shell = new THREE.MeshStandardMaterial({ color: 0x23262b, roughness: 0.45, metalness: 0.2 });
+        const trim = new THREE.MeshStandardMaterial({ color: 0x6b7078, roughness: 0.35, metalness: 0.5 });
+        const body = new THREE.Mesh(box(0.72, 0.34, 0.55, V(0, 0.17, 0)), shell);
         body.castShadow = true;
-        const slot = new THREE.Mesh(new THREE.BoxGeometry(w * 0.5, 0.03, 0.05), mats.darkMetal);
-        slot.position.set(0, 0.26, d * 0.45);
-        const led = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), glowMat());
-        led.position.set(w * 0.35, 0.3, d * 0.45);
-        const badge = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.005, 0.14), new THREE.MeshStandardMaterial({ color: 0xf2f0ea, roughness: 0.6 }));
-        badge.position.set(0, 0.26, d * 0.45);
-        badge.visible = false;
-        g.add(body, slot, led, badge);
-        g.userData = { led, badge };
+        const lid = new THREE.Mesh(box(0.66, 0.06, 0.4, V(0, 0.37, -0.04)), trim);
+        lid.castShadow = true;
+        const hopper = new THREE.Mesh(box(0.3, 0.2, 0.2, V(0, 0.44, -0.2)), shell);
+        const blanks = new THREE.Mesh(box(0.24, 0.12, 0.16, V(0, 0.5, -0.2)), new THREE.MeshStandardMaterial({ color: 0xf2f0ea, roughness: 0.6 }));
+        const slot = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.025, 0.02), mats.darkMetal);
+        slot.position.set(0, 0.2, 0.28);
+        const tray = new THREE.Mesh(box(0.34, 0.015, 0.26, V(0, 0.08, 0.4)), trim);
+        const led = new THREE.Mesh(new THREE.SphereGeometry(0.02, 10, 8), glowMat());
+        led.position.set(0.3, 0.3, 0.28);
+        const lcdCanvas = document.createElement('canvas');
+        lcdCanvas.width = 128;
+        lcdCanvas.height = 40;
+        const lcdTex = new THREE.CanvasTexture(lcdCanvas);
+        const lcd = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.065), new THREE.MeshBasicMaterial({ map: lcdTex, toneMapped: false }));
+        lcd.position.set(-0.2, 0.27, 0.278);
+        // The badges: a pool that slides out of the slot and stacks on the tray.
+        const card = document.createElement('canvas');
+        card.width = 96;
+        card.height = 128;
+        const cx2 = card.getContext('2d')!;
+        cx2.fillStyle = '#f4f1ea';
+        cx2.fillRect(0, 0, 96, 128);
+        cx2.fillStyle = '#f7931e';
+        cx2.fillRect(0, 0, 96, 22);
+        cx2.fillStyle = '#1b1b1b';
+        cx2.font = 'bold 13px Arial';
+        cx2.fillText('DEVOXX', 8, 15);
+        cx2.fillRect(28, 40, 40, 40);
+        cx2.font = 'bold 11px Arial';
+        cx2.fillText('ATTENDEE', 20, 104);
+        const cardMat = new THREE.MeshStandardMaterial({ map: new THREE.CanvasTexture(card), roughness: 0.55 });
+        const badges: THREE.Mesh[] = [];
+        for (let i = 0; i < 6; i++) {
+          const bdg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.004, 0.14), cardMat);
+          bdg.visible = false;
+          g.add(bdg);
+          badges.push(bdg);
+        }
+        g.add(body, lid, hopper, blanks, slot, tray, led, lcd);
+        g.userData = { led, badges, lcdCanvas, lcdTex, lcdText: '', onlineAt: undefined as number | undefined };
         return g;
       }
       case 'lane':
@@ -255,23 +319,34 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
           f.position.z = yaw === 0 ? 0.01 : -0.01;
           panel.add(f);
         }
-        // Against a wall, a flat panel parallel to it sank half into the wall's
-        // thickness (Michele, 28 Sep: "sign is hidden in the wall"). There it is
-        // a blade instead: square to the wall, its near edge clear of it.
-        const wallAt = (dx: number, dz: number): boolean =>
-          groundWallsFor(2).some((wl) => !wl.low && !wl.hidden && p.x + dx * 22 < wl.x + wl.w && p.x + pw + dx * 22 > wl.x && p.y + dz * 22 < wl.y + wl.h && p.y + ph + dz * 22 > wl.y);
-        const blade = !along ? (wallAt(-1, 0) ? 1 : wallAt(1, 0) ? -1 : 0) : wallAt(0, -1) ? 1 : wallAt(0, 1) ? -1 : 0;
+        // Against a wall, the sign is mounted ON the wall: flat on the face of
+        // the wall rect the sim has there, 3 cm proud, and no post. A free-standing
+        // panel sank into the wall's thickness, and a blade guessed at the face
+        // and still clipped it (Michele, 28 Sep: "sign is hidden in the wall",
+        // "still in the wall").
+        const near = (dx: number, dz: number) =>
+          groundWallsFor(2).find((wl) => !wl.low && !wl.hidden && p.x + dx * 22 < wl.x + wl.w && p.x + pw + dx * 22 > wl.x && p.y + dz * 22 < wl.y + wl.h && p.y + ph + dz * 22 > wl.y);
         let sx = cx;
         let sz = cz;
         let sideways = !along;
-        if (blade) {
-          sideways = along;
-          if (!along) sx += blade * 0.85;
-          else sz += blade * 0.85;
+        let mounted = false;
+        if (!along) {
+          const wl = near(-1, 0) ?? near(1, 0);
+          if (wl) {
+            mounted = true;
+            sx = wl.x + wl.w / 2 < p.x ? m(wl.x + wl.w) + 0.03 : m(wl.x) - 0.03;
+          }
+        } else {
+          const wl = near(0, -1) ?? near(0, 1);
+          if (wl) {
+            mounted = true;
+            sz = wl.y + wl.h / 2 < p.y ? m(wl.y + wl.h) + 0.03 : m(wl.y) - 0.03;
+          }
         }
         panel.position.set(sx, base + 2.3, sz);
         if (sideways) panel.rotation.y = Math.PI / 2;
         const post = new THREE.Mesh(box(0.06, 1.9, 0.06, V(sx, base + 0.95, sz)), mats.steel);
+        post.visible = !mounted;
         const rim = new THREE.Mesh(new THREE.BoxGeometry(!sideways ? 1.66 : 0.04, 0.05, !sideways ? 0.04 : 1.66), glowMat());
         rim.position.set(sx, base + 2.73, sz);
         g.add(panel, post, rim);
@@ -676,7 +751,6 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
   }
 
   function update(o: THREE.Object3D, p: Prop, t: number, dt: number): void {
-    const ph = p.h ?? 10;
     const u = o.userData;
     void dt;
     switch (p.kind) {
@@ -714,9 +788,34 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
       }
       case 'printer': {
         (u.led.material as THREE.MeshBasicMaterial).color.copy(stateColour(p.state === 'idle' ? 'broken' : p.state, tmp, 8));
-        const badge = u.badge as THREE.Mesh;
-        badge.visible = p.state === 'done';
-        if (badge.visible) badge.position.z = m(ph) * 0.45 + 0.04 + 0.05 * (0.5 + 0.5 * Math.sin(t * 1.3));
+        const text = p.state === 'done' ? 'PRINTING' : p.state === 'active' ? 'LINK UP' : 'NO LINK';
+        if (text !== u.lcdText) {
+          u.lcdText = text;
+          const x = (u.lcdCanvas as HTMLCanvasElement).getContext('2d')!;
+          x.fillStyle = p.state === 'done' ? '#0f2a12' : '#2a1a05';
+          x.fillRect(0, 0, 128, 40);
+          x.fillStyle = p.state === 'done' ? '#5cff8a' : p.state === 'active' ? '#ffb347' : '#ff5a4e';
+          x.font = 'bold 20px "Courier New", monospace';
+          x.textBaseline = 'middle';
+          x.fillText(text, 8, 21);
+          (u.lcdTex as THREE.CanvasTexture).needsUpdate = true;
+        }
+        if (p.state === 'done' && u.onlineAt === undefined) u.onlineAt = t;
+        if (p.state !== 'done') u.onlineAt = undefined;
+        // Once online, a badge every 1.1 s: out of the slot, down onto the stack.
+        const badges = u.badges as THREE.Mesh[];
+        const since = u.onlineAt === undefined ? -1 : t - (u.onlineAt as number);
+        const EVERY = 1.1;
+        badges.forEach((bdg, i) => {
+          const at = since - i * EVERY;
+          bdg.visible = at > 0;
+          if (!bdg.visible) return;
+          const k = Math.min(1, at / 0.6);
+          const e = k * k * (3 - 2 * k);
+          // Out of the slot, then dropped onto the tray, each one on the last.
+          bdg.position.set(0, 0.2 - e * (0.11 - 0.006 * i), 0.29 + e * 0.1);
+          bdg.rotation.x = -0.25 * (1 - e);
+        });
         break;
       }
       case 'lane':
@@ -763,6 +862,15 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         cableState = p.state ?? 'idle';
         const pts = p.pts ?? [];
         const last = pts[pts.length - 1];
+        // Plugging in: the last stretch of cable grows up onto the desk and into
+        // the printer's socket over 0.7 s (Michele: "animation would be welcome").
+        if (u.mesh && u.plugAt !== undefined) {
+          const k = Math.min(1, (t - (u.plugAt as number)) / 0.7);
+          const geo = (u.mesh as THREE.Mesh).geometry;
+          const total = geo.index ? geo.index.count : 0;
+          const from = u.growFrom as number;
+          geo.setDrawRange(0, Math.round(from + (total - from) * (k * k * (3 - 2 * k))));
+        }
         const key = `${pts.length}|${last ? Math.round(last.x / 2) : 0}|${last ? Math.round(last.y / 2) : 0}|${p.state}`;
         if (key === u.key) break;
         u.key = key;
@@ -772,11 +880,40 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
           u.mesh = null;
         }
         if (pts.length < 2) break;
-        const curve = new THREE.CatmullRomCurve3(pts.map((q) => V(m(q.x), (q.x > 1045 ? 0.5 : 0) + 0.04, m(q.y))));
-        const geo = new THREE.TubeGeometry(curve, Math.min(400, pts.length * 4), 0.035, 6);
+        // Resampled every ~0.25 m so a tread edge between two recorded points
+        // still lifts the cable over it, instead of the curve cutting the step.
+        const dense: THREE.Vector3[] = [];
+        for (let i = 0; i < pts.length; i++) {
+          const a = pts[i];
+          const b2 = pts[i + 1];
+          const steps = b2 ? Math.max(1, Math.ceil(Math.hypot(b2.x - a.x, b2.y - a.y) / 3)) : 1;
+          for (let k = 0; k < steps; k++) {
+            const qx = b2 ? a.x + ((b2.x - a.x) * k) / steps : a.x;
+            const qy = b2 ? a.y + ((b2.y - a.y) * k) / steps : a.y;
+            dense.push(V(m(qx), floorTop(qx, qy) + 0.04, m(qy)));
+          }
+        }
+        // Plugged in: the end climbs the desk to the printer's socket.
+        let tail = 0;
+        if (p.state === 'done' && dense.length > 3) {
+          const end = dense[dense.length - 1];
+          const lift = V(m(GF.printer.x + GF.printer.w / 2), groundRiseM(GF.printer.x) + 1.05 + 0.12, m(GF.printer.y + GF.printer.h / 2) - 0.28);
+          const mid = V((end.x + lift.x) / 2, lift.y * 0.55, (end.z + lift.z) / 2 + 0.3);
+          dense.push(mid, lift);
+          tail = 14;
+        }
+        const curve = new THREE.CatmullRomCurve3(dense, false, 'catmullrom', 0.1);
+        const geo = new THREE.TubeGeometry(curve, Math.min(1600, dense.length * 2), 0.035, 6);
         const mat = new THREE.MeshStandardMaterial({ color: 0x1a4cff, emissive: stateColour(p.state === 'idle' ? 'idle' : p.state, new THREE.Color(), 0.8), roughness: 0.5 });
         u.mesh = new THREE.Mesh(geo, mat);
         o.add(u.mesh);
+        if (p.state === 'done' && u.plugAt === undefined) {
+          u.plugAt = t;
+          const total = geo.index ? geo.index.count : 0;
+          u.growFrom = Math.max(0, total - Math.round((total * tail) / Math.max(1, dense.length)));
+          geo.setDrawRange(0, u.growFrom as number);
+        }
+        if (p.state !== 'done') u.plugAt = undefined;
         break;
       }
       case 'roller':

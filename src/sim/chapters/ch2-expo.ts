@@ -421,7 +421,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   // west, Voxxy out in front by the doors, then Droid, then Biggy still at the
   // foot of the stairs. Michele, 28 Sep: "place the robots with the stairs at
   // their back, like they just finished descending. Voxxy first, near the doors."
-  ctx.place([foot - 70, cy - 4, Math.PI], [foot - 46, cy + 6, Math.PI], [foot - 20, cy - 2, Math.PI]);
+  // Voxxy three steps back from the west wall, so her lamp does not paint a
+  // halo on it at the chapter's first frame (Michele, 28 Sep).
+  ctx.place([foot - 52, cy - 4, Math.PI], [foot - 33, cy + 6, Math.PI], [foot - 14, cy - 2, Math.PI]);
 
   let power = false;
   /**
@@ -996,14 +998,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         return true;
       }
       if (cable.carrying && dist(b, printerAt) < PLUG_REACH) {
-        cable.carrying = false;
-        cable.taut = false;
-        cable.connected = true;
-        ctx.flash(
-          `Cable in — the run is made (${Math.trunc(cable.len)} of ${CABLE_MAX} px used). ` +
-            'The printer has its wire. Now it wants the other end of it to be awake',
-          3000,
-        );
+        plugIn();
         return true;
       }
       /*
@@ -1022,7 +1017,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         const away = Math.round(dist(b, printerAt) / 12.5);
         ctx.flash(
           `Voxxy: the printer is on the reception desk, ${away} m that way — keep going RIGHT, up the ` +
-            'steps in the hall\'s right-hand wall (the blue sign), then the lit pad on the counter. E there',
+            'steps in the hall\'s right-hand wall (the blue sign), then the lit pad on the counter. It plugs in when I get there',
           4200,
         );
         return true;
@@ -1131,6 +1126,28 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * so it carries `TRAVEL_TIME_SCALE` from the 2026-09-23 rescale like every other
    * one in the file.
    */
+  /**
+   * The run is made: the cable end goes into the printer.
+   *
+   * Automatic on arrival since 28 Sep (Michele: "when reaching the dropzone,
+   * cable should be automatically attached, without pressing E"). The lit pad
+   * already says "here"; making the player also press a key there was a second
+   * instruction for one intention. `E` still does it, for anyone who presses it.
+   * The printer's socket is added as the run's last point, so the drawn cable
+   * ends in the printer rather than wherever Voxxy stopped.
+   */
+  function plugIn(): void {
+    cable.carrying = false;
+    cable.taut = false;
+    cable.connected = true;
+    cable.pts = [...cable.pts, { x: printerAt.x, y: printerAt.y }];
+    ctx.flash(
+      `Cable in — the run is made (${Math.trunc(cable.len)} of ${CABLE_MAX} px used). ` +
+        'The printer has its wire. Now it wants the other end of it to be awake',
+      3000,
+    );
+  }
+
   function stepCable(v: Bot, dt: number): void {
     const last = cable.pts[cable.pts.length - 1];
     const budget = Math.max(0, CABLE_MAX - cable.len);
@@ -1271,6 +1288,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
     const v = ctx.byKind('voxxy');
     if (cable.carrying) stepCable(v, dt);
+    if (cable.carrying && dist(v, printerAt) < PLUG_REACH) plugIn();
 
     /*
      * Walking away from the terminal puts the keyboard back. There is no other way

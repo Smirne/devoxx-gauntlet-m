@@ -97,7 +97,7 @@ function styleOf(w: Wall, mats: Materials, concrete: THREE.Material): { h: numbe
     // The shafts go to the roof: the flight inside climbs out of sight.
     case 'stairwell':
     case 'stairwell-near':
-      return { h: HALL_H, mat: concrete };
+      return { h: HALL_H, mat: moquette(mats) };
     // The foot of the flight is the flight itself, drawn by `shafts` — as a wall
     // it stood a blank slab where the stairs should go up (Michele, 28 Sep).
     case 'stair-foot':
@@ -119,6 +119,25 @@ function styleOf(w: Wall, mats: Materials, concrete: THREE.Material): { h: numbe
       if (w.low) return { h: k.includes('planter') ? 0.8 : k === 'bollard' ? 0.9 : 1.05, mat: k.includes('planter') || k === 'bollard' ? mats.darkMetal : mats.counter };
       return { h: HALL_H, mat: concrete };
   }
+}
+
+/**
+ * The stairwells are lined in black moquette (Michele, 28 Sep: "stairs wall
+ * might be black moquette"). Matt and nearly black, so a robot's lamp on it is a
+ * dim smudge, not the bright halo concrete threw back.
+ */
+let moquetteMat: THREE.Material | null = null;
+function moquette(mats: Materials): THREE.Material {
+  if (!moquetteMat) {
+    const c = mats.carpet.clone();
+    c.color = new THREE.Color(0.025, 0.025, 0.03);
+    c.roughness = 1;
+    c.clearcoat = 0;
+    c.sheen = 0.4;
+    c.sheenColor = new THREE.Color(0.06, 0.06, 0.08);
+    moquetteMat = c;
+  }
+  return moquetteMat;
 }
 
 /** Steps up a sim plate that climbs along one axis, as solid boxes (the sim's slope, drawn stepped). */
