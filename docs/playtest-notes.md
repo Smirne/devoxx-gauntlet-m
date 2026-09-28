@@ -940,3 +940,24 @@ is on the act rather than two metres behind it.
 **Still to do on the ending**: the camera holds one shot for the whole video and could cut — wide
 on the act, in on the screen, low on the tower; and the final score card is still a card, arriving
 over a static frame.
+
+## Michele, 28 Sep — *"What happens if I have no bloopers (skipping scenes, or not dropping any soup)?"*
+
+Asked about the degenerate endings, and both of them were wrong.
+
+- **You could not get "A flawless night." by playing well.** The video's blooper for the cable
+  fired on *any* run at all — and chapter 2 cannot be finished without paying cable out, so every
+  completed run had at least one blooper and the perfect-run card was unreachable. Running the
+  cable is the job; running two thirds of the reel out to do it is the blooper, so the card is
+  gated on `CABLE_MAX * 2/3` now. A clean run with the cable down the signposted route gets
+  **"A flawless night. / Suspicious."** as it was always meant to. (It also says *94 m* instead of
+  *1180 px* — the rest of the game talks in metres and a card a judge reads should too.)
+- **Skipping every chapter DID get you "A flawless night."** `defaultScore` fills a skipped chapter
+  in as a clean one — soup 100, no complaints, no cable — so the one player who deserved it least
+  was the only one getting it. The reel is cut from what really happened, and skipping is part of
+  what really happened: it is the first blooper on the video now, *"4 chapters skipped / Chapters
+  1, 2, 3, 4 happened without you. Nobody is asking."*
+
+So the four endings now run: a clean night 16.5 s and 6 cards, a normal night 26.4 s and 10, a bad
+night the same 26.4 s (the reel holds four bloopers at most, so the worst runs drop the smaller
+ones), and a skipped run 15.8 s and 6 — all of them with the curtain call playing in front.

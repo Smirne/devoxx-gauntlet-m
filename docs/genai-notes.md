@@ -4450,3 +4450,38 @@ black, teleports everyone to the head of a route and walks them at a pace derive
 length — all three of which are exactly wrong here: the video is already playing, the player is
 watching the robots they just parked, and a teleport under a screen that is mid-card is a jump cut
 in the middle of a scene nobody asked to leave.
+
+## 28 Sep 2026 — the two endings nobody could reach
+
+**What the human decided.** *"Can you show me an example video? What happens if I have no
+'bloopers' (skipping scenes, or not dropping any soup)?"* — a question, not a change request. The
+answer needed the four degenerate reels printed out, and printing them out showed that both ends of
+the range were broken.
+
+**What the agent did.** Dumped `buildReel` for a clean run, a normal run, a disaster and a skipped
+run (it is a pure function of the score bag, so this costs one throwaway test and no browser), then
+fixed what the dump showed:
+
+- **The flawless card was unreachable by playing well.** The cable blooper fired on any `cable > 0`,
+  and chapter 2 writes `score.cable` on the frame the run connects — so every completed run had a
+  blooper. It is gated on two thirds of `CABLE_MAX` now: the signposted route comes in a little over
+  half the reel, so a tidy run is under it and a wander is over. The card also reads in metres.
+- **The flawless card WAS reachable by skipping everything**, because `defaultScore` fills a skipped
+  chapter in as a clean one. `ChapterCtx` carries `skipped` now, `buildReel` takes it, and it is the
+  first blooper on the reel.
+
+**What it found.** That a "pure function of the run" is only as honest as the counters it reads, and
+two of those counters lie in opposite directions: `cable` is written by a chapter that cannot be
+finished without writing it (so it is never zero on a real run), and the chapter-3 and chapter-4
+counters are written by `defaultScore` as *perfect* when the chapter never ran (so they are never
+bad on a skipped run). Neither is visible from inside `reel.ts`, and neither showed up in four
+rounds of tests, because every test handed it a hand-written score bag.
+
+**Tests.** `tests/reel.test.ts` +3: a clean run that ran the cable the short way gets the flawless
+card and no bloopers reel at all; a 112 m cable run still gets called out and is not flawless;
+skipping names the chapters, singular and plural, and is never flawless. Suite **783 green**.
+
+**Also made.** A standalone preview page that plays the real reel — the same card text, holds,
+fades and black beats, with the logic ported line for line from `src/sim/reel.ts` and five runs to
+pick between. It exists so the ending can be judged without playing ten minutes to reach it; it is
+not part of the game and not in the repo.

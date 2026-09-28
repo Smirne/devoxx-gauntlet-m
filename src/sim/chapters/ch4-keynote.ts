@@ -367,7 +367,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let reelT = -1;
 
   function startReel(): void {
-    reelCards = buildReel(ctx.score, ctx.swag, ctx.t);
+    reelCards = buildReel(ctx.score, ctx.swag, ctx.t, ctx.skipped);
     reelT = 0;
     dealMarks();
     ctx.setView(VIEW_REEL);

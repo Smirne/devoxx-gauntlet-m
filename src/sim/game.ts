@@ -1021,6 +1021,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     finish,
     score,
     swag,
+    skipped,
     addSwag(id: string, toastText: string): void {
       if (swag.includes(id)) return;
       swag.push(id);
