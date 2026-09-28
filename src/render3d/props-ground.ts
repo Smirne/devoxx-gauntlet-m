@@ -208,12 +208,12 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         // "the cable starts here, and it is hers to take". Michele, 28 Sep: "the
         // cable rack should be more evident and hint at interaction".
         const reel = new THREE.Group();
-        reel.position.set(cx, 0, cz + d / 2 + 0.55);
+        reel.position.set(cx, 0.42, cz + d / 2 + 0.55);
         const flangeMat = new THREE.MeshStandardMaterial({ color: 0xd8c9a3, roughness: 0.8 });
         for (const sx of [-0.22, 0.22]) {
           const fl = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.04, 28), flangeMat);
           fl.rotation.z = Math.PI / 2;
-          fl.position.set(sx, 0.42, 0);
+          fl.position.set(sx, 0, 0);
           fl.castShadow = true;
           reel.add(fl);
         }
@@ -221,7 +221,8 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         for (let i = 0; i < 5; i++) {
           const coil = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.035, 8, 28), coilMat);
           coil.rotation.y = Math.PI / 2;
-          coil.position.set(-0.16 + i * 0.08, 0.42, 0);
+          coil.position.set(-0.16 + i * 0.08, 0, 0);
+          coil.userData.coil = true;
           reel.add(coil);
         }
         g.add(reel);
@@ -694,6 +695,8 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
 
   /** The cable's state this frame, for the rack's reel and ring. */
   let cableState = 'idle';
+  /** Cable paid out, sim px — the reel turns by it. */
+  let cableLen = 0;
   /** The cabinet's two terminals, as the sim publishes them this frame; the big screen draws both. */
   const cab: { status: Prop | null; prompt: Prop | null; pilot: string } = { status: null, prompt: null, pilot: 'idle' };
 
@@ -787,7 +790,13 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         (u.face.material as THREE.MeshBasicMaterial).color.copy(stateColour(p.state === 'idle' ? 'idle' : p.state, tmp, k));
         // Waiting on the reel: the cable is on it, and the ring and tag call Voxxy.
         const waiting = cableState === 'idle' || cableState === 'broken';
-        (u.reel as THREE.Object3D).visible = waiting;
+        // The reel stays, and pays out: it turns with every metre Voxxy draws off
+        // it and the coil thins (Michele: "the cable roll should not disappear
+        // when Voxxy takes it, but roll").
+        const reel = u.reel as THREE.Object3D;
+        reel.rotation.x = -m(cableLen) / 0.3;
+        const left = 1 - 0.55 * Math.min(1, cableLen / 1480);
+        for (const c of reel.children) if (c.userData.coil) c.scale.set(left, left, 1);
         const pulse = waiting ? 0.5 + 0.5 * Math.sin(t * 3.2) : 0;
         ((u.ring as THREE.Mesh).material as THREE.MeshBasicMaterial).color.setRGB(1, 0.48, 0.1).multiplyScalar(waiting ? 0.6 + 2.4 * pulse : 0);
         ((u.tag as THREE.Mesh).material as THREE.MeshBasicMaterial).color.setRGB(1, 0.48, 0.1).multiplyScalar(waiting ? 1.5 + pulse : 0.3);
@@ -867,6 +876,7 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
       }
       case 'cable': {
         cableState = p.state ?? 'idle';
+        cableLen = cableState === 'idle' || cableState === 'broken' ? 0 : (p.v ?? 0);
         const pts = p.pts ?? [];
         const last = pts[pts.length - 1];
         // Plugging in: the last stretch of cable grows up onto the desk and into

@@ -45,6 +45,8 @@ export interface Props3D {
    * door eats the foot in some places").
    */
   floorAt(x: number, z: number): number;
+  /** The drawn object for a prop's stable key ('pot', 'soup'...), if one has been built. */
+  object(key: string): THREE.Object3D | undefined;
 }
 
 const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z);
@@ -470,6 +472,9 @@ export function createProps(parent: THREE.Object3D, mats: Materials, floor: 'fir
   return {
     colliders,
     volumePoints,
+    object(key: string): THREE.Object3D | undefined {
+      return byKey.get(key);
+    },
     floorAt(x: number, z: number): number {
       if (lying.length === 0) return 0;
       down.ray.origin.set(x, 1.2, z);

@@ -201,6 +201,8 @@ const IDS: readonly SoundId[] = [
   'busbar',
   'modem',
   'modem-boot',
+  'plug',
+  'badge',
   'mount',
   'transition',
   'applause',

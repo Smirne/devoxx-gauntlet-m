@@ -4578,3 +4578,19 @@ ordinary figures with their role colours.
   (firing the score and the cues at exactly that sim time) and a screenshot is taken. The frames
   and the rendered audio are then muxed with ffmpeg. The picture and the synthesised sound are in
   sync without anything playing in real time.
+- *Fifth batch, 28 Sep.*
+  - *Music reference.* Michele pointed at the official Devoxx 2026 video ("the music near the end
+    is a good fit"). YouTube is blocked from the build container, and the agent cannot hear audio
+    anyway, so it asked for a description instead of guessing.
+  - *Printer sounds.* "Add a sound when the printer is connected, and when it prints a badge." A
+    `plug` cue (latch click and a two-note ready chirp) plays when the cable goes in. A `badge` cue
+    (thermal head whirr, the card sliding out and landing) plays six times, 1.1 s apart, in step
+    with the six badges the 3D printer ejects.
+  - *Lamps in a lit hall.* "After the lights are back, reduce the robots' light." Once the hall is
+    powered, the lamps and their spill ease to a quarter of their blackout strength. This is
+    render only: the sim's cones, which decide what a lamp can light, are unchanged.
+  - *The soup pot.* "Grab that thing!" The sim carries it at Biggy's north edge, where his dome has
+    already curved away, so it floated beside his head. In 3D it now sits centred on his lid, on
+    the rig's own position, so it rides with him.
+  - *Cable reel.* "Should not disappear when Voxxy takes it (but roll)." The reel stays and turns
+    with every metre paid out, and its coil thins toward empty.

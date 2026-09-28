@@ -19,7 +19,7 @@ import { Pipeline, QUALITY, type QualityName, type VolumeSpot } from './pipeline
 import { buildGround, type Ground3D } from './ground3d';
 import { createPeople } from './people3d';
 import { createProps, type Props3D } from './props3d';
-import { createRobots, updateGlare, updateRobots, type Robot3D } from './robots3d';
+import { createRobots, dimLamps, updateGlare, updateRobots, type Robot3D } from './robots3d';
 import { CORRIDOR_END, HEIGHTS, SIGN_SPANS, buildVenue, type Venue3D } from './venue';
 import { CY0, CY1, F1 } from '../sim/geometry';
 import { CRATE_AT, CRATE_ROW, LEAD, OVER_AT, SLOT, STAND_AT, WALK_AT } from '../sim/opening';
@@ -419,6 +419,26 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     cam.cut();
   }
 
+  /**
+   * The soup pot, seated on Biggy's lid. The sim carries it at his north edge,
+   * where his dome has already curved away, so it floated beside his head
+   * (Michele, 28 Sep: "grab that thing!"). Drawn centred on the lid, on the
+   * rig's own position, so it rides every bob and sway with him.
+   */
+  const LID_TOP = 1.44;
+  function seatOnBiggy(): void {
+    const bg = robots.get('biggy');
+    if (!bg) return;
+    const root = bg.rig.root;
+    root.updateMatrixWorld();
+    for (const k of ['pot', 'soup']) {
+      const o = props.object(k);
+      if (!o || !o.visible) continue;
+      const dy = o.position.y - ROBOT_HEIGHT_M.biggy;
+      o.position.set(root.position.x, root.position.y + LID_TOP + dy, root.position.z);
+    }
+  }
+
   /** The chapter the follow camera last framed; see the reset below. */
   let camChapter = -1;
   function render(snap: GameSnapshot, dt: number, intro = false): void {
@@ -431,14 +451,17 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       // morning, doors open, and the hall is lit from the start.
       const lit = world.debugPower || snap.chapter >= 3 || snap.props.some((q) => q.kind === 'breaker' && q.state === 'done');
       ground.setPower(lit ? 1 : 0, time, snap.chapter >= 3);
+      dimLamps(robots, lit ? 0.25 : 1, dt);
       ground.setChapter(snap.chapter);
       ground.update(time, dt);
     } else {
+      dimLamps(robots, 1, dt);
       venue.update(time, dt);
       details.update(time);
     }
     updateRobots(robots, snap, dt, crateSurface);
     props.update(snap, time, dt);
+    seatOnBiggy();
     peopleRoot.visible = onGround;
     if (onGround) people.update(snap, time);
     // Props are built lazily from the first snapshots; patch whatever exists.

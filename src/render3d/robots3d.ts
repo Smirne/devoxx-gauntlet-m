@@ -457,6 +457,23 @@ function aimLamp(r: Robot3D, b: Bot, face: number): void {
 const _dir = new THREE.Vector3();
 const _toCam = new THREE.Vector3();
 
+/**
+ * Turn the lamps down in a lit room. They are tuned for a blackout, and with the
+ * hall's own lights up they still threw a 22 m searchlight across the floor
+ * (Michele, 28 Sep: "after the lights are back, reduce the robots' light"). The
+ * sim's cones are untouched: what a lamp can light is gameplay, how bright it
+ * looks is not. Eased over about a second, like the hall's own lights.
+ */
+export function dimLamps(robots: Map<RobotKind, Robot3D>, level: number, dt: number): void {
+  const k = Math.min(1, dt * 1.5);
+  for (const r of robots.values()) {
+    const base = LAMP[r.kind].intensity;
+    r.lamp.intensity += (base * level - r.lamp.intensity) * k;
+    const sb = r.kind === 'biggy' ? 9 : 7;
+    r.spill.intensity += (sb * level - r.spill.intensity) * k;
+  }
+}
+
 /** Aim each lamp's flare at the camera and scale it by how squarely the lamp faces it. */
 export function updateGlare(robots: Map<RobotKind, Robot3D>, camera: THREE.Camera): void {
   for (const r of robots.values()) {

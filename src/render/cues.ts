@@ -19,6 +19,10 @@ import { PX_PER_M } from '../sim/units';
 import type { Audio } from './audio';
 import { STEP_FREQ_BASE, STEP_FREQ_PER_MPS, gaitSpeed } from './robots';
 
+/** Badges the printer runs off once online, and how often — `props-ground.ts` draws the same six. */
+const BADGES = 6;
+const BADGE_EVERY = 1.1;
+
 /** Build a per-frame cue player bound to one `Audio`. */
 export function createCues(audio: Audio): (snap: GameSnapshot, dt: number) => void {
   const stepPhase: Record<RobotKind, number> = { voxxy: 0, droid: 0, biggy: 0 };
@@ -26,6 +30,10 @@ export function createCues(audio: Audio): (snap: GameSnapshot, dt: number) => vo
   let lastPhase = '';
   /** Last frame's fall progress on chapter 1's jammed door, so the crash plays once. */
   let lastBreak = 0;
+  /** The printer's cable, and how far into printing it is. */
+  let lastPlugged = false;
+  let printT = 0;
+  let printed = 0;
   /** Last frame's crate fronts in the opening, so each lands with one boom. */
   const lastCrate: Record<RobotKind, number> = { voxxy: 0, droid: 0, biggy: 0 };
   /** Last frame's swing on chapter 1's fire door, so the opening plays once. */
@@ -177,6 +185,25 @@ export function createCues(audio: Audio): (snap: GameSnapshot, dt: number) => vo
      * is why they ride it rather than the breaker count: the lamp coming up IS the
      * supply landing, and the lamp going green IS the router on the air.
      */
+    // The badge printer: a click as the cable goes in, then a badge every
+    // BADGE_EVERY while it is online — the same rhythm the 3D build ejects them
+    // at (Michele, 28 Sep: "add a sound when the printer is connected, and when
+    // it prints a badge").
+    const plugged = snap.props.find((p) => p.kind === 'cable')?.state === 'done';
+    if (plugged && !lastPlugged) audio.play('plug');
+    lastPlugged = plugged;
+    const printing = snap.props.find((p) => p.kind === 'printer')?.state === 'done';
+    if (printing) {
+      printT += dt;
+      while (printed < BADGES && printT >= printed * BADGE_EVERY) {
+        audio.play('badge');
+        printed++;
+      }
+    } else {
+      printT = 0;
+      printed = 0;
+    }
+
     const pilot = snap.props.find((p) => p.kind === 'pilot')?.state ?? '';
     // The supply landing — the third handle. Nothing in it is above 300 Hz: the
     // hall is still dark and a bright cue would promise a room the light isn't in.

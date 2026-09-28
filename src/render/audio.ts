@@ -150,6 +150,10 @@ export type SoundId =
    * stays the payoff, when the password goes in.
    */
   | 'modem-boot'
+  /** The cable end going into the badge printer: a latch click and its ready chirp. */
+  | 'plug'
+  /** One badge printed: the thermal head's whirr, then the card sliding out. */
+  | 'badge'
   /** Droid climbing onto Biggy: servos, then weight settling. */
   | 'mount'
   /** Chapter transition swell, under the fade to black. */
@@ -845,6 +849,22 @@ export function createAudio(): Audio {
           attack: 0.55,
           filter: { type: 'bandpass', f: 260, f1: 900, q: 1 },
         });
+        break;
+      }
+      case 'plug': {
+        noise({ t0, dur: 0.025, peak: 0.14 * g, attack: 0.001, filter: { type: 'bandpass', f: 3200, q: 2 } });
+        tone({ type: 'triangle', f0: 240, f1: 120, t0, dur: 0.05, peak: 0.08 * g, attack: 0.001 });
+        tone({ type: 'square', f0: 1760, t0: t0 + 0.18, dur: 0.06, peak: 0.025 * g, attack: 0.002, filter: { type: 'lowpass', f: 4000 } });
+        tone({ type: 'square', f0: 2350, t0: t0 + 0.26, dur: 0.08, peak: 0.025 * g, attack: 0.002, filter: { type: 'lowpass', f: 4000 } });
+        break;
+      }
+      case 'badge': {
+        // The head: a buzzy whirr stepping along the card.
+        tone({ type: 'sawtooth', f0: 180, f1: 240, t0, dur: 0.42, peak: 0.022 * g, attack: 0.02, filter: { type: 'bandpass', f: 1400, q: 3 } });
+        noise({ t0, dur: 0.42, peak: 0.02 * g, attack: 0.03, filter: { type: 'bandpass', f: 2600, q: 1.5 } });
+        // The card sliding out, and landing on the stack.
+        noise({ t0: t0 + 0.45, dur: 0.12, peak: 0.03 * g, attack: 0.01, filter: { type: 'highpass', f: 3000 } });
+        noise({ t0: t0 + 0.6, dur: 0.03, peak: 0.05 * g, attack: 0.001, filter: { type: 'bandpass', f: 1800, q: 1 } });
         break;
       }
       case 'modem-boot': {
