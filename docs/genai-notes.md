@@ -4394,3 +4394,59 @@ sweep accepts it because the rack it stands in is already solid. Suite **776 gre
 **Rejected.** Giving Droid the same two-handed carry pose for the ladle. A ladle hangs from one
 hand; posing him as if he were carrying a pot to hold a 0.5 m spoon would have been a worse lie
 than the one being fixed.
+
+## 28 Sep 2026 — the curtain call: giving the ending something to look at
+
+**What the human decided.** *"Where are we with the ending video/animation? Could we start that?"*
+The answer to the first half was: the video shipped on 26 Sep and the animation was never built.
+The answer to the second half is this section.
+
+**What the agent did.** Wrote a stage act that plays in front of the opening video, entirely out of
+verbs the game already had — `partyTrick` (Voxxy's jump, Biggy's roll, Droid's stretch), the climb,
+and the ordinary physics step. Three robots take marks on the apron, turn to the house, solo in
+turn, and finish as the tower, held to the last card. The room applauds: a new `Person.cheer`, 0 to
+1, that the sim raises over three seconds and the renderer turns into arms.
+
+**What it cost, and what it found.**
+
+- **`ctx.stepAll` hands the stick to whoever the player last selected.** The first cut set an input
+  vector per robot and called `stepAll`, which promptly overwrote all three — two robots zeroed and
+  one driven by a stick nobody was holding. The act runs `stepBot` per robot instead, plus
+  `syncMount` and the pairwise collide that `stepAll` does after it. Same physics, no stick.
+- **Bang-bang steering orbits a heavy robot.** Full stick at the mark until the last pixel is fine
+  for Voxxy and hopeless for Biggy — 130 kg, `accel` 0.6, drag that takes a second to bite. He
+  circled his mark for the whole video and was therefore never still enough for `toggleMount` to
+  let anyone climb him. The stick now steers at the velocity ERROR against a target speed that eases
+  to nothing inside 14 px, which brakes him into the mark; on it, the velocity is cleared, the same
+  thing `cutUpdate`'s hold already does.
+- **Marks nailed to roles make robots walk through each other, which they cannot do.** Voxxy stage
+  left, Biggy centre, Droid stage right is the obvious layout and it is wrong, because the player
+  leaves them in any order: Biggy walked from stage right straight into Droid and the two shoved
+  each other for twenty seconds. The three marks are dealt to whoever is nearest — the cheapest of
+  the four orderings that keep Droid beside Biggy — so the assignment has no crossings by
+  construction.
+- **Arm's length is not close enough when both ends have slack.** Droid aimed at a point one arm
+  from Biggy's mark, `driveTo` gave up 3 px short, Biggy was allowed 3 px on his own mark, and the
+  gap landed outside `MOUNT_REACH` with Droid standing there for the rest of the video with his hand
+  out. He now aims a pixel INSIDE Biggy, read off where Biggy actually is; `botsCollide` is what
+  stops him, which is the honest version of "close enough to climb".
+
+**Tests.** `tests/curtain-call.test.ts` (4, new): every beat fires and in order (jump, roll, unfold,
+climb) with the whole act inside the shortest reel the game can cut; nobody leaves the stage rect
+and they finish in a line with real daylight between them; the room comes up to applause and only
+the people sitting down are clapping; and a skipped video stops the act dead rather than leaving a
+robot walking behind the final card. Every frame of the act is also checked against each robot's
+own `max`, the same guard `tests/cutscene-pace.test.ts` puts on the chapter transitions. Suite
+**780 green**.
+
+Two framing changes went with it. `VIEW_REEL` was cut from 310x210 to 250x160 — the screen's own
+width (`roomScreen(R(8))` is x 1271.6..1501.4) plus ten pixels of air, because a cropped card is
+worse than a small robot, and the height is what that width gives at the canvas aspect; the old
+rect ran to y 216 and spent half the frame on empty seating. And `drawSpotlight` aims three
+quarters of the way downstage rather than at the stage's centre, which is where the act lines up.
+
+**Rejected.** Driving the act through `startCut`, the existing cutscene machinery. It fades to
+black, teleports everyone to the head of a route and walks them at a pace derived from the shot
+length — all three of which are exactly wrong here: the video is already playing, the player is
+watching the robots they just parked, and a teleport under a screen that is mid-card is a jump cut
+in the middle of a scene nobody asked to leave.

@@ -3382,9 +3382,17 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const lens = root.getObjectByName('lens') as THREE.Mesh | null;
     if (lens) (lens.material as THREE.MeshStandardMaterial).emissiveIntensity = on ? 2.6 : next ? 0.5 : 0;
 
-    // Where it is pointed: the middle of the stage, at about head height on it.
+    /*
+     * Where it is pointed: across the stage, at about head height, and three
+     * quarters of the way DOWNSTAGE rather than at the dead centre. The cake, the
+     * banner and the robots building the set are all over the stage while it is
+     * being built, so the middle is as good as anywhere for that half of the
+     * chapter — and the half that matters is the curtain call, where all three of
+     * them line up on the apron (`ch4-keynote.ts`). Aimed at the middle, the pool
+     * of light sat two metres upstage of the act.
+     */
     const tx = stage ? m(stage.x + (stage.w ?? 0) / 2) : m(p.x);
-    const tz = stage ? m(stage.y + (stage.h ?? 0) / 2) : m(p.y) - 4;
+    const tz = stage ? m(stage.y + (stage.h ?? 0) * 0.75) : m(p.y) - 4;
     const from = new THREE.Vector3(m(p.x), base + SPOT_HEAD_H, m(p.y));
     const to = new THREE.Vector3(tx, base + 0.9, tz);
     const dir = to.clone().sub(from);

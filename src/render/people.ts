@@ -68,6 +68,14 @@ const CADENCE = 2.15;
 const WALK_REF = 26;
 /** Full leg excursion, radians. */
 const SWING = 0.62;
+/** Claps per second. Fast enough to read as applause, slow enough to see. */
+const CLAP_HZ = 3.1;
+/** How far the arms come up to clap, radians about the shoulder. */
+const CLAP_LIFT = 2.1;
+/** How far in towards the midline the hands sit while clapping. */
+const CLAP_IN = 0.42;
+/** ...and how far either side of that they beat. */
+const CLAP_SWING = 0.2;
 /**
  * Hip height on an auditorium seat, metres — what a seated figure is dropped to.
  *
@@ -383,6 +391,7 @@ export function buildPerson(): PersonModel {
     const swing = seated ? 0 : Math.min(1, sp / WALK_REF) * SWING;
     const ph = t * CADENCE * (0.85 + 0.3 * rnd(seed, 6)) * Math.PI * 2 + seed;
     const a = Math.sin(ph);
+    const cheer = Math.max(0, Math.min(1, p.cheer ?? 0));
     if (seated) {
       // Knees up, hands in the lap, and the whole figure dropped onto the seat.
       legL.pivot.rotation.x = -Math.PI / 2;
@@ -395,6 +404,30 @@ export function buildPerson(): PersonModel {
       // Arms counter-swing, and less far: it is the legs that say "walking".
       armL.pivot.rotation.x = -a * swing * 0.75 + 0.04;
       armR.pivot.rotation.x = a * swing * 0.75 + 0.04;
+    }
+
+    /*
+     * APPLAUSE, and it overrides whatever the arms were doing.
+     *
+     * Chapter 4's curtain call. Both arms come up in front of the chest and the
+     * hands beat towards each other — at this scale a clap is not two hands
+     * meeting, it is a pair of forearms oscillating in antiphase about the
+     * midline, which is what the `z` does. Every row is off everybody else's beat
+     * (`seed`), because a crowd that claps in time is a crowd at a rally.
+     *
+     * The legs are left alone: a seated row keeps its knees up and a standing
+     * person keeps their stride, and `cheer` only ever says what the arms do.
+     */
+    if (cheer > 0.01) {
+      const beat = Math.sin(t * CLAP_HZ * Math.PI * 2 + seed * 2.7);
+      const up = -CLAP_LIFT * cheer;
+      armL.pivot.rotation.x += (up - armL.pivot.rotation.x) * cheer;
+      armR.pivot.rotation.x += (up - armR.pivot.rotation.x) * cheer;
+      armL.pivot.rotation.z = (CLAP_IN + beat * CLAP_SWING) * cheer;
+      armR.pivot.rotation.z = -(CLAP_IN + beat * CLAP_SWING) * cheer;
+    } else {
+      armL.pivot.rotation.z = 0;
+      armR.pivot.rotation.z = 0;
     }
 
     const carry = seated ? 'none' : CARRY[Math.floor(rnd(seed, 7) * CARRY.length) % CARRY.length];

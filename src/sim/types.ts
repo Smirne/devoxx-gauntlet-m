@@ -354,6 +354,16 @@ export interface Person {
    * is `src/render/robots/gait.ts` reading a speed the sim owns.
    */
   speed?: number;
+  /**
+   * How hard they are applauding, 0 to 1. Absent or 0 is a person sitting still.
+   *
+   * Chapter 4's curtain call: three thousand people watching three robots take a
+   * bow do not sit with their hands in their laps. It is a number rather than a
+   * flag so a room can come up to it — the applause starts when the act does and
+   * builds — and it is the sim's, like `speed`, because WHEN a room claps is a
+   * fact about the chapter and the shape of a clap is the renderer's business.
+   */
+  cheer?: number;
 }
 
 /**

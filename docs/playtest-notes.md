@@ -900,3 +900,43 @@ rest are here.
 - Chapter 4 runs about six minutes — his note, still not acted on.
 - Chapter 2's rack sits low on the left of the frame, where the speed/physics panel overlaps it.
   The new reel is drawn correctly and is partly behind the HUD — worth a look next round.
+
+## Michele, 28 Sep — *"Where are we with the ending video/animation? Could we start that?"*
+
+**Where it was.** The video existed; the animation did not. Since 26 Sep the game has ended on
+Devoxx's own opening video, cut from the run you just played (*"Movie approved, build it."*) — the
+three robots reach the stage in Room 8, the house screen wakes up, and the night's bloopers play on
+it as typography, every number a thing that really happened. What was missing is that **the robots
+stood still for all twenty seconds of it**, exactly where the player had parked them. A video of
+your own night playing over a still photograph of yourself is a pause, not an ending.
+
+**What it is now — the curtain call.** The act is built out of verbs the game already had, which is
+why it went in fast and why it reads as this game rather than as a cutscene bolted on:
+
+- The three of them **take their marks** on the apron and turn out to the house. The marks are dealt
+  to whoever is nearest, not nailed to roles, with one constraint — Droid's mark must be beside
+  Biggy's — because the player parks them in any order and the first cut had Biggy walking through
+  Droid to reach a fixed centre mark.
+- **Each one does its own party trick, in turn**: Voxxy jumps, Biggy rolls, Droid unfolds. The same
+  `E` flourishes from 25 Sep (*"Could we add a basic action to each robot on E?"*), and this is the
+  one place in the game where all three read as a performance instead of three separate showings-off.
+- **Droid climbs Biggy** and the tower holds to the last card, with Voxxy hopping beside it every
+  three seconds — the shape the whole game has been building towards since chapter 1.
+- **The room applauds.** Every seated attendee, plus Stephan and the speaker on the stage, claps —
+  arms up, hands beating about the midline, every row on its own beat — and the applause *comes up*
+  over three seconds rather than switching on, because a room at full volume on frame one is a
+  laugh track.
+
+They walk there on their own legs: every beat writes an input vector and runs the ordinary physics
+step, so nothing in the act can put a robot above its own frozen top speed, and the tests measure
+exactly that.
+
+Two smaller things went in with it: the reel camera was **tightened** (it used to run half a frame
+of empty seating, which left the robots taking their bow about twenty pixels tall — it is now the
+screen's own width plus ten pixels of air each side), and the four spotlights now aim three
+quarters of the way **downstage** instead of at the dead centre of the stage, so the pool of light
+is on the act rather than two metres behind it.
+
+**Still to do on the ending**: the camera holds one shot for the whole video and could cut — wide
+on the act, in on the screen, low on the tower; and the final score card is still a card, arriving
+over a static frame.
