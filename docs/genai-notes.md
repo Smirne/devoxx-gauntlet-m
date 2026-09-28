@@ -5199,3 +5199,14 @@ have matched the room around them, and would have cost more than the entire rest
     handrail following the pitch. The first pass z-fought the treads into stripes; the panels
     now stand just outside the footprint.
   - A sponsor table top that burnt white under a pendant is now matt grey.
+- **Mouths, and Stephan's pointy hair** (28 Sep 2026). Michele: "Lize is good, but her mouth and
+  stephan's are odd. Stephan hair should be pointy!"
+  - *Mouths*: the first was a thin black lens with pointed corners and a sliver of teeth, which
+    read as a grimace. A grin is now a D: an almost level upper edge lifting at rounded corners,
+    a deep round lower curve, a row of upper teeth over a dark red mouth, and soft lips (a thin
+    upper, a fuller lower). The pieces are bands tessellated in rows, so their middles follow
+    the face; the flat outline shape had cut chords through the cheeks. A closed smile is a lip
+    line with the lower lip under it.
+  - *Stephan's hair*: 260 short cones, 1.3–2.1 cm each at his scale, leaning up and slightly
+    forward, salt-and-pepper, over the crown and front and kept off the forehead, ears and nape.
+    They are short on purpose: the first tall tufts, days ago, read as punk.

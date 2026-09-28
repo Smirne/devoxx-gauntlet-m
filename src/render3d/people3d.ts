@@ -310,6 +310,7 @@ function sculptHead(spec: HeadSpec): THREE.Mesh {
     return hit ? hit.point.z : Math.sqrt(Math.max(0, 1 - x * x - y * y));
   };
   mesh.userData.surf = surf;
+  mesh.userData.probe = probe;
   mesh.userData.skin = spec.skin;
   // Ears, in the skin colour, cupped and set back.
   const earMat = new THREE.MeshStandardMaterial({ color: skin.clone().lerp(warm, 0.08), roughness: 0.7 });
@@ -452,6 +453,7 @@ function buildStephan(torso: THREE.Mesh, H: number): Portrait {
     beard: '#5a534c',
     face: { brow: 0.08, socket: 0.07, cheek: 0.09, jawTaper: 0.34, jawWidth: 0.04, chin: 0.07, nose: 0.27, noseW: 0.11, crownFlat: 0.1, blush: 0.14, lip: 0.45, ears: 1.05 },
   });
+  spikes(head, { count: 260, len: 0.16, width: 0.05, dark: '#6f6a64', light: '#c2bdb6', minY: 0.05 });
   // Eyes narrowed by the grin.
   eyes(head, 0.1, '#3a2c20', 0.8);
   brows(head, '#4a4642', 0.055, 0.14, 0.32);
@@ -630,39 +632,155 @@ function brows(head: THREE.Mesh, colour: string, thick = 0.06, tilt = 0.1, y = 0
   }
 }
 
-/** A flat shape laid onto the face: every vertex lifted to the surface. */
-function onFace(head: THREE.Mesh, shape: THREE.Shape, mat: THREE.Material, lift: number): THREE.Mesh {
+/**
+ * A band laid onto the face between two curves, `top(t)` and `bottom(t)` for
+ * t in 0..1, tessellated in rows so its middle follows the face as well as its
+ * edges (a flat outline-only shape cut chords through the cheeks).
+ */
+function faceBand(head: THREE.Mesh, top: (t: number) => [number, number], bottom: (t: number) => [number, number], mat: THREE.Material, lift: number): void {
   const surf = surfOf(head);
-  const geo = new THREE.ShapeGeometry(shape, 16);
-  const pos = geo.getAttribute('position');
-  for (let i = 0; i < pos.count; i++) pos.setZ(i, surf(pos.getX(i), pos.getY(i)) + lift);
+  const N = 24;
+  const M = 4;
+  const pos: number[] = [];
+  const idx: number[] = [];
+  for (let j = 0; j <= M; j++) {
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const [ax, ay] = top(t);
+      const [bx, by] = bottom(t);
+      const x = ax + (bx - ax) * (j / M);
+      const y = ay + (by - ay) * (j / M);
+      pos.push(x, y, surf(x, y) + lift);
+    }
+  }
+  for (let j = 0; j < M; j++) {
+    for (let i = 0; i < N; i++) {
+      const a = j * (N + 1) + i;
+      const b = a + N + 1;
+      idx.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
   geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, mat);
-  head.add(mesh);
-  return mesh;
+  const m = new THREE.Mesh(geo, mat);
+  (m.material as THREE.Material).side = THREE.DoubleSide;
+  head.add(m);
 }
 
 /**
- * A mouth, drawn on the face's own curve: a crescent with its corners turned up
- * by `up`, open by `open`, and a band of teeth across the top when it is a grin.
+ * A mouth, on the face's own curve.
+ *
+ * Michele, 28 Sep: *"her mouth and stephan's are odd"*. The first one was a
+ * thin black lens with pointed corners and a sliver of white — a grimace. A
+ * grin is a D: the upper edge almost level and lifting at the corners, the
+ * lower edge a deep round curve, the corners ROUNDED; inside, a row of upper
+ * teeth over a dark red (not black) mouth; and soft lips framing it rather
+ * than an outline. A closed smile is just the lip line, curving up, with the
+ * lower lip under it.
  */
 function smile(head: THREE.Mesh, w: number, teeth: boolean, open = 0.1, up = 0.05, y0 = -0.4): void {
   const hw = w / 2;
-  const crescent = (drop: number): THREE.Shape => {
-    const s = new THREE.Shape();
-    s.moveTo(-hw, y0 + up);
-    s.quadraticCurveTo(0, y0 - up * 0.3, hw, y0 + up);
-    s.quadraticCurveTo(0, y0 - drop * 2, -hw, y0 + up);
-    return s;
+  // Upper edge: level in the middle, lifting to the corners.
+  const upper = (t: number): [number, number] => {
+    const x = -hw + 2 * hw * t;
+    const u = (2 * t - 1) ** 2;
+    return [x, y0 + up * u];
   };
-  onFace(head, crescent(Math.max(0.02, open)), std('#3e1812', 0.85), 0.02);
-  if (teeth && open > 0.04) onFace(head, crescent(open * 0.45), std('#f3eee5', 0.45), 0.024);
-  // The lower lip's line, a little warmer than the skin round it.
-  const lip = new THREE.Shape();
-  lip.moveTo(-hw * 0.7, y0 - open * 0.95);
-  lip.quadraticCurveTo(0, y0 - open * 1.35, hw * 0.7, y0 - open * 0.95);
-  lip.quadraticCurveTo(0, y0 - open * 1.1 - 0.05, -hw * 0.7, y0 - open * 0.95);
-  onFace(head, lip, std('#b0625a', 0.6), 0.016);
+  // Lower edge: a deep round curve, meeting the upper one at rounded corners.
+  const lower = (t: number): [number, number] => {
+    const x = -hw * 0.94 + 2 * hw * 0.94 * t;
+    const s = Math.sin(Math.PI * t);
+    return [x, y0 + up * (2 * t - 1) ** 2 - Math.max(0.012, open) * Math.pow(s, 0.8) * 1.25];
+  };
+  const lipMat = std('#bd756b', 0.55);
+  if (open > 0.04) {
+    faceBand(head, upper, lower, std('#5b1f1c', 0.8), 0.018);
+    if (teeth) {
+      const tl = (t: number): [number, number] => {
+        const [ux, uy] = upper(t);
+        const [, ly] = lower(t);
+        return [ux * 0.97, uy + (ly - uy) * 0.5];
+      };
+      faceBand(head, (t) => {
+        const [x, y] = upper(t);
+        return [x * 0.95, y - 0.004];
+      }, tl, std('#f1ebe0', 0.4), 0.021);
+    }
+    // Lips: a thin upper one, a fuller lower one, both tapering to the corners.
+    faceBand(head, (t) => {
+      const [x, y] = upper(t);
+      return [x, y + 0.028 * Math.sin(Math.PI * t)];
+    }, upper, lipMat, 0.016);
+    faceBand(head, lower, (t) => {
+      const [x, y] = lower(t);
+      return [x, y - 0.045 * Math.sin(Math.PI * t)];
+    }, lipMat, 0.016);
+  } else {
+    // Closed: the line where the lips meet, and the lower lip.
+    faceBand(head, upper, (t) => {
+      const [x, y] = upper(t);
+      return [x, y - 0.014 * Math.sin(Math.PI * t) - 0.004];
+    }, std('#7a3a34', 0.6), 0.016);
+    faceBand(head, (t) => {
+      const [x, y] = upper(t);
+      return [x * 0.8, y - 0.016];
+    }, (t) => {
+      const [x, y] = upper(t);
+      return [x * 0.8, y - 0.016 - 0.04 * Math.sin(Math.PI * t)];
+    }, lipMat, 0.014);
+  }
+}
+
+/**
+ * Short, POINTY hair — Michele, 28 Sep: *"Stephan hair should be pointy!"* A
+ * crop gelled up into little spikes over the crown and the front, each one a
+ * short cone rising off the sculpted hair, leaning up and a touch forward,
+ * salt-and-pepper from spike to spike. Short, so it reads as a spiky crop
+ * rather than the punk tufts of the very first attempt.
+ */
+function spikes(head: THREE.Mesh, o: { count: number; len: number; width: number; dark: string; light: string; minY: number }): void {
+  const probe = head.userData.probe as THREE.Mesh;
+  const ray = new THREE.Raycaster();
+  const cone = new THREE.ConeGeometry(o.width, 1, 5);
+  cone.translate(0, 0.5, 0);
+  const mat = new THREE.MeshStandardMaterial({ roughness: 0.6 });
+  const im = new THREE.InstancedMesh(cone, mat, o.count);
+  const dark = new THREE.Color(o.dark);
+  const light = new THREE.Color(o.light);
+  const c = new THREE.Color();
+  const up = new THREE.Vector3(0, 1, 0);
+  const q = new THREE.Quaternion();
+  const mm = new THREE.Matrix4();
+  let n = 0;
+  const tries = o.count * 4;
+  for (let k = 0; k < tries && n < o.count; k++) {
+    // A Fibonacci spiral over the upper cap, kept to where the hair is.
+    const y = 1 - (k / tries) * (1 - o.minY);
+    const r = Math.sqrt(Math.max(0, 1 - y * y));
+    const a = k * 2.399963;
+    const dir = new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r);
+    // Not over the forehead's bare skin: the front is allowed only higher up.
+    if (dir.z > 0.35 && dir.y < 0.5) continue;
+    // Over the ears and the nape the crop is too short to stand up.
+    if (dir.y < 0.3 && dir.z > -0.3) continue;
+    ray.set(dir.clone().multiplyScalar(3), dir.clone().negate());
+    const hit = ray.intersectObject(probe, false)[0];
+    if (!hit) continue;
+    const h = hash(k, 3, 9);
+    const lean = dir.clone().multiplyScalar(0.8).add(up.clone().multiplyScalar(0.55)).add(new THREE.Vector3(0, 0, 0.25 * Math.max(0, dir.z))).normalize();
+    q.setFromUnitVectors(up, lean);
+    const len = o.len * (0.7 + 0.6 * h);
+    mm.compose(hit.point.clone().addScaledVector(dir, -0.03), q, new THREE.Vector3(1, len, 1));
+    im.setMatrixAt(n, mm);
+    c.copy(dark).lerp(light, hash(k, 7, 1));
+    im.setColorAt(n, c);
+    n++;
+  }
+  im.count = n;
+  im.castShadow = true;
+  head.add(im);
 }
 
 /** A moustache over the lip: a soft bar, fuller in the middle. */
