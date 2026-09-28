@@ -4523,3 +4523,38 @@ kept pushing was reporting a stuck robot when what it had actually done was win.
 **Also.** README's "Status" section was stale — it still listed the ending as missing — and three
 `.DS_Store` files were tracked despite being gitignored since before the repo was public. Both
 fixed. Suite **787 green**, `tsc --noEmit` clean.
+
+## 28 Sep 2026 — the ship gate finds a soft-lock nobody had hit
+
+**What the human decided.** Michele approved backlog item 1: *"one clean full run, chapter 1 →
+final card, measured and recorded"* — `GAUNTLET.md` Stage 3's own gate, and the last one the build
+had not passed.
+
+**What the agent did.** Wrote `tests/full-run.test.ts`: one `createGame`, no `startChapter`, no
+`skipChapter`, chapter 1 solved and each chapter arriving on its own to the score card.
+
+**What it found on its first run, which is the whole argument for the gate.** The keynote speaker
+could not be delivered, on twelve of fourteen seeds. The follower walked at wherever Voxxy was
+*standing* and pushed itself out of any wall it ended up inside — a beeline with a shove on it. She
+is nearly twice their pace, so she always reaches the mark first, and the moment she stands on it
+they aim at the mark themselves and walk into the nearest booth. Every existing chapter-3 test
+starts chapter 3 on a fresh RNG, which happens to hide the speaker at the one booth with clear line
+of sight to Stephan. Nothing else in 787 tests could see it, because nothing else played the game.
+
+**The fix, and why this one.** The speaker follows Voxxy's *route* rather than Voxxy: her positions
+are dropped behind her as breadcrumbs and taken in order. Considered and rejected: giving the
+speaker the crowd's lane grid (correct, but the lane grid is built for arrivals coming in through
+the doors, and the speaker starts behind a booth in the middle of the hall); and A* for one NPC (a
+second router in the sim, to solve a problem a breadcrumb solves). The breadcrumb also has the
+better reading — being led looks like walking where the leader walked. One guard: a crumb is only
+dropped where the *speaker* could stand, because Voxxy is the one robot that fits under the sponsor
+tables.
+
+**Two more, both in the test pilot.** `driveTo` had a fixed 400-frame budget per waypoint, which
+reports a real 920 px leg as an impossible route; it is a floor now, with the leg's own length
+added. And the router only knows about walls, so it routed a leg straight through the JUG leader,
+who is a person standing in a lane, and an eight-way stick held dead at the waypoint pinned Voxxy
+against his standoff forever. The pilot steps round now, which is what a player does.
+
+**Tests.** `tests/full-run.test.ts` (1), `tests/speaker-follow.test.ts` (2, sweeping all five
+booths the chapter can hide the speaker at). Suite **790 green**, `tsc --noEmit` clean.

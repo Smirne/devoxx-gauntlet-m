@@ -298,6 +298,29 @@ const SOUP_HANDOVER = 34;
  */
 const SPEAKER_HANDOVER = 38;
 /**
+ * HOW THE SPEAKER FOLLOWS: Voxxy's ROUTE, not Voxxy.
+ *
+ * Found by the ship-gate run (`tests/full-run.test.ts`, 28 Sep 2026), and it was
+ * not a seed thing: the speaker walked at wherever Voxxy was standing and pushed
+ * back out of any wall they ended up inside, which is a beeline with a shove on
+ * it. Voxxy walks at 72.5 px/s and the speaker at 37.5, so she arrives at the
+ * mark well ahead of them; the moment she stood in the spot they stopped aiming
+ * at her and set off straight across the hall for the mark — through whichever
+ * booth was in the way — and jammed against it. Measured over fourteen seeds:
+ * **twelve of them stranded the speaker**, and the chapter's third condition with
+ * them. Only a hiding place with clear line of sight to Stephan worked.
+ *
+ * So the speaker walks where Voxxy WALKED. Her positions are dropped behind her
+ * as breadcrumbs, the speaker takes them in order, and the route they walk is
+ * therefore a route a robot just walked — around the booths, because Voxxy went
+ * around the booths. It is also what being led actually looks like.
+ */
+const TRAIL_STEP = 12;
+/** How close the speaker gets to a breadcrumb before taking the next one, px. */
+const TRAIL_REACH = 9;
+/** How much of Voxxy's route the speaker remembers — 120 crumbs is ~14 m. */
+const TRAIL_MAX = 120;
+/**
  * The keynote speaker's teal — hoodie, cap and lanyard, all of it.
  *
  * `LANYARD.speaker` is this colour and nothing else in the hall wears it. At the
@@ -1175,6 +1198,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   );
   const hideBooth = built[Math.floor(ctx.rng() * built.length)];
   const speaker = { ...inFrontOf(hideBooth), r: 7, following: false, withStephan: false, sp: 0, face: Math.PI / 2 };
+  /** Voxxy's route, dropped behind her for the speaker to walk — see `TRAIL_STEP`. */
+  const trail: Vec2[] = [];
 
   /*
    * Stephan, and the spot the soup has to reach him.
@@ -2386,14 +2411,33 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
     if (speaker.following && !speaker.withStephan) {
       const v = ctx.byKind('voxxy');
-      // Follow Voxxy, unless Voxxy is already on the spot — then head for the spot,
-      // so the speaker settles next to Stephan instead of orbiting the robot.
-      const tgt = inRect(v, speakerSpot) ? speakerAt : { x: v.x, y: v.y };
+      /*
+       * Drop a breadcrumb where Voxxy is — but only where the SPEAKER could
+       * stand. Voxxy is the one robot that fits under the sponsor tables, and a
+       * crumb left under one is a crumb the person following her cannot reach.
+       */
+      const last = trail[trail.length - 1];
+      if (!last || Math.hypot(v.x - last.x, v.y - last.y) > TRAIL_STEP) {
+        const probe = { x: v.x, y: v.y, r: speaker.r };
+        if (!ctx.walls.some((w) => !w.low && circleRect(probe, w))) {
+          trail.push({ x: v.x, y: v.y });
+          if (trail.length > TRAIL_MAX) trail.shift();
+        }
+      }
+      while (trail.length > 0 && dist(trail[0], speaker) < TRAIL_REACH) trail.shift();
+
+      // The next crumb if there is one; otherwise Voxxy herself, unless she is
+      // already standing on the spot — then the spot, so the speaker settles next
+      // to Stephan instead of orbiting the robot.
+      const head = trail[0];
+      const tgt = head ?? (inRect(v, speakerSpot) ? speakerAt : { x: v.x, y: v.y });
       const dx = tgt.x - speaker.x;
       const dy = tgt.y - speaker.y;
       const dd = Math.hypot(dx, dy);
-      speaker.sp = dd > 22 ? SPEAKER_WALK : 0;
-      if (dd > 22) {
+      // A crumb is walked onto; a person is stopped short of.
+      const stop = head ? 0 : 22;
+      speaker.sp = dd > stop ? SPEAKER_WALK : 0;
+      if (dd > stop) {
         speaker.face = Math.atan2(dy, dx);
         speaker.x += (dx / dd) * SPEAKER_WALK * dt;
         speaker.y += (dy / dd) * SPEAKER_WALK * dt;

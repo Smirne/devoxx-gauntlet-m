@@ -992,3 +992,43 @@ leaves a player 88 s to be a person in — to read the hints, pick the wrong rob
 down an aisle once. Nothing has been cut: the number says there is nothing to cut. The cake is the
 single longest job at 38.5 s and it is also the one Michele asked to be made *more* predictable, so
 it stays.
+
+## The ship gate, 28 Sep — one full run, and what it caught
+
+`GAUNTLET.md` Stage 3: *"Nothing ships without at least one clean full run."* The suite had four
+chapters covered and the game itself covered nowhere, because every test starts the chapter it is
+about. `tests/full-run.test.ts` plays it: one `createGame`, no `startChapter`, no `skipChapter`,
+chapter 1's code → the cutscene → chapter 2 → chapter 3 → chapter 4 → the opening video → the score
+card, nothing skipped.
+
+It caught a soft-lock on its first run, and it caught it for exactly the reason the gate exists.
+**The keynote speaker could not be delivered.** Voxxy walks at 72.5 px/s and the speaker at 37.5,
+so she reaches Stephan's mark well before them; the moment she stood on the spot they stopped
+following her and set off *straight* across the hall for the mark, through whichever booth was on
+the line, and jammed. Every chapter test starts chapter 3 on a fresh RNG, which hides the speaker
+at Regex Racing — the one booth with a clear line to Stephan. Chained behind two chapters the RNG
+has moved on, the speaker hides somewhere else, and the chapter cannot be finished. Measured over
+fourteen seeds: **twelve of them stranded the speaker.**
+
+The speaker walks Voxxy's *route* now, not at Voxxy — her positions are dropped behind her as
+breadcrumbs and they take them in order, so the way round the booths is the way a robot just
+walked. `tests/speaker-follow.test.ts` leads them from all five booths the chapter can pick; the
+longest is Kube Kettle at 13.2 s.
+
+Two smaller things the same run found, both in the test pilot rather than the game: a fixed
+400-frame budget per waypoint, which called a real 920 px leg impossible, and no way round a
+*person* — the router only knows about walls, so it routed a leg through the JUG leader, who stands
+in the lane, and the stick pinned Voxxy against him for good. The pilot sidesteps now.
+
+```
+one full run, chapter 1 to the card:
+     8.6s  1 · night — the code and the fire door
+    39.9s  2 · expo — power, router, cable, roller door
+    37.3s  3 · breakfast — soup, speaker, beer
+     1.5s  4 · keynote — cake, banner, lights, stage
+    21.0s  the opening video
+   108.2s  TOTAL sim clock
+```
+
+(That clock is the sim's, not a player's — the choreography places robots where a solved puzzle
+needs them. `tests/chapter4-length.test.ts` is the one that drives.)
