@@ -1038,29 +1038,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const RIDER_READ = 46;
   let riderSeen = false;
 
-  /** The CFP wall, on the south side, past cinema D's door. */
-  const cfpAt: Vec2 = { x: 375, y: 411 };
-  /** Voxxy's beam only, and close: the slips are printed at 9 point. */
-  const CFP_READ = 70;
-  /** Seconds between slips, so standing there is a read and not a firehose. */
-  const CFP_GAP = 3.5;
-  let cfpNext = 0;
-  let cfpCd = 0;
-  /**
-   * The rejections, in order. Nothing here needs anybody's permission: they are
-   * jokes about the shape of a conference programme, not about a person or a talk
-   * that exists.
-   */
-  const CFP_SLIPS: readonly string[] = [
-    '"Microservices: A Love Story" — <i>we already have three of these.</i>',
-    '"I Rewrote It In Rust" — <i>yes. Everyone did. That is the problem.</i>',
-    '"Kubernetes For Cats" — <i>cats do not scale horizontally.</i>',
-    '"Why Your Tests Are Lying To You" — <i>accepted. Speaker then cancelled.</i>',
-    '"Blockchain For Catering" — <i>no comment was recorded.</i>',
-    '"A Deep Dive Into Tomato Soup" — <i>see the kitchen. They said no too.</i>',
-  ];
+  // The CFP wall that stood here moved to the exhibition hall on 28 Sep 2026
+  // (`CFP_WALL` in geometry.ts, read in ch2-expo.ts).
 
-  /** The AV rider and the CFP wall, both read off `lights` — see their declarations. */
+  /** The AV rider: any robot that walks up to it. */
   function stepWalls(dt: number): void {
     if (!riderSeen && ctx.bots.some((b) => !b.mounted && dist(b, riderAt) < RIDER_READ)) {
       riderSeen = true;
@@ -1068,23 +1049,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         'Taped to the wall — <b>AV RIDER</b>, house rig: <b>Voxxy</b> orange spot · <b>Droid</b> green wash · ' +
           '<b>Biggy</b> blue flood. <i>"A mark lights when every colour it is written for is on it at the same time."</i>',
         6000,
+        true,
       );
     }
-    cfpCd = Math.max(0, cfpCd - dt);
-    if (cfpCd > 0) return;
-    const v = ctx.byKind('voxxy');
-    // Her cone, not her skirt: standing against the wall in the dark is not
-    // reading it. The same rule chapter 2's spray tag is read under.
-    if (dist(v, cfpAt) >= CFP_READ || !litBy(lights.filter((L) => L.skirt !== true), 'voxxy', cfpAt)) return;
-    cfpCd = CFP_GAP;
-    const slip = CFP_SLIPS[cfpNext % CFP_SLIPS.length];
-    ctx.flash(
-      cfpNext === 0
-        ? `Voxxy: a wall of <b>rejected CFP slips</b>. Somebody pinned every one of them up. ${slip}`
-        : `Voxxy: ${slip}`,
-      4600,
-    );
-    cfpNext++;
+    void dt;
   }
 
   function update(dt: number): void {
@@ -1158,15 +1126,6 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         h: 3,
         state: riderSeen ? 'done' : 'idle',
         label: 'AV RIDER · lamp colours',
-      },
-      {
-        kind: 'poster',
-        x: cfpAt.x - 23,
-        y: cfpAt.y,
-        w: 46,
-        h: 3,
-        state: cfpNext > 0 ? 'done' : 'idle',
-        label: 'CFP · REJECTED',
       },
     ];
     for (const r of seatRects) out.push({ kind: 'seatrow', ...r, state: 'idle' });

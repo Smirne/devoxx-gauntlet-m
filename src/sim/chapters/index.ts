@@ -69,7 +69,8 @@ export interface ChapterCtx {
   /** Index into `bots` of the robot being driven. Chapters may hand over control. */
   cur: number;
   /** A toast, in the speaking robot's voice where there is one. */
-  flash(text: string, ms?: number): void;
+  /** `flavour`: colour, not progress — drawn grey (see `Toast.flavour`). */
+  flash(text: string, ms?: number, flavour?: boolean): void;
   /** A full-screen card that pauses play until a key is pressed. */
   card(text: string): void;
   objective(line: string, keys: string): void;

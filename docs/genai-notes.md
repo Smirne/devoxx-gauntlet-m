@@ -5010,3 +5010,32 @@ man rather than by a rect. Suite **774 green**.
 drawn geometry (`src/render/lighting.ts` draws the robots' lamps as meshes off the sim's visibility
 polygons); four spots with shadow maps would have been the only real lights in the build, would not
 have matched the room around them, and would have cost more than the entire rest of the frame.
+- *Merging the 2.5D branch into the 3D one, 28 Sep.* Eighteen commits: the chapter 3 playtest
+  round (crowd, desk, Stephan, the speaker going to Stephan, Celestino on the desk, the soup
+  drawn and spilt, the bar's pour and toast), the belt-post stair line, Biggy's roll, lanyards,
+  quips, the cheap extras, the physics view, the dark test rig, and chapter 4's opening video. Two
+  conflicts, both resolved toward what each side meant: `clueLit` keeps the 3D build's tolerance
+  parameter, and the chapter 3 gate is the 2.5D side's belt posts with the 3D side's flavour flag.
+  Typecheck clean and 780 tests green before any 3D work.
+  - *What 3D had to draw.* The chapter 3 gate is now the belt-post line from the same
+    `nastriRun`: chrome posts, red webbing, each belt winding into its post in turn (`beltU`).
+    Also new: soup spills as puddles, kegs behind the bar, the tap handle pulled and a thread of
+    beer while it pours, and the glass Biggy raises (`toast`), lifted off his lid. Biggy's gait
+    gets `carrying`, so he never rolls with the pot. People already wear what the sim gives them
+    (Stephan's olive polo, Celestino's orange raglan, lanyards), because 3D uses the shared figure
+    builder.
+  - *The extras, and where they live.* Michele: "evaluate where to put them, chapter 1 has already
+    some nice idea (posters, holograms), don't remove them. We can move the CFP wall to the hall
+    maybe?" The AV rider (the light-mix rules) stays in chapter 1, the chapter that teaches them.
+    In 3D it is drawn as a spec sheet with the three lamp colours and the rule, taped at robot eye
+    height under Zaal A's panel (at 1.45 m it covered the panel), and its toast is flavour. The CFP
+    wall's chapter 1 spot was exactly where the 3D build's animated ad hangs. Asked, Michele chose
+    the hall near registration. It is now `CFP_WALL`, on the south face of the concrete wall
+    between hall and lobby: a real wall 8 m from the desk, so it adds no collider to the cable run.
+    It is read in chapter 2 under the same rule (Voxxy's cone, 5.6 m, a slip every 3.5 s) and its
+    toasts are grey. Drawn as a framed corkboard of six stamped slips. The prop comes after the
+    spray tag in chapter 2's list, because `find('poster')` means the tag everywhere else. Tests
+    moved with it.
+  - *Not done.* Stephan and Celestino are caricatured from photos Michele sent the 2.5D session;
+    the 3D build has not seen them, and they are asked for again to make the pair recognisable at
+    3D distance. `P` stays photo mode in 3D (it is the physics view in 2.5D).

@@ -14,14 +14,15 @@
 
 import * as THREE from 'three';
 
-import { GF, WIFI_TAG, groundPlates, groundRiseM, groundWallsFor } from '../sim/geometry';
+import { CFP_WALL, GF, WIFI_TAG, groundPlates, groundRiseM, groundWallsFor } from '../sim/geometry';
+import { BELT_H, GATE_H, beltU, nastriRun } from '../sim/nastri';
 import type { Prop } from '../sim/types';
 import { ROBOT_HEIGHT_M, m } from '../sim/units';
 
 import type { Materials } from './materials';
 import { box } from './materials';
 import { poseShutter, rollerShutter } from './shutter';
-import { emitter, wayfinding } from './signs';
+import { cfpBoard, emitter, wayfinding } from './signs';
 
 const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z);
 
@@ -514,6 +515,25 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         return g;
       }
       case 'poster': {
+        if (p.label?.startsWith('CFP')) {
+          // The CFP rejection wall, in a frame on the concrete wall's face.
+          const base = groundRiseM(CFP_WALL.x);
+          const fx = m(CFP_WALL.x);
+          const fz = m(CFP_WALL.y - CFP_WALL.ny * 8);
+          const tex = cfpBoard();
+          const board = new THREE.Mesh(
+            new THREE.PlaneGeometry(2.2, 1.2),
+            new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, emissive: new THREE.Color(0.3, 0.29, 0.26), emissiveMap: tex }),
+          );
+          board.rotation.y = Math.atan2(CFP_WALL.nx, CFP_WALL.ny);
+          board.position.set(fx + CFP_WALL.nx * 0.045, base + 1.5, fz + CFP_WALL.ny * 0.045);
+          const frame = new THREE.Mesh(box(2.3, 1.3, 0.05, V(0, 0, 0)), mats.darkMetal);
+          frame.rotation.y = board.rotation.y;
+          frame.position.set(fx + CFP_WALL.nx * 0.02, base + 1.5, fz + CFP_WALL.ny * 0.02);
+          g.add(frame, board);
+          g.userData = {};
+          return g;
+        }
         // The spray tag: DevoxxForever, a wifi symbol, and the joke. Faint
         // until a beam finds it (the sim's `active`), then orange paint.
         tagTex ??= sprayTag();
@@ -562,22 +582,42 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         return g;
       }
       case 'gate': {
-        // The registration gate at the head of the main stair: a row of glass
-        // flap barriers, shut tonight.
-        const base = 0.5;
-        const n = Math.max(2, Math.round(d / 1.2));
-        const flaps: THREE.Mesh[] = [];
-        g.userData = { flaps };
-        for (let i = 0; i <= n; i++) {
-          const z = m(p.y) + (d * i) / n;
-          g.add(new THREE.Mesh(box(0.25, 1.0, 0.16, V(cx, base + 0.5, z)), mats.steel));
-          if (i < n) {
-            const flap = new THREE.Mesh(box(0.03, 0.6, d / n - 0.3, V(0, 0, 0)), mats.glass);
-            flap.position.set(cx, base + 0.7, z + d / n / 2);
-            g.add(flap);
-            flaps.push(flap);
-          }
+        // Stephan's line at the foot of the main stair: chrome belt posts and
+        // red webbing, from the sim's own run (`nastriRun`), so every post and
+        // belt is exactly where its collider is. The belts wind into their posts
+        // one after another, outward from Stephan's hand (`beltU`).
+        const base = groundRiseM(p.x + pw / 2);
+        const run = nastriRun({ x: p.x, y: p.y, w: pw, h: ph }, 0.5);
+        const chrome = mats.steel;
+        const webbing = new THREE.MeshStandardMaterial({ color: 0xb3191f, roughness: 0.7 });
+        for (const q of run.posts) {
+          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, GATE_H, 10), chrome);
+          post.position.set(m(q.x), base + GATE_H / 2, m(q.y));
+          const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.17, 0.03, 18), chrome);
+          foot.position.set(m(q.x), base + 0.015, m(q.y));
+          const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.07, 10), chrome);
+          cap.position.set(m(q.x), base + GATE_H - 0.02, m(q.y));
+          g.add(post, foot, cap);
         }
+        const belts: Array<{ mesh: THREE.Mesh; rank: number; ax: number; az: number; len: number; dir: THREE.Vector3 }> = [];
+        for (const n of run.belts) {
+          const ax = m(n.anchor.x);
+          const az = m(n.anchor.y);
+          const other = n.anchor === n.a ? n.b : n.a;
+          const dir = V(m(other.x) - ax, 0, m(other.y) - az);
+          const len = dir.length();
+          dir.normalize();
+          // Built along +x from its anchor, scaled to how much is still out.
+          const geo = new THREE.BoxGeometry(1, 0.05, 0.006);
+          geo.translate(0.5, 0, 0);
+          const mesh = new THREE.Mesh(geo, webbing);
+          mesh.position.set(ax, base + BELT_H, az);
+          mesh.rotation.y = -Math.atan2(dir.z, dir.x);
+          mesh.scale.x = len;
+          g.add(mesh);
+          belts.push({ mesh, rank: n.rank, ax, az, len, dir });
+        }
+        g.userData = { belts };
         return g;
       }
       default:
@@ -591,6 +631,7 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
       case 'soup':
       case 'duck':
       case 'cable':
+      case 'toast':
         return p.kind;
       case 'race-marker':
         return `race:${p.v ?? 0}`;
@@ -695,7 +736,55 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         col.position.y = 0.17;
         const handle = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.16, 0.04), new THREE.MeshStandardMaterial({ color: 0xf0c040, emissive: new THREE.Color(0.4, 0.3, 0.05), emissiveIntensity: 1 }));
         handle.position.set(0, 0.42, 0.03);
-        g.add(col, handle);
+        // While it pours: the handle pulled forward and a thread of beer.
+        const stream = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.22, 6), beerMat);
+        stream.position.set(0, 0.05, 0.06);
+        stream.visible = false;
+        g.add(col, handle, stream);
+        g.userData = { handle, stream };
+        return g;
+      }
+      case 'keg': {
+        // Behind the counter: a steel keg with its coupler, three of them.
+        g.position.set(m(p.x), 0, m(p.y));
+        const keg = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.6, 20), mats.steel);
+        keg.position.y = 0.3;
+        keg.castShadow = true;
+        const rim = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.02, 6, 20), mats.steel);
+        rim.rotation.x = Math.PI / 2;
+        rim.position.y = 0.6;
+        const coupler = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.08, 10), mats.darkMetal);
+        coupler.position.y = 0.64;
+        g.add(keg, rim, coupler);
+        return g;
+      }
+      case 'spill': {
+        // Tomato soup on the floor, where the pot slopped. It stays.
+        const r0 = m(pw) / 2;
+        const shape = new THREE.Shape();
+        for (let i = 0; i <= 18; i++) {
+          const a = (i / 18) * Math.PI * 2;
+          const rr = r0 * (0.8 + 0.25 * Math.sin(a * 3 + p.x) * Math.cos(a * 2 + p.y));
+          if (i === 0) shape.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+          else shape.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+        }
+        const puddle = new THREE.Mesh(
+          new THREE.ShapeGeometry(shape),
+          new THREE.MeshStandardMaterial({ color: 0x9e1f14, roughness: 0.15, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2 }),
+        );
+        puddle.rotation.x = -Math.PI / 2;
+        puddle.position.set(m(p.x), groundRiseM(p.x) + 0.006, m(p.y));
+        g.add(puddle);
+        return g;
+      }
+      case 'toast': {
+        // The glass Biggy raises when the bar is done: a tulip of Belgian gold.
+        const glass = new THREE.Mesh(
+          new THREE.LatheGeometry([[0.02, 0], [0.02, 0.06], [0.05, 0.1], [0.04, 0.2]].map(([r0, y]) => new THREE.Vector2(r0, y)), 14),
+          beerMat,
+        );
+        g.add(glass);
+        g.userData = { glass };
         return g;
       }
       case 'beer-glass': {
@@ -976,6 +1065,7 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         else cab.prompt = p;
         break;
       case 'poster': {
+        if (!u.tag) break;
         const k = p.state === 'done' ? 3 : p.state === 'active' ? 2 : 0.25 + 0.1 * Math.sin(t * 1.5);
         ((u.tag as THREE.Mesh).material as THREE.MeshBasicMaterial).color.setRGB(1, 0.48, 0.1).multiplyScalar(k);
         break;
@@ -1043,9 +1133,20 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         poseShutter(u.shutter as THREE.Group, p.progress ?? (p.state === 'broken' ? 1 : 0), 3.2);
         break;
       case 'gate': {
-        // Stephan's gate: the glass flaps fold away as the sim swings it open.
-        const e = THREE.MathUtils.smoothstep(p.progress ?? (p.state === 'open' ? 1 : 0), 0, 1);
-        for (const f of (u.flaps ?? []) as THREE.Mesh[]) f.scale.z = Math.max(0.02, 1 - e);
+        // Each belt winds back into its post over its own quarter of the swing.
+        const u2 = p.progress ?? (p.state === 'open' ? 1 : 0);
+        for (const bl of (u.belts ?? []) as Array<{ mesh: THREE.Mesh; rank: number; len: number }>) {
+          const k = beltU(u2, bl.rank);
+          bl.mesh.scale.x = Math.max(0.001, bl.len * (1 - k * k));
+          bl.mesh.visible = k < 1;
+        }
+        break;
+      }
+      case 'beer-tap': {
+        const pour = p.v ?? 0;
+        const pouring = pour > 0 && pour < 1;
+        if (u.handle) (u.handle as THREE.Object3D).rotation.x = pouring ? 0.7 : 0;
+        if (u.stream) (u.stream as THREE.Object3D).visible = pouring;
         break;
       }
       case 'ladle':

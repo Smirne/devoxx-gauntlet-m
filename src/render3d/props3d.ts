@@ -379,6 +379,9 @@ export function createProps(parent: THREE.Object3D, mats: Materials, floor: 'fir
       }
       case 'poster': {
         const top = p.y < MID;
+        // The two sheets from the 2.5D build's extras hang on the corridor walls
+        // themselves, not on a door, and each has its own face.
+        if (p.label?.startsWith('AV RIDER')) return wallSheet(p, top);
         const n = emitter(notice(p.label ?? ''), 0.6, 0.75, 1, 0xffffff, false);
         (n.material as THREE.MeshBasicMaterial).color.setScalar(0.08);
         // A sheet of paper is lit, not an emitter: swap for a lit material.
@@ -412,6 +415,71 @@ export function createProps(parent: THREE.Object3D, mats: Materials, floor: 'fir
       }
     }
     addSeats(parent, mats, placements);
+  }
+
+  /**
+   * The AV rider (the light-mix rules, as the house rig's spec sheet) and the CFP
+   * rejection wall (a corkboard of pinned slips). Both are read in the sim by
+   * standing at them or putting Voxxy's beam on them; this is only their face,
+   * flat on the corridor wall they are taped to.
+   */
+  function wallSheet(p: Prop, top: boolean): THREE.Object3D {
+    const rider = p.label?.startsWith('AV RIDER') === true;
+    const g = new THREE.Group();
+    const face = top ? m(CY0) + 0.02 : m(CY1) - 0.02;
+    const cx = m(p.x + (p.w ?? 26) / 2);
+    const c = document.createElement('canvas');
+    const x = c.getContext('2d')!;
+    if (rider) {
+      c.width = 256;
+      c.height = 340;
+      x.fillStyle = '#ece8dc';
+      x.fillRect(0, 0, 256, 340);
+      x.fillStyle = '#1b1b1b';
+      x.font = 'bold 26px Arial';
+      x.textAlign = 'center';
+      x.fillText('AV RIDER', 128, 38);
+      x.font = '15px Arial';
+      x.fillText('house rig · three lamps', 128, 60);
+      const rows: Array<[string, string, string]> = [
+        ['#ff7a1a', 'VOXXY', 'orange spot'],
+        ['#3cdc6e', 'DROID', 'green wash'],
+        ['#3b7bff', 'BIGGY', 'blue flood'],
+      ];
+      rows.forEach(([col, who, what], i) => {
+        const y = 92 + i * 56;
+        x.fillStyle = col;
+        x.fillRect(20, y, 44, 36);
+        x.fillStyle = '#1b1b1b';
+        x.textAlign = 'left';
+        x.font = 'bold 20px Arial';
+        x.fillText(who, 76, y + 16);
+        x.font = '15px Arial';
+        x.fillText(what, 76, y + 34);
+      });
+      x.textAlign = 'center';
+      x.font = 'italic 15px Georgia, serif';
+      const rule = ['A mark lights when every', 'colour it is written for is', 'on it at the same time.'];
+      rule.forEach((l, i) => x.fillText(l, 128, 280 + i * 20));
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const w = rider ? 0.7 : 2.2;
+    const h = rider ? 0.93 : 1.2;
+    const sheet = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, h),
+      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, emissive: new THREE.Color(0.3, 0.29, 0.26), emissiveMap: tex }),
+    );
+    // The rider is taped at robot eye height, under Zaal A's panel (at 1.45 m it
+    // covered the panel's lower half).
+    sheet.position.set(cx, rider ? 0.72 : 1.5, face + (top ? 0.012 : -0.012));
+    sheet.rotation.y = top ? 0 : Math.PI;
+    g.add(sheet);
+    if (!rider) {
+      const frame = new THREE.Mesh(box(w + 0.1, h + 0.1, 0.03, V(cx, 1.5, face)), mats.darkMetal);
+      g.add(frame);
+    }
+    return g;
   }
 
   function clueObj(c: Clue): ClueObj {

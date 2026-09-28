@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest';
 
 import { DT_MAX, createGame, type DebugGame, type BreakfastState } from '../src/sim';
 import { DEMO_CHAPTER, GF, type ExpoState } from '../src/sim';
+import { CFP_WALL } from '../src/sim/geometry';
 import { LANYARD, lanyardFor } from '../src/sim/lanyards';
 import { walkTo } from './pilot';
 
@@ -158,19 +159,37 @@ describe('the two things on chapter 1’s walls', () => {
     expect(first).toContain('blue');
   });
 
-  it('gives the CFP slips to Voxxy’s beam and to nobody else', () => {
+  it('has no CFP wall any more — it moved to the hall', () => {
     const g = mk(1);
+    expect(g.snapshot().props.some((p) => p.label?.startsWith('CFP'))).toBe(false);
+  });
+});
+
+/**
+ * The CFP wall, moved to chapter 2's hall by registration on 28 Sep 2026 (Michele
+ * chose it over keeping it in chapter 1, where the 3D build's ad screen hid it).
+ * The rule it is read under did not move with it.
+ */
+describe('the CFP wall, in the hall', () => {
+  it('gives the CFP slips to Voxxy’s beam and to nobody else', () => {
+    const at = { x: CFP_WALL.x + CFP_WALL.nx * 26, y: CFP_WALL.y + CFP_WALL.ny * 26 };
+    const look = Math.atan2(-CFP_WALL.ny, -CFP_WALL.nx);
+    const g = mk(2);
+    expect(g.snapshot().props.some((p) => p.label?.startsWith('CFP')), 'the board is not in the hall').toBe(true);
     // Biggy parked on the same spot, lighting the same wall with a flood: nothing.
-    g.debug.place('biggy', 375, 380, Math.PI / 2);
+    g.debug.place('biggy', at.x, at.y + 10, look);
     g.debug.select('biggy');
     steps(g, 20);
     expect(said(g)).not.toContain('CFP');
 
     // Voxxy, close, with her cone on it.
-    g.debug.place('voxxy', 375, 375, Math.PI / 2);
+    g.debug.place('biggy', at.x + 60, at.y + 40, look);
+    g.debug.place('voxxy', at.x, at.y, look);
     g.debug.select('voxxy');
     steps(g, 3);
     expect(said(g)).toContain('rejected CFP slips');
+    // Flavour: drawn grey, not in a robot's colour.
+    expect(g.snapshot().toast?.flavour).toBe(true);
   });
 });
 

@@ -106,7 +106,7 @@ import {
   TRAVEL_TIME_SCALE,
 } from '../constants';
 import { m } from '../units';
-import { GF, VIEW_GROUND, WIFI_TAG, WIFI_TAG_W, groundWallsFor, stairLanding } from '../geometry';
+import { CFP_WALL, CFP_WALL_W, GF, VIEW_GROUND, WIFI_TAG, WIFI_TAG_W, groundWallsFor, stairLanding } from '../geometry';
 import { dist, inRect, speed } from '../bot';
 import { buildLights, litBy } from '../lights';
 import type { Bot, LightSource, Mirror, Prop, Task, TextPrompt, Vec2, Wall } from '../types';
@@ -1238,6 +1238,44 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * Droid's pool, which is the trait this route is built on, plus a range check
    * because lighting a wall from 22 m away is not reading what is on it either.
    */
+  /*
+   * THE CFP WALL, since 28 Sep 2026 in the hall by registration (it was chapter
+   * 1's; see `CFP_WALL`). Read the way the spray tag is read: Voxxy's cone, not
+   * her skirt, within 5.6 m, one slip every CFP_GAP seconds. Flavour, nothing
+   * gates on it — the conference's own joke about itself.
+   */
+  const cfpAt: Vec2 = { x: CFP_WALL.x, y: CFP_WALL.y };
+  const CFP_READ = 70;
+  const CFP_GAP = 3.5;
+  let cfpNext = 0;
+  let cfpCd = 0;
+  /**
+   * The rejections, in order. Jokes about the shape of a conference programme, not
+   * about a person or a talk that exists: nothing here needs anybody's permission.
+   */
+  const CFP_SLIPS: readonly string[] = [
+    '"Microservices: A Love Story" — <i>we already have three of these.</i>',
+    '"I Rewrote It In Rust" — <i>yes. Everyone did. That is the problem.</i>',
+    '"Kubernetes For Cats" — <i>cats do not scale horizontally.</i>',
+    '"Why Your Tests Are Lying To You" — <i>accepted. Speaker then cancelled.</i>',
+    '"Blockchain For Catering" — <i>no comment was recorded.</i>',
+    '"A Deep Dive Into Tomato Soup" — <i>see the kitchen. They said no too.</i>',
+  ];
+  function stepCfp(cast: LightSource[], dt: number): void {
+    cfpCd = Math.max(0, cfpCd - dt);
+    if (cfpCd > 0) return;
+    const v = ctx.byKind('voxxy');
+    if (dist(v, cfpAt) >= CFP_READ || !litBy(cast.filter((L) => L.skirt !== true), 'voxxy', cfpAt)) return;
+    cfpCd = CFP_GAP;
+    const slip = CFP_SLIPS[cfpNext % CFP_SLIPS.length];
+    ctx.flash(
+      cfpNext === 0 ? `Voxxy: a wall of <b>rejected CFP slips</b>. Somebody pinned every one of them up. ${slip}` : `Voxxy: ${slip}`,
+      4600,
+      true,
+    );
+    cfpNext++;
+  }
+
   function stepPoster(cast: LightSource[]): void {
     const v = ctx.byKind('voxxy');
     router.posterLit =
@@ -1405,6 +1443,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     const cast = buildLights(ctx.bots, ctx.walls, NO_MIRRORS);
     lights = cast;
     stepPoster(cast);
+    stepCfp(cast, dt);
 
     /*
      * THE CURTAIN. Michele: *"when all actions are done, chapter 2 ends
@@ -1781,6 +1820,16 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           : { x: posterAt.x - WIFI_TAG_W / 2, y: posterAt.y - WIFI_TAG.ny * 2 - 4 * (WIFI_TAG.ny > 0 ? 1 : 0), w: WIFI_TAG_W, h: 4 }),
         state: router.known ? 'done' : router.posterLit ? 'active' : 'idle',
         label: router.known ? 'the wall: DevoxxForever' : 'spray tag — wifi symbol, unreadable (Voxxy\u2019s beam)',
+      },
+      // After the tag: `find('poster')` means the tag everywhere else.
+      {
+        kind: 'poster',
+        x: CFP_WALL.x - CFP_WALL_W / 2,
+        y: CFP_WALL.y - 6,
+        w: CFP_WALL_W,
+        h: 4,
+        state: cfpNext > 0 ? 'done' : 'idle',
+        label: 'CFP · REJECTED',
       },
       {
         kind: 'cable',

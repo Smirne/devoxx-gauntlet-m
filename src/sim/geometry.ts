@@ -1139,6 +1139,25 @@ export const WIFI_TAG: { readonly x: number; readonly y: number; readonly nx: nu
 export const WIFI_TAG_W = 64;
 
 /**
+ * The CFP rejection wall — six slips the programme committee turned down, pinned
+ * up where the conference can see them. It was chapter 1's, on the corridor's
+ * south wall past cinema D; the 3D build had its animated ad on exactly that
+ * stretch, and Michele moved it (28 Sep 2026: *"We can move the cfp wall to the
+ * hall maybe?"*, then "near registration"). It hangs on the south face of the
+ * concrete wall between the hall and the lobby, a real wall 8 m from the desk, so
+ * it adds no collider to the cable run. `x, y` is the reading point 8 px out,
+ * like `WIFI_TAG`; `nx, ny` the way the board faces.
+ */
+export const CFP_WALL: { readonly x: number; readonly y: number; readonly nx: number; readonly ny: number } = {
+  x: GF.concreteWall.x + GF.concreteWall.w / 2,
+  y: GF.concreteWall.y + GF.concreteWall.h + 8,
+  nx: 0,
+  ny: 1,
+};
+/** The board's width, sim px (2.2 m, on a 3.4 m face). */
+export const CFP_WALL_W = 28;
+
+/**
  * How far the lobby floor stands above the exhibition hall's, metres.
  *
  * Michele measured the drop at about half a metre — 5-7 shallow risers of roughly

@@ -908,3 +908,55 @@ export function solidDigit(d: string, h: number, color: THREE.ColorRepresentatio
   mesh.castShadow = false;
   return mesh;
 }
+
+
+/**
+ * The CFP rejection wall: a corkboard of six pinned slips, each stamped REJECTED.
+ * Drawn from the same six titles the sim reads out (`CFP_SLIPS`, ch2-expo.ts).
+ */
+export function cfpBoard(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  const x = c.getContext('2d')!;
+  c.width = 512;
+  c.height = 280;
+  x.fillStyle = '#9a7040';
+  x.fillRect(0, 0, 512, 280);
+  for (let i = 0; i < 600; i++) {
+    x.fillStyle = `rgba(60,35,10,${(0.1 + ((i * 37) % 10) / 40).toFixed(2)})`;
+    x.fillRect((i * 97) % 512, (i * 61) % 280, 2, 2);
+  }
+  x.fillStyle = '#f4f1ea';
+  x.font = 'bold 26px Arial';
+  x.textAlign = 'center';
+  x.fillText('CFP · DEVOXX · 2026', 256, 34);
+  const titles = ['Microservices: A Love Story', 'I Rewrote It In Rust', 'Kubernetes For Cats', 'Why Your Tests Lie', 'Blockchain For Catering', 'Deep Dive: Tomato Soup'];
+  titles.forEach((t, i) => {
+    const sx = 20 + (i % 3) * 164;
+    const sy = 56 + Math.floor(i / 3) * 106;
+    x.save();
+    x.translate(sx + 72, sy + 44);
+    x.rotate(((i * 7) % 5 - 2) * 0.04);
+    x.fillStyle = '#fbfaf5';
+    x.fillRect(-72, -44, 144, 88);
+    x.fillStyle = '#222';
+    x.font = 'bold 13px Arial';
+    x.fillText(t, 0, -18, 136);
+    x.fillStyle = 'rgba(0,0,0,0.25)';
+    for (let k = 0; k < 3; k++) x.fillRect(-56, -4 + k * 9, 112, 2);
+    x.strokeStyle = '#c8261c';
+    x.fillStyle = '#c8261c';
+    x.lineWidth = 3;
+    x.rotate(-0.25);
+    x.strokeRect(-46, 8, 92, 24);
+    x.font = 'bold 15px Arial';
+    x.fillText('REJECTED', 0, 26);
+    x.restore();
+    x.fillStyle = '#d93a2b';
+    x.beginPath();
+    x.arc(sx + 72, sy + 4, 5, 0, Math.PI * 2);
+    x.fill();
+  });
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
