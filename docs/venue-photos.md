@@ -43,3 +43,28 @@ Use: the view out through the entrance doors (the backdrop), if anyone looks bac
 - **Black walls**, a **black ceiling** with a grid of small round downlights; a lighting **truss
   tower** on the left with fixtures on it; wall speakers.
 - Some rows have little **tables** between seats (laptops).
+
+## Expo hall (three photos)
+
+- Two ceilings in one hall. Part of it is a **white suspended ceiling** with square LED panels and
+  round downlights, and a large **coffered recess edged in warm orange cove light**. The rest is
+  **black and exposed**: silver **spiral ducts** with short drops and round diffusers, rectangular
+  galvanised ducts, **aluminium box truss** hung diagonally, and **large white drum pendants**.
+- **White square columns**, white walls, full-height **grey curtains** drawn along walls and between
+  zones.
+- **Light grey carpet** throughout.
+- **Tall high tables**: slim black square frames with a small top, people standing round them
+  with lunch bowls.
+- **Drinks fridges** in pairs, glass-fronted, a red header, lit inside.
+- Stands: big printed back walls in saturated brand colours (purple/pink gradients, orange, white),
+  screens on stands, roll-up banners, a stand with a wooden back and hanging greenery and bar
+  stools, stands framed as open orange boxes.
+
+## Upper floor: the lab tables (photo 14)
+
+- A **long row of tables in black velvet cloth**, with a **white power-trunking strip** running
+  down the middle, laptops, bottles and lunch bowls, people sitting on both sides.
+- Behind them a **white wall of raised 3D lettering: film quotes** ("... MY DAY", "you talkin' to
+  me?", "we'll always have Paris", "I'll make him an offer...", "HASTA LA ...", "... ends up owning
+  you").
+- **Blue neon** at the ceiling line, dark ceiling with spots, a screen on the far wall.
