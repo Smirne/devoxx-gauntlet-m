@@ -50,6 +50,7 @@
  */
 
 import { CY0, CY1 } from '../sim/geometry';
+import { beltRect, beltU, beltUp, nastriRun, type Nastro } from '../sim/nastri';
 import type { Prop, Rect, Vec2, Wall } from '../sim/types';
 
 /* ------------------------------------------------------------- the shared leaf */
@@ -107,12 +108,20 @@ const overlaps = (w: Wall, r: Rect): boolean =>
  * whatever a stale `progress` says. No such wall and no clock either means it is
  * fully OPEN — the sim has given the doorway back, and a leaf drawn across it would
  * be the bug this file exists to make unsayable.
+ *
+ * "No clock" is `progress === undefined` and not `progress === 0`, which is a
+ * distinction the stair nastri paid for. It used to be the latter, and the frame
+ * `ch3-breakfast.ts` calls `done()` on is exactly a prop that says `open` with its
+ * clock still on zero: the barrier was drawn fully retracted for one frame, with
+ * all eight of its belts still walls in the sim, and then snapped back to being
+ * drawn on the next. A door with a clock is described by its clock; the fallback
+ * is for a chapter that publishes no clock at all.
  */
 function openness(p: Prop, rect: Rect, walls: readonly Wall[], sealedKinds: readonly string[]): { u: number; sealed: boolean } {
   const sealed = walls.some((w) => w.kind !== undefined && sealedKinds.includes(w.kind) && overlaps(w, rect));
   let u = clamp01(p.progress ?? (p.state === 'open' ? 1 : 0));
   if (sealed) u = 0;
-  else if (walls.length > 0 && u === 0 && p.state === 'open') u = 1;
+  else if (walls.length > 0 && p.progress === undefined && p.state === 'open') u = 1;
   return { u, sealed };
 }
 
@@ -243,110 +252,100 @@ export function cabinetDoorDraw(p: Prop, u01: number): CabinetDoorDraw {
  */
 export const cabinetLeafRests = (p: Prop): Rect[] => cabinetDoorDraw(p, 1).leaves.map((l) => l.rect);
 
-/* ------------------------------------------------- chapter 3 · the stair gate */
+/* ---------------------------------------------- chapter 3 · the stair nastri */
 
-/** The barrier's own thickness, sim px. */
-export const GATE_LEAF_T = 4;
-/** The barrier's height, metres — `PROPS.gate` and the venue's static one agree. */
-export const GATE_H = 1.1;
-/** How far in from each end of the gate line its posts stand, sim px. */
-export const GATE_POST_INSET = 8;
-/** A post's own radius, sim px. */
-export const GATE_POST_R = 1.6;
 /**
- * The width of the opening in the barrier, sim px — the part that actually swings.
+ * The retractable belt barrier at the foot of the main staircase, drawn.
  *
- * The stair got a quarter turn on 25 Sep 2026 (`GF.gate`, and Michele's *"Stairs
- * should be facing the entrance"*), and that turned one number into a design
- * problem: the barrier now runs 197 px across the foot of the flight, and there
- * are **55 px** of concourse between it and the glazed entrance wall. A leaf the
- * length of the barrier had nowhere to swing that was not either inside the glass
- * or buried in the treads.
+ * Every number in here comes out of `src/sim/nastri.ts` — post positions, belt
+ * spans, release order, and how much of each belt is still across the line at a
+ * given progress. This file only decides what a renderer needs on top of that,
+ * which is almost nothing: where the posts stand, which belts are still up, and
+ * the footprint each of those still covers.
  *
- * Which is the building telling us what it actually is. Nobody hangs a 15.7 m
- * barrier on one hinge; a stair that wide is closed by a run of posts and rope
- * with **one gate in it**, and that is what Stephan has been unhooking in the text
- * all along — *"Stephan unhooks the barrier and walks it back against the wall"*.
- * So the barrier is a run, the middle 44 px of it is a leaf, and the leaf has
- * 11 px to spare when it is swung right back.
+ * It used to own a great deal more, because the barrier used to be a run of steel
+ * with a 3.52 m gate hung in the middle of it, and the leaf's swing — hinge,
+ * axis, which way out of the stairwell — was geometry with nowhere else to live.
+ * Michele, 27 Sep 2026, looking at it: *"Stephan is powerful, but i don't think he
+ * can remove a wall. I'd use something simpler, like «Nastri»"*. A belt post has
+ * no swing to reason about, so the reasoning went back to the sim where the
+ * colliders are and this is what is left.
  */
-export const GATE_MOUTH = 44;
+
+export { BELT_H, GATE_BELT_T, GATE_BELTS, GATE_H, GATE_POST_R } from '../sim/nastri';
+
+/** One belt of the run, as the renderer wants it: posed, and told whether to draw. */
+export interface BeltDraw extends Nastro {
+  /** 0 still clipped right across .. 1 fully inside `anchor`. */
+  k: number;
+  /** What it still covers. Shrinks towards `anchor`; see `beltRect`. */
+  rect: Rect;
+  /** False once it is home — the frame the chapter's wall for it goes away too. */
+  up: boolean;
+}
 
 export interface GateDraw {
-  /** The single barrier leaf, posed. */
-  leaf: Leaf;
-  /** The two fixed posts it hangs between, as points. */
+  /** `GATE_BELTS + 1` posts, low end of the run first. They never move. */
   posts: Vec2[];
-  /** The fixed barrier either side of the opening — it never moves. */
-  runs: Rect[];
-  /** 0 shut .. 1 swung right back into the concourse. */
+  postRects: Rect[];
+  /** Every belt, in position order, with its own retraction. */
+  belts: BeltDraw[];
+  /** 0 the line is shut .. 1 every belt is home. */
   u: number;
   /** The sim still has a `gate` wall across the foot of the flight. */
   sealed: boolean;
+  /** True when the run lies along +y, which `GF.gate` does. */
+  vertical: boolean;
 }
 
 /**
- * The registration gate at the foot of the main staircase, shut or opening.
+ * The barrier at the foot of the main staircase, shut or opening.
  *
- * `p` is chapter 3's `gate` prop and `progress` is `gateSwing` in
- * `ch3-breakfast.ts`. Stephan stands at this gate all morning and opens it when he
- * has his soup, his speaker and his floor back — so it OPENS FOR THE DAY. It is not
- * smashed and it does not lift like a shutter: it is a barrier hung on one post,
- * and it swings a quarter turn to lie flat along the west edge of the approach,
- * which is where a stair gate is pinned back when a building is open.
+ * `p` is chapter 3's `gate` prop and its `progress` is `gateSwing` there. Stephan
+ * stands at this line all morning and opens it when he has his soup, his speaker
+ * and his floor back, so it OPENS FOR THE DAY: he unclips the belt in front of him
+ * and the release runs outward from his hand, one belt at a time, each winding into
+ * its own post. `GATE_BELTS` of them, which is Michele's own count.
  *
- * **It swings OUT of the stairwell, and that is not a taste call.** Back into the
- * shaft would have been the tidier drawing and it is wrong twice over: the flight
- * starts climbing at `GF.gate`'s own edge and reaches 2.7 m within the leaf's
- * length (`groundPlates` in `src/sim/geometry.ts`), so a barrier drawn at the
- * height of its hinge would be buried two metres inside the treads — and the
- * transition walks three robots up the middle of that flight a moment later. Out
- * in the concourse it lies on flat lobby floor at one height, in full view of a
- * camera that is on that side. `ch3-breakfast.ts` pushes a `gateleaf` wall exactly
- * where it stops.
+ * ## Nothing here invents a position
  *
- * ## It reads its own rect for which way it lies
- *
- * The gate was an east–west bar until the staircase was turned to face the
- * entrance, and it is a north–south one now. Rather than carry the turn as two
- * hard-coded orientations, the long side of the rect decides: the barrier runs
- * along it, and the leaf swings out along the short one, away from the flight.
- * `GF.gate` is the single place that says which, and the drawing follows it.
+ * `nastriRun` reads the prop's rect for which way the line lies — the long side —
+ * exactly as the old barrier did, so the quarter turn the staircase took on 25 Sep
+ * 2026 is still carried by `GF.gate` alone and by nothing in the renderer. What
+ * this adds is the wall list's veto, which every door in this file is subject to: a
+ * `gate` wall across the prop's own rect means the line is SHUT whatever a stale
+ * `progress` claims, and no wall with a clock at zero means it is fully open. A
+ * belt is never drawn across a stair foot the sim has already handed back.
  */
 export function gateDraw(p: Prop, walls: readonly Wall[]): GateDraw {
   const rect: Rect = { x: p.x, y: p.y, w: p.w ?? 6, h: p.h ?? 197 };
   const { u, sealed } = openness(p, rect, walls, ['gate']);
-  // The barrier runs along the rect's LONG side; the leaf swings out along the
-  // short one, into the concourse and away from the flight behind it.
-  const vertical = rect.h >= rect.w;
-  const along: Vec2 = vertical ? { x: 0, y: 1 } : { x: 1, y: 0 };
-  const out: Vec2 = vertical ? { x: 1, y: 0 } : { x: 0, y: 1 };
-  const span = vertical ? rect.h : rect.w;
-  const cross = (vertical ? rect.x : rect.y) + (vertical ? rect.w : rect.h) / 2;
-  const start = vertical ? rect.y : rect.x;
-  // The opening sits in the middle of the run, which is where the stair's own
-  // centre line is and where the transition walks up.
-  const mouth = Math.min(GATE_MOUTH, span);
-  const lo = start + (span - mouth) / 2;
-  const hi = lo + mouth;
-  const at = (t: number): Vec2 => (vertical ? { x: cross, y: t } : { x: t, y: cross });
-  const leaf = swingLeaf(at(lo), along, out, mouth, GATE_LEAF_T, u);
-  const run = (a: number, b: number): Rect =>
-    vertical
-      ? { x: cross - GATE_LEAF_T / 2, y: a, w: GATE_LEAF_T, h: b - a }
-      : { x: a, y: cross - GATE_LEAF_T / 2, w: b - a, h: GATE_LEAF_T };
-  const runs: Rect[] = [];
-  if (lo - start > 0.5) runs.push(run(start, lo));
-  if (start + span - hi > 0.5) runs.push(run(hi, start + span));
-  return { leaf, posts: [at(lo), at(hi)], runs, u, sealed };
+  // Half way along: where Stephan stands (`stephan` in `ch3-breakfast.ts` is at the
+  // middle of this line) and so where the wave starts.
+  const run = nastriRun(rect, 0.5);
+  return {
+    posts: run.posts,
+    postRects: run.postRects,
+    belts: run.belts.map((n) => ({
+      ...n,
+      k: beltU(u, n.rank),
+      rect: beltRect(run, n, u),
+      up: beltUp(u, n.rank),
+    })),
+    u,
+    sealed,
+    vertical: run.vertical,
+  };
 }
 
-/** Every footprint the gate puts in the robot band this frame, posts included. */
+/**
+ * Every footprint the barrier puts in the robot band this frame.
+ *
+ * The posts always, and the belts that are still up. A belt that has wound home is
+ * not a collider and is not drawn, which is the same statement made once:
+ * `ch3-breakfast.ts` drops that belt's wall on the frame `beltUp` turns false.
+ */
 export const gateSolids = (p: Prop, walls: readonly Wall[]): Rect[] => {
   const d = gateDraw(p, walls);
-  return [
-    d.leaf.rect,
-    ...d.runs,
-    ...d.posts.map((v): Rect => ({ x: v.x - GATE_POST_R, y: v.y - GATE_POST_R, w: GATE_POST_R * 2, h: GATE_POST_R * 2 })),
-  ];
+  return [...d.postRects, ...d.belts.filter((b) => b.up).map((b) => b.rect)];
 };

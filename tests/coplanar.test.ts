@@ -122,4 +122,73 @@ describe('the venue has no z-fighting at floor level', () => {
     expect(pairs, 'nothing was compared at all').toBeGreaterThan(50);
     expect(faults, `z-fighting ribbons:\n  ${faults.join('\n  ')}`).toHaveLength(0);
   });
+
+  /*
+   * ...AND THE SAME FAULT STOOD UP ON ITS EDGE.
+   *
+   * Michele, 28 Sep 2026, photographing the corridor beside room 7: *"chap 4 this
+   * flickers. Next to 7"*. The scan above only ever looked at horizontal faces, so
+   * the whole wall-facing half of the building was unmeasured — and it was worse
+   * there than on the floor: **93** coincident vertical pairs, the largest 10 m²
+   * where the main staircase's well edge lay in the same plane as the corridor
+   * wall it runs between, plus sixteen door frames filling their own wall slot
+   * exactly and a fire door spanning wall to wall.
+   *
+   * Every dressing piece is now held `JAMB_PROUD` (3 cm) clear of any wall face it
+   * runs along, which is also how a door frame is really built. What is left is
+   * five pairs of a hand's width or less, hence the threshold: this is a test for
+   * ribbons and panels, not for two boxes touching at a corner.
+   */
+  it('and no two walls, frames or panels fight over the same vertical plane', () => {
+    const venue = buildVenue();
+    venue.group.updateMatrixWorld(true);
+    interface VFace {
+      name: string;
+      z: number;
+      x0: number;
+      x1: number;
+      y0: number;
+      y1: number;
+    }
+    const faces: VFace[] = [];
+    const box = new THREE.Box3();
+    venue.group.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.geometry) return;
+      box.setFromObject(mesh);
+      if (!Number.isFinite(box.min.x)) return;
+      // The band a diorama camera actually sees standing up: above the skirting,
+      // below the vault.
+      if (box.max.y < 0.3 || box.min.y > 4.5) return;
+      const path: string[] = [];
+      let p: THREE.Object3D | null = o;
+      while (p) {
+        if (p.name) path.unshift(p.name);
+        p = p.parent;
+      }
+      const name = path.join('/');
+      for (const z of [box.min.z, box.max.z]) {
+        faces.push({ name, z, x0: box.min.x, x1: box.max.x, y0: box.min.y, y1: box.max.y });
+      }
+    });
+
+    /** A hand's width. Below this nobody sees a speckle from the diorama camera. */
+    const MIN_VERT_AREA = 0.1;
+    const faults: string[] = [];
+    let pairs = 0;
+    for (let i = 0; i < faces.length; i++) {
+      for (let j = i + 1; j < faces.length; j++) {
+        const a = faces[i];
+        const b = faces[j];
+        if (a.name === b.name || Math.abs(a.z - b.z) > 0.002) continue;
+        pairs++;
+        const ox = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+        const oy = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+        if (ox <= 0 || oy <= 0 || ox * oy <= MIN_VERT_AREA) continue;
+        faults.push(`z=${a.z.toFixed(3)} ${(ox * oy).toFixed(2)} m2 — ${a.name} vs ${b.name}`);
+      }
+    }
+    expect(pairs, 'nothing was compared at all').toBeGreaterThan(50);
+    expect(faults, `vertical z-fighting panels:\n  ${faults.join('\n  ')}`).toHaveLength(0);
+  });
 });

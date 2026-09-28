@@ -44,6 +44,7 @@ import * as THREE from 'three';
 
 import type { Prop } from '../sim/types';
 import { m } from '../sim/units';
+import { LOW_H } from './venue/props';
 
 export interface PrinterModel {
   /** Parent this into the scene once; `pose` moves it. */
@@ -53,8 +54,17 @@ export interface PrinterModel {
   dispose(): void;
 }
 
-/** How high the counter it stands on is, metres — the reception desk's own top. */
-const COUNTER_H = 1.02;
+/**
+ * How high the counter it stands on is, metres — the reception desk's own top.
+ *
+ * `LOW_H`, not a number of its own: the desk is a `low` sim wall and `props.ts`
+ * says how tall the renderer draws one. It was 1.02 here, a guess at a reception
+ * counter's height, which stood the machine **24 cm above the desk it is supposed
+ * to be sitting on** — a printer hovering over a counter, which is half of
+ * Michele's *"object at the recpeption still miss shape"*. Two modules had a
+ * number for the same surface and only one of them drew it.
+ */
+const COUNTER_H = LOW_H;
 /** Body size, metres. Modest: it is a desktop machine, not a copier. */
 const BODY_W = 0.62;
 const BODY_D = 0.44;

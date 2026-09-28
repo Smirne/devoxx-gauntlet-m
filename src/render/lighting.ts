@@ -36,6 +36,7 @@ import * as THREE from 'three';
 
 import { DEFS, H, RAYS_CONE, RAYS_MIRROR, RAYS_POOL, W } from '../sim/constants';
 import { CY0, CY1, F1, GF, R } from '../sim/geometry';
+import { POLY_EXTRA } from '../sim/lights';
 import { CRATE_ROW } from '../sim/opening';
 import type { GameSnapshot, LightSource, RobotKind } from '../sim/types';
 import { ROBOT_HEIGHT_M, STOREY_H_M, m } from '../sim/units';
@@ -45,7 +46,14 @@ import { ROBOT_HEIGHT_M, STOREY_H_M, m } from '../sim/units';
 const KINDS: readonly RobotKind[] = ['voxxy', 'droid', 'biggy'];
 
 /** Fan capacity: the widest polygon the sim can hand us, plus its apex. */
-const MAX_FAN_VERTS = 2 + Math.max(RAYS_CONE, RAYS_POOL, RAYS_MIRROR);
+/*
+ * `POLY_EXTRA` because a cast that occludes on BODIES is longer than its ray count:
+ * the sim inserts a vertex pair at each edge of each body's umbra
+ * (`src/sim/lights.ts`). A buffer sized for the fan alone would not draw those
+ * polygons wrong, it would draw them truncated — the fan closing across the room —
+ * so the cap comes from the sim's own number rather than from the ray counts.
+ */
+const MAX_FAN_VERTS = 2 + Math.max(RAYS_CONE, RAYS_POOL, RAYS_MIRROR) + POLY_EXTRA;
 /** Three lamps plus their mirror bounces (three per lamp per mirror), with slack. */
 const MAX_LIGHT_MESHES = 24;
 /**

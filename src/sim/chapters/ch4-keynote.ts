@@ -15,10 +15,12 @@
  * the room over `ARRIVAL`. Miss it and the keynote starts with a half-built stage.
  */
 
-import { CY0, CY1, F1, R, VIEW_DEVOXX, floor1Walls, roomDoor } from '../geometry';
-import { PUSH_LEAN_MIN, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
+import { CY0, CY1, F1, R, VIEW_DEVOXX, VIEW_REEL, floor1Walls, roomDoor } from '../geometry';
+import { SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
 import { botsCollide, circleRect, dist, inRect, mkBody, speed, standOff, stepBot } from '../bot';
-import type { Bot, Person, Prop, Rect, Task, Vec2 } from '../types';
+import { LANYARD, lanyardFor } from '../lanyards';
+import { buildReel, reelAt, reelLength } from '../reel';
+import type { Bot, Person, Prop, Rect, ReelCard, ReelView, Task, Vec2 } from '../types';
 
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 
@@ -44,7 +46,42 @@ const SPOT_REACH = 22;
  * An acceleration is a velocity per second, and the rescale moved the velocity axis
  * and left the time axis alone, so it carries `SPEED_SCALE` like every speed does.
  */
-const CRATE_FORCE = 900 * SPEED_SCALE;
+const CRATE_FORCE = 1500 * SPEED_SCALE;
+/**
+ * How far past touching Biggy can be and still be pushing, sim px.
+ *
+ * Michele, 28 Sep 2026: *"Pushing should be a bit easier, i didn't manage."* The
+ * window was 6 px on top of the two radii and the lean had to be within 72° of
+ * dead on (`PUSH_LEAN_MIN`), so a shove that was a hair off-centre slid round the
+ * board instead of moving it and there was no feedback saying why. This is 16,
+ * the lean is `CAKE_LEAN`, and the force is two thirds up — a cake on a wheeled
+ * board is not a crate of beer, and the chapter's first job should not be the
+ * hardest thing in the game.
+ */
+const CAKE_TOUCH = 16;
+/** ...and how square to it he has to be pushing. Wider than a robot-on-robot shove. */
+const CAKE_LEAN = 0.12;
+/**
+ * How much of the push follows BIGGY'S STICK rather than the line of contact, 0..1.
+ *
+ * Michele, 28 Sep 2026: *"the cake movement is a bit imprevedible, especially
+ * west-east. I haven't managed to place it."* Two discs in contact decide the
+ * direction between them, so a push a few pixels off centre left down the aisle,
+ * and the correction that follows sends it back the other way. 0.45 leaves the
+ * contact normal the larger share — push a corner and it still turns, which is
+ * how you aim it — while a trolley pushed east goes east.
+ */
+const CAKE_STEER = 0.7;
+/**
+ * How fast the board's SIDEWAYS velocity dies while he is pushing it, per second.
+ *
+ * Castors: wheels roll one way and scrub the other. 6 s^-1 is a third of a second
+ * for the drift to fall to a fifth, so a glancing contact nudges the line instead
+ * of committing the cake to a diagonal it keeps for two metres. It only applies
+ * while somebody is actually pushing — a board he has let go of coasts on its own
+ * drag, exactly as before.
+ */
+const CAKE_SCRUB = 10;
 /** Closing speed above which a robot has knocked an attendee over. px/s. */
 const BOWL_OVER = 120 * SPEED_SCALE;
 /** The crate has to be actually moving to be blamed for shoving someone. px/s. */
@@ -90,9 +127,11 @@ export interface KeynoteState {
   complaints: number;
   /** Seconds of slack left when the stage was finished. */
   spare: number;
+  /** Seconds into the opening video, or -1 while it is not playing. */
+  reelT: number;
 }
 
-const KEYS = '1/2/3/Tab: switch · WASD · E: use / hold Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint';
+const KEYS = '1/2/3/Tab: switch · WASD · E: use / hold Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics';
 const READY_OBJECTIVE =
   'Chapter 4 · <b>Keynote</b>. Stage ready. <b>Get all three robots on the stage</b> — Stephan and the speaker are waiting.';
 
@@ -301,6 +340,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * place to be jumping around in.
    */
   function key(code: string): boolean {
+    if (reelKey()) return true;
     const b = ctx.bots[ctx.cur];
     ctx.switchKey(code);
     if (code !== 'KeyE' || b.kind !== 'droid') return false;
@@ -311,9 +351,57 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     return true;
   }
 
+  /* -------------------------------------------------------- the opening video
+   *
+   * Michele: *"Devoxx usually starts with a video. We could have one recapping the
+   * robots adventures.. or bloopers?"*, then *"Movie approved, build it."*
+   *
+   * The game ends the way the conference starts. The three of them reach the stage,
+   * the house screen behind them wakes up, and Devoxx's opening video plays — cut
+   * from the night the player has just had (`src/sim/reel.ts`). Only then does the
+   * final card come up.
+   *
+   * The chapter owns the clock and the cards; the renderer is handed one card and a
+   * fade. `setView` pulls in on the screen for the length of it, because the payoff
+   * of a video is being able to read it.
+   */
+  let reelCards: ReelCard[] = [];
+  let reelT = -1;
+
+  function startReel(): void {
+    reelCards = buildReel(ctx.score, ctx.swag, ctx.t);
+    reelT = 0;
+    ctx.setView(VIEW_REEL);
+    ctx.flash('The house screen wakes up. <b>Devoxx opening video</b> \u2014 any key to skip', 3200);
+  }
+
+  /** True if the reel took the key. Any key skips to the final card. */
+  function reelKey(): boolean {
+    if (reelT < 0) return false;
+    endReel();
+    return true;
+  }
+
+  function endReel(): void {
+    reelT = -1;
+    ctx.setView(VIEW_DEVOXX);
+    ctx.finish();
+  }
+
   /* ------------------------------------------------------------------- update */
 
   function update(dt: number): void {
+    if (reelT >= 0) {
+      /*
+       * The room is finished: nobody drives and no job is live. The CROWD keeps
+       * walking, though — three thousand people do not freeze because a video
+       * started, and a still room under a playing screen reads as a crash.
+       */
+      reelT += dt;
+      for (const a of crowd) stepAttendee(a, dt);
+      if (reelT >= reelLength(reelCards)) endReel();
+      return;
+    }
     t += dt;
     ctx.stepAll(dt);
     ctx.pushBiggy(dt);
@@ -329,7 +417,32 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
     stepBot(crate, dt, ctx.walls);
     for (const b of ctx.bots) botsCollide(b, crate, 0.1);
-    // Biggy is the only one who can shove the crate: everyone else just bumps it.
+    /*
+     * BIGGY PUSHES THE CAKE, and it goes where he is pushing.
+     *
+     * Michele, 28 Sep 2026: *"the cake movement is a bit imprevedible, especially
+     * west-east. I haven't managed to place it."* He is describing two discs. The
+     * push used to be pure contact physics — force along the line from his centre
+     * to the crate's — and two round bodies in contact are a knife edge: a couple
+     * of pixels off centre turns a push into a glance, the board slides away at an
+     * angle, he chases it, and it is off again the other way. Down a long aisle
+     * that reads as a board with a mind of its own, which is exactly the note.
+     *
+     * Two things fix it, and both of them are what a CAKE ON A WHEELED BOARD
+     * actually does rather than what two billiard balls do:
+     *
+     *  - **He steers it** (`CAKE_STEER`). The push direction is the contact normal
+     *    blended towards the stick, so a hand on the back of a trolley pointing
+     *    east sends it east even when the hand is not exactly on the centre line.
+     *    The normal still has the larger share, so pushing off one corner still
+     *    turns it — the steering is the mechanic, the wandering was the bug.
+     *  - **The castors scrub** (`CAKE_SCRUB`). Wheels roll one way and resist the
+     *    other, so the part of the board's velocity that is ACROSS the push decays
+     *    fast while the part along it is untouched. Sideways drift dies in a third
+     *    of a second instead of carrying on for two metres.
+     *
+     * Everyone else still just bumps into it.
+     */
     const dx = crate.x - bg.x;
     const dy = crate.y - bg.y;
     const dd = Math.hypot(dx, dy);
@@ -337,9 +450,21 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       const nx = dx / dd;
       const ny = dy / dd;
       const lean = bg.ix * nx + bg.iy * ny;
-      if (dd < bg.r + crate.r + 6 && lean > PUSH_LEAN_MIN) {
-        crate.vx += nx * lean * CRATE_FORCE * dt;
-        crate.vy += ny * lean * CRATE_FORCE * dt;
+      if (dd < bg.r + crate.r + CAKE_TOUCH && lean > CAKE_LEAN) {
+        // Where the push goes: the contact normal, steered towards his stick.
+        const il = Math.hypot(bg.ix, bg.iy) || 1;
+        let px = nx * (1 - CAKE_STEER) + (bg.ix / il) * CAKE_STEER;
+        let py = ny * (1 - CAKE_STEER) + (bg.iy / il) * CAKE_STEER;
+        const pl = Math.hypot(px, py) || 1;
+        px /= pl;
+        py /= pl;
+        crate.vx += px * lean * CRATE_FORCE * dt;
+        crate.vy += py * lean * CRATE_FORCE * dt;
+        // ...and the castors: keep what is along the push, scrub what is across it.
+        const along = crate.vx * px + crate.vy * py;
+        const keep = Math.exp(-CAKE_SCRUB * dt);
+        crate.vx = px * along + (crate.vx - px * along) * keep;
+        crate.vy = py * along + (crate.vy - py * along) * keep;
       }
     }
 
@@ -387,7 +512,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       ctx.score.spare = Math.trunc(spare);
       ctx.score.keynoteComplaints = complaints;
       ctx.score.late = full ? 1 : 0;
-      ctx.finish();
+      startReel();
     } else if (full && !ready) {
       ended = true;
       ctx.fail(
@@ -455,6 +580,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         r: a.seated ? 4 : a.r,
         colour: a.colour,
         role: a.seated ? 'seated' : 'visitor',
+        lanyard: lanyardFor('visitor'),
         seed: a.seed,
         // Sat down, they all face the stage, which is the low-y end of the room.
         face: a.seated ? -Math.PI / 2 : a.face,
@@ -470,6 +596,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       colour: '#e8d5b5',
       hat: true,
       role: 'stephan',
+      lanyard: LANYARD.chair,
       seed: 910,
       face: Math.PI / 2,
     });
@@ -480,6 +607,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       name: 'speaker',
       colour: '#f0e0c0',
       role: 'speaker',
+      lanyard: LANYARD.speaker,
       seed: 911,
       face: Math.PI / 2,
     });
@@ -531,7 +659,19 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         text: 'push the cake crate onto its mark',
         done: cakeOnMark(),
         who: ['biggy'],
-        at: { x: crateMark.x + crateMark.w / 2, y: crateMark.y + crateMark.h / 2 },
+        /*
+         * THE CAKE FIRST, THEN THE STAGE.
+         *
+         * Michele, 28 Sep 2026: *"the hint should be first on the cake, if biggy
+         * is next to it, it should point to the stage."* He is right about the
+         * order — an arrow to the mark is an arrow to an empty rectangle while
+         * the thing that has to get there is still round the corner in the
+         * corridor, and chapter 4 is on a clock. So it points at the cake until
+         * he is on it, and at the mark from the moment he is.
+         */
+        at: dist(ctx.byKind('biggy'), crate) < ctx.byKind('biggy').r + crate.r + CAKE_TOUCH * 2
+          ? { x: crateMark.x + crateMark.w / 2, y: crateMark.y + crateMark.h / 2 }
+          : { x: crate.x, y: crate.y },
         hint: 'Biggy: it only moves for me, and only if I lean into it rather than brush past it. Up an aisle — it does not go over the seats any more than I do',
       },
       {
@@ -575,6 +715,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     people,
     progress,
     tasks,
+    /** The opening video, while it is running. `null` every other frame. */
+    reel: (): ReelView | null => (reelT < 0 ? null : reelAt(reelCards, reelT)),
     placeProp(kind: string, x: number, y: number): boolean {
       if (kind !== 'cake') return false;
       crate.x = x;
@@ -594,6 +736,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       crowd: crowd.length,
       complaints,
       spare,
+      reelT,
     }),
   };
 }

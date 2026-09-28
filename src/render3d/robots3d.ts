@@ -232,6 +232,33 @@ const CLIMB_TIME = 0.55;
 
 /** A gesture per robot, seconds left: the rig's own `reach` pose. */
 const gesture = new Map<RobotKind, number>();
+/** What a reach is aimed at, world metres — the lever or the breaker handle. */
+const reachAt = new Map<RobotKind, THREE.Vector3>();
+/** Length of the 'reach' pose, s (`POSE_DURATION.reach` in gait.ts). */
+const REACH = 1.15;
+let lastBreakers: number | undefined;
+const _sh = new THREE.Vector3();
+
+/**
+ * Point a reach at its target (Michele, 28 Sep: "the arm should reach the
+ * lever"). The pose raises Droid's right arm up and forward at a fixed angle, so
+ * the rest is aiming: the body turns to face the target and the shoulder pitches
+ * to its height, eased in and out with the pose.
+ */
+function aimReach(rig: RobotRig, target: THREE.Vector3, left: number): void {
+  const p = 1 - left / REACH;
+  const e = THREE.MathUtils.smoothstep(p, 0, 0.3) * (1 - THREE.MathUtils.smoothstep(p, 0.78, 1));
+  const root = rig.root;
+  const want = Math.atan2(target.x - root.position.x, target.z - root.position.z);
+  let d = want - root.rotation.y;
+  d = Math.atan2(Math.sin(d), Math.cos(d));
+  root.rotation.y += d * e;
+  root.updateMatrixWorld(true);
+  rig.bones.shoulderR.getWorldPosition(_sh);
+  const elev = Math.atan2(target.y - _sh.y, Math.hypot(target.x - _sh.x, target.z - _sh.z));
+  const angle = THREE.MathUtils.clamp(Math.PI / 2 + elev, 0.9, 2.9);
+  rig.bones.shoulderR.rotation.x += (2.25 - angle) * e;
+}
 let lastPanel: string | undefined;
 let lastPad: string | undefined;
 
@@ -355,8 +382,21 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
   // The sim's state changes that a hand makes: Droid throwing the projector
   // panel, a digit going into the keypad. Read off the props, drawn as a reach.
   const panel = snap.props.find((q) => q.kind === 'projector-panel')?.state;
-  if (lastPanel !== undefined && panel !== lastPanel && panel === 'done') gesture.set('droid', 1.15);
+  if (lastPanel !== undefined && panel !== lastPanel && panel === 'done') {
+    gesture.set('droid', REACH);
+    const pp = snap.props.find((q) => q.kind === 'projector-panel');
+    // The lever: left of the panel's centre, 3.35 m up (props3d.ts).
+    if (pp) reachAt.set('droid', new THREE.Vector3(m(pp.x + (pp.w ?? 30) / 2) - 0.2, 3.35, m(pp.y)));
+  }
   lastPanel = panel;
+  // Chapter 2's breakers, one handle at a time.
+  const br = snap.props.find((q) => q.kind === 'breaker');
+  const up = br?.v;
+  if (br && lastBreakers !== undefined && up !== undefined && up > lastBreakers) {
+    gesture.set('droid', REACH);
+    reachAt.set('droid', new THREE.Vector3(m(br.x + (br.w ?? 26) / 2) + (up - 2) * 0.42, 2.33, m(br.y) - 0.28));
+  }
+  lastBreakers = up;
   const pad = snap.props.find((q) => q.kind === 'keypad')?.label;
   const active = snap.bots[snap.active]?.kind;
   if (lastPad !== undefined && pad !== lastPad && active) gesture.set(active, 0.7);
@@ -416,8 +456,12 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
     // 3D intro looks at them from the east, so they stood side-on and turned on
     // the step (Michele: "I'd keep them frontal"). Facing east throughout.
     const face = snap.opening ? STAND_FACE : b.face;
-    updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: face, dt, mounted, backward: b.vx * Math.cos(face) + b.vy * Math.sin(face) < -8, laden: b.kind === 'biggy' && snap.bots.some((o) => o.mounted), hop: u, flair: trick ? trick.flair : flairPhase(b), shoved: worldMoved(b) ? 1 : 0, pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null });
+    updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: face, dt, mounted, backward: b.vx * Math.cos(face) + b.vy * Math.sin(face) < -8, laden: b.kind === 'biggy' && snap.bots.some((o) => o.mounted), carrying: b.kind === 'biggy' && snap.props.some((q) => q.kind === 'pot'), hop: u, flair: trick ? trick.flair : flairPhase(b), shoved: worldMoved(b) ? 1 : 0, pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null });
     if (b.kind === 'droid' && snap.opening) glance(r.rig, snap.opening.t);
+    const left = gesture.get(b.kind) ?? 0;
+    const target = reachAt.get(b.kind);
+    if (left > 0 && target) aimReach(r.rig, target, left);
+    else if (left <= 0) reachAt.delete(b.kind);
     // Solved at the final riding height, not wherever the climb has got to.
     if (b.kind === 'droid' && mounted) gripBiggy(r.rig, mountLift(r.rig));
     aimLamp(r, b, face);

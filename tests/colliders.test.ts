@@ -395,7 +395,13 @@ describe('every solid the venue draws is a collider', () => {
  */
 const KNOWN_WALKTHROUGH: Readonly<Record<number, readonly string[]>> = Object.freeze({
   2: [],
-  3: ['ladle', 'crate', 'duck', 'race-marker'],
+  /*
+   * `ladle` came off this list on 28 Sep. It used to draw as a 0.9 m slab standing
+   * on the FLOOR under the high shelf — in the middle of the robot band, with
+   * nothing under it — and it is now a modelled ladle ON that shelf at 1.41 m,
+   * clear of the band entirely. Nothing walks into a ladle on a shelf.
+   */
+  3: ['crate', 'duck', 'race-marker'],
   4: ['cake', 'stage', 'banner-hook', 'spotlight'],
 });
 
@@ -591,12 +597,12 @@ describe('every solid a CHAPTER draws is a collider', () => {
     2: [],
     /*
      * Chapter 3 is measured here for the first time — `GATE_RUNS[3]` used to be a
-     * written-off `null`. It comes back with the same four kinds its frame-four
-     * sweep already carries in `KNOWN_WALKTHROUGH`, and nothing extra: the gate
-     * itself is off the list, in both states, which is the whole point of adding
-     * the run.
+     * written-off `null`. It comes back with the same kinds its frame-four sweep
+     * already carries in `KNOWN_WALKTHROUGH`, and nothing extra: the gate itself is
+     * off the list, in both states, which is the whole point of adding the run.
+     * `ladle` left both lists together, on the day it went up onto the shelf.
      */
-    3: ['ladle', 'crate', 'duck', 'race-marker'],
+    3: ['crate', 'duck', 'race-marker'],
   });
 
   for (const n of [1, 2, 3]) {

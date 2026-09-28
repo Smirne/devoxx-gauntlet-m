@@ -1139,6 +1139,25 @@ export const WIFI_TAG: { readonly x: number; readonly y: number; readonly nx: nu
 export const WIFI_TAG_W = 64;
 
 /**
+ * The CFP rejection wall — six slips the programme committee turned down, pinned
+ * up where the conference can see them. It was chapter 1's, on the corridor's
+ * south wall past cinema D; the 3D build had its animated ad on exactly that
+ * stretch, and Michele moved it (28 Sep 2026: *"We can move the cfp wall to the
+ * hall maybe?"*, then "near registration"). It hangs on the south face of the
+ * concrete wall between the hall and the lobby, a real wall 8 m from the desk, so
+ * it adds no collider to the cable run. `x, y` is the reading point 8 px out,
+ * like `WIFI_TAG`; `nx, ny` the way the board faces.
+ */
+export const CFP_WALL: { readonly x: number; readonly y: number; readonly nx: number; readonly ny: number } = {
+  x: GF.concreteWall.x + GF.concreteWall.w / 2,
+  y: GF.concreteWall.y + GF.concreteWall.h + 8,
+  nx: 0,
+  ny: 1,
+};
+/** The board's width, sim px (2.2 m, on a 3.4 m face). */
+export const CFP_WALL_W = 28;
+
+/**
  * How far the lobby floor stands above the exhibition hall's, metres.
  *
  * Michele measured the drop at about half a metre — 5-7 shallow risers of roughly
@@ -1510,11 +1529,22 @@ export const LOBBY_COLUMNS: readonly Rect[] = Object.freeze(
 );
 
 /** Planters along the arrivals concourse. Low: light crosses them, robots do not. */
+/**
+ * Planters on the lobby plate.
+ *
+ * There were two. The one at **(1110, 350) is gone** — Michele, with a screenshot
+ * of it: *"this element before reception is not needed"*, and then *"there's a
+ * bench standing on the way to the reception"*. A 4.5 x 1.9 m planter with a dark
+ * top, and it stood at x 1082..1138 immediately east of the threshold steps
+ * (`LOBBY_X` is 1045) on the line somebody walks when they come up off the hall
+ * floor and turn for the desk at x 1174. It was not beside the route, it was ON
+ * it, which is why he read it as a bench rather than as planting.
+ *
+ * The one at (1430, 250) stays: it is over by the entrance, clear of every desire
+ * line, and a lobby with no planting at all reads as a car park.
+ */
 export const LOBBY_PLANTERS: readonly Rect[] = Object.freeze(
-  ([
-    [1110, 350],
-    [1430, 250],
-  ] as Array<[number, number]>).map(([x, y]): Rect => ({ x: x - 28, y: y - 12, w: 56, h: 24 })),
+  ([[1430, 250]] as Array<[number, number]>).map(([x, y]): Rect => ({ x: x - 28, y: y - 12, w: 56, h: 24 })),
 );
 
 /* ------------------------------------------------ the second round of the same
@@ -1888,10 +1918,29 @@ export function groundWalls(): Wall[] {
     },
   );
 
-  // The main staircase. Its south face is left open for the gate a chapter adds
-  // there (`GF.gate`); the reception block closes its west side.
+  /*
+   * The main staircase, open at the FOOT — which is its east face.
+   *
+   * It used to take `shellOf`, which opens the south face of everything it is
+   * given, and that was right while the flight ran north–south. The staircase took
+   * a quarter turn on 25 Sep 2026 — Michele: *"Stairs should be facing the
+   * entrance"* — and `GF.gate` turned with it, to the east face, where the foot of
+   * the flight now is. The shell did not, and nobody noticed for two days because
+   * the thing standing in the open face was a barrier: the flight was walled off
+   * along the whole of its foot and open along its south cheek instead, three
+   * metres up in the air, so Stephan's barrier was guarding a wall and the exit
+   * cutscene walked three robots straight through a balustrade.
+   *
+   * North and south are its cheeks, west is the head of the flight (you are 3.9 m
+   * up by then — `groundPlates`), and the east face is the way in, which is what
+   * the nastri stand across and what they give back when they wind in.
+   */
   const ms = GF.mainStair;
-  w.push(...shellOf(ms, 'mainstair'));
+  w.push(
+    { x: ms.x, y: ms.y, w: ms.w, h: T, kind: 'mainstair' },
+    { x: ms.x, y: ms.y + ms.h - T, w: ms.w, h: T, kind: 'mainstair' },
+    { x: ms.x, y: ms.y + T, w: T, h: ms.h - 2 * T, kind: 'mainstair' },
+  );
 
   // The BOF rooms: three workshop rooms off the lobby, one doorway each.
   const b = GF.bof;
@@ -2023,6 +2072,15 @@ function asFlavour(ws: Wall[]): Wall[] {
 export const VIEW_CLOSED: ViewRect = { x: 0, y: 14, w: 900, h: 672 };
 /** Chapter 4: the Devoxx section with the fire door shut behind. */
 export const VIEW_DEVOXX: ViewRect = { x: 590, y: 14, w: 1310, h: 672 };
+/**
+ * Chapter 4's last shot: the house screen and the stage under it.
+ *
+ * The opening video plays on Room 8's own cinema screen once the three of them are
+ * on the stage (`src/sim/reel.ts`), and a video you cannot read is not a payoff —
+ * so the camera comes in off `VIEW_DEVOXX` to the screen's own end of the room.
+ * Room 8 is x 1195..1578, its screen sits along y 24 and the stage just under it.
+ */
+export const VIEW_REEL: ViewRect = { x: 1232, y: 6, w: 310, h: 210 };
 /** The whole cinema level — only during the first cutscene. */
 export const VIEW_F1: ViewRect = { x: 0, y: 14, w: 1900, h: 672 };
 /** Chapters 2 and 3: the whole hall plus the lobby. */
@@ -2034,6 +2092,8 @@ export const CHAPTER_TITLES = [
   '2 · Expo — the exhibition hall',
   '3 · Breakfast — doors open',
   '4 · Keynote — Room 8',
+  // `?chapter=5` only — the shadow rig (`src/sim/chapters/demo-dark.ts`).
+  '5 · Demo — shadow rig',
 ] as const;
 
 /** Talk titles on the corridor signage, per Devoxx room. */

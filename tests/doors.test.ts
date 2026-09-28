@@ -47,6 +47,8 @@ import { cabinetDoorDraw, gateSolids, lockDoorSolids } from '../src/render/doors
 import { playToStairGate } from './pilot';
 
 const mk = (chapter: number): DebugGame => createGame({ seed: 20260930, chapter, cards: false });
+/** Frames for Droid's reach to the projector panel's lever, before cinema B's leaf moves. */
+const LEVER_STEPS = Math.ceil(0.75 / DT_MAX);
 const steps = (g: DebugGame, n: number): void => {
   for (let i = 0; i < n; i++) g.update(DT_MAX);
 };
@@ -123,7 +125,12 @@ describe("chapter 1 · cinema B's door opens instead of vanishing", () => {
     expect(bDoor().state).toBe('open');
     expect(bDoor().progress).toBe(0);
 
-    steps(g, 6);
+    // The leaf waits for Droid's hand to reach the lever (0.75 s, `LEVER_REACH_TIME`
+    // in ch1-night.ts — Michele, 28 Sep: "the door should start opening only
+    // after the lever is pulled"), and stays shut until then.
+    steps(g, 10);
+    expect(bDoor().progress, 'the door opened before the lever was pulled').toBe(0);
+    steps(g, LEVER_STEPS);
     const mid = bDoor().progress ?? 0;
     expect(mid, 'the leaf jumped straight to open').toBeGreaterThan(0);
     expect(mid, 'the leaf finished before a single frame of it could be seen').toBeLessThan(1);
@@ -146,7 +153,7 @@ describe("chapter 1 · cinema B's door opens instead of vanishing", () => {
     }
 
     releaseCinemaB(g);
-    steps(g, 40);
+    steps(g, 40 + LEVER_STEPS);
 
     // OPEN: the leaf is against the inside of the auditorium wall and has a wall
     // under it there — and the doorway it came out of is now clear.
@@ -228,12 +235,12 @@ describe('chapter 2 · the router cabinet is walked open', () => {
 /* ============================================= chapter 3 · the stair gate */
 
 describe('chapter 3 · Stephan opens the stairs instead of the gate blinking out', () => {
-  it('draws the shut barrier and both its posts over solid sim', () => {
+  it('draws the shut line — nine posts and eight belts — over solid sim', () => {
     const g = mk(3);
     steps(g, 2);
     for (const r of gateSolids(propOf(g, 'gate'), g.debug.walls())) {
       const c = coverage(r, g.debug.walls());
-      expect(c.covered, `the shut gate is drawn over ${c.total - c.covered} unwalled cells at ${r.x},${r.y}`).toBe(
+      expect(c.covered, `the shut line is drawn over ${c.total - c.covered} unwalled cells at ${r.x},${r.y}`).toBe(
         c.total,
       );
     }
@@ -258,7 +265,7 @@ describe('chapter 3 · Stephan opens the stairs instead of the gate blinking out
      * assertion that the hold exists at all: the swing is FINISHED and the chapter
      * is still in `play`, with the fade still down.
      */
-    expect(st.gateSwing, 'the barrier never finished swinging').toBe(1);
+    expect(st.gateSwing, 'the wave never got through all eight belts').toBe(1);
     expect(g.snapshot().phase, 'the cutscene started before the gate had opened on screen').toBe('play');
     expect(g.snapshot().fade, 'the hall faded out during the swing').toBeLessThan(0.01);
     // ...and it does hand over once the hold is up, rather than hanging on the hall.
@@ -292,7 +299,7 @@ describe('chapter 3 · Stephan opens the stairs instead of the gate blinking out
     expect(gate().progress, 'and it does land on 1').toBe(1);
   });
 
-  it('puts the swung barrier where the sim has a wall, and gives the flight back', () => {
+  it('leaves nothing drawn without a wall under it, and gives the flight back', () => {
     const g = mk(3);
     steps(g, 2);
     playToStairGate(g);
@@ -317,7 +324,7 @@ describe('chapter 3 · Stephan opens the stairs instead of the gate blinking out
     expect(standableIn(mouth, walls, biggy), 'Stephan opened the gate and the stairs are still shut').not.toBeNull();
   });
 
-  it('draws no barrier at the stair foot once it is open — the walk-through bug, asserted', () => {
+  it('draws no belt across the stair foot once it is open — the walk-through bug, asserted', () => {
     const g = mk(3);
     steps(g, 2);
     playToStairGate(g);

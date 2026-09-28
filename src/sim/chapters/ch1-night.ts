@@ -153,6 +153,13 @@ const FIRE_LEAF_T = 4;
  * feeds `Prop.progress`.
  */
 const LOCK_SWING_TIME = 0.7;
+/**
+ * How long Droid's hand takes to get to the projector panel's lever, s. The door
+ * waits for it: it used to start swinging on the key press, before the lever
+ * had moved (Michele, 28 Sep: "the door should start opening only after the
+ * lever is pulled"). The renderers draw the reach over the same time.
+ */
+const LEVER_REACH_TIME = 0.75;
 /** Cinema B's leaf, drawn and collided at its own thickness rather than the band's. */
 const LOCK_LEAF_T = 4;
 
@@ -282,7 +289,7 @@ const OBJECTIVE =
   'rooms has a keypad: find the <b>4 digits</b>, each visible only under the right <b>mix of lights</b>. ' +
   'Droid can climb on Biggy (E). Biggy can smash the jammed door with a straight run across the corridor. ' +
   'In the last cinema the <b>screen is a mirror</b>: light that hits it comes back into the room.';
-const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb / hold Biggy / Voxxy jumps · 4-9 at the keypad (Backspace) · R: restart \u00b7 I: run sheet \u00b7 H: hint';
+const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb / hold Biggy / Voxxy jumps · 4-9 at the keypad (Backspace) · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('up');
@@ -325,6 +332,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let panelOn = false;
   /** Cinema B's leaf, 0 -> 1 once the release is pressed. Ticked in `update`. */
   let lockSwing = 0;
+  /** Seconds since the panel was thrown; the leaf moves once `LEVER_REACH_TIME` has passed. */
+  let leverT = 0;
   let jamBroken = false;
   /** 0..1, the smashed door's own fall. Started by the hit, ticked in `update`. */
   let jamFall = 0;
@@ -1004,6 +1013,48 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     }
   }
 
+  /* ------------------------------------------------- two things on the walls
+   *
+   * Michele, 26 Sep 2026, approving the list of cheap extras: *"The cheap gain are
+   * ok"*. Numbers 1 and 3 were **the colour legend as an in-world AV rider** and
+   * **the CFP rejection wall, readable under Voxxy's beam**. Both belong here and
+   * nowhere else: this is the chapter that teaches the light mix, and it is the
+   * only part of the building dark enough that reading anything is an act.
+   */
+
+  /**
+   * The AV rider, taped to the corridor's north wall a few strides off the marks.
+   *
+   * **x 110, not 85, and 46 px of reach, not 64.** Michele, replaying V42: *"i
+   * cannot find it, where is it?"* — and he could not, because at the old numbers
+   * the nearest opening mark was 58 px away, inside the reach, so the toast fired
+   * on the FIRST FRAME of the chapter and was gone under the next thing anybody
+   * did. A line nobody can be looking at yet is a line nobody reads. Now the sheet
+   * is 77 px from the closest robot at the start: you walk up to the wall, and
+   * walking up to it is what reads it.
+   */
+  const riderAt: Vec2 = { x: 110, y: 289 };
+  /** Any robot, close enough to read a sheet of A4. It is a legend, not a puzzle. */
+  const RIDER_READ = 46;
+  let riderSeen = false;
+
+  // The CFP wall that stood here moved to the exhibition hall on 28 Sep 2026
+  // (`CFP_WALL` in geometry.ts, read in ch2-expo.ts).
+
+  /** The AV rider: any robot that walks up to it. */
+  function stepWalls(dt: number): void {
+    if (!riderSeen && ctx.bots.some((b) => !b.mounted && dist(b, riderAt) < RIDER_READ)) {
+      riderSeen = true;
+      ctx.flash(
+        'Taped to the wall — <b>AV RIDER</b>, house rig: <b>Voxxy</b> orange spot · <b>Droid</b> green wash · ' +
+          '<b>Biggy</b> blue flood. <i>"A mark lights when every colour it is written for is on it at the same time."</i>',
+        6000,
+        true,
+      );
+    }
+    void dt;
+  }
+
   function update(dt: number): void {
     ctx.stepAll(dt);
     ctx.pushBiggy(dt);
@@ -1013,12 +1064,14 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       fireSwing = Math.min(1, fireSwing + dt / FIRE_SWING_TIME);
       sweepFireDoor(was, fireSwing, dt);
     }
-    if (panelOn && lockSwing < 1) lockSwing = Math.min(1, lockSwing + dt / LOCK_SWING_TIME);
+    if (panelOn) leverT += dt;
+    if (panelOn && leverT >= LEVER_REACH_TIME && lockSwing < 1) lockSwing = Math.min(1, lockSwing + dt / LOCK_SWING_TIME);
     if (leaveAt >= 0 && ctx.t >= leaveAt) {
       leaveAt = -1;
       leave();
     }
     lights = buildLights(ctx.bots, ctx.walls, mirrors);
+    stepWalls(dt);
     /*
      * The one line that tells the player the mirror exists.
      *
@@ -1063,6 +1116,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       // `roomScreen()` like every other house's, and the mirror now sits on that
       // one. See the comment where `mirrors` is built.
       { kind: 'alcove', ...alcove, state: 'idle', label: 'exit alcove' },
+      {
+        // `poster` is a top-left kind, and both of these are measured from their
+        // middle — the point a robot has to get close to is the middle of a sheet.
+        kind: 'poster',
+        x: riderAt.x - 20,
+        y: riderAt.y,
+        w: 40,
+        h: 3,
+        state: riderSeen ? 'done' : 'idle',
+        label: 'AV RIDER · lamp colours',
+      },
     ];
     for (const r of seatRects) out.push({ kind: 'seatrow', ...r, state: 'idle' });
     // The scenery cinemas' doors, so the wall behind each joke is something you

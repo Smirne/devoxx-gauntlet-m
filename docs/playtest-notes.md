@@ -288,7 +288,7 @@ both change something he has already ruled on, so neither was acted on.
 
 | finding | the measurement | why it was not fixed |
 | --- | --- | --- |
-| **Chapter 3's catering gate leaks.** He said of the queue blocking Biggy from the soup: *"That is a good gate and it stays."* It stays — but it is not the gate the chapter's own text describes. | Flood fill at Biggy's frozen `r = 9`, every queue person a solid disc: the catering doorway is 44 px, so his centre may be anywhere in a 26 px band. The two files of the queue stand 10 px apart, leaving **11 px of clear centre line beside them with the queue shut** — enough for him to drive straight in. Clearing a queue widens that to 27 px. Nearest reachable floor to the soup station with the queues standing: **25 px, against a `POT_REACH` of 70**. He can fill the pot without Voxxy saying a word. | The one-line fix is to stand the queue's two files across the doorway's width instead of 10 px apart. That changes the soup's difficulty, which is his call, and the chapter-3 choreography in `chapters.test.ts` is tuned around the current spacing. `tests/beer-bar.test.ts` asserts the true thing — clearing a queue *widens* the doorway — and says in a comment why it does not assert the sealing a reader expects. |
+| **Chapter 3's catering gate leaked.** He said of the queue blocking Biggy from the soup: *"That is a good gate and it stays."* It stayed, and it was not the gate the chapter's own text described. | Flood fill at Biggy's frozen `r = 9`, every queue person a solid disc: the catering doorway is 44 px, so his centre may be anywhere in a 26 px band. The two files of the queue stood 10 px apart, leaving **11 px of clear centre line beside them with the queue shut**, and put him **25 px from the soup against a `POT_REACH` of 70** — he could fill the pot without Voxxy saying a word. | **Closed 26 Sep** on his call: *"increase the queue but just the minimun needed."* One extra person per queue, the front rank two abreast at `QUEUE_SPREAD` (11 px). Same fill, from where Biggy stands: **136 px from the soup and zero reachable cells inside the court** with the queues standing, **24 px** once Voxxy clears one. `tests/beer-bar.test.ts` asserts the seal now rather than explaining why it could not. |
 | **`beerDone` needs all six crates.** | A heap error scatters the crates 12–15 px, so in every driven run they have all been recoverable. Nothing prevented one ending up shoved under a booth, and then the chapter could not be finished without finding it. **Largely closed 25 Sep**: a 61,218-cell sweep found the reachable-but-unrecoverable cells, and `crateRescueSpot` now lifts a crate that lands somewhere Biggy cannot reach back onto floor he can (`tests/crate-rescue.test.ts`). He settled the gate on 25 Sep: **six is fine.** |
 | **Chapter 1's clue-4 marker, in cinema E's alcove, is invisible on screen.** Only the floating pip shows. | Checked against the pre-change baseline: it was already invisible, so this is pre-existing and not a regression from the halo round. The marker rings are occluded by the alcove's own geometry, and the skirt does not rescue it either — Voxxy wedged in a 3.2 m pocket has nearly every ray clipped, so the halo collapses. The sim's light still reaches the clue; only the feedback is missing. | This is **the one clue Michele said he could not solve**. It wants a round of its own, not a patch. |
 | **The clue marker is now 2.16 m across**, up from 1.24 m. | It fits the alcove with 0.36 m of clearance and reads well at distance and at play zoom in the frames taken. | It is a noticeably bigger piece of floor UI and a human should look at it before it is called done. |
@@ -449,6 +449,25 @@ told the renderer the gate had never opened.
 Still open on that block from the 24 Sep list: the sign direction, and *"this element before
 reception is not needed"* — the dark slab in front of the counter, which I could not identify from
 the note alone and will ask about rather than guess at.
+
+## Michele, 26 Sep — replaying, four screenshots
+
+One line and a picture each. Three of the four were not what the line said, which is the pattern
+this whole file is kept for.
+
+| his note | state |
+| --- | --- |
+| *"there's a banch standing on the way to the reception. And the arrow is pointing towards the hall."* | **Done, both.** The bench was `LOBBY_PLANTERS`' (1110, 350) entry, standing on the desire line between the threshold steps and the desk; it is gone and the (1430, 250) one stays. The arrow pointed left on a sign whose reception is 114 px to its RIGHT — the reader stands in the hall facing north, so +x is their right hand. Flipped. |
+| *"People. Graphics can be improves but we'll check if we have time. Reduce size a little bit. Some seem to walk backward or have the backpack on front. The small stair between reception and main hall seem to block them."* | **Done, all three.** Size: `PERSON_H` 1.72 → 1.6 m, and the seated hip height now comes from the seat model's own `SEAT_CUSHION_TOP_M` instead of a 0.62 m guess beside it. Backwards: every visitor carried `Bot.face = 0` and nothing ever set it — sixty people facing due east. Blocked at the stair: **not the stair**, which carries no walls at all. Three faults — the crowd never depenetrated from itself (two of them at exactly (945, 453)), a sidestepped visitor crawled the end-of-row booth beside the stairwell, and anyone who ran out of route east of the hall was handed a *hall* lane node and walked into Stephan's barrier. Ten of sixty stood on its east face at x 1428 for a hundred seconds with a full walking speed on the clock. Every visitor now covers at least 240 px of floor in forty seconds, asserted. |
+| *"object at the recpeption still miss shape. The printer in particular, it should be clear it's the objective of a task."* | **Done.** The recognisable printer existed only as chapter 2's prop; every other chapter drew a white slab. Same model everywhere now — and it was **floating**, because `printer.ts` guessed a 1.02 m counter while the desk is a `low` wall drawn at 0.78. The lamps beside it were 9 x 9 px boxes and are base, stem and a tapered shade now. |
+| *"stairs are great, but there's a wall! a temporary barrier is fine, that should be openend at the end of chapter 3"* | **Done.** It always opened at the end of chapter 3; what was wrong is that it was a 15.7 m slab 1.55 m tall with nine posts on its face. It is a run of hooked-together 2 m crowd barriers now — feet on the floor, rails you can see the treads through — and chapter 3's prop is posed out of the same kit, so what Stephan unhooks is what was standing there. |
+
+And his backlog answers from the same sitting: *"increase the queue but just the minimun needed"*
+(**done** — one person per queue, and the gate is measured shut against Biggy for the first time),
+*"do the check"* (**done** — fresh clone, `pnpm install` / `test` / `build` / `dev`, 712 tests green,
+all four chapters `ERRORS:0`; the one finding is that `.git` is 83 MB because `tools/progress/shots`
+is in history, and pruning is his call), and *"2: it's fine npw"* / *"7: that's fine"* / *"4 -5 keep
+as is"* — closed with no code.
 
 ## Michele, 25 Sep — playing Version 30
 
@@ -719,3 +738,132 @@ at the bold line. If he ever wants the shaft's full length, that is the number.
 | *"The robots enter the stair when an handrail is, passing through it. They should walk around it."* | The exit cutscene walks straight lines between waypoints and asks no wall a question — which was harmless until `NICHE_RAIL` made the balustrade at the head of the stair a real collider this same day. So the route now crosses a wall the player cannot cross. | One waypoint, not a pathfinder: the route enters the well by turning in off the corridor at the east end, which is the pocket the rail leaves (16.2 px, 1.30 m). `tests/stairs-driven.test.ts` already drives that entry, so the number to aim at is measured. Worth also asserting that no cutscene leg crosses a wall — the class of bug is "a route written before a collider existed", and it will happen again. |
 
 Both queued behind the opening sequence at his instruction: *"Fix this after the animation preview."*
+
+## Michele, 27 Sep — V42, first pass
+
+- *"i cannot find it, where is it?"* (the AV rider). **My bug, not his.** The sheet sat 58 px from
+  the nearest opening mark and its reach was 64, so the toast fired on the FIRST FRAME of chapter 1
+  and was buried under the next thing anybody did. Moved to x 110 with a 46 px reach: the closest
+  robot at the start is 77 px away, so you walk up to the wall and walking up to it is what reads
+  it. `tests/extras.test.ts` now asserts it does NOT fire before anybody has moved.
+- *"I can't get biggy to roll, i need voxxy?"* He does not — but he could not HEAR it. The quip
+  skipped its tick entirely while any toast was up, so a wall bump (which is how a heavy robot's run
+  usually ends) both ate the wind-up and swallowed the line. The wind-up is now always counted and
+  the line waits up to 4 s for a clear screen.
+- *"add P for physics view in the commands"* — done, on all five chapters' key lines.
+- *"still a wall here"*, with Voxxy at the foot of the main staircase in chapter 3. He came back
+  with *"stair: screenshot was shot before"* — so the behaviour was right — and then with the real
+  objection, which is about the fiction: *"Stephan is powerful, but i don't think he can remove a
+  wall. I'd use something simpler, like «Nastri»"*, and after seeing a diagram of what was actually
+  there, *"Nastri is fine. We could also have some kind of scene/effect where stephan pull one spot
+  and the 8 nastri retract one by one."* **Built.** Nine belt posts, eight webbing belts, and
+  Stephan unclips the one in front of him: the release runs outward from his hand, one belt at a
+  time, each winding into its own post. Every position is in `src/sim/nastri.ts` because the belts
+  are colliders too. And he was more right than he knew — see below.
+- **The wall he was pointing at may not have been the barrier at all.** Writing a test that asked
+  whether Biggy fits between two posts turned up a two-day-old bug: the main staircase's shell still
+  opened SOUTH, from before the flight was turned to face the entrance on 25 Sep. The foot of the
+  flight — its east face, where the barrier stands — was walled along its whole 15.76 m, and the
+  open side was the south cheek, three metres up in the air. **Stephan's barrier was guarding a
+  wall.** Fixed in `groundWalls()`: north and south are the flight's cheeks, west is the head of it,
+  and the east face is the way in, which is what the nastri stand across.
+- *"People should maybe pass at the reception to get a badge. Celestino should be there"* — queued.
+- *"?chapter=5 leads me to the start scene, is this correct?"* It is not, and the clamp was fine:
+  the published build runs inside the artifact host, which does not pass the outer page's query
+  string down to the page, so **every `?` switch is silently ignored there**. Bound **`Shift+D`** to
+  the shadow rig instead — it works from the title screen, which is where anybody would press it.
+  That needed `startChapter` to clear a running `opening`: it did not, so a start from the title set
+  the chapter up correctly and then never ticked it (`update` sees `opening !== null` first).
+- *"How do I activate Biggy's rolling? I tried running but it keeps walking."* Working as specified —
+  his own spec, 25 Sep: *"Biggy should really roll, at least when he's pushed!"* He rolls when the
+  motion is somebody else's (`worldMoved`): shoved, towed or knocked, plus the free slide after.
+  Driving him yourself is a walk. **Open question for him:** should self-driving above some speed
+  roll him too?
+
+## Michele, 28 Sep — V45, and the round after it
+
+Fourteen notes in one sitting, worked in two commits. The first seven (the crowd, the badge desk,
+Stephan's clothes, the keynote speaker, the soup's drop mark) are in *Chapter 3 playtest round*; the
+rest are here.
+
+- *"How do I activate Biggy's rolling? I tried running but it keeps walking."* — asked four times
+  across two rounds, and the fourth time it stopped being a question about controls. **He was
+  running.** The feature was gated on somebody ELSE pushing him (`worldMoved`), which was his own
+  25 Sep spec — *"at least when he's pushed"* — read as "only". A ball at 3 m/s is rolling whoever
+  set it going, so speed is the gate now and `shoved` only decides how much of it: 1.5 m/s when a
+  shove starts him, 2.2 m/s when he commits to a run himself, full tuck at 3.4. **The top of that
+  range is a measurement, not a taste.** Driven flat out across the exhibition hall from the crates,
+  Biggy hits the far wall at **2.88 m/s** — he never reaches his own 4.7 m/s top speed indoors, so a
+  threshold set off `DEFS.biggy.max` is one no player ever crosses. Verified on the build, not on a
+  unit test: headless probe, chapter 5's corridor, 4.47 m/s — legs folded into the gut, the whole
+  body turning about the gut's centre, the lid riding round and coming back up. He does NOT roll
+  with the soup pot in his hands.
+- *"Soup ladle should be visible - visual hint."* — it was a grey 0.9 m slab standing on the FLOOR
+  under the shelf, in the middle of the robot band, and it is why chapter 3 carried a walk-through
+  prop. It is a modelled ladle now — bowl down, handle up — sitting on the 1.35 m shelf slab the
+  venue already builds, lit until Droid takes it and gone from the shelf after.
+- *"Soup graphics(including spilling and leaving spill on the ground"* — the pot is a pot: steel
+  wall, rim, two ears, tomato soup whose LEVEL is the sim's `soup` and whose colour and steam are
+  the sim's `temp`. It rides at chest height, **biased towards the camera** so it does not disappear
+  behind his own lid when he walks north. Every splash leaves a puddle on the floor where the body
+  was, sized by how much came out, and they stay for the rest of the chapter — by the third batch
+  the corner he keeps clipping is drawn in tomato.
+- *"Beer game: rember to refine crates - kegs - beer brand and bar. When all is delivered, something
+  should happen (Spiller start and biggy toasts?)"* — *spillare*, to pour. **Both halves built.**
+  The taps are modelled (column, spout, handle, brand badge), the four Belgian glasses are four
+  silhouettes (tulip, goblet, flute, chalice — the sim was already naming them by number and nothing
+  was drawing them), and three kegs stand behind the counter where nothing can walk. When the sixth
+  crate lands: a beat, then the three taps run together, the glassware fills, and Biggy raises one.
+  The crates themselves are still a coloured box — that half of the note is **not done**.
+- *"I can't play chapter=5, i don't understand where the sensors / what to block."* — every word of
+  the rig was in the objective and the run sheet, and none of it was on the floor. Each station now
+  paints its beam from the lamp pad to its sensors, a cell that still needs shading is RED (it
+  published `idle`, the one state the renderer does not tint — the thing you were looking for was
+  the thing that was not drawn), and the sensor bar lights from its own supply instead of being a
+  brown strip in a blackout.
+- *"Cake: make it look like a cake. Pushing should be a bit easier"* and *"the hint should be first
+  on the cake, if biggy is next to it, it should point to the stage"* — two tiers on a board with a
+  Devoxx-orange ribbon and three lit candles; the shove is 1500 (was 900) and the lean gate is
+  gentler; the arrow points at the crate until he is beside it and at the mark after.
+- *"chap 4 this flickers. Next to 7"* — 93 pairs of coincident vertical faces on the first floor,
+  worst 10 m². Door jambs were being widened into the wall they sit in. The whole frame is offset
+  3.2 cm proud instead: **5 pairs left, worst 0.05 m²**, and `tests/coplanar.test.ts` now measures
+  vertical planes as well as horizontal ones.
+
+### Still open from this round
+
+- The beer CRATES are still boxes; only the bar around them was refined.
+- Chapter 4 runs about six minutes — his note, not yet acted on.
+
+## Michele, 28 Sep — V46, and four notes in one pass
+
+- *"the roll is great! Biggy should retreat his feet while rolling. And maybe it's better to reserve
+  it for when he's pushed to high speed."* **Both done, and the second one reverses yesterday's
+  change on his call.** The feet: folding the legs put the knees inside the gut and left two boots
+  outside a 1.2 m sphere, so each leg is now SCALED to a fifth of itself about the hip while he is
+  balled up — the silhouette is the ball and nothing else, and it blends back out as the tuck lets
+  go. The gate: driving him yourself is a walk again at any speed, and the roll belongs to a shove,
+  which is where it started (*"Biggy should really roll, at least when he's pushed!"*, 25 Sep). The
+  drive-roll window is gone.
+- *"the speaker should also go to stephan."* They used to be walked to a stage in the lobby, 17 m
+  from the man asking for them. Their mark is now the floor beside the soup's, one body's length
+  further south down the same concourse strip, and Stephan steps over and claims them within 38 px
+  the way he takes the pot. `speaker.onStage` is `speaker.withStephan` — the prototype's own HUD
+  said *"speaker · with Stephan"* all along.
+- *"the cake movement is a bit imprevedible, especially west-east. I haven't managed to place it."*
+  Two discs in contact: the push was force along the line between the centres, so a couple of pixels
+  off the middle turned a push into a glance, the board left at an angle, and the correction sent it
+  back the other way. It is a wheeled board now, not a billiard ball: **the push follows his stick**
+  as well as the contact normal (so pointing east sends it east), and **the castors scrub** the
+  sideways part of its velocity while he is pushing. Measured: 6 px off the centre line over a 3 s
+  push leaves it under 14 px off course, and a deliberate corner shove still turns it.
+- *"the spotlight lighting should have an effect."* Four amber boxes came on in order and the room
+  did not change. Each one is a floor can aimed at the stage now, with a visible beam and a warm
+  pool where it lands; the next one to light glows on standby so "which one is next" is in the room
+  and not only in the task panel.
+- ...and the last of the beer note from V46: **the crates are crates** — a case with a lip, a pale
+  band for the brewery, and twelve gold caps standing proud of it.
+
+### Still open
+
+- Chapter 4 runs about six minutes — his note, still not acted on.

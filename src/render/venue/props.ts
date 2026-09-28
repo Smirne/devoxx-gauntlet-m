@@ -30,6 +30,7 @@
 
 import * as THREE from 'three';
 
+import { BELT_H, GATE_H, nastriRun } from '../../sim/nastri';
 import type { Rect } from '../../sim/types';
 import { m } from '../../sim/units';
 import type { VenuePalette } from './materials';
@@ -238,6 +239,17 @@ const LEG_H = 0.36;
 
 /** The top of a seat back, metres above the floor it stands on. */
 export const SEAT_TOP_M = BACK_Y + BACK_H / 2;
+
+/**
+ * The top of the cushion — where a seated person's hip actually is.
+ *
+ * Exported for the same reason `SEAT_TOP_M` is: `src/render/people.ts` seats the
+ * audience on these, and a literal there against a literal here is the drift this
+ * file's neighbours keep being caught by. It used to be a guessed 0.62 over there,
+ * and shortening the figures turned that guess into people perching above their
+ * own seats.
+ */
+export const SEAT_CUSHION_TOP_M = CUSHION_Y + CUSHION_H;
 
 /**
  * One cinema seat, origin at the floor between its feet, **facing +z**: a cushion
@@ -501,6 +513,109 @@ export function networkRack(r: Rect, base: number, p: VenuePalette): THREE.Group
   for (let i = 0; i < 5; i++) {
     const face: Rect = { x: r.x + 2, y: r.y + r.h - 1, w: r.w - 4, h: 2 };
     g.add(slab(face, base + 0.35 + i * 0.28, 0.1, p.rackLed));
+  }
+  return g;
+}
+
+/* ------------------------------------------- the stair nastri (belt posts)
+ *
+ * Michele, 26 Sep 2026, with a screenshot of the main staircase: *"stairs are
+ * great, but there's a wall! a temporary barrier is fine, that should be openend
+ * at the end of chapter 3"*. Then, 27 Sep, looking at the temporary barrier that
+ * answered him: *"Stephan is powerful, but i don't think he can remove a wall. I'd
+ * use something simpler, like «Nastri»"* — and *"We could also have some kind of
+ * scene/effect where stephan pull one spot and the 8 nastri retract one by one."*
+ *
+ * Both notes are about the same thing and the second one finishes the first. What
+ * stood there was a 15.7 m slab 1.55 m tall; then it was a run of hooked steel
+ * crowd barriers, 2 m each, which is a real thing a venue owns but still 15.7 m of
+ * steel for one man to walk anywhere. What actually closes a staircase a building
+ * means to reopen in one gesture is a line of **belt posts**: a weighted disc, a
+ * chrome column, and a webbing belt that winds back into the post's own head when
+ * you unclip it. Nine posts, eight belts, and opening it is a wave.
+ *
+ * `src/sim/nastri.ts` owns every position — it has to, because the belts are
+ * colliders as well as a picture. This file is only the look, and it is the same
+ * kit twice: `ground.ts` lays a static line across `GF.gate` for the venue, and
+ * `scene.ts` poses chapter 3's prop out of it, so the thing Stephan unclips is the
+ * thing that was standing there.
+ */
+
+/** The post's own height, metres — `GATE_H` in `src/sim/nastri.ts`, see there. */
+const POST_H = GATE_H;
+/** The weighted disc it stands on. A belt post does not bolt down; it is ballast. */
+const BASE_R = 0.165;
+const BASE_H = 0.035;
+/** The column, and the cassette head that the webbing lives in. */
+const COL_R = 0.026;
+const HEAD_R = 0.038;
+const HEAD_H = 0.075;
+/** The webbing: 5 cm of nylon tape, and about a millimetre of it edge on. */
+const BELT_W = 0.05;
+const BELT_T = 0.012;
+
+/**
+ * ONE post, merged: disc, column, cassette head. Standing on y = 0, centred on x/z.
+ *
+ * Built once and shared by every post in the game — there are nine of them in one
+ * line and they are identical, which is exactly what a shared geometry is for.
+ */
+export function beltPostGeometry(h = POST_H): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const at = (g: THREE.BufferGeometry, y: number): void => {
+    g.translate(0, y, 0);
+    parts.push(g);
+  };
+  at(new THREE.CylinderGeometry(BASE_R, BASE_R * 1.05, BASE_H, 14), BASE_H / 2);
+  const col = h - HEAD_H;
+  at(new THREE.CylinderGeometry(COL_R, COL_R * 1.15, col - BASE_H, 10), BASE_H + (col - BASE_H) / 2);
+  at(new THREE.CylinderGeometry(HEAD_R, HEAD_R, HEAD_H, 10), col + HEAD_H / 2);
+  return mergeSimple(parts);
+}
+
+/**
+ * ONE belt, along local **+z** from 0 to `lenM`, its centre line on y = 0.
+ *
+ * +z is the run's own axis in `scene.ts` and in `nastriRunGroup` below, the same
+ * convention the barrier panels used before it, so a belt that is winding in is a
+ * scale on z and nothing else.
+ */
+export function beltGeometry(lenM: number): THREE.BufferGeometry {
+  const g = new THREE.BoxGeometry(BELT_T, BELT_W, Math.max(0.01, lenM));
+  g.translate(0, 0, Math.max(0.01, lenM) / 2);
+  return g;
+}
+
+/**
+ * A whole line of them, in world coordinates, every belt clipped across.
+ *
+ * `ground.ts` builds the venue's static line with this. The group's origin is the
+ * run's centre at mid-height, which is where the slab this replaced put it:
+ * `tests/venue.smoke.test.ts` reads the gate's world position to prove it stands at
+ * the foot of the flight and on the lobby plate.
+ */
+export function nastriRunGroup(
+  rect: Rect,
+  base: number,
+  post: THREE.MeshStandardMaterial,
+  belt: THREE.MeshStandardMaterial,
+): THREE.Group {
+  const g = new THREE.Group();
+  const run = nastriRun(rect);
+  g.position.set(m(rect.x + rect.w / 2), base + POST_H / 2, m(rect.y + rect.h / 2));
+  const geo = beltPostGeometry();
+  for (const v of run.posts) {
+    const mesh = new THREE.Mesh(geo, post);
+    mesh.castShadow = true;
+    mesh.position.set(m(v.x) - g.position.x, -POST_H / 2, m(v.y) - g.position.z);
+    g.add(mesh);
+  }
+  for (const n of run.belts) {
+    const len = Math.hypot(m(n.b.x - n.a.x), m(n.b.y - n.a.y));
+    const mesh = new THREE.Mesh(beltGeometry(len), belt);
+    mesh.position.set(m(n.a.x) - g.position.x, BELT_H - POST_H / 2, m(n.a.y) - g.position.z);
+    mesh.rotation.y = Math.atan2(m(n.b.x - n.a.x), m(n.b.y - n.a.y));
+    g.add(mesh);
   }
   return g;
 }

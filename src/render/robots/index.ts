@@ -78,6 +78,8 @@ export interface RobotState {
    * robot under its own steam, so every existing call site is unchanged.
    */
   shoved?: number;
+  /** Biggy with chapter 3's soup pot: he keeps both hands on it and does not roll. */
+  carrying?: boolean;
   /**
    * Voxxy's hop: **0 on the ground, 0 to 1 across the airtime.**
    *
@@ -176,5 +178,6 @@ export function updateRobot(rig: RobotRig, state: RobotState): void {
     hop: state.hop ?? 0,
     flair: state.flair ?? 0,
     shoved: state.shoved ?? 0,
+    carrying: state.carrying ?? false,
   });
 }

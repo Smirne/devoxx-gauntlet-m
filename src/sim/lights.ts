@@ -22,6 +22,8 @@ import { dist } from './bot';
  * the last pixel of it, or the bounce flickers as the robot walks.
  */
 const MIRROR_EDGE_MARGIN = 10;
+/** One turn. */
+const TAU = Math.PI * 2;
 /**
  * How far a robot's own colour spills around its feet, sim px.
  *
@@ -84,8 +86,88 @@ export function rayRect(px: number, py: number, dx: number, dy: number, r: Rect)
 }
 
 /**
+ * A BODY THAT CASTS A SHADOW.
+ *
+ * Walls have always occluded; bodies never did, and `docs/lights-and-locks-rules.md`
+ * said so in as many words — a robot standing in a beam was a hole in the physics
+ * everyone could see. Michele, 26 Sep 2026: *"A puzzle needing darkness, with biggy
+ * obstucting a lamp is fine"*, and then *"Can you make a poc / demonstration for the
+ * two no light games?"*
+ *
+ * It is opt-in, per cast, and that is not timidity: chapters 1 and 2 were built and
+ * playtested against light that only walls could stop, and their clues sit where
+ * they sit because of it. Turning bodies into occluders everywhere would silently
+ * re-tune two chapters' worth of measured windows. So `buildLights` takes the list
+ * and the chapter decides — chapter 5 hands it the three robots, everybody else
+ * hands it nothing and gets exactly the polygons they got before.
+ *
+ * `kind` is how a lamp avoids shadowing itself: the carrier of a source is filtered
+ * out of that source's own occluders (see `buildLights`).
+ */
+export interface Occluder extends Vec2 {
+  r: number;
+  kind?: RobotKind;
+}
+
+/**
+ * Ray vs circle: the distance along a unit `(dx, dy)` at which the ray first enters
+ * `o`, or Infinity if it misses. A ray starting inside returns 0 — a lamp buried in
+ * a body is a lamp that lights nothing, which is the honest answer.
+ */
+export function rayCircle(px: number, py: number, dx: number, dy: number, o: Occluder): number {
+  const ox = px - o.x;
+  const oy = py - o.y;
+  const b = ox * dx + oy * dy;
+  const c = ox * ox + oy * oy - o.r * o.r;
+  if (c <= 0) return 0;
+  // Behind the ray, or the closest approach is wider than the body.
+  if (b > 0) return Infinity;
+  const disc = b * b - c;
+  if (disc < 0) return Infinity;
+  const t = -b - Math.sqrt(disc);
+  return t < 0 ? Infinity : t;
+}
+
+/**
+ * How many bodies one cast will occlude on. Three robots, plus headroom.
+ *
+ * It is a hard cap because the polygon's length is what the renderer allocates for
+ * (`MAX_FAN_VERTS` in `src/render/lighting.ts`), and a polygon longer than that
+ * buffer is not drawn wrong, it is drawn TRUNCATED — the fan closes across the
+ * room. `buildLights` slices the list rather than trusting a caller.
+ */
+export const MAX_OCCLUDERS = 4;
+/**
+ * Extra polygon vertices body occlusion can add: four per body, two at each edge
+ * of its umbra.
+ *
+ * ## Why the edges need their own vertices
+ *
+ * The first cut clipped each of the uniform fan's rays against the bodies and
+ * stopped there, and it was wrong in a way that only showed up at range. A pool is
+ * 72 rays over the full circle, 5° apart; a robot standing 11 px from the lamp
+ * subtends 50° of it. So the polygon had one vertex at 6 px (the ray that hit the
+ * robot) next to one at 95 (the ray that missed), and the straight EDGE between
+ * those two vertices swept across 8 px of floor at the far end — cutting a whole
+ * sector of lit floor out of the polygon. Measured on the rig: with Voxxy parked on
+ * the axis 11.2 px from the lamp, every one of station B's 17 samples read dark,
+ * including the ones 44° off the axis that her 25° shadow cannot touch.
+ *
+ * So the umbra's own edges are inserted into the ray list as vertex PAIRS, a
+ * thousandth of a radian either side of each tangent direction. The edge between a
+ * pair is then radial, the shadow's flank is where the geometry says it is, and the
+ * uniform fan goes back to doing what it does for walls.
+ */
+export const POLY_EXTRA = MAX_OCCLUDERS * 4;
+/** Half the gap between the two vertices at an umbra edge, radians. */
+const EDGE_EPS = 1e-3;
+
+/**
  * The visibility polygon of a fan of `n + 1` rays from `(px, py)` spanning
  * `a0..a1`, clipped to `range` and to the first occluder along each ray.
+ *
+ * With `bodies`, the fan also carries two vertices at each edge of each body's
+ * umbra — see `POLY_EXTRA` — so the polygon is no longer `n + 1` points long.
  *
  * Glass and low walls are filtered out here: that single line is the whole
  * "glass passes light" rule.
@@ -98,6 +180,7 @@ export function castPoly(
   range: number,
   walls: Wall[],
   n: number,
+  bodies: readonly Occluder[] = [],
 ): Vec2[] {
   const pts: Vec2[] = [];
   /*
@@ -127,13 +210,45 @@ export function castPoly(
       py + range > w.y &&
       py - range < w.y + w.h,
   );
-  for (let i = 0; i <= n; i++) {
-    const a = a0 + ((a1 - a0) * i) / n;
+  /*
+   * The angles to cast, low to high: the uniform fan, plus a pair at each umbra
+   * edge. Sorted, because `pointInPoly` needs a simple polygon and a fan is only
+   * simple while its vertices are in angular order.
+   */
+  const angles: number[] = [];
+  for (let i = 0; i <= n; i++) angles.push(a0 + ((a1 - a0) * i) / n);
+  if (bodies.length > 0) {
+    for (const o of bodies) {
+      const d = Math.hypot(o.x - px, o.y - py);
+      // Inside the body, or too far to shadow anything inside the lamp's reach.
+      if (d <= o.r || d - o.r > range) continue;
+      const mid = Math.atan2(o.y - py, o.x - px);
+      const th = Math.asin(Math.min(1, o.r / d));
+      for (const edge of [mid - th, mid + th]) {
+        for (const off of [-EDGE_EPS, EDGE_EPS]) {
+          // Into the fan's own span, whatever turn of the circle it was written on.
+          let a = a0 + (((edge + off - a0) % TAU) + TAU) % TAU;
+          if (a > a1 && a - TAU >= a0) a -= TAU;
+          if (a > a0 && a < a1) angles.push(a);
+        }
+      }
+    }
+    angles.sort((p, q) => p - q);
+  }
+  for (const a of angles) {
     const dx = Math.cos(a);
     const dy = Math.sin(a);
     let t = range;
     for (const w of occl) {
       const tt = rayRect(px, py, dx, dy, w);
+      if (tt < t) t = tt;
+    }
+    // Bodies, after the walls and by the same rule: the ray stops at the first
+    // thing it meets. The umbra is therefore in the polygon itself rather than in
+    // a separate test, so everything downstream — `litBy`, `clueLit`, and the
+    // renderer's own fan meshes — sees the shadow without being taught about it.
+    for (const o of bodies) {
+      const tt = rayCircle(px, py, dx, dy, o);
       if (tt < t) t = tt;
     }
     pts.push({ x: px + dx * t, y: py + dy * t });
@@ -159,9 +274,26 @@ export function pointInPoly(p: Vec2, poly: Vec2[]): boolean {
  * A mounted Droid's lamp rides Biggy's position and widens by `MOUNT_POOL_SCALE` —
  * the lamp is simply higher up.
  */
-export function buildLights(bots: Bot[], walls: Wall[], mirrors: Mirror[]): LightSource[] {
+export function buildLights(
+  bots: Bot[],
+  walls: Wall[],
+  mirrors: Mirror[],
+  bodies: readonly Occluder[] = [],
+): LightSource[] {
   const lights: LightSource[] = [];
   for (const b of bots) {
+    /*
+     * Everything but the lamp's own carrier. A robot is not in its own way, and
+     * without this line a robot handed to `bodies` would sit on top of its own lamp
+     * and black out the room it is holding the lamp up in.
+     *
+     * By `kind`, not by identity, because a mounted Droid's lamp rides Biggy: the
+     * chapter tags each occluder with the robot it is, and `owner` is the kind that
+     * emits, so a tower shadows nothing it is carrying.
+     */
+    const shade = bodies
+      .filter((o) => o.kind !== b.kind && !(b.mounted && o.kind === 'biggy'))
+      .slice(0, MAX_OCCLUDERS);
     const L = b.light;
     let sx = b.x;
     let sy = b.y;
@@ -187,7 +319,7 @@ export function buildLights(bots: Bot[], walls: Wall[], mirrors: Mirror[]): Ligh
             range,
             owner: b.kind,
             primary: true,
-            poly: [{ x: sx, y: sy }, ...castPoly(sx, sy, 0, Math.PI * 2, range, walls, RAYS_POOL)],
+            poly: [{ x: sx, y: sy }, ...castPoly(sx, sy, 0, Math.PI * 2, range, walls, RAYS_POOL, shade)],
             full: true,
           }
         : {
@@ -202,7 +334,7 @@ export function buildLights(bots: Bot[], walls: Wall[], mirrors: Mirror[]): Ligh
             primary: true,
             poly: [
               { x: sx, y: sy },
-              ...castPoly(sx, sy, b.face - ang, b.face + ang, range, walls, RAYS_CONE),
+              ...castPoly(sx, sy, b.face - ang, b.face + ang, range, walls, RAYS_CONE, shade),
             ],
           };
     lights.push(src);
@@ -258,7 +390,7 @@ export function buildLights(bots: Bot[], walls: Wall[], mirrors: Mirror[]): Ligh
          * the share of clipped pixels around two robots went 6.4% -> 28.4%.
          */
         skirt: true,
-        poly: [{ x: sx, y: sy }, ...castPoly(sx, sy, 0, Math.PI * 2, skirt, walls, SKIRT_RAYS)],
+        poly: [{ x: sx, y: sy }, ...castPoly(sx, sy, 0, Math.PI * 2, skirt, walls, SKIRT_RAYS, shade)],
         full: true,
       });
     }
@@ -301,7 +433,7 @@ export function buildLights(bots: Bot[], walls: Wall[], mirrors: Mirror[]): Ligh
           primary: false,
           poly: [
             { x: mx, y: my },
-            ...castPoly(mx, my, rd - MIRROR_ANG, rd + MIRROR_ANG, mrange, walls, RAYS_MIRROR),
+            ...castPoly(mx, my, rd - MIRROR_ANG, rd + MIRROR_ANG, mrange, walls, RAYS_MIRROR, shade),
           ],
         });
       }
@@ -368,3 +500,4 @@ export const clueLitBy = (lights: LightSource[], kind: RobotKind, clue: Vec2, sp
 
 export const clueLit = (lights: LightSource[], clue: Clue, spot = CLUE_SPOT): boolean =>
   clue.need.every((k) => clueLitBy(lights, k, clue, spot));
+

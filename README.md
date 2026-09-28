@@ -41,6 +41,7 @@ third person with the night-city render pipeline. See `docs/3d-poc.md`.
 | number keys | Type the code, **standing at the fire-door keypad**. Away from the pad, `1` `2` `3` still switch robot |
 | `M` | Mute everything |
 | `N` | Music on / off, leaving the sound effects alone |
+| `P` | **The physics view** — collision circles at each robot's real radius, velocity arrows to scale, and every contact the solver resolved this frame drawn on its own normal and sized by the impulse, with the numbers beside them. It reads the simulation; it does not re-derive it |
 | `R` | Restart the run |
 | **Skip chapter ▸** (button, top right) | Jump to the next chapter if you are stuck, or to see the later ones |
 | **the briefing** (top of the screen) | Folds itself to one line a few seconds in, so it is not sitting over the diorama all chapter. Click it to unfold or refold |
@@ -120,17 +121,25 @@ and built so far.
 ## Debug URLs (how the build is judged)
 
 Every critic in the gauntlet drives the running build through the address bar, so a fidelity
-screenshot is deterministic and needs no automation client:
+screenshot is deterministic and needs no automation client.
+
+**They only work when the game is served from its own origin** — a clone (`pnpm dev`, `pnpm preview`)
+or any plain static host. A build embedded in a viewer that does not pass the outer page's query
+string down to the page ignores every switch below and simply starts at the title card. The one
+switch with a keyboard equivalent is the shadow rig: **`Shift+D`** starts it from anywhere,
+including the title screen.
 
 | Query | What it does |
 |---|---|
 | `?chapter=N` | Start in chapter 1..4, skipping the title card |
+| `?chapter=5` | The **shadow rig** — a proof of concept, not part of the run: two stations in the closed cinema corridor that demonstrate body-occluded light (`src/sim/chapters/demo-dark.ts`) |
 | `?topdown=1` | Flat plan-view debug camera of the current floor, north up, flat lit, no fog. The sim rect `0,0..1900,700` is drawn at its own 19:7 aspect **anchored to the top-left of the canvas**, so a plan overlay needs no offset |
 | `?nofog=1` | Drop the fog-of-war mask only |
 | `?seed=N` | Seed the sim RNG, so clue digits and crowds replay exactly |
 | `?warm=N` | Advance the sim N fixed steps before the first drawn frame |
 | `?pose=voxxy\|droid\|biggy` | Robot portrait: that robot alone on a plinth, front three-quarter, lit for the model-sheet check |
 | `?nohud=1` | Hide the DOM overlay |
+| `?physics=1` | Start with the physics view up (`P` toggles it in play) |
 
 `document.title` always reads `After Dark · ERRORS:<count>` and `<pre id="console-log">` carries the
 lines, so "no console errors" can be read straight out of `--dump-dom`.

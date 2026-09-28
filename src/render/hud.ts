@@ -83,6 +83,7 @@ const CHAPTER_TITLES: readonly string[] = [
   '2 · Expo — the exhibition hall',
   '3 · Breakfast — doors open',
   '4 · Keynote — Room 8',
+  '5 · Demo — shadow rig',
 ];
 
 /**

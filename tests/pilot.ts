@@ -216,7 +216,7 @@ export function playToStairGate(g: DebugGame, onOpen?: (g: DebugGame) => void): 
     expect(st().ladle, 'Droid never got the ladle').toBe(true);
     use('biggy', { x: 105, y: 180 });
     expect(st().carrying, 'Biggy never picked the pot up').toBe(true);
-    const drop = propAt('dropzone', (p) => !(p.label ?? '').includes('beer'));
+    const drop = propAt('dropzone', (p) => (p.label ?? '').includes('soup'));
     use('biggy', drop);
     expect(st().delivered, 'the soup never arrived').toBe(true);
 
@@ -250,9 +250,12 @@ export function playToStairGate(g: DebugGame, onOpen?: (g: DebugGame) => void): 
      * pilot — the same A* router `tests/chapters.test.ts` drives this errand with —
      * so the speaker is led down a route a player could actually walk.
      */
-    expect(walkTo(g, 'voxxy', drop), 'Voxxy could not walk the speaker to the stage').toBe(true);
-    for (let i = 0; i < 900 && !st().speaker.onStage; i++) g.update(DT_MAX);
-    expect(st().speaker.onStage, 'the speaker never reached the stage').toBe(true);
+    const spkMark = g.snapshot().props.find((o) => o.kind === 'dropzone' && (o.label ?? '').includes('speaker'));
+    if (!spkMark) throw new Error('chapter 3 publishes no mark for the speaker');
+    const spkAt = { x: spkMark.x + (spkMark.w ?? 0) / 2, y: spkMark.y + (spkMark.h ?? 0) / 2 };
+    expect(walkTo(g, 'voxxy', spkAt), 'Voxxy could not walk the speaker to Stephan').toBe(true);
+    for (let i = 0; i < 900 && !st().speaker.withStephan; i++) g.update(DT_MAX);
+    expect(st().speaker.withStephan, 'the speaker never reached Stephan').toBe(true);
 
     // The top-shelf sticker, AFTER the speaker rather than before. It used to come
     // first, because the minigames take `E` before the chapter does and the speaker

@@ -106,7 +106,7 @@ import {
   TRAVEL_TIME_SCALE,
 } from '../constants';
 import { m } from '../units';
-import { GF, VIEW_GROUND, WIFI_TAG, WIFI_TAG_W, groundWallsFor, stairLanding } from '../geometry';
+import { CFP_WALL, CFP_WALL_W, GF, VIEW_GROUND, WIFI_TAG, WIFI_TAG_W, groundWallsFor, stairLanding } from '../geometry';
 import { dist, inRect, speed } from '../bot';
 import { buildLights, litBy } from '../lights';
 import type { Bot, LightSource, Mirror, Prop, Task, TextPrompt, Vec2, Wall } from '../types';
@@ -249,6 +249,25 @@ const RECEPTION_HAIL = 150;
 const TECH_DOOR_HAIL = 120;
 /** Seconds between the terminal's "that is not it" readouts, so a mashed key is not a wall of toast. */
 const TYPO_COOLDOWN = 1.2;
+/**
+ * The test badge, and the joke it makes. Cheap extra 2, approved 26 Sep 2026.
+ *
+ * Her name is the one word in the building that the venue's own kit cannot get
+ * right, which is every conference badge story anybody has ever told.
+ */
+const BADGE_TOAST =
+  'The printer chatters and drops its first test badge in the tray: <b>VOXY</b>.<br>' +
+  'Voxxy: "One X. It is TWO. It has always been two. I wired that machine myself."';
+/** Seconds between the printer coming up and the test badge landing in the tray. */
+const BADGE_WARMUP = 3;
+/**
+ * How long the test badge is left on screen before the curtain line replaces it.
+ *
+ * The chapter hands over to chapter 3 when the curtain has run AND the badge has
+ * had this long on screen. It used to be free to land on the same frame as the
+ * badge, or to swallow it into its own line, which is how the joke went missing.
+ */
+const BADGE_HOLD = 1.2;
 const BREAKERS = 3;
 /**
  * How long the panel goes on striking after a handle is thrown, seconds.
@@ -365,6 +384,8 @@ export interface ExpoState {
   hallLit: boolean;
   /** The chain, all the way through, plus the cable: or the badge printer prints nothing. */
   printerOnline: boolean;
+  /** The test badge has been printed and the joke has been on screen. */
+  badgePrinted: boolean;
 }
 
 /**
@@ -386,7 +407,7 @@ const OBJECTIVE =
   'the <b>store</b> open. <b>Droid</b> reaches what is too high, <b>Biggy</b> moves what is too ' +
   'heavy, <b>Voxxy</b> goes where nothing else fits.';
 const KEYS =
-  '1/2/3/Tab: switch · WASD · E: use / climb / terminal / hold Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint';
+  '1/2/3/Tab: switch · WASD · E: use / climb / terminal / hold Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');
@@ -440,6 +461,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let breakerStrike = 0;
   let rollerBroken = false;
   /** When both tasks were first done, sim seconds — see `CURTAIN`. Null until then. */
+  /** Has the printer's first test badge been mentioned? It is worth one outing. */
+  let badgeSaid = false;
+  /** Sim time the badge drops, set when the printer comes up. -1 until then. */
+  let badgeAt = -1;
   let curtainAt: number | null = null;
   /** Whether the shutter was the LAST of the two, so the curtain line names it. */
   let rollerLast = false;
@@ -1213,6 +1238,44 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * Droid's pool, which is the trait this route is built on, plus a range check
    * because lighting a wall from 22 m away is not reading what is on it either.
    */
+  /*
+   * THE CFP WALL, since 28 Sep 2026 in the hall by registration (it was chapter
+   * 1's; see `CFP_WALL`). Read the way the spray tag is read: Voxxy's cone, not
+   * her skirt, within 5.6 m, one slip every CFP_GAP seconds. Flavour, nothing
+   * gates on it — the conference's own joke about itself.
+   */
+  const cfpAt: Vec2 = { x: CFP_WALL.x, y: CFP_WALL.y };
+  const CFP_READ = 70;
+  const CFP_GAP = 3.5;
+  let cfpNext = 0;
+  let cfpCd = 0;
+  /**
+   * The rejections, in order. Jokes about the shape of a conference programme, not
+   * about a person or a talk that exists: nothing here needs anybody's permission.
+   */
+  const CFP_SLIPS: readonly string[] = [
+    '"Microservices: A Love Story" — <i>we already have three of these.</i>',
+    '"I Rewrote It In Rust" — <i>yes. Everyone did. That is the problem.</i>',
+    '"Kubernetes For Cats" — <i>cats do not scale horizontally.</i>',
+    '"Why Your Tests Are Lying To You" — <i>accepted. Speaker then cancelled.</i>',
+    '"Blockchain For Catering" — <i>no comment was recorded.</i>',
+    '"A Deep Dive Into Tomato Soup" — <i>see the kitchen. They said no too.</i>',
+  ];
+  function stepCfp(cast: LightSource[], dt: number): void {
+    cfpCd = Math.max(0, cfpCd - dt);
+    if (cfpCd > 0) return;
+    const v = ctx.byKind('voxxy');
+    if (dist(v, cfpAt) >= CFP_READ || !litBy(cast.filter((L) => L.skirt !== true), 'voxxy', cfpAt)) return;
+    cfpCd = CFP_GAP;
+    const slip = CFP_SLIPS[cfpNext % CFP_SLIPS.length];
+    ctx.flash(
+      cfpNext === 0 ? `Voxxy: a wall of <b>rejected CFP slips</b>. Somebody pinned every one of them up. ${slip}` : `Voxxy: ${slip}`,
+      4600,
+      true,
+    );
+    cfpNext++;
+  }
+
   function stepPoster(cast: LightSource[]): void {
     const v = ctx.byKind('voxxy');
     router.posterLit =
@@ -1380,6 +1443,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     const cast = buildLights(ctx.bots, ctx.walls, NO_MIRRORS);
     lights = cast;
     stepPoster(cast);
+    stepCfp(cast, dt);
 
     /*
      * THE CURTAIN. Michele: *"when all actions are done, chapter 2 ends
@@ -1402,16 +1466,67 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      * The clock starts on the frame BOTH are true rather than on either one, so
      * it is the same three seconds in either finishing order.
      */
+    /*
+     * THE TEST BADGE. Michele, 26 Sep 2026, of the cheap extras: *"The cheap gain
+     * are ok"* — number 2 was **the wrong-name badge from the printer**.
+     *
+     * The first thing any badge printer in the world does when it comes up is
+     * print one test badge, and the first thing it gets wrong is a name. Voxxy is
+     * the one who wired it, so Voxxy is the one who has to look at it.
+     *
+     * It fires the moment the printer is online and the roller is still shut. When
+     * both land on the same frame the curtain line below carries the badge instead
+     * — one toast replaces another, and being told the store is open is not worth
+     * losing to a joke about spelling.
+     */
+    /*
+     * ...AND IT FIRES WHATEVER ORDER THE CHAPTER WAS PLAYED IN.
+     *
+     * Michele, 28 Sep 2026: *"VOXY badge — that didn't trigger."* It was gated on
+     * `!rollerBroken`, so a player who put Biggy through the shutter BEFORE
+     * finishing the cable — which is a perfectly ordinary way round, and the way
+     * he played it — never met the condition. The fallback below folded the joke
+     * into the curtain line, where it lasted the same `CURTAIN` seconds as the
+     * chapter's own ending and went past unread, which is the same as not firing.
+     *
+     * So the badge is now its own beat in both orders, and the curtain WAITS for
+     * it: at most `BADGE_WARMUP + BADGE_HOLD` — six and a half seconds — between
+     * the printer waking and the chapter handing over. A joke that only lands in
+     * one of two orderings is a joke that is not in the game.
+     */
+    if (!badgeSaid && printerOnline()) {
+      // A printer that is warming up is not a printer that has printed. The wait
+      // is also what keeps the joke off the top of "cable in — the run is made",
+      // which is the line that tells the player the job they just did worked.
+      if (badgeAt < 0) badgeAt = ctx.t + BADGE_WARMUP;
+      if (ctx.t >= badgeAt) {
+        badgeSaid = true;
+        ctx.flash(BADGE_TOAST, 5200);
+      }
+    }
+
     if (printerOnline() && rollerBroken) {
       if (curtainAt === null) {
         curtainAt = ctx.t;
         ctx.flash(
-          rollerLast
+          (rollerLast
             ? 'The shutter goes up on three thousand Devoxx shirts. The printer is already chattering next door'
-            : 'The printer wakes up next door. Behind you the store is open, and the shirts are in there',
+            : 'The printer wakes up next door. Behind you the store is open, and the shirts are in there'),
           Math.round(CURTAIN * 1000),
         );
-      } else if (ctx.t - curtainAt >= CURTAIN) {
+        /*
+         * The curtain runs on its own clock and the badge on its own, and the
+         * chapter leaves when BOTH have had their moment.
+         *
+         * Gating the curtain itself on the badge was the first cut and it put six
+         * and a half seconds between the last thing the player did and the
+         * chapter moving, which `tests/ch2-chain.test.ts` measures and refuses.
+         * This way the store-is-open line lands the moment it is true, the badge
+         * lands on top of it a beat later, and the hand-over waits for the later
+         * of the two — so the joke is on screen in both play orders and the
+         * curtain is still a curtain.
+         */
+      } else if (ctx.t - curtainAt >= CURTAIN && badgeSaid && ctx.t >= badgeAt + BADGE_HOLD) {
         ctx.score.expoT = Math.round(curtainAt);
         ctx.score.cable = Math.trunc(cable.len);
         ctx.startChapter(3);
@@ -1705,6 +1820,16 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           : { x: posterAt.x - WIFI_TAG_W / 2, y: posterAt.y - WIFI_TAG.ny * 2 - 4 * (WIFI_TAG.ny > 0 ? 1 : 0), w: WIFI_TAG_W, h: 4 }),
         state: router.known ? 'done' : router.posterLit ? 'active' : 'idle',
         label: router.known ? 'the wall: DevoxxForever' : 'spray tag — wifi symbol, unreadable (Voxxy\u2019s beam)',
+      },
+      // After the tag: `find('poster')` means the tag everywhere else.
+      {
+        kind: 'poster',
+        x: CFP_WALL.x - CFP_WALL_W / 2,
+        y: CFP_WALL.y - 6,
+        w: CFP_WALL_W,
+        h: 4,
+        state: cfpNext > 0 ? 'done' : 'idle',
+        label: 'CFP · REJECTED',
       },
       {
         kind: 'cable',
@@ -2039,6 +2164,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       },
       hallLit: hallLit(),
       printerOnline: printerOnline(),
+      badgePrinted: badgeSaid,
     }),
   };
 }

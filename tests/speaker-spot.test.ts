@@ -27,7 +27,7 @@ import { describe, expect, it } from 'vitest';
 import { DT_MAX, GF, createGame, type DebugGame } from '../src/sim';
 
 interface SpeakerState {
-  speaker: { following: boolean; onStage: boolean; booth: string };
+  speaker: { following: boolean; withStephan: boolean; booth: string };
 }
 
 const ch3 = (g: DebugGame): SpeakerState => g.debug.chapter() as unknown as SpeakerState;

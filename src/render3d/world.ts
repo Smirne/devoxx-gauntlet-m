@@ -426,7 +426,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
    * rig's own position, so it rides every bob and sway with him.
    */
   const LID_TOP = 1.44;
-  function seatOnBiggy(): void {
+  function seatOnBiggy(snap: GameSnapshot): void {
     const bg = robots.get('biggy');
     if (!bg) return;
     const root = bg.rig.root;
@@ -436,6 +436,14 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       if (!o || !o.visible) continue;
       const dy = o.position.y - ROBOT_HEIGHT_M.biggy;
       o.position.set(root.position.x, root.position.y + LID_TOP + dy, root.position.z);
+    }
+    // The toast: the glass comes up off his lid and is held high.
+    const toast = props.object('toast');
+    const tp = snap.props.find((q) => q.kind === 'toast');
+    if (toast && toast.visible && tp) {
+      const v = tp.v ?? 0;
+      toast.position.set(root.position.x + 0.25, root.position.y + LID_TOP + 0.05 + 0.5 * (v * v * (3 - 2 * v)), root.position.z);
+      toast.rotation.z = -0.25 * v;
     }
   }
 
@@ -465,7 +473,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     }
     updateRobots(robots, snap, dt, crateSurface);
     props.update(snap, time, dt);
-    seatOnBiggy();
+    seatOnBiggy(snap);
     peopleRoot.visible = onGround;
     if (onGround) people.update(snap, time);
     // Props are built lazily from the first snapshots; patch whatever exists.
