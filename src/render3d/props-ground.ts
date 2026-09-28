@@ -150,26 +150,80 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
     const g = new THREE.Group();
     switch (p.kind) {
       case 'breaker': {
-        // A breaker board high on the technical room's wall — too high for
-        // anyone but Droid, which is the point of it.
+        // The distribution board, high on the technical room's wall — too high
+        // for anyone but Droid, which is the point of it. A grey steel enclosure
+        // with its door swung open, rows of DIN breakers, a 400 V warning, the
+        // conduits up to the ceiling, and three red main isolators: the three
+        // the sim counts, thrown one by one as Droid's hand arrives on each.
+        // It was a rusty slab with three blocks on it (Michele: "polish this").
         g.position.set(cx, 0, cz);
-        const board = new THREE.Mesh(box(w * 0.9, 1.0, 0.18, V(0, 2.45, -d / 2 + 0.09)), mats.enamel);
-        board.castShadow = true;
-        g.add(board);
-        const handles: THREE.Mesh[] = [];
-        for (let i = 0; i < 3; i++) {
-          const h = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.28, 0.08), mats.darkMetal);
-          h.position.set((i - 1) * 0.42, 2.4, -d / 2 + 0.22);
-          g.add(h);
-          handles.push(h);
+        // On the technical room's north wall itself; the sim's rect stands 8 px off it.
+        const back = m(GF.tech.y) - cz;
+        const grey = new THREE.MeshStandardMaterial({ color: 0x7d8288, roughness: 0.45, metalness: 0.55 });
+        const bw = Math.min(w * 0.9, 1.6);
+        const Y = 2.45;
+        const box0 = new THREE.Mesh(box(bw, 1.2, 0.24, V(0, Y, back + 0.12)), grey);
+        box0.castShadow = true;
+        g.add(box0);
+        // Inside face, a shade darker, and three rows of small breakers.
+        g.add(new THREE.Mesh(box(bw - 0.08, 1.12, 0.01, V(0, Y, back + 0.245)), mats.darkMetal));
+        const din = new THREE.MeshStandardMaterial({ color: 0x1b1c1f, roughness: 0.6 });
+        const toggle = new THREE.MeshStandardMaterial({ color: 0xe8e4da, roughness: 0.5 });
+        const n = Math.floor((bw - 0.2) / 0.06);
+        for (let r = 0; r < 3; r++) {
+          const ry = Y + 0.4 - r * 0.2;
+          g.add(new THREE.Mesh(box(bw - 0.16, 0.02, 0.03, V(0, ry - 0.07, back + 0.26)), mats.steel));
+          for (let i = 0; i < n; i++) {
+            const bx = -((n - 1) * 0.06) / 2 + i * 0.06;
+            g.add(new THREE.Mesh(box(0.05, 0.12, 0.05, V(bx, ry, back + 0.27)), din));
+            g.add(new THREE.Mesh(box(0.018, 0.03, 0.02, V(bx, ry + ((i * 7 + r) % 5 === 0 ? -0.02 : 0.02), back + 0.3)), toggle));
+          }
         }
-        const led = new THREE.Mesh(new THREE.BoxGeometry(w * 0.8, 0.05, 0.03), glowMat());
-        led.position.set(0, 2.88, -d / 2 + 0.2);
+        // The door, swung open about 110° on its left hinge.
+        const hinge = new THREE.Group();
+        hinge.position.set(-bw / 2, Y, back + 0.24);
+        hinge.rotation.y = -1.9;
+        const door = new THREE.Mesh(box(bw, 1.2, 0.03, V(bw / 2, 0, 0)), grey);
+        door.castShadow = true;
+        hinge.add(door);
+        const warn = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.34, 0.3),
+          new THREE.MeshStandardMaterial({ map: canvasText(['\u26A1', '400 V'], { w: 128, h: 112, bg: '#f2c318', fg: '#111' }), roughness: 0.6 }),
+        );
+        warn.position.set(bw / 2, 0.2, -0.02);
+        warn.rotation.y = Math.PI;
+        hinge.add(warn);
+        g.add(hinge);
+        // Conduits up to the ceiling.
+        for (const cxo of [-bw * 0.3, 0, bw * 0.3]) {
+          const c = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 4.2, 8), mats.steel);
+          c.position.set(cxo, Y + 0.6 + 2.1, back + 0.08);
+          g.add(c);
+        }
+        // The three main isolators: a housing each and a red handle on a pivot.
+        const handles: THREE.Object3D[] = [];
+        for (let i = 0; i < 3; i++) {
+          const hx = (i - 1) * 0.42;
+          g.add(new THREE.Mesh(box(0.2, 0.3, 0.1, V(hx, Y - 0.38, back + 0.3)), din));
+          const pivot = new THREE.Group();
+          pivot.position.set(hx, Y - 0.38, back + 0.36);
+          const arm = new THREE.Mesh(box(0.05, 0.26, 0.05, V(0, 0.13, 0)), new THREE.MeshStandardMaterial({ color: 0xc1261c, roughness: 0.4 }));
+          const grip = new THREE.Mesh(box(0.14, 0.05, 0.06, V(0, 0.26, 0)), new THREE.MeshStandardMaterial({ color: 0xc1261c, roughness: 0.4 }));
+          pivot.add(arm, grip);
+          g.add(pivot);
+          handles.push(pivot);
+        }
+        const led = new THREE.Mesh(new THREE.BoxGeometry(bw * 0.8, 0.04, 0.03), glowMat());
+        led.position.set(0, Y + 0.56, back + 0.27);
         g.add(led);
+        // The flash when a handle lands.
+        const flash = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), glowMat());
+        flash.visible = false;
+        g.add(flash);
         const lamp = new THREE.PointLight(0xffffff, 0, 3.5, 2);
-        lamp.position.set(0, 2.5, -d / 2 + 0.7);
+        lamp.position.set(0, Y, back + 0.8);
         g.add(lamp);
-        g.userData = { handles, led, lamp };
+        g.userData = { handles, led, lamp, flash, back, lastUp: 0, changedAt: -1e9 };
         return g;
       }
       case 'rack-lights':
@@ -768,7 +822,27 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
     switch (p.kind) {
       case 'breaker': {
         const up = p.v ?? 0;
-        (u.handles as THREE.Mesh[]).forEach((h, i) => (h.rotation.x = i < up ? -0.9 : 0.5));
+        if (up !== u.lastUp) {
+          if (up > (u.lastUp as number)) u.changedAt = t;
+          u.lastUp = up;
+        }
+        // Handles already up stay up; the newest one is thrown when Droid's hand
+        // gets there (his reach takes ~0.6 s), over a fifth of a second, and
+        // flashes as it lands.
+        const since = t - (u.changedAt as number);
+        const throwK = THREE.MathUtils.smoothstep(since, 0.55, 0.75);
+        (u.handles as THREE.Object3D[]).forEach((h, i) => {
+          const k = i < up - 1 ? 1 : i === up - 1 ? throwK : 0;
+          h.rotation.x = Math.PI - k * Math.PI;
+        });
+        const fl = u.flash as THREE.Mesh;
+        const spark = since > 0.72 && since < 0.95 ? 1 - (since - 0.72) / 0.23 : 0;
+        fl.visible = spark > 0;
+        if (spark > 0) {
+          fl.position.set((up - 2) * 0.42, 2.07 + 0.26, (u.back as number) + 0.36);
+          (fl.material as THREE.MeshBasicMaterial).color.setRGB(1, 0.85, 0.5).multiplyScalar(30 * spark);
+          fl.scale.setScalar(0.6 + spark);
+        }
         const strike = p.progress ?? 0;
         stateColour(p.state === 'idle' && up > 0 ? 'active' : p.state, tmp, 6 + 20 * strike);
         (u.led.material as THREE.MeshBasicMaterial).color.copy(tmp);

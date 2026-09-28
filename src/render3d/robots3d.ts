@@ -394,7 +394,7 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
   const up = br?.v;
   if (br && lastBreakers !== undefined && up !== undefined && up > lastBreakers) {
     gesture.set('droid', REACH);
-    reachAt.set('droid', new THREE.Vector3(m(br.x + (br.w ?? 26) / 2) + (up - 2) * 0.42, 2.4, m(br.y)));
+    reachAt.set('droid', new THREE.Vector3(m(br.x + (br.w ?? 26) / 2) + (up - 2) * 0.42, 2.33, m(br.y) - 0.28));
   }
   lastBreakers = up;
   const pad = snap.props.find((q) => q.kind === 'keypad')?.label;
