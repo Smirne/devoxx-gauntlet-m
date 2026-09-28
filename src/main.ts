@@ -44,6 +44,7 @@ import type { GameSnapshot, RobotKind } from './sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M } from './sim/units';
 
 import { createAudio, type Audio } from './render/audio';
+import { scoreFor } from './render/cues';
 import { createHud, type Hud, type SpeakerAnchors } from './render/hud';
 import { STEP_FREQ_BASE, STEP_FREQ_PER_MPS, gaitSpeed } from './render/robots';
 import { createScene, type DioramaScene } from './render/scene';
@@ -336,6 +337,8 @@ window.addEventListener('blur', releaseAll);
  */
 const stepPhase: Record<RobotKind, number> = { voxxy: 0, droid: 0, biggy: 0 };
 let ambientChapter = -1;
+/** The score last asked for. */
+let musicScore = -2;
 let lastPhase = '';
 /** Last frame's fall progress on chapter 1's jammed door, so the crash plays once. */
 let lastBreak = 0;
@@ -553,8 +556,12 @@ function updateAudio(snap: GameSnapshot, dt: number): void {
     lastBreakerV = 0;
     lastPilot = '';
     audio.setAmbient(snap.chapter);
-    audio.setMusic(snap.chapter);
     if (snap.chapter > 1) audio.play('transition');
+  }
+  // The opening's score while the crates are up, the chapter's after (`scoreFor`).
+  if (scoreFor(snap) !== musicScore) {
+    musicScore = scoreFor(snap);
+    audio.setMusic(musicScore);
   }
   if (snap.phase !== lastPhase) {
     if (snap.phase === 'done') audio.play('victory');

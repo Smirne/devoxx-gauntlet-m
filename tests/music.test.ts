@@ -17,11 +17,14 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import type { Audio } from '../src/render/audio';
+import { createCues, scoreFor } from '../src/render/cues';
 import {
   MUSIC_GAIN,
   PITCHED,
   SCORES,
   STEPS,
+  WALK_BAR,
   barNotes,
   barSeconds,
   chordNote,
@@ -29,6 +32,9 @@ import {
   startMusic,
   type Score,
 } from '../src/render/music';
+import { createGame } from '../src/sim/game';
+import { LEAD, OVER_AT, PANEL_DELAY, PANEL_EACH, SLOT, STRIKES, WALK_AT, emergencyAt } from '../src/sim/opening';
+import type { GameSnapshot } from '../src/sim/types';
 
 /** `MASTER_GAIN` in `src/render/audio.ts` — the headroom the score is mixed under. */
 const MASTER_GAIN = 0.55;
@@ -78,14 +84,28 @@ describe('the score', () => {
     expect([root(0), root(s.chords.length - 1)]).toContain(s.tonic);
   });
 
-  it.each(entries)('chapter %i builds up when it says it does', (_c, s: Score) => {
-    for (const p of s.parts) {
-      if (p.from === undefined) continue;
-      expect(p.from).toBeGreaterThan(0);
-      const before = barNotes(s, p.from - 1).filter((n) => n.voice === p.voice);
-      const after = barNotes(s, p.from).filter((n) => n.voice === p.voice);
-      expect(after.length).toBeGreaterThan(before.length);
-    }
+  /**
+   * Per part, not per voice. It compared the voice's note count either side of
+   * `from`, which a part that joins while another of the same voice leaves (the
+   * opening changes drum pattern every bar) fails for being right, and an empty
+   * part passes whenever the voice happened to grow. Now: the part itself is
+   * silent the bar before it joins and plays on the bar it joins, and the same the
+   * other way round when it leaves.
+   */
+  it.each(entries)('chapter %i builds up (and thins out) when it says it does', (_c, s: Score) => {
+    s.parts.forEach((p, i) => {
+      const mine = (bar: number): number => barNotes(s, bar).filter((n) => n.part === i).length;
+      if (p.from !== undefined) {
+        expect(p.from).toBeGreaterThan(0);
+        expect(mine(p.from - 1), `part ${i} (${p.voice}) before it joins`).toBe(0);
+        expect(mine(p.from), `part ${i} (${p.voice}) on the bar it joins`).toBeGreaterThan(0);
+      }
+      if (p.until !== undefined) {
+        expect(p.until).toBeGreaterThan(p.from ?? 0);
+        expect(mine(p.until - 1), `part ${i} (${p.voice}) on its last bar`).toBeGreaterThan(0);
+        expect(mine(p.until), `part ${i} (${p.voice}) after it leaves`).toBe(0);
+      }
+    });
   });
 
   /**
@@ -136,6 +156,107 @@ describe('the score', () => {
   });
 });
 
+/**
+ * The opening's score is cut to the opening's picture.
+ *
+ * Every number here is read from `src/sim/opening.ts`, which owns the clock: the
+ * score places itself by the same constants, and these hold the two together when
+ * somebody retimes a crate. Michele, 28 Sep: *"It should fit also with crate
+ * opening and current sounds (but you can also adapt the animation timing to the
+ * music)"* — both happened, and this is what keeps them fitted.
+ */
+describe('the opening, scored to its picture', () => {
+  const s = SCORES[0];
+  const bar = barSeconds(s);
+  /** Seconds from the cue (the opening's first frame) to bar `k` of the score. */
+  const barAt = (k: number): number => (s.lead ?? 0) + k * bar;
+
+  it('is one bar per robot, at the reference track s 96 bpm', () => {
+    expect(bar).toBeCloseTo(SLOT, 9);
+    expect(s.bpm).toBeCloseTo(96, 9);
+  });
+
+  it('lands every crate front on a downbeat', () => {
+    for (let i = 0; i < 3; i++) expect(barAt(i + 1), `crate ${i + 1}`).toBeCloseTo(LEAD + i * SLOT + PANEL_DELAY + PANEL_EACH, 9);
+  });
+
+  it('leaves those three downbeats to the crates: the crate boom is the kick', () => {
+    for (const k of [1, 2, 3]) {
+      const kicks = barNotes(s, k).filter((n) => (n.voice === 'thump' || n.voice === 'kick') && n.step === 0);
+      expect(kicks, `bar ${k}`).toEqual([]);
+    }
+  });
+
+  it('starts the walk, and the emergency light going, on the next downbeat', () => {
+    expect(WALK_BAR).toBe(4);
+    expect(barAt(WALK_BAR)).toBeCloseTo(WALK_AT, 9);
+  });
+
+  it('cuts out only while the light is out, and comes back with it', () => {
+    const gates = s.gates ?? [];
+    expect(gates.length).toBe(STRIKES.length - 1);
+    for (const [a, b] of gates) {
+      for (let t = a + 0.002; t < b - 0.002; t += 0.005) expect(emergencyAt(t), `cut at ${t.toFixed(3)} s with the light on`).toBe(0);
+      expect(emergencyAt(b + 0.002), 'the light came back and the band did not').toBeGreaterThan(0);
+    }
+  });
+
+  it('loses its power on the strike the light does not come back from', () => {
+    const notes = barNotes(s, WALK_BAR);
+    const dive = notes.filter((n) => n.voice === 'dive');
+    expect(dive.length).toBe(1);
+    const at = barAt(WALK_BAR) + (dive[0].step * bar) / STEPS;
+    expect(emergencyAt(at - 0.01), 'the band died before the light did').toBeGreaterThan(0);
+    for (let t = at + 0.001; t < OVER_AT; t += 0.01) expect(emergencyAt(t), `light back at ${t.toFixed(2)} s`).toBe(0);
+    // Nothing the band holds outlasts the power, and the dive is over in the dark.
+    for (const n of notes) if (n.voice !== 'dive' && PITCHED.has(n.voice)) expect(n.step + n.len, n.voice).toBeLessThanOrEqual(dive[0].step);
+    expect(at + (dive[0].len * bar) / STEPS).toBeLessThanOrEqual(OVER_AT + 1e-9);
+  });
+
+  it('plays once: nothing after the walk s bar', () => {
+    for (let k = WALK_BAR + 1; k < WALK_BAR + 6; k++) expect(barNotes(s, k)).toEqual([]);
+  });
+});
+
+/**
+ * Which score the frame asks for.
+ *
+ * The opening runs on top of chapter 1, so `snap.chapter` reads 1 under the crates,
+ * and the score used to be picked from it: the opening's own score was written
+ * twice and never heard once. This walks a real game through its opening.
+ */
+describe('which score the game asks for', () => {
+  it('scores the opening with its own score, and hands over when chapter 1 takes over', () => {
+    const asked: { t: number; score: number }[] = [];
+    let t = 0;
+    const audio: Audio = {
+      play: () => undefined,
+      setAmbient: () => undefined,
+      footstep: () => undefined,
+      mute: () => undefined,
+      muteMusic: () => undefined,
+      dispose: () => undefined,
+      setMusic: (score: number) => void asked.push({ t, score }),
+    };
+    const game = createGame({ seed: 1, cards: true });
+    const cues = createCues(audio);
+    const dt = 1 / 60;
+    while (t < OVER_AT + 0.5) {
+      game.update(dt);
+      t += dt;
+      cues(game.snapshot(), dt);
+    }
+    expect(asked.map((a) => a.score)).toEqual([0, 1]);
+    expect(asked[0].t).toBeLessThan(0.05);
+    expect(asked[1].t).toBeCloseTo(OVER_AT, 1);
+  });
+
+  it('asks for nothing on a title card', () => {
+    expect(scoreFor({ chapter: 0, opening: null } as unknown as GameSnapshot)).toBe(-1);
+    expect(scoreFor({ chapter: 3, opening: null } as unknown as GameSnapshot)).toBe(3);
+  });
+});
+
 /* ------------------------------------------------------------------- player */
 
 interface Made {
@@ -165,7 +286,17 @@ function stubCtx(): { ctx: AudioContext; made: Made; advance: (s: number) => voi
       return { gain: param(1), connect, disconnect: (): void => undefined };
     },
     createBiquadFilter(): unknown {
-      return { type: 'lowpass', frequency: param(), Q: param(), connect, disconnect: (): void => undefined };
+      return { type: 'lowpass', frequency: param(), Q: param(), gain: param(), connect, disconnect: (): void => undefined };
+    },
+    createStereoPanner(): unknown {
+      return { pan: param(), connect, disconnect: (): void => undefined };
+    },
+    createConvolver(): unknown {
+      return { buffer: null, normalize: true, connect, disconnect: (): void => undefined };
+    },
+    createBuffer(channels: number, length: number, sampleRate: number): unknown {
+      const data = Array.from({ length: channels }, () => new Float32Array(length));
+      return { duration: length / sampleRate, numberOfChannels: channels, getChannelData: (c: number): Float32Array => data[c] };
     },
     createWaveShaper(): unknown {
       return { curve: null, oversample: 'none', connect, disconnect: (): void => undefined };
