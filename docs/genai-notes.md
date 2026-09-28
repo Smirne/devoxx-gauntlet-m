@@ -5050,3 +5050,12 @@ have matched the room around them, and would have cost more than the entire rest
       inside the neck, three dark buttons, and DEVOXX embroidered in white on his left chest.
     The far-camera stand-ins hide while it shows. Celestino is still the 2.5D caricature, waiting
     on his photo.
+  - *Celestino, and Stephan's hair.* From Michele's photo of Celestino: short dark hair, fair
+    skin, clean-shaven, and the crew T-shirt, white with orange raglan sleeves, orange neck trim
+    and the joke printed across the chest in orange ("Hey, Event Organizer / do Open Source / and
+    save Big Money"). He is the NPC the sim names `Celestino`, so the close-up layer keys off the
+    name. He keeps the crew-red lanyard, because ribbon colours mean something in the game. A
+    pooled figure that stops being him gets its torso material back. "Can you do Stephan's hair?"
+    It was a smooth cap. It is now a low grey cap with forty short seeded tufts over the crown,
+    brushed up and forward, grey at the sides and darker on top as in the photo. The first
+    attempt was too tall and punk; the second is short and tousled.
