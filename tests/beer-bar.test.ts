@@ -374,23 +374,34 @@ describe('the bar reads as a bar', () => {
     for (const r of after) expect(r.state).toBe('done');
   });
 
-  it('wears the same halo on the soup mark, so one ring means one thing', () => {
+  /**
+   * Every labelled mark in the chapter wears the same ring.
+   *
+   * There are three now — the beer's, the soup's and, since Michele's *"the
+   * speaker should also go to stephan"*, the speaker's beside it. The ring pieces
+   * carry no label of their own, so each mark is matched to the four strips that
+   * lie inside its own rect grown by `HALO_W`: two marks a body's length apart
+   * used to answer this question with seven, which was the test's window being
+   * loose rather than the ring being wrong.
+   */
+  it('wears the same halo on every mark, so one ring means one thing', () => {
     const g = mk();
-    const soupMark = g.snapshot().props.find((p) => p.kind === 'dropzone' && (p.label ?? '').includes('soup'));
-    expect(soupMark, 'no soup drop mark').toBeTruthy();
-    const m = soupMark as Prop;
-    const ring = g
-      .snapshot()
-      .props.filter(
+    const HALO_W = 3;
+    const props = g.snapshot().props;
+    const marks = props.filter((p) => p.kind === 'dropzone' && p.label !== undefined);
+    expect(marks.length, 'chapter 3 should mark the beer, the soup and the speaker').toBe(3);
+    for (const m of marks) {
+      const ring = props.filter(
         (o) =>
           o.kind === 'dropzone' &&
           o.label === undefined &&
-          o.x >= m.x - 8 &&
-          o.x <= m.x + (m.w ?? 0) + 8 &&
-          o.y >= m.y - 8 &&
-          o.y <= m.y + (m.h ?? 0) + 8,
+          o.x >= m.x - HALO_W &&
+          o.x + (o.w ?? 0) <= m.x + (m.w ?? 0) + HALO_W &&
+          o.y >= m.y - HALO_W &&
+          o.y + (o.h ?? 0) <= m.y + (m.h ?? 0) + HALO_W,
       );
-    expect(ring).toHaveLength(4);
+      expect(ring, `no ring round “${m.label}”`).toHaveLength(4);
+    }
   });
 
   it('puts an invented Belgian brewery on every crate, and says it out loud', () => {

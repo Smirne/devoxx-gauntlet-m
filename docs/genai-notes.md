@@ -4288,3 +4288,58 @@ kinds classified (`spill`, `keg`, `toast`, and the ladle's new band). Suite **76
 `sign` is a blue panel and nothing paints text on one — only the venue's own `SignPainter` does — so
 two more would have been two blank boards over a rig that was already hard to read. The lanes and
 the red cells carry it instead.
+
+## 28 Sep 2026, V46 round — the feet, the speaker, the cake and the spotlights
+
+**What he asked for.** Four notes on V46, one of them reversing a decision from the build before it.
+
+**What the agent did.**
+
+- **Biggy's feet go away, and the roll goes back to shoves.** `src/render/robots/gait.ts`. Two
+  changes in one line of feedback: *"Biggy should retreat his feet while rolling. And maybe it's
+  better to reserve it for when he's pushed to high speed."* The tuck folded the legs, which puts
+  the knees inside the gut and the boots outside it; `tuckLegs` now SCALES each thigh (and with it
+  the shin and the boot hanging off it) to a fifth of its length, so the leg ends up entirely inside
+  a 1.2 m ball. It is written every frame, including at zero and including while a party trick
+  plays, because a pose made of scale is the one kind that cannot survive a frame that forgets it.
+  The gate went back to `shoved && speed`: `DRIVE_ROLL_*` is deleted.
+- **The speaker is handed to Stephan.** `ch3-breakfast.ts`: the stage rect is gone, `speakerSpot` is
+  a mark beside the soup's, `speaker.onStage` is `speaker.withStephan`, and a 38 px handover lets
+  Stephan claim them without anybody threading a box.
+- **The cake is a trolley, not a billiard ball.** `ch4-keynote.ts`: `CAKE_STEER` (0.7) blends the
+  push direction from the contact normal towards Biggy's own stick, and `CAKE_SCRUB` (10 s^-1)
+  decays the component of the board's velocity across the push while he is pushing. Both are what a
+  wheeled board does and neither is what two discs do.
+- **The spotlights do something.** `src/render/scene.ts`: each is a floor can on a base, aimed at the
+  stage prop the chapter publishes, with an additive beam and a warm pool when the sim says it is
+  lit and a standby glow on the one that is next. No `THREE.Light` — this renderer has never had
+  one, and four shadow-casting spots would cost the frame.
+- **The beer crates are crates.** A case with a lip, a pale band, and twelve caps in one instanced
+  draw per crate — ninety cylinders across a full stack, which is no place for ninety draw calls.
+
+**What it cost, and what it found.**
+
+- **A shared material painted six crates the same colour.** The first cut gave every crate one
+  `MeshStandardMaterial`, and the six of them are in four different states at once (loose, carried,
+  the one that will throw the heap error, stacked): whichever was drawn last won. Each pooled crate
+  owns its case material now, the way each pooled person owns a collar.
+- **Two marks 4 px apart broke a test that was measuring loosely.** `beer-bar.test.ts` counted the
+  ring round the soup's mark by taking every unlabelled `dropzone` within 8 px of it, which is fine
+  with one mark in the area and answers 7 with two. The gap is 12 px now AND the test matches each
+  ring to the rect it belongs to, so the chapter can put three marks at a man's feet if it wants to.
+- **The cake's numbers were tuned against a measurement, not an opinion.** 0.45/6 left a 6 px
+  off-centre push 18 px off line over 3 s; 0.7/10 brings it under 14 while a corner shove still
+  turns the board by more than 3 px, which is the test that stops the fix from welding it to an axis.
+
+**Tests.** `tests/cake-push.test.ts` (4, new): straight east–west from dead behind and from 6 px off
+either side, straight north up the aisle, and a corner shove that still steers. `tests/shove-roll.
+test.ts`: the drive-roll block is replaced by four that assert the pose — a self-driven sprint at
+4.3 m/s stays a walk, a shove balls him up AND scales the legs to under a third, the legs come back
+when the roll ends, and the soup pot forbids the whole thing. `tests/chapters.test.ts`, `pilot.ts`,
+`speaker-spot.test.ts`: the speaker's destination is Stephan's own mark, asserted by distance to the
+man rather than by a rect. Suite **774 green**.
+
+**Rejected.** Making the spotlights real `THREE.Light`s. The whole lighting model in this game is
+drawn geometry (`src/render/lighting.ts` draws the robots' lamps as meshes off the sim's visibility
+polygons); four spots with shadow maps would have been the only real lights in the build, would not
+have matched the room around them, and would have cost more than the entire rest of the frame.

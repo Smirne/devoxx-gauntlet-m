@@ -834,3 +834,36 @@ rest are here.
 
 - The beer CRATES are still boxes; only the bar around them was refined.
 - Chapter 4 runs about six minutes — his note, not yet acted on.
+
+## Michele, 28 Sep — V46, and four notes in one pass
+
+- *"the roll is great! Biggy should retreat his feet while rolling. And maybe it's better to reserve
+  it for when he's pushed to high speed."* **Both done, and the second one reverses yesterday's
+  change on his call.** The feet: folding the legs put the knees inside the gut and left two boots
+  outside a 1.2 m sphere, so each leg is now SCALED to a fifth of itself about the hip while he is
+  balled up — the silhouette is the ball and nothing else, and it blends back out as the tuck lets
+  go. The gate: driving him yourself is a walk again at any speed, and the roll belongs to a shove,
+  which is where it started (*"Biggy should really roll, at least when he's pushed!"*, 25 Sep). The
+  drive-roll window is gone.
+- *"the speaker should also go to stephan."* They used to be walked to a stage in the lobby, 17 m
+  from the man asking for them. Their mark is now the floor beside the soup's, one body's length
+  further south down the same concourse strip, and Stephan steps over and claims them within 38 px
+  the way he takes the pot. `speaker.onStage` is `speaker.withStephan` — the prototype's own HUD
+  said *"speaker · with Stephan"* all along.
+- *"the cake movement is a bit imprevedible, especially west-east. I haven't managed to place it."*
+  Two discs in contact: the push was force along the line between the centres, so a couple of pixels
+  off the middle turned a push into a glance, the board left at an angle, and the correction sent it
+  back the other way. It is a wheeled board now, not a billiard ball: **the push follows his stick**
+  as well as the contact normal (so pointing east sends it east), and **the castors scrub** the
+  sideways part of its velocity while he is pushing. Measured: 6 px off the centre line over a 3 s
+  push leaves it under 14 px off course, and a deliberate corner shove still turns it.
+- *"the spotlight lighting should have an effect."* Four amber boxes came on in order and the room
+  did not change. Each one is a floor can aimed at the stage now, with a visible beam and a warm
+  pool where it lands; the next one to light glows on standby so "which one is next" is in the room
+  and not only in the task panel.
+- ...and the last of the beer note from V46: **the crates are crates** — a case with a lip, a pale
+  band for the brewery, and twelve gold caps standing proud of it.
+
+### Still open
+
+- Chapter 4 runs about six minutes — his note, still not acted on.

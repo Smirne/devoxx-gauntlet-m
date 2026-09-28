@@ -401,7 +401,10 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
   crowd: { h: 0.05, color: 0x3a3550, flat: true, fw: 2, fd: 2 },
   'banner-hook': { h: 0.25, color: 0xb0b6bd },
   banner: { h: 1.1, color: 0xff7a1a, tl: true },
-  spotlight: { h: 0.35, color: 0xffd9a0 },
+  // A floor can on a base, aimed at the stage — `drawSpotlight`. Still in the
+  // robot band and still without a collider, which is chapter 4's own decision:
+  // a spotlight in an aisle is a thing you step over.
+  spotlight: { h: 0.5, color: 0x2b3038 },
   /*
    * SEATING IS NOT DRAWN FROM THIS TABLE.
    *
@@ -1161,6 +1164,78 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       root.add(gl.root);
       glassFills.set(gl.root, gl.fill);
     }
+    return root;
+  });
+
+  /* ------------------------------------ chapter 4's spotlights, doing something
+   *
+   * Michele, 28 Sep 2026: *"the spotlight lighting should have an effect."* Four
+   * 35 cm amber boxes came on in order and the room did not change — the job was
+   * a checklist with no picture attached, in the one chapter that is ABOUT the
+   * room being ready.
+   *
+   * So each one is a floor can on a base, aimed at the stage, and the ones that
+   * are lit throw a visible beam across the room and a warm pool where it lands.
+   * The beams are additive, unlit geometry, not `THREE.Light`: this renderer has
+   * never had a real light in it (`src/render/lighting.ts` draws the robots' lamps
+   * the same way), and four cones of glow cost nothing while four shadow-casting
+   * spots would cost the frame.
+   */
+  const spotBodyMat = new THREE.MeshStandardMaterial({ color: 0x2b3038, roughness: 0.6, metalness: 0.4 });
+  const spotLensMat = new THREE.MeshStandardMaterial({
+    color: 0xffd9a0,
+    emissive: new THREE.Color(0xffc266),
+    emissiveIntensity: 0,
+    roughness: 0.3,
+  });
+  const spotBeamMat = new THREE.MeshBasicMaterial({
+    color: 0xffd9a0,
+    transparent: true,
+    // Four of these cross over the stage and add together, so each one is thin.
+    opacity: 0.085,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+  });
+  const spotPoolMat = new THREE.MeshBasicMaterial({
+    color: 0xffd9a0,
+    transparent: true,
+    opacity: 0.22,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  /** The height of the can's mouth, where a beam starts. */
+  const SPOT_HEAD_H = 0.42;
+  const spotPool = makePool<THREE.Group>(dressing, () => {
+    const root = new THREE.Group();
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.22, 0.07, 14), spotBodyMat);
+    base.position.y = 0.035;
+    base.castShadow = true;
+    root.add(base);
+    const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.22, 8), spotBodyMat);
+    stalk.position.y = 0.17;
+    root.add(stalk);
+    // The can itself, on a yoke. `aim` is what gets turned towards the stage.
+    const aim = new THREE.Group();
+    aim.name = 'aim';
+    aim.position.y = SPOT_HEAD_H;
+    const can = new THREE.Mesh(new THREE.CylinderGeometry(0.115, 0.13, 0.3, 14, 1, true), spotBodyMat);
+    can.material.side = THREE.DoubleSide;
+    can.rotation.x = Math.PI / 2;
+    aim.add(can);
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.11, 14), spotLensMat);
+    lens.name = 'lens';
+    lens.position.z = 0.15;
+    aim.add(lens);
+    root.add(aim);
+    // The beam: a cone from the lens to wherever it lands, scaled per frame.
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 1, 1, 14, 1, true), spotBeamMat);
+    beam.name = 'beam';
+    root.add(beam);
+    const pool = new THREE.Mesh(new THREE.CircleGeometry(1, 20), spotPoolMat);
+    pool.name = 'pool';
+    pool.rotation.x = -Math.PI / 2;
+    root.add(pool);
     return root;
   });
 
@@ -2404,28 +2479,101 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
    */
   const CRATE_H_M = 0.34;
   const CRATE_GAP_M = 0.02;
+  /**
+   * ...and what a crate IS, now that it is not a box.
+   *
+   * Michele, 28 Sep 2026: *"Beer game: rember to refine crates - kegs - beer brand
+   * and bar."* The bar got its taps and its kegs first; this is the last of that
+   * note. A case with a lip, a paler band round it where the brewery's name goes,
+   * and twelve bottle tops standing proud of it — which is the one detail that
+   * reads at this camera and the one that says BEER rather than CARGO.
+   *
+   * Twelve necks in one instanced draw per crate, because there are six crates,
+   * a stack of them on the bar and a column of them on Biggy's head, and that is
+   * ninety cylinders that have no business being ninety draw calls.
+   */
+  const crateBandMat = new THREE.MeshStandardMaterial({ color: 0xe0dccf, roughness: 0.8 });
+  const crateGlassMat = new THREE.MeshStandardMaterial({ color: 0x4a3b1c, roughness: 0.25, metalness: 0.1 });
+  const crateCapMat = new THREE.MeshStandardMaterial({ color: 0xd9b34a, roughness: 0.4, metalness: 0.6 });
+  const CRATE_COLS = 4;
+  const CRATE_ROWS = 3;
+  const cratePool = makePool<THREE.Group>(dressing, () => {
+    const root = new THREE.Group();
+    // Its OWN case material: six crates are in four different states at once (on
+    // the floor, on his head, the one that will throw, stacked), and a shared
+    // material would paint all six whatever the last one drawn happens to be.
+    const case_ = new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({ color: 0xb4472f, roughness: 0.85 }));
+    case_.name = 'case';
+    case_.castShadow = true;
+    case_.receiveShadow = true;
+    root.add(case_);
+    const band = new THREE.Mesh(boxGeo, crateBandMat);
+    band.name = 'band';
+    root.add(band);
+    const necks = new THREE.InstancedMesh(
+      new THREE.CylinderGeometry(0.026, 0.03, 0.09, 6),
+      crateGlassMat,
+      CRATE_COLS * CRATE_ROWS,
+    );
+    necks.name = 'necks';
+    necks.castShadow = true;
+    root.add(necks);
+    const caps = new THREE.InstancedMesh(
+      new THREE.CylinderGeometry(0.032, 0.032, 0.014, 6),
+      crateCapMat,
+      CRATE_COLS * CRATE_ROWS,
+    );
+    caps.name = 'caps';
+    root.add(caps);
+    return root;
+  });
+  const crateM4 = new THREE.Matrix4();
+
   function drawCrate(p: Prop, floorY: number): void {
     const carried = p.state === 'active' || p.state === 'broken';
     const layer = Math.max(0, p.v ?? 0) - (carried ? 1 : 0);
     const base = carried ? ROBOT_HEIGHT_M.biggy : 0;
     const wM = Math.max(m(p.w ?? 8), 0.3);
-    const dM = Math.max(m(p.h ?? 8), 0.3);
+    const dM = Math.max(m(p.h ?? 8), 0.3) * 0.8;
 
-    const mesh = propPool.get();
-    mesh.scale.set(wM, CRATE_H_M, dM * 0.8);
-    mesh.position.set(m(p.x), surfaceY(floorY, p.x, p.y) + base + layer * (CRATE_H_M + CRATE_GAP_M) + CRATE_H_M / 2, m(p.y));
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
+    const root = cratePool.get();
+    const y = surfaceY(floorY, p.x, p.y) + base + layer * (CRATE_H_M + CRATE_GAP_M);
+    root.position.set(m(p.x), y, m(p.y));
+    // A stacked crate is square to the bar; a loose one lies where it was shoved.
+    root.rotation.y = p.state === 'done' ? 0 : m(p.x * 0.7 + p.y) % (Math.PI / 2);
 
-    const mat = mesh.material as THREE.MeshStandardMaterial;
-    mat.color.setHex(p.state === 'done' ? 0x8f3a2b : 0xb4472f);
+    const case_ = root.getObjectByName('case') as THREE.Mesh;
+    case_.scale.set(wM, CRATE_H_M, dM);
+    case_.position.y = CRATE_H_M / 2;
+    const band = root.getObjectByName('band') as THREE.Mesh;
+    band.scale.set(wM * 1.01, CRATE_H_M * 0.3, dM * 1.01);
+    band.position.y = CRATE_H_M * 0.5;
+
+    // The bottles, standing in their own grid inside the case.
+    const necks = root.getObjectByName('necks') as THREE.InstancedMesh;
+    const caps = root.getObjectByName('caps') as THREE.InstancedMesh;
+    let i = 0;
+    for (let c = 0; c < CRATE_COLS; c++) {
+      for (let r = 0; r < CRATE_ROWS; r++) {
+        const x = (c / (CRATE_COLS - 1) - 0.5) * wM * 0.74;
+        const z = (r / (CRATE_ROWS - 1) - 0.5) * dM * 0.7;
+        crateM4.makeTranslation(x, CRATE_H_M + 0.03, z);
+        necks.setMatrixAt(i, crateM4);
+        crateM4.makeTranslation(x, CRATE_H_M + 0.082, z);
+        caps.setMatrixAt(i, crateM4);
+        i++;
+      }
+    }
+    necks.instanceMatrix.needsUpdate = true;
+    caps.instanceMatrix.needsUpdate = true;
+
     // The last crate that fits glows like a warning lamp: the heap error is only
     // funny if the player could see it coming.
-    const tint = p.state === 'broken' ? 0x6b2206 : undefined;
-    mat.emissive.setHex(tint ?? 0x000000);
-    mat.emissiveIntensity = tint === undefined ? 0 : 1;
-    mat.transparent = false;
-    mat.opacity = 1;
+    const mat = case_.material as THREE.MeshStandardMaterial;
+    mat.color.setHex(p.state === 'done' ? 0x8f3a2b : 0xb4472f);
+    const tint = p.state === 'broken' ? 0x6b2206 : 0x000000;
+    mat.emissive.setHex(tint);
+    mat.emissiveIntensity = tint === 0 ? 0 : 1;
   }
 
   /** The cable, as a polyline on the floor. */
@@ -3103,6 +3251,54 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     }
   }
 
+  /**
+   * One of chapter 4's spotlights, aimed at the stage and lit if the sim says so.
+   *
+   * `state` is the sim's: `done` is on, `active` is the one Voxxy has to reach
+   * next (the lens glows on standby, so "which one is next" is visible in the room
+   * and not only in the task panel), `idle` is dark. Where the beam LANDS is the
+   * stage the chapter publishes, so if the stage moves the beams follow it.
+   */
+  function drawSpotlight(p: Prop, floorY: number, stage: Prop | undefined): void {
+    const root = spotPool.get();
+    const base = surfaceY(floorY, p.x, p.y);
+    root.position.set(m(p.x), base, m(p.y));
+    const on = p.state === 'done';
+    const next = p.state === 'active';
+    const lens = root.getObjectByName('lens') as THREE.Mesh | null;
+    if (lens) (lens.material as THREE.MeshStandardMaterial).emissiveIntensity = on ? 2.6 : next ? 0.5 : 0;
+
+    // Where it is pointed: the middle of the stage, at about head height on it.
+    const tx = stage ? m(stage.x + (stage.w ?? 0) / 2) : m(p.x);
+    const tz = stage ? m(stage.y + (stage.h ?? 0) / 2) : m(p.y) - 4;
+    const from = new THREE.Vector3(m(p.x), base + SPOT_HEAD_H, m(p.y));
+    const to = new THREE.Vector3(tx, base + 0.9, tz);
+    const dir = to.clone().sub(from);
+    const len = Math.max(0.5, dir.length());
+    const aim = root.getObjectByName('aim');
+    if (aim) aim.lookAt(to);
+    const beam = root.getObjectByName('beam') as THREE.Mesh | null;
+    if (beam) {
+      beam.visible = on;
+      if (on) {
+        // A cylinder is modelled along +y, so the beam is turned from +y onto the
+        // line to the stage and parked at its midpoint. Widening from 0.1 to 1 in
+        // the geometry means the scale is the mouth's radius at the far end.
+        beam.scale.set(1.2, len, 1.2);
+        beam.position.copy(from.clone().add(to).multiplyScalar(0.5)).sub(root.position);
+        beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+      }
+    }
+    const pool = root.getObjectByName('pool');
+    if (pool) {
+      pool.visible = on;
+      if (on) {
+        pool.position.set(tx - root.position.x, base + 0.02 - root.position.y, tz - root.position.z);
+        pool.scale.setScalar(1.7);
+      }
+    }
+  }
+
   /** One puddle of spilled soup, at the sim's own place and size. */
   function drawSpill(p: Prop, floorY: number): void {
     const g = spillPool.get();
@@ -3225,6 +3421,8 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   function drawDressing(snap: GameSnapshot, floorY: number): void {
     propPool.begin();
     spillPool.begin();
+    spotPool.begin();
+    cratePool.begin();
     tapPool.begin();
     kegPool.begin();
     glassPool.begin();
@@ -3235,6 +3433,8 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const potLevel = snap.props.find((o) => o.kind === 'soup')?.v ?? 1;
     // How full the glassware is: the taps' own pour, so the bar has one clock.
     const barPour = snap.props.find((o) => o.kind === 'beer-tap')?.v ?? 0;
+    // ...and where chapter 4's spotlights are aimed: at the stage it publishes.
+    const stageProp = snap.props.find((o) => o.kind === 'stage');
     const biggy = snap.bots.find((b) => b.kind === 'biggy');
     peoplePool.begin();
     peopleN = 0;
@@ -3275,6 +3475,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       else if (p.kind === 'beer-tap') drawTap(p, floorY);
       else if (p.kind === 'beer-glass') drawGlass(p, barPour, floorY);
       else if (p.kind === 'keg') drawKeg(p, floorY);
+      else if (p.kind === 'spotlight') drawSpotlight(p, floorY, stageProp);
       else if (p.kind === 'toast') drawToast(p, floorY, biggy);
       else if (p.kind === 'spill') drawSpill(p, floorY);
       else if (p.kind === 'crate') drawCrate(p, floorY);
@@ -3288,6 +3489,8 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     for (const person of snap.people) drawPerson(person, floorY, snap.t);
     propPool.end();
     spillPool.end();
+    spotPool.end();
+    cratePool.end();
     tapPool.end();
     kegPool.end();
     glassPool.end();
@@ -3649,6 +3852,8 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       }
       propPool.dispose();
       spillPool.dispose();
+      spotPool.dispose();
+      cratePool.dispose();
       tapPool.dispose();
       kegPool.dispose();
       glassPool.dispose();

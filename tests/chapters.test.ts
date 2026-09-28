@@ -1049,13 +1049,22 @@ describe('chapter 3 — breakfast', () => {
     g.key('KeyE');
     expect(breakfast().speaker.following).toBe(true);
 
-    // ...and the speaker goes to the STAGE, which is its own floor mark now that
-    // the soup goes to Stephan himself.
-    const stageMark = g.snapshot().props.find((p) => p.kind === 'dropzone' && (p.label ?? '').includes('speaker'));
-    expect(stageMark, 'the stage has no mark on the floor').toBeDefined();
-    const stageAt = { x: stageMark!.x + (stageMark!.w ?? 0) / 2, y: stageMark!.y + (stageMark!.h ?? 0) / 2 };
-    expect(walkTo(g, 'voxxy', stageAt)).toBe(true);
-    expect(until(g, () => breakfast().speaker.onStage, 900)).toBe(true);
+    /*
+     * ...and the speaker goes TO STEPHAN, on their own mark beside the soup's.
+     *
+     * Michele, 28 Sep 2026: *"the speaker should also go to stephan."* They used
+     * to be walked to a stage in the lobby, 17 m from the man who is asking for
+     * them; both of his conditions are handed over at his feet now, one mark each.
+     */
+    const spkMark = g.snapshot().props.find((p) => p.kind === 'dropzone' && (p.label ?? '').includes('speaker'));
+    expect(spkMark, 'the speaker has no mark on the floor').toBeDefined();
+    const spkAt = { x: spkMark!.x + (spkMark!.w ?? 0) / 2, y: spkMark!.y + (spkMark!.h ?? 0) / 2 };
+    expect(
+      Math.hypot(spkAt.x - steph!.x, spkAt.y - steph!.y),
+      'the speaker’s mark is not within arm’s reach of Stephan',
+    ).toBeLessThan(70);
+    expect(walkTo(g, 'voxxy', spkAt)).toBe(true);
+    expect(until(g, () => breakfast().speaker.withStephan, 900)).toBe(true);
 
     // Soup and speaker are BOTH in, and the stairs stay shut: the beer delivery
     // is Stephan's third condition, not decoration (`gameplay-additions.md` §3).

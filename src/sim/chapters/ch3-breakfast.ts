@@ -288,6 +288,16 @@ const QUEUE_ASK = 44;
  */
 const SOUP_HANDOVER = 34;
 /**
+ * ...and how close the keynote speaker gets before Stephan claims them, sim px.
+ *
+ * The same idea one step further out (38 px, 3 m): a pot has to be handed over
+ * and a person only has to arrive, and the walk is Voxxy's rather than theirs —
+ * a follower who has to thread a box while the robot she is following stands in
+ * it is the fiddliest thing in the chapter. Michele, 28 Sep 2026: *"the speaker
+ * should also go to stephan."*
+ */
+const SPEAKER_HANDOVER = 38;
+/**
  * The keynote speaker's teal — hoodie, cap and lanyard, all of it.
  *
  * `LANYARD.speaker` is this colour and nothing else in the hall wears it. At the
@@ -816,7 +826,7 @@ export interface BreakfastState {
   /** Has anybody walked up to the crab sandwich yet. Flavour, and a test hook. */
   crabFound: boolean;
   complaints: number;
-  speaker: { following: boolean; onStage: boolean; booth: string };
+  speaker: { following: boolean; withStephan: boolean; booth: string };
   queues: Array<{ label: string; open: number }>;
   gateOpen: boolean;
   /** 0..1, how far Stephan has walked the barrier back. See `GATE_SWING_TIME`. */
@@ -1148,7 +1158,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     (b) => !b.table && !noGo.some((s) => Math.hypot(inFrontOf(b).x - s.x, inFrontOf(b).y - s.y) < s.r + SPEAKER_CLEAR),
   );
   const hideBooth = built[Math.floor(ctx.rng() * built.length)];
-  const speaker = { ...inFrontOf(hideBooth), r: 7, following: false, onStage: false, sp: 0, face: Math.PI / 2 };
+  const speaker = { ...inFrontOf(hideBooth), r: 7, following: false, withStephan: false, sp: 0, face: Math.PI / 2 };
 
   /*
    * Stephan, and the spot the soup has to reach him.
@@ -1165,16 +1175,23 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const gateMidY = GF.gate.y + GF.gate.h / 2;
   const stephan = { x: stair.x + stair.w + 26, y: gateMidY, r: 8 };
   /*
-   * The stage stays SOUTH of the stair, where it always was.
+   * THE SPEAKER GOES TO STEPHAN TOO. Michele, 28 Sep 2026: *"the speaker should
+   * also go to stephan."*
    *
-   * Stephan moved to the east face with the gate; the stage did not follow him,
-   * because it cannot: the concourse east of the flight is 49 px — 3.9 m — of
-   * clear floor between the barrier and the glazed wall, which is a corridor two
-   * robots wide and not somewhere to stand a lectern, a soup pot and a keynote
-   * speaker. Down here is the open lobby in front of reception, it is in the same
-   * frame as the gate, and it is the ground a robot already crosses on the way in.
+   * They used to be walked to a stage in the lobby, 17 m south of the man asking
+   * for them, on the reasoning that a lectern belongs on a stage. It does — but
+   * nobody in this chapter is giving a talk yet: Stephan is holding a staircase
+   * and counting the three things he is waiting for, and one of them is a person.
+   * Handing that person over is the beat, and it happens where he is standing.
+   *
+   * So the speaker's mark is the floor beside the soup's, a body's length further
+   * south down the same concourse strip: two marks at his feet, both 36 px of the
+   * 49 px between the barrier and the glazing, near enough that he can turn round
+   * and greet them and far enough apart that Biggy setting a pot down does not
+   * stand in the speaker's box. The prototype's HUD said *"speaker · with
+   * Stephan"* all along; this is the game finally agreeing with it.
    */
-  const stage = { x: stair.x + 6, y: stair.y + stair.h + 40, w: 100, h: 110 };
+  const speakerSpot = { x: stephan.x - 18, y: stephan.y + 42, w: 36, h: 48 };
   /*
    * ...BUT THE SOUP GOES WHERE THE MAN IS.
    *
@@ -1895,7 +1912,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       if (ladle) return pick(['Where is my soup?', 'Tomato. At breakfast, yes. It is a tradition and I am the one who keeps it.']);
       return pick(['Where is my soup?', 'The pot is on the counter and the ladle is on the shelf. I am not doing it myself, I am holding a staircase.']);
     }
-    if (!speaker.onStage) {
+    if (!speaker.withStephan) {
       if (speaker.following) return pick(['That is them? Good. Over here, please.', 'Hurry them along. The programme still says TBA and people are reading it.']);
       return pick([
         'The keynote speaker! Where is he? Or she. The programme says <b>TBA</b> and it has said TBA for a month.',
@@ -2337,11 +2354,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       if (!speaker.following) standOff(b, speaker);
     }
 
-    if (speaker.following && !speaker.onStage) {
+    if (speaker.following && !speaker.withStephan) {
       const v = ctx.byKind('voxxy');
       // Follow Voxxy, unless Voxxy is already on the spot — then head for the spot,
       // so the speaker settles next to Stephan instead of orbiting the robot.
-      const tgt = inRect(v, stage) ? { x: stage.x + 30, y: stage.y + 30 } : { x: v.x, y: v.y };
+      const tgt = inRect(v, speakerSpot) ? speakerAt : { x: v.x, y: v.y };
       const dx = tgt.x - speaker.x;
       const dy = tgt.y - speaker.y;
       const dd = Math.hypot(dx, dy);
@@ -2359,9 +2376,14 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           }
         }
       }
-      if (inRect(speaker, stage)) {
-        speaker.onStage = true;
-        ctx.flash('Keynote speaker: "Stephan! Sorry — the queues."');
+      /*
+       * ...and Stephan will step over for them, the way he takes the soup out of
+       * Biggy's arms. A man who has been asking for this person for ten minutes
+       * does not stand on a mark waiting for them to line up on it.
+       */
+      if (inRect(speaker, speakerSpot) || dist(speaker, stephan) < SPEAKER_HANDOVER) {
+        speaker.withStephan = true;
+        ctx.flash('Keynote speaker: "Stephan! Sorry — the queues." — Stephan: "You are here. Nothing else matters."', 3600);
       }
     }
 
@@ -2387,7 +2409,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         4200,
       );
     }
-    if (delivered && speaker.onStage && beerDone && !gateOpen) done();
+    if (delivered && speaker.withStephan && beerDone && !gateOpen) done();
   }
 
   /* --------------------------------------------------------- snapshot payload */
@@ -2412,17 +2434,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       },
       { kind: 'dropzone', ...soupSpot, state: delivered ? 'done' : 'idle', label: 'bring the soup to Stephan' },
       /*
-       * ...and the stage, which is where the keynote speaker has to END UP.
+       * ...and the speaker's own mark, a body's length south of the soup's.
        *
-       * It used to be the same box as the soup, so it needed no mark of its own.
-       * Now that the soup goes to the man who is drinking it, the stage is a job
-       * with an arrow and nothing on the floor — and "lead them over there" is
-       * exactly the instruction a floor mark exists for.
+       * Two marks at the same man's feet rather than one: they are two different
+       * jobs by two different robots, they finish at different times, and a single
+       * box that means "put a pot here OR stand a person here" is a box that says
+       * neither. Same ring, same green, one step apart.
        */
       {
         kind: 'dropzone',
-        ...stage,
-        state: speaker.onStage ? 'done' : 'idle',
+        ...speakerSpot,
+        state: speaker.withStephan ? 'done' : 'idle',
         label: 'lead the keynote speaker here',
       },
       /*
@@ -2558,11 +2580,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     // One ring, three jobs — see `halo` above.
     if (held('loose').length > 0 && !beerDone) out.push(...halo(PALLET_MARK, 'active'));
     out.push(...halo(BEER_STACK, beerDone ? 'done' : 'active'));
-    // The soup's own mark wears the ring, and so does the stage the speaker is
-    // led to: one visual language for "you can use this", on both of the two jobs
-    // that now have their own patch of floor.
+    // Both of Stephan's marks wear the ring: one visual language for "you can use
+    // this", on the soup's patch of floor and on the speaker's beside it.
     out.push(...halo(soupSpot, delivered ? 'done' : 'active'));
-    out.push(...halo(stage, speaker.onStage ? 'done' : 'active'));
+    out.push(...halo(speakerSpot, speaker.withStephan ? 'done' : 'active'));
     // Crates: on the floor where they lie, on the stack in layers, or piled on
     // Biggy's back in the order he picked them up.
     for (const c of crates) {
@@ -2788,7 +2809,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         : ladle
           ? `soup: ladle in hand — ${batches > 0 ? 'fill it again' : 'fill the pot'} at the counter`
           : 'soup: the ladle is on the high shelf (Droid)';
-    const spk = speaker.onStage
+    const spk = speaker.withStephan
       ? 'speaker ✓'
       : speaker.following
         ? 'speaker: following you to Stephan'
@@ -2811,8 +2832,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const shelfStand: Vec2 = { x: shelfAt.x, y: shelfAt.y + 26 };
   /** In front of the soup counter, inside `POT_REACH`. */
   const soupStand: Vec2 = { x: station.x, y: food.soup.y + food.soup.h + 22 };
-  /** The spot in front of Stephan the soup and the speaker both have to reach. */
-  const stageAt: Vec2 = { x: stage.x + stage.w / 2, y: stage.y + stage.h / 2 };
+  /** The speaker's own mark at Stephan's feet, one body south of the soup's. */
+  const speakerAt: Vec2 = { x: speakerSpot.x + speakerSpot.w / 2, y: speakerSpot.y + speakerSpot.h / 2 };
   const soupAt: Vec2 = { x: soupSpot.x + soupSpot.w / 2, y: soupSpot.y + soupSpot.h / 2 };
   /** Stephan's own feet, at the foot of the flight he is not opening yet. */
   const stephanAt: Vec2 = { x: stephan.x, y: stephan.y + 14 };
@@ -2859,7 +2880,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       {
         id: 'speaker',
         text: 'find the keynote speaker and walk them to Stephan',
-        done: speaker.onStage,
+        done: speaker.withStephan,
         who: ['voxxy'],
         /*
          * NO ARROW WHILE THEY ARE STILL HIDING.
@@ -2880,7 +2901,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
          * search, it is a sweep. The arrow gets you to the right stand; the
          * person is still round the back of it, and you still have to walk round.
          */
-        at: speaker.following ? stageAt : { x: speaker.x, y: speaker.y },
+        at: speaker.following ? speakerAt : { x: speaker.x, y: speaker.y },
         hint: 'Voxxy: they are hiding from the queues behind one of the booths with WALLS — you can see straight under the cloth tables, so it is none of those. Look for the teal lanyard: it is the one thing about them that is not hiding',
       },
       {
@@ -2939,7 +2960,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       soup,
       temp,
       complaints,
-      speaker: { following: speaker.following, onStage: speaker.onStage, booth: hideBooth.name },
+      speaker: { following: speaker.following, withStephan: speaker.withStephan, booth: hideBooth.name },
       queues: queues.map((q) => ({ label: q.label, open: q.open })),
       gateOpen,
       gateSwing,

@@ -183,7 +183,7 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
   crowd: { h: 0.05, flat: true, fw: 2, fd: 2 },
   'banner-hook': { h: 0.25 },
   banner: { h: 1.1, tl: true },
-  spotlight: { h: 0.35 },
+  spotlight: { h: 0.5 },
   /*
    * A seat row is no longer a 0.55 m slab, and that is a real change, not a fudge.
    *

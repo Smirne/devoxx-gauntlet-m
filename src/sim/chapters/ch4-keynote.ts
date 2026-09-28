@@ -61,6 +61,27 @@ const CRATE_FORCE = 1500 * SPEED_SCALE;
 const CAKE_TOUCH = 16;
 /** ...and how square to it he has to be pushing. Wider than a robot-on-robot shove. */
 const CAKE_LEAN = 0.12;
+/**
+ * How much of the push follows BIGGY'S STICK rather than the line of contact, 0..1.
+ *
+ * Michele, 28 Sep 2026: *"the cake movement is a bit imprevedible, especially
+ * west-east. I haven't managed to place it."* Two discs in contact decide the
+ * direction between them, so a push a few pixels off centre left down the aisle,
+ * and the correction that follows sends it back the other way. 0.45 leaves the
+ * contact normal the larger share — push a corner and it still turns, which is
+ * how you aim it — while a trolley pushed east goes east.
+ */
+const CAKE_STEER = 0.7;
+/**
+ * How fast the board's SIDEWAYS velocity dies while he is pushing it, per second.
+ *
+ * Castors: wheels roll one way and scrub the other. 6 s^-1 is a third of a second
+ * for the drift to fall to a fifth, so a glancing contact nudges the line instead
+ * of committing the cake to a diagonal it keeps for two metres. It only applies
+ * while somebody is actually pushing — a board he has let go of coasts on its own
+ * drag, exactly as before.
+ */
+const CAKE_SCRUB = 10;
 /** Closing speed above which a robot has knocked an attendee over. px/s. */
 const BOWL_OVER = 120 * SPEED_SCALE;
 /** The crate has to be actually moving to be blamed for shoving someone. px/s. */
@@ -394,7 +415,32 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
     stepBot(crate, dt, ctx.walls);
     for (const b of ctx.bots) botsCollide(b, crate, 0.1);
-    // Biggy is the only one who can shove the crate: everyone else just bumps it.
+    /*
+     * BIGGY PUSHES THE CAKE, and it goes where he is pushing.
+     *
+     * Michele, 28 Sep 2026: *"the cake movement is a bit imprevedible, especially
+     * west-east. I haven't managed to place it."* He is describing two discs. The
+     * push used to be pure contact physics — force along the line from his centre
+     * to the crate's — and two round bodies in contact are a knife edge: a couple
+     * of pixels off centre turns a push into a glance, the board slides away at an
+     * angle, he chases it, and it is off again the other way. Down a long aisle
+     * that reads as a board with a mind of its own, which is exactly the note.
+     *
+     * Two things fix it, and both of them are what a CAKE ON A WHEELED BOARD
+     * actually does rather than what two billiard balls do:
+     *
+     *  - **He steers it** (`CAKE_STEER`). The push direction is the contact normal
+     *    blended towards the stick, so a hand on the back of a trolley pointing
+     *    east sends it east even when the hand is not exactly on the centre line.
+     *    The normal still has the larger share, so pushing off one corner still
+     *    turns it — the steering is the mechanic, the wandering was the bug.
+     *  - **The castors scrub** (`CAKE_SCRUB`). Wheels roll one way and resist the
+     *    other, so the part of the board's velocity that is ACROSS the push decays
+     *    fast while the part along it is untouched. Sideways drift dies in a third
+     *    of a second instead of carrying on for two metres.
+     *
+     * Everyone else still just bumps into it.
+     */
     const dx = crate.x - bg.x;
     const dy = crate.y - bg.y;
     const dd = Math.hypot(dx, dy);
@@ -403,8 +449,20 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       const ny = dy / dd;
       const lean = bg.ix * nx + bg.iy * ny;
       if (dd < bg.r + crate.r + CAKE_TOUCH && lean > CAKE_LEAN) {
-        crate.vx += nx * lean * CRATE_FORCE * dt;
-        crate.vy += ny * lean * CRATE_FORCE * dt;
+        // Where the push goes: the contact normal, steered towards his stick.
+        const il = Math.hypot(bg.ix, bg.iy) || 1;
+        let px = nx * (1 - CAKE_STEER) + (bg.ix / il) * CAKE_STEER;
+        let py = ny * (1 - CAKE_STEER) + (bg.iy / il) * CAKE_STEER;
+        const pl = Math.hypot(px, py) || 1;
+        px /= pl;
+        py /= pl;
+        crate.vx += px * lean * CRATE_FORCE * dt;
+        crate.vy += py * lean * CRATE_FORCE * dt;
+        // ...and the castors: keep what is along the push, scrub what is across it.
+        const along = crate.vx * px + crate.vy * py;
+        const keep = Math.exp(-CAKE_SCRUB * dt);
+        crate.vx = px * along + (crate.vx - px * along) * keep;
+        crate.vy = py * along + (crate.vy - py * along) * keep;
       }
     }
 

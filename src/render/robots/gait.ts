@@ -582,24 +582,27 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
    * body about the gut's own centre. Below that speed nothing changes, because a
    * ball being nudged across a floor does not roll either.
    *
-   * SPEED IS THE TRIGGER, NOT WHO IS PUSHING. Michele's last word on it was *"I
-   * tried running but it keeps walking"*, and he was running — driving Biggy
-   * himself. A ball that is going 3 m/s is rolling whoever set it going, so the
-   * only thing `shoved` still decides is HOW FAST it has to be: a shove starts
-   * down at the floor and rolls him from 1.5 m/s, while under his own power he
-   * has to commit to the run (`DRIVE_ROLL_*`, about 1.3 s of held stick to break
-   * into it and 2.8 s to tuck all the way), so ordinary manoeuvring at half speed
-   * still waddles.
+   * PUSHED, AND FAST — both, and that is Michele's call rather than a reading of
+   * the physics. For one round the gate was SPEED alone, whoever set him going,
+   * because *"I tried running but it keeps walking"* was a fair complaint about a
+   * ball. He drove it, liked the move, and drew the line somewhere else: *"the
+   * roll is great! ... maybe it's better to reserve it for when he's pushed to
+   * high speed"*. So a robot under his own stick walks however fast he is going,
+   * and the roll belongs to the thing it started as — a heavy body somebody else
+   * has set moving. It is a game-feel decision, it is his, and the physics reads
+   * the same either way.
    */
   // ...and he does not roll with a pot of hot soup on his shoulder. Chapter 3
   // asks the heavy robot to be driven gently with both hands full; a ball is the
   // one thing that errand is not.
-  const pushedRoll = (params.shoved ?? 0) > 0.5;
-  const rolling = rig.kind === 'biggy' && !params.mounted && !params.carrying;
-  const rollMin = pushedRoll ? ROLL_MIN_MPS : DRIVE_ROLL_MIN_MPS;
-  const rollFull = pushedRoll ? ROLL_FULL_MPS : DRIVE_ROLL_FULL_MPS;
-  const wantRoll = rolling ? smoothstep(rollMin, rollFull, v) : 0;
+  const rolling =
+    rig.kind === 'biggy' && (params.shoved ?? 0) > 0.5 && !params.mounted && !params.carrying;
+  const wantRoll = rolling ? smoothstep(ROLL_MIN_MPS, ROLL_FULL_MPS, v) : 0;
   st.roll += (wantRoll - st.roll) * (1 - Math.exp(-(wantRoll > st.roll ? ROLL_ON : ROLL_OFF) * dt));
+  // The legs go away as he balls up. `tuckLegs` is called here rather than inside
+  // `applyShove` because it writes a SCALE, and a scale that is not written every
+  // frame leaves a robot standing about with no legs when the roll ends.
+  tuckLegs(rig, flairing ? 0 : st.roll);
   const walkAmt = 1 - st.roll;
   const moving = smoothstep(0.03, 0.35, v) * walkAmt;
   const idleAmt = 1 - moving;
@@ -1112,23 +1115,17 @@ const SHOVE_ON = 9;
 const ROLL_MIN_MPS = 1.5;
 const ROLL_FULL_MPS = 3;
 /**
- * The same two speeds when NOBODY is pushing him — he is driving, and running.
+ * HOW FAR THE LEGS GO AWAY when he balls up, as a fraction of their own length.
  *
- * Higher, because a shove is a shove and a run is a decision. Biggy's top speed
- * is 4.7 m/s and he approaches it exponentially (`accel` 0.6 s^-1), so 2.2 m/s is
- * about 0.95 s of held stick and 3.4 m/s about 2.2 s: a dash across the hall ends
- * up a ball, a nudge round a doorway does not. Metres per second, untouched by the
- * 23 Sep rescale.
- *
- * The top of the range is 3.4 and not 4.4 because of what a ROOM allows, which is
- * a measurement and not a preference: driven flat out across the exhibition hall
- * from the crates, Biggy reaches the far wall at **2.88 m/s** — he never gets
- * near his own top speed indoors, and a threshold set off `DEFS.biggy.max` is a
- * threshold no player ever crosses. 2.88 m/s is 60% of the tuck on that run, and
- * a longer straight takes it the rest of the way.
+ * Michele, looking at the first roll: *"Biggy should retreat his feet while
+ * rolling."* Folding them (thigh back, shin up, toe down) put the knees inside the
+ * gut and left two boots sticking out of a sphere, which is what he saw. A leg
+ * that is scaled to a fifth of itself about the hip ends up entirely inside a
+ * 1.2 m ball, so the silhouette while rolling is the ball and nothing else, and it
+ * comes back out as the tuck lets go. Scale rather than a hidden mesh, because a
+ * scale blends: there is no frame where a boot pops.
  */
-const DRIVE_ROLL_MIN_MPS = 2.2;
-const DRIVE_ROLL_FULL_MPS = 3.4;
+const LEG_TUCK = 0.8;
 /** How fast the tuck comes on and lets go, per second. Faster in than out. */
 const ROLL_ON = 7;
 const ROLL_OFF = 4;
@@ -1166,6 +1163,24 @@ const SHOVE_OFF = 3.5;
  * Only Biggy. Voxxy and Droid are not balls, and a shoved Droid staying upright
  * and offended is the right picture for Droid.
  */
+/**
+ * Pull Biggy's legs up inside his own gut, by `k` (0 standing, 1 fully balled up).
+ *
+ * One scale on each thigh, which carries the shin and the boot with it because
+ * they hang off it: the whole leg shortens towards the hip joint, and the hip
+ * joint is already inside the sphere. Written EVERY frame — including at 0, and
+ * including while a party trick is playing — because the one thing a pose made of
+ * scale cannot survive is a frame that forgets to set it.
+ *
+ * Only Biggy has a gut to hide them in; the other two keep their legs.
+ */
+function tuckLegs(rig: RobotRig, k: number): void {
+  if (rig.kind !== 'biggy') return;
+  const s = 1 - LEG_TUCK * Math.max(0, Math.min(1, k));
+  rig.bones.thighL.scale.setScalar(s);
+  rig.bones.thighR.scale.setScalar(s);
+}
+
 function applyShove(
   rig: RobotRig,
   st: GaitState,
