@@ -17,7 +17,10 @@ import { describe, expect, it } from 'vitest';
 
 import { DT_MAX, createGame, type DebugGame, type BreakfastState } from '../src/sim';
 import { DEMO_CHAPTER, GF, type ExpoState } from '../src/sim';
+import { CFP_WALL } from '../src/sim/geometry';
 import { LANYARD, lanyardFor } from '../src/sim/lanyards';
+import { FRONT_ROW } from '../src/sim/speakers';
+import type { Person } from '../src/sim/types';
 import { walkTo } from './pilot';
 
 const SEED = 20260930;
@@ -33,8 +36,10 @@ describe('lanyards', () => {
     expect(lanyardFor('speaker')).toBe(LANYARD.speaker);
     expect(lanyardFor('stephan')).toBe(LANYARD.chair);
     expect(lanyardFor('visitor')).toBe(LANYARD.attendee);
-    // Four distinct colours, or the whole idea says nothing.
-    expect(new Set(Object.values(LANYARD)).size).toBe(4);
+    // Every ribbon a distinct colour, or the whole idea says nothing. Five since
+    // 28 Sep 2026: the keynote's own multicolour one joined the four.
+    expect(new Set(Object.values(LANYARD)).size).toBe(Object.keys(LANYARD).length);
+    expect(Object.keys(LANYARD)).toHaveLength(5);
   });
 
   it('puts one on every person who has been past the desk, with Stephan the only chair', () => {
@@ -55,6 +60,8 @@ describe('lanyards', () => {
     expect(served.length).toBeGreaterThan(8);
     expect(served.every((p) => p.lanyard !== undefined), 'somebody got in without a badge').toBe(true);
     expect(people.filter((p) => p.lanyard === LANYARD.chair)).toHaveLength(1);
+    // ...and exactly one keynote speaker: the multicolour ribbon is the search.
+    expect(people.filter((p) => p.lanyard === LANYARD.keynote)).toHaveLength(1);
     expect(people.filter((p) => p.lanyard === LANYARD.crew).length).toBeGreaterThan(0);
   });
 });
@@ -158,19 +165,37 @@ describe('the two things on chapter 1’s walls', () => {
     expect(first).toContain('blue');
   });
 
-  it('gives the CFP slips to Voxxy’s beam and to nobody else', () => {
+  it('has no CFP wall any more — it moved to the hall', () => {
     const g = mk(1);
+    expect(g.snapshot().props.some((p) => p.label?.startsWith('CFP'))).toBe(false);
+  });
+});
+
+/**
+ * The CFP wall, moved to chapter 2's hall by registration on 28 Sep 2026 (Michele
+ * chose it over keeping it in chapter 1, where the 3D build's ad screen hid it).
+ * The rule it is read under did not move with it.
+ */
+describe('the CFP wall, in the hall', () => {
+  it('gives the CFP slips to Voxxy’s beam and to nobody else', () => {
+    const at = { x: CFP_WALL.x + CFP_WALL.nx * 26, y: CFP_WALL.y + CFP_WALL.ny * 26 };
+    const look = Math.atan2(-CFP_WALL.ny, -CFP_WALL.nx);
+    const g = mk(2);
+    expect(g.snapshot().props.some((p) => p.label?.startsWith('CFP')), 'the board is not in the hall').toBe(true);
     // Biggy parked on the same spot, lighting the same wall with a flood: nothing.
-    g.debug.place('biggy', 375, 380, Math.PI / 2);
+    g.debug.place('biggy', at.x, at.y + 10, look);
     g.debug.select('biggy');
     steps(g, 20);
     expect(said(g)).not.toContain('CFP');
 
     // Voxxy, close, with her cone on it.
-    g.debug.place('voxxy', 375, 375, Math.PI / 2);
+    g.debug.place('biggy', at.x + 60, at.y + 40, look);
+    g.debug.place('voxxy', at.x, at.y, look);
     g.debug.select('voxxy');
     steps(g, 3);
     expect(said(g)).toContain('rejected CFP slips');
+    // Flavour: drawn grey, not in a robot's colour.
+    expect(g.snapshot().toast?.flavour).toBe(true);
   });
 });
 
@@ -252,5 +277,23 @@ describe('reaching the shadow rig without a URL', () => {
     const g = mk(4);
     g.skipChapter();
     expect(g.snapshot().chapter).toBe(4);
+  });
+});
+
+describe('the keynote front row', () => {
+  it('seats every speaker from the hall floor in Room 8, front row, from the start — and the crowd never takes their chairs', () => {
+    const g = mk(4);
+    const seatedNamed = (): Person[] => g.snapshot().people.filter((p) => p.role === 'seated' && p.name !== undefined);
+    const at0 = seatedNamed();
+    expect(at0.map((p) => p.name)).toEqual([...FRONT_ROW]);
+    // One row, all of them.
+    expect(new Set(at0.map((p) => p.y)).size).toBe(1);
+    // Let the room fill: nobody else is ever seated on a speaker's seat.
+    for (let i = 0; i < 60 * 240; i++) g.update(DT_MAX);
+    const people = g.snapshot().people;
+    for (const sp of seatedNamed()) {
+      const clash = people.filter((p) => p.role === 'seated' && p.name === undefined && Math.hypot(p.x - sp.x, p.y - sp.y) < 1);
+      expect(clash, `${sp.name}'s seat was given away`).toHaveLength(0);
+    }
   });
 });

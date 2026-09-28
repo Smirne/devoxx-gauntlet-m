@@ -19,6 +19,7 @@ import { CABLE_MAX, TOAST_MS } from '../sim/constants';
 import type { Bot, GameSnapshot, Prop, RobotKind, Task } from '../sim/types';
 import { displayMps } from '../sim/units';
 import { CARDS as INTRO_CARDS } from '../sim/opening';
+import { GOAL, STORY } from '../sim/story';
 
 export interface HudOptions {
   /**
@@ -49,6 +50,18 @@ export interface Hud {
   toggleTasks(): void;
   /** `Escape`, or a click anywhere off the panel. */
   closeTasks(): void;
+  /**
+   * Left/right arrow while the sheet is open: turn between its two pages, the
+   * night (the story, the run's goal) and this chapter (briefing, tasks). Returns
+   * false when the sheet is shut, so the shell can spend the key on movement.
+   */
+  pageTasks(dir: number): boolean;
+  /**
+   * Any key on the story page: turn to this chapter's briefing instead of
+   * closing or acting (Michele, 28 Sep: "any key or -> move to current
+   * briefing"). True when it did, so the shell swallows the key.
+   */
+  turnStory(): boolean;
   /**
    * `H` — one more step of help on the task in hand.
    *
@@ -276,6 +289,7 @@ const CSS = `
   background:rgba(10,11,14,.92);box-shadow:0 8px 28px rgba(0,0,0,.5);font-size:15px;text-align:center;
   animation:ad-rise .22s cubic-bezier(.2,.9,.3,1) both}
 .ad-toast .ad-line{color:#f2efe9}
+.ad-flavour .ad-line{color:#c9c6bf}
 .ad-toast.ad-out{animation:ad-sink .34s ease-in forwards}
 @keyframes ad-rise{from{opacity:0;transform:translateY(18px) scale(.985)}to{opacity:1;transform:none}}
 @keyframes ad-sink{to{opacity:0;transform:translateY(-10px)}}
@@ -317,6 +331,17 @@ const CSS = `
 .ad-brief{margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid rgba(242,239,233,.12);
   font-size:13px;line-height:1.45;color:#cdc9c2;max-height:34vh;overflow-y:auto}
 .ad-brief b{color:${ACCENT};font-weight:600}
+.ad-shead{margin:0 0 5px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:${MUTED}}
+.ad-story{max-height:none;color:#b9b4ac}
+/* The story page stands alone, bigger: just the night (Michele, 28 Sep: "make
+   the main briefing bigger and just the story"). */
+.ad-sheet.ad-tale{width:min(720px,92vw);padding:28px 32px 20px}
+.ad-sheet.ad-tale .ad-sub,.ad-sheet.ad-tale .ad-skeys{display:none}
+.ad-sheet.ad-tale .ad-story{font-size:18px;line-height:1.6;border-bottom:0;margin-bottom:6px}
+.ad-sheet.ad-tale .ad-story .ad-shead{display:none}
+.ad-sheet.ad-tale .ad-goal{margin-top:14px}
+.ad-sheet.ad-tale .ad-peek{font-size:12px;color:${MUTED};justify-content:flex-end}
+.ad-goal{margin-top:6px;color:#f2efe9}
 .ad-peek{display:flex;align-items:center;justify-content:space-between;gap:12px;
   font-size:13px;color:#cdc9c2}
 .ad-peek b{color:#f2efe9;font-weight:600;font-variant-numeric:tabular-nums}
@@ -587,6 +612,9 @@ function lampOf(bots: readonly Bot[], kind: RobotKind): [number, number, number]
  * blocked-message in the sim names the robot that is talking ("Droid: too high,
  * even for me."). Anything impersonal is tinted with the robot being driven.
  */
+/** The flavour lines' tint: the colour of a note, not of a lamp. */
+const FLAVOUR_GREY: [number, number, number] = [150, 150, 146];
+
 function toastColour(text: string, snap: GameSnapshot): [number, number, number] {
   for (const [re, kind] of SPEAKERS) if (re.test(text)) return lampOf(snap.bots, kind);
   const act = snap.bots[snap.active];
@@ -703,6 +731,22 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
    * the diorama that folded to one line and could be clicked back. In the panel
    * it is read when it is wanted and takes no screen the rest of the time.
    */
+  /*
+   * The night itself, above the chapter's briefing: Stephan and the keys, and the
+   * run's one goal. Michele: *"we lost the main story... Could we keep a general
+   * objective + chapter briefing in the I panel?"* — the crate opening had
+   * replaced the title card, which was the only place it was told.
+   */
+  /*
+   * TWO PAGES, NOT ONE LONG PANEL. Michele, on the two stacked: *"too big / too
+   * much to read... Maybe on I we can switch between main text and chapters with
+   * arrow left/right?"* — and the night first. Page 0 is the story, page 1 the
+   * chapter; the arrows turn, and a line under the title says so.
+   */
+  const sheetStory = el('div', 'ad-brief ad-story', sheet);
+  sheetStory.innerHTML = `<div class="ad-shead">The night</div>${STORY}<div class="ad-goal">${GOAL}</div>`;
+  const chapterHead = el('div', 'ad-shead', sheet);
+  chapterHead.textContent = 'This chapter';
   const sheetBrief = el('div', 'ad-brief', sheet);
   const sheetRows = el('div', '', sheet);
   /*
@@ -736,6 +780,8 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   const mark = el('div', 'ad-mark ad-hide', root);
   const edge = el('div', 'ad-edge ad-hide', root);
   let sheetOpen = false;
+  /** Which page: 0 the night, 1 this chapter. */
+  let sheetPage = 1;
   /** Is the sheet showing its rows, or only the briefing and the meter? See `sheetPeek`. */
   let sheetFull = false;
   /**
@@ -950,18 +996,27 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     const done = snap.tasks.reduce((n, t) => n + (t.done ? 1 : 0), 0);
     setText(sheetSub, `${CHAPTER_TITLES[snap.chapter] ?? ''} — ${done} of ${snap.tasks.length} done`, textCache);
     setHtml(sheetBrief, snap.objective, htmlCache);
+    const story = sheetPage === 0;
+    sheet.classList.toggle('ad-tale', story);
+    sheetStory.classList.toggle('ad-hide', !story);
+    chapterHead.classList.toggle('ad-hide', story);
+    sheetBrief.classList.toggle('ad-hide', story);
     setText(sheetKeys, snap.keys, textCache);
     // Rebuilt rather than diffed: the sheet is open only while the player is
     // reading it, the lists are five rows long, and a diff here would be cost
     // with no frame to spend it on.
-    sheetTitle.textContent = sheetFull ? 'Run sheet' : 'Briefing';
-    sheetPeek.classList.toggle('ad-hide', sheetFull);
-    sheetRows.classList.toggle('ad-hide', !sheetFull);
+    sheetTitle.textContent = story ? 'Briefing \u00b7 the night' : sheetFull ? 'Run sheet' : 'Briefing';
+    sheetPeek.classList.toggle('ad-hide', sheetFull && !story);
+    sheetRows.classList.toggle('ad-hide', !sheetFull || story);
+    if (story) {
+      setHtml(sheetPeek, `<span class="ad-key">any key \u2192 this chapter</span>`, htmlCache);
+      return;
+    }
     if (!sheetFull) {
       setHtml(
         sheetPeek,
         `<span><b>${snap.tasks.length}</b> things to do here, <b>${done}</b> done</span>` +
-          `<span class="ad-key">I \u2014 the run sheet</span>`,
+          `<span class="ad-key">\u2190 the night \u00b7 I \u2014 the run sheet</span>`,
         htmlCache,
       );
       setText(sheetKeys, snap.keys, textCache);
@@ -1123,11 +1178,13 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
    * inventing a second way of speaking: a hint is a line like any other and the
    * player should not be able to tell where it came from.
    */
-  function pushLine(text: string, snap: GameSnapshot, lifeMs: number): void {
+  function pushLine(text: string, snap: GameSnapshot, lifeMs: number, flavour = false): void {
     const now = performance.now();
     const speaker = speakerOf(text);
     const node = el('div', speaker ? 'ad-bubble' : 'ad-toast');
-    const colour = toastColour(text, snap);
+    // Flavour is grey; a line that moves the game on keeps its robot's colour.
+    const colour: [number, number, number] = flavour ? FLAVOUR_GREY : toastColour(text, snap);
+    if (flavour) node.classList.add('ad-flavour');
     node.style.color = rgb(colour);
     if (!speaker) {
       node.style.background = `linear-gradient(90deg, ${rgba(colour, 0.2)}, rgba(10,11,14,.93) 58%)`;
@@ -1178,7 +1235,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
           repeat.dieAt = now + life;
           repeat.removeAt = now + life + 340;
         } else {
-          pushLine(t.t, snap, life);
+          pushLine(t.t, snap, life, t.flavour === true);
         }
       }
     } else {
@@ -1302,6 +1359,8 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
       sheetOpen = true;
       // The chapter opens the BRIEFING. `I` is what turns it into the run sheet.
       sheetFull = false;
+      // The run opens on the night; every later chapter on its own page.
+      sheetPage = snap.chapter === 1 ? 0 : 1;
     }
 
     setText(chapterEl, CHAPTER_TITLES[snap.chapter] ?? CHAPTER_TITLES[0], textCache);
@@ -1391,7 +1450,21 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
    * `sheetPeek`). From anywhere else `I` goes straight to the rows, because a
    * player who presses it has asked for them.
    */
+  function pageTasks(dir: number): boolean {
+    if (!sheetOpen) return false;
+    sheetPage = dir < 0 ? 0 : 1;
+    return true;
+  }
+  function turnStory(): boolean {
+    if (!sheetOpen || sheetPage !== 0) return false;
+    sheetPage = 1;
+    return true;
+  }
   function toggleTasks(): void {
+    if (sheetOpen && sheetPage === 0) {
+      sheetPage = 1;
+      return;
+    }
     if (sheetOpen && !sheetFull) {
       sheetFull = true;
       return;
@@ -1466,5 +1539,5 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     }
   }
 
-  return { update, toggleTasks, closeTasks, nudge, dispose, root };
+  return { update, toggleTasks, closeTasks, pageTasks, turnStory, nudge, dispose, root };
 }

@@ -19,7 +19,7 @@
 import * as THREE from 'three';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { H, T, W } from '../src/sim/constants';
+import { H, W } from '../src/sim/constants';
 import { BAR_RECT, CY0, CY1, F1, GF, LOBBY_RISE_M, R, WIFI_TAG, WIFI_TAG_W, rooms, stairFlightRect } from '../src/sim/geometry';
 import { PX_PER_M, STOREY_H_M, m } from '../src/sim/units';
 import { DIORAMA_ELEVATIONS_DEG, dioramaToCameraAtDeg } from '../src/render/camera';
@@ -483,8 +483,9 @@ describe('the exhibition level', () => {
     // chapter 2's beam has to find. It was written down twice, at x 400 in both
     // places, and the second copy is how the password ended up behind chapter
     // 3's bar counter.
-    expect((box.min.x + box.max.x) / 2).toBeCloseTo(m(WIFI_TAG.x), 1);
-    expect((box.min.z + box.max.z) / 2).toBeCloseTo(m(GF.hall.y + T + 0.6), 1);
+    // On the wall behind it: 8 px back along the way it faces, 0.6 px proud.
+    expect((box.min.x + box.max.x) / 2).toBeCloseTo(m(WIFI_TAG.x - WIFI_TAG.nx * 7.4), 1);
+    expect((box.min.z + box.max.z) / 2).toBeCloseTo(m(WIFI_TAG.y - WIFI_TAG.ny * 7.4), 1);
     // Paint, not a lightbox: it must not out-glow the real signs.
     const mat = (tag as THREE.Mesh).material as THREE.MeshStandardMaterial;
     expect(mat.emissiveIntensity).toBeLessThan(0.4);
@@ -499,12 +500,14 @@ describe('the exhibition level', () => {
    * exactly. Both rects live in `geometry.ts` now so this can be asked.
    */
   it('keeps the bar counter off the spray tag', () => {
-    const tag = { x: WIFI_TAG.x - WIFI_TAG_W / 2, w: WIFI_TAG_W };
-    const gap = Math.max(BAR_RECT.x - (tag.x + tag.w), tag.x - (BAR_RECT.x + BAR_RECT.w));
-    expect(
-      gap,
-      `the bar (${BAR_RECT.x}..${BAR_RECT.x + BAR_RECT.w}) stands in front of the tag (${tag.x}..${tag.x + tag.w})`,
-    ).toBeGreaterThan(10);
+    // The paint's span along its wall, and the strip in front of it a reader stands in.
+    const side = WIFI_TAG.nx !== 0;
+    const tag = side
+      ? { x: Math.min(WIFI_TAG.x, WIFI_TAG.x + WIFI_TAG.nx * 40), y: WIFI_TAG.y - WIFI_TAG_W / 2, w: 40, h: WIFI_TAG_W }
+      : { x: WIFI_TAG.x - WIFI_TAG_W / 2, y: Math.min(WIFI_TAG.y, WIFI_TAG.y + WIFI_TAG.ny * 40), w: WIFI_TAG_W, h: 40 };
+    const clear =
+      BAR_RECT.x > tag.x + tag.w + 10 || tag.x > BAR_RECT.x + BAR_RECT.w + 10 || BAR_RECT.y > tag.y + tag.h + 10 || tag.y > BAR_RECT.y + BAR_RECT.h + 10;
+    expect(clear, `the bar stands in front of the tag`).toBe(true);
   });
 
   /** The bar is called something, and until now it was called it only in dialogue. */

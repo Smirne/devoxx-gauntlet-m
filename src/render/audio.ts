@@ -30,6 +30,12 @@ export type SoundId =
   /** A door that does break: the jammed cinema door, the store's roller door. */
   | 'crash'
   /**
+   * A crate front hitting the floor in the opening — the boom Michele asked for
+   * (28 Sep: "Crates open: boom"). A sub drop under a flat plywood slap and a
+   * cloud of dust. `intensity` scales it: Voxxy's crate is the small one.
+   */
+  | 'crate'
+  /**
    * A door that opens because it was asked nicely: chapter 1's fire door.
    *
    * The counterpart to `crash`, and deliberately its opposite in shape. `crash` is
@@ -137,6 +143,17 @@ export type SoundId =
    * environment can hear it.
    */
   | 'modem'
+  /**
+   * The cabinet waking when the supply lands: a relay clack, the fan spinning up,
+   * and the modem's self-test chirp. Michele: "some noise and light in the
+   * cabinet, to indicate the modem starting up". The handshake proper (`modem`)
+   * stays the payoff, when the password goes in.
+   */
+  | 'modem-boot'
+  /** The cable end going into the badge printer: a latch click and its ready chirp. */
+  | 'plug'
+  /** One badge printed: the thermal head's whirr, then the card sliding out. */
+  | 'badge'
   /** Droid climbing onto Biggy: servos, then weight settling. */
   | 'mount'
   /** Chapter transition swell, under the fade to black. */
@@ -231,7 +248,7 @@ export function createAudio(): Audio {
   /** An ambient asked for before the first gesture, replayed once we have a context. */
   let pendingChapter: number | null = null;
   /** The chapter the score should be on, kept across a context that does not exist yet. */
-  let musicChapter = 0;
+  let musicChapter = -1;
   let muted = false;
   let musicMuted = false;
   let disposed = false;
@@ -298,7 +315,7 @@ export function createAudio(): Audio {
 
     music = startMusic(c, master, noiseBuf);
     music.mute(musicMuted);
-    if (musicChapter > 0) music.setChapter(musicChapter);
+    if (musicChapter >= 0) music.setChapter(musicChapter);
 
     if (c.state === 'suspended') void c.resume().catch(() => undefined);
     if (pendingChapter !== null) {
@@ -488,6 +505,16 @@ export function createAudio(): Audio {
         playAt('door', t0, g, 1, undefined);
         noise({ t0: t0 + 0.02, dur: 0.5, peak: 0.09 * g, attack: 0.006, filter: { type: 'bandpass', f: 1900, q: 0.9 } });
         noise({ t0: t0 + 0.08, dur: 0.9, peak: 0.055 * g, attack: 0.02, filter: { type: 'lowpass', f: 900, f1: 260 } });
+        break;
+      }
+      case 'crate': {
+        const k = 0.6 + 0.4 * clamp(inten, 0, 1);
+        tone({ type: 'sine', f0: 92, f1: 34, t0, dur: 1.1, peak: 0.34 * g * k, attack: 0.004 });
+        tone({ type: 'triangle', f0: 180, f1: 70, t0, dur: 0.18, peak: 0.12 * g * k, attack: 0.002 });
+        noise({ t0, dur: 0.12, peak: 0.16 * g * k, attack: 0.002, filter: { type: 'bandpass', f: 1300, q: 0.8 } });
+        noise({ t0: t0 + 0.05, dur: 1.2, peak: 0.05 * g * k, attack: 0.08, filter: { type: 'lowpass', f: 700, f1: 180 } });
+        // ...and a crash cymbal on it, because the band hits with the box.
+        noise({ t0: t0 + 0.005, dur: 1.4, peak: 0.07 * g * k, attack: 0.003, filter: { type: 'highpass', f: 5200 } });
         break;
       }
       case 'door-open': {
@@ -822,6 +849,36 @@ export function createAudio(): Audio {
           attack: 0.55,
           filter: { type: 'bandpass', f: 260, f1: 900, q: 1 },
         });
+        break;
+      }
+      case 'plug': {
+        noise({ t0, dur: 0.025, peak: 0.14 * g, attack: 0.001, filter: { type: 'bandpass', f: 3200, q: 2 } });
+        tone({ type: 'triangle', f0: 240, f1: 120, t0, dur: 0.05, peak: 0.08 * g, attack: 0.001 });
+        tone({ type: 'square', f0: 1760, t0: t0 + 0.18, dur: 0.06, peak: 0.025 * g, attack: 0.002, filter: { type: 'lowpass', f: 4000 } });
+        tone({ type: 'square', f0: 2350, t0: t0 + 0.26, dur: 0.08, peak: 0.025 * g, attack: 0.002, filter: { type: 'lowpass', f: 4000 } });
+        break;
+      }
+      case 'badge': {
+        // The head: a buzzy whirr stepping along the card.
+        tone({ type: 'sawtooth', f0: 180, f1: 240, t0, dur: 0.42, peak: 0.022 * g, attack: 0.02, filter: { type: 'bandpass', f: 1400, q: 3 } });
+        noise({ t0, dur: 0.42, peak: 0.02 * g, attack: 0.03, filter: { type: 'bandpass', f: 2600, q: 1.5 } });
+        // The card sliding out, and landing on the stack.
+        noise({ t0: t0 + 0.45, dur: 0.12, peak: 0.03 * g, attack: 0.01, filter: { type: 'highpass', f: 3000 } });
+        noise({ t0: t0 + 0.6, dur: 0.03, peak: 0.05 * g, attack: 0.001, filter: { type: 'bandpass', f: 1800, q: 1 } });
+        break;
+      }
+      case 'modem-boot': {
+        noise({ t0, dur: 0.03, peak: 0.16 * g, attack: 0.001, filter: { type: 'highpass', f: 1800 } });
+        tone({ type: 'square', f0: 110, f1: 60, t0, dur: 0.06, peak: 0.08 * g, attack: 0.001, filter: { type: 'lowpass', f: 600 } });
+        // The fan: a whirr that climbs and settles.
+        tone({ type: 'sawtooth', f0: 40, f1: 190, t0: t0 + 0.08, dur: 2.4, peak: 0.03 * g, attack: 0.9, filter: { type: 'lowpass', f: 700 } });
+        noise({ t0: t0 + 0.1, dur: 2.4, peak: 0.03 * g, attack: 1.0, filter: { type: 'bandpass', f: 500, f1: 1400, q: 0.7 } });
+        // Self-test: two chirps off the modem's speaker, a line relay, a dial tone.
+        tone({ type: 'square', f0: 1200, t0: t0 + 0.9, dur: 0.07, peak: 0.03 * g, attack: 0.002, filter: { type: 'lowpass', f: 3000 } });
+        tone({ type: 'square', f0: 1600, t0: t0 + 1.02, dur: 0.07, peak: 0.03 * g, attack: 0.002, filter: { type: 'lowpass', f: 3000 } });
+        noise({ t0: t0 + 1.3, dur: 0.02, peak: 0.1 * g, attack: 0.001, filter: { type: 'highpass', f: 2500 } });
+        tone({ type: 'sine', f0: 350, t0: t0 + 1.4, dur: 0.9, peak: 0.035 * g, attack: 0.01 });
+        tone({ type: 'sine', f0: 440, t0: t0 + 1.4, dur: 0.9, peak: 0.035 * g, attack: 0.01 });
         break;
       }
       case 'modem': {

@@ -47,6 +47,7 @@ import type { GameSnapshot, RobotKind } from './sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M } from './sim/units';
 
 import { createAudio, type Audio } from './render/audio';
+import { scoreFor } from './render/cues';
 import { createHud, type Hud, type SpeakerAnchors } from './render/hud';
 import { createPhysicsPanel, type PhysicsPanel } from './render/physics-view';
 import { STEP_FREQ_BASE, STEP_FREQ_PER_MPS, gaitSpeed } from './render/robots';
@@ -252,6 +253,9 @@ function codeOf(ev: KeyboardEvent): string {
   return k;
 }
 
+/** Keys that act on the story page itself (or the view) rather than turning it. */
+const STORY_KEEPS = new Set(['KeyI', 'KeyH', 'KeyM', 'KeyN', 'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight']);
+
 function onKeyDown(ev: KeyboardEvent): void {
   const code = codeOf(ev);
   /*
@@ -261,6 +265,18 @@ function onKeyDown(ev: KeyboardEvent): void {
    * reach of the terminal it is being typed into. Key-UP is never suppressed, or a
    * key held when the prompt opened would stay held for ever.
    */
+  // With the run sheet open, left/right turn its page (the night / this
+  // chapter) instead of steering.
+  if ((code === 'ArrowLeft' || code === 'ArrowRight') && hud.pageTasks(code === 'ArrowLeft' ? -1 : 1)) {
+    ev.preventDefault();
+    return;
+  }
+  // On the story page any other key turns to this chapter's briefing, and
+  // does nothing else — it is a page turn, not a step or an action.
+  if (!ev.repeat && !STORY_KEEPS.has(code) && hud.turnStory()) {
+    ev.preventDefault();
+    return;
+  }
   const axis = game.snapshot().typing ? undefined : MOVE[code];
   if (axis) {
     held[axis] = true;
@@ -361,6 +377,8 @@ window.addEventListener('blur', releaseAll);
  */
 const stepPhase: Record<RobotKind, number> = { voxxy: 0, droid: 0, biggy: 0 };
 let ambientChapter = -1;
+/** The score last asked for. */
+let musicScore = -2;
 let lastPhase = '';
 /** Last frame's fall progress on chapter 1's jammed door, so the crash plays once. */
 let lastBreak = 0;
@@ -578,8 +596,12 @@ function updateAudio(snap: GameSnapshot, dt: number): void {
     lastBreakerV = 0;
     lastPilot = '';
     audio.setAmbient(snap.chapter);
-    audio.setMusic(snap.chapter);
     if (snap.chapter > 1) audio.play('transition');
+  }
+  // The opening's score while the crates are up, the chapter's after (`scoreFor`).
+  if (scoreFor(snap) !== musicScore) {
+    musicScore = scoreFor(snap);
+    audio.setMusic(musicScore);
   }
   if (snap.phase !== lastPhase) {
     if (snap.phase === 'done') audio.play('victory');

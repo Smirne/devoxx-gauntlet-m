@@ -18,9 +18,12 @@ import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 const dist = process.argv[2];
-if (!dist) throw new Error('usage: node tools/inline-build.mjs <dist dir>');
+// Which page to fold: index.html (the 2.5D game) unless told otherwise — the 3D
+// build publishes 3d.html the same way.
+const pageName = process.argv[3] ?? 'index.html';
+if (!dist) throw new Error('usage: node tools/inline-build.mjs <dist dir> [page.html]');
 
-const page = join(dist, 'index.html');
+const page = join(dist, pageName);
 let html = readFileSync(page, 'utf8');
 const used = [];
 
@@ -33,6 +36,11 @@ const used = [];
  */
 const safe = (js) => js.replace(/<\/script/gi, '<\\/script');
 
+// A modulepreload hint for a chunk means the page imports a second file: the
+// page was built alongside another one (see vite.config.ts, PAGE=...).
+if (/rel="modulepreload"/.test(html)) {
+  throw new Error(`${pageName} imports a shared chunk; build it on its own with PAGE=main or PAGE=3d`);
+}
 html = html.replace(/<script type="module"[^>]*src="\.\/([^"]+)"><\/script>/g, (_m, src) => {
   used.push(src);
   return `<script type="module">${safe(readFileSync(join(dist, src), 'utf8'))}</script>`;
@@ -44,7 +52,7 @@ html = html.replace(/<link rel="stylesheet"[^>]*href="\.\/([^"]+)">/g, (_m, href
 
 if (used.length === 0) throw new Error('nothing was inlined — has the Vite output shape changed?');
 if (/src="\.\/assets|href="\.\/assets/.test(html)) {
-  throw new Error('index.html still references an asset after inlining');
+  throw new Error(`${pageName} still references an asset after inlining`);
 }
 
 writeFileSync(page, html);

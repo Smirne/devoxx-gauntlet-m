@@ -153,6 +153,13 @@ const FIRE_LEAF_T = 4;
  * feeds `Prop.progress`.
  */
 const LOCK_SWING_TIME = 0.7;
+/**
+ * How long Droid's hand takes to get to the projector panel's lever, s. The door
+ * waits for it: it used to start swinging on the key press, before the lever
+ * had moved (Michele, 28 Sep: "the door should start opening only after the
+ * lever is pulled"). The renderers draw the reach over the same time.
+ */
+const LEVER_REACH_TIME = 0.75;
 /** Cinema B's leaf, drawn and collided at its own thickness rather than the band's. */
 const LOCK_LEAF_T = 4;
 
@@ -325,6 +332,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let panelOn = false;
   /** Cinema B's leaf, 0 -> 1 once the release is pressed. Ticked in `update`. */
   let lockSwing = 0;
+  /** Seconds since the panel was thrown; the leaf moves once `LEVER_REACH_TIME` has passed. */
+  let leverT = 0;
   let jamBroken = false;
   /** 0..1, the smashed door's own fall. Started by the hit, ticked in `update`. */
   let jamFall = 0;
@@ -426,6 +435,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       w: leafLen + FIRE_LEAF_T,
       h: FIRE_LEAF_T,
       kind: 'fireleaf',
+      flavour: true,
       why: (b) => `${b.name}: that is the fire door itself, standing open. Go round it — the way through is the middle`,
     }),
   );
@@ -551,6 +561,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     w: LOCK_LEAF_T,
     h: dB.w + LOCK_LEAF_T,
     kind: 'lockleaf',
+    flavour: true,
     why: (b) => `${b.name}: that is the door itself, standing open against the wall`,
   };
   /*
@@ -661,7 +672,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const lastRow = rowY[rowY.length - 1];
   for (const y of rowY) {
     const left: Rect = { x: rE.x, y, w: aisle[0] - rE.x, h: ROW_H };
-    ctx.walls.push({ ...left, low: true, kind: 'seatrow', why: whySeats });
+    ctx.walls.push({ ...left, low: true, kind: 'seatrow', flavour: true, why: whySeats });
     seatRects.push(left);
     /*
      * Right of the aisle: seats down to the alcove, nothing beside it, and then
@@ -676,7 +687,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      */
     if (y + ROW_H <= alcove.y - T || y === lastRow) {
       const right: Rect = { x: aisle[1], y, w: rE.x + rE.w - aisle[1], h: ROW_H };
-      ctx.walls.push({ ...right, low: true, kind: 'seatrow', why: whySeats });
+      ctx.walls.push({ ...right, low: true, kind: 'seatrow', flavour: true, why: whySeats });
       seatRects.push(right);
     }
   }
@@ -776,7 +787,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   for (const n of Object.keys(SHUT_VOICES)) {
     const r = R(n);
     const d = roomDoor(r);
-    ctx.walls.push({ x: d.x, y: d.y, w: d.w, h: d.h, kind: 'shut', why: SHUT_VOICES[n] });
+    ctx.walls.push({ x: d.x, y: d.y, w: d.w, h: d.h, kind: 'shut', flavour: true, why: SHUT_VOICES[n] });
   }
 
   const code = clues
@@ -1027,29 +1038,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const RIDER_READ = 46;
   let riderSeen = false;
 
-  /** The CFP wall, on the south side, past cinema D's door. */
-  const cfpAt: Vec2 = { x: 375, y: 411 };
-  /** Voxxy's beam only, and close: the slips are printed at 9 point. */
-  const CFP_READ = 70;
-  /** Seconds between slips, so standing there is a read and not a firehose. */
-  const CFP_GAP = 3.5;
-  let cfpNext = 0;
-  let cfpCd = 0;
-  /**
-   * The rejections, in order. Nothing here needs anybody's permission: they are
-   * jokes about the shape of a conference programme, not about a person or a talk
-   * that exists.
-   */
-  const CFP_SLIPS: readonly string[] = [
-    '"Microservices: A Love Story" — <i>we already have three of these.</i>',
-    '"I Rewrote It In Rust" — <i>yes. Everyone did. That is the problem.</i>',
-    '"Kubernetes For Cats" — <i>cats do not scale horizontally.</i>',
-    '"Why Your Tests Are Lying To You" — <i>accepted. Speaker then cancelled.</i>',
-    '"Blockchain For Catering" — <i>no comment was recorded.</i>',
-    '"A Deep Dive Into Tomato Soup" — <i>see the kitchen. They said no too.</i>',
-  ];
+  // The CFP wall that stood here moved to the exhibition hall on 28 Sep 2026
+  // (`CFP_WALL` in geometry.ts, read in ch2-expo.ts).
 
-  /** The AV rider and the CFP wall, both read off `lights` — see their declarations. */
+  /** The AV rider: any robot that walks up to it. */
   function stepWalls(dt: number): void {
     if (!riderSeen && ctx.bots.some((b) => !b.mounted && dist(b, riderAt) < RIDER_READ)) {
       riderSeen = true;
@@ -1057,23 +1049,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         'Taped to the wall — <b>AV RIDER</b>, house rig: <b>Voxxy</b> orange spot · <b>Droid</b> green wash · ' +
           '<b>Biggy</b> blue flood. <i>"A mark lights when every colour it is written for is on it at the same time."</i>',
         6000,
+        true,
       );
     }
-    cfpCd = Math.max(0, cfpCd - dt);
-    if (cfpCd > 0) return;
-    const v = ctx.byKind('voxxy');
-    // Her cone, not her skirt: standing against the wall in the dark is not
-    // reading it. The same rule chapter 2's spray tag is read under.
-    if (dist(v, cfpAt) >= CFP_READ || !litBy(lights.filter((L) => L.skirt !== true), 'voxxy', cfpAt)) return;
-    cfpCd = CFP_GAP;
-    const slip = CFP_SLIPS[cfpNext % CFP_SLIPS.length];
-    ctx.flash(
-      cfpNext === 0
-        ? `Voxxy: a wall of <b>rejected CFP slips</b>. Somebody pinned every one of them up. ${slip}`
-        : `Voxxy: ${slip}`,
-      4600,
-    );
-    cfpNext++;
+    void dt;
   }
 
   function update(dt: number): void {
@@ -1085,7 +1064,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       fireSwing = Math.min(1, fireSwing + dt / FIRE_SWING_TIME);
       sweepFireDoor(was, fireSwing, dt);
     }
-    if (panelOn && lockSwing < 1) lockSwing = Math.min(1, lockSwing + dt / LOCK_SWING_TIME);
+    if (panelOn) leverT += dt;
+    if (panelOn && leverT >= LEVER_REACH_TIME && lockSwing < 1) lockSwing = Math.min(1, lockSwing + dt / LOCK_SWING_TIME);
     if (leaveAt >= 0 && ctx.t >= leaveAt) {
       leaveAt = -1;
       leave();
@@ -1107,7 +1087,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       ctx.flash('Biggy: my light is coming back off the screen — swing it until the bounce lands in the exit alcove', 3500);
     }
     for (const c of clues) {
-      if (!c.found && clueLit(lights, c)) {
+      if (!c.found && clueLit(lights, c, ctx.clueSpot)) {
         c.found = true;
         ctx.flash(`Clue: digit ${c.digit} is position ${c.slot}`);
       }
@@ -1146,15 +1126,6 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         h: 3,
         state: riderSeen ? 'done' : 'idle',
         label: 'AV RIDER · lamp colours',
-      },
-      {
-        kind: 'poster',
-        x: cfpAt.x - 23,
-        y: cfpAt.y,
-        w: 46,
-        h: 3,
-        state: cfpNext > 0 ? 'done' : 'idle',
-        label: 'CFP · REJECTED',
       },
     ];
     for (const r of seatRects) out.push({ kind: 'seatrow', ...r, state: 'idle' });

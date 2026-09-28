@@ -748,13 +748,25 @@ export function floor1Walls(): Wall[] {
   const f = F1.foyer;
   w.push({ x: f.x - T, y: f.y, w: T, h: f.h }, { x: f.x + f.w, y: f.y, w: T, h: f.h }, { x: f.x - T, y: f.y + f.h, w: f.w + 2 * T, h: T });
   const k = F1.kiosk;
+  /*
+   * Glazed on the south and east only. The back (north, the menu board, facing
+   * the corridor) and the counter front either side of the hatch (west) are solid.
+   *
+   * Since the crates moved to the west end, the robots start 9 m from the kiosk,
+   * and with glass all round its clue could be lit from the starting marks: Voxxy
+   * turned on the spot, Biggy's flood was already on it (Michele, 25 Sep: "I just
+   * started the game, rotated Voxxy, hint solved"). A probe of every heading from
+   * the three marks lit it at the tightest tolerance too. Solid on the two sides
+   * that face the marks, the puzzle is the one written for it again: Voxxy in
+   * through her hatch, Biggy's flood through the glazing.
+   */
   w.push(
-    { x: k.x, y: k.y, w: k.w, h: T, glass: true },
+    { x: k.x, y: k.y, w: k.w, h: T },
     { x: k.x, y: k.y + k.h - T, w: k.w, h: T, glass: true },
     { x: k.x + k.w - T, y: k.y, w: T, h: k.h, glass: true },
-    { x: k.x, y: k.y, w: T, h: 16, glass: true },
-    { x: k.x, y: k.y + 40, w: T, h: 16, glass: true },
-    { x: k.x, y: k.y + 16, w: T, h: 24, hidden: true, skipFor: (b) => b.kind === 'voxxy', why: (b) => `${b.name}: the kiosk hatch is Voxxy-sized` },
+    { x: k.x, y: k.y, w: T, h: 16 },
+    { x: k.x, y: k.y + 40, w: T, h: 16 },
+    { x: k.x, y: k.y + 16, w: T, h: 24, hidden: true, open: true, skipFor: (b) => b.kind === 'voxxy', why: (b) => `${b.name}: the kiosk hatch is Voxxy-sized` },
   );
   // Top of the main staircase.
   w.push({ x: F1.mainStair.x + F1.mainStair.w, y: CY0, w: T, h: CY1 - CY0, stair: 0 });
@@ -827,7 +839,7 @@ export function floor1Walls(): Wall[] {
   for (const s of F1.barStools) {
     w.push({ ...s, low: true, kind: 'stool', why: (b) => `${b.name}: a bar stool. Push past it or go round` });
   }
-  return w;
+  return asFlavour(w);
 }
 
 /* ---------------------------------------------------------------- ground floor */
@@ -1090,6 +1102,19 @@ export const GF = {
  * rects live here now, in the venue, where they can be measured against each
  * other — `tests/venue.smoke.test.ts` does exactly that.
  */
+/**
+ * DUKE, the Java mascot — an inflatable one, in the lobby.
+ *
+ * Michele, 28 Sep 2026, with a photograph of Duke on the keynote screen: *"the
+ * java character. Should appear somewhere."* Duke's artwork was released by Sun
+ * under a BSD licence, so he is one mascot this game can draw without asking.
+ * He stands on the open lobby floor south of the main staircase — clear of the
+ * arrivals' line from the doors to the desk, and measured 26 px clear of every
+ * wall — and he is solid: the sim knows his footprint, so nobody walks through
+ * him (the lesson of the drawn-but-not-simulated columns, `groundWalls`).
+ */
+export const DUKE = { x: 1340, y: 600, r: 17 } as const;
+
 export const BAR_RECT: Rect = { x: 336, y: 96, w: 92, h: 26 };
 
 /**
@@ -1108,9 +1133,42 @@ export const BAR_RECT: Rect = { x: 336, y: 96, w: 92, h: 26 };
  * it here (`ch2-expo.ts`), so the paint and the thing Voxxy's beam has to find
  * cannot drift apart — which is the fault this constant exists to prevent.
  */
-export const WIFI_TAG: { readonly x: number; readonly y: number } = { x: 500, y: GF.hall.y + 8 };
+/**
+ * ...and since 28 Sep 2026 it is not on that wall at all. Michele, from the 2D
+ * view: *"the wall is Legacy Systems' West wall"* — on the way to the cabinet,
+ * where the robots walk anyway coming out of the stairwell, instead of a detour
+ * to the hall's top wall. A built booth's side is 70 px, so the paint narrows
+ * to 64. `nx, ny` is the way the paint faces (out of the wall, toward whoever
+ * reads it); `x, y` is 8 px out along it, as before.
+ */
+const LEGACY = booths.find((b) => b.name === 'Legacy Systems SA') ?? booths[4];
+export const WIFI_TAG: { readonly x: number; readonly y: number; readonly nx: number; readonly ny: number } = {
+  x: LEGACY.x - 8,
+  y: LEGACY.y + LEGACY.h / 2,
+  nx: -1,
+  ny: 0,
+};
 /** How wide the paint is, sim px — the renderer's plane, and the room it needs. */
-export const WIFI_TAG_W = 88;
+export const WIFI_TAG_W = 64;
+
+/**
+ * The CFP rejection wall — six slips the programme committee turned down, pinned
+ * up where the conference can see them. It was chapter 1's, on the corridor's
+ * south wall past cinema D; the 3D build had its animated ad on exactly that
+ * stretch, and Michele moved it (28 Sep 2026: *"We can move the cfp wall to the
+ * hall maybe?"*, then "near registration"). It hangs on the south face of the
+ * concrete wall between the hall and the lobby, a real wall 8 m from the desk, so
+ * it adds no collider to the cable run. `x, y` is the reading point 8 px out,
+ * like `WIFI_TAG`; `nx, ny` the way the board faces.
+ */
+export const CFP_WALL: { readonly x: number; readonly y: number; readonly nx: number; readonly ny: number } = {
+  x: GF.concreteWall.x + GF.concreteWall.w / 2,
+  y: GF.concreteWall.y + GF.concreteWall.h + 8,
+  nx: 0,
+  ny: 1,
+};
+/** The board's width, sim px (2.2 m, on a 3.4 m face). */
+export const CFP_WALL_W = 28;
 
 /**
  * How far the lobby floor stands above the exhibition hall's, metres.
@@ -1985,6 +2043,18 @@ export function groundWalls(): Wall[] {
   for (const p of FORECOURT_PLANTERS) {
     w.push({ ...p, low: true, kind: 'forecourt-planter', why: (bb) => `${bb.name}: a planter, out in the rain with the rest of Antwerp` });
   }
+  // Duke, inflated, in the lobby south of the main staircase.
+  w.push({
+    x: DUKE.x - DUKE.r,
+    y: DUKE.y - DUKE.r,
+    w: DUKE.r * 2,
+    h: DUKE.r * 2,
+    kind: 'duke',
+    why: (bb) =>
+      bb.kind === 'biggy'
+        ? 'Biggy: that is Duke. I am not shoving the Java mascot across the lobby, however full of air he is'
+        : `${bb.name}: Duke, the Java mascot, three metres of him and all of it air. Round him`,
+  });
   return w;
 }
 
@@ -1998,7 +2068,21 @@ export function groundWalls(): Wall[] {
  */
 export function groundWallsFor(chapter: number): Wall[] {
   const taken = chapter === 2 ? new Set(['roller', 'cabinet']) : new Set<string>();
-  return groundWalls().filter((w) => w.kind === undefined || !taken.has(w.kind));
+  return asFlavour(groundWalls().filter((w) => w.kind === undefined || !taken.has(w.kind)));
+}
+
+/** Venue walls that are part of a puzzle: what they say is a clue, not colour. */
+const GAME_WALLS = new Set(['rack', 'cabinet', 'roller']);
+/**
+ * The building's walls are architecture, and what they say when a robot walks
+ * into one is colour (Michele, 28 Sep: "flavour toast: column, actions...
+ * everything not related to progressing the game"). The few that are part of a
+ * puzzle keep their voice: the Voxxy-sized kiosk hatch (it has `skipFor`), the
+ * patch rack, the router cabinet and the store's roller door.
+ */
+function asFlavour(ws: Wall[]): Wall[] {
+  for (const w of ws) if (w.flavour === undefined && !w.skipFor && !GAME_WALLS.has(w.kind ?? '')) w.flavour = true;
+  return ws;
 }
 
 /* ---------------------------------------------------------------- cameras */

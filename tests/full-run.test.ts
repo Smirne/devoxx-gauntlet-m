@@ -31,7 +31,7 @@ import {
   type NightState,
   type Vec2,
 } from '../src/sim';
-import { bot, playToStairGate, walkTo } from './pilot';
+import { bot, playToStairGate, raiseSign, walkTo } from './pilot';
 
 const SEED = 20260930;
 
@@ -117,7 +117,7 @@ function playChapter2(g: DebugGame): void {
 
 /* ------------------------------------------------------------- chapter 4 --- */
 
-/** Cake, banner, spotlights, everyone on the boards, and the opening video out. */
+/** Cake, the #DEVOXX sign, spotlights, everyone on the boards, and the opening video out. */
 function playChapter4(g: DebugGame): void {
   const key = (): KeynoteState => g.debug.chapter() as KeynoteState;
   const prop = (kind: string): { x: number; y: number; w?: number; h?: number } => {
@@ -135,12 +135,8 @@ function playChapter4(g: DebugGame): void {
   until(g, 'the cake on its mark', () => key().cake, 300);
   g.setStick(0, 0);
 
-  g.debug.select('droid');
-  for (const h of g.snapshot().props.filter((p) => p.kind === 'banner-hook')) {
-    g.debug.place('droid', h.x, h.y + 22);
-    g.key('KeyE');
-  }
-  expect(key().hooks, 'the banner never went up').toBe(2);
+  raiseSign(g);
+  expect(key().sign, 'the #DEVOXX sign never went up').toBe('#DEVOXX');
 
   g.debug.select('voxxy');
   for (const s of g.snapshot().props.filter((p) => p.kind === 'spotlight')) {
@@ -189,7 +185,7 @@ describe('a full run', () => {
       playToStairGate(g);
       until(g, 'the walk back up to Room 8', () => g.snapshot().chapter === 4);
     });
-    leg('4 · keynote — cake, banner, lights, stage', () => playChapter4(g));
+    leg('4 · keynote — cake, sign, lights, stage', () => playChapter4(g));
     leg('the opening video', () => {
       until(g, 'the end of the opening video', () => g.snapshot().reel === null, 3000);
     });

@@ -24,10 +24,12 @@ import {
   TRAVEL_TIME_SCALE,
 } from './constants';
 import { VIEW_CLOSED, groundPlates } from './geometry';
+import { STORY } from './story';
 import { CRATE_AT, STAND_AT, STAND_FACE, openingAt, openingView } from './opening';
 import {
   botsCollide,
   circleRect,
+  holdHeading,
   mkBot,
   partyTrick as showOff,
   pushBiggy as leanOnBiggy,
@@ -171,9 +173,7 @@ const CUT_ANIM_DIV = 18;
  */
 const TITLE_CARD =
   '<b>AFTER DARK</b><br>' +
-  '<span class="sub">Kinepolis Antwerp, the night before Devoxx. <b>Stephan</b> lost the keys — the humans are ' +
-  'locked out until morning, but three robots are already inside, set up for the conference. The power is out ' +
-  'in the closed cinema section, and somewhere a keynote has to happen after breakfast.<br>' +
+  `<span class="sub">${STORY}<br>` +
   'Three robots. Two floors. Four chapters.</span><small>Press any key</small>';
 const TITLE_OBJECTIVE =
   '<b>After Dark</b> — the night before Devoxx, a power cut, three robots, two floors of Kinepolis and one keynote to save.';
@@ -211,6 +211,8 @@ export interface GameOptions {
    * harness) so `update` is never waiting on a keypress that nobody will send.
    */
   cards?: boolean;
+  /** A clue's patch radius, sim px; see `CLUE_SPOT`. The 3D build is more generous. */
+  clueSpot?: number;
 }
 
 /** Test and debug-overlay access to state the renderer has no business reading. */
@@ -248,6 +250,9 @@ const NO_PEOPLE: Person[] = [];
 const GROUND_PLATES: Plate[] = groundPlates();
 const NO_PLATES: Plate[] = [];
 
+/** Seconds after typing into a prompt during which R does not restart. */
+const TYPING_GRACE = 2;
+
 export function createGame(opts: GameOptions = {}): DebugGame {
   const showCards = opts.cards !== false;
   let rng = mulberry32(opts.seed ?? 0x9e3779b9);
@@ -272,6 +277,8 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   let objective = TITLE_OBJECTIVE;
   let keysLine = TITLE_KEYS;
   let stickX = 0;
+  /** `setStick`'s held heading, or null to face the stick. */
+  let stickFace: number | null = null;
   let stickY = 0;
   let runtime: ChapterRuntime | null = null;
   /** The tow bar, when somebody has hold of Biggy. See `tow.ts`. */
@@ -304,9 +311,14 @@ export function createGame(opts: GameOptions = {}): DebugGame {
 
   /* ------------------------------------------------------------- feedback */
 
-  function flash(text: string, ms: number = TOAST_MS): void {
-    toast = { t: text, until: t + ms / 1000 };
+  /** Sim time of the last key pressed while a chapter had the keyboard; see `KeyR`. */
+  let typedAt = -Infinity;
+
+  function flash(text: string, ms: number = TOAST_MS, flavour = false): void {
+    toast = { t: text, until: t + ms / 1000, flavour };
   }
+  /** An action's own line (a trick, a climb, a grip on Biggy): flavour. */
+  const aside = (text: string): void => flash(text, TOAST_MS, true);
 
   function showCard(html: string): void {
     if (!showCards) return;
@@ -325,7 +337,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     if (!why) return;
     const m = why(b);
     if (m) {
-      flash(m);
+      flash(m, TOAST_MS, w.flavour === true);
       blockedAt.set(w, t);
     }
   }
@@ -343,6 +355,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
         b.ix = 0;
         b.iy = 0;
       }
+      holdHeading(b, i === cur ? stickFace : null);
     });
     // The bar reads the holder's stick and spends it on Biggy, so it has to run
     // BEFORE the step — the velocity it sets is the one Biggy carries through his
@@ -386,16 +399,16 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     const b = bots[cur];
     if (b === bg) {
       // Biggy cannot tow himself, and saying so is friendlier than a dead key.
-      flash('Biggy: "Someone has to pull. It is not going to be me."');
+      aside('Biggy: "Someone has to pull. It is not going to be me."');
       return;
     }
     if (!canGrab(b, bg, MOUNT_REACH)) {
-      flash(`${b.name}: "Not close enough to get a grip on Biggy."`);
+      aside(`${b.name}: "Not close enough to get a grip on Biggy."`);
       return;
     }
     tow = takeHold(b, bg);
     cur = ORDER.indexOf(tow.holder);
-    flash(`${b.name} takes hold of Biggy — push or pull along the bar, steer across it`);
+    aside(`${b.name} takes hold of Biggy — push or pull along the bar, steer across it`);
   }
 
   /**
@@ -418,14 +431,14 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       towToggle();
       return;
     }
-    showOff(bots, b, flash);
+    showOff(bots, b, aside);
   }
 
   function release(why: string): void {
     if (!tow) return;
     const holder = byKind(tow.holder);
     tow = null;
-    flash(`${holder.name} ${why}`);
+    aside(`${holder.name} ${why}`);
   }
 
   /** Quietly drop the bar — chapter change, cutscene, teleport. No toast. */
@@ -520,7 +533,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     // doing it left the holder welded to his flank mid-climb. One verb at a time.
     dropTow();
     // While Droid rides Biggy the tower moves as one robot, so control follows it.
-    if (climbBiggy(bots, flash)) cur = ORDER.indexOf('biggy');
+    if (climbBiggy(bots, aside)) cur = ORDER.indexOf('biggy');
   }
 
   /* ------------------------------------------------------------- cutscenes */
@@ -987,6 +1000,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     },
     byKind,
     place,
+    clueSpot: opts.clueSpot,
     get t(): number {
       return t;
     },
@@ -1011,7 +1025,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     rng: () => rng(),
     stepAll,
     pushBiggy(dt: number): void {
-      leanOnBiggy(bots, dt, t, flash);
+      leanOnBiggy(bots, dt, t, aside);
     },
     toggleMount,
     switchKey,
@@ -1179,7 +1193,16 @@ export function createGame(opts: GameOptions = {}): DebugGame {
      * offers. Inside a chapter's text prompt it is not a control at all: it is
      * the two Rs of `DevoxxForever` (`ChapterRuntime.typing`).
      */
-    if (code === 'KeyR' && !(runtime?.typing?.() ?? false)) {
+    /*
+     * ...and not for TYPING_GRACE after the last letter typed into one either.
+     * The password ends in an R: Michele finished typing it, the router took it,
+     * the prompt closed, and one R too many restarted the chapter (28 Sep: "keep
+     * a tolerance on keypress here too").
+     */
+    const typingNow = runtime?.typing?.() ?? false;
+    if (typingNow) typedAt = t;
+    if (code === 'KeyR' && !typingNow && t - typedAt < TYPING_GRACE) return;
+    if (code === 'KeyR' && !typingNow) {
       if (chapter >= 1 && phase === 'play') restartChapter();
       else restart();
       return;
@@ -1305,5 +1328,17 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   else if (showCards) startOpening();
   else startChapter(1);
 
-  return { snapshot, update, key, setStick: (x, y) => { stickX = x; stickY = y; }, skipChapter, startChapter, debug };
+  /**
+   * See `Game.turn`. Standing only — under 8 px/s (0.64 m/s), a robot still
+   * settling after the stick let go — and never while carried or mid-cutscene.
+   * An input threshold, not physics: nothing it moves is a frozen constant.
+   */
+  function turn(rad: number): void {
+    if (phase !== 'play') return;
+    const b = bots[cur];
+    if (!b || b.mounted || Math.hypot(b.vx, b.vy) > 8) return;
+    b.face = Math.atan2(Math.sin(b.face + rad), Math.cos(b.face + rad));
+  }
+
+  return { snapshot, update, key, setStick: (x, y, face) => { stickX = x; stickY = y; stickFace = face ?? null; }, turn, skipChapter, startChapter, debug };
 }

@@ -152,12 +152,20 @@ export interface Bot extends RobotDef {
  * so they still cast no shadow in the visibility polygons.
  */
 export interface Wall extends Rect {
+  /** Its `why` is flavour, not a clue: the toast is drawn grey. See `Toast.flavour`. */
+  flavour?: boolean;
   /** Blocks robots, passes light (kiosk glazing). */
   glass?: boolean;
   /** Blocks robots, passes light (seat rows, tables, desks). */
   low?: boolean;
   /** Not drawn (invisible collider, e.g. the Voxxy-sized kiosk hatch). */
   hidden?: boolean;
+  /**
+   * An opening that stops robots but not light — the kiosk hatch is a hole a
+   * Voxxy fits through, and a lamp shone at a hole lights what is behind it
+   * (Michele, 27 Sep: "his light should pass also from the opening").
+   */
+  open?: boolean;
   /** Robots for which this wall does not exist at all. */
   skipFor?: (b: Bot) => boolean;
   /**
@@ -262,6 +270,12 @@ export type ViewRect = Rect;
 export interface Toast {
   t: string;
   until: number;
+  /**
+   * Colour, not progress: a column, a closed room's joke, a party trick. The HUD
+   * draws these grey, so the lines that move the game on stand out (Michele,
+   * 28 Sep: "we should distinguish between game-related toast and informational").
+   */
+  flavour?: boolean;
 }
 
 /** A cutscene waypoint route for one robot. */
@@ -305,6 +319,8 @@ export interface Person {
   collar?: string;
   glasses?: boolean;
   mic?: boolean;
+  /** Bare feet under the trousers: Venkat, who talks barefoot. */
+  barefoot?: boolean;
   /**
    * An open laptop, held in both hands in front of them.
    *
@@ -396,6 +412,17 @@ export interface Prop {
    * any prop whose change is worth watching may carry it, not just doors.
    */
   progress?: number;
+  /**
+   * Which way the prop's FRONT faces, radians — the same convention as `Bot.face`
+   * and `Person.face` (0 is +x, pi/2 is +y, towards the house in Room 8).
+   *
+   * For the few props whose front is a thing you read and whose footprint does not
+   * say which side it is on: chapter 4's #DEVOXX letters, which face the audience
+   * standing in the sign, face into the room leaning on the wing's wall, and face
+   * wherever Droid is walking while he carries one. Props without a front leave it
+   * unset.
+   */
+  face?: number;
 }
 
 /**
@@ -636,8 +663,19 @@ export interface Game {
   update(dt: number): void;
   /** A KeyboardEvent.code, on keydown, non-repeating. */
   key(code: string): void;
-  /** Movement stick, each axis -1..1. */
-  setStick(x: number, y: number): void;
+  /**
+   * Movement stick, each axis -1..1. `face`, when given, is a heading the driven
+   * robot keeps while it moves (walking backwards); omitted, it faces the stick.
+   */
+  setStick(x: number, y: number, face?: number): void;
+  /**
+   * Turn the driven robot on the spot by `rad` (sim radians, +clockwise on
+   * screen), without moving it. Only while it is standing: a robot under way
+   * steers with the stick. Added for the 3D build's "A/D alone turn in place"
+   * (Michele, 24 Sep); it aims a lamp without walking, so it is gameplay input,
+   * not presentation, and lives here.
+   */
+  turn?(rad: number): void;
   skipChapter(): void;
   /** Jump straight to a chapter — used by tests and the debug overlay. */
   startChapter(n: number): void;

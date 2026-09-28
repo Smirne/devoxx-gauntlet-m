@@ -15,9 +15,11 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { DT_MAX, createGame, type DebugGame } from '../src/sim';
+import { DT_MAX, createGame, type DebugGame, type KeynoteState } from '../src/sim';
 import type { Bot, Prop } from '../src/sim/types';
 import { m } from '../src/sim/units';
+
+import { raiseSign } from './pilot';
 
 const SEED = 20260930;
 const steps = (g: DebugGame, n: number): void => {
@@ -34,8 +36,7 @@ const prop = (g: DebugGame, kind: string): Prop | undefined => g.snapshot().prop
  * them are standing on it.
  */
 function toTheVideo(g: DebugGame): void {
-  const key = (): { cake: boolean; hooks: number; spots: number; ready: boolean } =>
-    g.debug.chapter() as { cake: boolean; hooks: number; spots: number; ready: boolean };
+  const key = (): KeynoteState => g.debug.chapter() as KeynoteState;
   const mark = prop(g, 'cake-mark');
   expect(mark, 'chapter 4 draws no cake mark').toBeDefined();
   const markX = mark!.x + (mark!.w ?? 0) / 2;
@@ -47,11 +48,8 @@ function toTheVideo(g: DebugGame): void {
   g.setStick(0, 0);
   expect(key().cake, 'the cake never reached its mark').toBe(true);
 
-  g.debug.select('droid');
-  for (const h of g.snapshot().props.filter((p) => p.kind === 'banner-hook')) {
-    g.debug.place('droid', h.x, h.y + 22);
-    g.key('KeyE');
-  }
+  raiseSign(g);
+  expect(key().sign, 'the #DEVOXX sign never went up').toBe('#DEVOXX');
   g.debug.select('voxxy');
   for (const sp of g.snapshot().props.filter((p) => p.kind === 'spotlight')) {
     g.debug.place('voxxy', sp.x, sp.y);

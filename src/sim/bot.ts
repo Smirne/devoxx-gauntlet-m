@@ -160,6 +160,8 @@ interface AimState {
   settling: number;
   /** Since the stick let go: the slowest this body has been. */
   coast: number;
+  /** A heading the stick does not change — walking backwards. Null: face the stick. */
+  hold: number | null;
 }
 
 const AIMS = new WeakMap<Bot, AimState>();
@@ -167,10 +169,21 @@ const AIMS = new WeakMap<Bot, AimState>();
 function aimOf(b: Bot): AimState {
   let a = AIMS.get(b);
   if (!a) {
-    a = { driven: false, sx: 0, sy: 0, settling: -1, coast: Infinity };
+    a = { driven: false, sx: 0, sy: 0, settling: -1, coast: Infinity, hold: null };
     AIMS.set(b, a);
   }
   return a;
+}
+
+/**
+ * Keep the robot facing `face` while the stick drives it, whichever way that is;
+ * null hands the heading back to the stick. This is walking backwards (Michele,
+ * 28 Sep: "pressing down arrow could cause the robot to walk backwards, keeping
+ * the camera and orientation") — the lamp stays on what it was aimed at while
+ * the robot backs off. Input, not physics: speed and inertia are the stick's.
+ */
+export function holdHeading(b: Bot, face: number | null): void {
+  aimOf(b).hold = face;
 }
 
 /**
@@ -216,6 +229,15 @@ function isReduction(px: number, py: number, nx: number, ny: number): boolean {
 function stepAim(b: Bot, dt: number, il: number, sp: number): void {
   const a = aimOf(b);
   if (il > 0) {
+    if (a.hold !== null) {
+      b.face = a.hold;
+      a.sx = b.ix;
+      a.sy = b.iy;
+      a.settling = -1;
+      a.driven = true;
+      a.coast = Infinity;
+      return;
+    }
     if (b.ix !== a.sx || b.iy !== a.sy) {
       a.settling = isReduction(a.sx, a.sy, b.ix, b.iy) ? 0 : -1;
       a.sx = b.ix;

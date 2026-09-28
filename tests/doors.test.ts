@@ -47,6 +47,8 @@ import { cabinetDoorDraw, gateSolids, lockDoorSolids } from '../src/render/doors
 import { playToStairGate } from './pilot';
 
 const mk = (chapter: number): DebugGame => createGame({ seed: 20260930, chapter, cards: false });
+/** Frames for Droid's reach to the projector panel's lever, before cinema B's leaf moves. */
+const LEVER_STEPS = Math.ceil(0.75 / DT_MAX);
 const steps = (g: DebugGame, n: number): void => {
   for (let i = 0; i < n; i++) g.update(DT_MAX);
 };
@@ -123,7 +125,12 @@ describe("chapter 1 · cinema B's door opens instead of vanishing", () => {
     expect(bDoor().state).toBe('open');
     expect(bDoor().progress).toBe(0);
 
-    steps(g, 6);
+    // The leaf waits for Droid's hand to reach the lever (0.75 s, `LEVER_REACH_TIME`
+    // in ch1-night.ts — Michele, 28 Sep: "the door should start opening only
+    // after the lever is pulled"), and stays shut until then.
+    steps(g, 10);
+    expect(bDoor().progress, 'the door opened before the lever was pulled').toBe(0);
+    steps(g, LEVER_STEPS);
     const mid = bDoor().progress ?? 0;
     expect(mid, 'the leaf jumped straight to open').toBeGreaterThan(0);
     expect(mid, 'the leaf finished before a single frame of it could be seen').toBeLessThan(1);
@@ -146,7 +153,7 @@ describe("chapter 1 · cinema B's door opens instead of vanishing", () => {
     }
 
     releaseCinemaB(g);
-    steps(g, 40);
+    steps(g, 40 + LEVER_STEPS);
 
     // OPEN: the leaf is against the inside of the auditorium wall and has a wall
     // under it there — and the doorway it came out of is now clear.

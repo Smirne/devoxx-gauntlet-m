@@ -60,6 +60,10 @@ export interface RobotState {
   dt: number;
   /** Droid riding Biggy. */
   mounted?: boolean;
+  /** Moving against `heading` — walking backwards. */
+  backward?: boolean;
+  /** Carrying a rider (Biggy with Droid up): a steadier body. */
+  laden?: boolean;
   /** A one-shot pose to play: 'nope', 'reach' or 'squeeze'. */
   pose?: PoseName | null;
   /**
@@ -168,6 +172,8 @@ export function updateRobot(rig: RobotRig, state: RobotState): void {
     heading: state.heading,
     dt: state.dt,
     mounted: state.mounted ?? false,
+    backward: state.backward ?? false,
+    laden: state.laden ?? false,
     pose: state.pose ?? null,
     hop: state.hop ?? 0,
     flair: state.flair ?? 0,

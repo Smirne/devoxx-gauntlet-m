@@ -48,6 +48,7 @@ import {
   toggleMount,
   type Bot,
   type DebugGame,
+  type KeynoteState,
   type RobotKind,
   type Wall,
 } from '../src/sim';
@@ -402,14 +403,34 @@ describe('E, when the chapter has no use for it', () => {
   it('still belongs to the chapter where the chapter wants it', () => {
     const g = mk();
     g.debug.select('droid');
-    const hook = g.snapshot().props.find((o) => o.kind === 'banner-hook');
-    if (!hook) throw new Error('no banner hook');
-    g.debug.place('droid', hook.x, hook.y);
+    // A #DEVOXX letter leaning in the wing: `E` beside it is the lift, not a stretch.
+    const letter = g.snapshot().props.find((o) => o.kind === 'letter' && o.state === 'idle');
+    if (!letter) throw new Error('no letter leaning in the wing');
+    g.debug.place('droid', letter.x - bot(g, 'droid').r - 2, letter.y + (letter.h ?? 0) / 2);
     g.update(DT_MAX);
     g.key('KeyE');
-    expect((g.debug.chapter() as { hooks: number }).hooks).toBe(1);
-    // And Droid is told to climb rather than leap only when there is no hook.
+    expect((g.debug.chapter() as KeynoteState).carrying, 'Droid did not take the letter').toBe(letter.v);
+    expect(bot(g, 'droid').flair ?? 0, 'Droid stretched instead of lifting').toBe(0);
     expect(airborne(bot(g, 'droid'))).toBe(false);
+  });
+
+  /**
+   * ...and where the chapter says NO, with a reason, the key stays said.
+   *
+   * Voxxy at the stash is told why the letters are Droid's job instead of being
+   * sent into the air beside them — a refusal that names a reason keeps the key.
+   */
+  it('keeps the key when Voxxy is told the letters are not hers to carry', () => {
+    const g = mk();
+    g.debug.select('voxxy');
+    const letter = g.snapshot().props.find((o) => o.kind === 'letter' && o.state === 'idle');
+    if (!letter) throw new Error('no letter leaning in the wing');
+    g.debug.place('voxxy', letter.x - bot(g, 'voxxy').r - 2, letter.y + (letter.h ?? 0) / 2);
+    g.update(DT_MAX);
+    g.key('KeyE');
+    expect(airborne(bot(g, 'voxxy')), 'Voxxy hopped instead of saying why').toBe(false);
+    expect(g.snapshot().toast?.t ?? '').toMatch(/^Voxxy:/);
+    expect((g.debug.chapter() as KeynoteState).carrying).toBe(-1);
   });
 
   it('takes hold of Biggy rather than hopping when she is standing against him', () => {

@@ -129,3 +129,42 @@ Michele approved it in one word — *"OutOfMemory, yes build it"* — and it shi
 - **`DEFS` never moves.** The load is a modifier on the mutable `Bot` copy, recomputed from the
   frozen table every time, and `game.ts` restores every robot's frozen identity at the head of
   `startChapter`, so no load can leak into the next chapter or survive `R`.
+
+## 4. The #DEVOXX letters — decided and **BUILT 28 Sep 2026**
+
+Michele, with a photograph of the keynote stage taken from behind the giant letters: *"There are
+always those 3d letters in Devoxx, used for the keynote and the closing. They could be hidden around
+and be brought on stage by the robot? Maybe we can change Voxxy or Droid's task?"* — then, deciding:
+*"Droid swap. Droid is already slow, so don't scatter the letters around."*
+
+**Why it is worth the last-week risk.** It is the real stage. `media/venue-photos/54836008506_68c9fc5562_k.jpg`
+("the stage ← chapter 4") has `#DEVOXX` standing on Room 8's stage, the last X in Devoxx orange; the
+"HAPPY DEVOXX" banner Droid used to hang between two hooks was invented. So it is a sense-of-place
+fix first, and it turns the thinnest job in the room — two presses of `E` — into an object with mass.
+
+**What it is.** The crew got as far as `#DEV`. The O, the X and the orange X lean in one stash against
+the back wall of the east wing, just past the end of the screen. Droid lifts one (`E`), carries it and
+sets it into its own gap (`E`); each letter has its own gap, so the sign spells itself as it goes up.
+Voxxy is as tall as a letter and Biggy's hands close round a pot handle, and both say so. The stage is
+not ready until the sign reads `#DEVOXX`.
+
+**Which robot physics it leans on.** Mass. A letter in Droid's hands is a load in exactly the way the
+beer crates are a load on Biggy (§3): `LETTER_MASS` on his mass and his acceleration scaled by the
+mass ratio, recomputed from the frozen table and removed at every chapter door. No frozen constant
+moves.
+
+**What was not built, and why.** Letters hidden around the venue — §2's own ruling that
+letter-collection is busywork, and minutes on the longest chapter. Voxxy's version — it would have
+deleted the spotlights that had just got their beams. An order puzzle on the stage — everyone can
+spell DEVOXX.
+
+**What it cost.** About 40 s of Droid's time from the top of the stairs against 25–31 s for the two
+hooks, measured with the same test pilot (`tests/letters.test.ts` holds it under 50). On the one-stick
+driver in `tests/chapter4-length.test.ts`: Droid 20.1 s → 30.7 s, chapter 4 92.3 s → 101.3 s, inside
+its 150 s budget. Two layout
+changes paid for it: Stephan and the speaker now stand beside the sign rather than mid-stage, which
+left Droid a 4 px lane, and the 2.5D stage is a 5 cm dais like the 3D one, because at 0.45 m it hid the
+bottom of every letter.
+
+**Still his call.** Whether the extra ten to fifteen seconds of Droid is worth it in a chapter he has
+already called long, and whether Droid should carry two letters at once to halve the trips.

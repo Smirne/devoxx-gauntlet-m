@@ -75,6 +75,7 @@ import {
   loadBiggy,
 } from '../crates';
 import { BAR_RECT, GF, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
+import { SPEAKER_LOOKS } from '../speakers';
 import { LANYARD } from '../lanyards';
 import { beltUp, nastriRun } from '../nastri';
 import { botsCollide, circleRect, dist, inRect, mkBody, speed, standOff, stepBot } from '../bot';
@@ -321,9 +322,9 @@ const TRAIL_REACH = 9;
 /** How much of Voxxy's route the speaker remembers — 120 crumbs is ~14 m. */
 const TRAIL_MAX = 120;
 /**
- * The keynote speaker's teal — hoodie, cap and lanyard, all of it.
+ * The keynote speaker's teal — hoodie and cap; the ribbon is `LANYARD.keynote`.
  *
- * `LANYARD.speaker` is this colour and nothing else in the hall wears it. At the
+ * Nothing else in the hall wears the hoodie, and the ribbon is `LANYARD.keynote`, the only multicolour one. At the
  * zoom this game is played at a person is thirty pixels tall, so one colour worn
  * head to foot is the only kind of "recognisable" that survives, and it is what
  * Michele asked for when he could not find them: *"therse should also be
@@ -969,6 +970,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     (r): Wall => ({
       ...r,
       kind: 'gatepost',
+      flavour: true,
       why: (b) =>
         b.kind === 'voxxy'
           ? `${b.name}: a belt post. Thirteen centimetres of chrome, and there is nearly two metres of floor either side of it`
@@ -1130,7 +1132,22 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   /* ------------------------------------------------------------ people to ask */
 
-  const npcs = [
+  /** Somebody to talk to: where they stand, what they say, and how they look. */
+  interface Npc {
+    x: number;
+    y: number;
+    r: number;
+    name: string;
+    line: string;
+    colour?: string;
+    collar?: string;
+    face?: number;
+    glasses?: boolean;
+    mic?: boolean;
+    barefoot?: boolean;
+    lanyard?: string;
+  }
+  const npcs: Npc[] = [
     {
       x: 1010,
       y: 300,
@@ -1168,6 +1185,74 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       colour: CREW_ORANGE,
       collar: '#f2efe9',
       face: Math.PI / 2,
+    },
+    /*
+     * THREE REGULARS, OUT ON THE HALL FLOOR.
+     *
+     * Michele, 28 Sep 2026, one photograph each: *"i also need mario fusco
+     * somewhere in the hall"*, *"and Venkat (no shoes!)"*, *"Josh Long"*. First
+     * names and a caricature, the rule Stephan and Celestino already follow:
+     * Mario's grey beard and track jacket, Venkat talking barefoot as he always
+     * does, Josh in his grey tee saying "bootiful". Nothing here needs permission.
+     *
+     * Where: open carpet the robots already cross — Mario and Venkat on the
+     * wide strip along the hall's east wall, between the threshold from the lobby
+     * and the booths, Josh in the open band west of the booth rows. Measured
+     * clear of every wall and every other person by 22 px and 45 px.
+     *
+     * They wear the SPEAKER ribbon, teal, like every speaker in the building.
+     * Michele, 28 Sep: *"I think they should have speakers badge, and the
+     * keynote another color, maybe multicolor?"* — the missing keynote speaker
+     * wears the multicolour one (`LANYARD.keynote`), which is what keeps the
+     * search a search: teal is two hundred people, multicolour is one.
+     *
+     * Lize and Aurélie joined the same afternoon (a photograph each), on the
+     * open carpet along the hall's south edge.
+     */
+    {
+      x: 985,
+      y: 440,
+      r: 8,
+      name: 'Mario',
+      line: 'Soup is a side effect, and Stephan is its only consumer. Keep it pure until it reaches him — Biggy has the hands for a pot.',
+      ...SPEAKER_LOOKS['Mario'],
+      face: Math.PI,
+    },
+    {
+      x: 990,
+      y: 600,
+      r: 8,
+      name: 'Venkat',
+      line: 'Shoes? At the hotel. On carpet you feel every cable before you trip on it. Short feedback loops, my friend — the shortest.',
+      ...SPEAKER_LOOKS['Venkat'],
+      face: Math.PI,
+    },
+    {
+      x: 250,
+      y: 420,
+      r: 8,
+      name: 'Josh',
+      line: 'Bootiful robots! The keynote speaker? Not at a table — try the booths with walls. Start there, ship it, then go to production.',
+      ...SPEAKER_LOOKS['Josh'],
+      face: 0,
+    },
+    {
+      x: 330,
+      y: 615,
+      r: 8,
+      name: 'Lize',
+      line: 'Robots on the night shift, with no one prompting them? I have a talk about exactly this. Ask the soup what it wants — then check its answer.',
+      ...SPEAKER_LOOKS['Lize'],
+      face: -Math.PI / 2,
+    },
+    {
+      x: 560,
+      y: 650,
+      r: 8,
+      name: 'Aurélie',
+      line: 'I drew you three already, as Gophers. The speaker? Behind a booth with walls — I sketch everything, and I saw a multicolour lanyard go by.',
+      ...SPEAKER_LOOKS['Aurélie'],
+      face: -Math.PI / 2,
     },
   ];
 
@@ -2798,7 +2883,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         collar: n.collar,
         face: n.face,
         role: 'staff',
-        lanyard: LANYARD.crew,
+        lanyard: n.lanyard ?? LANYARD.crew,
+        glasses: n.glasses,
+        mic: n.mic,
+        barefoot: n.barefoot,
         seed: 900 + i,
       });
     }
@@ -2874,7 +2962,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
        */
       laptop: true,
       role: 'speaker',
-      lanyard: LANYARD.speaker,
+      lanyard: LANYARD.keynote,
       /*
        * They WALK when they are walking.
        *
@@ -3016,7 +3104,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
          * person is still round the back of it, and you still have to walk round.
          */
         at: speaker.following ? speakerAt : { x: speaker.x, y: speaker.y },
-        hint: 'Voxxy: they are hiding from the queues behind one of the booths with WALLS — you can see straight under the cloth tables, so it is none of those. Look for the teal lanyard: it is the one thing about them that is not hiding',
+        hint: 'Voxxy: they are hiding from the queues behind one of the booths with WALLS — you can see straight under the cloth tables, so it is none of those. Look for the multicolour lanyard and the teal hoodie: they are the one thing about them that is not hiding',
       },
       {
         id: 'beer',

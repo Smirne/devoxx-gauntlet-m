@@ -402,7 +402,14 @@ const KNOWN_WALKTHROUGH: Readonly<Record<number, readonly string[]>> = Object.fr
    * clear of the band entirely. Nothing walks into a ladle on a shelf.
    */
   3: ['crate', 'duck', 'race-marker'],
-  4: ['cake', 'stage', 'banner-hook', 'spotlight'],
+  /*
+   * Two came off this list on 28 Sep with the #DEVOXX sign. `banner-hook` went with
+   * the banner — Droid's job is the sign now, and every letter standing anywhere
+   * stands on its own collider, so the letters were never on it. And `stage`: the
+   * 2.5D build draws it as a 5 cm dais like the 3D one, which is floor you walk
+   * on, not a 45 cm box robots were drawn sunk into.
+   */
+  4: ['cake', 'spotlight'],
 });
 
 /**

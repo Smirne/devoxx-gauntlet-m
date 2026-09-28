@@ -26,6 +26,8 @@ import { PANEL_H_M, PANEL_LIFT_M } from '../src/render/release-panel';
 import { GATE_H, LOCK_LEAF_H, gateDraw, lockDoorDraw } from '../src/render/doors';
 import { ROLLER_H, rollerDoorDraw, ROLLER_CLEAR_M } from '../src/render/roller-door';
 import { SEAT_TOP_M } from '../src/render/seats';
+import { LETTER_H_M } from '../src/sim/letters';
+import { LETTER_HELD_LIFT_M } from '../src/render/letters';
 import type { Prop, Rect } from '../src/sim/types';
 import { PX_PER_M } from '../src/sim/units';
 
@@ -179,10 +181,18 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
   /* chapter 4 */
   cake: { h: 0.55 },
   'cake-mark': { h: 0.04, tl: true, flat: true },
-  stage: { h: 0.45, tl: true },
+  stage: { h: 0.05, tl: true },
   crowd: { h: 0.05, flat: true, fw: 2, fd: 2 },
-  'banner-hook': { h: 0.25 },
-  banner: { h: 1.1, tl: true },
+  /*
+   * The #DEVOXX sign (`src/sim/letters.ts`). A standing letter's footprint is the
+   * sim's own rect and it has a `letter` wall under it, in the sign or leaning in
+   * the wing. An empty gap is tape on the stage. The one in Droid's hands is
+   * carried clear of the carpet — over the band, because the collider under a
+   * carried letter is the robot carrying it, exactly as for the soup pot.
+   */
+  letter: { h: LETTER_H_M, tl: true },
+  'letter-slot': { h: 0.02, tl: true, flat: true },
+  'letter-held': { h: LETTER_H_M, lift: LETTER_HELD_LIFT_M },
   spotlight: { h: 0.5 },
   /*
    * A seat row is no longer a 0.55 m slab, and that is a real change, not a fudge.

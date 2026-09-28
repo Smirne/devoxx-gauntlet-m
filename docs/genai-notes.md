@@ -8,6 +8,62 @@ file is that documentation, kept as the build goes rather than reconstructed at 
 interesting part is not "an AI wrote it" — it is which decisions stayed human, and what had to be
 put in place before an agent could be trusted with the rest.
 
+## In one page
+
+*The rest of this file is the log: one entry per session, 5,000 lines of it. This is the summary.*
+
+**What was built, by whom.** Every line of code, test and document was written by a coding agent
+working in the repository: about 56,000 lines of TypeScript under `src/`, 19,000 of tests (782
+acceptance tests), and 274 commits between 21 and 28 September 2026. One human, Michele, did three
+things the agent never did:
+
+- **decided** — what the game is, which way to lean when two goals pulled apart, when a rule could be
+  broken;
+- **looked** — every playtest note that changed the game came from a person playing it;
+- **supplied the world** — the floor plans, the model sheets, and photographs of the venue and of
+  the people in it.
+
+**The method that made an agent trustworthy on this.**
+
+- *The simulation is the only truth, and the tests are written against it.* The 2D sim is headless
+  and tested, and both renderers (the 2.5D diorama and the 3D build) only read it. So "the robot
+  walked through a wall" is a failing test, not an argument. The test in `tests/colliders.test.ts`
+  that rejects anything drawn without a collider caught the agent's own mistakes several times,
+  down to an inflatable Duke's arm.
+- *Images are the specification.* Plans and model sheets go to the agent as images, measured in
+  pixels and asserted in tests. When the prose and the drawing disagreed, the drawing won (the
+  staircases were moved for that).
+- *Builder, then critic on fresh context* ([`GAUNTLET.md`](../GAUNTLET.md)). The critic never sees
+  the diff, only the running build. In the 3D phase the agent critiqued its own renders before
+  asking for a human's eye, and wrote down what it found, fixed and left.
+- *Frozen physics constants*, asserted by tests. They were unfrozen exactly once, by the human,
+  after a playtest.
+
+**What the human decided that the agent would not have.**
+
+- "I vote funny, robots must be recognizable."
+- Leaving the stairs where the drawing puts them, not where the notes said.
+- Rescaling every speed by 0.25 after the first playtest.
+- Going 3D.
+- Putting real people from the Devoxx community in, by first name, from photographs.
+- Giving speakers a teal lanyard and the keynote a multicolour one.
+
+**What was rejected, and why.**
+
+- The first sculpted Stephan was "a beanie with some stuff on top". The fix was a head whose
+  hair is its own surface.
+- A camera that could end up inside the robot's head.
+- An attendee-grey lanyard the agent chose for the famous speakers to protect a puzzle; the human
+  reversed it with a better rule.
+- Many "it is solvable in the tests but not by a person" puzzles, each fixed by making the sim say
+  *why* a robot is blocked, in that robot's voice.
+
+**Honest limits.**
+
+- YouTube could not be reached from the agent's sandbox, so music was described to it, not heard.
+- Every render the agent judged was a headless software-GPU screenshot. Frame rate and feel on real
+  hardware came only from the human.
+
 ## Tools
 
 | Tool | Used for |
@@ -3558,6 +3614,305 @@ required` so a probe exercises the audio at all instead of silently skipping a s
 **Still open.** The second flicker report (a tall element by the stairs) still needs a live repro —
 unchanged from the last session, and still not guessed at.
 
+## 24 Sep 2026 — a full-3D proof of concept of chapter 1, aimed at Cyberpunk 2077's look (agent, overnight)
+
+**What a human asked.** Michele: a quick POC of a *full 3D* version, chapter 1 or part of it, on its
+own branch, "graphic level on par with Cyberpunk 2077", looping and comparing against screenshots of
+the game. He was going to bed; questions could wait for the morning.
+
+**What the agent decided without asking.** `main` held only reference files, so the fork point was
+the 2.5D branch (`claude/blissful-faraday-3ymwwa`) — the work he meant by "main" — so the tested sim
+and the sheet-matched robots could be reused rather than rewritten. The 3D build is a second page
+(`3d.html`) and a second renderer (`src/render3d/`) over the *same* sim; `src/sim` is untouched, so
+every rule, constant and test still applies.
+
+**What the agent did.** Built an HDR pipeline in three.js WebGL2 (planar reflections, GTAO,
+single-scattering volumetric fog raymarched through each lamp's own shadow map, a COD-style bloom
+chain, AgX and a grade), GPU-baked every texture from shaders, raised the closed section to full
+height from `floor1Walls()`, gave it a third-person camera, and then iterated on screenshots: about
+fifteen rounds, four canonical shots each. See `docs/3d-poc.md` for the file map.
+
+**What the loop caught that reasoning had not.**
+- The first frame was black: physically based light units with guessed intensities. Neon sources
+  went up ~6x before anything read.
+- Two long RectAreaLights along the coves filled every lit surface with sparkle noise; switching
+  them off in the harness proved it, and they became point lights.
+- The corridor's coved ceiling was invisible: both cove strips were wound backwards and culled.
+- Droid rendered bone-white: his pool lamp sat 15 cm above his shoulders (1000+ lux). Lifted to a
+  virtual source 1.4 m up; his graphite came back.
+- The city outside the new foyer windows was hidden by a 56 m sheet of plaster: a wall was classified
+  as "faces the corridor" once, at its midpoint. Faces are now classified in 10 px runs.
+- The fog only ever saw the first ten emitters; it now takes the sixteen nearest the camera.
+- A scripted playtest (Playwright holding keys) found the camera's auto-follow turning strafes into
+  circles; it now follows forward runs only.
+- Posters had been placed in two doorways and behind a column; placements now come from the sim's
+  door and column positions.
+
+**Rejected.** WebGPU/TSL post-processing (not available in the headless browser the loop depends
+on); a physics engine or imported models (CLAUDE.md); raking the cinema floors (the sim is flat, so
+robots would float over or sink into the rows); screen-space reflections (the planar mirror keeps
+off-screen neon); copying anything from the reference game.
+
+**Blocked.** The egress policy denied every host with Cyberpunk screenshots, so "compare with
+screenshots from the game" became comparison against a written checklist of its visual signature.
+
+**For Michele to decide.** The deviations listed in `docs/3d-poc.md` (terrazzo floor, glazed foyer,
+emergency lighting, the lifted pool lamp), whether the 3D look is worth pursuing for the entry at
+all given the brief's "a sharp 2D game beats a vague 3D one", and which GPU to judge performance on.
+
+**Verification.** `tsc --noEmit` clean; `vite build` clean; the test suite at 275/282 with the same
+seven failures as the fork point (chapter 2 was mid-change there); headless runs with zero console
+errors; a scripted playtest of movement, strafing, robot switching and camera follow.
+
+**Later rounds, same night.** Each of these was found by looking at a frame, not by reading code:
+- Coloured blobs floating on every glossy surface were the one environment capture reflected as if
+  infinitely far away. The fix is the one shipped games use: box-projected (parallax-corrected)
+  reflections inside the corridor, and the capture's specular turned down outside it.
+- Two "magenta rectangles" chased through the foyer screenshots were the canonical camera standing
+  inside the glass kiosk, then inside a wall. A raycast from the pixel settled it. The camera moved;
+  no rendering code changed.
+- The robots were ~600 of the scene's ~900 meshes and every mesh is drawn up to six times a frame.
+  Merging static geometry per material, and each rig per bone, halved the draw calls; a pool of 14
+  real point lights serving the venue's 28 halved the forward shader's light loop. Both measured
+  with `renderer.info`, since frame times from a software renderer mean nothing.
+- The scripted finale run (type the real code at the keypad, watch the shutter, the walk-out and
+  the end card) was first invalidated by the dev server hot-reloading under it. Long checks now run
+  against a frozen production build.
+- ANGLE rejected three's empty shadow texture whenever cinema E's mirror bounces pushed a shadowed
+  lamp out of the fog's light list, and skipped the draw. Unused slots now get a real depth texture.
+- `pkill -f <script>` twice killed the agent's own shell, whose command line contained the pattern.
+  Noted so the next session matches on `^node <script>` instead.
+
+**Added on the way:** a title over a camera dolly with rack focus, photo-mode depth of field, the
+corridor carried past the fire door to both secondary staircases (the Devoxx half lit, carpeted as
+in the photos), the foyer back bar, lacquered wall panels, headlamp glare, and cinema E's screen as
+a real mirror, which makes the puzzle's key object explain itself. Six hero screenshots are in
+`docs/3d-poc/`. The playable build was republished to the same private artifact after each round.
+
+### 24 Sep 2026 (morning) — 3D POC: two polish rounds
+
+**Human decisions.** Michele confirmed the fork base (the 2.5D branch), kept the design deviations
+and the "is 3D worth it" question for himself, opened network access for reference screenshots,
+and asked for "a couple rounds" of polish. The access change had not reached this session's
+container (the egress proxy still refused nvidia.com, steampowered.com and wikimedia.org), so the
+rounds were judged against the written checklist of Cyberpunk 2077's look again, not against pictures.
+
+**What the agent found, frame by frame:**
+- *Every procedural material had been rendering with black albedo.* `fromSet()` cloned each baked
+  render-target texture to set its repeat; a clone of a render-target texture is a Texture with no
+  image behind it, and three uploads it as black. So albedo was 0, roughness 0 (hence mirror floors
+  that no roughness tweak could soften) and the normal map was garbage. Last night's lighting was
+  tuned against that: lights raised 6×, exposure 1.35, a strong ambient. Found by tinting the
+  ceiling red to prove it was drawn, lighting it with a 300 cd test lamp that did nothing, swapping
+  its maps out one at a time, then reading the texture's pixels back on the GPU. Fix: use the baked
+  textures as they are (all repeats were 1). Exposure then fell to 0.32; env and ambient came down.
+- The composite's contrast was a linear stretch around mid-grey, which clipped everything below
+  ~0.03 to pure black. It is now a power curve around mid-grey.
+- Blurred coloured blobs in the foyer were the corridor's environment probe box-projected onto the
+  floor: three overwrites `envMapIntensity` with `scene.environmentIntensity` whenever the env comes
+  from `scene.environment`, so zeroing it on the floor material never worked. Planar-reflective
+  materials now switch env specular off with a shader define.
+- Robot lamp flares were being mirrored into the floor; they are hidden from the reflection pass.
+- Rough floor reflections now smear vertically (the long neon streaks of a wet night floor), and
+  reflectivity is patchy. Neon signs got a dim halo and a distinct tube and core so the letters
+  survive bloom. The back bar got frosted backlit glass and 66 bottles. The corridor soffit got
+  linear slot fixtures, most of them dead.
+
+**Rejected:** guessing at the flat, over-bright look with more grading before finding the cause.
+Two exposure passes (0.8, 0.62) barely moved it, because AgX compresses in log space. That was the
+hint that the scene itself was 2–3 stops too hot.
+
+**Third round, after Michele's look at version 7** ("better! still a bit offy and with some
+flickering light"; he asked for MAS and the Port House in the night view, with his own photos as
+reference):
+- Flicker had three sources. Two failing-tube effects blinked many times a second, all the time.
+  They now stay steady and stutter briefly every twenty-odd seconds. The light pool and the fog's
+  light list both cut at a fixed size, so a light losing its slot switched off in one frame. Both
+  now fade lights out as they approach the cut.
+- The window's skyline now has the Port House (glass ship with diagrid, white pedestal, the old
+  fire station under it) and MAS (red sandstone boxes, glass galleries swapping sides), both drawn
+  from his photos. They sit where they are from Kinepolis, south-west, and scaled as buildings
+  two kilometres off. At full size they filled the window.
+- "Offy" was not specific enough to act on beyond this, so it went back to him as a question.
+
+**Playtest of version 8 (Michele, 24 Sep, afternoon).** He played chapter 1 in 3D and sent
+screenshots. What each report turned out to be:
+- *"It crashed while crashing the door; the game went still for a while."* The door breaking lets
+  light reach cinema E's mirror, and the sim adds a mirror-bounce light. The 3D side showed it by
+  flipping a SpotLight's `visible`, which changes three's light count and recompiles every
+  material. Reproduced headlessly: an 11 s frame at the smash. The bounce lights now stay in the
+  scene at intensity 0, and the smash frame costs the same as its neighbours.
+- *"Biggy's body eats Droid's legs."* `MOUNT_OFFSET_Y` is a 2.5D picture offset ("up" on screen).
+  Read as a world offset, it put Droid half a metre off-centre. The 3D rider now sits on Biggy's
+  centre; the sim constant is untouched.
+- *"Clue 3: I don't know where I should reach."* The projector panel shares its plan position with
+  a corridor column, and in 3D it sat inside the column, invisible. It now hangs on the column's
+  face, with a pulsing frame and a parking ring on the floor below.
+- *"Biggy's light not reaching?"* The sim lights a clue anywhere in the cone out to 22–24 m. The 3D
+  lamps fell off with the inverse square and pointed down, so they were invisible past ~5 m. Beam
+  lamps now use linear falloff and a shallow tilt, and the venue's own lighting is dimmer ("too
+  much light for a part that is supposed to be dark").
+- *Walls coming back:* the camera's collision ray let it stay in the corridor whenever the
+  robot-to-camera line went out through a doorway. The camera now stays inside the active robot's
+  room.
+- Also: the note on door E hung in mid-air after the door fell; the kiosk hatch was 0.9 m for a
+  1.15 m Voxxy; a hologram stood in the shutter's face; a glowing arrow graffiti read as a hint;
+  the ad screen stood on a column; solved clues now leave their digit painted on the floor, as
+  the 2.5D build does.
+
+**Human decision:** he keeps polishing gameplay on the 2.5D branch. The 3D renderer only reads the
+sim, so his work is merged into this branch rather than ported. The first merge (46 commits)
+conflicted only in this file, typechecked, and brought the suite to 460/460.
+
+**Playtest of version 9 (Michele, 24 Sep, evening).** Most of it turned out to be the 3D renderer
+not yet reading what the merged 2.5D sim now says:
+- *Actions on E showed a toast and no animation.* The 3D side never passed the sim's `hopPhase`
+  and `flairPhase` to the rigs. It does now, as the 2.5D renderer does. Droid's climb on and off
+  Biggy is eased over 0.55 s instead of snapping. A reach gesture plays when Droid throws the
+  projector panel and when a digit goes into the keypad.
+- *Cinema B's door did not open and could be walked through.* The sim now keeps the door in its
+  prop list with `state: 'open'` and a `progress` clock; the 3D side ignored both. The leaves were
+  also hinged at the middle of the doorway. They now hinge at the frame and swing on the sim's
+  clock, and the door's notice goes with its leaf.
+- *"A passage you can't go through" beside the fire door.* The sim's fire door is now an opening
+  with fixed `firescreen` walls either side, and 3D drew only the opening. The screens are drawn.
+- *Clue 4 would not light.* A headless search placed Biggy at every spot he can actually reach in
+  cinema E. Many work, all just inside the smashed door with his flood aimed at the screen's
+  right-hand end. In 3D, though, the seat rows cast shadows from his lamp, so the alcove looked
+  unlit when the sim counted it lit. The seats no longer cast shadows, matching the sim, where
+  seat rows are `low` and light crosses them.
+- *"The keynote poster is still flickering."* It z-fought with its own frame: the poster plane sat
+  on the frame's front face. It now sits 3.5 cm off the wall. The ad screen also lost a 600-line
+  scanline pattern that shimmered at a distance.
+- Also: switching robot resets the camera behind the new one; Droid's camera looks up (his
+  puzzles are high); cinema E's screen is a white screen again (the bounce stays, drawn from the
+  sim's secondary lights); wall battens skip the Zaal panels and posters.
+
+**Human decisions:** the misplaced staircases get fixed in 2.5D first, then merged. A demo comes
+later. After that, on Michele's go, a parity pass on the 3D side against everything the 2.5D build
+has gained, reading the logs of the merge.
+
+**Not reproduced:** "Droid can't walk in the hint zone" (clue 3, cinema B). Driven headlessly, the
+sim lets him walk up the aisle and across the clue, and the 3D seats are built from the same
+`roomSeating()` as the sim's walls. The message the game shows when he stops would identify the
+wall.
+
+**Same evening, more of the same playtest:**
+- *Steering:* "the camera should follow the direction the droid is facing". WASD was
+  camera-relative, and a camera that followed the heading fed back into "right" (the robots-in-
+  circles bug of 23 Sep), so it only followed a robot running away from it. The controls are now
+  chase-camera: W along the heading, A/D turn it, S back. The camera follows the heading and swings
+  behind on a switch. Droid's look-up was halved: it cost too much floor.
+- *Hint 3's panel turned green too soon.* It now waits for the reach to make contact (0.6 s).
+- *"Still can't walk inside the hint 4 area."* The 3D wall pass skipped every plan wall with a
+  `kind`; the merge gave cinema E's exit-alcove walls `kind: 'alcove'`, so they were solid and
+  invisible. Now drawn. The staircase walls (three new kinds) are the same case, but the stairs
+  are moving in 2.5D first.
+- *Voxxy's light on the ring did not count.* The sim tests a patch of `CLUE_SPOT` = 5 px (0.4 m)
+  round each clue; the 3D ring was 1.5 m across. Michele: "I would be more generous with the
+  light / hint match." `CLUE_SPOT` is now 10 px (0.8 m), and the 3D ring is drawn at exactly that
+  radius. This is a SIM change; the 2.5D branch needs the same one line. The suite stayed 460/460.
+- *"I lost hint 3."* Unsolved rings were lit-only and went black in the dark front of cinema B.
+  They now have the 2.5D plates' slow standby pulse.
+- *The fire door's open leaves.* Michele kept the 3D roll-up shutter ("the rolling shutter is
+  cool") and chose to leave the sim's swinging leaves alone. Each `fireleaf` wall the sim pushes
+  when the door opens is drawn as a folded-back steel barrier. It is hinged at the door end, swings
+  out as the shutter lifts, and fills the rectangle the sim collides against. Checked by typing the
+  real code headlessly: both leaf walls appear and both barriers are built.
+- *Camera, reverted.* After a day of camera changes (stay inside the robot's room, reset behind
+  on a switch, Droid looking up, then chase-camera steering), Michele: "still hard with the camera.
+  Can we reset it as in the first tries? The only needed change is probably droid view being a bit
+  higher." The camera and WASD are back to the first build's, camera-relative with a drift behind
+  a robot running away from it, and the only change kept is Droid's orbit centre raised from 0.8
+  to 0.95 of his height. Rejected on the way, and why: every change fixed one screenshot and made
+  steering harder. The room clamp pulled the camera in close; the switch reset and the chase
+  steering changed what "forward" meant under the player's fingers.
+- *"Pressing left makes it go ahead and left; I expect it only to turn, if not already moving."*
+  Camera-relative A is "walk left", and the sim runs any stick at full speed, so there was no way
+  to turn on the spot. The sim gained `Game.turn(rad)`: it turns the driven robot without moving
+  it, only while standing (under 8 px/s). It is gameplay input (it aims a lamp without walking),
+  so it lives in the sim; only the 3D build calls it, and the 2.5D controls are unchanged unless
+  Michele wires it in there. In 3D, A/D alone from standing turn in place, and the camera swings
+  behind so that W then goes the way the robot faces. Under way, A/D steer as before.
+- *"Going straight with W, then reversing with S, the camera still faces W."* The original camera
+  only follows a robot running away from it, and S is "towards the camera", so a camera that
+  followed would have turned S round again. S is now an about-face: the first S frame locks the
+  direction away from the camera, the robot walks it, and the camera swings behind. Scripted
+  W → S → W: 180° turn, camera behind (0°), W continues the new way.
+- *"That black box is a bit odd"*, and separately *"in that corridor there is a candy shop, a
+  self-service shelf — another Devoxx flavour"*. The bare boxes were the sim's knee-high
+  column feet left over when the holograms were cut to one in three. They are now lounge armchairs
+  (the venue's red velvet) and low coffee tables with a closed laptop, a sticker and two cups, in
+  the same footprint. The plan pairs some feet 4 px apart; one piece is drawn per pair. The candy
+  wall is a 2.6 m pick-and-mix shelf, 0.3 m deep and flush to the wall, placed on the widest clear
+  stretch in the closed section (beside Zaal D). It has twenty bins of sweets and a pink "pick &
+  mix" neon.
+
+### 3D candidate — second merge of the 2.5D branch (25 Sep 2026)
+
+**What Michele asked.** *"2.5D has made lots of improvement. Can you try a 'rebase' and see if it all
+fits? This is also promoted from POC to candidate. Focus on the intro, interface and chapter 1."*
+
+**What the agent did.**
+- *Merged, not rebased.* 40 commits of the 2.5D branch came in with one merge commit. The 3D renderer only
+  reads `src/sim`, so no gameplay had to be ported. Conflicts were confined to `docs/` and the build
+  config. The two-page Vite build broke the single-file publish (`tools/inline-build.mjs`), because a
+  page built alongside another one imports a shared chunk. `PAGE=main|3d` now builds one page at a time,
+  and `tools/publish-build.sh` produces both `dist/index.html` and `dist-3d/3d.html` as self-contained
+  files.
+- *Intro.* The old 3D title and dolly are retired. The 3D build now plays the 2.5D opening from
+  `snap.opening`: the three crates on the dark stage, the emergency bulkhead light, a key light on the
+  robot being introduced, then the walk out. The camera eases from the crates to each carded robot and
+  settles behind the stand-at point. Title, cards and skip come from the shared HUD.
+- *Interface.* The run sheet (I), the escalating hint (H) and the off-screen arrow are the 2.5D
+  `createHud`. The arrow gets a 3D `project` hook that points the right way even for targets behind
+  the camera. The audio edges (`main.ts`'s `updateAudio`) moved verbatim into `src/render/cues.ts`, so
+  the 3D build gets the new keypad voice, the per-chapter score and every other cue without keeping a
+  copy. `main.ts` is untouched and could switch to it.
+- *Chapter 1.*
+  - The secondary staircases now stand in the corridor, where the plans put them. They are real flights
+    in 3D: two ramps with a half-landing, a balustrade and step lights, down to the ground floor.
+  - Plates lift the robots.
+  - Voxxy hops, and the party tricks play in 3D.
+  - Cinema B's maglocked door swings open on the sim's clock.
+  - R restarts the chapter: the 3D props now follow it back. Doors shut and are walls again for the
+    camera, the projector panel forgets it was thrown, found clues go back to the standby ring, and the
+    fire door's barrier leaves fold away.
+
+**What was deferred.** Chapters 2–4 in 3D (*"We'll do the others later"*). The 2.5D side is still
+working on a couple of things; the next merge is the same one-command operation.
+- *Clue patch, two sizes.* The agent had raised `CLUE_SPOT` from 5 to 10 px in the shared sim for
+  the 3D build and proposed the same change on the 2.5D branch. Michele: *"we can keep them different
+  if it's not a problem. In 2D it works well. Maybe less dimensions?"* It is not a problem, and the
+  reason holds up. From above, the whole lamp pool and the clue are on screen together. From behind
+  the robot, the floor is foreshortened, and a pool that looks as if it covers the ring can fall
+  short of it. `CLUE_SPOT` is back to 5, the 2.5D branch's value, so the next merge has nothing to
+  reconcile. `GameOptions.clueSpot` lets a build pass its own size, and the 3D build passes 10
+  (`CLUE_SPOT_3D`, the radius its floor ring is drawn at).
+- *The 3D intro, second pass.* Michele: *"too slow and static... add actions (voxxy exits and
+  jumps...)"*, *"when the crate opens, robots are on the side. Why?"*, and a first playable frame
+  that was all crate. What the agent found:
+  - The camera sat off axis, 40% of the way toward the middle of the row, so a robot standing a
+    stride in front of its crate appeared beside it.
+  - The follow camera took over at its usual pitch a stride behind the robots, which put it inside
+    the crates.
+
+  The fix is in the 3D renderer only; the sim's opening and its timings are unchanged.
+  - The camera is square on to each robot, follows it out of its crate and dollies in.
+  - Each robot does its own `E` trick as soon as it is out: Voxxy hops twice, Droid stretches,
+    Biggy rolls. The camera holds between two robots while one trick overlaps the next crate
+    opening.
+  - The hand-off looks down over the crates and settles to the usual pitch once the robot walks.
+    The crates are now camera colliders.
+  - The lamp flare was a 1.2 m star that covered Biggy's face whenever a robot faced the camera,
+    which the intro makes them do. It is now small and tight.
+
+  Shortening the timings themselves was not done, because the 2.5D build plays the same opening.
+- *Splash screen / menu.* The old 3D title ("Full-3D proof of concept · Press any key") is switched
+  off, not deleted. The agent proposed bringing it back as a menu (Start, Continue, Credits, Controls).
+  Michele: *"keep it out for the moment. Starting with the intro is cool."* The page starts on the
+  crates intro, and the dormant code stays in `main3d.ts` in case a menu is wanted later.
+
 ## 25 Sep 2026 — the main staircase, and the briefing that spoiled itself
 
 **What a human asked for.** Two lines, mid-session. *"You really don't wanna fix that main stairs,
@@ -3948,6 +4303,374 @@ clears it, and he can already get within 25 px of the soup against a `POT_REACH`
 
 Suite **711 tests, 45 files, green**; `tsc --noEmit` clean; `ERRORS:0` in all four
 chapters on the built bundle.
+- *Third merge of the 2.5D branch (10 commits).* In 3D only chapter 1 and the robots needed
+  anything.
+  - Biggy's roll when shoved: the gait now takes `shoved: worldMoved(b)`.
+  - The fire door's arc push. Michele had chosen, on the 2.5D side, that the swinging leaves shove
+    whatever is in their arc (*"arc push"*, over a shutter). The 3D build still drew the roll-up
+    shutter he had kept earlier, so in 3D a robot would have been pushed by nothing visible. Asked
+    which door 3D should have, he chose swinging leaves. The 3D door is now the sim's double door:
+    red steel leaves hinged at the jambs, posed from the door's `progress`, under a steel transom.
+    The folding barriers that stood in for the swung leaves are gone, because the leaves are now
+    the door itself.
+  - The ground-floor changes (main staircase turned, toilets sealed, the lobby z-fight) and
+    chapter 3's crowd are outside what the 3D build draws.
+- *The shutter goes to chapter 2.* Michele: *"Keep the [shutter] design for chap2."* The roll-up
+  shutter that was chapter 1's 3D fire door is saved as `src/render3d/shutter.ts`
+  (`rollerShutter`, `poseShutter`) for the store's roller door in chapter 2. Nothing builds it until
+  the 3D build has that chapter.
+- *Intro and panel feedback (25 Sep, evening).*
+  - *"When the crate is open robots are still on the side, then they turn. I'd keep them
+    frontal."* In the crates the sim turns the robots south, toward the 2.5D diorama's camera. The
+    3D intro looks from the east, so they stood side-on. In 3D they now face east for the whole
+    opening.
+  - *"A little more time before the camera movement for Biggy's movement."* The pull-back starts
+    0.7 s later and still lands on the hand-off pose when the opening ends.
+  - *"The crate's panel on the ground does not look fine... a part disappears, like it's
+    absorbed."* The 2.5D model tips the front out flat and rolls it face up to spell the word, which
+    works from above. At eye level it was a board sinking into the floor at the robots' feet. In 3D
+    the front now swings open like a door, hinged at its outer edge.
+  - *"'do not bend' should also be in red."* All three crates' warning stamps are now oxide red.
+    This is in the shared crate model, so 2.5D gets it too.
+  - *"We lost the main story. Stephan lost the keys... keep a general objective + chapter briefing
+    in the I panel."* The crate opening had replaced the title card, which was the only place the
+    premise was told. The premise now lives in `src/sim/story.ts`, which the title card reads. The
+    run sheet (shared HUD, so both builds) opens with "The night" (the premise and the run's goal)
+    above "This chapter" (the briefing).
+  - *"How do I close the start-of-chapter panel? I thought any key would do."* In 3D any key now
+    closes it except I, H and the view keys (M, N, P, Q). A movement key closes it and moves.
+    `main.ts` still closes it only with Escape or I; the 2.5D side may want the same change.
+- *Evening playtest round (25 Sep).*
+  - *Clue 2 "too easy... rotated Voxxy, hint solved".* A probe over every heading from the three
+    starting marks lit the kiosk clue at any tolerance, 2.5D's 5 px included. Since the crates moved
+    to the west end, the robots start 9 m from a kiosk with glass on all four sides. Fixed in the sim:
+    the kiosk's back (menu board) and its counter front either side of the hatch are now solid, with
+    glass on the south and east. The probe now finds no heading from the marks that lights it, and
+    the puzzle is the one it was written as: Voxxy in through the hatch, Biggy's flood through the
+    glass. Moving the clue out of the kiosk was rejected, because that would lose the hatch puzzle.
+    The 2.5D renderer will now draw those two sides with its generic solid-wall code; left for the
+    2.5D side to style.
+  - *Tolerance.* `CLUE_SPOT_3D` is now 7 px: at 10, clue 4 went without Voxxy ever entering the
+    alcove.
+  - *Droid's "eyes" behind his head.* His skull mesh was wound inward. From behind, its back was
+    culled and the eye beads showed through. It is now wound outward, in the shared rig, so 2.5D
+    gets the fix too.
+  - *Droid sinking into Biggy.* In 3D he now rides 10 cm above the crown.
+  - *"Where's the keypad?"* The 3D pad still had its keys on its narrow west end, although the sim
+    had turned it to face the corridor. It now faces the corridor, has a backlit bezel that pulses
+    until the code is in, and a lamp in front of it.
+  - *"A floating camera + wall part".* The CCTV at x 60 and the north cable tray. From the high
+    hand-off camera both hung in mid-air in the first frame; the CCTV moved and the tray is gone.
+  - *Crate fronts.* *"I liked the way they opened and started falling, the problem is the final
+    part."* 3D keeps the fall and drops the roll: the front lies flat and stays on the floor.
+  - *The exit.* *"The cutscene camera should show the 3 characters from above/behind."* 3D now has a
+    cutscene camera that jumps under the sim's black fade and drifts behind the three as they walk.
+    The fade itself, 0.45 s after the leaves finish swinging, is the sim's and was left as is.
+
+### 3D chapter 2, first pass (26 Sep 2026)
+
+**What Michele asked.** *"Can we start chapter 2 next? Anything pending on one? I can play it later."*
+
+**What the agent did.** A first playable pass of the exhibition hall in 3D, built the way chapter 1
+was: everything solid comes from the sim (`groundWallsFor(2)`, `groundPlates()`, `GF`), and the
+renderer only reads the chapter's props.
+- `src/render3d/ground3d.ts` builds the ground floor:
+  - floors at the sim's heights: the hall at 0, the lobby 0.5 m up with its steps, the main flight
+    to the cinema level;
+  - walls by kind: booth totems, columns, stair shafts as rooms, the back-of-house, the glass
+    entrance front;
+  - a trussed ceiling, exit signs, a coloured floor tile per stand, and a name board over each
+    sponsor's stand;
+  - a grid of high bays that strike across the hall when the sim's `breaker` prop reaches `done`,
+    which in this chapter means the router has closed the circuit.
+- `src/render3d/props-ground.ts` draws the chapter's chain from the props:
+  - the breaker board, high up for Droid;
+  - the rack and its link lights;
+  - the router cabinet, whose leaves swing on the sim's clock, and its pilot lamp;
+  - the router and password terminals, with the typed fraction filling in;
+  - the DevoxxForever spray tag, faint until a beam finds it;
+  - the cable run, as a tube following the sim's points;
+  - the badge printer;
+  - the lit floor plates and wayfinding signs;
+  - Biggy's roller door, which uses the shutter kept from chapter 1 for exactly this;
+  - the t-shirt pallets and the registration gate.
+- `world.ts` switches floors on the chapter change: which floor is shown, fog box, reflections,
+  environment capture, and a props set per floor. `main3d.ts` now plays chapter 2 and ends after it.
+
+**Not done yet.** No playtest of the full chain in 3D. The dark hall before the power comes on may
+be too dark to steer by. There is no lobby or reception dressing beyond the walls, and nothing
+of chapter 3 yet.
+- *Evening round, 26 Sep.*
+  - *Kiosk.* *"White walls are too anonymous... a full stencil for a popcorn booth?"* A funfair
+    stencil first; then *"not aligned with the rest of the style... keep the neon, more cyberpunk"*:
+    black metal panels, the bucket as magenta tubes, kernels as amber rings, POPCORN as a
+    magenta/cyan glitch double, and a hazard kick band.
+  - *Run sheet.* *"The panel with both is too big / too much to read... switch between main text
+    and chapters with arrow left/right?"* It now has two pages, the night and this chapter. The run
+    opens on the night, and ← → turn the page while it is open, in both builds.
+  - *Droid riding.* *"Legs too open in this view... should be pressed on Biggy?"* The rig's
+    mounted pose throws the knees wide for the 2.5D camera above. The 3D build overrides it: the
+    legs go out to the dome's flanks and hang down its sides.
+  - *"The intro was slower."* Its timings are the sim's and did not change. Most likely it was the
+    machine; noted in case it recurs.
+
+### 3D chapter 3, first pass (26 Sep 2026)
+
+**What Michele asked.** *"Push on to 3."*
+
+**What the agent did.**
+- *The crowd:* `people3d.ts` pools the 2.5D build's own figures (`buildPerson`, posed from
+  seed, heading and speed), placed on the sim's floor plates. No new model; the same people in both
+  builds.
+- *Props, in `props-ground.ts`:*
+  - the tomato soup station under a neon word;
+  - the ladle on its high shelf, gone once Droid has it;
+  - the pot and the soup riding on Biggy's lid;
+  - the broodje krab;
+  - Stephan's gate, whose glass flaps fold away on the sim's swing;
+  - The Finally Block (a black bar with a neon name, taps, and four Belgian glass shapes by `v`);
+  - beer crates, stacking on Biggy by layer;
+  - the booth games: the rubber duck, its target, the race markers and the top-shelf sticker.
+- *Stable identities:* props that move (the pot, the duck, a named crate) get a stable key instead
+  of their position. Whatever the snapshot stops carrying hides, so chapter 2's shutter and
+  pallets are gone in chapter 3.
+- *Morning:* the hall is lit from the start, with bays over the lobby too. The walls chapter 3 has
+  that chapter 2 drew as props appear in chapter 3. The end card now follows chapter 3.
+
+**A bug worth recording.** The hall stayed dark in chapter 3. "Circuit open" was stored as a start
+time of -1, and "lit from the start" set the start time 60 s in the past, which is also negative in
+the first minute of a session. It is now an explicit null. Found by exposing the ground floor to
+the page and calling it directly: it lit when called by hand, so the fault was in how the world
+drove it.
+
+**Not done yet.** No playthrough of chapter 3 in 3D. The ceiling and the far walls are dark even
+when lit. There is no daylight through the entrance glass. Stephan and the speaker are drawn as
+ordinary figures with their role colours.
+- *Droid riding, second pass.* *"Pressed is fine, but they should not disappear into Biggy's
+  body!"* Hand-tuned angles had put the shins inside the ball. The pose is now solved once against
+  Biggy's real shape: his belly is a 0.6 m sphere at 0.735 m (`biggy.ts`) and his lid a dome above
+  it. A small search over hip roll, thigh and shin angles keeps knee, mid-shin and ankle just
+  outside the body, as close to it as they get, and prefers legs hanging down the flank to legs
+  sticking out. It is solved at the final riding height rather than mid-climb.
+- *Kiosk hatch passes light (27 Sep).* *"The hint is triggered only if Biggy goes by the glass
+  window. His light should pass also from the opening I guess?"* The hatch is an invisible collider,
+  so that only Voxxy fits through, and the light code treated every wall that was neither glass nor
+  low as opaque. The sim's `Wall` gained `open`: stops robots, passes light. It is set on the hatch.
+  Probed: Biggy standing outside the hatch now lights the clue, and no heading from the three
+  starting marks does, at either tolerance.
+- *"The main corridor seems closed, it's not!"* (27 Sep). The 3D build ended in a wall at x 1190,
+  just past the secondary stairs. The corridor now runs to its real end, the main staircase
+  between rooms 6 and 7 (`CORRIDOR_END`, from `F1.mainStair`), with a full-width flight down.
+  Rooms 4–9 stay unbuilt but have shut double doors; the corridor gets its floor, coves, ribs,
+  columns, emergency lights and a line of warm downlights. Michele also passed the chapter 1 fire
+  door and staircase animations: *"fine"*.
+- *Batch of 28 Sep, from a playthrough.* Eight asks, one change each.
+  - *Feet in the crates.* "Robot's feet are drowning in the wood." Robots were placed at floor
+    level inside the crate and on the fallen panels. The world now gives the renderer the surface
+    under each robot (the crate's inner floor, or the top of a fallen panel), and the rig stands on it.
+  - *Slow intro.* "Looks like a performance issue." It was one. The sim takes at most 1/30 s per
+    step, and the page used to clamp each frame to one step, so below 30 fps the whole game ran in
+    slow motion. It now takes as many steps as the frame needs (up to 0.1 s), so a slow machine
+    drops frames rather than slowing down.
+  - *Music in the opening.* A new score for chapter 0: 92 bpm, A minor, a pad, a pulsing bass, an
+    arpeggio, with drums and a bell joining over four bars. Two bugs were found while adding it:
+    the music player and the audio shell both treated chapter 0 as "nothing asked yet", so a
+    chapter 0 score could never have played. Both now start from -1. The test that used chapter
+    0 as its unscored example now uses 9.
+  - *A gate before the opening.* Browsers only allow sound after a key or click, and the first key
+    used to skip the opening. A black "AFTER DARK · press any key" screen now takes that key, and
+    the opening plays from its first frame with music. Michele had just said the splash should come
+    back "later"; this is not that splash, only the smallest gate that lets audio start.
+  - *Briefing.* "Make the main briefing bigger and just the story. Any key or → move to current
+    briefing." The story page is wider, set larger, and shows only the night and the goal. Any key
+    that does not act on the panel turns to the chapter page, and the key does nothing else. ←
+    returns to the story. Same in the 2.5D build, through the shared HUD.
+  - *Walking backwards.* "What if pressing down arrow could cause the robot to walk backwards?
+    keeping the camera and orientation." This replaces the 24 Sep about-face. It needed the sim:
+    the heading is sim state (the lamp's aim), so `setStick` takes an optional heading that the
+    driven robot keeps while it moves. S locks the current heading, and S with A/D backs away at a
+    diagonal. Speeds, inertia and every frozen constant are unchanged; it is input. The gait mirrors
+    its stride when a robot moves against its heading, so it steps back rather than moonwalking.
+  - *Camera on switch.* "The camera shouldn't reset to frontal when switching robot?" Read as a
+    request: switching now swings the camera round behind the new robot, and moving the mouse
+    cancels the swing. It used to keep its yaw, so a robot facing the old camera came up face-on
+    and W walked it the wrong way.
+  - *Floating clue number.* "Where's the floating number? ... make it 3d and slowly rotating." The
+    found digit was a flat billboard 1.35 m up, often out of frame from a close, steep camera. It is
+    now a solid pixel-font digit, extruded, 1.2 m up, turning slowly, with its "POSITION n" tag kept
+    as a small billboard underneath.
+  - *Biggy less bouncy with Droid on top.* The rider sits at a fixed height, so Biggy's full walking
+    bob under him read as a trampoline. Laden, Biggy's gait keeps a quarter of its bob, sway and
+    twist, and 40% of its lean. This is presentation only: the collision bounce is a frozen
+    constant and was not touched.
+  - *"The door eats the foot in some places."* The sim publishes the fallen leaf of cinema E's door
+    as a plate, placed where the 2.5D leaf lands: skidded, skewed, 0.48 m thick. The 3D leaf falls
+    straight and thin, so the plate lifted robots in some places and left them sunk in others. In
+    3D, robots now ignore that plate and stand on the drawn leaf, found by a downward ray against it.
+    The 2.5D build keeps the plate.
+- *Second batch, 28 Sep.*
+  - *Splash.* "Could we add the Devoxx logo? And the Antwerp view maybe?", then "could we fit
+    some robot element on the logo? the original is just an inspiration." The press-any-key gate
+    became the splash. Everything is drawn in code, with no asset files and no copy of the real
+    logo. A DEVOXX wordmark is lit the way the conference's opening video lights it: white-hot
+    strokes, with the D and XX filled by a seeded gold pixel mosaic. The O is Voxxy's orange lens,
+    with her ears on top. Under it: Antwerp at night over the Scheldt (the cathedral spire, the
+    Boerentoren, the MAS, Het Steen, and cranes to the north where Kinepolis is), with gold dust
+    drifting up. A canvas shadow blur drew a rectangle behind every letter on the software GL we
+    render with, so the glow is a CSS drop-shadow on the canvas.
+  - *Key mashing.* For 1.5 s after the gate, and for any auto-repeat, keys do not skip the opening.
+  - *Opening score, second pass.* "More captivating, rhythmic, percussions, on par with the
+    scenes. Crates open: boom." The tempo is now the scene's: one bar is exactly one robot's
+    `SLOT` (2.9 s, about 82.8 bpm), and the score starts on the first slot. The kit arrives with
+    the robots: a heartbeat under a ticking hat for Voxxy, backbeat and shaker for Droid, then
+    four on the floor, a sixteenth-note arpeggio and snare fills for Biggy, and a bell over the
+    pull-back. A new `snare` voice. The boom is a cue, not a note (`crate`: a sub drop, a plywood
+    slap and dust), fired when each front actually lands, so it is always on its frame. It is
+    scaled by crate size.
+  - *Clue digits.* "Both show 5 but one is a 4." The sim's first intro frame carries a different
+    draw of digits from the chapter that is actually played. The 3D clue objects were keyed by slot
+    and built on that frame, so they kept the stale digit. They now swap their digit when the
+    sim's changes. The pooled light is kept, because the light pool has already taken it. Probed
+    headless: `6785` on frame 0, `7576` from frame 1.
+  - *Mirrored digit.* A solid digit spinning a full turn reads mirrored from behind, and a
+    mirrored 5 looks like a 2 (the same screenshot). It now faces the camera and sways ±35°, which
+    shows its depth without turning its back.
+  - *Controls, again.* "Sometimes it loses the frontal view, and I didn't change it. Usually when
+    moving and rotating?" Root cause: WASD was camera-relative, so the camera could only follow a
+    robot heading within about 55° of the view; otherwise it would chase its own stick into
+    circles. D while walking pushed the robot out of that cone, and the camera stopped. The stick
+    now steers the robot's own heading: W and S move along it, A and D turn it (in place when
+    standing, steering while moving). Only the first W from standing takes the camera's direction.
+    With the stick independent of the camera, the camera always settles behind. `ThirdPersonCamera
+    .stick` is gone.
+  - *Camera at chapter start.* A new chapter, or the end of a cutscene, cuts the camera behind the
+    selected robot. The opening's own hand-off is left alone.
+  - *Stairwells.* "From here I should see the stairs going up." The sim's `stair-foot` wall was
+    drawn as a 3.6 m slab across the shaft. It is now the flight the 2.5D build draws (the shared
+    `stairFlight`): two ramps climbing east with a level half-landing between them, up into a slab
+    of the floor above. Shaft walls go to the roof. Each doorway (one in each long face, per the
+    plan) has a lintel, a pair of leaves open square to the wall, and a green exit plate.
+  - *Sign in the wall.* The TECHNICAL sign stood 0.24 m off a wall thicker than that. A sign whose
+    footprint is within 22 px of a wall now becomes a blade sign, square to the wall and clear of it.
+  - *Backlog from this batch (not done):* the breaker panel is a flat slab with three blocks and
+    needs a real distribution board and a lever animation. Droid's chapter 1 lever: the arm should
+    reach the lever, and the door should start opening only after the lever is pulled. The router
+    cabinet should get noise and blinking lights as the modem starts up. Chapter 2 needs a general
+    polish pass (Michele offers venue photos). Moving the spray tag onto the route to the cabinet
+    is waiting on him to confirm which wall.
+- *Third batch, 28 Sep.*
+  - *Wordmark.* Michele sent the official Devoxx lettering ("use this lettering for the white
+    part. The pointed ears should better be a robot's head"). The strokes are now thin and even,
+    with a round-cornered D and a wide O, full-width E arms, and the second X overlapping the
+    first. The O is a robot's head: ear pads, an antenna with an orange tip, and the lens. The
+    mosaic cells shrank to suit the thinner strokes.
+  - *Cabinet.* "It could contain a rack and a big screen", "an old 56k modem would be
+    appreciated", "some noise and light in the cabinet, to indicate the modem starting up." The
+    carcass is hollow now. Behind the leaves are a 19-inch rack of randomly blinking link lights, one
+    big screen, and a beige 56K modem on a shelf with its eight front lamps (MR/TR steady, SD/RD
+    chattering, CD on once online). The screen carries both of the sim's terminals, router status
+    and password prompt, which used to be two separate screens ("doesn't work split on 2"). A new
+    `modem-boot` cue plays after the supply lands: relay clack, fan spin-up, self-test chirps and a
+    dial tone. The existing 56k handshake stays the payoff when the password goes in. Not checked
+    in a render: the debug handle cannot power the sim, so this needs a playtest.
+  - *Cable rack.* "Should be more evident and hint at interaction." A reel of blue cable stands in
+    front of the rack, with a pulsing ring in Voxxy's orange and a "CABLE · VOXXY" tag. All three
+    go away once the cable is picked up.
+  - *Flavour toasts.* "We should distinguish between game-related toast and informational": room E
+    and B orange, room D grey, and "column, actions... everything not related to progressing the
+    game" grey. `Toast` and `Wall` gained `flavour`. Every venue wall is flavour except the few that
+    are part of a puzzle (the kiosk hatch, the patch rack, the router cabinet, the roller door).
+    So are chapter walls that only describe (closed cinemas, seat rows, open leaves, gate posts),
+    and every action line: party tricks, climbing, gripping or pushing Biggy. The HUD draws flavour
+    lines grey; everything else keeps its robot's colour.
+  - *Chapter 2 start.* "Place the robots with the stairs at their back, like they just finished
+    descending. Voxxy first, near the doors." They face west on the landing, Voxxy by the doors and
+    Biggy still at the foot of the flight. One test bound moved with it: the spray tag must be
+    within 540 px of the start, not 500, because Voxxy's mark is 56 px further west. The walk is
+    the same. Flagged to Michele.
+  - *Stairwell door leaves.* "It's in the way." The leaves stood square to the wall 1.2 m out into
+    the path. They now fold flat against the wall, both on the east side of the opening, because
+    west of it there is only 0.6 m of wall before the shaft's corner.
+- *Fourth batch, 28 Sep, from Michele's full chapter 2 run.*
+  - *Cable.* "At a certain point the cable vanished, while crossing the stairs." The tube ran at 0
+    or 0.5 m, so inside the small staircase it was under the treads. It is now resampled every
+    ~0.25 m and follows each tread at the height `stepsFor` draws it.
+    "When reaching the dropzone, cable should be automatically attached (animation would be
+    welcome) without pressing E." The sim plugs in when Voxxy is within reach; E still works. The
+    printer socket becomes the run's last point, and in 3D that last stretch grows up the desk into
+    the printer over 0.7 s.
+  - *Printer.* The desk stands on the 0.5 m lobby, so its top is at 1.55 m, and the old printer box
+    at 1.05 m sat inside the counter. It is now a card printer on the desk top: an LCD reading NO
+    LINK / LINK UP / PRINTING, a hopper of blank cards, and badges (orange DEVOXX stripe,
+    ATTENDEE) sliding out of the slot every 1.1 s onto a stack once it is online.
+  - *Stairwells.* The walls are black moquette ("stairs wall might be black moquette"). The start
+    moved Voxxy three steps back from the west wall, so her lamp no longer paints a halo on it.
+  - *Sign, again.* "Still in the wall." The blade guessed the wall's face. A sign near a wall is now
+    mounted flat on the sim wall rect's own face, 3 cm proud, with no post.
+  - *Spray tag.* Michele chose the wall: "Legacy Systems' West wall". `WIFI_TAG` gained a facing
+    (`nx, ny`), and chapter 2's prop rect, the 2.5D painter and the 3D painter all orient from it.
+    The paint narrows from 88 to 64 px to fit a 70 px booth side. Voxxy's line now says where it
+    is. The tests that pinned the old wall (placement, reading, the bar-overlap check) now derive
+    from the facing instead of the old north wall.
+  - *R during the password.* "I was typing the password and the chapter restarted... I think that
+    was the R in DevoxxForever, that maybe I retyped. Keep a tolerance on keypress here too." The
+    password ends in R, and the last letter closes the prompt, so one R too many was a restart. For
+    2 s after any keystroke typed into a prompt, R is swallowed. A new test types the password,
+    presses R at once (no restart), then again after 2.2 s (restart).
+  - *Not done yet:* the booth stands ("unfinished, it should be clear when you're passing under
+    them") and a rock intro score ("rock guitar, stomping, energy").
+- *Intro, third score, and a clip.* "Music is still too ambient for the intro. I want something
+  impacting. Rock guitar, stomping, energy!" Rewritten as rock at the same scene-locked tempo (one
+  bar per robot, 82.8 bpm, which is also the tempo stomp-stomp-clap is always played at). Stomp,
+  stomp, CLAP from the first crate. A distorted guitar: five detuned saws for root, fifth and
+  octave, through a tanh waveshaper and a cabinet's worth of filtering. It starts as palm-muted
+  eighths and opens into power chords on the pushes when Biggy's crate lands, with bass, crash,
+  snare and hats joining a robot at a time. New voices: `guitar`, `chug`, `clap`, `crash`. The
+  crate boom now has a crash cymbal on it.
+  "How long is the starting sequence? Can you extract it in a movie?" It runs 12.4 s: 1.6 s dark,
+  two 2.9 s slots, Biggy's 2.4 s, a 0.8 s hold, the 1.05 s flicker and 0.75 s dark. The clip is
+  rendered headless and deterministic: the page's AudioContext is swapped for an
+  OfflineAudioContext that pauses at every video frame. At each pause the game steps one frame
+  (firing the score and the cues at exactly that sim time) and a screenshot is taken. The frames
+  and the rendered audio are then muxed with ffmpeg. The picture and the synthesised sound are in
+  sync without anything playing in real time.
+- *Fifth batch, 28 Sep.*
+  - *Music reference.* Michele pointed at the official Devoxx 2026 video ("the music near the end
+    is a good fit"). YouTube is blocked from the build container, and the agent cannot hear audio
+    anyway, so it asked for a description instead of guessing.
+  - *Printer sounds.* "Add a sound when the printer is connected, and when it prints a badge." A
+    `plug` cue (latch click and a two-note ready chirp) plays when the cable goes in. A `badge` cue
+    (thermal head whirr, the card sliding out and landing) plays six times, 1.1 s apart, in step
+    with the six badges the 3D printer ejects.
+  - *Lamps in a lit hall.* "After the lights are back, reduce the robots' light." Once the hall is
+    powered, the lamps and their spill ease to a quarter of their blackout strength. This is
+    render only: the sim's cones, which decide what a lamp can light, are unchanged.
+  - *The soup pot.* "Grab that thing!" The sim carries it at Biggy's north edge, where his dome has
+    already curved away, so it floated beside his head. In 3D it now sits centred on his lid, on
+    the rig's own position, so it rides with him.
+  - *Cable reel.* "Should not disappear when Voxxy takes it (but roll)." The reel stays and turns
+    with every metre paid out, and its coil thins toward empty.
+- *Sixth batch, 28 Sep: stands, breakers, the lever, chapter 2 polish.*
+  - *Stands.* "Stands are unfinished, it should be clear when you're passing under them." Built
+    booths were their footprint extruded in concrete to the 7.2 m roof. They are now 2.6 m sponsor
+    pods printed on every side in the 2.5D build's `BOOTH_SCHEMES` (name, strapline, DEVOXX
+    BELGIUM), with a header strip that lights with the hall. The face carrying the spray tag is
+    left bare. Half tables were a solid 1.05 m box that 1.15 m Voxxy drove through. They are now
+    1.3 m tables on legs, with a cloth valance, a laptop and a sticker bowl, open underneath. While
+    the robot being driven is under one, its top fades to 15% and a steel rim stays solid, so the
+    table still reads.
+  - *The lever.* "The arm should reach the lever, the door should start opening only after the
+    lever is pulled." Sim: cinema B's leaf waits `LEVER_REACH_TIME` (0.75 s) after the panel is
+    thrown; two door tests now wait for it too. 3D: during a reach, Droid turns to the target and
+    his shoulder pitches to its height. The panel's lever throws on contact over 0.2 s.
+  - *Breaker board.* Was a rusty slab with three blocks, floating 0.64 m off the wall. It is now a
+    grey distribution board on the wall: door swung open with a 400 V warning, three rows of DIN
+    breakers, conduits to the ceiling, and three red main isolators. Each is thrown up through the
+    front as Droid's hand arrives, flashing as it lands, and his reach is aimed at that handle.
+  - *Chapter 2 survey.* Rendered five viewpoints of the lit hall. The reception now has a lit
+    orange REGISTRATION banner hung over the desk, so the cable run's goal reads from the hall. The
+    technical room has its own fluorescent batten, which strikes and flickers on when the supply
+    lands.
 
 ## 26 Sep 2026 — the crowd he photographed, the wall on the stairs, and a gate that is now a gate
 
@@ -4343,6 +5066,214 @@ man rather than by a rect. Suite **774 green**.
 drawn geometry (`src/render/lighting.ts` draws the robots' lamps as meshes off the sim's visibility
 polygons); four spots with shadow maps would have been the only real lights in the build, would not
 have matched the room around them, and would have cost more than the entire rest of the frame.
+- *Merging the 2.5D branch into the 3D one, 28 Sep.* Eighteen commits: the chapter 3 playtest
+  round (crowd, desk, Stephan, the speaker going to Stephan, Celestino on the desk, the soup
+  drawn and spilt, the bar's pour and toast), the belt-post stair line, Biggy's roll, lanyards,
+  quips, the cheap extras, the physics view, the dark test rig, and chapter 4's opening video. Two
+  conflicts, both resolved toward what each side meant: `clueLit` keeps the 3D build's tolerance
+  parameter, and the chapter 3 gate is the 2.5D side's belt posts with the 3D side's flavour flag.
+  Typecheck clean and 780 tests green before any 3D work.
+  - *What 3D had to draw.* The chapter 3 gate is now the belt-post line from the same
+    `nastriRun`: chrome posts, red webbing, each belt winding into its post in turn (`beltU`).
+    Also new: soup spills as puddles, kegs behind the bar, the tap handle pulled and a thread of
+    beer while it pours, and the glass Biggy raises (`toast`), lifted off his lid. Biggy's gait
+    gets `carrying`, so he never rolls with the pot. People already wear what the sim gives them
+    (Stephan's olive polo, Celestino's orange raglan, lanyards), because 3D uses the shared figure
+    builder.
+  - *The extras, and where they live.* Michele: "evaluate where to put them, chapter 1 has already
+    some nice idea (posters, holograms), don't remove them. We can move the CFP wall to the hall
+    maybe?" The AV rider (the light-mix rules) stays in chapter 1, the chapter that teaches them.
+    In 3D it is drawn as a spec sheet with the three lamp colours and the rule, taped at robot eye
+    height under Zaal A's panel (at 1.45 m it covered the panel), and its toast is flavour. The CFP
+    wall's chapter 1 spot was exactly where the 3D build's animated ad hangs. Asked, Michele chose
+    the hall near registration. It is now `CFP_WALL`, on the south face of the concrete wall
+    between hall and lobby: a real wall 8 m from the desk, so it adds no collider to the cable run.
+    It is read in chapter 2 under the same rule (Voxxy's cone, 5.6 m, a slip every 3.5 s) and its
+    toasts are grey. Drawn as a framed corkboard of six stamped slips. The prop comes after the
+    spray tag in chapter 2's list, because `find('poster')` means the tag everywhere else. Tests
+    moved with it.
+  - *Not done.* Stephan and Celestino are caricatured from photos Michele sent the 2.5D session;
+    the 3D build has not seen them, and they are asked for again to make the pair recognisable at
+    3D distance. `P` stays photo mode in 3D (it is the physics view in 2.5D).
+  - *Stephan, up close.* Michele reposted the photographs: Stephan on stage, and the Devoxx
+    Belgium polo. The shared figure draws him for the 2.5D camera, with glasses as a bar, the mic
+    as a line and the collar as one band. At 3D distance a face shows, so `people3d.ts` adds a
+    close-up layer on the figure the sim marks `stephan`, sized off its own head:
+    - amber tortoiseshell rectangular frames with temples, eyes behind them;
+    - short salt-and-pepper hair, fuller on top; grey stubble on the jaw; a grin;
+    - a skin-coloured headset boom along his left cheek, as in the photo, and a light tan skin;
+    - the polo as photographed: the collar tipped orange / grey / white / grey, orange piping
+      inside the neck, three dark buttons, and DEVOXX embroidered in white on his left chest.
+    The far-camera stand-ins hide while it shows. Celestino is still the 2.5D caricature, waiting
+    on his photo.
+  - *Celestino, and Stephan's hair.* From Michele's photo of Celestino: short dark hair, fair
+    skin, clean-shaven, and the crew T-shirt, white with orange raglan sleeves, orange neck trim
+    and the joke printed across the chest in orange ("Hey, Event Organizer / do Open Source / and
+    save Big Money"). He is the NPC the sim names `Celestino`, so the close-up layer keys off the
+    name. He keeps the crew-red lanyard, because ribbon colours mean something in the game. A
+    pooled figure that stops being him gets its torso material back. "Can you do Stephan's hair?"
+    It was a smooth cap. It is now a low grey cap with forty short seeded tufts over the crown,
+    brushed up and forward, grey at the sides and darker on top as in the photo. The first
+    attempt was too tall and punk; the second is short and tousled.
+  - *"Stephan looks like he has a beanie with some stuff on top."* The agent agreed with the
+    diagnosis: a cap is a hat, whatever its colour, because its edge circles the head at one
+    height. Hair is now the head's own surface. Each close-up head is one sculpted sphere
+    (`sculptHead`):
+    - a hairline that is high at the forehead, recedes at the temples, is cropped over the ears
+      and drops at the nape;
+    - vertices above the hairline pushed out by a textured thickness and coloured as hair, with
+      salt specks;
+    - beard shadow painted onto the jaw;
+    - a narrower, longer face with a nose.
+    Every figure in 3D is also softened: rounded torso and limbs, a neck, and shoes. The 2.5D
+    figure code is unchanged.
+  - *Mario, Venkat, Josh.* Michele sent a photo of each: "Mario Fusco somewhere in the hall (the
+    second photo is older, the hair are short now)", "and Venkat (no shoes!)", then "Josh Long".
+    They are three talkable NPCs on the chapter 3 hall floor, first names only, each with one
+    line in character. The spots were measured clear of every wall by 22 px and of every person
+    by 45 px. The 3D close-ups:
+    - Mario: short dark hair greying at the sides, dark frames, a long grey-white beard under a
+      dark moustache, a black track jacket with red piping over a maroon tee with a lightning
+      bolt, arms folded.
+    - Venkat: wire frames, a thick moustache, a headset, a dark grey polo with a small emblem, and
+      bare feet. Everyone else got shoes so that the bare feet read.
+    - Josh: receding brown hair, black frames, a gingery beard, a grin, arms folded, and a light
+      grey tee with a green leaf and his word "bootiful". It is not the product logo, following
+      the "nothing that needs permission" rule.
+    All three wear the attendee ribbon, not speaker teal. Teal is the one colour in the hall that
+    means the missing keynote speaker, and three famous faces in teal would be three wrong
+    answers to chapter 3. The agent decided this; Michele can overrule it.
+- **Polish round on the ground floor, then chapter 4 in 3D** (28 Sep 2026). Michele: "Make a
+  round of polish on the ground floor and chapter 2/3. Critics, then go ahead with chapter 4."
+  - *The critique.* The agent rendered a survey from the gameplay camera: chapter 2 dark, chapter
+    2 powered, chapter 3. Its findings, worst first:
+    1. The follow camera could end up inside Voxxy's head. With something right behind her, the
+       wall ray allowed it to come within 0.5 m of the pivot, and the frame was all orange
+       shell.
+    2. The booth floors read as flat, saturated plastic slabs.
+    3. Chapter 3's "morning" hall was chapter 2's hall with the power on, dim between the high
+       bays. It was already on the backlog as "hall renders dark".
+    4. The lobby counters are plain boxes that blow out white under a robot lamp.
+    5. The dark chapter 2 hall is close to a void apart from the exit signs.
+    Items 1–3 were fixed; 4 and 5 are left on the backlog.
+    - When boxed in, the camera now tries steeper pitches and looks down over the obstacle,
+      eased in and out. It never comes nearer the pivot than the robot's own shell.
+    - Stand floors are the hall's baked carpet, tinted each sponsor's colour, pulled toward grey,
+      on an aluminium edge trim.
+    - Chapter 3's fill light is roughly twice chapter 2's.
+  - *Chapter 4, Room 8.* The 3D build stopped at chapter 3 with a "3D build ends here" card.
+    Room 8 lies past chapter 1's build line, so `keynote3d.ts` builds its interior the first time
+    chapter 4 is shown:
+    - carpet, a lit ceiling, and a drape behind the stage;
+    - the stage as a 5 cm dais with an LED edge, with a lectern at stage left;
+    - the sim's seat blocks: seven rows each, with a seat on every sim seat so the audience sits
+      in chairs;
+    - Droid's two hooks as wall brackets at 3.1 m, with a beacon until each end is hung. With one
+      end hung, the banner lies on the floor from that hook; with both, "HAPPY DEVOXX" sags
+      across the stage;
+    - Voxxy's four spotlights as floor PAR cans. The next one wears a pulsing ring, and a lit
+      one throws a real beam at its own quarter of the stage. Four beams on one point washed out
+      the banner, which the agent caught on the first render;
+    - the cake as a wheeled board with a three-tier cake and three candles in the robots'
+      colours, on a glow-tape mark that turns green;
+    - a house screen with a Devoxx holding slide, showing the sim's crowd clock (the speaker
+      reads "TBA"). When the robots reach the stage, the screen plays the opening video from
+      `snap.reel`, and the camera eases back to watch it from the rows.
+    Room 8's closed door leaf opens, chapter 1's props hide, and the robot lamps dim for the
+    lit room. Stephan and the speaker wear their chapter 3 outfits (polo, glasses, mic; teal
+    hoodie). Before this change they were a beige figure and a cream one.
+- **Faces: Stephan and Josh, then the whole crowd** (28 Sep 2026). Michele: "Can we work on
+  Stephan and Josh face shape? The other seem fine, a general improvement on graphics would be
+  welcome." (He also asked what the session needed from Google Drive. The answer was nothing:
+  the agent had only passed on a notice that the connector is not authorised.)
+  - *The diagnosis.* Every close-up head was a ball with features glued to the front: glasses
+    floating at a fixed depth, eyes like two marbles on the surface, a slit for a mouth, and no
+    bone structure.
+  - *The sculpt* (`sculptHead`, `FaceShape`) gained parameters for bone structure:
+    - brow ridge, eye sockets and cheekbones;
+    - a jaw with separate taper and corner width, and a forward chin;
+    - a nose with its own width, and a flatter crown;
+    - painted socket shade, warm cheeks and nose, and beard shadow on the upper lip;
+    - ear size and splay.
+  - *Features sit on the face.* The mesh carries `surf(x, y)`, its real depth found by a ray, so
+    each feature is placed against the face itself:
+    - the eyes are sunk into their sockets, with an upper lid in the skin and a catchlight;
+    - the brows rest on the ridge;
+    - the glasses clear the nose bridge, the lenses wrap slightly, and the temples run back to
+      the ears;
+    - the mouth is a crescent laid onto the face's curve, with the corners raised, teeth, and a
+      lower lip.
+  - *Stephan* has a long face with high cheekbones lifted by the grin, a tapering jaw, a definite
+    chin, a straight nose, and grey stubble up to the lip. His frames are slimmer and his eyes
+    narrowed by the smile.
+  - *Josh* has a broad, square jaw, full rosy cheeks, a high forehead, ears that stand out, and a
+    ginger beard shadow over the lip and jaw with a big grin.
+  - The others kept their proportions but got the new eyes, brows and mouths.
+  - *The crowd*, which is every other figure:
+    - hair is now a shell with a hairline, high at the forehead and low at the nape, with a
+      ragged fringe. It had been the same "beanie" cap Stephan's first head had;
+    - every figure has hands that swing with its arms, and two eyes.
+
+## 28 Sep 2026 — the intro's soundtrack, from the conference's own track
+
+- *The ask.* Michele uploaded the MP3 of the Devoxx Belgium 2026 ticket trailer: "The part from
+  2.30 is what I'm looking for (vocal excluded). Can we use this (it's generated too!) or create
+  something similar? It should fit also with crate opening and current sounds (but you can also
+  adapt the animation timing to the music)."
+- *Rejected: shipping the file.* CLAUDE.md forbids audio assets, and the repo is MIT: putting the
+  track in it would mean licensing Devoxx's audio, AI-generated or not, which is "something that
+  needs permission". So the file was analysed, and the score was written from scratch to match
+  what the analysis measured. No note of its melody is used.
+- *Rejected: stem separation.* Demucs could have split the vocals off for a cleaner analysis, but
+  its model host is blocked by the build container's network policy. The analysis used plain signal
+  processing instead (librosa, scipy), which was enough.
+- *What the analysis found.* 95.75 bpm in four, with driving eighths; standard tuning; G
+  mixolydian (a G major with an F natural: spectral peaks on a 49 Hz sub G, stacked G/D/B, and
+  F); a two-bar riff that sits on G and dips to F; snare on 2 and 4 over a pushed kick. The
+  section from 2:30 is a build and a drop: a bar of eighth-note kicks, then a bar where the kick
+  drops out under a sixteenth-note snare roll, then everything on the downbeat at 2:34.6. It ends
+  with the highs cut and a last low hit.
+- *The bug under every "too ambient".* The opening's own score had never played. The opening runs
+  on top of chapter 1, so `snap.chapter` reads 1 under the crates, and the cues picked the score
+  from it. Every intro Michele heard was chapter 1's quiet night score, and both the percussive
+  and the rock rewrites were written and never heard. `scoreFor()` in `cues.ts` now picks score 0
+  while the opening runs, in both pages. A test walks a real game through its opening and checks
+  which scores get asked for, and when.
+- *An offline renderer* (`tools/render-audio/`): the real sim, cues and audio code on an
+  `OfflineAudioContext` in headless Chromium, stepped frame by frame. Its timers run on the render's
+  own clock, so any machine renders the same file. Michele asked "can you extract the current track
+  so i can listen to it?" and got three renders: the intro as shipped, the unheard rock score in
+  the same mix, and the rock score alone. It also measured why the rock score would have been
+  buried anyway: -35.6 LUFS, under chapter 1's room hum at -32. His verdict on the rock version:
+  "a little better, but we can do more."
+- *Timing adapted to the music, as he offered.* `SLOT` 2.9 s became 2.5 s, one bar at 96 bpm.
+  `PANEL_DELAY` 0.5 became 0.55, so a lamp comes on on beat 3 and its crate front lands on the
+  downbeat. `HOLD` is now derived, so the walk starts on the next downbeat. The flicker became
+  1.25 s (two beats), with its strikes on sixteenths. The opening is 12.35 s (was 12.38).
+- *The score.* One bar per robot:
+  - title: a boom and a swell;
+  - Voxxy: the groove arrives;
+  - Droid: the build, on F;
+  - Biggy: his crate is the drop, with a wall of double-tracked guitars, a sub, and a new hook;
+  - the walk: home on G.
+
+  The crate booms stay cues, and the score leaves its kick off those three downbeats, so the crate
+  is the kick. The music then cuts out exactly while the emergency light does (its gates are the
+  light's own strikes), and on the strike the light does not come back from, the band loses its
+  power in a tape-stop dive. New voices: rock kick, open hat, toms, lead guitar, riser,
+  reverse-cymbal swell, the dive. A generated reverb room, stereo placement, and held envelopes
+  so a power chord is a wall, not a pluck.
+- *Measured, not heard.* The rendered booms land within 12 ms of the score's downbeats, and the
+  gates fall exactly inside the light's dark windows. The loudness climbs from -34.5 to -33.0,
+  -30.7 and -26.9 LUFS (title, Voxxy, Droid, drop), against -35.6 for the old score. The loudest
+  instant is 0.2375 of full scale, inside the test's quarter-scale budget. Against the reference,
+  the drop is still about 3 dB lighter in the sub and 10 dB heavier in the mids. That was kept on
+  purpose, because most people will hear it on laptop speakers, which have no sub. Michele's ear
+  decides.
+- *Tests.* The "builds up when it says it does" check is now per part: it is stricter, and it
+  understands parts that leave. New checks: crates land on downbeats, the walk starts on a
+  downbeat, the gates cut only while the light is out, the dive starts on the light's death, the
+  score plays once, and which score the game asks for.
 
 ## 28 Sep 2026, V47 round — the ladle's journey, the grip, and the reel that was never there
 
@@ -4558,6 +5489,145 @@ against his standoff forever. The pilot steps round now, which is what a player 
 
 **Tests.** `tests/full-run.test.ts` (1), `tests/speaker-follow.test.ts` (2, sweeping all five
 booths the chapter can hide the speaker at). Suite **790 green**, `tsc --noEmit` clean.
+
+## 28 Sep 2026 — the #DEVOXX letters replace Droid's banner
+
+**What the human decided.** Michele, with a photograph taken from behind the giant letters on the
+keynote stage: *"Another puzzle we could add, but maybe it's too late. There are always those 3d
+letters in Devoxx, used for the keynote and the closing. They could be hidden around and be brought
+on stage by the robot? Maybe we can change Voxxy or Droid's task?"* The agent answered first, without
+building: yes to the letters, no to hiding them around the venue, and Droid rather than Voxxy. Then
+Michele, one line: *"Droid swap. Droid is already slow, so don't scatter the letters around."*
+
+**The case the agent made, and what it rested on.**
+
+- *The letters are the real thing and the banner was not.* `media/venue-photos/54836008506_68c9fc5562_k.jpg`
+  — the photo this project has always captioned "the stage ← chapter 4" — has `#DEVOXX` standing on
+  Room 8's stage, white, the last X in Devoxx orange. The "HAPPY DEVOXX" banner was invented. So the
+  change is a sense-of-place gain before it is a gameplay one.
+- *Droid, not Voxxy.* The banner was the thinnest job in the room (two presses of `E` at two hooks),
+  and the letters are the same thing done for real — the stage's Devoxx branding — so swapping one
+  for the other keeps one job per robot. Voxxy's spotlights had got their beams that same day, from
+  Michele's V46 note, and were worth keeping.
+- *Not scattered.* Michele's own ruling of 22 Sep on the WiFi password (`docs/gameplay-additions.md`
+  §2): not "find 13 letters scattered around the venue" — letter-collection is busywork. Chapter 4
+  was also already the longest chapter (his open note, "about six minutes").
+
+**What the agent did.**
+
+- *Merged the three live branches first* onto `claude/nice-wright-ms1qmg` — the 3D line, the 2.5D
+  line's curtain call and reel endings, and the intro score — because chapter 4 had been changed on
+  two of them that day and the letters had to land on all of it. Only the GenAI notes conflicted
+  (both sides appended); 799 tests green on the merge.
+- *The sim* (`src/sim/letters.ts`, `ch4-keynote.ts`). `#DEV` stands; the O, X and orange X lean in
+  one stash in the east wing. Droid lifts one with `E` and sets it into its own gap with `E`, so the
+  sign spells itself and there is no wrong order. Only at its gap, never onto a robot standing in it;
+  Voxxy (*"it's as big as I am. I can carry it or see where I'm going, not both"*) and Biggy (*"these
+  hands are for pots. An X has no handle"*) refuse in their own voices and keep the key. Carrying is a
+  load exactly like Biggy's crates: mass + 0.7, acceleration scaled by the mass ratio — the same
+  force on more mass, which turns out to be exactly what the crate factor already was (7 / 8.5 =
+  0.82) — and `DEFS` untouched. Every standing letter stands on its own collider.
+- *Both renderers.* `src/render/letters.ts` cuts `#`, `D`, `E`, `V`, `O` and `X` as extruded shapes
+  — no font file, no asset — shared by the 2.5D and 3D builds. 2.5D draws amber tape in the empty
+  gaps, so the stage reads `#DEV___` exactly like the progress line; 3D draws a faint ghost of each
+  missing letter standing in its gap. Droid carries with the gait's existing carry pose (Biggy's pot),
+  the letter in his hands. A placed letter plays the `clue` cue and the finished sign the `chime`.
+
+**What it cost, measured.**
+
+- *The first layout was bad and the numbers said so.* Driven from the top of the stairs by the test
+  pilot, the sign took **94 s** against **31 s** for the two hooks walked the same way — the opposite
+  of "Droid is already slow". Leg timings showed why: with Stephan and the speaker mid-stage the only
+  lane to the gaps was 4 px wide, and the router went down one aisle, across the room and up the
+  other, 17 s a trip. Standing the two hosts beside the sign, where presenters stand, opened the whole
+  front of the stage: **43 s**. Moving the stash from the room's east wall to the wing's back wall,
+  70 px nearer the gaps: **39.5 s**. The honest figure is about **40 s against 25–31 s** for the
+  banner's two hooks walked the same way (31 with the hosts where they used to stand, which the
+  pilot bumps into; 25 with them moved) — ten to fifteen seconds more, nearly all of it the three
+  carries, which are the job. The 2.5D line's own one-stick driver (`tests/chapter4-length.test.ts`,
+  merged in afterwards, and it drives the sign now) agrees: Droid's leg **20.1 s → 30.7 s**, the whole
+  chapter **92.3 s → 101.3 s**, against its 150 s budget and Michele's three-minute figure.
+- *The 2.5D stage ate the letters.* It was drawn as a 0.45 m box while the sim's stage is floor, so
+  the robots had always stood sunk to the shins in it; with letters on it, the bottom 45 cm of every
+  glyph vanished and the orange X read as a Y. It is a 5 cm dais now, as the 3D build had already
+  decided for the same reason, and `stage` came off the collider sweep's walk-through list with it.
+- *A test pilot that walked through people.* `tests/pilot.ts` routed Droid straight through Stephan,
+  who is solid through `standOff` rather than a wall. The router takes obstacles now.
+
+**Rejected.** Hiding the letters around the Devoxx floor (Michele's own busywork rule, and minutes on
+the longest chapter); Voxxy carrying them (it would have deleted the spotlights built that day, and
+she is only as tall as a letter); an order puzzle on the stage (everybody knows how DEVOXX is spelt,
+so it would be a chore, not a puzzle); letting Droid carry two at once (it halves the trips, but costs
+a second carried-state and a two-handed pose on the last day).
+
+**Tests.** `tests/letters.test.ts` (12, new): one stash within 3 m and every letter within 12 m of its
+gap; only Droid lifts, and the other two keep the key; the load and its exact removal; felt in the
+first 0.4 s, same top speed; its own gap only, with the right words when it is not; never through a
+robot; solid; no room behind the sign; the stage waits for the sign; driven from the stairs in under
+50 s; `R` gives Droid his weight back; the arrow is always within reach of a letter. The banner tests
+in `chapters`, `tasks`, `party-tricks` and `curtain-call` were rewritten against the sign, never
+loosened. Mutation check: with the letters' colliders removed, three tests fail, the collider sweep
+among them. Suite **812 green**, build clean.
+
+**Then both live branches moved again, and were merged under the letters.** The 2.5D line's full
+room, one-stick chapter-4 length and ship-gate run (its Droid legs ported to the sign), and the 3D
+line's front row of hall speakers, README and venue photos. One seam that was not a conflict: the
+front row was published seated but without the curtain call's `cheer`, so five famous faces sat still
+while the room applauded; `tests/curtain-call.test.ts` caught it and they clap now. **820 green**.
+
+- **Venue photos, Duke, Lize and Aurélie, and speaker lanyards** (28 Sep 2026). Michele sent five
+  venue photos: the main stairs from the side; the Devoxx sign with ceiling ducts, box truss and
+  disc pendants; two of Stephan ("remember the MIC"); Duke on the keynote screen ("should appear
+  somewhere"); and the entrance. He then added "We should add Lize Raes" and "Aurélie Vache",
+  and "they should have speakers badge, and the keynote another color, maybe multicolor?"
+  - *Stephan*: hair cropped short and grey all over, receding at the temples; lighter skin;
+    thinner amber frames; the mic is now a slim skin-tone boom hooked over his left ear with a
+    small capsule at the corner of his mouth, as in every photo. The polo has short sleeves
+    with tipped cuffs, hung on the arm pivots so they swing.
+  - *Lanyards (a sim change, decided by Michele):*
+    - a fifth ribbon, `LANYARD.keynote`, multicolour, worn only by the missing keynote speaker
+      in chapter 3 and on stage in chapter 4;
+    - every named speaker (Mario, Venkat, Josh, Lize, Aurélie) now wears speaker teal. This
+      reverses the agent's earlier choice of attendee grey, which it had only made to protect
+      teal's meaning;
+    - the chapter 3 hint now says "multicolour lanyard and teal hoodie";
+    - renderers paint that ribbon's key as rainbow bands;
+    - the distinct-colours test now counts five ribbons, and a new check requires exactly one
+      keynote ribbon.
+  - *Lize and Aurélie*, as NPCs on the hall's south strip. The sculpt gained `longHair`, a hair
+    curtain from the crown that frames the face, closes as it falls, drapes over the shoulders,
+    waves, and flares or flicks at the ends.
+    - Lize: long wavy auburn hair, blue eyes, a wide smile, a cheek mic, and a red wrap dress
+      with a V-neck, sash and skirt.
+    - Aurélie: dark jaw-length hair with a fringe and flicked ends, thin violet frames, a
+      closed smile, and a navy tee with a scoop neck.
+  - *Duke* (the artwork is BSD-licensed): a 2.9 m inflatable in the lobby south of the main stair,
+    facing the doors, swaying, one arm waving, under a display spot. He is solid in the sim
+    (`DUKE`, a `duke` wall with its own blocked line for Biggy), so nothing walks through him.
+    His first shape was a sharp cone that read as a gnome, and the dome fixed it. He also waves
+    from the corner of Room 8's holding slide.
+  - *Entrance*: the facade is glass in slim white frames, with mullions every 1.5 m, a transom,
+    glazed side screens where the sim has reveals (they had been solid white fins), open glass
+    leaves with push bars, and green exit signs over the bays. Outside is a sky-and-trees
+    backdrop, bright in chapter 3 and a dim street in chapter 2.
+  - *Hall ceiling*: black, with aluminium box truss (four chords, laced), two runs of spiral
+    duct with seams, drops and diffusers, and the high bays redrawn as the photo's large disc
+    pendants with a warm orange rim.
+  - *Main stair*: white stepped side panels, with a glass balustrade on steel posts and a
+    handrail following the pitch. The first pass z-fought the treads into stripes; the panels
+    now stand just outside the footprint.
+  - A sponsor table top that burnt white under a pendant is now matt grey.
+- **Mouths, and Stephan's pointy hair** (28 Sep 2026). Michele: "Lize is good, but her mouth and
+  stephan's are odd. Stephan hair should be pointy!"
+  - *Mouths*: the first was a thin black lens with pointed corners and a sliver of teeth, which
+    read as a grimace. A grin is now a D: an almost level upper edge lifting at rounded corners,
+    a deep round lower curve, a row of upper teeth over a dark red mouth, and soft lips (a thin
+    upper, a fuller lower). The pieces are bands tessellated in rows, so their middles follow
+    the face; the flat outline shape had cut chords through the cheeks. A closed smile is a lip
+    line with the lower lip under it.
+  - *Stephan's hair*: 260 short cones, 1.3–2.1 cm each at his scale, leaning up and slightly
+    forward, salt-and-pepper, over the crown and front and kept off the forehead, ears and nape.
+    They are short on purpose: the first tall tufts, days ago, read as punk.
 
 ## 28 Sep 2026 — Voxxy's route is not everybody's route, and the ending stops freezing
 

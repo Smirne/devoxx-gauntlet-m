@@ -95,6 +95,10 @@ export interface GaitParams {
   dt: number;
   /** Droid riding Biggy: legs tuck, no stepping. */
   mounted?: boolean;
+  /** Walking backwards (moving against `heading`): the step cycle runs in reverse. */
+  backward?: boolean;
+  /** Carrying a rider (Biggy under Droid): the body bobs, sways and leans far less. */
+  laden?: boolean;
   /** Set to fire a one-shot pose. Edge triggered: hold it or clear it, either works. */
   pose?: PoseName | null;
   /**
@@ -690,12 +694,17 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
   /* ------------------------------------------- pelvis (before the legs) */
   // Everything that moves the body must happen before the IK, so the IK can
   // absorb it and leave the feet where they were planted.
-  const bob = -BOB_M * p.bob * (0.5 - 0.5 * Math.cos(st.phase * TAU * 2)) * moving;
-  const lean = LEAN_RAD_PER_MPS * p.lean * v + clamp(st.accel * p.accelLean, -0.32, 0.32);
+  // A rider sits at a fixed height over Biggy, so his full bounce under Droid
+  // read as a trampoline (Michele, 28 Sep: "biggy should be less bouncy when
+  // droid's on top"). Laden, he plods: a quarter of the bob and sway.
+  const calm = params.laden ? 0.25 : 1;
+  const bob = -BOB_M * p.bob * (0.5 - 0.5 * Math.cos(st.phase * TAU * 2)) * moving * calm;
+  const back = params.backward ? -1 : 1;
+  const lean = (back * LEAN_RAD_PER_MPS * p.lean * v + clamp(st.accel * p.accelLean, -0.32, 0.32)) * (params.laden ? 0.4 : 1);
   pelvis.position.y += bob - crouch;
   pelvis.rotation.x += clamp(lean, -0.45, 0.45);
-  pelvis.rotation.z += Math.sin(st.phase * TAU) * p.sway * moving;
-  pelvis.rotation.y += -Math.sin(st.phase * TAU) * p.twist * moving;
+  pelvis.rotation.z += Math.sin(st.phase * TAU) * p.sway * moving * calm;
+  pelvis.rotation.y += -Math.sin(st.phase * TAU) * p.twist * moving * calm;
 
   if (idleAmt > 0.01) applyIdlePelvis(rig, st, idleAmt);
   if (poseName) applyPosePelvis(rig, poseName, e, scale);
@@ -750,7 +759,7 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
   } else {
     const lift = p.lift * smoothstep(0.05, 0.45, v) * scale;
     // Braking slide: only Biggy has a skid worth seeing.
-    const skid = clamp(-st.accel, 0, 40) * p.skid * 0.01;
+    const skid = back > 0 ? clamp(-st.accel, 0, 40) * p.skid * 0.01 : 0;
     for (const side of [0, 1] as const) {
       const u = (st.phase + side * 0.5) % 1;
       let z: number;
@@ -772,7 +781,8 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
         y = lift * Math.sin(Math.PI * kk);
         ankle = 0.45 * (1 - smoothstep(0, 0.35, kk)) - 0.18 * smoothstep(0.6, 1, kk);
       }
-      solveLeg(rig, st, side, z, y, pelvis.rotation.x, ankle);
+      // Backing up mirrors the stride: the planted foot travels forward.
+      solveLeg(rig, st, side, back * z, y, pelvis.rotation.x, ankle);
     }
     if (hopping) applyHopLegs(rig, st, tuck, land);
   }

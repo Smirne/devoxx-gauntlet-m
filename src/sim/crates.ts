@@ -131,7 +131,8 @@ export const crateLoadAccel = (n: number): number => DEFS.biggy.accel * CRATE_AC
  *
  * Always recomputed from `DEFS`, never accumulated, so the numbers cannot drift
  * over a long chapter and `loadBiggy(bg, 0)` gives back the frozen identity to the
- * last bit. This is the only function in the game that writes `mass` or `accel`.
+ * last bit. With `loadDroid` in `letters.ts` (a #DEVOXX letter in his hands, chapter
+ * 4), one of the only two functions in the game that write `mass` or `accel`.
  */
 export function loadBiggy(bg: Bot, n: number): void {
   bg.mass = crateLoadMass(n);

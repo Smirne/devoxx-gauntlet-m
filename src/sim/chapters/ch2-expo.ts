@@ -106,7 +106,7 @@ import {
   TRAVEL_TIME_SCALE,
 } from '../constants';
 import { m } from '../units';
-import { GF, VIEW_GROUND, WIFI_TAG, groundWallsFor, stairLanding } from '../geometry';
+import { CFP_WALL, CFP_WALL_W, GF, VIEW_GROUND, WIFI_TAG, WIFI_TAG_W, groundWallsFor, stairLanding } from '../geometry';
 import { dist, inRect, speed } from '../bot';
 import { buildLights, litBy } from '../lights';
 import type { Bot, LightSource, Mirror, Prop, Task, TextPrompt, Vec2, Wall } from '../types';
@@ -438,9 +438,13 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const landing = stairLanding({ x: shaft.x, y: shaft.y, w: shaft.w, h: shaft.h });
   const foot = landing.x + landing.w;
   const cy = landing.y + landing.h / 2;
-  // Voxxy nearest the foot of the flight — she came down it first — then Droid,
-  // then Biggy back toward the doors, which is the order they will go out in.
-  ctx.place([foot - 14, cy - 8], [foot - 30, cy], [foot - 50, cy + 6]);
+  // As if they had just come down: the flight at their backs, all three facing
+  // west, Voxxy out in front by the doors, then Droid, then Biggy still at the
+  // foot of the stairs. Michele, 28 Sep: "place the robots with the stairs at
+  // their back, like they just finished descending. Voxxy first, near the doors."
+  // Voxxy three steps back from the west wall, so her lamp does not paint a
+  // halo on it at the chapter's first frame (Michele, 28 Sep).
+  ctx.place([foot - 52, cy - 4, Math.PI], [foot - 33, cy + 6, Math.PI], [foot - 14, cy - 2, Math.PI]);
 
   let power = false;
   /**
@@ -704,6 +708,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       w: Math.abs(tipX - hx) + CAB_LEAF_T,
       h: tipY - CAB_FACE_Y + CAB_LEAF_T,
       kind: 'cabinetleaf',
+      flavour: true,
       why: (b) => `${b.name}: that is the cabinet door, standing open. The terminal is between the two of them`,
     };
   });
@@ -853,7 +858,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           'one for everything. That label will be taped inside the lid, up at the top; from Biggy\'s ' +
           'shoulders I could read it'
         : 'Voxxy: <b>AUTHORISATION?</b>, it says — the venue WiFi password. Nobody writes those down. Except ' +
-          'that somebody sprayed it along the top wall of the hall, in orange, and small paint is what I am for') +
+          'that somebody sprayed it on the side of the Legacy Systems stand, in orange, and small paint is what I am for') +
         '. Type it: A–Z, Backspace fixes a slip, Esc steps away',
       4600,
     );
@@ -1018,14 +1023,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         return true;
       }
       if (cable.carrying && dist(b, printerAt) < PLUG_REACH) {
-        cable.carrying = false;
-        cable.taut = false;
-        cable.connected = true;
-        ctx.flash(
-          `Cable in — the run is made (${Math.trunc(cable.len)} of ${CABLE_MAX} px used). ` +
-            'The printer has its wire. Now it wants the other end of it to be awake',
-          3000,
-        );
+        plugIn();
         return true;
       }
       /*
@@ -1044,7 +1042,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         const away = Math.round(dist(b, printerAt) / 12.5);
         ctx.flash(
           `Voxxy: the printer is on the reception desk, ${away} m that way — keep going RIGHT, up the ` +
-            'steps in the hall\'s right-hand wall (the blue sign), then the lit pad on the counter. E there',
+            'steps in the hall\'s right-hand wall (the blue sign), then the lit pad on the counter. It plugs in when I get there',
           4200,
         );
         return true;
@@ -1153,6 +1151,28 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * so it carries `TRAVEL_TIME_SCALE` from the 2026-09-23 rescale like every other
    * one in the file.
    */
+  /**
+   * The run is made: the cable end goes into the printer.
+   *
+   * Automatic on arrival since 28 Sep (Michele: "when reaching the dropzone,
+   * cable should be automatically attached, without pressing E"). The lit pad
+   * already says "here"; making the player also press a key there was a second
+   * instruction for one intention. `E` still does it, for anyone who presses it.
+   * The printer's socket is added as the run's last point, so the drawn cable
+   * ends in the printer rather than wherever Voxxy stopped.
+   */
+  function plugIn(): void {
+    cable.carrying = false;
+    cable.taut = false;
+    cable.connected = true;
+    cable.pts = [...cable.pts, { x: printerAt.x, y: printerAt.y }];
+    ctx.flash(
+      `Cable in — the run is made (${Math.trunc(cable.len)} of ${CABLE_MAX} px used). ` +
+        'The printer has its wire. Now it wants the other end of it to be awake',
+      3000,
+    );
+  }
+
   function stepCable(v: Bot, dt: number): void {
     const last = cable.pts[cable.pts.length - 1];
     const budget = Math.max(0, CABLE_MAX - cable.len);
@@ -1218,6 +1238,44 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * Droid's pool, which is the trait this route is built on, plus a range check
    * because lighting a wall from 22 m away is not reading what is on it either.
    */
+  /*
+   * THE CFP WALL, since 28 Sep 2026 in the hall by registration (it was chapter
+   * 1's; see `CFP_WALL`). Read the way the spray tag is read: Voxxy's cone, not
+   * her skirt, within 5.6 m, one slip every CFP_GAP seconds. Flavour, nothing
+   * gates on it — the conference's own joke about itself.
+   */
+  const cfpAt: Vec2 = { x: CFP_WALL.x, y: CFP_WALL.y };
+  const CFP_READ = 70;
+  const CFP_GAP = 3.5;
+  let cfpNext = 0;
+  let cfpCd = 0;
+  /**
+   * The rejections, in order. Jokes about the shape of a conference programme, not
+   * about a person or a talk that exists: nothing here needs anybody's permission.
+   */
+  const CFP_SLIPS: readonly string[] = [
+    '"Microservices: A Love Story" — <i>we already have three of these.</i>',
+    '"I Rewrote It In Rust" — <i>yes. Everyone did. That is the problem.</i>',
+    '"Kubernetes For Cats" — <i>cats do not scale horizontally.</i>',
+    '"Why Your Tests Are Lying To You" — <i>accepted. Speaker then cancelled.</i>',
+    '"Blockchain For Catering" — <i>no comment was recorded.</i>',
+    '"A Deep Dive Into Tomato Soup" — <i>see the kitchen. They said no too.</i>',
+  ];
+  function stepCfp(cast: LightSource[], dt: number): void {
+    cfpCd = Math.max(0, cfpCd - dt);
+    if (cfpCd > 0) return;
+    const v = ctx.byKind('voxxy');
+    if (dist(v, cfpAt) >= CFP_READ || !litBy(cast.filter((L) => L.skirt !== true), 'voxxy', cfpAt)) return;
+    cfpCd = CFP_GAP;
+    const slip = CFP_SLIPS[cfpNext % CFP_SLIPS.length];
+    ctx.flash(
+      cfpNext === 0 ? `Voxxy: a wall of <b>rejected CFP slips</b>. Somebody pinned every one of them up. ${slip}` : `Voxxy: ${slip}`,
+      4600,
+      true,
+    );
+    cfpNext++;
+  }
+
   function stepPoster(cast: LightSource[]): void {
     const v = ctx.byKind('voxxy');
     router.posterLit =
@@ -1293,6 +1351,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
     const v = ctx.byKind('voxxy');
     if (cable.carrying) stepCable(v, dt);
+    if (cable.carrying && dist(v, printerAt) < PLUG_REACH) plugIn();
 
     /*
      * Walking away from the terminal puts the keyboard back. There is no other way
@@ -1384,6 +1443,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     const cast = buildLights(ctx.bots, ctx.walls, NO_MIRRORS);
     lights = cast;
     stepPoster(cast);
+    stepCfp(cast, dt);
 
     /*
      * THE CURTAIN. Michele: *"when all actions are done, chapter 2 ends
@@ -1754,12 +1814,22 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
        */
       {
         kind: 'poster',
-        x: posterAt.x - 44,
-        y: posterAt.y - 6,
-        w: 88,
-        h: 4,
+        // The paint's own rect, 2..6 px off the wall it is on, facing (nx, ny).
+        ...(WIFI_TAG.nx !== 0
+          ? { x: posterAt.x - WIFI_TAG.nx * 2 - 4 * (WIFI_TAG.nx > 0 ? 1 : 0), y: posterAt.y - WIFI_TAG_W / 2, w: 4, h: WIFI_TAG_W }
+          : { x: posterAt.x - WIFI_TAG_W / 2, y: posterAt.y - WIFI_TAG.ny * 2 - 4 * (WIFI_TAG.ny > 0 ? 1 : 0), w: WIFI_TAG_W, h: 4 }),
         state: router.known ? 'done' : router.posterLit ? 'active' : 'idle',
         label: router.known ? 'the wall: DevoxxForever' : 'spray tag — wifi symbol, unreadable (Voxxy\u2019s beam)',
+      },
+      // After the tag: `find('poster')` means the tag everywhere else.
+      {
+        kind: 'poster',
+        x: CFP_WALL.x - CFP_WALL_W / 2,
+        y: CFP_WALL.y - 6,
+        w: CFP_WALL_W,
+        h: 4,
+        state: cfpNext > 0 ? 'done' : 'idle',
+        label: 'CFP · REJECTED',
       },
       {
         kind: 'cable',

@@ -158,27 +158,47 @@ describe('chapter 4, driven on one stick', () => {
     legs.push(['Voxxy · four spotlights, two aisles', clock.t - t0]);
 
     /*
-     * DROID hangs the banner: a hook at each end of the front wall. Once he is
-     * past the first row the front of the room is open floor, so the cost is one
-     * aisle and then the width of the room, twice.
+     * DROID finishes the #DEVOXX sign (`src/sim/letters.ts`): the O and both X's
+     * lean in one stash against the east wing's back wall, and each goes into
+     * its own gap at the back of the stage. Up the east aisle, across the front
+     * strip into the wing, then three carries — round the FRONT of Stephan and the
+     * speaker, who stand beside the sign and are bodies, not scenery.
      *
-     * (His task is being reworked in another session; what is measured here is
-     * the WALK, which is the part that costs the time whatever the task becomes.)
+     * (It was a hook at each end of the room until 28 Sep; the swap was measured
+     * here as well as in `tests/letters.test.ts`, and it is the one leg that grew.)
      */
     t0 = clock.t;
-    walkTo(g, clock, 'droid', { x: aisleX[0], y: backY }, 10);
-    walkTo(g, clock, 'droid', { x: aisleX[0], y: frontY }, 10);
-    for (const h of props(g, 'banner-hook')) {
-      // Under the hook, not merely level with it: `HOOK_REACH` is 45 px and the
-      // front strip is 38 of those away, so stopping at the strip's own line
-      // misses the reach by a pixel and a half.
-      const at = { x: h.x + (h.w ?? 0) / 2, y: h.y + (h.h ?? 0) / 2 + 24 };
-      walkTo(g, clock, 'droid', at, 14);
+    const droidR = bot(g, 'droid').r;
+    const hosts = g.snapshot().people.filter((p) => p.role === 'stephan' || p.role === 'speaker');
+    /** The lane in front of the two of them, clear of both. */
+    const laneY = Math.max(...hosts.map((p) => p.y + p.r)) + droidR + 8;
+    const hostX0 = Math.min(...hosts.map((p) => p.x - p.r)) - droidR - 8;
+    const hostX1 = Math.max(...hosts.map((p) => p.x + p.r)) + droidR + 8;
+    walkTo(g, clock, 'droid', { x: aisleX[1], y: backY }, 10);
+    walkTo(g, clock, 'droid', { x: aisleX[1], y: frontY }, 10);
+    for (let n = 0; n < 3; n++) {
+      const d = bot(g, 'droid');
+      const leaning = props(g, 'letter')
+        .filter((p) => p.state === 'idle')
+        .sort((a, b) => Math.hypot(mid(a).x - d.x, mid(a).y - d.y) - Math.hypot(mid(b).x - d.x, mid(b).y - d.y));
+      const l = leaning[0];
+      // They lean face out, so he lifts from in front of it.
+      walkTo(g, clock, 'droid', { x: hostX1, y: laneY }, 10);
+      walkTo(g, clock, 'droid', { x: mid(l).x, y: l.y + (l.h ?? 0) + droidR + 3 }, 5);
       g.key('KeyE');
       clock.step(g);
+      expect(key(g).carrying, `Droid did not lift the ${l.label}`).toBe(l.v);
+      const gap = props(g, 'letter-slot').find((p) => p.v === l.v);
+      expect(gap, `no gap for the ${l.label}`).toBeDefined();
+      walkTo(g, clock, 'droid', { x: hostX1, y: laneY }, 10);
+      walkTo(g, clock, 'droid', { x: Math.min(mid(gap!).x, hostX0), y: laneY }, 10);
+      walkTo(g, clock, 'droid', { x: mid(gap!).x, y: gap!.y + (gap!.h ?? 0) + droidR + 3 }, 6);
+      g.key('KeyE');
+      clock.step(g);
+      expect(key(g).carrying, `the ${l.label} did not go into its gap`).toBe(-1);
     }
-    expect(key(g).hooks, 'the banner did not go up').toBe(2);
-    legs.push(['Droid · a hook at each end of the room', clock.t - t0]);
+    expect(key(g).sign, 'the #DEVOXX sign did not go up').toBe('#DEVOXX');
+    legs.push(['Droid · the O and both X\'s, wing to sign', clock.t - t0]);
 
     /*
      * BIGGY shoves the cake in from the corridor and up the left-hand aisle onto
