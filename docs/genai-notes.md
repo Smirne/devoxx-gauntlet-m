@@ -5039,3 +5039,14 @@ have matched the room around them, and would have cost more than the entire rest
   - *Not done.* Stephan and Celestino are caricatured from photos Michele sent the 2.5D session;
     the 3D build has not seen them, and they are asked for again to make the pair recognisable at
     3D distance. `P` stays photo mode in 3D (it is the physics view in 2.5D).
+  - *Stephan, up close.* Michele reposted the photographs: Stephan on stage, and the Devoxx
+    Belgium polo. The shared figure draws him for the 2.5D camera, with glasses as a bar, the mic
+    as a line and the collar as one band. At 3D distance a face shows, so `people3d.ts` adds a
+    close-up layer on the figure the sim marks `stephan`, sized off its own head:
+    - amber tortoiseshell rectangular frames with temples, eyes behind them;
+    - short salt-and-pepper hair, fuller on top; grey stubble on the jaw; a grin;
+    - a skin-coloured headset boom along his left cheek, as in the photo, and a light tan skin;
+    - the polo as photographed: the collar tipped orange / grey / white / grey, orange piping
+      inside the neck, three dark buttons, and DEVOXX embroidered in white on his left chest.
+    The far-camera stand-ins hide while it shows. Celestino is still the 2.5D caricature, waiting
+    on his photo.
