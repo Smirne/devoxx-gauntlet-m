@@ -178,11 +178,25 @@ export const CRATE_AT: Record<RobotKind, { x: number; y: number }> = Object.from
  */
 /** Black, before anything wakes — long enough for the title to have its say. */
 export const LEAD = 1.6;
-/** One robot's whole presentation: lamp, panel, step out, and a beat to be looked at. */
-export const SLOT = 2.9;
+/**
+ * One robot's whole presentation: lamp, panel, step out, and a beat to be looked at.
+ *
+ * ONE BAR OF THE OPENING'S SCORE, at 96 bpm — which is why it is 2.5 and not a
+ * round number of anything else. Michele, 28 Sep, handing over the music he wanted
+ * (the last minute of the conference's own trailer track, a rock anthem at 96 bpm):
+ * *"you can also adapt the animation timing to the music"*. It was 2.9 s, a tempo
+ * of 82.8 bpm that nothing in that track is played at.
+ */
+export const SLOT = 2.5;
 /** Inside a slot, measured from its own start. */
 export const LAMP_EACH = 0.55;
-export const PANEL_DELAY = 0.5;
+/**
+ * The panel lands `PANEL_DELAY + PANEL_EACH` = 1.25 s into the slot: half a bar
+ * after the lamp, so the lamp comes on on beat 3 and the crate front hits the
+ * floor on the downbeat. `SCORES[0]` in `src/render/music.ts` puts its bar lines
+ * there, and `tests/music.test.ts` holds the two together.
+ */
+export const PANEL_DELAY = 0.55;
 export const PANEL_EACH = 0.7;
 export const STEP_DELAY = 1.25;
 /**
@@ -209,8 +223,15 @@ export const STEP_TIME = (['voxxy', 'droid', 'biggy'] as const).reduce((worst, k
   const d = Math.hypot(to.x - from.x, to.y - from.y);
   return Math.max(worst, (d * STEP_PEAK * STEP_MARGIN) / DEFS[kind].max);
 }, 0.6);
-/** Everyone is out and standing: the beat before the game takes the screen. */
-export const HOLD = 0.8;
+/**
+ * Everyone is out and standing: the beat before the game takes the screen.
+ *
+ * Derived, so the walk starts on the downbeat one bar after Biggy's crate lands —
+ * the bar his crate opens is the score's drop, and the next downbeat is where the
+ * band lands on the tonic and the emergency light starts to go. About 1.37 s,
+ * which is also long enough for his roll to finish in shot.
+ */
+export const HOLD = SLOT + PANEL_DELAY + PANEL_EACH - STEP_DELAY - STEP_TIME;
 /** When the last robot has finished, and the one transition begins. */
 export const WALK_AT = LEAD + SLOT * 2 + STEP_DELAY + STEP_TIME + HOLD;
 
@@ -232,8 +253,8 @@ export const WALK_AT = LEAD + SLOT * 2 + STEP_DELAY + STEP_TIME + HOLD;
  *
  * The two numbers are durations, like every other number in this file.
  */
-/** The tube stuttering out: strikes, half-recoveries, gone. */
-export const FLICKER_TIME = 1.05;
+/** The tube stuttering out: strikes, half-recoveries, gone. Two beats of the score. */
+export const FLICKER_TIME = 1.25;
 /** Dark, with only their own lamps on — the game's own look, before it starts. */
 export const DARK_HOLD = 0.75;
 /** When the opening is actually over and the chapter takes the keyboard. */
@@ -247,12 +268,17 @@ export const OVER_AT = WALK_AT + FLICKER_TIME + DARK_HOLD;
  * every run — the opening is a presentation and a presentation that is different
  * each time cannot be cut to. The last window runs to the end, which is the one
  * it does not come back from.
+ *
+ * In eighths of the flicker, which are sixteenth notes of the score: the band
+ * cuts out with the light (`gates` in `src/render/music.ts`), so the strikes are
+ * on its grid. Same shape as before (short, longer, short, gone), each a
+ * sixteenth or so later.
  */
-const STRIKES: ReadonlyArray<readonly [number, number]> = [
-  [0.08, 0.15],
-  [0.27, 0.38],
-  [0.49, 0.56],
-  [0.63, 1],
+export const STRIKES: ReadonlyArray<readonly [number, number]> = [
+  [1 / 8, 1.5 / 8],
+  [3 / 8, 4 / 8],
+  [5 / 8, 5.5 / 8],
+  [6 / 8, 1],
 ];
 
 /**
