@@ -5266,3 +5266,65 @@ have matched the room around them, and would have cost more than the entire rest
   - *Stephan's hair*: 260 short cones, 1.3–2.1 cm each at his scale, leaning up and slightly
     forward, salt-and-pepper, over the crown and front and kept off the forehead, ears and nape.
     They are short on purpose: the first tall tufts, days ago, read as punk.
+
+
+## 28 Sep 2026 — the intro's soundtrack, from the conference's own track
+
+- *The ask.* Michele uploaded the MP3 of the Devoxx Belgium 2026 ticket trailer: "The part from
+  2.30 is what I'm looking for (vocal excluded). Can we use this (it's generated too!) or create
+  something similar? It should fit also with crate opening and current sounds (but you can also
+  adapt the animation timing to the music)."
+- *Rejected: shipping the file.* CLAUDE.md forbids audio assets, and the repo is MIT: putting the
+  track in it would mean licensing Devoxx's audio, AI-generated or not, which is "something that
+  needs permission". So the file was analysed, and the score was written from scratch to match
+  what the analysis measured. No note of its melody is used.
+- *Rejected: stem separation.* Demucs could have split the vocals off for a cleaner analysis, but
+  its model host is blocked by the build container's network policy. The analysis used plain signal
+  processing instead (librosa, scipy), which was enough.
+- *What the analysis found.* 95.75 bpm in four, with driving eighths; standard tuning; G
+  mixolydian (a G major with an F natural: spectral peaks on a 49 Hz sub G, stacked G/D/B, and
+  F); a two-bar riff that sits on G and dips to F; snare on 2 and 4 over a pushed kick. The
+  section from 2:30 is a build and a drop: a bar of eighth-note kicks, then a bar where the kick
+  drops out under a sixteenth-note snare roll, then everything on the downbeat at 2:34.6. It ends
+  with the highs cut and a last low hit.
+- *The bug under every "too ambient".* The opening's own score had never played. The opening runs
+  on top of chapter 1, so `snap.chapter` reads 1 under the crates, and the cues picked the score
+  from it. Every intro Michele heard was chapter 1's quiet night score, and both the percussive
+  and the rock rewrites were written and never heard. `scoreFor()` in `cues.ts` now picks score 0
+  while the opening runs, in both pages. A test walks a real game through its opening and checks
+  which scores get asked for, and when.
+- *An offline renderer* (`tools/render-audio/`): the real sim, cues and audio code on an
+  `OfflineAudioContext` in headless Chromium, stepped frame by frame. Its timers run on the render's
+  own clock, so any machine renders the same file. Michele asked "can you extract the current track
+  so i can listen to it?" and got three renders: the intro as shipped, the unheard rock score in
+  the same mix, and the rock score alone. It also measured why the rock score would have been
+  buried anyway: -35.6 LUFS, under chapter 1's room hum at -32. His verdict on the rock version:
+  "a little better, but we can do more."
+- *Timing adapted to the music, as he offered.* `SLOT` 2.9 s became 2.5 s, one bar at 96 bpm.
+  `PANEL_DELAY` 0.5 became 0.55, so a lamp comes on on beat 3 and its crate front lands on the
+  downbeat. `HOLD` is now derived, so the walk starts on the next downbeat. The flicker became
+  1.25 s (two beats), with its strikes on sixteenths. The opening is 12.35 s (was 12.38).
+- *The score.* One bar per robot:
+  - title: a boom and a swell;
+  - Voxxy: the groove arrives;
+  - Droid: the build, on F;
+  - Biggy: his crate is the drop, with a wall of double-tracked guitars, a sub, and a new hook;
+  - the walk: home on G.
+
+  The crate booms stay cues, and the score leaves its kick off those three downbeats, so the crate
+  is the kick. The music then cuts out exactly while the emergency light does (its gates are the
+  light's own strikes), and on the strike the light does not come back from, the band loses its
+  power in a tape-stop dive. New voices: rock kick, open hat, toms, lead guitar, riser,
+  reverse-cymbal swell, the dive. A generated reverb room, stereo placement, and held envelopes
+  so a power chord is a wall, not a pluck.
+- *Measured, not heard.* The rendered booms land within 12 ms of the score's downbeats, and the
+  gates fall exactly inside the light's dark windows. The loudness climbs from -34.5 to -33.0,
+  -30.7 and -26.9 LUFS (title, Voxxy, Droid, drop), against -35.6 for the old score. The loudest
+  instant is 0.2375 of full scale, inside the test's quarter-scale budget. Against the reference,
+  the drop is still about 3 dB lighter in the sub and 10 dB heavier in the mids. That was kept on
+  purpose, because most people will hear it on laptop speakers, which have no sub. Michele's ear
+  decides.
+- *Tests.* The "builds up when it says it does" check is now per part: it is stricter, and it
+  understands parts that leave. New checks: crates land on downbeats, the walk starts on a
+  downbeat, the gates cut only while the light is out, the dive starts on the light's death, the
+  score plays once, and which score the game asks for.

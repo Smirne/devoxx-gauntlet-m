@@ -23,10 +23,28 @@ import { STEP_FREQ_BASE, STEP_FREQ_PER_MPS, gaitSpeed } from './robots';
 const BADGES = 6;
 const BADGE_EVERY = 1.1;
 
+/**
+ * Which score the frame should be playing: the opening's own (0) while the
+ * crates are on screen, the chapter's after it, and nothing on a title card.
+ *
+ * Not `snap.chapter`. The opening runs ON TOP of chapter 1 (`startOpening()` in
+ * `src/sim/game.ts` starts the chapter underneath it), so `snap.chapter` reads 1
+ * from the first frame of the crates. The score used to be picked from it, and
+ * the opening's own score was never heard once: every intro Michele played was
+ * chapter 1's ambient night score, which is exactly what he kept calling "too
+ * ambient for the intro" — and two rewrites went into a score nobody could hear.
+ */
+export function scoreFor(snap: GameSnapshot): number {
+  if (snap.opening) return 0;
+  return snap.chapter >= 1 ? snap.chapter : -1;
+}
+
 /** Build a per-frame cue player bound to one `Audio`. */
 export function createCues(audio: Audio): (snap: GameSnapshot, dt: number) => void {
   const stepPhase: Record<RobotKind, number> = { voxxy: 0, droid: 0, biggy: 0 };
   let ambientChapter = -1;
+  /** The score last asked for; see `scoreFor`. */
+  let score = -2;
   let lastPhase = '';
   /** Last frame's fall progress on chapter 1's jammed door, so the crash plays once. */
   let lastBreak = 0;
@@ -281,8 +299,13 @@ export function createCues(audio: Audio): (snap: GameSnapshot, dt: number) => vo
       lastBreakerV = 0;
       lastPilot = '';
       audio.setAmbient(snap.chapter);
-      audio.setMusic(snap.chapter);
       if (snap.chapter > 1) audio.play('transition');
+    }
+    // Its own edge, not the chapter's: the opening and chapter 1 share a chapter
+    // number and not a score.
+    if (scoreFor(snap) !== score) {
+      score = scoreFor(snap);
+      audio.setMusic(score);
     }
     if (snap.phase !== lastPhase) {
       if (snap.phase === 'done') audio.play('victory');
