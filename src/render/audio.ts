@@ -30,6 +30,12 @@ export type SoundId =
   /** A door that does break: the jammed cinema door, the store's roller door. */
   | 'crash'
   /**
+   * A crate front hitting the floor in the opening — the boom Michele asked for
+   * (28 Sep: "Crates open: boom"). A sub drop under a flat plywood slap and a
+   * cloud of dust. `intensity` scales it: Voxxy's crate is the small one.
+   */
+  | 'crate'
+  /**
    * A door that opens because it was asked nicely: chapter 1's fire door.
    *
    * The counterpart to `crash`, and deliberately its opposite in shape. `crash` is
@@ -488,6 +494,14 @@ export function createAudio(): Audio {
         playAt('door', t0, g, 1, undefined);
         noise({ t0: t0 + 0.02, dur: 0.5, peak: 0.09 * g, attack: 0.006, filter: { type: 'bandpass', f: 1900, q: 0.9 } });
         noise({ t0: t0 + 0.08, dur: 0.9, peak: 0.055 * g, attack: 0.02, filter: { type: 'lowpass', f: 900, f1: 260 } });
+        break;
+      }
+      case 'crate': {
+        const k = 0.6 + 0.4 * clamp(inten, 0, 1);
+        tone({ type: 'sine', f0: 92, f1: 34, t0, dur: 1.1, peak: 0.34 * g * k, attack: 0.004 });
+        tone({ type: 'triangle', f0: 180, f1: 70, t0, dur: 0.18, peak: 0.12 * g * k, attack: 0.002 });
+        noise({ t0, dur: 0.12, peak: 0.16 * g * k, attack: 0.002, filter: { type: 'bandpass', f: 1300, q: 0.8 } });
+        noise({ t0: t0 + 0.05, dur: 1.2, peak: 0.05 * g * k, attack: 0.08, filter: { type: 'lowpass', f: 700, f1: 180 } });
         break;
       }
       case 'door-open': {

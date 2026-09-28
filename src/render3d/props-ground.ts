@@ -14,7 +14,7 @@
 
 import * as THREE from 'three';
 
-import { GF } from '../sim/geometry';
+import { GF, groundWallsFor } from '../sim/geometry';
 import type { Prop } from '../sim/types';
 import { ROBOT_HEIGHT_M, m } from '../sim/units';
 
@@ -224,11 +224,25 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
           f.position.z = yaw === 0 ? 0.01 : -0.01;
           panel.add(f);
         }
-        panel.position.set(cx, base + 2.3, cz);
-        if (!along) panel.rotation.y = Math.PI / 2;
-        const post = new THREE.Mesh(box(0.06, 1.9, 0.06, V(cx, base + 0.95, cz)), mats.steel);
-        const rim = new THREE.Mesh(new THREE.BoxGeometry(along ? 1.66 : 0.04, 0.05, along ? 0.04 : 1.66), glowMat());
-        rim.position.set(cx, base + 2.73, cz);
+        // Against a wall, a flat panel parallel to it sank half into the wall's
+        // thickness (Michele, 28 Sep: "sign is hidden in the wall"). There it is
+        // a blade instead: square to the wall, its near edge clear of it.
+        const wallAt = (dx: number, dz: number): boolean =>
+          groundWallsFor(2).some((wl) => !wl.low && !wl.hidden && p.x + dx * 22 < wl.x + wl.w && p.x + pw + dx * 22 > wl.x && p.y + dz * 22 < wl.y + wl.h && p.y + ph + dz * 22 > wl.y);
+        const blade = !along ? (wallAt(-1, 0) ? 1 : wallAt(1, 0) ? -1 : 0) : wallAt(0, -1) ? 1 : wallAt(0, 1) ? -1 : 0;
+        let sx = cx;
+        let sz = cz;
+        let sideways = !along;
+        if (blade) {
+          sideways = along;
+          if (!along) sx += blade * 0.85;
+          else sz += blade * 0.85;
+        }
+        panel.position.set(sx, base + 2.3, sz);
+        if (sideways) panel.rotation.y = Math.PI / 2;
+        const post = new THREE.Mesh(box(0.06, 1.9, 0.06, V(sx, base + 0.95, sz)), mats.steel);
+        const rim = new THREE.Mesh(new THREE.BoxGeometry(!sideways ? 1.66 : 0.04, 0.05, !sideways ? 0.04 : 1.66), glowMat());
+        rim.position.set(sx, base + 2.73, sz);
         g.add(panel, post, rim);
         g.userData = { rim };
         return g;

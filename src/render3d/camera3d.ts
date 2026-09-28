@@ -7,8 +7,8 @@
  * the pivot to the wanted position stops it at the first wall, ceiling or door,
  * so it never sees through the building.
  *
- * WASD are camera-relative: `stick()` turns "forward" into the sim's own axes.
- * That is input mapping, not game logic — the sim still gets a plain stick.
+ * WASD steer the robot's own heading (`pushStick` in main3d.ts); only the first
+ * W from standing reads the camera's yaw.
  */
 
 import * as THREE from 'three';
@@ -86,15 +86,6 @@ export class ThirdPersonCamera {
     this.snapNext = true;
   }
 
-  /** Camera-relative stick -> sim stick (sim +x right, +y down = world +z). */
-  stick(fwd: number, strafe: number): [number, number] {
-    const fx = -Math.sin(this.yaw);
-    const fz = -Math.cos(this.yaw);
-    const rx = Math.cos(this.yaw);
-    const rz = -Math.sin(this.yaw);
-    return [fx * fwd + rx * strafe, fz * fwd + rz * strafe];
-  }
-
   update(dt: number, kind: RobotKind, robotPos: THREE.Vector3, heading: number, speed: number, colliders: THREE.Object3D[]): void {
     this.time += dt;
     const cam = this.camera;
@@ -122,21 +113,18 @@ export class ThirdPersonCamera {
     const k = this.snapNext ? 1 : 1 - Math.exp(-dt * (switched ? 3 : 9));
     this.pivot.lerp(target, k);
 
-    // Drift behind the robot when it runs FORWARD and the mouse is idle. Not
-    // while it strafes or backs up: the stick is camera-relative, so a camera
-    // that swings behind a strafing robot turns "right" with it and the robot
-    // runs in circles (caught in the scripted playtest, 2026-09-23).
+    // Drift behind the robot whenever it moves and the mouse is idle. It used
+    // to follow only a robot heading within ~55° of the view: the stick was
+    // camera-relative then, and a camera chasing a strafing robot turned its
+    // own "right" and ran it in circles (scripted playtest, 2026-09-23). The
+    // stick steers the robot's heading now (`pushStick` in main3d.ts), so the
+    // camera can always follow — the cone was what lost Michele's view when he
+    // turned while walking (28 Sep).
     if (speed > 0.3 && this.time - this.lastUser > 1.2) {
-      const hx = Math.cos(heading);
-      const hz = Math.sin(heading);
-      const fx = -Math.sin(this.yaw);
-      const fz = -Math.cos(this.yaw);
-      if (hx * fx + hz * fz > 0.55) {
-        const want = Math.atan2(-hx, -hz);
-        let d = want - this.yaw;
-        d = Math.atan2(Math.sin(d), Math.cos(d));
-        this.yaw += d * Math.min(1, dt * 1.6 * Math.min(1, speed / 2));
-      }
+      const want = Math.atan2(-Math.cos(heading), -Math.sin(heading));
+      let d = want - this.yaw;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      this.yaw += d * Math.min(1, dt * 2.4 * Math.min(1, speed / 1.5));
     }
 
     if (this.settlePitch !== null && speed > 0.3) {

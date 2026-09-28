@@ -602,6 +602,26 @@ export function createProps(parent: THREE.Object3D, mats: Materials, floor: 'fir
       volumePoints.push(...staticPoints);
       for (const c of snap.clues) {
         let co = clueObjs.get(c.slot);
+        if (co && co.digitText !== String(c.digit)) {
+          // A new run of the chapter drew new digits for the same slots. The
+          // object was keyed by slot and kept its old digit, so the kiosk read
+          // 5 while the keypad wanted 4 (Michele, 28 Sep). Swap the digit; the
+          // light stays, because the light pool has already taken it.
+          const fresh = clueObj(c);
+          fresh.root.removeFromParent();
+          for (const o of [co.digit, co.tag]) co.root.remove(o);
+          co.digit = fresh.digit;
+          co.tag = fresh.tag;
+          co.root.add(co.digit, co.tag);
+          co.digitText = fresh.digitText;
+          co.solved = false;
+          co.light.visible = false;
+          const dm = co.decal.material as THREE.MeshStandardMaterial;
+          dm.alphaMap = stencil;
+          dm.color.set(0xd8d2c0);
+          dm.emissive.setRGB(0.55, 0.52, 0.45);
+          dm.needsUpdate = true;
+        }
         if (!co) {
           co = clueObj(c);
           clueObjs.set(c.slot, co);
@@ -649,7 +669,9 @@ export function createProps(parent: THREE.Object3D, mats: Materials, floor: 'fir
             co.decal.rotation.set(-Math.PI / 2, 0, Math.atan2(-dx, -dz));
           }
           co.digit.position.y = 1.2 + Math.sin(t * 1.5 + c.slot) * 0.05;
-          co.digit.rotation.y = t * 0.9 + c.slot;
+          // Faces the camera and sways, never turns its back: a solid digit
+          // seen from behind is mirrored, and a mirrored 5 reads as a 2.
+          co.digit.rotation.y = co.tag.rotation.y + Math.sin(t * 0.9 + c.slot) * 0.6;
           volumePoints.push({ position: co.root.position.clone().setY(1.3), color: co.mix.clone().multiplyScalar(1.2), range: 3.5 });
         }
       }

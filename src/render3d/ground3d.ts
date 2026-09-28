@@ -16,12 +16,14 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-import { GF, groundPlates, groundRiseM, groundWallsFor } from '../sim/geometry';
+import { GF, MAIN_STAIR_TOP_M, groundPlates, groundRiseM, groundWallsFor, stairDoors, stairMidLanding, stairRamps } from '../sim/geometry';
+import { DOOR_H, stairFlight } from '../render/venue/props';
 import type { Plate, Wall } from '../sim/types';
 import { m } from '../sim/units';
 
 import type { Materials } from './materials';
 import { box } from './materials';
+import { exitSign } from './signs';
 import type { VolumePoint } from './pipeline';
 
 const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z);
@@ -92,10 +94,14 @@ function styleOf(w: Wall, mats: Materials, concrete: THREE.Material): { h: numbe
     case 'column':
     case 'lobby-column':
       return { h: HALL_H, mat: concrete };
+    // The shafts go to the roof: the flight inside climbs out of sight.
     case 'stairwell':
     case 'stairwell-near':
+      return { h: HALL_H, mat: concrete };
+    // The foot of the flight is the flight itself, drawn by `shafts` — as a wall
+    // it stood a blank slab where the stairs should go up (Michele, 28 Sep).
     case 'stair-foot':
-      return { h: 3.6, mat: concrete };
+      return null;
     case 'rack':
       return { h: 2.1, mat: mats.darkMetal };
     case 'store-wall':
@@ -131,6 +137,70 @@ function stepsFor(b: Buckets, p: Plate, mat: THREE.Material, n: number): void {
       b.add(mat, box(m(p.w), h, m(sh), V(m(p.x + p.w / 2), h / 2, m(p.y + sh * (i + 0.5)))));
     }
   }
+}
+
+/**
+ * Inside the two secondary stair shafts: the flight, and both doorways.
+ *
+ * The same staircase the 2.5D build draws (`staircases` in
+ * `src/render/venue/ground.ts`), from the same sim rects: two ramps climbing
+ * east with the half-landing between them, the climb split by run so the
+ * landing is level, up to `MAIN_STAIR_TOP_M`, where a slab of the floor above
+ * swallows it. Each doorway gets a lintel, two leaves stood open against its
+ * jambs, and a green exit plate. Returns what the camera must not pass through.
+ */
+function shafts(group: THREE.Group, mats: Materials, concrete: THREE.Material): THREE.Object3D[] {
+  const out: THREE.Object3D[] = [];
+  const rise = MAIN_STAIR_TOP_M;
+  const dress = new Buckets();
+  const exitPlate = new THREE.MeshBasicMaterial({ map: exitSign(), color: new THREE.Color(1, 1, 1).multiplyScalar(2.5), toneMapped: false });
+  for (const s of GF.stairs) {
+    const rect = { x: s.x, y: s.y, w: s.w, h: s.h };
+    const [lower, upper] = stairRamps(rect);
+    const mid = stairMidLanding(rect);
+    const midY = (rise * lower.w) / (lower.w + upper.w);
+    const flight = new THREE.Group();
+    flight.position.y = midY;
+    for (const [r, y0, y1] of [
+      [lower, 0, -midY],
+      [upper, rise - midY, 0],
+    ] as const) {
+      flight.add(
+        stairFlight({
+          rect: r,
+          topY: y0,
+          bottomY: y1,
+          dir: '-x',
+          steps: Math.max(3, Math.round((r.w / (lower.w + upper.w)) * 26)),
+          tread: mats.terrazzo,
+          nosing: mats.steel,
+          runs: 2,
+          rail: mats.steel,
+        }),
+      );
+    }
+    group.add(flight);
+    out.push(flight);
+    // The half-landing, and the floor above over the top of the upper ramp.
+    dress.add(mats.terrazzo, box(m(mid.w), 0.2, m(mid.h), V(m(mid.x + mid.w / 2), midY - 0.1, m(mid.y + mid.h / 2))));
+    const over = upper.w * 0.55;
+    dress.add(concrete, box(m(over), 0.4, m(upper.h), V(m(upper.x + upper.w - over / 2), rise + 2.1, m(upper.y + upper.h / 2))));
+    for (const [d, out1] of stairDoors(rect).map((d, i) => [d, i === 0 ? -1 : 1] as const)) {
+      // Lintel over the opening, up to the roof.
+      dress.add(concrete, box(m(d.w), HALL_H - DOOR_H, m(d.h), V(m(d.x + d.w / 2), DOOR_H + (HALL_H - DOOR_H) / 2, m(d.y + d.h / 2))));
+      // Two leaves swung wide open, square to the wall at each jamb.
+      const face = m(out1 < 0 ? d.y : d.y + d.h);
+      for (const lx of [d.x + 0.6, d.x + d.w - 0.6]) {
+        dress.add(mats.darkMetal, box(0.05, DOOR_H - 0.05, m(15), V(m(lx), DOOR_H / 2, face + out1 * m(7.5))));
+      }
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.22), exitPlate);
+      sign.position.set(m(d.x + d.w / 2), DOOR_H + 0.25, m(out1 < 0 ? d.y : d.y + d.h) + out1 * 0.03);
+      if (out1 < 0) sign.rotation.y = Math.PI;
+      group.add(sign);
+    }
+  }
+  out.push(...dress.build(group));
+  return out;
 }
 
 export function buildGround(mats: Materials): Ground3D {
@@ -186,6 +256,7 @@ export function buildGround(mats: Materials): Ground3D {
     solid.add(s.mat, box(m(w.w), s.h, m(w.h), V(m(w.x + w.w / 2), base + s.h / 2, m(w.y + w.h / 2)), 2.5));
   }
   colliders.push(...solid.build(group));
+  colliders.push(...shafts(group, mats, concrete));
   // What chapter 3 has as plain walls and chapter 2 draws as moving props.
   const later = new THREE.Group();
   group.add(later);

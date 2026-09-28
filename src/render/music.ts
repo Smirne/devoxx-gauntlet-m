@@ -24,13 +24,15 @@
  * and disposing of it is one disconnect.
  */
 
+import { LEAD, SLOT } from '../sim/opening';
+
 /* ============================================================ the score ===== */
 
 /**
  * The instruments. The first four are pitched and read the bar's chord; the last
- * four are drums, have no pitch, and exist only where a chapter wants a pulse.
+ * five are drums, have no pitch, and exist only where a chapter wants a pulse.
  */
-export type VoiceName = 'pad' | 'bell' | 'pluck' | 'bass' | 'kick' | 'hat' | 'shaker' | 'rim';
+export type VoiceName = 'pad' | 'bell' | 'pluck' | 'bass' | 'kick' | 'hat' | 'shaker' | 'rim' | 'snare';
 
 /** Which voices take a MIDI note. Everything else is a drum and carries `midi: -1`. */
 export const PITCHED: ReadonlySet<VoiceName> = new Set<VoiceName>(['pad', 'bell', 'pluck', 'bass']);
@@ -80,6 +82,11 @@ export interface Score {
   /** One chord per bar, low note first, as MIDI numbers. The loop is this long. */
   readonly chords: readonly (readonly number[])[];
   readonly parts: readonly Part[];
+  /**
+   * Seconds from the cue to bar 0, when the score has to land on a clock of the
+   * scene's (the opening's first robot). Otherwise it starts after the crossfade.
+   */
+  readonly lead?: number;
 }
 
 /** A natural minor scale from A, and a major scale from C — the only two in the game. */
@@ -234,24 +241,47 @@ const KEYNOTE: Score = {
  * C, G — the chapter 2 climb reordered to fall back to the tonic every loop, so
  * it hands over to chapter 1's unresolved night without a jolt.
  */
+/**
+ * The opening — three crates, three robots, one light that gives out.
+ *
+ * Michele, 28 Sep: *"should be more captivating, rhythmic, percussions, and on par
+ * with the scenes. Crates open: boom."* So the tempo is the scene's, not a nice
+ * number: one bar is exactly one robot's `SLOT`, and `lead` puts bar 0 on the
+ * first slot's start, so every downbeat is a crate waking. The boom itself is a
+ * cue (`crate` in `audio.ts`), fired by the panel actually landing — a cue always
+ * lands on its frame, a note only on its beat.
+ *
+ * The kit arrives with the robots. Voxxy: a heartbeat under a ticking hat.
+ * Droid: the backbeat and a shaker. Biggy: four on the floor, the arpeggio in
+ * sixteenths, a snare fill into the walk. Then the bell over the pull-back while
+ * the light dies, and chapter 1's score takes over in the dark.
+ */
 const OPENING: Score = {
-  bpm: 92,
+  bpm: 240 / SLOT,
+  lead: LEAD,
   tonic: 9,
   scale: A_MINOR,
   chords: [
     [45, 57, 60, 64], // Am
     [41, 57, 60, 65], // F
-    [48, 55, 60, 64], // C
     [43, 55, 59, 62], // G
+    [45, 57, 60, 64], // Am
+    [40, 55, 59, 64], // Em
   ],
   parts: [
-    { voice: 'pad', gain: 0.075, steps: on([0], 2), len: 15 },
-    { voice: 'bass', gain: 0.15, steps: on([0, 2, 4, 6, 8, 10, 12, 14], 0), len: 1, shift: -12 },
-    { voice: 'pluck', gain: 0.075, steps: seq([0, 1, 2, 3, 2, 1, 0, 2], 2, 0), len: 2 },
-    { voice: 'kick', gain: 0.42, steps: on([0, 4, 8, 12], 1), len: 1, from: 1 },
-    { voice: 'hat', gain: 0.1, steps: on([2, 6, 10, 14], 1), len: 1, from: 2 },
-    { voice: 'rim', gain: 0.14, steps: on([4, 12], 1), len: 1, from: 2 },
-    { voice: 'bell', gain: 0.07, steps: seq([3, 4, 3, 2], 4, 2), len: 3, from: 3 },
+    { voice: 'pad', gain: 0.07, steps: on([0], 2), len: 15 },
+    // Heartbeat, then the floor.
+    { voice: 'kick', gain: 0.5, steps: on([0, 3], 1), len: 1 },
+    { voice: 'kick', gain: 0.46, steps: on([8, 11], 1), len: 1, from: 1 },
+    { voice: 'kick', gain: 0.42, steps: on([4, 12, 14], 1), len: 1, from: 2 },
+    { voice: 'hat', gain: 0.06, steps: on([0, 2, 4, 6, 8, 10, 12, 14], 1), len: 1 },
+    { voice: 'hat', gain: 0.045, steps: on([1, 3, 5, 7, 9, 11, 13, 15], 1), len: 1, from: 2 },
+    { voice: 'snare', gain: 0.2, steps: on([4, 12], 1), len: 1, from: 1 },
+    { voice: 'snare', gain: 0.12, steps: on([13, 15], 1), len: 1, from: 2 },
+    { voice: 'shaker', gain: 0.05, steps: on([2, 6, 10, 14], 1), len: 1, from: 1 },
+    { voice: 'bass', gain: 0.16, steps: on([0, 3, 6, 8, 11, 14], 0), len: 2, shift: -12 },
+    { voice: 'pluck', gain: 0.06, steps: seq([0, 1, 2, 3, 4, 3, 2, 1, 0, 1, 2, 3, 4, 3, 2, 1], 1, 0), len: 1, from: 2 },
+    { voice: 'bell', gain: 0.07, steps: seq([4, 3, 2, 3], 4, 0), len: 3, from: 3 },
   ],
 };
 
@@ -531,6 +561,17 @@ export function startMusic(ctx: AudioContext, out: AudioNode, noise: AudioBuffer
     noiseHit(t, gain * 0.5, 2400, 1.4, 0.04);
   }
 
+  /** A body tone under a wide noise crack: the opening's backbeat. */
+  function snare(t: number, gain: number): void {
+    if (!dest) return;
+    const o = osc('triangle', 196, t, 0.1);
+    o.frequency.exponentialRampToValueAtTime(150, t + 0.08);
+    const g = env(t, gain * 0.6, 0.001, 0.1);
+    o.connect(g).connect(dest);
+    retire(o, [o, g]);
+    noiseHit(t, gain, 2600, 0.7, 0.16);
+  }
+
   function playNote(n: Note, t: number, stepSecs: number): void {
     const dur = Math.max(0.05, n.len * stepSecs);
     switch (n.voice) {
@@ -557,6 +598,9 @@ export function startMusic(ctx: AudioContext, out: AudioNode, noise: AudioBuffer
         break;
       case 'rim':
         rim(t, n.gain);
+        break;
+      case 'snare':
+        snare(t, n.gain);
         break;
       default:
         break;
@@ -604,7 +648,7 @@ export function startMusic(ctx: AudioContext, out: AudioNode, noise: AudioBuffer
     gain.gain.value = 0.0001;
     gain.connect(out);
     // Start after the outgoing deck has mostly gone, so two keys never overlap.
-    deck = { gain, score, bar: 0, nextBar: ctx.currentTime + FADE * 0.6 };
+    deck = { gain, score, bar: 0, nextBar: ctx.currentTime + (score.lead ?? FADE * 0.6) };
     ramp(gain, muted ? 0 : MUSIC_GAIN, FADE);
     pump();
   }

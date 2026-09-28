@@ -4452,3 +4452,53 @@ ordinary figures with their role colours.
     straight and thin, so the plate lifted robots in some places and left them sunk in others. In
     3D, robots now ignore that plate and stand on the drawn leaf, found by a downward ray against it.
     The 2.5D build keeps the plate.
+- *Second batch, 28 Sep.*
+  - *Splash.* "Could we add the Devoxx logo? And the Antwerp view maybe?", then "could we fit
+    some robot element on the logo? the original is just an inspiration." The press-any-key gate
+    became the splash. Everything is drawn in code, with no asset files and no copy of the real
+    logo. A DEVOXX wordmark is lit the way the conference's opening video lights it: white-hot
+    strokes, with the D and XX filled by a seeded gold pixel mosaic. The O is Voxxy's orange lens,
+    with her ears on top. Under it: Antwerp at night over the Scheldt (the cathedral spire, the
+    Boerentoren, the MAS, Het Steen, and cranes to the north where Kinepolis is), with gold dust
+    drifting up. A canvas shadow blur drew a rectangle behind every letter on the software GL we
+    render with, so the glow is a CSS drop-shadow on the canvas.
+  - *Key mashing.* For 1.5 s after the gate, and for any auto-repeat, keys do not skip the opening.
+  - *Opening score, second pass.* "More captivating, rhythmic, percussions, on par with the
+    scenes. Crates open: boom." The tempo is now the scene's: one bar is exactly one robot's
+    `SLOT` (2.9 s, about 82.8 bpm), and the score starts on the first slot. The kit arrives with
+    the robots: a heartbeat under a ticking hat for Voxxy, backbeat and shaker for Droid, then
+    four on the floor, a sixteenth-note arpeggio and snare fills for Biggy, and a bell over the
+    pull-back. A new `snare` voice. The boom is a cue, not a note (`crate`: a sub drop, a plywood
+    slap and dust), fired when each front actually lands, so it is always on its frame. It is
+    scaled by crate size.
+  - *Clue digits.* "Both show 5 but one is a 4." The sim's first intro frame carries a different
+    draw of digits from the chapter that is actually played. The 3D clue objects were keyed by slot
+    and built on that frame, so they kept the stale digit. They now swap their digit when the
+    sim's changes. The pooled light is kept, because the light pool has already taken it. Probed
+    headless: `6785` on frame 0, `7576` from frame 1.
+  - *Mirrored digit.* A solid digit spinning a full turn reads mirrored from behind, and a
+    mirrored 5 looks like a 2 (the same screenshot). It now faces the camera and sways ±35°, which
+    shows its depth without turning its back.
+  - *Controls, again.* "Sometimes it loses the frontal view, and I didn't change it. Usually when
+    moving and rotating?" Root cause: WASD was camera-relative, so the camera could only follow a
+    robot heading within about 55° of the view; otherwise it would chase its own stick into
+    circles. D while walking pushed the robot out of that cone, and the camera stopped. The stick
+    now steers the robot's own heading: W and S move along it, A and D turn it (in place when
+    standing, steering while moving). Only the first W from standing takes the camera's direction.
+    With the stick independent of the camera, the camera always settles behind. `ThirdPersonCamera
+    .stick` is gone.
+  - *Camera at chapter start.* A new chapter, or the end of a cutscene, cuts the camera behind the
+    selected robot. The opening's own hand-off is left alone.
+  - *Stairwells.* "From here I should see the stairs going up." The sim's `stair-foot` wall was
+    drawn as a 3.6 m slab across the shaft. It is now the flight the 2.5D build draws (the shared
+    `stairFlight`): two ramps climbing east with a level half-landing between them, up into a slab
+    of the floor above. Shaft walls go to the roof. Each doorway (one in each long face, per the
+    plan) has a lintel, a pair of leaves open square to the wall, and a green exit plate.
+  - *Sign in the wall.* The TECHNICAL sign stood 0.24 m off a wall thicker than that. A sign whose
+    footprint is within 22 px of a wall now becomes a blade sign, square to the wall and clear of it.
+  - *Backlog from this batch (not done):* the breaker panel is a flat slab with three blocks and
+    needs a real distribution board and a lever animation. Droid's chapter 1 lever: the arm should
+    reach the lever, and the door should start opening only after the lever is pulled. The router
+    cabinet should get noise and blinking lights as the modem starts up. Chapter 2 needs a general
+    polish pass (Michele offers venue photos). Moving the spray tag onto the route to the cabinet
+    is waiting on him to confirm which wall.

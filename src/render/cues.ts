@@ -26,6 +26,8 @@ export function createCues(audio: Audio): (snap: GameSnapshot, dt: number) => vo
   let lastPhase = '';
   /** Last frame's fall progress on chapter 1's jammed door, so the crash plays once. */
   let lastBreak = 0;
+  /** Last frame's crate fronts in the opening, so each lands with one boom. */
+  const lastCrate: Record<RobotKind, number> = { voxxy: 0, droid: 0, biggy: 0 };
   /** Last frame's swing on chapter 1's fire door, so the opening plays once. */
   let lastFireSwing = 0;
   /** Last frame's rise on chapter 2's roller door, so the shutter plays once. */
@@ -80,6 +82,14 @@ export function createCues(audio: Audio): (snap: GameSnapshot, dt: number) => vo
 
 
   function updateAudio(snap: GameSnapshot, dt: number): void {
+    // The opening: each crate front hitting the floor.
+    if (snap.opening) {
+      for (const k of ['voxxy', 'droid', 'biggy'] as const) {
+        const open = snap.opening.open[k];
+        if (open >= 1 && lastCrate[k] < 1) audio.play('crate', { intensity: k === 'voxxy' ? 0.3 : k === 'droid' ? 0.65 : 1 });
+        lastCrate[k] = open;
+      }
+    }
     // The only thing in the game a robot destroys. `Prop.progress` leaving zero is
     // the sim saying it has just been hit, and `crash` has been written and unplayed
     // in `audio.ts` since it was added.

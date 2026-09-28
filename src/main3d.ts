@@ -37,6 +37,7 @@ import type { QualityName } from './render3d/pipeline';
 import { CLUE_SPOT_3D } from './render3d/props3d';
 import { createWorld3D, type World3D } from './render3d/world';
 import { installHudTheme } from './render3d/hudTheme';
+import { fillSplash } from './render3d/splash';
 
 /* ====================================================== error reporting ==== */
 
@@ -119,12 +120,21 @@ const game: DebugGame = createGame({ seed: int('seed'), chapter: withOpening ? u
 let titleUp = withOpening && !shotMode;
 const titleEl = document.createElement('div');
 titleEl.className = 'ad3d-title ad3d-gate';
-titleEl.innerHTML = '<h1>AFTER DARK</h1><p class="ad3d-press">Press any key</p>';
+const stopSplash = titleUp ? fillSplash(titleEl) : (): void => undefined;
 if (titleUp) app.appendChild(titleEl);
+/**
+ * When the gate went, ms. For `GATE_GRACE` after it the opening ignores keys:
+ * a player mashing to get past the gate otherwise skipped the opening with the
+ * second press (Michele, 28 Sep: "add a tolerance for keypress").
+ */
+let gateOffAt = -Infinity;
+const GATE_GRACE = 1500;
 function dismissTitle(): void {
   if (!titleUp) return;
   titleUp = false;
+  stopSplash();
   titleEl.remove();
+  gateOffAt = performance.now();
 }
 const world: World3D = createWorld3D(canvas, { quality, preserveDrawingBuffer: shotMode });
 const hud: Hud = createHud(app, {
@@ -155,64 +165,60 @@ const MOVE: Readonly<Record<string, keyof typeof held>> = {
   ArrowRight: 'right',
 };
 
-/** A/D alone, from standing: the robot is turning on the spot until they let go. */
-let spinning = false;
 
 /**
- * The sim's stick, from held keys and the camera's yaw — refreshed every frame.
+ * The sim's stick, from held keys — refreshed every frame.
  *
- * WASD are camera-relative (the first build's controls, which Michele asked to
- * keep). One exception, his too: A or D on their own, from standing, turn the
- * robot in place rather than walking it off diagonally ("pressing left makes it
- * go ahead and left; I expect it only to turn, if not already moving"). The sim
- * runs any stick at full speed, so the turn goes through `Game.turn`, which
- * turns a standing robot without moving it.
+ * W walks and S backs up along the robot's own heading; A and D turn it, on the
+ * spot when standing, steering while it walks. The first W from standing still
+ * goes where the camera looks, so the mouse chooses a direction.
+ *
+ * This replaced camera-relative WASD (28 Sep). Michele: *"sometimes it loses the
+ * frontal view, and I didn't change it. Usually when moving and rotating?"* With a
+ * camera-relative stick, D while walking sent the robot sideways, and the camera
+ * could not follow it round without chasing its own stick into a circle, so it
+ * held back (a 55° cone in `ThirdPersonCamera.update`) and was left looking at
+ * the robot's flank. Steering the heading instead makes the stick independent of
+ * the camera, so the camera can always settle behind. It is also what his two
+ * earlier asks had been reaching for: A/D alone turn in place (24 Sep), S walks
+ * backwards keeping the facing (28 Sep).
  */
 function pushStick(dt: number): void {
   const fwd = (held.up ? 1 : 0) - (held.down ? 1 : 0);
   const strafe = (held.right ? 1 : 0) - (held.left ? 1 : 0);
   if (fwd === 0 && strafe === 0) {
-    spinning = false;
-    aboutYaw = null;
+    steer = null;
     game.setStick(0, 0);
     return;
   }
   const snap = game.snapshot();
   const b = snap.bots[snap.active] ?? snap.bots[0];
   const moving = Math.hypot(b.vx, b.vy) > 8;
-  if (fwd === 0 && (spinning || !moving)) {
-    spinning = true;
+  if (fwd === 0) {
+    // Turning on the spot. A robot still rolling is let go first; `Game.turn`
+    // only turns one that has stopped.
+    steer = null;
     game.setStick(0, 0);
-    game.turn?.(strafe * 2.4 * dt);
-    // The camera turns with her, so W afterwards goes the way she now faces
-    // (W is camera-relative: without this it sent her back the old way).
-    const want = Math.atan2(-Math.cos(b.face), -Math.sin(b.face));
-    let d = want - world.cam.yaw;
+    game.turn?.(strafe * TURN_RATE * dt);
+    // The camera turns with her.
+    let d = Math.atan2(-Math.cos(b.face), -Math.sin(b.face)) - world.cam.yaw;
     d = Math.atan2(Math.sin(d), Math.cos(d));
     world.cam.yaw += d * Math.min(1, dt * 6);
     return;
   }
-  spinning = false;
-  // S walks backwards (Michele, 28 Sep: "pressing down arrow could cause the
-  // robot to walk backwards, keeping the camera and orientation"). It replaced
-  // the about-face of 24 Sep, where S turned the robot and swung the camera
-  // round. The heading locked on the first S frame is kept while S is held, so
-  // the lamp stays on its mark while she backs off; A/D with S slide her back
-  // at a diagonal, still facing the same way. The camera stays behind her, where
-  // it was.
-  if (fwd < 0) {
-    if (aboutYaw === null) aboutYaw = b.face;
-    const [sx, sy] = world.cam.stick(fwd, strafe);
-    game.setStick(sx, sy, aboutYaw);
-    return;
-  }
-  aboutYaw = null;
-  const [sx, sy] = world.cam.stick(fwd, strafe);
-  game.setStick(sx, sy);
+  if (steer === null) steer = fwd > 0 && !moving ? Math.atan2(-Math.cos(world.cam.yaw), -Math.sin(world.cam.yaw)) : b.face;
+  steer += strafe * TURN_RATE * dt;
+  const cx = Math.cos(steer);
+  const cy = Math.sin(steer);
+  // Backing up keeps the heading: the lamp stays on its mark (see `holdHeading`).
+  if (fwd < 0) game.setStick(-cx, -cy, steer);
+  else game.setStick(cx, cy);
 }
 
-/** Held-S heading (sim radians), locked for the whole press. */
-let aboutYaw: number | null = null;
+/** A/D turn rate, rad/s, standing or walking. */
+const TURN_RATE = 2.4;
+/** The heading W/S drive along while held (sim radians); null between presses. */
+let steer: number | null = null;
 
 function codeOf(ev: KeyboardEvent): string {
   if (ev.code && /^Numpad[0-9]$/.test(ev.code)) return `Digit${ev.code.slice(6)}`;
@@ -233,6 +239,10 @@ window.addEventListener('keydown', (ev) => {
   const code = codeOf(ev);
   if (titleUp) {
     dismissTitle();
+    ev.preventDefault();
+    return;
+  }
+  if (game.snapshot().opening && (ev.repeat || performance.now() - gateOffAt < GATE_GRACE)) {
     ev.preventDefault();
     return;
   }

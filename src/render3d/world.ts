@@ -419,6 +419,8 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     cam.cut();
   }
 
+  /** The chapter the follow camera last framed; see the reset below. */
+  let camChapter = -1;
   function render(snap: GameSnapshot, dt: number, intro = false): void {
     time += dt;
     adapt();
@@ -458,6 +460,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       c.lookAt(staged.look);
       c.updateMatrixWorld();
       cam.yaw = HAND_YAW;
+      camChapter = snap.chapter; // the hand-off frames chapter 1 itself
       cam.pitch = HAND_PITCH;
       cam.settlePitch = 0.22;
       cam.cut();
@@ -496,8 +499,16 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       c.updateMatrixWorld();
       cam.cut();
     } else if (rob) {
-      if (inCut) {
+      // A new chapter, or the end of a cutscene: cut to behind the selected
+      // robot. The camera used to keep its old yaw and came up jammed beside
+      // Voxxy at the start of chapter 2 (Michele, 28 Sep: "camera should reset
+      // on Voxxy's view, selected").
+      if (inCut || snap.chapter !== camChapter) {
         inCut = false;
+        camChapter = snap.chapter;
+        cam.yaw = Math.atan2(-Math.cos(active.face), -Math.sin(active.face));
+        cam.pitch = 0.3;
+        cam.zoom = 1;
         cam.cut();
       }
       grade.dofAmount = world.photo ? 0.9 : 0;
