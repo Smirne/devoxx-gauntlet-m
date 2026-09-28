@@ -110,6 +110,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     w: 14,
     h: CY1 - CY0,
     kind: 'firedoor',
+    flavour: true,
     why: (b) => `${b.name}: the fire door is shut again — the cinema section is closed to the public`,
   });
   ctx.walls.push({ x: 0, y: CY0, w: F1.fireX, h: CY1 - CY0, hidden: true });
@@ -143,6 +144,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       h: seatY1 - seatY0,
       low: true,
       kind: 'seatblock',
+      flavour: true,
       why: (b) => `${b.name}: seats. Use the aisles`,
     });
   }

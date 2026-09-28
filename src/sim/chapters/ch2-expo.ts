@@ -417,9 +417,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const landing = stairLanding({ x: shaft.x, y: shaft.y, w: shaft.w, h: shaft.h });
   const foot = landing.x + landing.w;
   const cy = landing.y + landing.h / 2;
-  // Voxxy nearest the foot of the flight — she came down it first — then Droid,
-  // then Biggy back toward the doors, which is the order they will go out in.
-  ctx.place([foot - 14, cy - 8], [foot - 30, cy], [foot - 50, cy + 6]);
+  // As if they had just come down: the flight at their backs, all three facing
+  // west, Voxxy out in front by the doors, then Droid, then Biggy still at the
+  // foot of the stairs. Michele, 28 Sep: "place the robots with the stairs at
+  // their back, like they just finished descending. Voxxy first, near the doors."
+  ctx.place([foot - 70, cy - 4, Math.PI], [foot - 46, cy + 6, Math.PI], [foot - 20, cy - 2, Math.PI]);
 
   let power = false;
   /**
@@ -679,6 +681,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       w: Math.abs(tipX - hx) + CAB_LEAF_T,
       h: tipY - CAB_FACE_Y + CAB_LEAF_T,
       kind: 'cabinetleaf',
+      flavour: true,
       why: (b) => `${b.name}: that is the cabinet door, standing open. The terminal is between the two of them`,
     };
   });

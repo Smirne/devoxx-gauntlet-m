@@ -27,57 +27,65 @@ function rng(seed: number): () => number {
   };
 }
 
-/** The six letters as stroke paths in a 100-unit-tall box; returns the advance. */
-function letter(x: CanvasRenderingContext2D, ch: string, ox: number): number {
+/**
+ * The six letters as stroke paths in a 100-unit-tall box; returns the advance.
+ * Drawn after the official Devoxx lettering Michele sent (28 Sep): thin even
+ * strokes, a D and an O with big rounded corners, full-width E arms, and the
+ * second X overlapping the first.
+ */
+function letter(x: CanvasRenderingContext2D, ch: string, ox: number, second = false): number {
   const p = new Path2D();
   const t = 100;
   switch (ch) {
     case 'D':
       p.moveTo(ox, 0);
-      p.lineTo(ox + 52, 0);
-      p.arcTo(ox + 88, 0, ox + 88, 36, 34);
-      p.lineTo(ox + 88, 64);
-      p.arcTo(ox + 88, t, ox + 52, t, 34);
+      p.lineTo(ox + 58, 0);
+      p.arcTo(ox + 96, 0, ox + 96, 38, 38);
+      p.lineTo(ox + 96, 62);
+      p.arcTo(ox + 96, t, ox + 58, t, 38);
       p.lineTo(ox, t);
       p.closePath();
       x.stroke(p);
-      return 104;
+      return 122;
     case 'E':
-      p.moveTo(ox + 80, 0);
+      p.moveTo(ox + 90, 0);
       p.lineTo(ox, 0);
       p.lineTo(ox, t);
-      p.lineTo(ox + 80, t);
+      p.lineTo(ox + 90, t);
       p.moveTo(ox, 50);
-      p.lineTo(ox + 68, 50);
-      x.stroke(p);
-      return 96;
-    case 'V':
-      p.moveTo(ox, 0);
-      p.lineTo(ox + 48, t);
-      p.lineTo(ox + 96, 0);
-      x.stroke(p);
-      return 108;
-    case 'O':
-      p.roundRect(ox, 0, 96, t, 30);
+      p.lineTo(ox + 84, 50);
       x.stroke(p);
       return 112;
+    case 'V':
+      p.moveTo(ox, 0);
+      p.lineTo(ox + 52, t);
+      p.lineTo(ox + 104, 0);
+      x.stroke(p);
+      return 122;
+    case 'O':
+      p.roundRect(ox, 0, 112, t, 34);
+      x.stroke(p);
+      return 134;
     case 'X':
       p.moveTo(ox, 0);
-      p.lineTo(ox + 90, t);
-      p.moveTo(ox + 90, 0);
+      p.lineTo(ox + 100, t);
+      p.moveTo(ox + 100, 0);
       p.lineTo(ox, t);
       x.stroke(p);
-      return 72;
+      return second ? 100 : 58;
     default:
       return 60;
   }
 }
 
+/** Where the O starts, in letter units — the robot head is drawn round it. */
+const O_AT = 122 + 112 + 122;
+
 /** The wordmark, `w` css px wide: hot strokes, a gold mosaic in the D and the XX. */
 function wordmark(w: number): HTMLCanvasElement {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const word = 'DEVOXX';
-  const units = 104 + 96 + 108 + 112 + 72 + 90 + 60;
+  const units = 122 + 112 + 122 + 134 + 58 + 100 + 70;
   const k = w / units;
   const h = Math.round(150 * k);
   const c = document.createElement('canvas');
@@ -91,36 +99,43 @@ function wordmark(w: number): HTMLCanvasElement {
     ctx.save();
     ctx.scale(k * dpr, k * dpr);
     ctx.translate(10, 30);
-    ctx.lineWidth = 17;
+    ctx.lineWidth = 12;
     ctx.lineJoin = 'miter';
     ctx.lineCap = 'butt';
     let ox = 0;
     for (let i = 0; i < word.length; i++) {
-      if (only(i)) ox += letter(ctx, word[i], ox);
-      else ox += letter(document.createElement('canvas').getContext('2d') as CanvasRenderingContext2D, word[i], ox);
+      const target = only(i) ? ctx : (document.createElement('canvas').getContext('2d') as CanvasRenderingContext2D);
+      ox += letter(target, word[i], ox, i === 5);
     }
     ctx.restore();
   };
   const mosaic = (i: number): boolean => i === 0 || i >= 4;
   // The robots in the mark (Michele: "could we fit some robot element on the
-  // logo? the original is just an inspiration"): the O is Voxxy's lens, with her
-  // two ears on top of it.
+  // logo?", then "the pointed ears should better be a robot's head"): the O is
+  // a robot's head, with ear pads, an antenna and an orange lens.
   const voxxy = (): void => {
     x.save();
     x.scale(k * dpr, k * dpr);
     x.translate(10, 30);
-    const cx0 = 104 + 96 + 108 + 48;
+    const cx0 = O_AT + 56;
     x.fillStyle = HOT;
-    for (const s0 of [-1, 1]) {
+    for (const ex of [O_AT - 15, O_AT + 112 + 5]) {
       x.beginPath();
-      x.moveTo(cx0 + s0 * 34, 2);
-      x.lineTo(cx0 + s0 * 30, -19);
-      x.lineTo(cx0 + s0 * 14, 2);
-      x.closePath();
+      x.roundRect(ex, 34, 10, 32, 3);
       x.fill();
     }
+    x.strokeStyle = HOT;
+    x.lineWidth = 6;
+    x.beginPath();
+    x.moveTo(cx0, -6);
+    x.lineTo(cx0, -20);
+    x.stroke();
+    x.fillStyle = '#ff7a1a';
+    x.beginPath();
+    x.arc(cx0, -24, 6, 0, Math.PI * 2);
+    x.fill();
     x.strokeStyle = '#ff7a1a';
-    x.lineWidth = 9;
+    x.lineWidth = 8;
     x.beginPath();
     x.arc(cx0, 50, 22, 0, Math.PI * 2);
     x.stroke();
@@ -130,7 +145,6 @@ function wordmark(w: number): HTMLCanvasElement {
     x.fill();
     x.restore();
   };
-
   // The glow is a CSS drop-shadow on the canvas (hudTheme.ts): a canvas
   // shadowBlur came out as a rectangle behind each letter on some GPUs.
   x.strokeStyle = HOT;
@@ -145,7 +159,7 @@ function wordmark(w: number): HTMLCanvasElement {
   if (mx) {
     mx.strokeStyle = '#fff';
     draw(mx, mosaic);
-    const cell = Math.max(3, Math.round(5.5 * k * dpr * 1.6));
+    const cell = Math.max(3, Math.round(3.8 * k * dpr));
     const r = rng(1994);
     x.save();
     const data = mx.getImageData(0, 0, m.width, m.height).data;

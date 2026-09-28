@@ -839,7 +839,7 @@ export function floor1Walls(): Wall[] {
   for (const s of F1.barStools) {
     w.push({ ...s, low: true, kind: 'stool', why: (b) => `${b.name}: a bar stool. Push past it or go round` });
   }
-  return w;
+  return asFlavour(w);
 }
 
 /* ---------------------------------------------------------------- ground floor */
@@ -1980,7 +1980,21 @@ export function groundWalls(): Wall[] {
  */
 export function groundWallsFor(chapter: number): Wall[] {
   const taken = chapter === 2 ? new Set(['roller', 'cabinet']) : new Set<string>();
-  return groundWalls().filter((w) => w.kind === undefined || !taken.has(w.kind));
+  return asFlavour(groundWalls().filter((w) => w.kind === undefined || !taken.has(w.kind)));
+}
+
+/** Venue walls that are part of a puzzle: what they say is a clue, not colour. */
+const GAME_WALLS = new Set(['rack', 'cabinet', 'roller']);
+/**
+ * The building's walls are architecture, and what they say when a robot walks
+ * into one is colour (Michele, 28 Sep: "flavour toast: column, actions...
+ * everything not related to progressing the game"). The few that are part of a
+ * puzzle keep their voice: the Voxxy-sized kiosk hatch (it has `skipFor`), the
+ * patch rack, the router cabinet and the store's roller door.
+ */
+function asFlavour(ws: Wall[]): Wall[] {
+  for (const w of ws) if (w.flavour === undefined && !w.skipFor && !GAME_WALLS.has(w.kind ?? '')) w.flavour = true;
+  return ws;
 }
 
 /* ---------------------------------------------------------------- cameras */

@@ -426,6 +426,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       w: leafLen + FIRE_LEAF_T,
       h: FIRE_LEAF_T,
       kind: 'fireleaf',
+      flavour: true,
       why: (b) => `${b.name}: that is the fire door itself, standing open. Go round it — the way through is the middle`,
     }),
   );
@@ -551,6 +552,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     w: LOCK_LEAF_T,
     h: dB.w + LOCK_LEAF_T,
     kind: 'lockleaf',
+    flavour: true,
     why: (b) => `${b.name}: that is the door itself, standing open against the wall`,
   };
   /*
@@ -661,7 +663,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const lastRow = rowY[rowY.length - 1];
   for (const y of rowY) {
     const left: Rect = { x: rE.x, y, w: aisle[0] - rE.x, h: ROW_H };
-    ctx.walls.push({ ...left, low: true, kind: 'seatrow', why: whySeats });
+    ctx.walls.push({ ...left, low: true, kind: 'seatrow', flavour: true, why: whySeats });
     seatRects.push(left);
     /*
      * Right of the aisle: seats down to the alcove, nothing beside it, and then
@@ -676,7 +678,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      */
     if (y + ROW_H <= alcove.y - T || y === lastRow) {
       const right: Rect = { x: aisle[1], y, w: rE.x + rE.w - aisle[1], h: ROW_H };
-      ctx.walls.push({ ...right, low: true, kind: 'seatrow', why: whySeats });
+      ctx.walls.push({ ...right, low: true, kind: 'seatrow', flavour: true, why: whySeats });
       seatRects.push(right);
     }
   }
@@ -776,7 +778,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   for (const n of Object.keys(SHUT_VOICES)) {
     const r = R(n);
     const d = roomDoor(r);
-    ctx.walls.push({ x: d.x, y: d.y, w: d.w, h: d.h, kind: 'shut', why: SHUT_VOICES[n] });
+    ctx.walls.push({ x: d.x, y: d.y, w: d.w, h: d.h, kind: 'shut', flavour: true, why: SHUT_VOICES[n] });
   }
 
   const code = clues

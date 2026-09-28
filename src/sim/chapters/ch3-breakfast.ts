@@ -792,7 +792,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       w: GATE_MOUTH + GATE_LEAF_T,
       h: GATE_LEAF_T,
       kind: 'gateleaf',
-      why: (b) => `${b.name}: that is the gate itself, walked back out of the way. The way up is beside it`,
+      flavour: true,
+    why: (b) => `${b.name}: that is the gate itself, walked back out of the way. The way up is beside it`,
     },
     // Both posts stay. So does the rest of the barrier, either side of the
     // opening: Stephan opened a gate, he did not take the stair's whole front off.
@@ -803,6 +804,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         w: GATE_POST_R * 2,
         h: GATE_POST_R * 2,
         kind: 'gatepost',
+        flavour: true,
         why: (b) => `${b.name}: the gate post. It stays where it is`,
       }),
     ),

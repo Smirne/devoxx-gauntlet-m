@@ -152,6 +152,8 @@ export interface Bot extends RobotDef {
  * so they still cast no shadow in the visibility polygons.
  */
 export interface Wall extends Rect {
+  /** Its `why` is flavour, not a clue: the toast is drawn grey. See `Toast.flavour`. */
+  flavour?: boolean;
   /** Blocks robots, passes light (kiosk glazing). */
   glass?: boolean;
   /** Blocks robots, passes light (seat rows, tables, desks). */
@@ -268,6 +270,12 @@ export type ViewRect = Rect;
 export interface Toast {
   t: string;
   until: number;
+  /**
+   * Colour, not progress: a column, a closed room's joke, a party trick. The HUD
+   * draws these grey, so the lines that move the game on stand out (Michele,
+   * 28 Sep: "we should distinguish between game-related toast and informational").
+   */
+  flavour?: boolean;
 }
 
 /** A cutscene waypoint route for one robot. */

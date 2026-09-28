@@ -291,9 +291,11 @@ export function createGame(opts: GameOptions = {}): DebugGame {
 
   /* ------------------------------------------------------------- feedback */
 
-  function flash(text: string, ms: number = TOAST_MS): void {
-    toast = { t: text, until: t + ms / 1000 };
+  function flash(text: string, ms: number = TOAST_MS, flavour = false): void {
+    toast = { t: text, until: t + ms / 1000, flavour };
   }
+  /** An action's own line (a trick, a climb, a grip on Biggy): flavour. */
+  const aside = (text: string): void => flash(text, TOAST_MS, true);
 
   function showCard(html: string): void {
     if (!showCards) return;
@@ -312,7 +314,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     if (!why) return;
     const m = why(b);
     if (m) {
-      flash(m);
+      flash(m, TOAST_MS, w.flavour === true);
       blockedAt.set(w, t);
     }
   }
@@ -374,16 +376,16 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     const b = bots[cur];
     if (b === bg) {
       // Biggy cannot tow himself, and saying so is friendlier than a dead key.
-      flash('Biggy: "Someone has to pull. It is not going to be me."');
+      aside('Biggy: "Someone has to pull. It is not going to be me."');
       return;
     }
     if (!canGrab(b, bg, MOUNT_REACH)) {
-      flash(`${b.name}: "Not close enough to get a grip on Biggy."`);
+      aside(`${b.name}: "Not close enough to get a grip on Biggy."`);
       return;
     }
     tow = takeHold(b, bg);
     cur = ORDER.indexOf(tow.holder);
-    flash(`${b.name} takes hold of Biggy — push or pull along the bar, steer across it`);
+    aside(`${b.name} takes hold of Biggy — push or pull along the bar, steer across it`);
   }
 
   /**
@@ -406,14 +408,14 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       towToggle();
       return;
     }
-    showOff(bots, b, flash);
+    showOff(bots, b, aside);
   }
 
   function release(why: string): void {
     if (!tow) return;
     const holder = byKind(tow.holder);
     tow = null;
-    flash(`${holder.name} ${why}`);
+    aside(`${holder.name} ${why}`);
   }
 
   /** Quietly drop the bar — chapter change, cutscene, teleport. No toast. */
@@ -508,7 +510,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     // doing it left the holder welded to his flank mid-climb. One verb at a time.
     dropTow();
     // While Droid rides Biggy the tower moves as one robot, so control follows it.
-    if (climbBiggy(bots, flash)) cur = ORDER.indexOf('biggy');
+    if (climbBiggy(bots, aside)) cur = ORDER.indexOf('biggy');
   }
 
   /* ------------------------------------------------------------- cutscenes */
@@ -983,7 +985,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     rng: () => rng(),
     stepAll,
     pushBiggy(dt: number): void {
-      leanOnBiggy(bots, dt, t, flash);
+      leanOnBiggy(bots, dt, t, aside);
     },
     toggleMount,
     switchKey,

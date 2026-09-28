@@ -4502,3 +4502,36 @@ ordinary figures with their role colours.
     cabinet should get noise and blinking lights as the modem starts up. Chapter 2 needs a general
     polish pass (Michele offers venue photos). Moving the spray tag onto the route to the cabinet
     is waiting on him to confirm which wall.
+- *Third batch, 28 Sep.*
+  - *Wordmark.* Michele sent the official Devoxx lettering ("use this lettering for the white
+    part. The pointed ears should better be a robot's head"). The strokes are now thin and even,
+    with a round-cornered D and a wide O, full-width E arms, and the second X overlapping the
+    first. The O is a robot's head: ear pads, an antenna with an orange tip, and the lens. The
+    mosaic cells shrank to suit the thinner strokes.
+  - *Cabinet.* "It could contain a rack and a big screen", "an old 56k modem would be
+    appreciated", "some noise and light in the cabinet, to indicate the modem starting up." The
+    carcass is hollow now. Behind the leaves are a 19-inch rack of randomly blinking link lights, one
+    big screen, and a beige 56K modem on a shelf with its eight front lamps (MR/TR steady, SD/RD
+    chattering, CD on once online). The screen carries both of the sim's terminals, router status
+    and password prompt, which used to be two separate screens ("doesn't work split on 2"). A new
+    `modem-boot` cue plays after the supply lands: relay clack, fan spin-up, self-test chirps and a
+    dial tone. The existing 56k handshake stays the payoff when the password goes in. Not checked
+    in a render: the debug handle cannot power the sim, so this needs a playtest.
+  - *Cable rack.* "Should be more evident and hint at interaction." A reel of blue cable stands in
+    front of the rack, with a pulsing ring in Voxxy's orange and a "CABLE · VOXXY" tag. All three
+    go away once the cable is picked up.
+  - *Flavour toasts.* "We should distinguish between game-related toast and informational": room E
+    and B orange, room D grey, and "column, actions... everything not related to progressing the
+    game" grey. `Toast` and `Wall` gained `flavour`. Every venue wall is flavour except the few that
+    are part of a puzzle (the kiosk hatch, the patch rack, the router cabinet, the roller door).
+    So are chapter walls that only describe (closed cinemas, seat rows, open leaves, gate posts),
+    and every action line: party tricks, climbing, gripping or pushing Biggy. The HUD draws flavour
+    lines grey; everything else keeps its robot's colour.
+  - *Chapter 2 start.* "Place the robots with the stairs at their back, like they just finished
+    descending. Voxxy first, near the doors." They face west on the landing, Voxxy by the doors and
+    Biggy still at the foot of the flight. One test bound moved with it: the spray tag must be
+    within 540 px of the start, not 500, because Voxxy's mark is 56 px further west. The walk is
+    the same. Flagged to Michele.
+  - *Stairwell door leaves.* "It's in the way." The leaves stood square to the wall 1.2 m out into
+    the path. They now fold flat against the wall, both on the east side of the opening, because
+    west of it there is only 0.6 m of wall before the shaft's corner.

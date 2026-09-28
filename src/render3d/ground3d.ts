@@ -188,11 +188,14 @@ function shafts(group: THREE.Group, mats: Materials, concrete: THREE.Material): 
     for (const [d, out1] of stairDoors(rect).map((d, i) => [d, i === 0 ? -1 : 1] as const)) {
       // Lintel over the opening, up to the roof.
       dress.add(concrete, box(m(d.w), HALL_H - DOOR_H, m(d.h), V(m(d.x + d.w / 2), DOOR_H + (HALL_H - DOOR_H) / 2, m(d.y + d.h / 2))));
-      // Two leaves swung wide open, square to the wall at each jamb.
+      // Two leaves folded right back, flat against the wall either side of the
+      // opening. Standing square to it they were in the way (Michele, 28 Sep).
       const face = m(out1 < 0 ? d.y : d.y + d.h);
-      for (const lx of [d.x + 0.6, d.x + d.w - 0.6]) {
-        dress.add(mats.darkMetal, box(0.05, DOOR_H - 0.05, m(15), V(m(lx), DOOR_H / 2, face + out1 * m(7.5))));
-      }
+      // Both on the east side: west of the opening there is only 0.6 m of wall
+      // before the shaft's corner. One folds out, one folds in.
+      const inner = m(out1 < 0 ? d.y + d.h : d.y);
+      dress.add(mats.darkMetal, box(m(14), DOOR_H - 0.05, 0.05, V(m(d.x + d.w + 7.5), DOOR_H / 2, face + out1 * 0.04)));
+      dress.add(mats.darkMetal, box(m(14), DOOR_H - 0.05, 0.05, V(m(d.x + d.w + 7.5), DOOR_H / 2, inner - out1 * 0.04)));
       const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.22), exitPlate);
       sign.position.set(m(d.x + d.w / 2), DOOR_H + 0.25, m(out1 < 0 ? d.y : d.y + d.h) + out1 * 0.03);
       if (out1 < 0) sign.rotation.y = Math.PI;

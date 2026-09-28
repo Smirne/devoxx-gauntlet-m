@@ -288,6 +288,7 @@ const CSS = `
   background:rgba(10,11,14,.92);box-shadow:0 8px 28px rgba(0,0,0,.5);font-size:15px;text-align:center;
   animation:ad-rise .22s cubic-bezier(.2,.9,.3,1) both}
 .ad-toast .ad-line{color:#f2efe9}
+.ad-flavour .ad-line{color:#c9c6bf}
 .ad-toast.ad-out{animation:ad-sink .34s ease-in forwards}
 @keyframes ad-rise{from{opacity:0;transform:translateY(18px) scale(.985)}to{opacity:1;transform:none}}
 @keyframes ad-sink{to{opacity:0;transform:translateY(-10px)}}
@@ -604,6 +605,9 @@ function lampOf(bots: readonly Bot[], kind: RobotKind): [number, number, number]
  * blocked-message in the sim names the robot that is talking ("Droid: too high,
  * even for me."). Anything impersonal is tinted with the robot being driven.
  */
+/** The flavour lines' tint: the colour of a note, not of a lamp. */
+const FLAVOUR_GREY: [number, number, number] = [150, 150, 146];
+
 function toastColour(text: string, snap: GameSnapshot): [number, number, number] {
   for (const [re, kind] of SPEAKERS) if (re.test(text)) return lampOf(snap.bots, kind);
   const act = snap.bots[snap.active];
@@ -1167,11 +1171,13 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
    * inventing a second way of speaking: a hint is a line like any other and the
    * player should not be able to tell where it came from.
    */
-  function pushLine(text: string, snap: GameSnapshot, lifeMs: number): void {
+  function pushLine(text: string, snap: GameSnapshot, lifeMs: number, flavour = false): void {
     const now = performance.now();
     const speaker = speakerOf(text);
     const node = el('div', speaker ? 'ad-bubble' : 'ad-toast');
-    const colour = toastColour(text, snap);
+    // Flavour is grey; a line that moves the game on keeps its robot's colour.
+    const colour: [number, number, number] = flavour ? FLAVOUR_GREY : toastColour(text, snap);
+    if (flavour) node.classList.add('ad-flavour');
     node.style.color = rgb(colour);
     if (!speaker) {
       node.style.background = `linear-gradient(90deg, ${rgba(colour, 0.2)}, rgba(10,11,14,.93) 58%)`;
@@ -1222,7 +1228,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
           repeat.dieAt = now + life;
           repeat.removeAt = now + life + 340;
         } else {
-          pushLine(t.t, snap, life);
+          pushLine(t.t, snap, life, t.flavour === true);
         }
       }
     } else {

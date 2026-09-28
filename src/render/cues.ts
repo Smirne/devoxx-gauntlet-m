@@ -180,7 +180,10 @@ export function createCues(audio: Audio): (snap: GameSnapshot, dt: number) => vo
     const pilot = snap.props.find((p) => p.kind === 'pilot')?.state ?? '';
     // The supply landing — the third handle. Nothing in it is above 300 Hz: the
     // hall is still dark and a bright cue would promise a room the light isn't in.
-    if (pilot === 'active' && lastPilot === 'idle') audio.play('busbar');
+    if (pilot === 'active' && lastPilot === 'idle') {
+      audio.play('busbar');
+      audio.play('modem-boot', { delay: 0.7 });
+    }
     // The handshake, and the arpeggio landing as its hiss dies.
     if (pilot === 'done' && lastPilot === 'active') {
       audio.play('modem');

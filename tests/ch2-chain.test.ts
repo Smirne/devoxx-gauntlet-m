@@ -365,7 +365,10 @@ describe('chapter 2 — what the player is told, and what they have to find', ()
 
     // ...and a short walk from where the robots are standing when the chapter opens.
     const start = g.snapshot().bots[0];
-    expect(Math.hypot(start.x - TAG.x, start.y - TAG.y), 'the tag is across the hall from the start').toBeLessThan(500);
+    // 540, not 500, since 28 Sep: Michele moved the start so Voxxy stands by the
+    // stairwell doors, 56 px further west than the old mark at the stair foot.
+    // The walk out of the doors to the tag is the same walk.
+    expect(Math.hypot(start.x - TAG.x, start.y - TAG.y), 'the tag is across the hall from the start').toBeLessThan(540);
   });
 
   it("reads the tag under Voxxy's beam, and turns it green when it is read", () => {

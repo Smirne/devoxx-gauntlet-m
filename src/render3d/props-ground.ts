@@ -178,7 +178,38 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         (face.material as THREE.MeshBasicMaterial).map = tex;
         (face.material as THREE.MeshBasicMaterial).transparent = true;
         (face.material as THREE.MeshBasicMaterial).blending = THREE.AdditiveBlending;
-        g.userData = { face };
+        // The cable reel in front of it, and a pulsing ring in Voxxy's orange:
+        // "the cable starts here, and it is hers to take". Michele, 28 Sep: "the
+        // cable rack should be more evident and hint at interaction".
+        const reel = new THREE.Group();
+        reel.position.set(cx, 0, cz + d / 2 + 0.55);
+        const flangeMat = new THREE.MeshStandardMaterial({ color: 0xd8c9a3, roughness: 0.8 });
+        for (const sx of [-0.22, 0.22]) {
+          const fl = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.04, 28), flangeMat);
+          fl.rotation.z = Math.PI / 2;
+          fl.position.set(sx, 0.42, 0);
+          fl.castShadow = true;
+          reel.add(fl);
+        }
+        const coilMat = new THREE.MeshStandardMaterial({ color: 0x1a4cff, emissive: new THREE.Color(0.05, 0.15, 0.6), roughness: 0.45 });
+        for (let i = 0; i < 5; i++) {
+          const coil = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.035, 8, 28), coilMat);
+          coil.rotation.y = Math.PI / 2;
+          coil.position.set(-0.16 + i * 0.08, 0.42, 0);
+          reel.add(coil);
+        }
+        g.add(reel);
+        const ring = new THREE.Mesh(
+          new THREE.RingGeometry(0.62, 0.72, 40),
+          new THREE.MeshBasicMaterial({ color: 0x000000, toneMapped: false, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }),
+        );
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.set(cx, 0.02, cz + d / 2 + 0.55);
+        g.add(ring);
+        const tag = emitter(canvasText(['CABLE \u00b7 VOXXY'], { w: 256, h: 48, bg: '#000', fg: '#fff', font: 'bold 28px Arial' }), 0.9, 0.17, 0, 0xff7a1a);
+        tag.position.set(cx, 2.25, cz + d / 2 + 0.03);
+        g.add(tag);
+        g.userData = { face, reel, ring, tag };
         return g;
       }
       case 'printer': {
@@ -250,14 +281,70 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
       case 'cabinet': {
         // The router cabinet: a steel carcass on the technical room's wall with
         // two leaves, hinged at the outer edges, posed from the sim's swing.
+        // Behind them, what Michele asked for (28 Sep: "the cabinet could contain
+        // a rack and a big screen", "an old 56k modem would be appreciated"): a
+        // 19-inch rack of blinking link lights, one big screen carrying both the
+        // router's status and the password prompt, and a beige 56K modem on a
+        // shelf whose front lamps come up with the supply.
         g.position.set(cx, 0, cz);
-        const carcass = new THREE.Mesh(box(w, 2.1, d * 0.8, V(0, 1.05, -d * 0.1)), mats.darkMetal);
-        carcass.castShadow = true;
-        g.add(carcass);
+        const front = d * 0.3;
+        const shell = new THREE.Group();
+        shell.add(new THREE.Mesh(box(w, 2.1, d * 0.5, V(0, 1.05, -d * 0.25)), mats.darkMetal));
+        for (const sx of [-1, 1]) shell.add(new THREE.Mesh(box(0.05, 2.1, front, V((sx * (w - 0.05)) / 2, 1.05, front / 2)), mats.darkMetal));
+        shell.add(new THREE.Mesh(box(w, 0.06, front, V(0, 2.07, front / 2)), mats.darkMetal));
+        shell.add(new THREE.Mesh(box(w, 0.1, front, V(0, 0.05, front / 2)), mats.darkMetal));
+        for (const c of shell.children) c.castShadow = true;
+        g.add(shell);
+        // The rack, left: rails, eight units, and a strip of link lights each.
+        const rackX = -w / 2 + 0.75;
+        for (const sx of [-0.52, 0.52]) g.add(new THREE.Mesh(box(0.04, 1.8, 0.04, V(rackX + sx, 1.0, front * 0.6)), mats.steel));
+        const leds = document.createElement('canvas');
+        leds.width = 64;
+        leds.height = 256;
+        const ledTex = new THREE.CanvasTexture(leds);
+        const ledMat = new THREE.MeshBasicMaterial({ map: ledTex, color: 0x000000, toneMapped: false, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+        for (let i = 0; i < 8; i++) {
+          g.add(new THREE.Mesh(box(1.0, 0.17, 0.3, V(rackX, 0.25 + i * 0.2, front * 0.6 - 0.15)), i % 3 === 1 ? mats.steel : mats.blackGloss));
+        }
+        const ledFace = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.6), ledMat);
+        ledFace.position.set(rackX, 0.95, front * 0.6 + 0.005);
+        g.add(ledFace);
+        // The big screen.
+        const scrCanvas = document.createElement('canvas');
+        scrCanvas.width = 768;
+        scrCanvas.height = 432;
+        const scrTex = new THREE.CanvasTexture(scrCanvas);
+        scrTex.colorSpace = THREE.SRGBColorSpace;
+        const bezel = new THREE.Mesh(box(2.3, 1.34, 0.06, V(0.1, 1.3, front * 0.55)), mats.blackGloss);
+        const screen = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.24), new THREE.MeshBasicMaterial({ map: scrTex, toneMapped: false }));
+        screen.position.set(0.1, 1.3, front * 0.55 + 0.032);
+        g.add(bezel, screen);
+        // The modem, right, on a shelf: beige, "56K", eight front lamps.
+        const mx = w / 2 - 0.85;
+        g.add(new THREE.Mesh(box(1.2, 0.03, front * 0.9, V(mx, 0.9, front * 0.45)), mats.steel));
+        const beige = new THREE.MeshStandardMaterial({ color: 0xcfc3a4, roughness: 0.55 });
+        const modem = new THREE.Mesh(box(0.62, 0.13, 0.42, V(mx, 0.985, front * 0.45)), beige);
+        modem.castShadow = true;
+        g.add(modem);
+        const badge = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.06), new THREE.MeshBasicMaterial({ map: canvasText(['56K'], { w: 128, h: 40, bg: '#cfc3a4', fg: '#3a2f22', font: 'bold 30px Arial' }) }));
+        badge.position.set(mx - 0.17, 0.99, front * 0.45 + 0.211);
+        g.add(badge);
+        const lamps: THREE.Mesh[] = [];
+        for (let i = 0; i < 8; i++) {
+          const l = new THREE.Mesh(new THREE.SphereGeometry(0.013, 8, 6), glowMat());
+          l.position.set(mx - 0.02 + i * 0.038, 0.975, front * 0.45 + 0.212);
+          g.add(l);
+          lamps.push(l);
+        }
+        // A patch panel under the shelf, and a coil of phone line to the wall.
+        g.add(new THREE.Mesh(box(1.0, 0.1, 0.1, V(mx, 0.6, front * 0.3)), mats.blackGloss));
+        const glow = new THREE.PointLight(0xffa21a, 0, 3.5, 2);
+        glow.position.set(0.1, 1.3, front + 0.6);
+        g.add(glow);
         const leaves: THREE.Object3D[] = [];
         for (const s of [-1, 1]) {
           const pivot = new THREE.Group();
-          pivot.position.set((s * w) / 2, 0, d * 0.3 + 0.02);
+          pivot.position.set((s * w) / 2, 0, front + 0.02);
           const leaf = new THREE.Mesh(box(w / 2 - 0.02, 2.0, 0.04, V((-s * (w / 2 - 0.02)) / 2, 1.05, 0)), mats.enamel);
           leaf.castShadow = true;
           pivot.add(leaf);
@@ -266,21 +353,13 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
           leaves.push(pivot);
           colliders.push(leaf);
         }
-        g.userData = { leaves };
+        g.userData = { leaves, leds, ledTex, ledMat, scrCanvas, scrTex, lamps, glow, drawn: '' };
         return g;
       }
       case 'terminal': {
-        // A screen inside the cabinet: the router's link lights, or the
-        // authorisation prompt with the password filling in.
-        const c = document.createElement('canvas');
-        c.width = 512;
-        c.height = 128;
-        const tex = new THREE.CanvasTexture(c);
-        tex.colorSpace = THREE.SRGBColorSpace;
-        const scr = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.9, 0.3), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
-        scr.position.set(cx, 1.3, cz + 0.02);
-        g.add(scr);
-        g.userData = { canvas: c, tex, scr, drawn: '' };
+        // Drawn on the cabinet's one big screen (see 'cabinet'); the two sim
+        // terminals are its two halves, the router and the password prompt.
+        g.userData = {};
         return g;
       }
       case 'poster': {
@@ -531,31 +610,69 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
     }
   }
 
-  function drawTerminal(o: THREE.Object3D, p: Prop): void {
-    const u = o.userData as { canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; drawn: string };
-    const key = `${p.state}|${p.label}|${(p.v ?? 0).toFixed(2)}`;
+  /** The cable's state this frame, for the rack's reel and ring. */
+  let cableState = 'idle';
+  /** The cabinet's two terminals, as the sim publishes them this frame; the big screen draws both. */
+  const cab: { status: Prop | null; prompt: Prop | null; pilot: string } = { status: null, prompt: null, pilot: 'idle' };
+
+  function drawScreen(u: { scrCanvas: HTMLCanvasElement; scrTex: THREE.CanvasTexture; drawn: string }, blink: boolean): void {
+    const st = cab.status;
+    const pr = cab.prompt;
+    const key = `${st?.state}|${st?.label}|${pr?.state}|${pr?.label}|${(pr?.v ?? 0).toFixed(2)}|${blink}`;
     if (u.drawn === key) return;
     u.drawn = key;
-    const x = u.canvas.getContext('2d')!;
-    x.fillStyle = '#000';
-    x.fillRect(0, 0, 512, 128);
-    if (p.state === 'idle') {
-      u.tex.needsUpdate = true;
+    const x = u.scrCanvas.getContext('2d')!;
+    x.fillStyle = '#020403';
+    x.fillRect(0, 0, 768, 432);
+    if (!st || st.state === 'idle') {
+      u.scrTex.needsUpdate = true;
       return;
     }
-    const col = p.state === 'done' ? '#3cff78' : '#ffa21a';
+    const online = st.state === 'done';
+    const col = online ? '#3cff78' : '#ffa21a';
     x.fillStyle = col;
-    x.font = 'bold 30px "Courier New", monospace';
-    x.textAlign = 'left';
     x.textBaseline = 'middle';
-    const text = (p.label ?? '').replace(/^.*?—\s*/, '').toUpperCase();
-    x.fillText(text.slice(0, 30), 14, 40);
-    // The fill bar: how much of the password is in (`v`), or the link lights.
+    x.font = 'bold 30px "Courier New", monospace';
+    x.fillText('DEVOXX-NOC  //  UPLINK', 28, 42);
+    x.fillRect(28, 66, 712, 3);
+    x.font = 'bold 26px "Courier New", monospace';
+    x.fillText((st.label ?? '').replace(/^.*?—\s*/, '').toUpperCase().slice(0, 44), 28, 110);
+    x.fillText(online ? 'ATDT ... CONNECT 56000/V90' : 'MODEM READY  ATZ  OK', 28, 150);
     x.strokeStyle = col;
     x.lineWidth = 3;
-    x.strokeRect(14, 76, 484, 30);
-    x.fillRect(18, 80, 476 * Math.min(1, p.v ?? 0), 22);
-    u.tex.needsUpdate = true;
+    x.strokeRect(28, 178, 712, 28);
+    x.fillRect(32, 182, 704 * Math.min(1, st.v ?? 0), 20);
+    // The prompt half.
+    x.font = 'bold 34px "Courier New", monospace';
+    x.fillText(online ? 'WIFI: ON AIR' : 'AUTHORISATION?', 28, 262);
+    x.strokeRect(28, 300, 712, 64);
+    const typed = Math.round(Math.min(1, pr?.v ?? 0) * 13);
+    x.fillText('*'.repeat(typed) + (blink && !online ? '_' : ''), 44, 334);
+    x.font = '22px "Courier New", monospace';
+    x.fillStyle = online ? col : '#8a6a3a';
+    x.fillText(online ? 'and no, you can\u2019t change it' : 'password: see the wall', 28, 396);
+    u.scrTex.needsUpdate = true;
+  }
+
+  /** The rack's link lights, redrawn every few frames while powered. */
+  function drawLeds(u: { leds: HTMLCanvasElement; ledTex: THREE.CanvasTexture }, t: number, on: boolean): void {
+    const x = u.leds.getContext('2d')!;
+    x.clearRect(0, 0, 64, 256);
+    if (!on) {
+      u.ledTex.needsUpdate = true;
+      return;
+    }
+    const f = Math.floor(t * 12);
+    for (let r = 0; r < 8; r++) {
+      for (let k = 0; k < 6; k++) {
+        const h = Math.sin((r * 13 + k * 7) * 12.9898 + f * (0.3 + ((r + k) % 3) * 0.4)) * 43758.5453;
+        const lit = h - Math.floor(h) > 0.4;
+        if (!lit) continue;
+        x.fillStyle = (r + k) % 5 === 0 ? '#ffa21a' : '#3cff78';
+        x.fillRect(6 + k * 9, 8 + r * 32, 5, 4);
+      }
+    }
+    u.ledTex.needsUpdate = true;
   }
 
   function update(o: THREE.Object3D, p: Prop, t: number, dt: number): void {
@@ -576,6 +693,7 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
       }
       case 'rack-lights':
       case 'pilot': {
+        cab.pilot = p.state ?? 'idle';
         const blink = p.state === 'active' ? 0.6 + 0.4 * Math.sin(t * 4) : 1;
         (u.strip.material as THREE.MeshBasicMaterial).color.copy(stateColour(p.state, tmp, p.state === 'idle' ? 0.4 : 8 * blink));
         const L = u.lamp as THREE.PointLight;
@@ -586,6 +704,12 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
       case 'rack': {
         const k = p.state === 'idle' ? 0.2 : 2.5 * (0.7 + 0.3 * Math.sin(t * 9 + Math.sin(t * 3.1) * 2));
         (u.face.material as THREE.MeshBasicMaterial).color.copy(stateColour(p.state === 'idle' ? 'idle' : p.state, tmp, k));
+        // Waiting on the reel: the cable is on it, and the ring and tag call Voxxy.
+        const waiting = cableState === 'idle' || cableState === 'broken';
+        (u.reel as THREE.Object3D).visible = waiting;
+        const pulse = waiting ? 0.5 + 0.5 * Math.sin(t * 3.2) : 0;
+        ((u.ring as THREE.Mesh).material as THREE.MeshBasicMaterial).color.setRGB(1, 0.48, 0.1).multiplyScalar(waiting ? 0.6 + 2.4 * pulse : 0);
+        ((u.tag as THREE.Mesh).material as THREE.MeshBasicMaterial).color.setRGB(1, 0.48, 0.1).multiplyScalar(waiting ? 1.5 + pulse : 0.3);
         break;
       }
       case 'printer': {
@@ -607,10 +731,28 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
       case 'cabinet': {
         const e = THREE.MathUtils.smoothstep(p.progress ?? (p.state === 'open' ? 1 : 0), 0, 1);
         for (const l of u.leaves as THREE.Object3D[]) l.rotation.y = (l.userData.side as number) * e * 1.7;
+        const on = cab.pilot !== 'idle';
+        const online = cab.pilot === 'done';
+        drawScreen(u as never, Math.floor(t * 2) % 2 === 0);
+        if (Math.floor(t * 12) !== u.ledFrame) {
+          u.ledFrame = Math.floor(t * 12);
+          drawLeds(u as never, t, on);
+        }
+        (u.ledMat as THREE.MeshBasicMaterial).color.setScalar(on ? 3 : 0);
+        // The modem's front: MR TR (steady), SD RD (chatter), OH CD AA HS.
+        (u.lamps as THREE.Mesh[]).forEach((l, i) => {
+          const chatter = Math.sin(t * (17 + i * 5) + i) > 0.2;
+          const lit = !on ? false : i < 2 ? true : i < 4 ? chatter : online ? i !== 6 : i === 7 && Math.sin(t * 3) > 0;
+          (l.material as THREE.MeshBasicMaterial).color.setRGB(lit ? 6 : 0.05, lit ? (i < 4 ? 0.8 : 1.4) : 0.02, 0);
+        });
+        (u.glow as THREE.PointLight).color.setHex(online ? 0x3cff78 : 0xffa21a);
+        (u.glow as THREE.PointLight).intensity = on ? 6 * (0.3 + 0.7 * e) : 0;
         break;
       }
       case 'terminal':
-        drawTerminal(o, p);
+        // The router's status terminal is the wide one; the prompt the narrow one.
+        if ((p.w ?? 0) > 20) cab.status = p;
+        else cab.prompt = p;
         break;
       case 'poster': {
         const k = p.state === 'done' ? 3 : p.state === 'active' ? 2 : 0.25 + 0.1 * Math.sin(t * 1.5);
@@ -618,6 +760,7 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         break;
       }
       case 'cable': {
+        cableState = p.state ?? 'idle';
         const pts = p.pts ?? [];
         const last = pts[pts.length - 1];
         const key = `${pts.length}|${last ? Math.round(last.x / 2) : 0}|${last ? Math.round(last.y / 2) : 0}|${p.state}`;
