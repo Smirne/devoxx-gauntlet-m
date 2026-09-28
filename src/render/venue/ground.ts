@@ -151,6 +151,9 @@ function wallStyle(
 ): { mat: THREE.MeshStandardMaterial; height: number; base: number } | null {
   // Duke is drawn as himself (render3d/duke.ts, shared with the 3D build).
   if (w.kind === 'duke') return null;
+  // The hall's high tables and drinks fridges (`HIGH_TABLES`, `DRINK_FRIDGES`).
+  if (w.kind === 'high-table') return { mat: p.blackMetal, height: 1.1, base: 0 };
+  if (w.kind === 'fridge') return { mat: p.blackMetal, height: 2.0, base: 0 };
   /*
    * Every sponsor booth is drawn by `booths()` — half tables as cloth-draped
    * tables, built booths as a back wall, two returns and a counter. A built booth

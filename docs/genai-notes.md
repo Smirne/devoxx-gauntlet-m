@@ -5328,3 +5328,49 @@ have matched the room around them, and would have cost more than the entire rest
   understands parts that leave. New checks: crates land on downbeats, the walk starts on a
   downbeat, the gates cut only while the light is out, the dive starts on the light's death, the
   score plays once, and which score the game asks for.
+- **Backlog round: README, safety net, front row, and the venue from Michele's photo dump** (28 Sep
+  2026). Michele answered the backlog point by point, then sent about twenty photographs from the
+  Devoxx galleries: the exterior, reception, the expo hall empty and full, a few stands, Room 8
+  during a keynote, and the lab tables upstairs. `docs/venue-photos.md` records what each one
+  shows, so the reference outlives the chat (the images themselves are the photographers' work
+  and are not committed).
+  - *Decisions Michele made here:*
+    - the entry is the 3D build;
+    - seat the speakers in Room 8's front row for the ending;
+    - raise the keynote stage;
+    - the high tables are "really typical", so they go in;
+    - merge the intro music from his own branch.
+  - *Safety net for judges' machines:*
+    - the first-run quality comes from the GPU the browser reports: software renderers and
+      phones get low, integrated graphics medium, anything else high;
+    - a visible Quality button;
+    - a hint that appears once when the frame rate stays low after the resolution has
+      already been trimmed to its floor;
+    - changing quality now reloads straight back into the chapter you were in (it used to
+      drop you at the opening).
+  - *Front row.* The five hall speakers' looks moved into `src/sim/speakers.ts`, shared by
+    chapters 3 and 4. Chapter 4 reserves five middle-block front-row seats before the crowd's
+    seat order is handed out, and a test holds that no attendee is ever seated on a speaker's
+    chair. Lize's skirt hides when she sits: drawn for standing, it went through the seat.
+  - *Lanyards and Duke.*
+    - Duke is drawn in the 2.5D build too, as the same model.
+    - The collider test caught his hanging arm outside his sim footprint. The footprint went
+      from 13 to 17 px and the arm was tucked in.
+  - *High tables and fridges.*
+    - Seven high tables along the hall's open south strip, 23 px clear of the visitor lane,
+      solid in the sim, `low` so light crosses them. Voxxy's blocked line: "I would need to be
+      about four centimetres shorter to go under it".
+    - A pair of glass-door drinks fridges at each end, with a red header reading "Ice Cold":
+      a caricature, not the brand's logo.
+  - *Reception.* A white monolith counter with an LED line under the overhang; a timber-slat
+    back wall with two "Pick up your Devoxx polo during lunch" screens; an orange-glowing
+    soffit; drum lamps; the big ring pendant over the lane from the doors.
+  - *The hall's palette.* Light grey carpet in place of dark terrazzo, grey curtain walls with
+    folds, white columns. The first table render showed why: black tables on a dark floor
+    against dark walls vanished.
+  - *The lobby lamps* now sit inside the glass; two of them had hung out over the forecourt.
+  - *Text review.* An extractor walks the sim's syntax tree for every player-facing string: NPC
+    lines, blocked messages, hints, toasts, tasks, cards and the reel, 345 in all. They go on a
+    review page where Michele marks each OK or Change and types a rewrite. His marks are stored
+    in the page's own database, so the agent reads them back rather than asking for a
+    transcription.

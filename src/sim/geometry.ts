@@ -1115,6 +1115,26 @@ export const GF = {
  */
 export const DUKE = { x: 1340, y: 600, r: 17 } as const;
 
+/**
+ * THE HIGH TABLES AND THE DRINKS FRIDGES — the expo hall's own furniture.
+ *
+ * Michele, 28 Sep 2026, after sending the hall's photographs: *"The tables would
+ * be a good addition, they are really typical"*. Down the middle of the real hall
+ * run slim black square-frame high tables, a potted succulent on each, between
+ * pairs of glass-door drinks fridges. Here they are a row along the hall's open
+ * south strip, y 672: clear of the visitor lane at y 645 by 23 px, clear of every
+ * booth, and solid — a robot goes round a table, and Voxxy (1.15 m) does not fit
+ * under a 1.1 m one. Each table is `low` (light crosses it, as it would a table).
+ */
+export const HIGH_TABLES: readonly Rect[] = Object.freeze(
+  [430, 500, 570, 640, 710, 780, 850].map((x) => ({ x: x - 4, y: 668, w: 8, h: 8 })),
+);
+/** A fridge pair at each end of the table row. */
+export const DRINK_FRIDGES: readonly Rect[] = Object.freeze([
+  { x: 372, y: 664, w: 18, h: 10 },
+  { x: 890, y: 664, w: 18, h: 10 },
+]);
+
 export const BAR_RECT: Rect = { x: 336, y: 96, w: 92, h: 26 };
 
 /**
@@ -2042,6 +2062,12 @@ export function groundWalls(): Wall[] {
   }
   for (const p of FORECOURT_PLANTERS) {
     w.push({ ...p, low: true, kind: 'forecourt-planter', why: (bb) => `${bb.name}: a planter, out in the rain with the rest of Antwerp` });
+  }
+  for (const t of HIGH_TABLES) {
+    w.push({ ...t, low: true, kind: 'high-table', why: (bb) => (bb.kind === 'voxxy' ? 'Voxxy: a high table. I would need to be about four centimetres shorter to go under it' : `${bb.name}: a high table, somebody's lunch on it. Round it`) });
+  }
+  for (const f of DRINK_FRIDGES) {
+    w.push({ ...f, kind: 'fridge', why: (bb) => `${bb.name}: a drinks fridge. It is cold, it is full and it is not for robots` });
   }
   // Duke, inflated, in the lobby south of the main staircase.
   w.push({

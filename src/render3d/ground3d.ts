@@ -16,7 +16,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-import { DUKE, GF, LOBBY_RISE_M, MAIN_STAIR_TOP_M, WIFI_TAG, groundPlates, groundRiseM, groundWallsFor, stairDoors, stairMidLanding, stairRamps } from '../sim/geometry';
+import { DRINK_FRIDGES, DUKE, GF, HIGH_TABLES, LOBBY_RISE_M, MAIN_STAIR_TOP_M, WIFI_TAG, groundPlates, groundRiseM, groundWallsFor, stairDoors, stairMidLanding, stairRamps } from '../sim/geometry';
 import { DOOR_H, stairFlight } from '../render/venue/props';
 import type { Plate, Wall } from '../sim/types';
 import { m } from '../sim/units';
@@ -95,9 +95,10 @@ function styleOf(w: Wall, mats: Materials, concrete: THREE.Material): { h: numbe
       return { h: 2.8, mat: mats.blackGloss };
     case 'crate':
       return { h: 1.1, mat: mats.counter };
+    // White square columns, as in every photograph of the hall.
     case 'column':
     case 'lobby-column':
-      return { h: HALL_H, mat: concrete };
+      return { h: HALL_H, mat: columnMat(mats) };
     // The shafts go to the roof: the flight inside climbs out of sight.
     case 'stairwell':
     case 'stairwell-near':
@@ -121,6 +122,10 @@ function styleOf(w: Wall, mats: Materials, concrete: THREE.Material): { h: numbe
     case 'mainstair':
     // Duke is his own model (duke.ts); the entrance's frames and doors are `facade`.
     case 'duke':
+    case 'high-table':
+    case 'fridge':
+    // The reception desk is built by `reception`, from Michele's photographs.
+    case 'desk':
     case 'facade':
     case 'mullion':
     case 'door-leaf':
@@ -159,6 +164,39 @@ function boothGraphic(name: string, brand: string, ink: string, strap: string): 
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
+}
+
+let columnMatCache: THREE.Material | null = null;
+function columnMat(mats: Materials): THREE.Material {
+  if (!columnMatCache) {
+    const c = mats.plaster.clone();
+    c.color = new THREE.Color(0.78, 0.78, 0.76);
+    columnMatCache = c;
+  }
+  return columnMatCache;
+}
+
+/**
+ * The hall's walls are hung with grey curtains, floor to ceiling (Michele's
+ * expo photographs, 28 Sep): a warm grey with the vertical folds drawn into a
+ * tiling texture, so a flat wall reads as drapery under a lamp.
+ */
+function curtainMat(): THREE.MeshStandardMaterial {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 16;
+  const x = c.getContext('2d')!;
+  for (let i = 0; i < 256; i++) {
+    const f = 0.62 + 0.3 * Math.sin((i / 256) * Math.PI * 2 * 6) + 0.08 * Math.sin((i / 256) * Math.PI * 2 * 17);
+    const v = Math.round(110 * f + 40);
+    x.fillStyle = `rgb(${v},${v - 4},${v - 10})`;
+    x.fillRect(i, 0, 1, 16);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.RepeatWrapping;
+  return new THREE.MeshStandardMaterial({ map: t, roughness: 0.95 });
 }
 
 /**
@@ -463,6 +501,211 @@ function mainStairSides(group: THREE.Group, mats: Materials): THREE.Object3D[] {
   return out;
 }
 
+/**
+ * The hall's high tables and drinks fridges, off Michele's photographs (28 Sep):
+ * slim black square frames with a dark top and a potted succulent, and
+ * glass-door fridges with a red header, lit inside, rows of bottles behind the
+ * glass. Footprints are the sim's (`HIGH_TABLES`, `DRINK_FRIDGES`).
+ */
+function hallFurniture(group: THREE.Group, mats: Materials): THREE.Object3D[] {
+  const b = new Buckets();
+  const black = new THREE.MeshStandardMaterial({ color: 0x141416, roughness: 0.5, metalness: 0.4 });
+  const top = new THREE.MeshStandardMaterial({ color: 0x262422, roughness: 0.7 });
+  const pot = new THREE.MeshStandardMaterial({ color: 0xc9a53a, roughness: 0.35, metalness: 0.6 });
+  const leaf = new THREE.MeshStandardMaterial({ color: 0x4f8a3a, roughness: 0.8 });
+  const TH = 1.1;
+  const R = 0.02;
+  for (const t of HIGH_TABLES) {
+    const cx = m(t.x + t.w / 2);
+    const cz = m(t.y + t.h / 2);
+    const s = m(t.w) / 2;
+    // The frame: four legs, a square at the foot and one under the top.
+    for (const [dx, dz] of [
+      [-1, -1],
+      [1, -1],
+      [-1, 1],
+      [1, 1],
+    ]) b.add(black, box(R * 2, TH, R * 2, V(cx + dx * s, TH / 2, cz + dz * s)));
+    for (const y of [0.02, TH - 0.03]) {
+      b.add(black, box(s * 2, R * 2, R * 2, V(cx, y, cz - s)));
+      b.add(black, box(s * 2, R * 2, R * 2, V(cx, y, cz + s)));
+      b.add(black, box(R * 2, R * 2, s * 2, V(cx - s, y, cz)));
+      b.add(black, box(R * 2, R * 2, s * 2, V(cx + s, y, cz)));
+    }
+    b.add(top, box(s * 2 + 0.02, 0.03, s * 2 + 0.02, V(cx, TH, cz)));
+    b.add(pot, box(0.1, 0.09, 0.1, V(cx + 0.08, TH + 0.06, cz)));
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      const g = new THREE.ConeGeometry(0.025, 0.14, 4);
+      g.rotateZ(0.5 * Math.cos(a));
+      g.rotateX(0.5 * Math.sin(a));
+      g.translate(cx + 0.08 + Math.cos(a) * 0.02, TH + 0.16, cz + Math.sin(a) * 0.02);
+      b.add(leaf, g);
+    }
+    b.add(black, box(0.12, 0.015, 0.08, V(cx - 0.1, TH + 0.02, cz - 0.05)));
+  }
+  // Fridges: a pair per footprint, glass doors facing the aisle (north, -z).
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 320;
+  const x = c.getContext('2d')!;
+  const g = x.createLinearGradient(0, 0, 0, 320);
+  g.addColorStop(0, '#2a1a3a');
+  g.addColorStop(1, '#11162a');
+  x.fillStyle = g;
+  x.fillRect(0, 0, 128, 320);
+  for (let shelf = 0; shelf < 5; shelf++) {
+    const y = 40 + shelf * 56;
+    x.fillStyle = 'rgba(255,255,255,0.18)';
+    x.fillRect(6, y + 44, 116, 3);
+    for (let i = 0; i < 6; i++) {
+      x.fillStyle = ['#d8322a', '#e8e0d0', '#3aa0d8', '#f2b233'][(i + shelf) % 4];
+      x.fillRect(10 + i * 19, y + 8, 12, 36);
+      x.fillRect(13 + i * 19, y + 2, 6, 8);
+    }
+  }
+  const doorTex = new THREE.CanvasTexture(c);
+  doorTex.colorSpace = THREE.SRGBColorSpace;
+  const door = new THREE.MeshBasicMaterial({ map: doorTex, color: new THREE.Color(1.3, 1.3, 1.3), toneMapped: false });
+  const h = document.createElement('canvas');
+  h.width = 256;
+  h.height = 64;
+  const hx = h.getContext('2d')!;
+  hx.fillStyle = '#d31f26';
+  hx.fillRect(0, 0, 256, 64);
+  hx.fillStyle = '#fff';
+  hx.font = 'italic bold 34px Georgia, serif';
+  hx.textAlign = 'center';
+  hx.textBaseline = 'middle';
+  hx.fillText('Ice Cold', 128, 34);
+  const headTex = new THREE.CanvasTexture(h);
+  headTex.colorSpace = THREE.SRGBColorSpace;
+  const head = new THREE.MeshBasicMaterial({ map: headTex, color: new THREE.Color(1.5, 1.5, 1.5), toneMapped: false });
+  const FH = 2.0;
+  for (const f of DRINK_FRIDGES) {
+    const w = m(f.w) / 2;
+    const d = m(f.h);
+    for (const k of [0, 1]) {
+      const cx = m(f.x) + w * (k + 0.5);
+      const cz = m(f.y + f.h / 2);
+      b.add(mats.darkMetal, box(w - 0.02, FH, d, V(cx, FH / 2, cz)));
+      const front = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.1, FH - 0.45), door);
+      front.position.set(cx, (FH - 0.35) / 2 + 0.05, cz - d / 2 - 0.005);
+      front.rotation.y = Math.PI;
+      group.add(front);
+      const hd = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.06, 0.24), head);
+      hd.position.set(cx, FH - 0.16, cz - d / 2 - 0.006);
+      hd.rotation.y = Math.PI;
+      group.add(hd);
+    }
+  }
+  return b.build(group);
+}
+
+/**
+ * RECEPTION, from Michele's photographs of it (28 Sep, "the reception,
+ * finally!"): a monolithic white counter, square-edged, with a warm LED line
+ * under its top's overhang; behind it a wall of vertical timber slats with two
+ * screens ("Pick up your Devoxx polo during lunch"); a glowing orange soffit
+ * over the desk; white drum-shade lamps on the counter; and over the lane from
+ * the doors, a big white ring pendant lit underneath. The counter runs are the
+ * sim's `desk` walls; the slat wall stands on the wardrobe's south face.
+ */
+function reception(group: THREE.Group, mats: Materials): THREE.Object3D[] {
+  const b = new Buckets();
+  const white = new THREE.MeshStandardMaterial({ color: 0xf1efea, roughness: 0.35 });
+  const led = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.7, 0.4).multiplyScalar(3), toneMapped: false });
+  const rise = LOBBY_RISE_M;
+  const CH = 1.1;
+  for (const w of groundWallsFor(2)) {
+    if (w.kind !== 'desk') continue;
+    const cx = m(w.x + w.w / 2);
+    const cz = m(w.y + w.h / 2);
+    b.add(white, box(m(w.w), CH - 0.06, m(w.h), V(cx, rise + (CH - 0.06) / 2, cz)));
+    // The top, overhanging 6 cm all round; the LED line tucked under it.
+    b.add(white, box(m(w.w) + 0.12, 0.06, m(w.h) + 0.12, V(cx, rise + CH - 0.03, cz)));
+    b.add(led, box(m(w.w) + 0.02, 0.02, m(w.h) + 0.02, V(cx, rise + CH - 0.075, cz)));
+  }
+  const rc = GF.reception;
+  const co = GF.coatroom;
+  // The timber-slat wall, facing the desk from the wardrobe's south face.
+  const wz = m(co.y + co.h) + 0.02;
+  const x0 = m(rc.x) + 0.2;
+  const x1 = m(rc.x + rc.w) - 0.2;
+  const WH = 3.0;
+  const wood = new THREE.MeshStandardMaterial({ color: 0x9a6a3e, roughness: 0.7 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 0.9 });
+  b.add(dark, box(x1 - x0, WH, 0.04, V((x0 + x1) / 2, rise + WH / 2, wz + 0.02)));
+  for (let x = x0 + 0.04; x < x1; x += 0.09) b.add(wood, box(0.045, WH, 0.04, V(x, rise + WH / 2, wz + 0.06)));
+  // Two screens on the slats.
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 288;
+  const x = c.getContext('2d')!;
+  x.fillStyle = '#d8d6d2';
+  x.fillRect(0, 0, 512, 288);
+  x.fillStyle = '#2b2b2e';
+  for (const px of [150, 250]) {
+    x.beginPath();
+    x.arc(px, 90, 42, 0, Math.PI * 2);
+    x.fill();
+    x.fillRect(px - 60, 128, 120, 160);
+  }
+  x.fillStyle = '#111';
+  x.font = 'bold 40px Arial, sans-serif';
+  x.textAlign = 'center';
+  x.fillText('Pick up your', 330, 110);
+  x.fillText('Devoxx polo during', 330, 160);
+  x.fillText('lunch', 330, 210);
+  x.font = '22px Arial, sans-serif';
+  x.fillText('Exhibition hall', 330, 250);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const screenMat = new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(1.2, 1.2, 1.2), toneMapped: false });
+  for (const f of [0.3, 0.72]) {
+    const sx = x0 + (x1 - x0) * f;
+    b.add(mats.darkMetal, box(1.36, 0.8, 0.06, V(sx, rise + 1.95, wz + 0.11)));
+    const s = new THREE.Mesh(new THREE.PlaneGeometry(1.28, 0.72), screenMat);
+    s.position.set(sx, rise + 1.95, wz + 0.145);
+    group.add(s);
+  }
+  // The orange soffit over the desk: a bulkhead, glowing underneath.
+  const soffitY = rise + 3.3;
+  b.add(white, box(m(rc.w) + 0.4, 0.5, m(rc.h) + 0.4, V(m(rc.x + rc.w / 2), soffitY + 0.25, m(rc.y + rc.h / 2))));
+  const glow = new THREE.Mesh(
+    new THREE.PlaneGeometry(m(rc.w) + 0.2, m(rc.h) + 0.2),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.45, 0.15).multiplyScalar(2.2), toneMapped: false }),
+  );
+  glow.rotation.x = Math.PI / 2;
+  glow.position.set(m(rc.x + rc.w / 2), soffitY - 0.005, m(rc.y + rc.h / 2));
+  group.add(glow);
+  const warm = new THREE.PointLight(0xff9a5a, 18, 9, 1.6);
+  warm.position.set(m(rc.x + rc.w / 2), soffitY - 0.4, m(rc.y + rc.h / 2));
+  group.add(warm);
+  // Two drum lamps on the counter ends.
+  const shade = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.92, 0.78).multiplyScalar(2.5), toneMapped: false });
+  for (const [lx, lz] of [
+    [m(rc.x) + 0.3, m(rc.y) + 0.4],
+    [m(rc.x + rc.w) - 0.5, m(rc.y + rc.h) - 0.3],
+  ]) {
+    b.add(mats.steel, box(0.03, 0.5, 0.03, V(lx, rise + CH + 0.25, lz)));
+    const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.26, 20, 1, true), shade);
+    sh.position.set(lx, rise + CH + 0.58, lz);
+    group.add(sh);
+  }
+  // The ring pendant over the lane from the doors.
+  const ringY = rise + 3.4;
+  const px = m(GF.entrance.x) - 2.2;
+  const pz = m(GF.entrance.y + GF.entrance.h / 2);
+  b.add(white, new THREE.CylinderGeometry(1.1, 1.1, 0.28, 48, 1, true).translate(px, ringY, pz));
+  const under = new THREE.Mesh(new THREE.RingGeometry(0.2, 1.08, 48), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.95, 0.88).multiplyScalar(3), toneMapped: false, side: THREE.DoubleSide }));
+  under.rotation.x = Math.PI / 2;
+  under.position.set(px, ringY - 0.12, pz);
+  group.add(under);
+  b.add(mats.darkMetal, box(0.02, HALL_H - ringY, 0.02, V(px, (HALL_H + ringY) / 2, pz)));
+  return b.build(group);
+}
+
 export function buildGround(mats: Materials): Ground3D {
   const group = new THREE.Group();
   group.name = 'ground-floor';
@@ -478,7 +721,37 @@ export function buildGround(mats: Materials): Ground3D {
   const lobbyX = lobby ? lobby.x : 1045;
   const lobbyH = lobby ? lobby.lo : 0.5;
   // The hall: one slab, its top at 0.
-  floors.add(mats.terrazzo, box(m(lobbyX), 0.1, m(GZ), V(m(lobbyX) / 2, -0.05, m(GZ) / 2), 3));
+  // Light grey carpet, as the photographs show it (it was dark terrazzo).
+  const hallCarpet = (() => {
+    // A soft tile of speckled grey loop pile, faintly checked the way the
+    // photographs' carpet tiles are.
+    const c = document.createElement('canvas');
+    c.width = 256;
+    c.height = 256;
+    const x = c.getContext('2d')!;
+    let seed = 3;
+    const rnd = (): number => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (const [ox, oy, tone] of [
+      [0, 0, 150],
+      [128, 0, 142],
+      [0, 128, 142],
+      [128, 128, 150],
+    ]) {
+      x.fillStyle = `rgb(${tone},${tone - 3},${tone - 8})`;
+      x.fillRect(ox, oy, 128, 128);
+    }
+    for (let i = 0; i < 9000; i++) {
+      const v = 110 + rnd() * 80;
+      x.fillStyle = `rgba(${v | 0},${(v - 4) | 0},${(v - 10) | 0},0.5)`;
+      x.fillRect(rnd() * 256, rnd() * 256, 1.5, 1.5);
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = THREE.RepeatWrapping;
+    t.wrapT = THREE.RepeatWrapping;
+    return new THREE.MeshStandardMaterial({ map: t, roughness: 0.95 });
+  })();
+  floors.add(hallCarpet, box(m(lobbyX), 0.1, m(GZ), V(m(lobbyX) / 2, -0.05, m(GZ) / 2), 3));
   // The lobby, raised: a solid block so its edge reads as a step, not a sheet.
   floors.add(mats.carpet, box(m(GX - lobbyX), lobbyH, m(GZ), V(m((GX + lobbyX) / 2), lobbyH / 2 - 0.001, m(GZ) / 2), 3));
   for (const p of plates) {
@@ -494,8 +767,9 @@ export function buildGround(mats: Materials): Ground3D {
   /* ------------------------------------------------------------- walls */
   // Bare concrete: an exhibition shed's walls, and dark enough that a robot's
   // lamp a metre away does not bleach a stair shaft white.
-  const concrete = mats.plaster.clone();
-  concrete.color = new THREE.Color(0.2, 0.21, 0.22);
+  // ...now grey curtains, floor to ceiling, off the photographs (28 Sep): the
+  // walls a robot's lamp meets are drapery, which takes a lamp as a soft wash.
+  const concrete = curtainMat();
   const solid = new Buckets();
   const glassPanes: THREE.Mesh[] = [];
   for (const w of groundWallsFor(2)) {
@@ -521,6 +795,8 @@ export function buildGround(mats: Materials): Ground3D {
   colliders.push(...shafts(group, mats, concrete));
   colliders.push(...facade(group, mats, updaters));
   colliders.push(...mainStairSides(group, mats));
+  colliders.push(...hallFurniture(group, mats));
+  colliders.push(...reception(group, mats));
   {
     // Duke, on his sim footprint, facing the doors.
     const duke = buildDuke();
