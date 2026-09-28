@@ -28,7 +28,7 @@
 import * as THREE from 'three';
 
 import { flairPhase, hopPhase, worldMoved } from '../sim/bot';
-import { JUMP_RISE_M, MOUNT_OFFSET_Y, W as SIM_W, H as SIM_H } from '../sim/constants';
+import { CABLE_MAX, JUMP_RISE_M, MOUNT_OFFSET_Y, W as SIM_W, H as SIM_H } from '../sim/constants';
 import { riseAt, riseForBody } from '../sim/surface';
 import { JAM_LEAF_H, JAM_SKEW, JAM_SKID, JAM_TIP } from '../sim/chapters/ch1-night';
 import type { Bot, GameSnapshot, Person, Plate, Prop, RobotKind, ViewRect } from '../sim/types';
@@ -627,6 +627,70 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   cableLine.frustumCulled = false;
   cableLine.visible = false;
   dressing.add(cableLine);
+
+  /**
+   * THE REEL ITSELF — a drum that stays at the rack when the cable comes off it.
+   *
+   * Michele, 28 Sep 2026: *"the cable roll should not disappear when taken"*. It
+   * did, because the reel was never a thing: the sim published a polyline and the
+   * renderer drew the polyline, so "picking up the cable" made the only drawn part
+   * of it a line that starts in mid-air at the rack. A reel is bolted down. What
+   * leaves is the CABLE.
+   *
+   * So the drum is built once and drawn every frame chapter 2 publishes a cable,
+   * whatever state it is in: two flanges on a horizontal spindle over a squat
+   * frame, and between them a wound web whose radius is what is still on it. Full
+   * before Voxxy takes the end, a bare core when the run is made — which is the
+   * cheapest possible read of "how much reel is left" and agrees with the HUD's
+   * own metre count, because both come off `cable.len`.
+   */
+  const reelGroup = new THREE.Group();
+  reelGroup.name = 'cable-reel';
+  reelGroup.visible = false;
+  /** Flange radius, metres — a 0.66 m drum, the size a venue runs Cat6 off. */
+  const REEL_R = 0.33;
+  /** Half the gap between the flanges: the wound web is 0.16 m wide. */
+  const REEL_HW = 0.08;
+  /** The bare core the web can never shrink past. */
+  const REEL_CORE_R = 0.11;
+  const reelSteel = new THREE.MeshStandardMaterial({ color: 0x8b939c, roughness: 0.55, metalness: 0.5 });
+  const reelWeb = new THREE.MeshStandardMaterial({
+    color: 0xffb347,
+    emissive: new THREE.Color(0x3a2708),
+    emissiveIntensity: 1,
+    roughness: 0.7,
+    metalness: 0.1,
+  });
+  const reelWound = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, REEL_HW * 2 - 0.01, 18), reelWeb);
+  {
+    for (const sx of [-1, 1] as const) {
+      const flange = new THREE.Mesh(new THREE.CylinderGeometry(REEL_R, REEL_R, 0.025, 20), reelSteel);
+      // The spindle runs across the aisle, so the flanges read as discs from the
+      // fixed camera rather than as a pair of edge-on lines.
+      flange.rotation.z = Math.PI / 2;
+      flange.position.set(sx * REEL_HW, 0, 0);
+      flange.castShadow = true;
+      reelGroup.add(flange);
+    }
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(REEL_CORE_R, REEL_CORE_R, REEL_HW * 2, 12), reelSteel);
+    core.rotation.z = Math.PI / 2;
+    reelGroup.add(core);
+    reelWound.rotation.z = Math.PI / 2;
+    reelGroup.add(reelWound);
+    // The frame: two legs under the spindle, so the drum is off the floor and the
+    // whole thing reads as equipment rather than as a wheel somebody left lying.
+    for (const sx of [-1, 1] as const) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, REEL_R, 0.05), reelSteel);
+      leg.position.set(sx * (REEL_HW + 0.06), -REEL_R / 2, 0);
+      leg.castShadow = true;
+      reelGroup.add(leg);
+    }
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(REEL_HW * 2 + 0.2, 0.04, 0.22), reelSteel);
+    foot.position.y = -REEL_R + 0.02;
+    foot.receiveShadow = true;
+    reelGroup.add(foot);
+  }
+  dressing.add(reelGroup);
 
   const bezelMat = new THREE.MeshStandardMaterial({ color: 0x2a2f36, roughness: 0.8, metalness: 0.2 });
 
@@ -2578,6 +2642,21 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
 
   /** The cable, as a polyline on the floor. */
   function drawCable(p: Prop, floorY: number): void {
+    /*
+     * The drum first, because it is there whether or not there is a line to draw:
+     * it stands at the prop's own rect, which the chapter pins to the rack.
+     */
+    reelGroup.visible = true;
+    reelGroup.position.set(m(p.x), surfaceY(floorY, p.x, p.y) + REEL_R, m(p.y));
+    // What is left on it. `v` is the length paid out, so the web winds down from
+    // a full drum to the bare core, and a connected run leaves the core showing.
+    const left = Math.max(0, Math.min(1, 1 - (p.v ?? 0) / CABLE_MAX));
+    const r = REEL_CORE_R + (REEL_R - 0.03 - REEL_CORE_R) * left;
+    reelWound.scale.set(r, 1, r);
+    // Red while the reel is holding Voxxy back, the same red as the line.
+    reelWeb.color.setHex(p.state === 'taut' ? 0xff4d3a : 0xffb347);
+    reelWeb.emissive.setHex(p.state === 'taut' ? 0x5a1106 : 0x3a2708);
+
     const pts = p.pts;
     if (!pts || pts.length < 2) {
       cableLine.visible = false;
@@ -3105,7 +3184,15 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const bl = Math.hypot(bx, bz) || 1;
     const x = m(p.x) + (bx / bl) * reach;
     const z = m(p.y) + (bz / bl) * reach;
-    potGroup.position.set(x, surfaceY(floorY, p.x, p.y) + POT_CARRY_H, z);
+    /*
+     * ...unless we can do better than a guess. A carried pot goes exactly where
+     * the carrier's hands are — see `handsAt` — so the arms are round it instead
+     * of beside it. The heading maths above is the fallback for a pot standing on
+     * the counter with nobody holding it.
+     */
+    const hands = holder ? handsAt(holder.kind) : null;
+    if (hands) potGroup.position.set(hands.x, hands.y - 0.04, hands.z);
+    else potGroup.position.set(x, surfaceY(floorY, p.x, p.y) + POT_CARRY_H, z);
     potGroup.rotation.y = yawFromSimHeading(face);
     /*
      * A CARRIED POT IS NEVER LEVEL. The tilt is the carrier's own turn rate — the
@@ -3136,22 +3223,49 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   }
 
   /**
-   * The ladle on the high shelf — the thing Michele could not see.
+   * The ladle, in all three places it can be.
    *
-   * It sits on the shelf slab the venue already draws at 1.35 m (`ground.ts`),
-   * lit while it is still up there so it reads across a dim hall, and gone once
-   * Droid has it: the shelf is empty after that, which is the honest picture and
-   * also the one that says the job is done.
+   * Michele, 28 Sep 2026: *"I think droid should take it and drop it in the soup.
+   * Otherwise the action is a bit pointless."* So the ladle is an object with a
+   * journey, and the renderer draws the journey: `idle` is on the shelf slab the
+   * venue builds at 1.35 m, lit so it reads across a dim hall; `active` is in
+   * Droid's hand, which is a real bone lookup and not a hover; `done` is standing
+   * in the pot, handle out, which is how you can see from the far side of the
+   * hall that the errand is finished.
    */
-  function drawLadle(p: Prop, floorY: number): void {
-    const taken = p.state === 'done';
-    ladleGroup.visible = !taken;
-    if (taken) return;
+  function drawLadle(p: Prop, floorY: number, potHeld: boolean): void {
+    ladleGroup.visible = true;
     const cx = p.x + (p.w ?? 0) / 2;
     const cy = p.y + (p.h ?? 0) / 2;
+    if (p.state === 'done') {
+      /*
+       * Standing in the soup: upright, so the handle sticks out of the pot — and
+       * it goes wherever the pot goes. While Biggy has it that is his hands; on
+       * the counter it is the counter top (`soup-station` is a 1 m box), which is
+       * read here rather than from `potGroup` because the pot is drawn after the
+       * ladle and a borrowed position would be a frame stale.
+       */
+      const held = potHeld ? handsAt('biggy') : null;
+      if (held) ladleGroup.position.set(held.x, held.y + 0.04, held.z);
+      else ladleGroup.position.set(m(cx), surfaceY(floorY, cx, cy) + 1.0, m(cy));
+      ladleGroup.rotation.set(0, -Math.PI / 4, 0.25);
+      ladleMat.emissive.setHex(0x101820);
+      ladleMat.emissiveIntensity = 0.4;
+      return;
+    }
+    if (p.state === 'active') {
+      // Carried: hanging from Droid's hand, bowl down, tipped back as he walks.
+      const hands = handsAt('droid');
+      if (hands) ladleGroup.position.set(hands.x, hands.y - 0.1, hands.z);
+      else ladleGroup.position.set(m(cx), surfaceY(floorY, cx, cy) + 0.9, m(cy));
+      ladleGroup.rotation.set(0, -Math.PI / 4, -0.5);
+      ladleMat.emissive.setHex(0x2a3a46);
+      ladleMat.emissiveIntensity = 0.9;
+      return;
+    }
     ladleGroup.position.set(m(cx), surfaceY(floorY, cx, cy) + SHELF_TOP_H, m(cy));
     // Turned across the shelf so the handle comes at the camera rather than into it.
-    ladleGroup.rotation.y = -Math.PI / 4;
+    ladleGroup.rotation.set(0, -Math.PI / 4, 0);
     ladleMat.emissive.setHex(0x2a3a46);
     ladleMat.emissiveIntensity = 0.9;
   }
@@ -3436,12 +3550,16 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     // ...and where chapter 4's spotlights are aimed: at the stage it publishes.
     const stageProp = snap.props.find((o) => o.kind === 'stage');
     const biggy = snap.bots.find((b) => b.kind === 'biggy');
+    // The `pot` prop exists only while somebody is carrying it, so its presence
+    // IS the flag: anything that rides in the pot rides in Biggy's hands too.
+    const potHeld = snap.props.some((o) => o.kind === 'pot');
     peoplePool.begin();
     peopleN = 0;
     lockPool.begin();
     seatField.begin();
     gateGroup.visible = false;
     cableLine.visible = false;
+    reelGroup.visible = false;
     breakerPanel.visible = false;
     cabinetOpen.visible = false;
     jammedLeaf.visible = false;
@@ -3471,7 +3589,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       else if (p.kind === 'cake') drawCake(p, floorY);
       else if (p.kind === 'pot') drawPot(p, potLevel, floorY, snap.t, biggy);
       else if (p.kind === 'soup') continue; // the level in the pot, drawn by `drawPot`
-      else if (p.kind === 'ladle') drawLadle(p, floorY);
+      else if (p.kind === 'ladle') drawLadle(p, floorY, potHeld);
       else if (p.kind === 'beer-tap') drawTap(p, floorY);
       else if (p.kind === 'beer-glass') drawGlass(p, barPour, floorY);
       else if (p.kind === 'keg') drawKeg(p, floorY);
@@ -3518,6 +3636,25 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     const pelvisY = new THREE.Vector3().setFromMatrixPosition(droid.bones.pelvis.matrixWorld).y;
     mountLiftM = ROBOT_HEIGHT_M.biggy - pelvisY - 0.02;
     return mountLiftM;
+  }
+
+  /**
+   * The world point midway between a rig's two hands.
+   *
+   * Michele, 28 Sep 2026, on a soup pot flying along beside Biggy's head: *"GRAB
+   * that thing :D"*. A prop positioned off the BODY is a prop that floats; a prop
+   * positioned off the HANDS is a prop that is held, and the carry pose in
+   * `gait.ts` brings the hands up to meet it. `placeRobots` runs before the
+   * dressing pass, so the bones are already on this frame's pose.
+   */
+  const handsV = new THREE.Vector3();
+  const handsW = new THREE.Vector3();
+  function handsAt(kind: RobotKind): THREE.Vector3 | null {
+    const rig = rigs.get(kind);
+    if (!rig) return null;
+    rig.bones.handL.getWorldPosition(handsV);
+    rig.bones.handR.getWorldPosition(handsW);
+    return handsV.add(handsW).multiplyScalar(0.5);
   }
 
   function placeRobots(snap: GameSnapshot, dt: number, floorY: number): void {
@@ -3881,6 +4018,12 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       releasePanel.dispose();
       cableGeo.dispose();
       cableMat.dispose();
+      reelGroup.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (mesh.isMesh) mesh.geometry.dispose();
+      });
+      reelSteel.dispose();
+      reelWeb.dispose();
       boxGeo.dispose();
       plinth.traverse((o) => {
         const mesh = o as THREE.Mesh;

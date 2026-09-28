@@ -867,3 +867,36 @@ rest are here.
 ### Still open
 
 - Chapter 4 runs about six minutes — his note, still not acted on.
+
+## Michele, 28 Sep — V47: three things that were not being held
+
+- *"The ladle thing: I think droid should take it and drop it in the soup. Otherwise the action is
+  a bit pointless."* He was right: reaching the high shelf was the whole errand, and reaching it
+  set a boolean nobody could see. The ladle is an **object with a journey** now — `shelf` →
+  `carried` → `in` — and it is only `in` that unlocks Biggy's pot. Droid presses `E` under the
+  shelf to take it, walks it to the soup counter and presses `E` again to drop it in; the run-sheet
+  row counts 1 of 2 and 2 of 2, its "go here" mark moves from the shelf to the counter as he goes,
+  and Biggy asking for a pot with the ladle still in Droid's hand gets a different refusal from
+  Biggy asking with the ladle still on the shelf. The renderer draws all three places: on the slab,
+  hanging from Droid's hand, and standing upright in the pot — where it then travels with the pot,
+  because a ladle in a pot goes where the pot goes.
+- *"GRAB that thing :D"* — a screenshot of the soup pot flying along beside Biggy's head. It was
+  positioned off his BODY, with a camera-ward bias to stop it hiding behind him, which is exactly
+  what a floating pot looks like. Two halves to the fix: a **carry pose** in `gait.ts` that brings
+  both shoulders up and IN as he picks something up and eases out again when he puts it down, and
+  a pot **positioned off the hand bones** rather than off the body. Measured on the real rig at the
+  end of a carry: his hands close to 0.68 m apart around a 0.52 m pot, the pot at their midpoint,
+  0.45 m out in front of his centre. The arms go round it instead of past it.
+- *"the cable roll should not disappear when taken."* There was never a reel: chapter 2 drew the
+  RUN — a polyline — so before Voxxy picked up the end there was nothing at the rack at all, and
+  after she did, the line simply started in mid-air. A reel is bolted down; what leaves is the
+  cable. The drum is modelled now (two flanges on a spindle over a frame) and drawn in every state
+  the chapter can be in, with a wound web whose radius is what is still on it: full before she
+  takes the end, winding down as she walks, red while the reel is holding her back, a bare core
+  when the run is made.
+
+### Still open
+
+- Chapter 4 runs about six minutes — his note, still not acted on.
+- Chapter 2's rack sits low on the left of the frame, where the speed/physics panel overlaps it.
+  The new reel is drawn correctly and is partly behind the HUD — worth a look next round.

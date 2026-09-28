@@ -982,7 +982,8 @@ describe('chapter 3 — breakfast', () => {
     g.key('KeyE');
     expect(breakfast().queues[0].open).toBeGreaterThan(0);
 
-    // The pot needs the ladle first, and the ladle needs Droid's reach.
+    // The pot needs the ladle IN it, and the ladle needs Droid's reach and then
+    // Droid's walk: off the shelf, over to the counter, into the pot.
     g.debug.select('biggy');
     g.debug.place('biggy', 105, 180);
     g.key('KeyE');
@@ -991,7 +992,10 @@ describe('chapter 3 — breakfast', () => {
     g.debug.select('droid');
     g.debug.place('droid', 176, 150);
     g.key('KeyE');
-    expect(breakfast().ladle).toBe(true);
+    expect(breakfast().ladle).toBe('carried');
+    g.debug.place('droid', 105, 180);
+    g.key('KeyE');
+    expect(breakfast().ladle).toBe('in');
 
     g.debug.select('biggy');
     g.key('KeyE');
@@ -1950,11 +1954,14 @@ describe('chapter 3 — the soup is refillable', () => {
   const start = (): DebugGame => {
     const g = createGame({ seed: 20260930, chapter: 3, cards: false }) as DebugGame;
     const st = (): BreakfastState => g.debug.chapter() as BreakfastState;
-    // Ladle, then pot.
+    // Ladle off the shelf, ladle into the pot, then the pot.
     g.debug.select('droid');
     g.debug.place('droid', 176, 150);
     g.key('KeyE');
-    expect(st().ladle).toBe(true);
+    expect(st().ladle).toBe('carried');
+    g.debug.place('droid', 105, 180);
+    g.key('KeyE');
+    expect(st().ladle).toBe('in');
     g.debug.select('biggy');
     g.debug.place('biggy', 105, 180);
     g.key('KeyE');
@@ -1980,7 +1987,7 @@ describe('chapter 3 — the soup is refillable', () => {
     expect(st().batches, 'the ruined pot was not counted').toBeGreaterThan(0);
     expect(st().soup, 'the counter did not refill it').toBe(100);
     expect(g.snapshot().phase, 'a spilled pot ended the run').toBe('play');
-    expect(st().ladle, 'he lost the ladle with the soup').toBe(true);
+    expect(st().ladle, 'he lost the ladle with the soup').toBe('in');
 
     // ...and he can simply go and get another one.
     g.debug.select('biggy');

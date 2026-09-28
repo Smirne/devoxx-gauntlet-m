@@ -208,12 +208,16 @@ export function playToStairGate(g: DebugGame, onOpen?: (g: DebugGame) => void): 
       g.key('KeyE');
     };
 
-    // The ladle is on the high shelf, and only Droid reaches it. Then Biggy can
-    // pick the pot up, and the pot goes to where Stephan is standing.
+    // The ladle is on the high shelf, only Droid reaches it, and reaching it is
+    // half the errand: he carries it to the counter and drops it IN the pot.
+    // Then Biggy can pick the pot up, and it goes to where Stephan is standing.
     g.debug.select('droid');
     g.debug.place('droid', 176, 150);
     g.key('KeyE');
-    expect(st().ladle, 'Droid never got the ladle').toBe(true);
+    expect(st().ladle, 'Droid never got the ladle off the shelf').toBe('carried');
+    g.debug.place('droid', 105, 180);
+    g.key('KeyE');
+    expect(st().ladle, 'Droid never dropped the ladle in the pot').toBe('in');
     use('biggy', { x: 105, y: 180 });
     expect(st().carrying, 'Biggy never picked the pot up').toBe(true);
     const drop = propAt('dropzone', (p) => (p.label ?? '').includes('soup'));

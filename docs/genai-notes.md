@@ -4343,3 +4343,54 @@ man rather than by a rect. Suite **774 green**.
 drawn geometry (`src/render/lighting.ts` draws the robots' lamps as meshes off the sim's visibility
 polygons); four spots with shadow maps would have been the only real lights in the build, would not
 have matched the room around them, and would have cost more than the entire rest of the frame.
+
+## 28 Sep 2026, V47 round — the ladle's journey, the grip, and the reel that was never there
+
+**What the human decided.** Three notes, all of them about a thing the game claimed was happening
+and was not: *"The ladle thing: I think droid should take it and drop it in the soup. Otherwise the
+action is a bit pointless."* · *"GRAB that thing :D"*, with a screenshot of the soup pot flying
+along beside Biggy's head · *"the cable roll should not disappear when taken."*
+
+**What the agent did.**
+
+- **Turned the ladle into an object with a journey.** It was a boolean: press `E` under the shelf,
+  `ladle = true`, and the pot unlocked. It is a three-state union now — `shelf` → `carried` → `in`
+  — with a press at each end of the walk, and it is `in` that Biggy's fill is gated on. Everything
+  downstream reads the union rather than a flag: the run-sheet row is a 2-step counter whose "go
+  here" mark moves from the shelf to the counter, Biggy has one refusal for "nobody has the ladle"
+  and another for "it is in your hand, Droid", Stephan has a line for the middle state, and the
+  prop is published at three positions so a player who cannot find the ladle can follow it.
+- **Gave Biggy hands.** A carry pose in `gait.ts` (both shoulders up and in, forearms folded,
+  blended on and off with the same exponential the roll uses) plus a pot positioned off the rig's
+  `handL`/`handR` world positions instead of off the body. The old code aimed the pot half along
+  his heading and half at the camera to stop it hiding behind him, which is why it looked like it
+  was flying.
+- **Modelled the cable reel.** Two flanges on a spindle over a frame, at the rack, drawn in every
+  state chapter 2 can be in, with a wound web whose radius is the length still on the drum.
+
+**What it cost, and what it found.**
+
+- **A boolean that had leaked into nine places.** Widening `ladle` to a union broke `pilot.ts` and
+  with it seven test files that had never mentioned the ladle — the shared chapter-3 choreography
+  runs through one helper. That is the good version of the problem: one edit to the choreography
+  and the rest followed, and a union would have been the right type from the start.
+- **Measuring the grip beat looking at it.** Headless screenshots of the food court kept catching
+  the selected robot's x-ray ghost, or the briefing panel, or a counter between the camera and the
+  robot. Reading the rig's own hand bones out of the live scene graph through `__afterdark.debugRoot()`
+  answered it in one run: hands 1.58 m apart on the first cut of the pose (arms out, pot in the
+  gap), 0.68 m after flipping the shoulder roll, around a 0.52 m pot. The screenshots were the
+  slow way to learn the sign of an angle.
+- **The reel's own numbers, measured the same way.** Drum at the rack before and after the cable is
+  taken, not one millimetre of travel, web winding from 0.30 m to 0.211 m over the first 697 px of
+  1480 paid out.
+
+**Tests.** `tests/soup.test.ts` grows the three-place ladle: the prop is the shelf rect, then a box
+on Droid himself, then a box on whoever holds the pot, and Biggy cannot fill the pot until it is
+`in`. `tests/tasks.test.ts` asserts the 2-step row counts the shelf without ticking.
+`tests/ch2-chain.test.ts` (new): the reel is published before, during and after the run and never
+moves off the rack. `tests/prop-geometry.ts` gives `cable` the drum's real box, and the collider
+sweep accepts it because the rack it stands in is already solid. Suite **776 green**.
+
+**Rejected.** Giving Droid the same two-handed carry pose for the ladle. A ladle hangs from one
+hand; posing him as if he were carrying a pot to hold a 0.5 m spoon would have been a worse lie
+than the one being fixed.
