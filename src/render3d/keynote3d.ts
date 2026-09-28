@@ -9,8 +9,8 @@
  * Everything is placed from the sim (CLAUDE.md: the sim is the only source of
  * truth; this only reads it):
  *
- *  - the room is `R(8)`, the stage/cake mark/hooks/spotlights/seat blocks are the
- *    chapter's props, and their `state` is all that changes them;
+ *  - the room is `R(8)`, the stage/cake mark/#DEVOXX letters/spotlights/seat
+ *    blocks are the chapter's props, and their `state` is all that changes them;
  *  - the house screen shows a holding slide with the crowd clock from the
  *    `crowd` prop, and the opening video from `snap.reel` when it plays.
  *
@@ -23,8 +23,11 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 import { CY0, CY1, F1, R } from '../sim/geometry';
-import type { GameSnapshot, Prop, ReelCard } from '../sim/types';
+import { SIGN_ORANGE } from '../sim/letters';
+import type { GameSnapshot, Prop, ReelCard, RobotKind } from '../sim/types';
 import { m } from '../sim/units';
+import { LEAN_RAD, LETTER_HELD_LIFT_M, LETTER_ORANGE, LETTER_WHITE, letterGeometry } from '../render/letters';
+import { yawFromSimHeading } from '../render/robots';
 
 import type { Materials } from './materials';
 import { box } from './materials';
@@ -34,7 +37,11 @@ export interface Keynote3D {
   group: THREE.Group;
   /** For the camera's collision rays. */
   colliders: THREE.Object3D[];
-  update(snap: GameSnapshot, t: number, dt: number): void;
+  /**
+   * `hands` is where a robot's hands are this frame (`handsOf` in robots3d.ts), for
+   * the #DEVOXX letter Droid is carrying; without it the letter rides in front of him.
+   */
+  update(snap: GameSnapshot, t: number, dt: number, hands?: (kind: RobotKind) => THREE.Vector3 | null): void;
   /** Where the camera watches the opening video from: the back rows, looking at the screen. */
   reelView: { pos: THREE.Vector3; look: THREE.Vector3 };
 }
@@ -43,11 +50,7 @@ const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(
 
 /** The stage dais, m. Low enough that a robot standing on sim floor does not sink out of sight. */
 const DAIS = 0.05;
-/** Banner hooks: wall brackets at this height, m — over everyone's head but Droid's reach. */
-const HOOK_Y = 3.1;
-/** The banner's drop under the hook line, m. */
-const BANNER_H = 0.95;
-/** The house screen: above the banner, 16:9. */
+/** The house screen: over the #DEVOXX sign, 16:9. */
 const SCREEN_BOTTOM = 3.35;
 const SCREEN_W = 6.5;
 const SCREEN_H = (SCREEN_W * 9) / 16;
@@ -101,8 +104,8 @@ export function buildKeynote(mats: Materials): Keynote3D {
   for (const fx of [-0.18, 0.18]) {
     const L = new THREE.SpotLight(0xfff4e8, 1700, 30, 0.38, 0.6, 1.3);
     L.position.set(cx + fx * (x1 - x0), HEIGHTS.room - 0.4, m(r8.y + 150));
-    // At the stage floor, not the drape: aimed chest-high they burnt the
-    // banner's middle white.
+    // At the stage floor, not the drape: aimed chest-high they burnt the old
+    // banner's middle white, and would burn out the white #DEVOXX letters now.
     L.target.position.set(cx + fx * (x1 - x0) * 0.6, 0, m(r8.y + 50));
     group.add(L, L.target);
   }
@@ -329,25 +332,6 @@ export function buildKeynote(mats: Materials): Keynote3D {
     return o;
   }
 
-  function hook(p: Prop): THREE.Object3D {
-    // A bracket on the side wall at the hook's end of the room, a ring on it,
-    // and a beacon that says "this one" until Droid has hung his end.
-    const o = new THREE.Group();
-    const left = p.x < r8.x + r8.w / 2;
-    const wx = left ? x0 + 0.12 : x1 - 0.12;
-    const z = m(p.y);
-    const plate = new THREE.Mesh(box(0.06, 0.3, 0.3, V(wx, HOOK_Y, z)), mats.steel);
-    const arm = new THREE.Mesh(box(0.35, 0.05, 0.05, V(wx + (left ? 0.17 : -0.17), HOOK_Y, z)), mats.steel);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.015, 8, 16), mats.steel);
-    ring.position.set(wx + (left ? 0.34 : -0.34), HOOK_Y - 0.07, z);
-    const beaconMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.8, 0.1), toneMapped: false });
-    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), beaconMat);
-    beacon.position.set(wx + (left ? 0.05 : -0.05), HOOK_Y + 0.22, z);
-    o.add(plate, arm, ring, beacon);
-    o.userData = { beacon: beaconMat, at: V(ring.position.x, HOOK_Y - 0.1, z), left };
-    return o;
-  }
-
   function spotlight(p: Prop): THREE.Object3D {
     // A floor PAR can on a yoke, aimed at the stage, with its number on the base.
     const o = new THREE.Group();
@@ -366,7 +350,8 @@ export function buildKeynote(mats: Materials): Keynote3D {
     lens.position.z = 0.165;
     yoke.add(can, lens);
     // Aim: each at its own quarter of the stage, 1.2 m up — four beams on one
-    // point made a white-out over the banner. `lookAt` points +z, and `o` is
+    // point made a white-out over the old banner, where the #DEVOXX sign now
+    // stands. `lookAt` points +z, and `o` is
     // not in the scene yet, so the target is given in `o`'s own frame.
     const stageAt = V(cx + (x - cx) * 0.35, 1.2, m(r8.y + 45));
     o.add(yoke);
@@ -390,29 +375,86 @@ export function buildKeynote(mats: Materials): Keynote3D {
     return o;
   }
 
-  /* ------------------------------------------------------------- the banner */
-  // Built once; posed from the two hooks' states each frame.
-  const bannerTex = word('HAPPY DEVOXX', '#ffffff', '#e8641a', 2048, 160);
-  const bannerMat = new THREE.MeshStandardMaterial({ map: bannerTex, roughness: 0.8, side: THREE.DoubleSide });
-  const bannerGeo = new THREE.PlaneGeometry(1, 1, 24, 2);
-  const banner = new THREE.Mesh(bannerGeo, bannerMat);
-  banner.castShadow = true;
-  banner.visible = false;
-  group.add(banner);
-  const bannerRest = (bannerGeo.getAttribute('position').array as Float32Array).slice();
-  /** Hang the banner from `a` to `b`, sagging `sag` m at the middle. */
-  function hang(a: THREE.Vector3, b: THREE.Vector3, sag: number, drop: number): void {
-    const pos = bannerGeo.getAttribute('position');
-    for (let i = 0; i < pos.count; i++) {
-      const u = bannerRest[i * 3] + 0.5; // 0..1 along
-      const v = bannerRest[i * 3 + 1] + 0.5; // 0 bottom .. 1 top
-      const along = a.clone().lerp(b, u);
-      along.y -= sag * 4 * u * (1 - u);
-      pos.setXYZ(i, along.x, along.y - (1 - v) * drop, along.z + 0.02);
+  /* ------------------------------------------------------- the #DEVOXX sign
+   *
+   * Droid's job since 28 Sep (`src/sim/letters.ts`): the crew stood up #DEV, and
+   * the O and both X's lean in the wing until he carries them in. One glyph per
+   * letter, keyed by its SLOT — so a letter is the same mesh leaning on the wall,
+   * in his hands and standing in the sign — and a ghost of each missing one
+   * standing in its own gap, faint until he is carrying it, so the sign reads as
+   * #DEVOXX with three letters still to come rather than as #DEV.
+   */
+  const letterMats = {
+    white: new THREE.MeshStandardMaterial({ color: LETTER_WHITE, roughness: 0.38, metalness: 0 }),
+    orange: new THREE.MeshStandardMaterial({ color: LETTER_ORANGE, roughness: 0.38, metalness: 0 }),
+  };
+  const letterObjs = new Map<number, THREE.Group>();
+  const gapObjs = new Map<number, { o: THREE.Mesh; mat: THREE.MeshBasicMaterial }>();
+  function letterObj(slot: number, ch: string): THREE.Group {
+    let o = letterObjs.get(slot);
+    if (!o) {
+      o = new THREE.Group();
+      const mesh = new THREE.Mesh(letterGeometry(ch), slot === SIGN_ORANGE ? letterMats.orange : letterMats.white);
+      mesh.name = 'glyph';
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      o.add(mesh);
+      letterObjs.set(slot, o);
+      group.add(o);
     }
-    pos.needsUpdate = true;
-    bannerGeo.computeVertexNormals();
-    bannerGeo.computeBoundingSphere();
+    return o;
+  }
+  function gapObj(p: Prop): { o: THREE.Mesh; mat: THREE.MeshBasicMaterial } {
+    const slot = p.v ?? 0;
+    let g = gapObjs.get(slot);
+    if (!g) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(1, 0.72, 0.2).multiplyScalar(1.6),
+        transparent: true,
+        opacity: 0.16,
+        depthWrite: false,
+        toneMapped: false,
+      });
+      const o = new THREE.Mesh(letterGeometry(p.label ?? '#'), mat);
+      // Standing where the letter will stand, reading out at the house.
+      o.position.set(m(p.x + (p.w ?? 0) / 2), DAIS, m(p.y + (p.h ?? 0) / 2));
+      o.rotation.y = yawFromSimHeading(Math.PI / 2);
+      g = { o, mat };
+      gapObjs.set(slot, g);
+      group.add(o);
+    }
+    return g;
+  }
+  /** One frame of the sign: every letter where the sim has it, every empty gap waiting. */
+  function poseSign(snap: GameSnapshot, t: number, hands?: (kind: RobotKind) => THREE.Vector3 | null): void {
+    for (const o of letterObjs.values()) o.visible = false;
+    for (const g of gapObjs.values()) g.o.visible = false;
+    for (const p of snap.props) {
+      if (p.kind === 'letter' || p.kind === 'letter-held') {
+        const o = letterObj(p.v ?? 0, p.label ?? '#');
+        o.visible = true;
+        const mesh = o.getObjectByName('glyph') as THREE.Mesh;
+        mesh.rotation.set(0, 0, 0);
+        const face = p.face ?? Math.PI / 2;
+        o.rotation.set(0, yawFromSimHeading(face), 0);
+        if (p.kind === 'letter-held') {
+          // In his hands, clear of the carpet, the way he is walking.
+          const at = hands?.('droid');
+          if (at) o.position.set(at.x, LETTER_HELD_LIFT_M, at.z);
+          else o.position.set(m(p.x) + Math.cos(face) * 0.6, LETTER_HELD_LIFT_M, m(p.y) + Math.sin(face) * 0.6);
+        } else {
+          // In the sign it stands on the dais; in the wing, on the carpet, tipped
+          // back against the wall from its bottom edge.
+          const inSign = p.state === 'done';
+          o.position.set(m(p.x + (p.w ?? 0) / 2), inSign ? DAIS : 0, m(p.y + (p.h ?? 0) / 2));
+          if (!inSign) mesh.rotation.x = -LEAN_RAD;
+        }
+      } else if (p.kind === 'letter-slot') {
+        const g = gapObj(p);
+        g.o.visible = true;
+        g.mat.opacity = p.state === 'active' ? 0.3 + 0.14 * Math.sin(t * 5) : 0.12;
+      }
+    }
   }
 
   /* ------------------------------------------------------------------ update */
@@ -424,8 +466,6 @@ export function buildKeynote(mats: Materials): Keynote3D {
         return cakeMark(p);
       case 'cake':
         return cake(p);
-      case 'banner-hook':
-        return hook(p);
       case 'spotlight':
         return spotlight(p);
       default:
@@ -438,15 +478,15 @@ export function buildKeynote(mats: Materials): Keynote3D {
     group,
     colliders,
     reelView: { pos: V(cx, 2.4, z0 + 15), look: V(cx, SCREEN_BOTTOM + SCREEN_H * 0.45, z0) },
-    update(snap: GameSnapshot, t: number): void {
+    update(snap: GameSnapshot, t: number, _dt: number, hands?: (kind: RobotKind) => THREE.Vector3 | null): void {
       if (!seatsBuilt && snap.props.some((p) => p.kind === 'seatrow')) {
         buildSeatBlocks(snap.props);
         seatsBuilt = true;
       }
-      const hooks: Array<{ done: boolean; at: THREE.Vector3 }> = [];
       let ready = false;
+      poseSign(snap, t, hands);
       for (const p of snap.props) {
-        if (p.kind === 'seatrow' || p.kind === 'banner') continue;
+        if (p.kind === 'seatrow' || p.kind.startsWith('letter')) continue;
         const k = keyOf(p);
         let o = byKey.get(k);
         if (o === undefined) {
@@ -472,13 +512,6 @@ export function buildKeynote(mats: Materials): Keynote3D {
             for (const [i, f] of (o.userData.flames as THREE.Mesh[]).entries()) f.scale.set(1, 1.6 + 0.3 * Math.sin(t * 13 + i * 2), 1);
             break;
           }
-          case 'banner-hook': {
-            const mt = o.userData.beacon as THREE.MeshBasicMaterial;
-            if (done) mt.color.setRGB(0.2, 1, 0.35).multiplyScalar(2);
-            else mt.color.setRGB(1, 0.8, 0.1).multiplyScalar(3 + 3 * (Math.sin(t * 5) > 0 ? 1 : 0));
-            hooks.push({ done, at: o.userData.at as THREE.Vector3 });
-            break;
-          }
           case 'spotlight': {
             const u = o.userData as { lens: THREE.MeshBasicMaterial; ring: THREE.Mesh; ringMat: THREE.MeshBasicMaterial; light: THREE.SpotLight };
             u.lens.color.setRGB(1, 0.95, 0.85).multiplyScalar(done ? 14 : 0.06);
@@ -488,20 +521,6 @@ export function buildKeynote(mats: Materials): Keynote3D {
             break;
           }
         }
-      }
-      // The banner: both ends up, a sagging strip across the stage; one end up,
-      // the rest of it on the floor ("one end hung is a banner on the floor").
-      const up = hooks.filter((h) => h.done);
-      if (hooks.length === 2 && up.length === 2) {
-        banner.visible = true;
-        hang(hooks[0].at, hooks[1].at, 0.25, BANNER_H);
-      } else if (up.length === 1) {
-        banner.visible = true;
-        const a = up[0].at;
-        const dir = up[0] === hooks[0] ? 1 : -1;
-        hang(a, V(a.x + dir * 3.2, 0.02 + BANNER_H, a.z + 0.4), 0.1, BANNER_H);
-      } else {
-        banner.visible = false;
       }
       // The house screen: the video while it plays, else the holding slide.
       const reel = snap.reel;

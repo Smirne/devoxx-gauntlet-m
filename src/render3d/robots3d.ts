@@ -456,7 +456,7 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
     // 3D intro looks at them from the east, so they stood side-on and turned on
     // the step (Michele: "I'd keep them frontal"). Facing east throughout.
     const face = snap.opening ? STAND_FACE : b.face;
-    updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: face, dt, mounted, backward: b.vx * Math.cos(face) + b.vy * Math.sin(face) < -8, laden: b.kind === 'biggy' && snap.bots.some((o) => o.mounted), carrying: b.kind === 'biggy' && snap.props.some((q) => q.kind === 'pot'), hop: u, flair: trick ? trick.flair : flairPhase(b), shoved: worldMoved(b) ? 1 : 0, pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null });
+    updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: face, dt, mounted, backward: b.vx * Math.cos(face) + b.vy * Math.sin(face) < -8, laden: b.kind === 'biggy' && snap.bots.some((o) => o.mounted), carrying: (b.kind === 'biggy' && snap.props.some((q) => q.kind === 'pot')) || (b.kind === 'droid' && snap.props.some((q) => q.kind === 'letter-held')), hop: u, flair: trick ? trick.flair : flairPhase(b), shoved: worldMoved(b) ? 1 : 0, pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null });
     if (b.kind === 'droid' && snap.opening) glance(r.rig, snap.opening.t);
     const left = gesture.get(b.kind) ?? 0;
     const target = reachAt.get(b.kind);
@@ -508,6 +508,22 @@ const _toCam = new THREE.Vector3();
  * sim's cones are untouched: what a lamp can light is gameplay, how bright it
  * looks is not. Eased over about a second, like the hall's own lights.
  */
+const _handL = new THREE.Vector3();
+const _handR = new THREE.Vector3();
+/**
+ * Where a robot's two hands are, world space — the midpoint, which is where a thing
+ * carried in both of them is held. The 2.5D build's `handsAt` for this one.
+ *
+ * Returns a shared vector: read it, do not keep it.
+ */
+export function handsOf(robots: Map<RobotKind, Robot3D>, kind: RobotKind): THREE.Vector3 | null {
+  const r = robots.get(kind);
+  if (!r) return null;
+  r.rig.bones.handL.getWorldPosition(_handL);
+  r.rig.bones.handR.getWorldPosition(_handR);
+  return _handL.add(_handR).multiplyScalar(0.5);
+}
+
 export function dimLamps(robots: Map<RobotKind, Robot3D>, level: number, dt: number): void {
   const k = Math.min(1, dt * 1.5);
   for (const r of robots.values()) {

@@ -29,6 +29,7 @@ import * as THREE from 'three';
 
 import { flairPhase, hopPhase, worldMoved } from '../sim/bot';
 import { CABLE_MAX, JUMP_RISE_M, MOUNT_OFFSET_Y, W as SIM_W, H as SIM_H } from '../sim/constants';
+import { LETTER_H_M } from '../sim/letters';
 import { riseAt, riseForBody } from '../sim/surface';
 import { JAM_LEAF_H, JAM_SKEW, JAM_SKID, JAM_TIP } from '../sim/chapters/ch1-night';
 import type { Bot, GameSnapshot, Person, Plate, Prop, RobotKind, ViewRect } from '../sim/types';
@@ -62,6 +63,7 @@ import {
   EXCLUDE_FROM_BOUNDS,
   type RobotRig,
 } from './robots';
+import { LEAN_RAD, LETTER_HELD_LIFT_M, LETTER_WHITE, letterColor, letterGeometry } from './letters';
 import { ROLLER_SLATS, rollerDoorDraw } from './roller-door';
 import { SEAT_KINDS, SEAT_TOP_M, createSeatField } from './seats';
 import {
@@ -397,10 +399,24 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
   /* chapter 4 — the keynote */
   cake: { h: 0.55, color: 0xe6d7b8 },
   'cake-mark': { h: 0.04, color: 0x2f7d4f, tl: true, flat: true },
-  stage: { h: 0.45, color: 0x2a2430, tl: true },
+  /*
+   * A DAIS, not a knee-high box — the 3D build's call (`DAIS` in
+   * `src/render3d/keynote3d.ts`) and for the same reason: the sim's stage is floor,
+   * with no plate, so everything standing on it is drawn at floor height. At 0.45 m
+   * the robots stood sunk to the shins in it, and once the #DEVOXX letters stood
+   * there too it ate the bottom 45 cm of every one — the orange X read as a Y.
+   */
+  stage: { h: 0.05, color: 0x2a2430, tl: true },
   crowd: { h: 0.05, color: 0x3a3550, flat: true, fw: 2, fd: 2 },
-  'banner-hook': { h: 0.25, color: 0xb0b6bd },
-  banner: { h: 1.1, color: 0xff7a1a, tl: true },
+  /*
+   * The #DEVOXX sign (`src/sim/letters.ts`) — drawn by `drawLetter`, so these are
+   * the footprint and band the collider sweep reads, like the ladle's. A standing
+   * letter is the sim's own rect with a wall under it; an empty gap is glow tape
+   * on the stage; the letter in Droid's hands rides clear of the carpet.
+   */
+  letter: { h: LETTER_H_M, color: LETTER_WHITE, tl: true },
+  'letter-slot': { h: 0.02, color: 0xe8a01c, tl: true, flat: true },
+  'letter-held': { h: LETTER_H_M, color: LETTER_WHITE, lift: LETTER_HELD_LIFT_M },
   // A floor can on a base, aimed at the stage — `drawSpotlight`. Still in the
   // robot band and still without a collider, which is chapter 4's own decision:
   // a spotlight in an aisle is a thing you step over.
@@ -1300,6 +1316,31 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     pool.name = 'pool';
     pool.rotation.x = -Math.PI / 2;
     root.add(pool);
+    return root;
+  });
+
+  /* ------------------------------------------------ chapter 4's #DEVOXX letters
+   *
+   * One glyph mesh per letter, its geometry and colour set from the prop each
+   * frame, so both X's share a geometry and only the last one is orange. The shapes
+   * are `src/render/letters.ts`'s, cut to the sim's footprint.
+   */
+  const letterMats = new Map<number, THREE.MeshStandardMaterial>();
+  const letterMat = (hex: number): THREE.MeshStandardMaterial => {
+    let mat = letterMats.get(hex);
+    if (!mat) {
+      mat = new THREE.MeshStandardMaterial({ color: hex, roughness: 0.42, metalness: 0 });
+      letterMats.set(hex, mat);
+    }
+    return mat;
+  };
+  const letterPool = makePool<THREE.Group>(dressing, () => {
+    const root = new THREE.Group();
+    const glyphMesh = new THREE.Mesh(letterGeometry('#'), letterMat(LETTER_WHITE));
+    glyphMesh.name = 'glyph';
+    glyphMesh.castShadow = true;
+    glyphMesh.receiveShadow = true;
+    root.add(glyphMesh);
     return root;
   });
 
@@ -3385,7 +3426,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     /*
      * Where it is pointed: across the stage, at about head height, and three
      * quarters of the way DOWNSTAGE rather than at the dead centre. The cake, the
-     * banner and the robots building the set are all over the stage while it is
+     * sign and the robots building the set are all over the stage while it is
      * being built, so the middle is as good as anywhere for that half of the
      * chapter — and the half that matters is the curtain call, where all three of
      * them line up on the apron (`ch4-keynote.ts`). Aimed at the middle, the pool
@@ -3419,6 +3460,38 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
         pool.scale.setScalar(1.7);
       }
     }
+  }
+
+  /**
+   * One #DEVOXX letter (`src/sim/letters.ts`).
+   *
+   * Standing — in its gap in the sign, or leaning in the wing — it goes at the
+   * middle of the footprint the sim stood it on, turned the way the sim says it
+   * faces; leaning, it is tipped back from its bottom edge into the wall behind
+   * it. In Droid's hands it rides where his hands are (`handsAt`, the pot's rule),
+   * clear of the carpet, facing the way he is walking.
+   */
+  function drawLetter(p: Prop, floorY: number, droid: Bot | undefined): void {
+    const root = letterPool.get();
+    const mesh = root.getObjectByName('glyph') as THREE.Mesh;
+    mesh.geometry = letterGeometry(p.label ?? '#');
+    mesh.material = letterMat(letterColor(p.v ?? 0));
+    mesh.rotation.set(0, 0, 0);
+    const face = p.face ?? Math.PI / 2;
+    root.rotation.set(0, yawFromSimHeading(face), 0);
+    if (p.kind === 'letter-held') {
+      const base = surfaceY(floorY, p.x, p.y) + LETTER_HELD_LIFT_M;
+      const hands = droid ? handsAt('droid') : null;
+      if (hands) root.position.set(hands.x, base, hands.z);
+      else root.position.set(m(p.x) + Math.cos(face) * 0.6, base, m(p.y) + Math.sin(face) * 0.6);
+      return;
+    }
+    const cx = p.x + (p.w ?? 0) / 2;
+    const cy = p.y + (p.h ?? 0) / 2;
+    root.position.set(m(cx), surfaceY(floorY, cx, cy), m(cy));
+    // Leaning on the wall: its back is towards the wall, so tip it back (-x about
+    // its own bottom edge, which is where the glyph's origin is).
+    if (p.state === 'idle') mesh.rotation.x = -LEAN_RAD;
   }
 
   /** One puddle of spilled soup, at the sim's own place and size. */
@@ -3544,6 +3617,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     propPool.begin();
     spillPool.begin();
     spotPool.begin();
+    letterPool.begin();
     cratePool.begin();
     tapPool.begin();
     kegPool.begin();
@@ -3558,6 +3632,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     // ...and where chapter 4's spotlights are aimed: at the stage it publishes.
     const stageProp = snap.props.find((o) => o.kind === 'stage');
     const biggy = snap.bots.find((b) => b.kind === 'biggy');
+    const droid = snap.bots.find((b) => b.kind === 'droid');
     // The `pot` prop exists only while somebody is carrying it, so its presence
     // IS the flag: anything that rides in the pot rides in Biggy's hands too.
     const potHeld = snap.props.some((o) => o.kind === 'pot');
@@ -3602,6 +3677,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
       else if (p.kind === 'beer-glass') drawGlass(p, barPour, floorY);
       else if (p.kind === 'keg') drawKeg(p, floorY);
       else if (p.kind === 'spotlight') drawSpotlight(p, floorY, stageProp);
+      else if (p.kind === 'letter' || p.kind === 'letter-held') drawLetter(p, floorY, droid);
       else if (p.kind === 'toast') drawToast(p, floorY, biggy);
       else if (p.kind === 'spill') drawSpill(p, floorY);
       else if (p.kind === 'crate') drawCrate(p, floorY);
@@ -3616,6 +3692,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
     propPool.end();
     spillPool.end();
     spotPool.end();
+    letterPool.end();
     cratePool.end();
     tapPool.end();
     kegPool.end();
@@ -3668,6 +3745,9 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
   function placeRobots(snap: GameSnapshot, dt: number, floorY: number): void {
     const show = snap.chapter >= 1;
     const potCarried = snap.props.some((p) => p.kind === 'pot');
+    // Chapter 4's letter in Droid's hands — published only while he holds it, so
+    // it is the flag in the same way the pot is.
+    const letterHeld = snap.props.some((p) => p.kind === 'letter-held');
     for (const b of snap.bots) {
       const rig = rigs.get(b.kind);
       if (!rig) continue;
@@ -3789,7 +3869,7 @@ export function createScene(canvas: HTMLCanvasElement): DioramaScene {
          * sim already says. All the rig does with it is refuse to roll (a ball
          * with a pot of hot soup on it is the one picture that errand is not).
          */
-        carrying: potCarried && b.kind === 'biggy',
+        carrying: (potCarried && b.kind === 'biggy') || (letterHeld && b.kind === 'droid'),
       });
     }
   }

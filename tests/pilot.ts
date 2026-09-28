@@ -47,17 +47,27 @@ export const bot = (g: DebugGame, kind: RobotKind): Bot => {
 
 const GRID = 10;
 
-export function passable(walls: Wall[], b: Bot, x: number, y: number): boolean {
+/** Somebody standing still that the router should go round — a `standOff` body. */
+export interface Obstacle {
+  x: number;
+  y: number;
+  r: number;
+}
+
+export function passable(walls: Wall[], b: Bot, x: number, y: number, avoid: readonly Obstacle[] = []): boolean {
   const c = { x, y, r: b.r + 1 };
   for (const w of walls) {
     if (w.skipFor && w.skipFor(b)) continue;
     if (circleRect(c, w)) return false;
   }
+  // People are solid through `standOff`, not through walls, so the router is told
+  // about the ones in the way rather than finding them with its shoulder.
+  for (const o of avoid) if (Math.hypot(o.x - x, o.y - y) < c.r + o.r) return false;
   return true;
 }
 
 /** Eight-way A* on a `GRID`-pixel lattice, no corner cutting. */
-export function findPath(g: DebugGame, kind: RobotKind, target: Vec2): Vec2[] {
+export function findPath(g: DebugGame, kind: RobotKind, target: Vec2, avoid: readonly Obstacle[] = []): Vec2[] {
   const b = bot(g, kind);
   const walls = g.debug.walls();
   const free = new Map<number, boolean>();
@@ -67,7 +77,7 @@ export function findPath(g: DebugGame, kind: RobotKind, target: Vec2): Vec2[] {
     const k = key(ix, iy);
     let v = free.get(k);
     if (v === undefined) {
-      v = passable(walls, b, ix * GRID, iy * GRID);
+      v = passable(walls, b, ix * GRID, iy * GRID, avoid);
       free.set(k, v);
     }
     return v;
@@ -175,8 +185,8 @@ export function driveTo(g: DebugGame, kind: RobotKind, pts: Vec2[], tol = 7, bud
 }
 
 /** Walk a robot to a point, routing round whatever it cannot walk through. */
-export function walkTo(g: DebugGame, kind: RobotKind, target: Vec2, tol = 7): boolean {
-  const pts = findPath(g, kind, target);
+export function walkTo(g: DebugGame, kind: RobotKind, target: Vec2, tol = 7, avoid: readonly Obstacle[] = []): boolean {
+  const pts = findPath(g, kind, target, avoid);
   if (!pts.length) return false;
   return driveTo(g, kind, pts, tol);
 }
@@ -300,4 +310,59 @@ export function playToStairGate(g: DebugGame, onOpen?: (g: DebugGame) => void): 
   for (let i = 0; i < 200 && st().gateSwing < 1; i++) g.update(DT_MAX);
   expect(st().gateSwing, 'the gate never finished swinging').toBe(1);
   expect(g.snapshot().phase, 'the chapter handed over before its gate had opened on screen').toBe('play');
+}
+
+/**
+ * Chapter 4: Droid finishes the #DEVOXX sign — every letter still leaning in the
+ * wing lifted with `E` and set into its own gap with `E`.
+ *
+ * `walk` drives him there with the router, the way a player would, from wherever
+ * he is. Without it he is put beside each letter and in front of each gap, which is
+ * what the chapter-4 tests about something else (the cake, the lights, the video)
+ * need, and exactly what they used to do with the banner's two hooks.
+ *
+ * Every address is read off the props the sim publishes: the letter leans on the
+ * wing's east wall, so he stands to its west; the gap is taped on the stage floor
+ * at the back, so he stands in front of it, towards the house.
+ */
+export function raiseSign(g: DebugGame, walk = false): void {
+  /*
+   * Walking: route to a point a step short of the stand-point, then drive the last
+   * step straight. The router snaps its goal to a 10 px lattice, and beside a letter
+   * leaning on a wall that lattice cell is inside the letter — so a route to the
+   * stand-point itself does not exist, though the stand-point does.
+   */
+  // Stephan and the speaker stand on the stage, and a player walks round them.
+  const hosts: Obstacle[] = g.snapshot().people.filter((p) => p.role === 'stephan' || p.role === 'speaker');
+  const go = (to: Vec2, via: Vec2): void => {
+    if (walk) {
+      expect(walkTo(g, 'droid', via, 7, hosts), `Droid could not walk to ${Math.round(via.x)},${Math.round(via.y)}`).toBe(true);
+      expect(driveTo(g, 'droid', [to], 5), `Droid could not step to ${Math.round(to.x)},${Math.round(to.y)}`).toBe(true);
+    } else {
+      g.debug.place('droid', to.x, to.y);
+    }
+    g.update(DT_MAX);
+  };
+  g.debug.select('droid');
+  for (let n = 0; n < 3; n++) {
+    const leaning = g.snapshot().props.filter((p) => p.kind === 'letter' && p.state === 'idle');
+    if (!leaning.length) break;
+    // The nearest one, which is the one his `E` takes.
+    const d = bot(g, 'droid');
+    const centreOf = (p: Prop): Vec2 => ({ x: p.x + (p.w ?? 0) / 2, y: p.y + (p.h ?? 0) / 2 });
+    leaning.sort((a, b) => Math.hypot(centreOf(a).x - d.x, centreOf(a).y - d.y) - Math.hypot(centreOf(b).x - d.x, centreOf(b).y - d.y));
+    const l = leaning[0];
+    // In front of it, along the way it faces: half its depth, his radius and a step.
+    const c = centreOf(l);
+    const f = l.face ?? Math.PI / 2;
+    const half = Math.min(l.w ?? 0, l.h ?? 0) / 2;
+    const at = (k: number): Vec2 => ({ x: c.x + Math.cos(f) * (half + d.r + k), y: c.y + Math.sin(f) * (half + d.r + k) });
+    go(at(2), at(12));
+    g.key('KeyE');
+    const gap = g.snapshot().props.find((p) => p.kind === 'letter-slot' && p.v === l.v);
+    expect(gap, `no gap in the sign for the letter in slot ${l.v}`).toBeDefined();
+    const front = { x: gap!.x + (gap!.w ?? 0) / 2, y: gap!.y + (gap!.h ?? 0) + d.r + 2 };
+    go(front, { x: front.x, y: front.y + 10 });
+    g.key('KeyE');
+  }
 }

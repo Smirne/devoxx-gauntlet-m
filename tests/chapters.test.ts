@@ -74,7 +74,7 @@ function until(g: DebugGame, done: () => boolean, budget = 600): boolean {
   return done();
 }
 
-import { bot, driveTo, walkTo } from './pilot';
+import { bot, driveTo, raiseSign, walkTo } from './pilot';
 
 
 /* --------------------------------------------- the chapter-2 network closet
@@ -1612,15 +1612,14 @@ describe('chapter 4 — keynote', () => {
     expect(until(g, () => key().cake, 200)).toBe(true);
     g.setStick(0, 0);
 
-    // Droid hangs the banner: one hook, then the other.
-    const hooks = g.snapshot().props.filter((p) => p.kind === 'banner-hook');
-    expect(hooks).toHaveLength(2);
-    g.debug.select('droid');
-    for (const h of hooks) {
-      g.debug.place('droid', h.x, h.y + 22);
-      g.key('KeyE');
-    }
-    expect(key().hooks).toBe(2);
+    // Droid finishes the #DEVOXX sign: the crew stood up #DEV, and the O and both
+    // X's go from the wing into their own gaps (`src/sim/letters.ts`).
+    expect(key().sign).toBe('#DEV___');
+    expect(g.snapshot().props.filter((p) => p.kind === 'letter' && p.state === 'idle')).toHaveLength(3);
+    raiseSign(g);
+    expect(key().letters).toBe(3);
+    expect(key().sign).toBe('#DEVOXX');
+    expect(key().ready, 'the stage came ready before the lights were on').toBe(false);
 
     // Voxxy lights the spotlights, and only in order.
     const spots = g.snapshot().props.filter((p) => p.kind === 'spotlight');
@@ -1691,11 +1690,7 @@ describe('chapter 4 — keynote', () => {
     g.setStick(0, -1);
     until(g, () => key().cake, 200);
     g.setStick(0, 0);
-    g.debug.select('droid');
-    for (const h of g.snapshot().props.filter((p) => p.kind === 'banner-hook')) {
-      g.debug.place('droid', h.x, h.y + 22);
-      g.key('KeyE');
-    }
+    raiseSign(g);
     g.debug.select('voxxy');
     for (const sp of g.snapshot().props.filter((p) => p.kind === 'spotlight')) {
       g.debug.place('voxxy', sp.x, sp.y);

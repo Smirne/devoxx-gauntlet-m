@@ -8,7 +8,9 @@
  * cake has to be shoved up an aisle rather than straight at the stage.
  *
  *   Biggy — pushes the cake crate onto its mark. He is the only one heavy enough.
- *   Droid — hangs the banner: E at one hook, E at the other, right across the room.
+ *   Droid — finishes the #DEVOXX sign: the crew stood up #DEV, and the O and both
+ *           X's are leaning in the wing. One at a time, each into its own gap.
+ *           (It was a banner between two hooks until 28 Sep — `src/sim/letters.ts`.)
  *   Voxxy — lights the four spotlights in order, which needs the fast robot.
  *
  * The clock is the crowd: the first attendees arrive after `HEAD` seconds and fill
@@ -19,8 +21,21 @@ import { CY0, CY1, F1, R, VIEW_DEVOXX, VIEW_REEL, floor1Walls, roomDoor } from '
 import { MOUNT_REACH, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
 import { botsCollide, circleRect, dist, inRect, mkBody, partyTrick, speed, standOff, stepBot, syncMount } from '../bot';
 import { LANYARD, lanyardFor } from '../lanyards';
+import {
+  LETTER_D,
+  LETTER_PITCH,
+  LETTER_REACH,
+  LETTER_W,
+  SIGN,
+  SIGN_MISSING,
+  SIGN_STANDING,
+  SLOT_REACH,
+  letterName,
+  loadDroid,
+  signText,
+} from '../letters';
 import { buildReel, reelAt, reelLength } from '../reel';
-import type { Bot, Person, Prop, Rect, ReelCard, ReelView, RobotKind, Task, Vec2 } from '../types';
+import type { Bot, Person, Prop, Rect, ReelCard, ReelView, RobotKind, Task, Vec2, Wall } from '../types';
 
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 
@@ -36,8 +51,32 @@ import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 const HEAD = 14 * TRAVEL_TIME_SCALE;
 /** Seconds for the room to fill once they start arriving. */
 const ARRIVAL = 80 * TRAVEL_TIME_SCALE;
-/** How close Droid must be to a banner hook. */
-const HOOK_REACH = 45;
+/**
+ * Clear floor between the cake's mark and the first letter of the sign, sim px.
+ *
+ * The cake comes up the west aisle onto the west third of the stage and the sign
+ * stands along the back of the middle of it, so this is the gap that keeps a cake
+ * shoved square onto its mark from grazing the `#`.
+ */
+const SIGN_CLEAR = 4;
+/**
+ * How far in front of the screen wall the sign's back face stands, sim px.
+ *
+ * Three pixels is 24 cm, and it is a number with a job: Voxxy, the smallest of
+ * them, is 9.5 px across, so nothing can get in BEHIND the sign and be trapped
+ * between the letters and the screen when the next one goes up.
+ */
+const SIGN_BACK = 3;
+/**
+ * The way a letter faces: out at the house. In the sign, and leaning in the wing
+ * too — the wing's back wall is in line with the screen, so a letter leaning on it
+ * shows the room its face.
+ */
+const FACE_HOUSE = Math.PI / 2;
+/** Centre-to-centre spacing of the three letters leaning in the wing, sim px. */
+const WING_PITCH = 14;
+/** Clear floor between the end of the screen wall and the first letter in the wing, sim px. */
+const WING_CLEAR = 6;
 /** How close Voxxy must pass a spotlight to switch it on. */
 const SPOT_REACH = 22;
 /**
@@ -114,10 +153,32 @@ interface Attendee extends Bot {
   hitCd: number;
 }
 
+/**
+ * One letter of the #DEVOXX sign, wherever it is.
+ *
+ * `rect` and `face` are where and which way it STANDS — in its gap in the sign, or
+ * leaning on the wing's wall — and mean nothing while Droid is holding it, when it
+ * is drawn in his hands. `wall` is its collider for as long as it stands anywhere:
+ * a 1.1 m letter is not something a robot walks through (`tests/colliders.test.ts`).
+ */
+interface Letter {
+  /** Its gap in the sign, 0..6; `SIGN[slot]` is its glyph. */
+  slot: number;
+  at: 'sign' | 'wing' | 'held';
+  rect: Rect;
+  face: number;
+  wall: Wall | null;
+}
+
 export interface KeynoteState {
   chapter: 4;
   cake: boolean;
-  hooks: number;
+  /** How many of the three missing letters are up in the sign, 0..3. */
+  letters: number;
+  /** The sign as it reads: `#DEV___` .. `#DEVOXX` (`signText`). */
+  sign: string;
+  /** The slot of the letter Droid is carrying, or -1. */
+  carrying: number;
   spots: number;
   /** Which spotlight is next, 1..4. */
   nextSpot: number;
@@ -159,8 +220,20 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const cx = r8.x + r8.w / 2;
   const top = r8.y;
 
-  const stephan = { x: cx + 40, y: top + 30, r: 8 };
-  const speakerAt = { x: cx + 70, y: top + 30, r: 7 };
+  /*
+   * At the back of the stage, beside the sign's last letter — where presenters
+   * stand next to the #DEVOXX letters — rather than mid-stage, where they stood
+   * before the sign went up (`cx + 40 / + 70, top + 30`).
+   *
+   * Measured, not guessed: mid-stage they left a 4 px lane for Droid's centre
+   * between the finished letters and Stephan, and the test pilot's route from the
+   * wing to the O's gap went down one aisle, across the back of the room and up
+   * the other — 17 s a trip instead of 5. Standing here they leave the whole front
+   * of the stage open between the wing and the gaps (24 px of lane), the top of
+   * the east aisle clear for Biggy, and the curtain call's marks 36 px away.
+   */
+  const stephan = { x: cx + 44, y: top + 16, r: 8 };
+  const speakerAt = { x: cx + 64, y: top + 17, r: 7 };
 
   // Two aisles, three seat blocks. The strip between the blocks and the door is the
   // 94 px the attendees walk along before they turn up an aisle.
@@ -191,10 +264,60 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const crate = mkBody('cake', d8.cx + 130, 350, { r: 17, mass: 20, drag: 2.2, accel: 0, max: 160 * SPEED_SCALE });
   const stage: Rect = { x: cx - 110, y: top + 6, w: 220, h: 50 };
   const crateMark: Rect = { x: cx - 100, y: top + 12, w: 44, h: 34 };
-  const hooks = [
-    { x: r8.x + 16, y: top + 18, done: false },
-    { x: r8.x + r8.w - 16, y: top + 18, done: false },
-  ];
+
+  /*
+   * THE SIGN — `#DEVOXX` along the back of the stage, between the cake's mark and
+   * Stephan, in front of the house screen, which is where the photograph has it.
+   *
+   * Its back face stands `SIGN_BACK` off the screen wall's front, read off the wall
+   * itself rather than retyped. The crew got the first four up; the other three
+   * lean against the back wall of the east wing, one stash, just past the end of
+   * the screen and a few metres from their gaps — Michele: *"Droid is already
+   * slow, so don't scatter the letters around."* They lean O, X, orange X from the
+   * stage outwards, so the one nearest the stage is the next one the sign wants and
+   * a player who takes them as they come watches it spell itself.
+   *
+   * The back wall and not the room's east wall, where they first leaned: 70 px
+   * nearer the gaps, which is three seconds a round trip for the slowest robot in
+   * the game, three times over.
+   */
+  const screen = ctx.walls.find((w) => w.kind === 'screen' && w.x < cx && w.x + w.w > cx && w.y < top + 20);
+  const signTop = (screen ? screen.y + screen.h : stage.y) + SIGN_BACK;
+  const slotRect = (slot: number): Rect => ({
+    x: crateMark.x + crateMark.w + SIGN_CLEAR + slot * LETTER_PITCH,
+    y: signTop,
+    w: LETTER_W,
+    h: LETTER_D,
+  });
+  const centre = (r: Rect): Vec2 => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+  /** A standing letter's collider: its own footprint, nothing more. */
+  const standUp = (l: Letter): void => {
+    l.wall = { ...l.rect, kind: 'letter' };
+    ctx.walls.push(l.wall);
+  };
+  const wingX = (screen ? screen.x + screen.w : stage.x + stage.w) + WING_CLEAR;
+  const letters: Letter[] = [...SIGN].map((_, slot) => {
+    const standing = slot < SIGN_STANDING;
+    const j = slot - SIGN_STANDING;
+    const l: Letter = standing
+      ? { slot, at: 'sign', rect: slotRect(slot), face: FACE_HOUSE, wall: null }
+      : {
+          slot,
+          at: 'wing',
+          // Leaning on the wing's back wall, eight centimetres off it, face out.
+          rect: { x: wingX + j * WING_PITCH, y: top + 1, w: LETTER_W, h: LETTER_D },
+          face: FACE_HOUSE,
+          wall: null,
+        };
+    standUp(l);
+    return l;
+  });
+  const held = (): Letter | undefined => letters.find((l) => l.at === 'held');
+  const up = (slot: number): boolean => letters[slot].at === 'sign';
+  const lettersUp = (): number => letters.filter((l) => l.at === 'sign').length - SIGN_STANDING;
+  const signDone = (): boolean => letters.every((l) => l.at === 'sign');
+  const sign = (): string => signText(up);
+
   const spots = [
     { x: aisles[0][0] + 25, y: seatY1 - 20 },
     { x: aisles[1][0] + 25, y: seatY1 - 20 },
@@ -227,12 +350,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let ended = false;
 
   ctx.objective(
-    `Chapter 4 · <b>Keynote</b>. Top of the main staircase — the crowd is right behind you: first attendees in ${Math.round(HEAD)}s, ${Math.round(ARRIVAL)}s to fill Room 8, front rows first. Before they sit: <b>Biggy</b> pushes the cake onto the stage, <b>Droid</b> hangs the banner (E at both hooks), <b>Voxxy</b> lights spotlights 1→4. Then <b>all three on stage</b> with Stephan and the speaker.`,
+    `Chapter 4 · <b>Keynote</b>. Top of the main staircase — the crowd is right behind you: first attendees in ${Math.round(HEAD)}s, ${Math.round(ARRIVAL)}s to fill Room 8, front rows first. Before they sit: <b>Biggy</b> pushes the cake onto the stage, <b>Droid</b> finishes the <b>#DEVOXX</b> sign (the O and both X's lean in the wing — E to lift one, E at its gap), <b>Voxxy</b> lights spotlights 1→4. Then <b>all three on stage</b> with Stephan and the speaker.`,
     KEYS,
   );
   ctx.card(
     '<b>Up the main staircase.</b><br>' +
-      '<span class="sub">Room 8 has to be ready before 746 people sit down — and the cake is still in the corridor.</span>' +
+      '<span class="sub">Room 8 has to be ready before 746 people sit down — the cake is still in the corridor, and the sign on the stage stops at #DEV.</span>' +
       '<small>Press any key</small>',
   );
 
@@ -324,30 +447,111 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   }
 
   const cakeOnMark = (): boolean => inRect(crate, crateMark);
-  const jobsDone = (): boolean => cakeOnMark() && hooks.every((h) => h.done) && spots.every((s) => s.on);
+  const jobsDone = (): boolean => cakeOnMark() && signDone() && spots.every((s) => s.on);
   const allOnStage = (): boolean => ctx.bots.every((b) => inRect(b, stage));
 
   /* --------------------------------------------------------------------- keys */
 
   /**
-   * The banner hooks — and the first chapter to hand `E` back.
+   * The #DEVOXX letters — and the first chapter to hand `E` back.
    *
    * Returning `false` is not "nothing happened", it is this chapter saying `E`
    * means nothing where the player is standing, so `game.ts` may spend it on a
    * hop or on taking hold of Biggy (see `ChapterRuntime.key`). Everything this
-   * room wants `E` for is one Droid at one of two hooks; the rest of it — a room
-   * with two aisles, three blocks of seats and a crowd arriving — is exactly the
-   * place to be jumping around in.
+   * room wants `E` for is Droid and a letter; the rest of it — a room with two
+   * aisles, three blocks of seats and a crowd arriving — is exactly the place to
+   * be jumping around in.
+   *
+   * A refusal that names a reason KEEPS the key (Michele's own rule, from the
+   * Sticker Mine): Voxxy or Biggy at the stash say why it is Droid's job instead
+   * of hopping, and Droid with his hands full says where the letter goes instead
+   * of taking hold of Biggy with a 1.1 m O in his arms.
    */
   function key(code: string): boolean {
     if (reelKey()) return true;
     const b = ctx.bots[ctx.cur];
     ctx.switchKey(code);
-    if (code !== 'KeyE' || b.kind !== 'droid') return false;
-    const h = hooks.find((o) => !o.done && dist(o, b) < HOOK_REACH);
-    if (!h) return false;
-    h.done = true;
-    ctx.flash(hooks.every((o) => o.done) ? 'Banner up!' : 'One hook done — now the other end');
+    if (code !== 'KeyE') return false;
+    if (b.kind === 'droid') return droidE(b);
+    const l = leaning(b);
+    if (!l) return false;
+    ctx.flash(
+      b.kind === 'voxxy'
+        ? "Voxxy: it's as big as I am. I can carry it or see where I'm going, not both — Droid can see over it"
+        : `Biggy: these hands are for pots. An ${SIGN[l.slot]} has no handle — Droid has the arms for it`,
+    );
+    return true;
+  }
+
+  /** The nearest letter still leaning in the wing that `b` could take hold of, if any. */
+  function leaning(b: Bot): Letter | undefined {
+    let best: Letter | undefined;
+    let bestD = LETTER_REACH;
+    for (const l of letters) {
+      if (l.at !== 'wing') continue;
+      const d = dist(b, centre(l.rect));
+      if (d < bestD) {
+        bestD = d;
+        best = l;
+      }
+    }
+    return best;
+  }
+
+  /** Droid's `E`: lift the letter in reach, or set the one in his hands into its gap. */
+  function droidE(d: Bot): boolean {
+    const h = held();
+    if (h) return setDown(d, h);
+    const l = leaning(d);
+    if (!l) return false;
+    l.at = 'held';
+    if (l.wall) ctx.removeWall(l.wall);
+    l.wall = null;
+    loadDroid(d, true);
+    ctx.flash(`Droid lifts the ${letterName(l.slot)} — its gap is ${gapOf(l.slot)}`);
+    return true;
+  }
+
+  /** Where a letter's gap is, in words: by the letters either side of it. */
+  function gapOf(slot: number): string {
+    if (slot === SIGN.length - 1) return `on the end, after the ${letterName(slot - 1)}`;
+    return `between the ${letterName(slot - 1)} and the ${letterName(slot + 1)}`;
+  }
+
+  /**
+   * Set the letter Droid is carrying into its own gap in the sign.
+   *
+   * Only AT its gap (`SLOT_REACH`): anywhere-on-the-stage would be a letter jumping
+   * two metres out of his hands. And never onto a robot — whoever is standing in
+   * the gap would have 1.1 m of letter put down through them, and the collider
+   * that comes with it would squeeze them out of the back of the sign.
+   */
+  function setDown(d: Bot, l: Letter): boolean {
+    const gap = slotRect(l.slot);
+    if (dist(d, centre(gap)) > SLOT_REACH) {
+      ctx.flash(
+        inRect(d, stage)
+          ? `Droid: the ${letterName(l.slot)} goes ${gapOf(l.slot)} — at the back of the stage`
+          : `Droid: the ${letterName(l.slot)} goes in the sign, on the stage — ${gapOf(l.slot)}`,
+      );
+      return true;
+    }
+    const inTheWay = ctx.bots.find((o) => circleRect(o, gap) !== null);
+    if (inTheWay) {
+      ctx.flash(
+        inTheWay === d
+          ? `Droid: I am standing where the ${letterName(l.slot)} goes. A step back`
+          : `Droid: ${inTheWay.name} is standing where the ${letterName(l.slot)} goes`,
+      );
+      return true;
+    }
+    l.at = 'sign';
+    l.rect = gap;
+    l.face = FACE_HOUSE;
+    standUp(l);
+    loadDroid(d, false);
+    const left = SIGN_MISSING - lettersUp();
+    ctx.flash(left === 0 ? `${sign()} — the sign is up!` : `${sign()} — ${left} to go`);
     return true;
   }
 
@@ -729,7 +933,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       ended = true;
       ctx.fail(
         "The room is full and the stage isn't ready." +
-          `<small>cake ${cakeOnMark() ? '✓' : '✗'} · banner ${hooks.filter((h) => h.done).length}/2 · ` +
+          `<small>cake ${cakeOnMark() ? '✓' : '✗'} · sign ${sign()} · ` +
           `spotlights ${spots.filter((s) => s.on).length}/4 · R to try again · or Skip chapter</small>`,
       );
     }
@@ -751,19 +955,27 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         label: t < HEAD ? `attendees arrive in ${Math.round(HEAD - t)}s` : `seated ${seated}/${N}`,
       },
     ];
-    for (const h of hooks) {
-      out.push({ kind: 'banner-hook', x: h.x, y: h.y, w: 10, h: 10, state: h.done ? 'done' : 'idle' });
-    }
-    if (hooks.every((h) => h.done)) {
-      out.push({
-        kind: 'banner',
-        x: hooks[0].x,
-        y: hooks[0].y - 3,
-        w: hooks[1].x - hooks[0].x,
-        h: 6,
-        state: 'done',
-        label: 'HAPPY DEVOXX',
-      });
+    /*
+     * THE SIGN, three ways. `v` is always the slot — which letter, and whether it
+     * is the orange one — and `label` its glyph.
+     *
+     *  - `letter`: standing, in its gap (`done`) or leaning in the wing (`idle`).
+     *    Top-left rect, its own collider under it, `face` which way it reads.
+     *  - `letter-slot`: an empty gap, taped on the stage floor, `active` while
+     *    Droid is carrying the letter it is waiting for.
+     *  - `letter-held`: the one in Droid's hands, published at HIS centre with his
+     *    heading, the way the soup pot is published at Biggy's.
+     */
+    const dr = ctx.byKind('droid');
+    for (const l of letters) {
+      if (l.at === 'held') {
+        out.push({ kind: 'letter-held', x: dr.x, y: dr.y, w: LETTER_W, h: LETTER_D, v: l.slot, label: SIGN[l.slot], state: 'active', face: dr.face });
+      } else {
+        out.push({ kind: 'letter', ...l.rect, v: l.slot, label: SIGN[l.slot], state: l.at === 'sign' ? 'done' : 'idle', face: l.face });
+      }
+      if (l.at !== 'sign') {
+        out.push({ kind: 'letter-slot', ...slotRect(l.slot), v: l.slot, label: SIGN[l.slot], state: l.at === 'held' ? 'active' : 'idle' });
+      }
     }
     for (const s of spots) {
       out.push({
@@ -858,7 +1070,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     }
     const clock = t < HEAD ? `doors in ${Math.round(HEAD - t)}s` : `seated ${seated}/${N}`;
     return (
-      `cake ${cakeOnMark() ? '✓' : '✗'} · banner ${hooks.filter((h) => h.done).length}/2 · ` +
+      `cake ${cakeOnMark() ? '✓' : '✗'} · sign ${sign()} · ` +
       `spotlights ${spots.filter((s) => s.on).length}/4 (next: ${nextSpot}) · ${clock}`
     );
   }
@@ -881,13 +1093,31 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    *
    * Three jobs that can be done in any order and by three different robots, and
    * then the one that needs all of them. The two counted rows carry `n`/`of`
-   * because `banner 1/2` and `spotlights 3/4` are what the player is actually
+   * because `sign 1/3` and `spotlights 3/4` are what the player is actually
    * holding in their head; the arrow on each points at the NEXT one, which is the
    * only one of them that does anything.
    */
   function tasks(): Task[] {
-    const hook = hooks.find((h) => !h.done) ?? hooks[0];
     const spot = spots.find((s) => s.n === nextSpot) ?? spots[spots.length - 1];
+    /*
+     * THE LETTER FIRST, THEN ITS GAP — the cake's rule (Michele: *"the hint
+     * should be first on the cake, if biggy is next to it, it should point to the
+     * stage"*). Empty hands: the leaning letter nearest Droid, which is the one
+     * his `E` would take. A letter in his hands: its own gap in the sign.
+     */
+    const inHands = held();
+    const droid = ctx.byKind('droid');
+    const nextUp = letters
+      .filter((l) => l.at === 'wing')
+      .sort((a, b) => dist(droid, centre(a.rect)) - dist(droid, centre(b.rect)))[0];
+    // A leaning letter is against the wall, so the arrow goes on the floor in front
+    // of it — where Droid stands to lift it, and a point `E` works from.
+    const inFront = (l: Letter): Vec2 => {
+      const c = centre(l.rect);
+      const out = LETTER_D / 2 + droid.r + 2;
+      return { x: c.x + Math.cos(l.face) * out, y: c.y + Math.sin(l.face) * out };
+    };
+    const signAt = inHands ? centre(slotRect(inHands.slot)) : nextUp ? inFront(nextUp) : centre(slotRect(SIGN.length - 1));
     const onStage = ctx.bots.filter((b) => inRect(b, stage)).length;
     return [
       {
@@ -911,16 +1141,16 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         hint: 'Biggy: it only moves for me, and only if I lean into it rather than brush past it. Up an aisle — it does not go over the seats any more than I do',
       },
       {
-        id: 'banner',
-        text: 'hang the banner at both ends',
-        done: hooks.every((h) => h.done),
+        id: 'sign',
+        text: 'finish the #DEVOXX sign',
+        done: signDone(),
         who: ['droid'],
-        // The hook still to do: the other one is finished, and an arrow to it
-        // would be an arrow to a job that is over.
-        at: { x: hook.x, y: hook.y + 24 },
-        n: hooks.filter((h) => h.done).length,
-        of: hooks.length,
-        hint: 'Droid: a hook at each end of the stage wall, both of them over everybody else’s head. One end hung is a banner on the floor',
+        at: signAt,
+        n: lettersUp(),
+        of: SIGN_MISSING,
+        hint: inHands
+          ? `Droid: the ${letterName(inHands.slot)} goes ${gapOf(inHands.slot)}, at the back of the stage. E when I am at its gap`
+          : 'Droid: the crew stood up #DEV and left the O and both X’s leaning in the wing, by the wall. One at a time — E to lift it, E again at its gap',
       },
       {
         id: 'spots',
@@ -939,7 +1169,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         at: { x: stage.x + stage.w / 2, y: stage.y + stage.h / 2 },
         n: onStage,
         of: ctx.bots.length,
-        hint: 'Biggy: all three of us on the boards at the same time — and Stephan is not starting until the cake, the banner and the lights are done either',
+        hint: 'Biggy: all three of us on the boards at the same time — and Stephan is not starting until the cake, the sign and the lights are done either',
       },
     ];
   }
@@ -964,7 +1194,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     state: (): KeynoteState => ({
       chapter: 4,
       cake: cakeOnMark(),
-      hooks: hooks.filter((h) => h.done).length,
+      letters: lettersUp(),
+      sign: sign(),
+      carrying: held()?.slot ?? -1,
       spots: spots.filter((s) => s.on).length,
       nextSpot,
       ready,

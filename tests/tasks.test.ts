@@ -29,6 +29,7 @@ import {
   CRATE_DELIVERY,
   DT_MAX,
   GF,
+  LETTER_REACH,
   createGame,
   type BreakfastState,
   type DebugGame,
@@ -40,7 +41,7 @@ import {
   type Vec2,
 } from '../src/sim';
 
-import { bot, passable, playToStairGate, walkTo } from './pilot';
+import { bot, passable, playToStairGate, raiseSign, walkTo } from './pilot';
 // The ladder's own reader, so the test walks a hint exactly as `H` does.
 import { hintLines } from '../src/render/hud';
 
@@ -526,11 +527,11 @@ describe('chapter 3 — breakfast', () => {
 /* =============================================================== chapter 4 */
 
 describe('chapter 4 — keynote', () => {
-  it('ticks the cake, the banner, the spotlights and the stage, and counts the two that count', () => {
+  it('ticks the cake, the sign, the spotlights and the stage, and counts the two that count', () => {
     const g = mk(4);
     const keynote = (): KeynoteState => g.debug.chapter() as KeynoteState;
     const before = ids(g);
-    expect(before).toEqual(['cake', 'banner', 'spots', 'stage']);
+    expect(before).toEqual(['cake', 'sign', 'spots', 'stage']);
 
     const mark = g.snapshot().props.find((p) => p.kind === 'cake-mark');
     expect(mark).toBeDefined();
@@ -545,21 +546,48 @@ describe('chapter 4 — keynote', () => {
     expect(row(g, 'cake').done, 'the cake is on the mark and the row says it is not').toBe(true);
     wellFormed(g, 'chapter 4 with the cake on its mark');
 
-    // One hook, then the other: the count moves and the arrow moves with it.
-    const hooks = g.snapshot().props.filter((p) => p.kind === 'banner-hook');
-    expect(hooks).toHaveLength(2);
+    /*
+     * The sign: the letter first, then its gap — the arrow goes to the letter
+     * leaning in the wing, moves to that letter's own gap the moment Droid lifts
+     * it, and the count only moves when it is standing in the sign.
+     */
+    const centreOf = (p: { x: number; y: number; w?: number; h?: number }): { x: number; y: number } => ({
+      x: p.x + (p.w ?? 0) / 2,
+      y: p.y + (p.h ?? 0) / 2,
+    });
+    expect(row(g, 'sign').n, 'the crew’s #DEV counted as the player’s work').toBe(0);
+    expect(row(g, 'sign').of).toBe(3);
+    const leaning = g.snapshot().props.filter((p) => p.kind === 'letter' && p.state === 'idle');
+    expect(leaning).toHaveLength(3);
     g.debug.select('droid');
-    const firstArrow = row(g, 'banner').at;
-    g.debug.place('droid', hooks[0].x, hooks[0].y + 22);
+    const first = leaning[0];
+    g.debug.place('droid', first.x - 8, centreOf(first).y);
+    g.update(DT_MAX);
+    const toLetter = row(g, 'sign').at;
+    expect(toLetter, 'no arrow to a letter').toBeDefined();
+    // On the floor in front of it, close enough that `E` from there takes it.
+    expect(
+      Math.hypot(toLetter!.x - centreOf(first).x, toLetter!.y - centreOf(first).y),
+      'the arrow is not at the letter next to Droid',
+    ).toBeLessThan(LETTER_REACH);
     g.key('KeyE');
-    expect(keynote().hooks).toBe(1);
-    expect(row(g, 'banner').n, 'the banner row does not count the hooks').toBe(1);
-    expect(row(g, 'banner').done, 'one end of a banner is not a banner').toBe(false);
-    expect(row(g, 'banner').at, 'the arrow still points at the hook that is done').not.toEqual(firstArrow);
-    wellFormed(g, 'chapter 4 with one hook hung');
-    g.debug.place('droid', hooks[1].x, hooks[1].y + 22);
+    expect(keynote().carrying, 'Droid did not lift the letter').toBe(first.v);
+    const gap = g.snapshot().props.find((p) => p.kind === 'letter-slot' && p.v === first.v);
+    expect(gap?.state, 'its gap does not light up while he is carrying it').toBe('active');
+    const toGap = row(g, 'sign').at;
+    expect(Math.hypot(toGap!.x - centreOf(gap!).x, toGap!.y - centreOf(gap!).y), 'the arrow did not move to the letter’s gap').toBeLessThan(1);
+    expect(row(g, 'sign').n, 'a letter in his hands counted as a letter in the sign').toBe(0);
+    wellFormed(g, 'chapter 4 with a letter in Droid’s hands');
+    g.debug.place('droid', centreOf(gap!).x, gap!.y + (gap!.h ?? 0) + 8);
+    g.update(DT_MAX);
     g.key('KeyE');
-    expect(row(g, 'banner').done).toBe(true);
+    expect(keynote().letters).toBe(1);
+    expect(row(g, 'sign').n, 'the sign row does not count the letters').toBe(1);
+    expect(row(g, 'sign').done, 'one letter is not a sign').toBe(false);
+    wellFormed(g, 'chapter 4 with one letter up');
+    raiseSign(g);
+    expect(row(g, 'sign').done).toBe(true);
+    expect(row(g, 'sign').n).toBe(3);
 
     // The spotlights only take in order, and the arrow only ever points at the
     // one that is waiting.
@@ -580,11 +608,16 @@ describe('chapter 4 — keynote', () => {
     expect(row(g, 'spots').done).toBe(true);
     expect(row(g, 'spots').n).toBe(4);
     expect(keynote().ready).toBe(true);
-    expect(row(g, 'stage').done, 'the stage row ticked with nobody on it').toBe(false);
-    wellFormed(g, 'chapter 4 with the stage ready');
-
     const stage = g.snapshot().props.find((p) => p.kind === 'stage');
     const sy = stage!.y + (stage!.h ?? 0) / 2;
+    // Droid finished the sign standing in front of it, on the stage; he steps off
+    // into the wing so the stage row starts counting from nobody.
+    g.debug.place('droid', stage!.x + (stage!.w ?? 0) + 30, sy);
+    steps(g, 1);
+    expect(row(g, 'stage').done, 'the stage row ticked with nobody on it').toBe(false);
+    expect(row(g, 'stage').n, 'the stage row counted somebody who is not on it').toBe(0);
+    wellFormed(g, 'chapter 4 with the stage ready');
+
     g.debug.place('voxxy', stage!.x + 20, sy);
     steps(g, 1);
     expect(row(g, 'stage').n, 'the stage row does not count who is on it').toBe(1);

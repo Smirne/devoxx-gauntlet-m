@@ -412,6 +412,17 @@ export interface Prop {
    * any prop whose change is worth watching may carry it, not just doors.
    */
   progress?: number;
+  /**
+   * Which way the prop's FRONT faces, radians — the same convention as `Bot.face`
+   * and `Person.face` (0 is +x, pi/2 is +y, towards the house in Room 8).
+   *
+   * For the few props whose front is a thing you read and whose footprint does not
+   * say which side it is on: chapter 4's #DEVOXX letters, which face the audience
+   * standing in the sign, face into the room leaning on the wing's wall, and face
+   * wherever Droid is walking while he carries one. Props without a front leave it
+   * unset.
+   */
+  face?: number;
 }
 
 /**
