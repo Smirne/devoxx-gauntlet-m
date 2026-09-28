@@ -593,8 +593,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       y: stephan.y,
       r: stephan.r,
       name: 'Stephan',
-      colour: '#e8d5b5',
-      hat: true,
+      // The same polo, glasses and headset as chapter 3 — he has not changed
+      // since the gate, and he is the one face the player knows by now.
+      colour: '#434a3c',
+      collar: '#e8a01c',
+      glasses: true,
+      mic: true,
       role: 'stephan',
       lanyard: LANYARD.chair,
       seed: 910,
@@ -605,7 +609,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       y: speakerAt.y,
       r: speakerAt.r,
       name: 'speaker',
-      colour: '#f0e0c0',
+      // Chapter 3's teal hoodie and cap: the person the player walked here.
+      colour: '#1f9e9b',
+      hat: true,
       role: 'speaker',
       lanyard: LANYARD.speaker,
       seed: 911,

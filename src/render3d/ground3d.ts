@@ -352,9 +352,22 @@ export function buildGround(mats: Materials): Ground3D {
   {
     const tiles = new Buckets();
     const PALETTE = [0x2b59c3, 0xe0662b, 0x2fa36b, 0x9b3fc4, 0xd8b12a, 0x1fa3b8];
-    const tileMats = PALETTE.map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.95 }));
+    /*
+     * Stand carpet, not plastic: the polish survey (28 Sep) found the tiles
+     * read as flat saturated slabs. They are the hall's own baked carpet, tinted
+     * the sponsor's colour and pulled toward grey, on a thin aluminium edge
+     * trim — the ramp strip every rented stand floor has.
+     */
+    const tileMats = PALETTE.map((c) => {
+      const mt = mats.carpet.clone();
+      mt.color = new THREE.Color(c).lerp(new THREE.Color(0x6a6a6a), 0.15).multiplyScalar(1.5);
+      mt.clearcoat = 0;
+      mt.roughness = 1;
+      return mt;
+    });
     GF.booths.forEach((b, i) => {
-      tiles.add(tileMats[i % tileMats.length], box(m(b.w), 0.02, m(b.h), V(m(b.x + b.w / 2), 0.012, m(b.y + b.h / 2)), 2));
+      tiles.add(tileMats[i % tileMats.length], box(m(b.w), 0.03, m(b.h), V(m(b.x + b.w / 2), 0.017, m(b.y + b.h / 2)), 2));
+      tiles.add(mats.steel, box(m(b.w) + 0.08, 0.018, m(b.h) + 0.08, V(m(b.x + b.w / 2), 0.009, m(b.y + b.h / 2))));
       const c = document.createElement('canvas');
       c.width = 512;
       c.height = 128;
@@ -525,6 +538,12 @@ export function buildGround(mats: Materials): Ground3D {
   const fill = new THREE.HemisphereLight(0xfff4e6, 0x3a3430, 0);
   group.add(fill);
   let power = 0;
+  /**
+   * Chapter 3 is the morning: doors open, daylight through the glass, the
+   * whole hall bright. It rendered as chapter 2's hall with the power on —
+   * dim between the bays (the survey's "hall renders dark", 28 Sep).
+   */
+  let morning = false;
   /** When the circuit closed (world clock), or null while it is open. */
   let poweredAt: number | null = null;
 
@@ -538,6 +557,7 @@ export function buildGround(mats: Materials): Ground3D {
     probe: V(m(GF.hall.x + GF.hall.w / 2), 1.8, m(GF.hall.y + GF.hall.h / 2)),
     setChapter(n: number): void {
       later.visible = n >= 3;
+      morning = n >= 3;
     },
     setPower(on: number, t: number, instant = false): void {
       if (on > 0 && power === 0) poweredAt = instant ? t - 60 : t;
@@ -558,7 +578,8 @@ export function buildGround(mats: Materials): Ground3D {
         (b.lamp.material as THREE.MeshBasicMaterial).color.setRGB(1, 0.95, 0.85).multiplyScalar(8 * k * flick);
       }
       const lit = poweredAt === null ? 0 : THREE.MathUtils.clamp((t - poweredAt - 1.2) / 1.2, 0, 1);
-      fill.intensity = 1.1 * lit;
+      fill.intensity = (morning ? 2.4 : 1.1) * lit;
+      if (morning) fill.color.setRGB(1, 0.98, 0.95);
       boothBoards.forEach((mat, i) => mat.color.setScalar(0.08 + 2.2 * lit * (0.92 + 0.08 * Math.sin(t * 2 + i))));
       // The pods' print catches the hall lights; their header strips light up with it.
       for (const mat of panels) mat.emissiveIntensity = 0.05 + 0.35 * lit;

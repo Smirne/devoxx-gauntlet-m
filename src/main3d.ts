@@ -384,7 +384,7 @@ function frame(dt: number): void {
     left -= h;
   }
   const snap = game.snapshot();
-  if (snap.chapter > 3) {
+  if (snap.chapter > 4) {
     showEnd();
     return;
   }

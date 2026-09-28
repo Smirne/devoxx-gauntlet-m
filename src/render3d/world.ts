@@ -17,6 +17,7 @@ import { LightPool } from './lightpool';
 import { createMaterials } from './materials';
 import { Pipeline, QUALITY, type QualityName, type VolumeSpot } from './pipeline';
 import { buildGround, type Ground3D } from './ground3d';
+import { buildKeynote, type Keynote3D } from './keynote3d';
 import { createPeople } from './people3d';
 import { createProps, type Props3D } from './props3d';
 import { createRobots, dimLamps, updateGlare, updateRobots, type Robot3D } from './robots3d';
@@ -379,6 +380,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
    * the fog box, the reflections and the environment capture follow the switch.
    */
   let ground: Ground3D | null = null;
+  let keynote: Keynote3D | null = null;
   let props2: Props3D | null = null;
   const propsRoot2 = new THREE.Group();
   scene.add(propsRoot2);
@@ -452,7 +454,9 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   function render(snap: GameSnapshot, dt: number, intro = false): void {
     time += dt;
     adapt();
-    if ((snap.chapter >= 2) !== onGround) switchFloor(snap.chapter >= 2);
+    // Chapters 2 and 3 are downstairs; chapter 4 climbs back to Room 8.
+    const ground3 = snap.chapter === 2 || snap.chapter === 3;
+    if (ground3 !== onGround) switchFloor(ground3);
     if (!envBaked) bakeEnv();
     if (onGround && ground) {
       // Chapter 2 lights the hall when its circuit closes; chapter 3 is the
@@ -467,15 +471,29 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       }
       ground.update(time, dt);
     } else {
-      dimLamps(robots, 1, dt);
+      dimLamps(robots, snap.chapter === 4 ? 0.3 : 1, dt);
       venue.update(time, dt);
       details.update(time);
     }
+    // Chapter 4: Room 8, built the first time it is needed, shown only then.
+    const keynoteOn = snap.chapter === 4 && !onGround;
+    if (keynoteOn && !keynote) {
+      keynote = buildKeynote(mats);
+      scene.add(keynote.group);
+      pool.collect(scene);
+      patchedFrames = 0;
+      envBaked = false;
+    }
+    if (keynote) keynote.group.visible = keynoteOn;
+    const door8 = venue.group.getObjectByName('door-8');
+    if (door8) door8.visible = !keynoteOn;
+    propsRoot1.visible = !onGround && !keynoteOn;
     updateRobots(robots, snap, dt, crateSurface);
-    props.update(snap, time, dt);
+    if (keynoteOn && keynote) keynote.update(snap, time, dt);
+    else props.update(snap, time, dt);
     seatOnBiggy(snap);
-    peopleRoot.visible = onGround;
-    if (onGround) people.update(snap, time);
+    peopleRoot.visible = onGround || snap.chapter === 4;
+    if (peopleRoot.visible) people.update(snap, time);
     // Props are built lazily from the first snapshots; patch whatever exists.
     if (patchedFrames < 3) {
       applyBoxProjection(scene, probeBox);
@@ -533,6 +551,18 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       c.lookAt(_cutLook);
       c.updateMatrixWorld();
       cam.cut();
+    } else if (snap.reel && keynote && !cam.pose) {
+      // The opening video: from the back rows, the whole screen and the stage
+      // under it, eased in from wherever the follow camera was.
+      grade.dofAmount = 0;
+      const c = cam.camera;
+      const k = 1 - Math.exp(-dt * 1.5);
+      c.position.lerp(keynote.reelView.pos, k);
+      _cutLook.lerp(keynote.reelView.look, k);
+      c.lookAt(_cutLook);
+      c.updateMatrixWorld();
+      inCut = true;
+      cam.cut();
     } else if (rob) {
       // A new chapter, or the end of a cutscene: cut to behind the selected
       // robot. The camera used to keep its old yaw and came up jammed beside
@@ -554,7 +584,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       _pos.copy(rob.rig.root.position);
       const speed = Math.hypot(active.vx, active.vy) / PX_PER_M;
       // The crates are walls to the camera too, so it can never end up inside one.
-      const solid = onGround && ground ? ground.colliders : venue.colliders;
+      const solid = onGround && ground ? ground.colliders : keynoteOn && keynote ? [...venue.colliders, ...keynote.colliders] : venue.colliders;
       cam.update(dt, active.kind, _pos, active.face, speed, [...solid, ...props.colliders, ...(crates.root.visible ? [crates.root] : [])]);
     }
 

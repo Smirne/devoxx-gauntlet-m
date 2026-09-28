@@ -5087,3 +5087,42 @@ have matched the room around them, and would have cost more than the entire rest
     All three wear the attendee ribbon, not speaker teal. Teal is the one colour in the hall that
     means the missing keynote speaker, and three famous faces in teal would be three wrong
     answers to chapter 3. The agent decided this; Michele can overrule it.
+- **Polish round on the ground floor, then chapter 4 in 3D** (28 Sep 2026). Michele: "Make a
+  round of polish on the ground floor and chapter 2/3. Critics, then go ahead with chapter 4."
+  - *The critique.* The agent rendered a survey from the gameplay camera: chapter 2 dark, chapter
+    2 powered, chapter 3. Its findings, worst first:
+    1. The follow camera could end up inside Voxxy's head. With something right behind her, the
+       wall ray allowed it to come within 0.5 m of the pivot, and the frame was all orange
+       shell.
+    2. The booth floors read as flat, saturated plastic slabs.
+    3. Chapter 3's "morning" hall was chapter 2's hall with the power on, dim between the high
+       bays. It was already on the backlog as "hall renders dark".
+    4. The lobby counters are plain boxes that blow out white under a robot lamp.
+    5. The dark chapter 2 hall is close to a void apart from the exit signs.
+    Items 1–3 were fixed; 4 and 5 are left on the backlog.
+    - When boxed in, the camera now tries steeper pitches and looks down over the obstacle,
+      eased in and out. It never comes nearer the pivot than the robot's own shell.
+    - Stand floors are the hall's baked carpet, tinted each sponsor's colour, pulled toward grey,
+      on an aluminium edge trim.
+    - Chapter 3's fill light is roughly twice chapter 2's.
+  - *Chapter 4, Room 8.* The 3D build stopped at chapter 3 with a "3D build ends here" card.
+    Room 8 lies past chapter 1's build line, so `keynote3d.ts` builds its interior the first time
+    chapter 4 is shown:
+    - carpet, a lit ceiling, and a drape behind the stage;
+    - the stage as a 5 cm dais with an LED edge, with a lectern at stage left;
+    - the sim's seat blocks: seven rows each, with a seat on every sim seat so the audience sits
+      in chairs;
+    - Droid's two hooks as wall brackets at 3.1 m, with a beacon until each end is hung. With one
+      end hung, the banner lies on the floor from that hook; with both, "HAPPY DEVOXX" sags
+      across the stage;
+    - Voxxy's four spotlights as floor PAR cans. The next one wears a pulsing ring, and a lit
+      one throws a real beam at its own quarter of the stage. Four beams on one point washed out
+      the banner, which the agent caught on the first render;
+    - the cake as a wheeled board with a three-tier cake and three candles in the robots'
+      colours, on a glow-tape mark that turns green;
+    - a house screen with a Devoxx holding slide, showing the sim's crowd clock (the speaker
+      reads "TBA"). When the robots reach the stage, the screen plays the opening video from
+      `snap.reel`, and the camera eases back to watch it from the rows.
+    Room 8's closed door leaf opens, chapter 1's props hide, and the robot lamps dim for the
+    lit room. Stephan and the speaker wear their chapter 3 outfits (polo, glasses, mic; teal
+    hoodie). Before this change they were a beige figure and a cream one.

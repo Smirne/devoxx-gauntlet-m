@@ -1419,6 +1419,8 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
       g.add(leaf, bar);
     }
     g.position.set(m(d.cx), 0, leafZ);
+    // Named, so chapter 4 can open Room 8's (keynote3d.ts builds its inside).
+    g.name = `door-${String(r.n)}`;
     group.add(g);
   }
 

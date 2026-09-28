@@ -21,6 +21,10 @@ export const DIST: Record<RobotKind, number> = { voxxy: 3.1, droid: 4.4, biggy: 
 // the tall one, and his puzzles are high (Michele, 24 Sep, after trying a
 // chase camera and asking for the original one back with just this change).
 export const PIVOT: Record<RobotKind, number> = { voxxy: 0.85, droid: 0.95, biggy: 0.8 };
+/** The closest the camera comes to the pivot, m: outside each robot's shell. */
+const NEAR: Record<RobotKind, number> = { voxxy: 0.9, droid: 1.0, biggy: 1.3 };
+/** Below this share of the wanted distance, the camera lifts instead. */
+const CLEAR = 0.6;
 
 export class ThirdPersonCamera {
   readonly camera: THREE.PerspectiveCamera;
@@ -40,6 +44,8 @@ export class ThirdPersonCamera {
   private snapNext = true;
   /** Swinging round behind a robot just switched to; the mouse cancels it. */
   private swing = false;
+  /** Extra pitch while boxed in (see `update`), eased. */
+  private lift = 0;
   /**
    * A pitch to ease back to once the robot is under way, then forgotten. The
    * opening hands over looking down over the crates (from the usual pitch the
@@ -133,12 +139,45 @@ export class ThirdPersonCamera {
     }
 
     const wantDist = DIST[kind] * this.zoom;
-    const dir = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch));
+    /*
+     * BOXED IN: LIFT, DON'T CLOSE IN.
+     *
+     * With a wall or a booth right behind the robot the ray used to stop the
+     * camera half a metre from the pivot — which is inside Voxxy's head (the
+     * polish survey, 28 Sep: a frame that was all orange shell). So when the
+     * orbit's own pitch leaves less than `CLEAR` of the distance free, try
+     * steeper pitches and look down over the obstacle instead, eased in and out
+     * through `lift` so it never pops.
+     */
+    const clearAt = (pitch: number): { d: number; dir: THREE.Vector3 } => {
+      const dir = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(this.yaw) * Math.cos(pitch));
+      this.ray.set(this.pivot, dir);
+      this.ray.far = wantDist + 0.3;
+      const hits = this.ray.intersectObjects(colliders, true);
+      return { d: hits.length ? Math.min(wantDist, hits[0].distance - 0.3) : wantDist, dir };
+    };
+    let lift = 0;
+    let best = clearAt(this.pitch);
+    if (best.d < wantDist * CLEAR) {
+      for (const up of [0.3, 0.6, 0.9]) {
+        const p = Math.min(1.25, this.pitch + up);
+        const c = clearAt(p);
+        if (c.d > best.d + 0.05) {
+          best = c;
+          lift = p - this.pitch;
+        }
+        if (c.d >= wantDist * CLEAR) break;
+      }
+    }
+    this.lift += (lift - this.lift) * (this.snapNext ? 1 : 1 - Math.exp(-dt * 4));
+    const pitch = this.pitch + this.lift;
+    const dir = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(this.yaw) * Math.cos(pitch));
     let d = wantDist;
     this.ray.set(this.pivot, dir);
     this.ray.far = wantDist + 0.3;
     const hits = this.ray.intersectObjects(colliders, true);
-    if (hits.length) d = Math.max(0.5, Math.min(d, hits[0].distance - 0.3));
+    // Never nearer than the robot's own shell (`NEAR`), wall or no wall.
+    if (hits.length) d = Math.max(NEAR[kind], Math.min(d, hits[0].distance - 0.3));
     const kd = this.snapNext ? 1 : d < this.dist ? 1 - Math.exp(-dt * 25) : 1 - Math.exp(-dt * 3);
     this.dist += (d - this.dist) * kd;
     this.want.copy(this.pivot).addScaledVector(dir, this.dist);
