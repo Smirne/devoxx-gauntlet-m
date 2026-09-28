@@ -19,6 +19,7 @@ import { CY0, CY1, F1, R, VIEW_DEVOXX, VIEW_REEL, floor1Walls, roomDoor } from '
 import { SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
 import { botsCollide, circleRect, dist, inRect, mkBody, speed, standOff, stepBot } from '../bot';
 import { LANYARD, lanyardFor } from '../lanyards';
+import { FRONT_ROW, SPEAKER_LOOKS } from '../speakers';
 import { buildReel, reelAt, reelLength } from '../reel';
 import type { Bot, Person, Prop, Rect, ReelCard, ReelView, Task, Vec2 } from '../types';
 
@@ -214,6 +215,24 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const aisleDist = (x: number): number => Math.min(...aisles.map((a) => Math.abs(x - (a[0] + a[1]) / 2)));
   for (const s of seats) s.order = s.y * 3 + aisleDist(s.x) * 0.6 + ctx.rng() * 30;
   seats.sort((a, b) => a.order - b.order);
+
+  /*
+   * THE FRONT ROW IS RESERVED FOR THE SPEAKERS.
+   *
+   * Michele, 28 Sep 2026, on the ending: every face met on the hall floor in
+   * chapter 3 is sat in Room 8's front row for the keynote — Mario, Venkat,
+   * Josh, Lize, Aurélie, middle block, from the start of the chapter. Their seats
+   * are taken before the crowd's seat order is handed out, so nobody arrives to
+   * find a speaker in their chair, and the crowd count is unchanged.
+   */
+  const frontY = Math.min(...seats.map((q) => q.y));
+  const midX = (aisles[0][1] + aisles[1][0]) / 2;
+  const reserved = seats
+    .filter((q) => q.y === frontY && q.x > aisles[0][1] && q.x < aisles[1][0])
+    .sort((a, b) => Math.abs(a.x - midX) - Math.abs(b.x - midX))
+    .slice(0, FRONT_ROW.length)
+    .sort((a, b) => a.x - b.x);
+  for (const q of reserved) q.taken = true;
 
   const crowd: Attendee[] = [];
   /** Hands out `Person.seed` — monotonic, never reused. See `Person.seed`. */
@@ -587,7 +606,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         speed: a.seated ? 0 : Math.hypot(a.vx, a.vy),
       });
     }
-    // Both of them are on the stage looking back up the room at the audience.
+    reserved.forEach((q, i) => {
+    const name = FRONT_ROW[i];
+    out.push({ x: q.x, y: q.y, r: 4, name, ...SPEAKER_LOOKS[name], role: 'seated', seed: 920 + i, face: -Math.PI / 2, speed: 0 });
+  });
+  // Both of them are on the stage looking back up the room at the audience.
     out.push({
       x: stephan.x,
       y: stephan.y,

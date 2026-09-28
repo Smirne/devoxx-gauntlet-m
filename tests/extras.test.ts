@@ -19,6 +19,7 @@ import { DT_MAX, createGame, type DebugGame, type BreakfastState } from '../src/
 import { DEMO_CHAPTER, GF, type ExpoState } from '../src/sim';
 import { CFP_WALL } from '../src/sim/geometry';
 import { LANYARD, lanyardFor } from '../src/sim/lanyards';
+import { FRONT_ROW } from '../src/sim/speakers';
 import { walkTo } from './pilot';
 
 const SEED = 20260930;
@@ -275,5 +276,23 @@ describe('reaching the shadow rig without a URL', () => {
     const g = mk(4);
     g.skipChapter();
     expect(g.snapshot().chapter).toBe(4);
+  });
+});
+
+describe('the keynote front row', () => {
+  it('seats every speaker from the hall floor in Room 8, front row, from the start — and the crowd never takes their chairs', () => {
+    const g = mk(4);
+    const seatedNamed = (): Array<{ name?: string; y: number }> => g.snapshot().people.filter((p) => p.role === 'seated' && p.name !== undefined);
+    const at0 = seatedNamed();
+    expect(at0.map((p) => p.name)).toEqual([...FRONT_ROW]);
+    // One row, all of them.
+    expect(new Set(at0.map((p) => p.y)).size).toBe(1);
+    // Let the room fill: nobody else is ever seated on a speaker's seat.
+    for (let i = 0; i < 60 * 240; i++) g.update(DT_MAX);
+    const people = g.snapshot().people;
+    for (const sp of seatedNamed()) {
+      const clash = people.filter((p) => p !== (sp as unknown) && p.role === 'seated' && p.name === undefined && Math.hypot(p.x - (sp as { x: number }).x, p.y - sp.y) < 1);
+      expect(clash, `${sp.name}'s seat was given away`).toHaveLength(0);
+    }
   });
 });

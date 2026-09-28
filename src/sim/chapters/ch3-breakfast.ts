@@ -75,6 +75,7 @@ import {
   loadBiggy,
 } from '../crates';
 import { BAR_RECT, GF, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
+import { SPEAKER_LOOKS } from '../speakers';
 import { LANYARD } from '../lanyards';
 import { beltUp, nastriRun } from '../nastri';
 import { botsCollide, circleRect, dist, inRect, mkBody, speed, standOff, stepBot } from '../bot';
@@ -1092,7 +1093,22 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   /* ------------------------------------------------------------ people to ask */
 
-  const npcs = [
+  /** Somebody to talk to: where they stand, what they say, and how they look. */
+  interface Npc {
+    x: number;
+    y: number;
+    r: number;
+    name: string;
+    line: string;
+    colour?: string;
+    collar?: string;
+    face?: number;
+    glasses?: boolean;
+    mic?: boolean;
+    barefoot?: boolean;
+    lanyard?: string;
+  }
+  const npcs: Npc[] = [
     {
       x: 1010,
       y: 300,
@@ -1160,11 +1176,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       r: 8,
       name: 'Mario',
       line: 'Soup is a side effect, and Stephan is its only consumer. Keep it pure until it reaches him — Biggy has the hands for a pot.',
-      colour: '#1c1c20',
-      collar: '#8a1f28',
+      ...SPEAKER_LOOKS['Mario'],
       face: Math.PI,
-      glasses: true,
-      lanyard: LANYARD.speaker,
     },
     {
       x: 990,
@@ -1172,13 +1185,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       r: 8,
       name: 'Venkat',
       line: 'Shoes? At the hotel. On carpet you feel every cable before you trip on it. Short feedback loops, my friend — the shortest.',
-      colour: '#56585b',
-      collar: '#3a3b3d',
+      ...SPEAKER_LOOKS['Venkat'],
       face: Math.PI,
-      glasses: true,
-      mic: true,
-      barefoot: true,
-      lanyard: LANYARD.speaker,
     },
     {
       x: 250,
@@ -1186,10 +1194,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       r: 8,
       name: 'Josh',
       line: 'Bootiful robots! The keynote speaker? Not at a table — try the booths with walls. Start there, ship it, then go to production.',
-      colour: '#c9c8c4',
+      ...SPEAKER_LOOKS['Josh'],
       face: 0,
-      glasses: true,
-      lanyard: LANYARD.speaker,
     },
     {
       x: 330,
@@ -1197,10 +1203,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       r: 8,
       name: 'Lize',
       line: 'Robots on the night shift, with no one prompting them? I have a talk about exactly this. Ask the soup what it wants — then check its answer.',
-      colour: '#b3202e',
+      ...SPEAKER_LOOKS['Lize'],
       face: -Math.PI / 2,
-      mic: true,
-      lanyard: LANYARD.speaker,
     },
     {
       x: 560,
@@ -1208,10 +1212,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       r: 8,
       name: 'Aurélie',
       line: 'I drew you three already, as Gophers. The speaker? Behind a booth with walls — I sketch everything, and I saw a multicolour lanyard go by.',
-      colour: '#1e2a44',
+      ...SPEAKER_LOOKS['Aurélie'],
       face: -Math.PI / 2,
-      glasses: true,
-      lanyard: LANYARD.speaker,
     },
   ];
 

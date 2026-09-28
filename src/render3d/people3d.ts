@@ -1209,6 +1209,7 @@ function buildLize(torso: THREE.Mesh, H: number): Portrait {
   skirt.scale.z = front / halfW + 0.15;
   skirt.position.set(0, hip - skirtH / 2 + H * 0.03, 0);
   skirt.castShadow = true;
+  skirt.name = 'skirt';
   g.add(skirt);
   return { group: g, head, body: red, skin, hides: ['glasses', 'mic', 'collar', 'head', 'hair'] };
 }
@@ -1298,7 +1299,7 @@ export function createPeople(parent: THREE.Object3D): People3D {
         for (const n of ['head', 'hair', 'arm-l', 'arm-r', 'hand-l', 'hand-r', 'eye-l', 'eye-r']) (yaw.getObjectByName(n) as THREE.Object3D).visible = true;
 
         let pt = portraits.get(pm);
-        const who = p.role === 'stephan' ? 'Stephan' : p.role === 'staff' && p.name && BY_NAME[p.name] ? p.name : null;
+        const who = p.role === 'stephan' ? 'Stephan' : (p.role === 'staff' || p.role === 'seated') && p.name && BY_NAME[p.name] ? p.name : null;
         placeFeet(yaw, H, null);
         if (pt && pt.group.userData.who !== who) {
           // A pooled figure that was one of them and is now somebody else.
@@ -1325,6 +1326,9 @@ export function createPeople(parent: THREE.Object3D): People3D {
         if (pt.body) torso.material = pt.body;
         if (pt.barefoot) placeFeet(yaw, H, pt.skin);
         if (pt.sleeve) dressSleeves(yaw, pt);
+        // A skirt drawn for standing goes straight down through the seat.
+        const skirt = pt.group.getObjectByName('skirt');
+        if (skirt) skirt.visible = p.role !== 'seated';
       }
       for (let i = people.length; i < models.length; i++) models[i].root.visible = false;
     },
