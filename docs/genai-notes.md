@@ -4558,3 +4558,38 @@ against his standoff forever. The pilot steps round now, which is what a player 
 
 **Tests.** `tests/full-run.test.ts` (1), `tests/speaker-follow.test.ts` (2, sweeping all five
 booths the chapter can hide the speaker at). Suite **790 green**, `tsc --noEmit` clean.
+
+## 28 Sep 2026 — Voxxy's route is not everybody's route, and the ending stops freezing
+
+**What the human decided.** Michele read the breadcrumb fix and answered it with the one thing it
+had got wrong: *"remember that voxxy can go under the tables!"* And on backlog item 5, he asked for
+a recommendation and then approved it: *"ok go on"*.
+
+**What the agent got wrong and he caught.** The sponsor half tables are `low: true` with
+`skipFor: voxxy`, and the crumb guard was written as "any wall that is not low" — so it was dropping
+crumbs under the tablecloths, which is exactly the route only Voxxy can walk. The probe is the
+speaker's own body against every wall now. Checking that also surfaced an older fault the guard had
+been hiding: the speaker's wall push-out skipped `low` walls as well, so the keynote speaker glided
+through the sponsor tables and the BOF workshop tables. A person walking through a draped table is
+the kind of thing a judge sees in three seconds.
+
+**The test was wrong too, twice, and both are worth recording.** The first version sampled one seed
+and passed against the *unfixed* code, because that seed's route happened to miss every table — so
+it sweeps all fourteen now, and with the old code it names seeds 3 and 12 walking through The
+Coffee Sponsor. The second version tested the speaker's body against the booth's expanded bounding
+box, which reports a corner the speaker cleanly rounds as a table they walked through; it uses the
+circle-to-rect test the sim resolves the contact with. A regression test that passes against the
+bug is worse than no test, and the only way to know is to put the bug back and watch it fail.
+
+**The ending.** Rejected: cutting the video into several shots — most work, most likely to
+disorient on a fixed isometric camera, and it competes with the curtain call, which is the content
+of the shot. What the freeze actually was: `game.ts` stops the sim while a card is showing, which
+no chapter could see or override. `ChapterRuntime.behindCard` is the opt-in, called only while the
+phase is `done` and a card is up; chapter 4 keeps its framing, keeps the crowd walking, holds the
+applause at full and runs the curtain call on a clock started where the video ended. A skipped
+video still stops dead, because the act was skipped with it.
+
+**Tests.** `tests/speaker-follow.test.ts` sweeps the tables across all seeds;
+`tests/curtain-call.test.ts` +1 — the card lands on the same shot, the tower is still up, the room
+is still clapping, somebody is still moving and Voxxy is still jumping, and the card is not
+rewritten behind itself. Suite **791 green**, `tsc --noEmit` clean.

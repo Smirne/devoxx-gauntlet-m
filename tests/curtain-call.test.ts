@@ -197,6 +197,54 @@ describe('the curtain call', () => {
   });
 
   /**
+   * THE CARD LANDS ON A LIVE STAGE, NOT A PHOTOGRAPH.
+   *
+   * Michele, 28 Sep 2026: *"the score card still arrives over a frozen frame"*.
+   * It did, and for a reason nothing in the chapter could see: `game.ts` stops the
+   * sim while a card is showing, which is right for a briefing and wrong for the
+   * one card that comes after everything. The video ended, the camera jumped back
+   * out to the wide room, and the last thing the player saw was three thousand
+   * people stopped mid-clap behind a photograph of themselves.
+   */
+  it('keeps the room playing behind the final card, on the same shot', () => {
+    const g = createGame({ seed: SEED, chapter: 4, cards: false }) as DebugGame;
+    // Let the room start filling first: a keynote played to an empty auditorium
+    // has nobody to freeze, and this test is about the room.
+    for (let i = 0; i < 4000 && (g.debug.chapter() as { seated: number }).seated < 6; i++) g.update(DT_MAX);
+    toTheVideo(g);
+    const shot = g.snapshot().view;
+    // All the way to the end of the video, with no key pressed.
+    const frames = Math.ceil(g.snapshot().reel!.len / DT_MAX) + 8;
+    for (let i = 0; i < frames; i++) g.update(DT_MAX);
+    expect(g.snapshot().reel, 'the video never ended').toBeNull();
+    expect(g.snapshot().phase).toBe('done');
+    expect(g.snapshot().card, 'no final card').toContain('Keynote starts');
+    // The camera did NOT pull back out to the room: the card is over the stage.
+    expect(g.snapshot().view, 'the shot changed under the card').toEqual(shot);
+
+    // The tower is still standing, and the room is still clapping.
+    expect(bot(g, 'droid').mounted, 'the tower came apart').toBe(true);
+    for (const p of g.snapshot().people.filter((q) => q.role === 'seated')) {
+      expect(p.cheer ?? 0, 'the room stopped clapping behind the card').toBe(1);
+    }
+
+    // ...and it is MOVING: somebody in the room is in a different place a second
+    // later, and Voxxy is still taking her encore.
+    const before = g.snapshot().people.map((p) => ({ x: p.x, y: p.y }));
+    let hops = 0;
+    for (let i = 0; i < 300; i++) {
+      g.update(DT_MAX);
+      if ((bot(g, 'voxxy').air ?? 0) > 0) hops++;
+    }
+    const after = g.snapshot().people.map((p) => ({ x: p.x, y: p.y }));
+    const moved = after.filter((p, i) => Math.hypot(p.x - before[i].x, p.y - before[i].y) > 1).length;
+    expect(moved, 'the whole room froze behind the card').toBeGreaterThan(0);
+    expect(hops, 'Voxxy stopped taking her encore').toBeGreaterThan(0);
+    // Nothing the tableau does may touch the run: it is already scored and written.
+    expect(g.snapshot().card, 'the card was rewritten behind itself').toContain('Keynote starts');
+  });
+
+  /**
    * A skipped video skips the act with it: the chapter is over, and a robot left
    * walking to a mark after the final card is a robot the player can see moving
    * behind it.

@@ -1049,3 +1049,31 @@ title  After Dark · ERRORS:0
 Zero console errors on every leg, and a screenshot per chapter. 7/9 on the card: the run drops
 points for the five catering complaints it never stopped to clear and for the stage finished with
 374 s of slack rather than at a run.
+
+## Michele, 28 Sep — *"remember that voxxy can go under the tables!"*
+
+He was right, and the first cut of the breadcrumbs had it wrong in two places at once. The sponsor
+half tables are `low: true` with `skipFor: voxxy` (`geometry.ts`), so **Voxxy's route is not a route
+anybody else can walk** — and the crumb guard waved low walls through, dropping crumbs under the
+tablecloths. Underneath that was an older fault the fix uncovered: the speaker's own wall push-out
+skipped `low` walls too, so the keynote speaker simply glided across the half tables and the BOF
+workshop tables. Both gone. The sweep now watches every frame of the errand on all fourteen seeds
+and names any table the speaker's body touched — with the old code, seeds 3 and 12 walked them
+straight through The Coffee Sponsor.
+
+## Michele, 28 Sep — *"5 — what is your suggestion?"*, and the answer: kill the freeze
+
+The ending's dead frame was never the single camera shot. It was this: the video finished,
+`endReel()` pulled the camera back out to the wide room, `finish()` put the score card up, and
+`game.ts` stops the sim dead while a card is showing — so the last thing a player saw was three
+thousand people stopped mid-clap behind a photograph of themselves.
+
+The run's last card is now the one card the room plays on behind. The framing stays where the video
+was, the crowd keeps walking, the applause stays up, and the tower stands with Voxxy still taking
+her encore off Biggy's shoulders. A chapter opts in through `ChapterRuntime.behindCard`; a briefing
+card still freezes, because the player has not started and there is nothing to watch yet. And a
+player who **skipped** the video skips the act with it — camera back out, everything stops — since
+holding a half-finished bow behind the card is worse than holding nothing.
+
+No cuts. Hard cuts on a fixed isometric camera read as a bug rather than as direction, and the
+curtain call is already the motion in the shot.
