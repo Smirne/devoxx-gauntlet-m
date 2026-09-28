@@ -46,6 +46,10 @@ export const bot = (g: DebugGame, kind: RobotKind): Bot => {
  */
 
 const GRID = 10;
+/** Frames of no progress on a leg before the pilot tries stepping round. */
+const STALL = 26;
+/** Frames it spends stepping sideways before aiming at the waypoint again. */
+const SIDE = 18;
 
 /** Somebody standing still that the router should go round — a `standOff` body. */
 export interface Obstacle {
@@ -159,20 +163,63 @@ export function findPath(g: DebugGame, kind: RobotKind, target: Vec2, avoid: rea
   return pts;
 }
 
-/** Hold the stick at the next waypoint until it is reached, or give up. */
+/**
+ * Hold the stick at the next waypoint until it is reached, or give up.
+ *
+ * The budget is per waypoint and it is a FLOOR, not the whole allowance: a
+ * straightened path can hand this a single 920 px leg — Voxxy from a booth at the
+ * west end of the hall to Stephan's mark at the east — and 400 frames of a robot
+ * that tops out at 72.5 px/s does not cover it. A fixed budget turned that into
+ * "the route is impossible", which is a test lying about the game. So each leg
+ * also gets the time the leg actually needs at the robot's own top speed, twice
+ * over, for the corners and the acceleration.
+ */
 export function driveTo(g: DebugGame, kind: RobotKind, pts: Vec2[], tol = 7, budget = 400): boolean {
   g.debug.select(kind);
   for (const p of pts) {
     let arrived = false;
-    for (let i = 0; i < budget && !arrived; i++) {
+    const b0 = bot(g, kind);
+    const need = (Math.hypot(p.x - b0.x, p.y - b0.y) / b0.max / DT_MAX) * 2 + 60;
+    const legBudget = Math.max(budget, Math.ceil(need));
+    /*
+     * ...and a sidestep, because the router only knows about WALLS.
+     *
+     * The hall's staff stand where the chapter put them and the sixty visitors
+     * walk wherever they are going; none of them is a wall, so `findPath` will
+     * happily route a leg straight through the JUG leader, and an eight-way stick
+     * held dead at a waypoint behind him pins the robot against his standoff
+     * forever. A player steps round. So does this: no progress for `STALL` frames
+     * and it drives perpendicular for `SIDE` of them, flipping the side each time,
+     * which is enough to clear a person and never enough to leave the lane.
+     */
+    let best = Infinity;
+    let stalled = 0;
+    let side = 1;
+    let sidestep = 0;
+    for (let i = 0; i < legBudget && !arrived; i++) {
       const b = bot(g, kind);
       const dx = p.x - b.x;
       const dy = p.y - b.y;
-      if (Math.hypot(dx, dy) <= tol) {
+      const d = Math.hypot(dx, dy);
+      if (d <= tol) {
         arrived = true;
         break;
       }
-      g.setStick(Math.abs(dx) > 3 ? Math.sign(dx) : 0, Math.abs(dy) > 3 ? Math.sign(dy) : 0);
+      if (d < best - 0.5) {
+        best = d;
+        stalled = 0;
+      } else stalled++;
+      if (stalled > STALL && sidestep === 0) {
+        sidestep = SIDE;
+        side = -side;
+        stalled = 0;
+      }
+      if (sidestep > 0) {
+        sidestep--;
+        g.setStick(Math.sign(-dy / d) * side || side, Math.sign(dx / d) * side || side);
+      } else {
+        g.setStick(Math.abs(dx) > 3 ? Math.sign(dx) : 0, Math.abs(dy) > 3 ? Math.sign(dy) : 0);
+      }
       g.update(DT_MAX);
     }
     if (!arrived) {

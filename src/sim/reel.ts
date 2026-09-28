@@ -66,6 +66,7 @@ export function buildReel(
   const oom = n('oom');
   const cable = n('cable');
   const spare = n('spare');
+  const lateT = n('lateT');
 
   const bloopers: ReelCard[] = [];
   const add = (title: string, sub: string): void => {
@@ -120,6 +121,17 @@ export function buildReel(
   }
   if (spare > 0 && spare < 20) {
     add(`Stage ready with ${spare}s to spare`, 'Nobody in that room needs to know.');
+  }
+  /*
+   * The room filling before the stage was ready is not a fail any more
+   * (`ch4-keynote.ts`, 28 Sep) — it is a noise, and this is where the noise ends
+   * up. A consequence a player can see on the video beats a flag in the score bag.
+   */
+  if (lateT > 0) {
+    add(
+      `${lateT}s of three thousand people waiting`,
+      'The stage was still being built. They were extremely polite about it.',
+    );
   }
 
   const cards: ReelCard[] = [

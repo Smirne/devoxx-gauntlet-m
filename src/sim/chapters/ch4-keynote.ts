@@ -188,9 +188,30 @@ export interface KeynoteState {
   complaints: number;
   /** Seconds of slack left when the stage was finished. */
   spare: number;
+  /** Seconds a full room has spent waiting for an unfinished stage. */
+  restless: number;
   /** Seconds into the opening video, or -1 while it is not playing. */
   reelT: number;
 }
+
+/** Seconds between one line from the room and the next. */
+const MURMUR_EVERY = 9;
+/**
+ * What three thousand people do while they wait, in order, cycled.
+ *
+ * Cycled rather than randomised, like Stephan's lines in chapter 3: a line you can
+ * get back to is a line the player can read, and the escalation is the joke — a
+ * slow clap, then the noise, then somebody opening a laptop, which is the worst
+ * thing an audience can do to you.
+ */
+const MURMURS: readonly string[] = [
+  'The room is full and the stage is not. Somebody in row four starts a slow clap. It does not catch on.',
+  'Three thousand people, one unfinished stage. The murmur goes up a semitone.',
+  'From somewhere near the back: <b>"IS IT AN OUTOFMEMORYERROR?"</b> Laughter. Not kind laughter.',
+  'A man in the fourth row has opened his laptop and started working. That is worse than heckling.',
+  'Stephan, from the wings, to nobody: "Any minute now." Nobody believes him.',
+  'Two rows have started a conversation about the parking. You are losing them.',
+];
 
 const KEYS = '1/2/3/Tab: switch · WASD · E: use / hold Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics';
 const READY_OBJECTIVE =
@@ -344,6 +365,21 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const N = Math.min(84, seats.length);
   let t = 0;
   let complaints = 0;
+  /**
+   * How long a full room has been sitting in front of an unfinished stage.
+   *
+   * Michele, 28 Sep 2026: *"Game does not end if room is full, but some rumors
+   * from the crowd?"* It used to be a hard fail — the room filled, the chapter
+   * stopped, and a player two jobs from the end was handed a card telling them to
+   * press R. Three thousand people arriving early does not cancel a keynote; it
+   * makes a noise. So the clock runs, the room gets louder, the score remembers
+   * it (`late`, and these seconds), and the player finishes the chapter they were
+   * most of the way through.
+   */
+  let restless = 0;
+  let murmurAt = 0;
+  let murmurs = 0;
+  let wasFull = false;
   let seated = 0;
   let ready = false;
   let spare = 0;
@@ -923,19 +959,36 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       ctx.flash('Stage ready! Now all three of you — on stage with Stephan and the speaker', 4000);
       ctx.objective(READY_OBJECTIVE, '1/2/3/Tab: switch · WASD');
     }
+    /*
+     * A FULL ROOM IS A NOISE, NOT A GAME OVER.
+     *
+     * The clock keeps running and so does the chapter: what the room being full
+     * costs you is the `spare` on your card, the `late` flag, and having to work
+     * with three thousand people watching you do it.
+     */
+    if (full && !ready) {
+      if (!wasFull) {
+        wasFull = true;
+        ctx.objective(
+          'Chapter 4 · <b>Keynote</b>. The room is full and they are watching you build it. ' +
+            '<b>Finish the stage</b> — cake, the #DEVOXX sign, four spotlights.',
+          KEYS,
+        );
+      }
+      restless += dt;
+      if (restless >= murmurAt) {
+        murmurAt = restless + MURMUR_EVERY;
+        ctx.flash(MURMURS[murmurs++ % MURMURS.length], 4600);
+      }
+    }
     if (ready && allOnStage()) {
       ended = true;
       ctx.score.spare = Math.trunc(spare);
       ctx.score.keynoteComplaints = complaints;
       ctx.score.late = full ? 1 : 0;
+      // The seconds the room spent waiting, so the opening video can say so.
+      ctx.score.lateT = Math.trunc(restless);
       startReel();
-    } else if (full && !ready) {
-      ended = true;
-      ctx.fail(
-        "The room is full and the stage isn't ready." +
-          `<small>cake ${cakeOnMark() ? '✓' : '✗'} · sign ${sign()} · ` +
-          `spotlights ${spots.filter((s) => s.on).length}/4 · R to try again · or Skip chapter</small>`,
-      );
     }
   }
 
@@ -1203,6 +1256,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       seated,
       crowd: crowd.length,
       complaints,
+      restless: Math.trunc(restless),
       spare,
       reelT,
     }),
