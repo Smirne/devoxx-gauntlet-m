@@ -153,6 +153,13 @@ const FIRE_LEAF_T = 4;
  * feeds `Prop.progress`.
  */
 const LOCK_SWING_TIME = 0.7;
+/**
+ * How long Droid's hand takes to get to the projector panel's lever, s. The door
+ * waits for it: it used to start swinging on the key press, before the lever
+ * had moved (Michele, 28 Sep: "the door should start opening only after the
+ * lever is pulled"). The renderers draw the reach over the same time.
+ */
+const LEVER_REACH_TIME = 0.75;
 /** Cinema B's leaf, drawn and collided at its own thickness rather than the band's. */
 const LOCK_LEAF_T = 4;
 
@@ -325,6 +332,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let panelOn = false;
   /** Cinema B's leaf, 0 -> 1 once the release is pressed. Ticked in `update`. */
   let lockSwing = 0;
+  /** Seconds since the panel was thrown; the leaf moves once `LEVER_REACH_TIME` has passed. */
+  let leverT = 0;
   let jamBroken = false;
   /** 0..1, the smashed door's own fall. Started by the hit, ticked in `update`. */
   let jamFall = 0;
@@ -1013,7 +1022,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       fireSwing = Math.min(1, fireSwing + dt / FIRE_SWING_TIME);
       sweepFireDoor(was, fireSwing, dt);
     }
-    if (panelOn && lockSwing < 1) lockSwing = Math.min(1, lockSwing + dt / LOCK_SWING_TIME);
+    if (panelOn) leverT += dt;
+    if (panelOn && leverT >= LEVER_REACH_TIME && lockSwing < 1) lockSwing = Math.min(1, lockSwing + dt / LOCK_SWING_TIME);
     if (leaveAt >= 0 && ctx.t >= leaveAt) {
       leaveAt = -1;
       leave();

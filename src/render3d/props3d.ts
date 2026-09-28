@@ -545,7 +545,9 @@ export function createProps(parent: THREE.Object3D, mats: Materials, floor: 'fir
             const led = o.userData.led as THREE.Mesh;
             const blink = done ? 1 : Math.sin(t * 5) > 0 ? 1 : 0.15;
             (led.material as THREE.MeshBasicMaterial).color.setRGB(done ? 0.1 : 1, done ? 1 : 0.05, 0.05).multiplyScalar(14 * blink);
-            (o.userData.lever as THREE.Object3D).rotation.z = done ? -0.9 : 0;
+            // Thrown on contact, over a fifth of a second, not snapped.
+            const since = p.state === 'done' ? t - (o.userData.doneAt as number) : 0;
+            (o.userData.lever as THREE.Object3D).rotation.z = -0.9 * THREE.MathUtils.smoothstep(since, 0.6, 0.8);
             const pulse = done ? 0.5 : 0.55 + 0.45 * Math.sin(t * 3);
             const hm = (o.userData.halo as THREE.Mesh).material as THREE.MeshBasicMaterial;
             hm.color.setRGB(done ? 0.15 : 1, done ? 1 : 0.62, done ? 0.35 : 0.12).multiplyScalar(6 * pulse);
