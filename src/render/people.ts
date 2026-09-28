@@ -144,6 +144,11 @@ interface Shared {
    */
   ribbons: Map<string, THREE.MeshStandardMaterial>;
   cup: THREE.MeshStandardMaterial;
+  /** Spectacle frames, the headset's boom, and a laptop's lid and deck. */
+  frame: THREE.MeshStandardMaterial;
+  boom: THREE.MeshStandardMaterial;
+  screen: THREE.MeshStandardMaterial;
+  shell: THREE.MeshStandardMaterial;
   refs: number;
 }
 
@@ -168,6 +173,15 @@ function acquire(): Shared {
     lanyard: std('#d9741f', 0.7),
     ribbons: new Map(),
     cup: std('#f2efe9', 0.6),
+    frame: std('#3a2a1c', 0.5),
+    boom: std('#d9c7b4', 0.6),
+    screen: new THREE.MeshStandardMaterial({
+      color: new THREE.Color('#1b2230'),
+      roughness: 0.4,
+      emissive: new THREE.Color('#5f8fd0'),
+      emissiveIntensity: 0.8,
+    }),
+    shell: std('#9aa3ad', 0.5),
     refs: 1,
   };
   return shared;
@@ -187,6 +201,10 @@ function release(): void {
   for (const mm of shared.ribbons.values()) mm.dispose();
   shared.ribbons.clear();
   shared.cup.dispose();
+  shared.frame.dispose();
+  shared.boom.dispose();
+  shared.screen.dispose();
+  shared.shell.dispose();
   shared = null;
 }
 
@@ -255,6 +273,41 @@ export function buildPerson(): PersonModel {
   hat.name = 'hat';
   hat.visible = false;
   yaw.add(hat);
+
+  /*
+   * The accessories that make somebody a SOMEBODY.
+   *
+   * Four more meshes on a figure that had seven, all of them off geometries the
+   * crowd already shares, all of them hidden unless the sim asks. At this zoom a
+   * face is four pixels and none of these is anatomy: the collar is a stripe
+   * across the shoulders, the glasses a dark bar with a highlight, the mic a pale
+   * line from the ear to the corner of the mouth, and the laptop a lid and a deck.
+   * Read from ten metres they say *Devoxx polo*, *glasses*, *headset*, *fixing his
+   * slides*, which is the whole job.
+   */
+  const collar = new THREE.Mesh(s.box, cloth);
+  collar.name = 'collar';
+  collar.visible = false;
+  yaw.add(collar);
+  const specs = new THREE.Mesh(s.box, s.frame);
+  specs.name = 'glasses';
+  specs.visible = false;
+  yaw.add(specs);
+  const boom = new THREE.Mesh(s.box, s.boom);
+  boom.name = 'mic';
+  boom.visible = false;
+  yaw.add(boom);
+  const lapBase = new THREE.Mesh(s.box, s.shell);
+  lapBase.name = 'laptop-deck';
+  lapBase.visible = false;
+  yaw.add(lapBase);
+  const lapLid = new THREE.Mesh(s.box, s.screen);
+  lapLid.name = 'laptop-lid';
+  lapLid.visible = false;
+  yaw.add(lapLid);
+  /** The collar's own colour, so a striped polo is not the shirt's material. */
+  const collarMat = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0.02 });
+  collar.material = collarMat;
 
   // Unshaded pawns on a flat floor read as pawns floating over it; one disc each
   // is what pins them down. Kept from the old model, which got this right.
@@ -386,6 +439,51 @@ export function buildPerson(): PersonModel {
       hat.position.set(0, H - headR * 0.3, 0);
     }
 
+    /*
+     * The four accessories, posed off the same proportions as everything else.
+     *
+     * +Z is the direction a figure faces (`yaw` turns the whole group), so a thing
+     * on somebody's front sits at positive z and a thing behind them at negative —
+     * the same convention the rucksack has used since the crowd got bodies.
+     */
+    collar.visible = p.collar !== undefined;
+    if (collar.visible) {
+      collarMat.color.set(p.collar as string);
+      // A band across the top of the shoulders, standing a hair proud of the shirt.
+      collar.scale.set(halfW * 1.5, 0.035 * H, 0.2 * H);
+      collar.position.set(0, shoulder - 0.015 * H, 0);
+    }
+    specs.visible = p.glasses === true;
+    if (specs.visible) {
+      specs.scale.set(headR * 1.7, headR * 0.34, headR * 0.3);
+      specs.position.set(0, H - headR * 1.05, headR * 0.92);
+    }
+    boom.visible = p.mic === true;
+    if (boom.visible) {
+      // From the right ear to the corner of the mouth: a thin bar, turned down and
+      // forward, which is the shape everybody reads as "wearing a headset".
+      boom.scale.set(headR * 0.16, headR * 0.16, headR * 1.5);
+      boom.position.set(headR * 0.78, H - headR * 1.25, headR * 0.5);
+      boom.rotation.set(0, -0.5, 0.35);
+    }
+    const lap = p.laptop === true && !seated;
+    lapBase.visible = lap;
+    lapLid.visible = lap;
+    if (lap) {
+      // Held in both hands, deck flat and lid up: the pose of somebody who is
+      // editing slides standing up, five minutes before they are needed.
+      const deckY = hip + (shoulder - hip) * 0.52;
+      lapBase.scale.set(halfW * 1.7, 0.012 * H, 0.16 * H);
+      lapBase.position.set(0, deckY, 0.17 * H);
+      lapLid.scale.set(halfW * 1.7, 0.14 * H, 0.014 * H);
+      lapLid.position.set(0, deckY + 0.06 * H, 0.1 * H);
+      lapLid.rotation.x = -0.25;
+      // ...and the arms come up to hold it, which is what makes it read as held
+      // rather than balanced.
+      armL.pivot.rotation.x = -1.15;
+      armR.pivot.rotation.x = -1.15;
+    }
+
     if (p.colour) cloth.color.set(p.colour);
 
     contact.scale.setScalar(Math.max(m(p.r), 0.16) * 1.5);
@@ -418,6 +516,7 @@ export function buildPerson(): PersonModel {
     pose,
     dispose(): void {
       cloth.dispose();
+      collarMat.dispose();
       release();
     },
   };

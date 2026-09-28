@@ -258,6 +258,55 @@ const SPEAKER_CLEAR = 24;
  * the face of a booth for a visible moment. See `stepVisitor`.
  */
 const GRAZE_STALL = 0.5;
+/**
+ * ...and how long they get when nothing is grazed and it is simply the crowd.
+ *
+ * Longer, because a stream of people threading a doorway is SUPPOSED to be slow
+ * and a person who re-routes at the first shoulder never gets anywhere. Two
+ * seconds of no ground gained is not a slow queue, it is a knot — Michele's
+ * photograph of fourteen of them stopped along the threshold. See `stepVisitor`.
+ */
+const CROWD_STALL = 2;
+/**
+ * How close a robot stands to a queue before `E` means "make way", sim px.
+ *
+ * 44, which is the doorway's own width and the distance `tests/beer-bar.test.ts`
+ * has always asked from: it parks Voxxy 33 px south of the front rank, walks
+ * Biggy's own grid through the gap afterwards, and that test is the acceptance
+ * criterion for this beat.
+ */
+const QUEUE_ASK = 44;
+/**
+ * How close Biggy gets to Stephan before Stephan simply takes the pot, sim px.
+ *
+ * 34 is a long arm's reach at this scale — 2.7 m — and it is deliberately bigger
+ * than the mark on the floor. Michele: *"He could also get it on it's own when
+ * it's near."* A man who has been asking for soup for ten minutes does not make
+ * you park it in a box first.
+ */
+const SOUP_HANDOVER = 34;
+/**
+ * The keynote speaker's teal — hoodie, cap and lanyard, all of it.
+ *
+ * `LANYARD.speaker` is this colour and nothing else in the hall wears it. At the
+ * zoom this game is played at a person is thirty pixels tall, so one colour worn
+ * head to foot is the only kind of "recognisable" that survives, and it is what
+ * Michele asked for when he could not find them: *"therse should also be
+ * something recognizable about thim."*
+ */
+const SPEAKER_TEAL = '#1f9e9b';
+/** Stephan's polo: the dark olive one, off the photograph he sent. */
+const STEPHAN_POLO = '#434a3c';
+/** ...and its collar stripe, which is the half of it that reads at this size. */
+const DEVOXX_ORANGE = '#e8a01c';
+/** Celestino's crew raglan — the orange half of it; the trim is the white. */
+const CREW_ORANGE = '#e0692a';
+/** How far in front of the reception counter an arrival stands to be served, px. */
+const BADGE_STAND = 11;
+/** ...and how long that takes. A badge desk is quick; it is a queue that is slow. */
+const BADGE_DWELL = 1.1;
+/** How near that line counts as being at the desk, sim px. */
+const BADGE_REACH = 22;
 /** How close a robot has to get to the pallet to read what is printed on the wrap. */
 const LABEL_REACH = 90;
 /** The middle of the stack zone, and how close to it counts as "on the mark". */
@@ -383,6 +432,8 @@ interface Visitor extends Bot {
   colour: string;
   /** Seconds spent grazing built fabric without getting any closer. See `stepVisitor`. */
   stall: number;
+  /** Have they been past Celestino's desk yet? See `arrivalLegs`. */
+  badge: boolean;
 }
 
 interface QueuePerson {
@@ -1011,6 +1062,29 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       line: 'Stephan is at the main staircase, arms crossed. He is not opening it before his soup.',
     },
     { x: 370, y: 215, r: 8, name: 'Devoxx crew', line: 'Mind the coffee queue with that pot. It bites.' },
+    /*
+     * CELESTINO, ON THE DESK.
+     *
+     * Michele, 27 Sep 2026, with a photograph of him in the crew raglan:
+     * *"People should maybe pass at the reception to get a badge. Celestino should
+     * be there."* Both halves are here — he is behind the counter, and every one
+     * of the three thousand now walks past him on the way in and comes away
+     * wearing a lanyard (`arrivalLegs`).
+     *
+     * First name and a caricature, the same rule Stephan gets: an orange-and-white
+     * crew raglan, a crew-red ribbon, and the one job in the building that never
+     * stops. Nothing here needs anybody's permission.
+     */
+    {
+      x: GF.reception.x + GF.reception.w * 0.62,
+      y: GF.reception.y + GF.reception.h * 0.42,
+      r: 8,
+      name: 'Celestino',
+      line: 'Badges here! Wardrobe behind me, rooms are upstairs when Stephan says so. You three are not on my list, but go on.',
+      colour: CREW_ORANGE,
+      collar: '#f2efe9',
+      face: Math.PI / 2,
+    },
   ];
 
   /*
@@ -1039,7 +1113,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     (b) => !b.table && !noGo.some((s) => Math.hypot(inFrontOf(b).x - s.x, inFrontOf(b).y - s.y) < s.r + SPEAKER_CLEAR),
   );
   const hideBooth = built[Math.floor(ctx.rng() * built.length)];
-  const speaker = { ...inFrontOf(hideBooth), r: 7, following: false, onStage: false };
+  const speaker = { ...inFrontOf(hideBooth), r: 7, following: false, onStage: false, sp: 0, face: Math.PI / 2 };
 
   /*
    * Stephan, and the spot the soup has to reach him.
@@ -1066,6 +1140,24 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * frame as the gate, and it is the ground a robot already crosses on the way in.
    */
   const stage = { x: stair.x + 6, y: stair.y + stair.h + 40, w: 100, h: 110 };
+  /*
+   * ...BUT THE SOUP GOES WHERE THE MAN IS.
+   *
+   * Michele, 28 Sep 2026: *"maybe it's because steph moved, but the soup drop zone
+   * is far from him. He could also get it on it's own when it's near."* Both
+   * halves are right. The stage is 210 px — 17 m — from where Stephan has stood
+   * since the staircase turned, so the chapter asked you to carry a pot of soup
+   * past him and set it down across the lobby, and then had him drink it from
+   * there. That is not a drop zone, it is a filing cabinet.
+   *
+   * So the soup's mark is the floor at his feet: the concourse strip between the
+   * barrier and the glazing is 49 px wide and this is 36 of them, which Biggy
+   * (18 px across) walks into with room either side. The stage keeps the keynote
+   * speaker — a lectern belongs on a stage — and the two jobs stop sharing one
+   * box. He also simply TAKES it if you get close enough to hand it over, which
+   * is the other half of his note and the thing a man waiting for soup does.
+   */
+  const soupSpot = { x: stephan.x - 18, y: stephan.y - 30, w: 36, h: 60 };
 
   /* --------------------------------------------------------------- the crowd */
 
@@ -1111,10 +1203,36 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     const step = st.y + 34 + lane * (st.h - 68);
     return [
       { x, y: doorY },
+      /*
+       * PAST THE DESK, AND NOBODY GETS IN WITHOUT A BADGE.
+       *
+       * Michele, 27 Sep 2026: *"People should maybe pass at the reception to get a
+       * badge. Celestino should be there."*
+       *
+       * It costs one waypoint, because the route already ran along the front of
+       * the reception counter on its way to the steps — the stanchions in the
+       * lobby are there to funnel arrivals past exactly this desk
+       * (`LOBBY_STANCHIONS`). So the leg is not a detour, it is the same walk with
+       * a stop in it: they pause at the counter, and they come away wearing the
+       * attendee ribbon they did not have when they came through the door.
+       *
+       * Spread along the counter by `lane` so three thousand people do not queue
+       * at one point of it.
+       */
+      badgeStopFor(lane),
       { x: 1240, y: doorY },
       { x: st.x + st.w + 20, y: step },
       { x: GF.hall.x + GF.hall.w - 40, y: step },
     ];
+  }
+
+  /** The line in front of the reception counter that arrivals are served on. */
+  const badgeLine = GF.reception.y + GF.reception.h + BADGE_STAND;
+
+  /** The spot at the counter this arrival collects their badge at. */
+  function badgeStopFor(lane: number): Vec2 {
+    const rc = GF.reception;
+    return { x: rc.x + 18 + lane * (rc.w - 36), y: badgeLine };
   }
 
   function spawnVisitor(): void {
@@ -1141,6 +1259,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     v.dwell = 0;
     v.hitCd = 0;
     v.stall = 0;
+    v.badge = false;
     v.route = [
       // Straight through the bay first, then turn: the leaf is standing open in it.
       { x: e.x - 24, y: inY },
@@ -1295,6 +1414,34 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         break;
       }
     }
+    /*
+     * ...AND A ROBOT STANDING IN THE LANE IS SOMETHING YOU WALK ROUND.
+     *
+     * Michele, 28 Sep 2026, with a photograph of fourteen people stopped nose to
+     * tail along the threshold: *"people keep getting clustered - blocked on this
+     * line"*, and then *"Crowd also block Droid now."* Both are the same missing
+     * line. A visitor only ever looked for another VISITOR in the way, so a robot
+     * parked on a lane was not something to walk round — it was a solid the
+     * push-out slid them along, and the people behind piled into the people in
+     * front. One robot standing still made a fourteen-person queue out of a crowd
+     * that had somewhere else to be.
+     *
+     * A robot is bigger than a person, so it gets a wider berth (`b.r + 8` rather
+     * than the flat 12 px a body gets), and it is checked after the crowd so a
+     * person already dodging somebody keeps dodging them.
+     */
+    if (!blocker) {
+      for (const bot of ctx.bots) {
+        if (bot.mounted) continue;
+        const ox = bot.x - a.x;
+        const oy = bot.y - a.y;
+        const od = Math.hypot(ox, oy);
+        if (od > 0 && od < bot.r + 8 && (ox * dx + oy * dy) / (od * d) > 0.4) {
+          blocker = { x: bot.x, y: bot.y } as Visitor;
+          break;
+        }
+      }
+    }
     let ux = dx / d;
     let uy = dy / d;
     let spd = a.walk;
@@ -1367,9 +1514,35 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      * them. So the touch has to come with no progress, for `GRAZE_STALL` of it,
      * before the leg is what gets blamed.
      */
+    /*
+     * BEING AT THE DESK IS WHERE A BADGE COMES FROM.
+     *
+     * Checked on POSITION every frame rather than on arriving at the waypoint,
+     * and the difference is 24 of 60 people: a visitor who is shoved off the mark
+     * by the crowd, or whose leg the stall-breaker drops, still walks the length
+     * of that counter — and measured on the waypoint alone, forty per cent of
+     * them reached the hall with no ribbon on. Anybody who comes within a body's
+     * length of the front of the counter is served, which is also what a desk is.
+     */
+    if (!a.badge && Math.abs(a.y - badgeLine) < BADGE_REACH && a.x > GF.reception.x - 12 && a.x < GF.reception.x + GF.reception.w + 12) {
+      a.badge = true;
+      a.dwell = BADGE_DWELL * (0.7 + ctx.rng() * 0.6);
+    }
     const grazed = pushOutOfWalls(a);
     pushOutOfCrates(a);
-    if (grazed && Math.hypot(t.x - a.x, t.y - a.y) > d - a.walk * dt * 0.25) a.stall += dt;
+    /*
+     * A leg that is making no ground gets dropped, whether a wall is to blame or
+     * a person is.
+     *
+     * It used to need `grazed` — the fault it was written for was a visitor
+     * crawling a booth's face — and a crowd that jams on itself grazes nothing at
+     * all. Michele's photograph of the threshold is that case: everybody walking,
+     * nobody arriving, because each of them was steering round the one in front
+     * and none of them was getting closer to a waypoint they all shared. Progress
+     * is the test now, and the graze only decides how long it is given.
+     */
+    const stuck = Math.hypot(t.x - a.x, t.y - a.y) > d - a.walk * dt * 0.25;
+    if (stuck) a.stall += dt * (grazed ? 1 : GRAZE_STALL / CROWD_STALL);
     else a.stall = 0;
     if (a.stall > GRAZE_STALL) {
       a.stall = 0;
@@ -1792,6 +1965,42 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     }
 
     /*
+     * ASKING A QUEUE TO MAKE WAY — ANY OF THE THREE, NOT JUST VOXXY.
+     *
+     * Michele, 28 Sep 2026, playing chapter 3: *"Crowd also block Droid now. Fine
+     * but all robots should be able to move them, not only voxxy."* He is right,
+     * and the old arrangement was worse than a missing feature: the queue is a
+     * wall of people across the one doorway the soup comes through, and the only
+     * robot who could open it was the one not carrying the pot. Biggy, stood at
+     * the queue with the soup going cold in his arms, had to put the errand down
+     * and go and fetch Voxxy to say a sentence.
+     *
+     * Three voices, because a line that stops you owes you one in the voice of
+     * whoever is speaking (CLAUDE.md) — and because what is funny here is the
+     * difference between being asked by a small orange robot, by a very tall
+     * polite one, and by something the size of a fridge.
+     *
+     * It is every robot's LAST resort rather than their first, which is not a
+     * detail: the soup pot stands 60 px behind the soup queue's own tail, so a
+     * version of this that ran before the errands had Biggy walk up to the pot,
+     * press `E`, and ask the queue to make way instead of picking it up.
+     * `tests/chapters.test.ts` caught that on the first run.
+     */
+    const askQueue = (who: Bot): boolean => {
+      const q = queues.find((o) => o.people.some((pp) => Math.hypot(pp.x - who.x, pp.y - who.y) < QUEUE_ASK));
+      if (!q || q.open > 0) return false;
+      q.open = QUEUE_OPEN;
+      const said =
+        who.kind === 'voxxy'
+          ? 'Voxxy: "Excuse me — soup coming through!"'
+          : who.kind === 'droid'
+            ? 'Droid: "Excuse me. I can see over all of you, and what I can see is that the soup is that way."'
+            : 'Biggy: "Mind your feet. Mind all of your feet."';
+      ctx.flash(`${said} — the ${q.label} makes way for ${QUEUE_OPEN}s`);
+      return true;
+    };
+
+    /*
      * THE CRAB SANDWICH. One per robot, in three voices, because the joke is what
      * each of them makes of it — and Biggy carrying the pot is working, so he gets
      * the one line that admits it.
@@ -1820,6 +2029,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         ctx.flash(`Droid: "${dc.name}. Half my own mass, all of it above the knee. This one is Biggy's."`);
         return true;
       }
+      if (askQueue(d)) return true;
       // His dead end, handed back: at Biggy it becomes a grab, anywhere else the
       // stretch. "Nothing to reach here" is what the stretch says, without words.
       return false;
@@ -1849,7 +2059,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         ctx.flash("Biggy has the pot. Careful — it can't stop and the soup can't either.");
         return true;
       }
-      if (carrying && !delivered && inRect(bg, stage)) {
+      if (carrying && !delivered && (inRect(bg, soupSpot) || dist(bg, stephan) < SOUP_HANDOVER)) {
         delivered = true;
         const said =
           soup > 70 ? 'Finally! Still hot.' : soup > 35 ? "Half a bowl. It's… something." : 'Is this a bowl or a hint?';
@@ -1864,18 +2074,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         ctx.flash(`Biggy: "I am not putting these down in the middle of the floor. They go to ${BAR_NAME}, by the taps."`);
         return true;
       }
+      if (askQueue(bg)) return true;
       // His dead end. He cannot hop, but he can be taken hold of, and `spareE`
       // has a better line for him than this one did.
       return false;
     }
 
-    // Voxxy: the one who talks to people.
-    const q = queues.find((o) => Math.abs(v.x - o.x) < 50 && v.y < 300);
-    if (q && q.open <= 0) {
-      q.open = QUEUE_OPEN;
-      ctx.flash(`Voxxy: "Excuse me — soup coming through!" — the ${q.label} makes way for ${QUEUE_OPEN}s`);
-      return true;
-    }
     const n = npcs.find((o) => dist(o, v) < TALK_REACH);
     if (n) {
       ctx.flash(`${n.name}: "${n.line}"`, 4500);
@@ -1891,6 +2095,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       ctx.flash(`Voxxy: "${vc.name} weighs more than I do. Considerably more. BIGGY!"`);
       return true;
     }
+    if (askQueue(v)) return true;
     // Her dead end, handed back: at Biggy it becomes a grab, anywhere else a hop.
     return false;
   }
@@ -2073,7 +2278,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       const dx = tgt.x - speaker.x;
       const dy = tgt.y - speaker.y;
       const dd = Math.hypot(dx, dy);
+      speaker.sp = dd > 22 ? SPEAKER_WALK : 0;
       if (dd > 22) {
+        speaker.face = Math.atan2(dy, dx);
         speaker.x += (dx / dd) * SPEAKER_WALK * dt;
         speaker.y += (dy / dd) * SPEAKER_WALK * dt;
         for (const w of ctx.walls) {
@@ -2114,7 +2321,21 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         state: ladle ? 'done' : 'idle',
         label: ladle ? 'shelf' : 'ladle (high)',
       },
-      { kind: 'dropzone', ...stage, state: delivered ? 'done' : 'idle', label: 'bring the soup here' },
+      { kind: 'dropzone', ...soupSpot, state: delivered ? 'done' : 'idle', label: 'bring the soup to Stephan' },
+      /*
+       * ...and the stage, which is where the keynote speaker has to END UP.
+       *
+       * It used to be the same box as the soup, so it needed no mark of its own.
+       * Now that the soup goes to the man who is drinking it, the stage is a job
+       * with an arrow and nothing on the floor — and "lead them over there" is
+       * exactly the instruction a floor mark exists for.
+       */
+      {
+        kind: 'dropzone',
+        ...stage,
+        state: speaker.onStage ? 'done' : 'idle',
+        label: 'lead the keynote speaker here',
+      },
       /*
        * The crab sandwich on the counter, under its own sign. Lit before it is
        * found, because the whole point of it is that you notice it and go and
@@ -2205,7 +2426,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     // One ring, three jobs — see `halo` above.
     if (held('loose').length > 0 && !beerDone) out.push(...halo(PALLET_MARK, 'active'));
     out.push(...halo(BEER_STACK, beerDone ? 'done' : 'active'));
-    out.push(...halo(stage, delivered ? 'done' : 'active'));
+    // The soup's own mark wears the ring, and so does the stage the speaker is
+    // led to: one visual language for "you can use this", on both of the two jobs
+    // that now have their own patch of floor.
+    out.push(...halo(soupSpot, delivered ? 'done' : 'active'));
+    out.push(...halo(stage, speaker.onStage ? 'done' : 'active'));
     // Crates: on the floor where they lie, on the stack in layers, or piled on
     // Biggy's back in the order he picked them up.
     for (const c of crates) {
@@ -2261,7 +2486,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         r: a.r,
         colour: a.colour,
         role: 'visitor',
-        lanyard: LANYARD.attendee,
+        // Nobody wears a ribbon they have not been given: the lanyard appears at
+        // the reception counter and not before, which is the whole point of the
+        // beat and the one way a player can see it working from across the lobby.
+        lanyard: a.badge ? LANYARD.attendee : undefined,
         seed: a.seed,
         face: a.face,
         speed: speed(a),
@@ -2292,7 +2520,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         y: n.y,
         r: n.r,
         name: n.name,
-        colour: '#d9c3a5',
+        // Crew beige unless this one has a shirt of their own — Celestino does.
+        colour: n.colour ?? '#d9c3a5',
+        collar: n.collar,
+        face: n.face,
         role: 'staff',
         lanyard: LANYARD.crew,
         seed: 900 + i,
@@ -2303,8 +2534,24 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       y: stephan.y,
       r: stephan.r,
       name: 'Stephan',
-      colour: '#e8d5b5',
-      hat: true,
+      /*
+       * THE DEVOXX POLO, THE GLASSES AND THE HEADSET MIC.
+       *
+       * Michele, 28 Sep 2026, with two photographs — Stephan on stage, and the
+       * shirt itself folded on a table: *"Also Stephan must be identifiable:
+       * Devoxx shirt, mic, glasses as accessories"*.
+       *
+       * The shirt is the dark olive polo with the orange-and-white striped collar;
+       * at thirty pixels the stripe IS the shirt, which is why the collar is its
+       * own field. The glasses and the headset are the other two marks anybody
+       * who has seen him on a stage would name first. Nothing here needs
+       * permission: it is a caricature of a man in a company polo, which is what
+       * CLAUDE.md asks for.
+       */
+      colour: STEPHAN_POLO,
+      collar: DEVOXX_ORANGE,
+      glasses: true,
+      mic: true,
       role: 'stephan',
       lanyard: LANYARD.chair,
       seed: 910,
@@ -2312,19 +2559,62 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       // coming up the concourse — which since the staircase was turned is west.
       face: Math.PI,
     });
-    // The speaker is only drawn once Voxxy is close enough to have spotted them.
-    if (speaker.following || dist(ctx.byKind('voxxy'), speaker) < 90) {
-      out.push({
-        x: speaker.x,
-        y: speaker.y,
-        r: speaker.r,
-        name: 'keynote speaker (TBA)',
-        colour: '#f0e0c0',
-        role: 'speaker',
-        lanyard: LANYARD.speaker,
-        seed: 911,
-      });
-    }
+    /*
+     * THE KEYNOTE SPEAKER IS ALWAYS DRAWN, AND THEY LOOK LIKE SOMETHING.
+     *
+     * Michele, 28 Sep 2026: *"I cannot find the keynote speaker. The hint system
+     * does not give the cirlce.- arrow for this? therse should also be something
+     * recognizable about thim. Not announced yet? We need to invent something."*
+     *
+     * All three notes are the same failure. This person was not PUBLISHED at all
+     * until Voxxy was within 90 px of them — so the search was twelve booths of
+     * empty floor with nothing to see from anywhere, and the only feedback was
+     * arriving. A hidden thing you cannot see from ten metres is not hidden, it is
+     * absent.
+     *
+     * So they stand there from the first frame, and since the programme has said
+     * **TBA** for a month, that is what we invented for them: the one person at
+     * Devoxx in a teal speaker's hoodie, teal cap and teal lanyard, with a badge
+     * that says TBA because nobody has printed the real one yet. Teal is the
+     * speaker ribbon's own colour (`src/sim/lanyards.ts`) and nothing else in the
+     * hall wears it, which is what makes a 30 px figure recognisable at all.
+     *
+     * The NAME still only shows up close. A floating label across the hall would
+     * not be finding somebody, it would be reading a sign — and the booth arrow
+     * the task now carries is the help he actually asked for.
+     */
+    const seen = speaker.following || dist(ctx.byKind('voxxy'), speaker) < 120;
+    out.push({
+      x: speaker.x,
+      y: speaker.y,
+      r: speaker.r,
+      name: seen ? 'TBA — the keynote speaker' : undefined,
+      colour: SPEAKER_TEAL,
+      hat: true,
+      /*
+       * ...and the laptop, open, in both hands.
+       *
+       * Michele: *"He could have a laptop in hand to fix the slides? In order to
+       * find him."* Nobody else in the hall is carrying one, so it is a shape you
+       * can pick out of a crowd — and it answers what they are doing behind a
+       * sponsor booth twenty minutes before their own keynote.
+       */
+      laptop: true,
+      role: 'speaker',
+      lanyard: LANYARD.speaker,
+      /*
+       * They WALK when they are walking.
+       *
+       * Michele, watching them follow Voxxy: *"keynote speaker does not walk when
+       * moving."* They did not: `people()` published neither `speed` nor `face`
+       * for them, and the renderer's gait reads exactly those two (`people.ts`),
+       * so the most important person in the chapter glided across the lobby
+       * pointing east with their legs still. Both are facts the sim already had.
+       */
+      speed: speaker.sp,
+      face: speaker.face,
+      seed: 911,
+    });
     return out;
   }
 
@@ -2376,6 +2666,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const soupStand: Vec2 = { x: station.x, y: food.soup.y + food.soup.h + 22 };
   /** The spot in front of Stephan the soup and the speaker both have to reach. */
   const stageAt: Vec2 = { x: stage.x + stage.w / 2, y: stage.y + stage.h / 2 };
+  const soupAt: Vec2 = { x: soupSpot.x + soupSpot.w / 2, y: soupSpot.y + soupSpot.h / 2 };
   /** Stephan's own feet, at the foot of the flight he is not opening yet. */
   const stephanAt: Vec2 = { x: stephan.x, y: stephan.y + 14 };
 
@@ -2411,7 +2702,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         text: 'take Stephan his tomato soup',
         done: delivered,
         who: ['biggy'],
-        at: carrying && !delivered ? stageAt : soupStand,
+        at: carrying && !delivered ? soupAt : soupStand,
         hint: carrying
           ? 'Biggy: it goes cold while I walk and it comes out of the pot every time I hit something. Smooth lines — and let Voxxy open a queue before I am standing in it'
           : batches > 0
@@ -2432,7 +2723,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
          * hand over the search; once they are following her, where they have to
          * END UP is not a secret at all.
          */
-        at: speaker.following ? stageAt : undefined,
+        /*
+         * The arrow points at the BOOTH they are hiding at, from the start.
+         *
+         * It used to point nowhere until they were already following, on the
+         * reasoning that an arrow would hand the search over. Michele, playing
+         * it: *"I cannot find the keynote speaker. The hint system does not give
+         * the cirlce.- arrow for this?"* Twelve booths and no arrow is not a
+         * search, it is a sweep. The arrow gets you to the right stand; the
+         * person is still round the back of it, and you still have to walk round.
+         */
+        at: speaker.following ? stageAt : { x: speaker.x, y: speaker.y },
         hint: 'Voxxy: they are hiding from the queues behind one of the booths with WALLS — you can see straight under the cloth tables, so it is none of those. Look for the teal lanyard: it is the one thing about them that is not hiding',
       },
       {

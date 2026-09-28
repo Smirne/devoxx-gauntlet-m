@@ -260,8 +260,14 @@ const BADGE_TOAST =
   'Voxxy: "One X. It is TWO. It has always been two. I wired that machine myself."';
 /** Seconds between the printer coming up and the test badge landing in the tray. */
 const BADGE_WARMUP = 3;
-/** The same joke, folded into the curtain line when both land on one frame. */
-const BADGE_TAIL = ' — and its first test badge says <b>VOXY</b>, with one X. Voxxy has notes.';
+/**
+ * How long the test badge is left on screen before the curtain line replaces it.
+ *
+ * The chapter hands over to chapter 3 when the curtain has run AND the badge has
+ * had this long on screen. It used to be free to land on the same frame as the
+ * badge, or to swallow it into its own line, which is how the joke went missing.
+ */
+const BADGE_HOLD = 1.2;
 const BREAKERS = 3;
 /**
  * How long the panel goes on striking after a handle is thrown, seconds.
@@ -378,6 +384,8 @@ export interface ExpoState {
   hallLit: boolean;
   /** The chain, all the way through, plus the cable: or the badge printer prints nothing. */
   printerOnline: boolean;
+  /** The test badge has been printed and the joke has been on screen. */
+  badgePrinted: boolean;
 }
 
 /**
@@ -1411,7 +1419,22 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      * — one toast replaces another, and being told the store is open is not worth
      * losing to a joke about spelling.
      */
-    if (!badgeSaid && printerOnline() && !rollerBroken) {
+    /*
+     * ...AND IT FIRES WHATEVER ORDER THE CHAPTER WAS PLAYED IN.
+     *
+     * Michele, 28 Sep 2026: *"VOXY badge — that didn't trigger."* It was gated on
+     * `!rollerBroken`, so a player who put Biggy through the shutter BEFORE
+     * finishing the cable — which is a perfectly ordinary way round, and the way
+     * he played it — never met the condition. The fallback below folded the joke
+     * into the curtain line, where it lasted the same `CURTAIN` seconds as the
+     * chapter's own ending and went past unread, which is the same as not firing.
+     *
+     * So the badge is now its own beat in both orders, and the curtain WAITS for
+     * it: at most `BADGE_WARMUP + BADGE_HOLD` — six and a half seconds — between
+     * the printer waking and the chapter handing over. A joke that only lands in
+     * one of two orderings is a joke that is not in the game.
+     */
+    if (!badgeSaid && printerOnline()) {
       // A printer that is warming up is not a printer that has printed. The wait
       // is also what keeps the joke off the top of "cable in — the run is made",
       // which is the line that tells the player the job they just did worked.
@@ -1425,15 +1448,25 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     if (printerOnline() && rollerBroken) {
       if (curtainAt === null) {
         curtainAt = ctx.t;
-        const badge = badgeSaid ? '' : BADGE_TAIL;
-        badgeSaid = true;
         ctx.flash(
           (rollerLast
             ? 'The shutter goes up on three thousand Devoxx shirts. The printer is already chattering next door'
-            : 'The printer wakes up next door. Behind you the store is open, and the shirts are in there') + badge,
+            : 'The printer wakes up next door. Behind you the store is open, and the shirts are in there'),
           Math.round(CURTAIN * 1000),
         );
-      } else if (ctx.t - curtainAt >= CURTAIN) {
+        /*
+         * The curtain runs on its own clock and the badge on its own, and the
+         * chapter leaves when BOTH have had their moment.
+         *
+         * Gating the curtain itself on the badge was the first cut and it put six
+         * and a half seconds between the last thing the player did and the
+         * chapter moving, which `tests/ch2-chain.test.ts` measures and refuses.
+         * This way the store-is-open line lands the moment it is true, the badge
+         * lands on top of it a beat later, and the hand-over waits for the later
+         * of the two — so the joke is on screen in both play orders and the
+         * curtain is still a curtain.
+         */
+      } else if (ctx.t - curtainAt >= CURTAIN && badgeSaid && ctx.t >= badgeAt + BADGE_HOLD) {
         ctx.score.expoT = Math.round(curtainAt);
         ctx.score.cable = Math.trunc(cable.len);
         ctx.startChapter(3);
@@ -2061,6 +2094,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       },
       hallLit: hallLit(),
       printerOnline: printerOnline(),
+      badgePrinted: badgeSaid,
     }),
   };
 }

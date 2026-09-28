@@ -1005,14 +1005,23 @@ describe('chapter 3 — breakfast', () => {
     expect(breakfast().soup).toBeLessThan(100);
     expect(breakfast().soup).toBeGreaterThan(0);
 
-    // Soup alone is not enough. The drop is where Stephan stands: SOUTH of the main
-    // staircase, past the reception desk — the only side of the flight anyone can
-    // reach now that the lobby follows the plan.
-    const drop = g.snapshot().props.find((p) => p.kind === 'dropzone');
+    /*
+     * Soup alone is not enough, and the drop is AT STEPHAN'S FEET.
+     *
+     * It used to be the stage, 210 px — 17 m — south of him, which is where the
+     * mark stayed when the staircase turned and took him with it. Michele, 28 Sep
+     * 2026: *"maybe it's because steph moved, but the soup drop zone is far from
+     * him."* So this asserts the thing that was wrong: the mark is beside the man
+     * who asked for the soup, on the concourse east of his barrier, and not
+     * somewhere you walk past him to reach.
+     */
+    const drop = g.snapshot().props.find((p) => p.kind === 'dropzone' && (p.label ?? '').includes('soup'));
     expect(drop).toBeDefined();
     const dropAt = { x: drop!.x + (drop!.w ?? 0) / 2, y: drop!.y + (drop!.h ?? 0) / 2 };
-    expect(dropAt.y).toBeGreaterThan(GF.mainStair.y + GF.mainStair.h);
-    expect(dropAt.x).toBeGreaterThan(GF.reception.x + GF.reception.w);
+    const steph = g.snapshot().people.find((p) => p.role === 'stephan');
+    expect(steph, 'nobody is standing at the stairs').toBeDefined();
+    expect(Math.hypot(dropAt.x - steph!.x, dropAt.y - steph!.y), "the soup mark is not within arm\u2019s reach of Stephan").toBeLessThan(40);
+    expect(dropAt.x, 'the mark is inside the stairwell rather than on the concourse').toBeGreaterThan(GF.gate.x);
     g.debug.place('biggy', dropAt.x, dropAt.y);
     g.key('KeyE');
     expect(breakfast().delivered).toBe(true);
@@ -1040,7 +1049,12 @@ describe('chapter 3 — breakfast', () => {
     g.key('KeyE');
     expect(breakfast().speaker.following).toBe(true);
 
-    expect(walkTo(g, 'voxxy', dropAt)).toBe(true);
+    // ...and the speaker goes to the STAGE, which is its own floor mark now that
+    // the soup goes to Stephan himself.
+    const stageMark = g.snapshot().props.find((p) => p.kind === 'dropzone' && (p.label ?? '').includes('speaker'));
+    expect(stageMark, 'the stage has no mark on the floor').toBeDefined();
+    const stageAt = { x: stageMark!.x + (stageMark!.w ?? 0) / 2, y: stageMark!.y + (stageMark!.h ?? 0) / 2 };
+    expect(walkTo(g, 'voxxy', stageAt)).toBe(true);
     expect(until(g, () => breakfast().speaker.onStage, 900)).toBe(true);
 
     // Soup and speaker are BOTH in, and the stairs stay shut: the beer delivery

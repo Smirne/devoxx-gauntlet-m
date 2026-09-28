@@ -288,6 +288,33 @@ export interface Person {
   name?: string;
   colour?: string;
   hat?: boolean;
+  /**
+   * The three things that make ONE person recognisable rather than a crowd member.
+   *
+   * Michele, 28 Sep 2026, with two photographs of Stephan Janssen: *"Also Stephan
+   * must be identifiable: Devoxx shirt, mic, glasses as accessories"*. A figure in
+   * this game is thirty pixels tall, so "identifiable" cannot be a face — it is
+   * three silhouette marks and a colour, which is exactly how a caricature works.
+   *
+   * `collar` is the polo's striped trim (the Devoxx shirt's orange-and-white
+   * collar, the one thing about it that reads at this size), `glasses` a pair of
+   * lenses, `mic` a headset boom. They are on the person rather than derived from
+   * `role` in the renderer because who is wearing what is a fact about the chapter
+   * (`src/sim/chapters/ch3-breakfast.ts`), not about a picture.
+   */
+  collar?: string;
+  glasses?: boolean;
+  mic?: boolean;
+  /**
+   * An open laptop, held in both hands in front of them.
+   *
+   * Michele, on the keynote speaker nobody could find: *"He could have a laptop in
+   * hand to fix the slides? In order to find him."* Nobody else in the hall
+   * carries one, so it is a silhouette you can pick out of a crowd — and it says
+   * what they are doing behind that booth, which is not hiding, it is panicking
+   * about slide 34.
+   */
+  laptop?: boolean;
   /** 'visitor' | 'queue' | 'seated' | 'stephan' | 'speaker' | 'staff' */
   role: string;
   /**

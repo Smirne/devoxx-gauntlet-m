@@ -467,13 +467,32 @@ describe('chapter 3 — breakfast', () => {
     wellFormed(g, 'chapter 3 with one crate delivered');
   });
 
-  it('keeps the hiding speaker off the arrow, and never names their booth', () => {
+  it('points the arrow at the hiding speaker, and still never names their booth', () => {
+    /*
+     * THIS TEST USED TO ASSERT THE OPPOSITE, AND THE PLAYER OVERRULED IT.
+     *
+     * It held `row('speaker').at` to be undefined until they were following, on
+     * the reasoning that an arrow would hand the search over. Michele, 28 Sep
+     * 2026, playing chapter 3: *"I cannot find the keynote speaker. The hint
+     * system does not give the cirlce.- arrow for this?"* Twelve booths with
+     * nothing to see from anywhere is not a search, so the arrow now points at
+     * them from the first frame.
+     *
+     * What survives is the half that was always right: no line of dialogue and no
+     * hint ever NAMES the booth. The arrow gets you to the stand; walking round
+     * the back of it is still yours.
+     */
     const g = mk(3);
     const booth = breakfast(g).speaker.booth;
     expect(booth.length).toBeGreaterThan(0);
     const lines: string[] = [];
     collect(g, lines);
-    expect(row(g, 'speaker').at, 'the arrow gives away where the speaker is hiding').toBeUndefined();
+    const hunt = row(g, 'speaker');
+    expect(hunt.at, 'the search has no arrow at all').toBeDefined();
+    const hidden = g.snapshot().people.find((p) => p.role === 'speaker');
+    expect(hidden, 'the speaker is not drawn until you are on top of them').toBeDefined();
+    expect(hidden?.name, 'their name is readable from across the hall').toBeUndefined();
+    expect(Math.hypot((hunt.at?.x ?? 0) - (hidden?.x ?? 0), (hunt.at?.y ?? 0) - (hidden?.y ?? 0))).toBeLessThan(40);
 
     // Voxxy walks up to the booth they are behind and talks them out.
     const hiding = GF.booths.find((b) => b.name === booth);

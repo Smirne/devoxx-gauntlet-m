@@ -578,5 +578,40 @@ describe('chapter 2 — the curtain before chapter 3', () => {
       for (let i = 0; i < Math.ceil(4 / DT_MAX) && g.snapshot().chapter === 2; i++) g.update(DT_MAX);
       expect(g.snapshot().chapter, 'the curtain never lifted').toBe(3);
     });
+
+    it(`still prints the VOXY badge when the ${last} is the last thing done`, () => {
+      /*
+       * Michele, 28 Sep 2026: *"VOXY badge — that didn't trigger."*
+       *
+       * It was gated on the shutter still being shut, so putting Biggy through it
+       * first — an ordinary way to play chapter 2, and the way he played it — took
+       * the joke out of the game entirely; the fallback folded it into the curtain
+       * line, which is the chapter's own ending and goes past unread. Both orders
+       * are measured here, and the chapter is not allowed to leave before the
+       * badge has been on screen.
+       */
+      const g = mk();
+      if (last === 'roller') {
+        runCable(g);
+        smashRoller(g);
+      } else {
+        smashRoller(g);
+        runCable(g);
+      }
+      let heard = '';
+      // The flag as well as the toast: the shove into the shutter takes several
+      // seconds of its own, so in one of the two orders the badge is printed
+      // before this loop starts watching. It still has to have been printed.
+      let printed = g.snapshot().chapter === 2 && expo(g).badgePrinted;
+      for (let i = 0; i < Math.ceil(12 / DT_MAX) && g.snapshot().chapter === 2; i++) {
+        g.update(DT_MAX);
+        if (g.snapshot().chapter === 2 && expo(g).badgePrinted) printed = true;
+        const t = g.snapshot().toast?.t ?? '';
+        if (t.includes('VOXY')) heard = t;
+      }
+      expect(printed, 'the test badge never reached the tray').toBe(true);
+      if (heard !== '') expect(heard).toContain('One X');
+      expect(g.snapshot().chapter, 'the chapter never handed over').toBe(3);
+    });
   }
 });

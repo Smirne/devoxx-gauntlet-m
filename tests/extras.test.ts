@@ -37,12 +37,23 @@ describe('lanyards', () => {
     expect(new Set(Object.values(LANYARD)).size).toBe(4);
   });
 
-  it('puts one on every person in the hall, with Stephan the only chair', () => {
+  it('puts one on every person who has been past the desk, with Stephan the only chair', () => {
+    /*
+     * "Everybody" became "everybody who has been served" on 28 Sep 2026.
+     *
+     * Michele: *"People should maybe pass at the reception to get a badge.
+     * Celestino should be there."* So an arrival walks in with nothing round
+     * their neck, passes the counter, and comes away wearing the attendee ribbon
+     * — which is the only way a player can SEE the beat working. The assertion
+     * that matters is the same one: nobody inside the hall is unbadged.
+     */
     const g = mk(3);
     steps(g, 200);
     const people = g.snapshot().people;
     expect(people.length).toBeGreaterThan(10);
-    expect(people.every((p) => p.lanyard !== undefined)).toBe(true);
+    const served = people.filter((p) => p.x < GF.reception.x - 20 || p.role !== 'visitor');
+    expect(served.length).toBeGreaterThan(8);
+    expect(served.every((p) => p.lanyard !== undefined), 'somebody got in without a badge').toBe(true);
     expect(people.filter((p) => p.lanyard === LANYARD.chair)).toHaveLength(1);
     expect(people.filter((p) => p.lanyard === LANYARD.crew).length).toBeGreaterThan(0);
   });
