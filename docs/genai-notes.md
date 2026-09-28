@@ -4485,3 +4485,41 @@ skipping names the chapters, singular and plural, and is never flawless. Suite *
 fades and black beats, with the logic ported line for line from `src/sim/reel.ts` and five runs to
 pick between. It exists so the ending can be judged without playing ten minutes to reach it; it is
 not part of the game and not in the repo.
+
+## 28 Sep 2026 — a full room stops being a game over, and chapter 4's length becomes a number
+
+**What the human decided.** Michele, on the backlog: *"Game does not end if room is full, but some
+rumors from the crowd?"* and, on the chapter's length, *"measure your run. I'd say 3 minutes?"*.
+Also *"robots should end on stage by the tasks (voxxy excluded)"*, and that he is reworking Droid's
+task in a separate session — so the agent left that code alone.
+
+**What the agent did.**
+
+- Deleted chapter 4's `ctx.fail(...)` on a full room and replaced it with a restlessness clock:
+  the objective line rewrites itself once the room is full, and six escalating crowd lines cycle
+  every 9 s. The cost moved onto the score bag (`late`, `lateT`) and onto the opening video.
+- Wrote `tests/chapter4-length.test.ts`, which is the interesting one. It refuses every shortcut
+  the other chapter tests take: no `debug.place`, no ignoring walls, one stick at a time (because
+  `stepAll` hands the stick to the selected robot and zeroes the other two), the room's one door,
+  and the two real aisles. It prints the per-leg timings and fails if the total outgrows a 150 s
+  budget — half Michele's own three-minute figure, so a player gets the other half to think in.
+
+**What it found, by being made to drive rather than teleport.** Five separate things that only a
+real drive can see, each of which would have been invisible to a test that placed robots where it
+wanted them: room 8 has a single doorway, so everything costs a trip to it; the seat blocks are
+walls, so the room is two aisles and a strip, not open floor; `HOOK_REACH` is 45 px and the front
+strip is 38 px from the hooks, so Droid has to stand *under* a hook and not merely level with it;
+the stance for pushing the cake has to be two radii out or `botsCollide` spends the chapter shoving
+Biggy back out of the crate; and the apron has about 80 clear pixels on it, between the cake parked
+on its mark at one end and Stephan and the speaker standing at the other.
+
+**What was rejected.** The first driver steered flat at the target and the heavy robots orbited
+their marks forever — replaced with the velocity-error servo the curtain call already uses. The
+first set of stage marks was nailed to roles, and two of the three sat on top of a person or the
+cake. And the driver's last leg had to learn that the chapter ends *under its own feet*: the third
+robot onto the stage starts the video, the curtain call takes the sticks away, and a driver that
+kept pushing was reporting a stuck robot when what it had actually done was win.
+
+**Also.** README's "Status" section was stale — it still listed the ending as missing — and three
+`.DS_Store` files were tracked despite being gitignored since before the repo was public. Both
+fixed. Suite **787 green**, `tsc --noEmit` clean.

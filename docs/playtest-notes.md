@@ -961,3 +961,34 @@ Asked about the degenerate endings, and both of them were wrong.
 So the four endings now run: a clean night 16.5 s and 6 cards, a normal night 26.4 s and 10, a bad
 night the same 26.4 s (the reel holds four bloopers at most, so the worst runs drop the smaller
 ones), and a skipped run 15.8 s and 6 — all of them with the curtain call playing in front.
+
+## Michele, 28 Sep — *"Game does not end if room is full, but some rumors from the crowd?"* and *"measure your run. I'd say 3 minutes?"*
+
+**The full room was a game over, and it should not have been.** Chapter 4 failed the chapter the
+moment the last attendee sat down in front of an unfinished stage: a player two jobs from the end
+was handed a card telling them to press R. Three thousand people arriving early does not cancel a
+keynote. It is a *noise* now — the objective line changes to say the room is watching you build it,
+and the crowd says something every 9 s, escalating through six lines from *"Somebody checks the
+schedule on their phone. Then again"* to a slow clap in row four that does not catch on. What being
+late costs you is the `spare` on your card, the `late` flag, and a line on the opening video:
+*"96s of three thousand people waiting / The stage was still being built. They were extremely
+polite about it."*
+
+**And the six minutes turned out to be about a hundred seconds.** The chapter is now driven by a
+test on one stick, in series, through the room's single door and along the real aisles, with
+nothing teleported anywhere — a player who knows the solution and never stops to think:
+
+```
+    15.7s  Voxxy and Droid in through the one door
+    13.4s  Voxxy · four spotlights, two aisles
+    20.1s  Droid · a hook at each end of the room
+    38.5s  Biggy · the cake in from the corridor
+     4.7s  everyone onto the stage
+    92.3s  TOTAL, + 14s of video
+```
+
+So the floor is 1:32 and the ending card lands at about 1:46. Against a three-minute target that
+leaves a player 88 s to be a person in — to read the hints, pick the wrong robot, and lose the cake
+down an aisle once. Nothing has been cut: the number says there is nothing to cut. The cake is the
+single longest job at 38.5 s and it is also the one Michele asked to be made *more* predictable, so
+it stays.
