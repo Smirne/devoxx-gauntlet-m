@@ -16,7 +16,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-import { GF, MAIN_STAIR_TOP_M, groundPlates, groundRiseM, groundWallsFor, stairDoors, stairMidLanding, stairRamps } from '../sim/geometry';
+import { GF, MAIN_STAIR_TOP_M, WIFI_TAG, groundPlates, groundRiseM, groundWallsFor, stairDoors, stairMidLanding, stairRamps } from '../sim/geometry';
 import { DOOR_H, stairFlight } from '../render/venue/props';
 import type { Plate, Wall } from '../sim/types';
 import { m } from '../sim/units';
@@ -24,6 +24,7 @@ import { m } from '../sim/units';
 import type { Materials } from './materials';
 import { box } from './materials';
 import { exitSign } from './signs';
+import { BOOTH_SCHEMES } from '../render/venue/signage';
 import type { VolumePoint } from './pipeline';
 
 const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z);
@@ -50,6 +51,8 @@ export interface Ground3D {
   /** Walls that exist in one chapter and not the other (chapter 2's roller door and cabinet are props there, walls after). */
   setChapter(n: number): void;
   update(t: number, dt: number): void;
+  /** Where the robot being driven is, world metres: a table over it turns see-through. */
+  setFocus(x: number, z: number): void;
 }
 
 class Buckets {
@@ -119,6 +122,36 @@ function styleOf(w: Wall, mats: Materials, concrete: THREE.Material): { h: numbe
       if (w.low) return { h: k.includes('planter') ? 0.8 : k === 'bollard' ? 0.9 : 1.05, mat: k.includes('planter') || k === 'bollard' ? mats.darkMetal : mats.counter };
       return { h: HALL_H, mat: concrete };
   }
+}
+
+/** A sponsor pod's print: brand ground, the name big, the strapline under it. */
+function boothGraphic(name: string, brand: string, ink: string, strap: string): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 256;
+  const x = c.getContext('2d')!;
+  x.fillStyle = brand;
+  x.fillRect(0, 0, 512, 256);
+  const wash = x.createLinearGradient(0, 0, 0, 256);
+  wash.addColorStop(0, 'rgba(255,255,255,0.16)');
+  wash.addColorStop(1, 'rgba(0,0,0,0.22)');
+  x.fillStyle = wash;
+  x.fillRect(0, 0, 512, 256);
+  x.fillStyle = ink;
+  x.textAlign = 'center';
+  x.textBaseline = 'middle';
+  x.font = 'bold 54px "Helvetica Neue", Arial, sans-serif';
+  x.fillText(name, 256, 104, 480);
+  x.font = '26px "Helvetica Neue", Arial, sans-serif';
+  x.globalAlpha = 0.85;
+  x.fillText(strap, 256, 164, 470);
+  x.globalAlpha = 0.5;
+  x.fillRect(96, 204, 320, 3);
+  x.font = 'bold 18px Arial';
+  x.fillText('DEVOXX BELGIUM', 256, 228);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 /**
@@ -261,6 +294,8 @@ export function buildGround(mats: Materials): Ground3D {
   const solid = new Buckets();
   const glassPanes: THREE.Mesh[] = [];
   for (const w of groundWallsFor(2)) {
+    // Booths are built as stands below, not as extruded footprints.
+    if (w.booth) continue;
     const s = styleOf(w, mats, concrete);
     if (!s) continue;
     const base = groundRiseM(w.x + w.w / 2);
@@ -351,6 +386,99 @@ export function buildGround(mats: Materials): Ground3D {
     tiles.build(group, false);
   }
 
+  /* ------------------------------------------------------------- stands */
+  /*
+   * Michele, 28 Sep: "stands are unfinished, it should be clear when you're
+   * passing under them". A built booth was its footprint extruded to the roof in
+   * concrete; a half table was a solid 1.05 m box that Voxxy (1.15 m) drove
+   * through. Now:
+   *
+   *  - a BUILT booth is a 2.6 m sponsor pod, printed on every side in its
+   *    scheme (`BOOTH_SCHEMES`, the 2.5D build's), with a lit header strip and a
+   *    dark roof. Solid, as the sim has it.
+   *  - a HALF TABLE is a high sponsor table: a top at 1.3 m on four legs, a short
+   *    cloth valance in the brand colour, a laptop and a bowl of stickers on it.
+   *    Open underneath, so Voxxy visibly goes under; and while the robot being
+   *    driven is under one, its top fades so the camera can see her.
+   */
+  const panels: THREE.MeshStandardMaterial[] = [];
+  const strips: Array<{ mat: THREE.MeshBasicMaterial; base: THREE.Color }> = [];
+  const tables: Array<{ rect: { x: number; y: number; w: number; h: number }; mats: THREE.MeshStandardMaterial[]; fade: number }> = [];
+  let focusX = -1e9;
+  let focusZ = -1e9;
+  {
+    const solid2 = new Buckets();
+    const TABLE_TOP = 1.3;
+    const legMat = mats.steel;
+    const tagFace = { x: WIFI_TAG.x - WIFI_TAG.nx * 8, y: WIFI_TAG.y - WIFI_TAG.ny * 8 };
+    GF.booths.forEach((b, i) => {
+      const sch = BOOTH_SCHEMES[i % BOOTH_SCHEMES.length];
+      const cx = m(b.x + b.w / 2);
+      const cz = m(b.y + b.h / 2);
+      const bw = m(b.w);
+      const bd = m(b.h);
+      if (!b.table) {
+        const H = 2.6;
+        solid2.add(mats.darkMetal, box(bw - 0.04, H, bd - 0.04, V(cx, H / 2, cz), 2));
+        const tex = boothGraphic(b.name, sch.brand, sch.ink, sch.strap);
+        const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6, emissive: new THREE.Color(1, 1, 1), emissiveMap: tex, emissiveIntensity: 0.05 });
+        panels.push(mat);
+        // Four printed faces; not the one the spray tag is painted on.
+        const faces: Array<[number, number, number, number]> = [
+          [cx, cz + bd / 2 + 0.005, 0, bw],
+          [cx, cz - bd / 2 - 0.005, Math.PI, bw],
+          [cx + bw / 2 + 0.005, cz, Math.PI / 2, bd],
+          [cx - bw / 2 - 0.005, cz, -Math.PI / 2, bd],
+        ];
+        for (const [fx, fz, yaw, len] of faces) {
+          if (Math.abs(fx - m(tagFace.x)) < 0.05 && Math.abs(fz - m(tagFace.y)) < bd) continue;
+          const f = new THREE.Mesh(new THREE.PlaneGeometry(len - 0.1, H - 0.5), mat);
+          f.position.set(fx, 1.2, fz);
+          f.rotation.y = yaw;
+          group.add(f);
+        }
+        // The header: a strip of light round the top edge, in the brand colour.
+        const strip = new THREE.MeshBasicMaterial({ color: 0x000000, toneMapped: false });
+        strips.push({ mat: strip, base: new THREE.Color(sch.brand) });
+        group.add(new THREE.Mesh(box(bw + 0.02, 0.12, bd + 0.02, V(cx, H - 0.1, cz)), strip));
+        return;
+      }
+      // A high table.
+      const cloth = new THREE.MeshStandardMaterial({ color: new THREE.Color(sch.brand), roughness: 0.9, transparent: true, opacity: 1 });
+      const top = new THREE.MeshStandardMaterial({ color: 0xe9e4da, roughness: 0.5, transparent: true, opacity: 1 });
+      const tableMats = [cloth, top];
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(box(bw, 0.05, bd, V(cx, TABLE_TOP, cz)), top));
+      for (const [vx, vz, lw, ld] of [
+        [cx, cz + bd / 2, bw, 0.02],
+        [cx, cz - bd / 2, bw, 0.02],
+        [cx + bw / 2, cz, 0.02, bd],
+        [cx - bw / 2, cz, 0.02, bd],
+      ]) {
+        g.add(new THREE.Mesh(box(lw, 0.25, ld, V(vx, TABLE_TOP - 0.13, vz)), cloth));
+        // A steel rim round the top that does not fade: with the top see-through
+        // it is what still says "a table, and she is under it".
+        g.add(new THREE.Mesh(box(Math.max(lw, 0.04), 0.04, Math.max(ld, 0.04), V(vx, TABLE_TOP + 0.02, vz)), legMat));
+      }
+      for (const [lx, lz] of [
+        [cx - bw / 2 + 0.1, cz - bd / 2 + 0.1],
+        [cx + bw / 2 - 0.1, cz - bd / 2 + 0.1],
+        [cx - bw / 2 + 0.1, cz + bd / 2 - 0.1],
+        [cx + bw / 2 - 0.1, cz + bd / 2 - 0.1],
+      ]) g.add(new THREE.Mesh(box(0.05, TABLE_TOP - 0.03, 0.05, V(lx, (TABLE_TOP - 0.03) / 2, lz)), legMat));
+      // On top: a laptop and a bowl of stickers.
+      const lap = new THREE.Mesh(box(0.34, 0.02, 0.24, V(cx - bw * 0.2, TABLE_TOP + 0.035, cz)), mats.darkMetal);
+      const lid = new THREE.Mesh(box(0.34, 0.22, 0.015, V(cx - bw * 0.2, TABLE_TOP + 0.14, cz - 0.12)), mats.darkMetal);
+      lid.rotation.x = -0.25;
+      const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.08, 0.07, 16), new THREE.MeshStandardMaterial({ color: new THREE.Color(sch.brand), roughness: 0.4 }));
+      bowl.position.set(cx + bw * 0.22, TABLE_TOP + 0.06, cz);
+      g.add(lap, lid, bowl);
+      group.add(g);
+      tables.push({ rect: { x: b.x, y: b.y, w: b.w, h: b.h }, mats: tableMats, fade: 1 });
+    });
+    colliders.push(...solid2.build(group));
+  }
+
   /* ------------------------------------------------------------- lights */
   // Emergency: a few green exit signs, always on. The hall itself is dark until
   // the lighting circuit closes (the sim's `breaker` prop reaching `done`).
@@ -416,6 +544,10 @@ export function buildGround(mats: Materials): Ground3D {
       if (on === 0) poweredAt = null;
       power = on;
     },
+    setFocus(x: number, z: number): void {
+      focusX = x;
+      focusZ = z;
+    },
     update(t: number, dt: number): void {
       for (const u of updaters) u(t, dt);
       for (const b of bays) {
@@ -428,7 +560,18 @@ export function buildGround(mats: Materials): Ground3D {
       const lit = poweredAt === null ? 0 : THREE.MathUtils.clamp((t - poweredAt - 1.2) / 1.2, 0, 1);
       fill.intensity = 1.1 * lit;
       boothBoards.forEach((mat, i) => mat.color.setScalar(0.08 + 2.2 * lit * (0.92 + 0.08 * Math.sin(t * 2 + i))));
-      void dt;
+      // The pods' print catches the hall lights; their header strips light up with it.
+      for (const mat of panels) mat.emissiveIntensity = 0.05 + 0.35 * lit;
+      for (const st of strips) st.mat.color.copy(st.base).multiplyScalar(0.2 + 4 * lit);
+      // A table over the robot being driven fades so she can be seen under it.
+      for (const tb of tables) {
+        const under = focusX > m(tb.rect.x) - 0.2 && focusX < m(tb.rect.x + tb.rect.w) + 0.2 && focusZ > m(tb.rect.y) - 0.2 && focusZ < m(tb.rect.y + tb.rect.h) + 0.2;
+        tb.fade += ((under ? 0.15 : 1) - tb.fade) * Math.min(1, dt * 8);
+        for (const mt of tb.mats) {
+          mt.opacity = tb.fade;
+          mt.depthWrite = tb.fade > 0.95;
+        }
+      }
     },
   };
 }

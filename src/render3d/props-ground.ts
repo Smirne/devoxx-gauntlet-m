@@ -14,7 +14,7 @@
 
 import * as THREE from 'three';
 
-import { GF, groundPlates, groundRiseM, groundWallsFor } from '../sim/geometry';
+import { GF, WIFI_TAG, groundPlates, groundRiseM, groundWallsFor } from '../sim/geometry';
 import type { Prop } from '../sim/types';
 import { ROBOT_HEIGHT_M, m } from '../sim/units';
 
@@ -448,8 +448,10 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         const len = side ? d : w;
         const tag = emitter(tagTex, len, len / 4, 0, 0xff7a1a);
         if (side) {
-          tag.rotation.y = -Math.PI / 2;
-          tag.position.set(cx - w / 2 - 0.02, 1.6, cz);
+          // On the wall itself (`WIFI_TAG` is 8 px out from it), just proud of
+          // the stand's print.
+          tag.rotation.y = Math.atan2(WIFI_TAG.nx, WIFI_TAG.ny);
+          tag.position.set(m(WIFI_TAG.x - WIFI_TAG.nx * 8) + WIFI_TAG.nx * 0.03, 1.4, cz);
         } else tag.position.set(cx, 2.6, cz + d / 2 + 0.02);
         g.add(tag);
         g.userData = { tag };

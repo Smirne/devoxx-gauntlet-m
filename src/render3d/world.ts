@@ -453,6 +453,10 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       ground.setPower(lit ? 1 : 0, time, snap.chapter >= 3);
       dimLamps(robots, lit ? 0.25 : 1, dt);
       ground.setChapter(snap.chapter);
+      {
+        const act = robots.get((snap.bots[snap.active] ?? snap.bots[0]).kind);
+        if (act) ground.setFocus(act.rig.root.position.x, act.rig.root.position.z);
+      }
       ground.update(time, dt);
     } else {
       dimLamps(robots, 1, dt);
