@@ -167,6 +167,9 @@ export function buildKeynote(mats: Materials): Keynote3D {
     scrCtx.fillText(label, w / 2, h * 0.84, w * 0.92);
     scrCtx.fillStyle = '#ff7a1a';
     scrCtx.fillRect(w * 0.4, h * 0.44, w * 0.2, 4);
+    // Duke, waving from the corner — the keynote screen had him in Michele's
+    // photograph (28 Sep). BSD-licensed artwork, drawn here in three shapes.
+    drawDuke(scrCtx, w * 0.1, h * 0.86, h * 0.5);
     scrTex.needsUpdate = true;
   }
   function paintCard(card: ReelCard | null, alpha: number): void {
@@ -561,4 +564,44 @@ function word(text: string, ink: string, bg: string | null = null, w = 512, h = 
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
+}
+
+/** Duke on a canvas: black wedge, white lower half, red nose, one arm waving. `x, y` is his feet. */
+function drawDuke(g: CanvasRenderingContext2D, x: number, y: number, h: number): void {
+  const w = h * 0.62;
+  g.save();
+  g.beginPath();
+  g.moveTo(x, y - h);
+  g.bezierCurveTo(x + w * 0.35, y - h * 0.7, x + w * 0.55, y - h * 0.25, x + w * 0.5, y);
+  g.lineTo(x - w * 0.5, y);
+  g.bezierCurveTo(x - w * 0.55, y - h * 0.25, x - w * 0.35, y - h * 0.7, x, y - h);
+  g.closePath();
+  g.fillStyle = '#111214';
+  g.fill();
+  g.clip();
+  g.fillStyle = '#f4f2ee';
+  g.fillRect(x - w, y - h * 0.44, w * 2, h * 0.44);
+  g.restore();
+  g.fillStyle = '#d8231c';
+  g.beginPath();
+  g.arc(x, y - h * 0.45, h * 0.12, 0, Math.PI * 2);
+  g.fill();
+  g.strokeStyle = '#111214';
+  g.lineWidth = h * 0.06;
+  g.lineCap = 'round';
+  g.beginPath();
+  g.moveTo(x + w * 0.42, y - h * 0.4);
+  g.lineTo(x + w * 0.85, y - h * 0.75);
+  g.moveTo(x - w * 0.42, y - h * 0.35);
+  g.lineTo(x - w * 0.7, y - h * 0.12);
+  g.stroke();
+  g.fillStyle = '#f4f2ee';
+  for (const [hx, hy] of [
+    [x + w * 0.85, y - h * 0.75],
+    [x - w * 0.7, y - h * 0.12],
+  ]) {
+    g.beginPath();
+    g.arc(hx, hy, h * 0.06, 0, Math.PI * 2);
+    g.fill();
+  }
 }

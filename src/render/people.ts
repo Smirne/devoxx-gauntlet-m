@@ -43,6 +43,7 @@
 
 import * as THREE from 'three';
 
+import { LANYARD } from '../sim/lanyards';
 import { m } from '../sim/units';
 import type { Person } from '../sim/types';
 import { SEAT_CUSHION_TOP_M } from './venue/props';
@@ -442,7 +443,7 @@ export function buildPerson(): PersonModel {
     if (p.lanyard !== undefined) {
       let mm = s.ribbons.get(p.lanyard);
       if (!mm) {
-        mm = new THREE.MeshStandardMaterial({ color: new THREE.Color(p.lanyard), roughness: 0.7, metalness: 0.02 });
+        mm = p.lanyard === LANYARD.keynote ? rainbowRibbon() : new THREE.MeshStandardMaterial({ color: new THREE.Color(p.lanyard), roughness: 0.7, metalness: 0.02 });
         s.ribbons.set(p.lanyard, mm);
       }
       lanyard.material = mm;
@@ -553,4 +554,36 @@ export function buildPerson(): PersonModel {
       release();
     },
   };
+}
+
+/**
+ * The keynote's ribbon: bands of colour down its length (`LANYARD.keynote`).
+ * Headless (the test suite builds figures without a DOM) it falls back to the
+ * ribbon's own key colour, which is the bands' average.
+ */
+function rainbowRibbon(): THREE.MeshStandardMaterial {
+  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, metalness: 0.02, emissive: 0x222222 });
+  if (typeof document === 'undefined') {
+    mat.color.set(LANYARD.keynote);
+    return mat;
+  }
+  const c = document.createElement('canvas');
+  c.width = 4;
+  c.height = 64;
+  const x = c.getContext('2d');
+  if (!x) {
+    mat.color.set(LANYARD.keynote);
+    return mat;
+  }
+  const bands = ['#e53935', '#fb8c00', '#fdd835', '#43a047', '#1e88e5', '#8e24aa'];
+  bands.forEach((b, i) => {
+    x.fillStyle = b;
+    x.fillRect(0, (i * 64) / bands.length, 4, 64 / bands.length + 1);
+  });
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.magFilter = THREE.NearestFilter;
+  mat.map = t;
+  mat.emissiveMap = t;
+  return mat;
 }

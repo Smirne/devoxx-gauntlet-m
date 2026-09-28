@@ -38,6 +38,11 @@ export interface World3D {
   photo: boolean;
   /** Debug: refresh cinema E's mirror (on by default). */
   mirrorOn: boolean;
+  /**
+   * True once the frame rate has stayed low even at the smallest render scale
+   * the adaptive resolution will go to: the page should suggest a lower quality.
+   */
+  struggling: boolean;
   /** Screenshot/debug only: light the ground floor's hall as if the circuit were closed. */
   debugPower: boolean;
   resize(w: number, h: number): void;
@@ -362,6 +367,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     slow = ms > 24 ? slow + 1 : Math.max(0, slow - 1);
     fast = ms < 13 ? fast + 1 : 0;
     let next = ratio;
+    if (slow > 45 && ratio <= 0.55) world.struggling = true;
     if (slow > 45) next = Math.max(0.55, ratio - 0.15);
     else if (fast > 240) next = Math.min(maxRatio, ratio + 0.1);
     if (next !== ratio) {
@@ -673,6 +679,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     photo: false,
     mirrorOn: true,
     debugPower: false,
+    struggling: false,
     cam,
     render,
     resize,

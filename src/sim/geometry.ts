@@ -1102,6 +1102,19 @@ export const GF = {
  * rects live here now, in the venue, where they can be measured against each
  * other — `tests/venue.smoke.test.ts` does exactly that.
  */
+/**
+ * DUKE, the Java mascot — an inflatable one, in the lobby.
+ *
+ * Michele, 28 Sep 2026, with a photograph of Duke on the keynote screen: *"the
+ * java character. Should appear somewhere."* Duke's artwork was released by Sun
+ * under a BSD licence, so he is one mascot this game can draw without asking.
+ * He stands on the open lobby floor south of the main staircase — clear of the
+ * arrivals' line from the doors to the desk, and measured 26 px clear of every
+ * wall — and he is solid: the sim knows his footprint, so nobody walks through
+ * him (the lesson of the drawn-but-not-simulated columns, `groundWalls`).
+ */
+export const DUKE = { x: 1340, y: 600, r: 17 } as const;
+
 export const BAR_RECT: Rect = { x: 336, y: 96, w: 92, h: 26 };
 
 /**
@@ -2030,6 +2043,18 @@ export function groundWalls(): Wall[] {
   for (const p of FORECOURT_PLANTERS) {
     w.push({ ...p, low: true, kind: 'forecourt-planter', why: (bb) => `${bb.name}: a planter, out in the rain with the rest of Antwerp` });
   }
+  // Duke, inflated, in the lobby south of the main staircase.
+  w.push({
+    x: DUKE.x - DUKE.r,
+    y: DUKE.y - DUKE.r,
+    w: DUKE.r * 2,
+    h: DUKE.r * 2,
+    kind: 'duke',
+    why: (bb) =>
+      bb.kind === 'biggy'
+        ? 'Biggy: that is Duke. I am not shoving the Java mascot across the lobby, however full of air he is'
+        : `${bb.name}: Duke, the Java mascot, three metres of him and all of it air. Round him`,
+  });
   return w;
 }
 

@@ -8,6 +8,62 @@ file is that documentation, kept as the build goes rather than reconstructed at 
 interesting part is not "an AI wrote it" — it is which decisions stayed human, and what had to be
 put in place before an agent could be trusted with the rest.
 
+## In one page
+
+*The rest of this file is the log: one entry per session, 5,000 lines of it. This is the summary.*
+
+**What was built, by whom.** Every line of code, test and document was written by a coding agent
+working in the repository: about 56,000 lines of TypeScript under `src/`, 19,000 of tests (782
+acceptance tests), and 274 commits between 21 and 28 September 2026. One human, Michele, did three
+things the agent never did:
+
+- **decided** — what the game is, which way to lean when two goals pulled apart, when a rule could be
+  broken;
+- **looked** — every playtest note that changed the game came from a person playing it;
+- **supplied the world** — the floor plans, the model sheets, and photographs of the venue and of
+  the people in it.
+
+**The method that made an agent trustworthy on this.**
+
+- *The simulation is the only truth, and the tests are written against it.* The 2D sim is headless
+  and tested, and both renderers (the 2.5D diorama and the 3D build) only read it. So "the robot
+  walked through a wall" is a failing test, not an argument. The test in `tests/colliders.test.ts`
+  that rejects anything drawn without a collider caught the agent's own mistakes several times,
+  down to an inflatable Duke's arm.
+- *Images are the specification.* Plans and model sheets go to the agent as images, measured in
+  pixels and asserted in tests. When the prose and the drawing disagreed, the drawing won (the
+  staircases were moved for that).
+- *Builder, then critic on fresh context* ([`GAUNTLET.md`](../GAUNTLET.md)). The critic never sees
+  the diff, only the running build. In the 3D phase the agent critiqued its own renders before
+  asking for a human's eye, and wrote down what it found, fixed and left.
+- *Frozen physics constants*, asserted by tests. They were unfrozen exactly once, by the human,
+  after a playtest.
+
+**What the human decided that the agent would not have.**
+
+- "I vote funny, robots must be recognizable."
+- Leaving the stairs where the drawing puts them, not where the notes said.
+- Rescaling every speed by 0.25 after the first playtest.
+- Going 3D.
+- Putting real people from the Devoxx community in, by first name, from photographs.
+- Giving speakers a teal lanyard and the keynote a multicolour one.
+
+**What was rejected, and why.**
+
+- The first sculpted Stephan was "a beanie with some stuff on top". The fix was a head whose
+  hair is its own surface.
+- A camera that could end up inside the robot's head.
+- An attendee-grey lanyard the agent chose for the famous speakers to protect a puzzle; the human
+  reversed it with a better rule.
+- Many "it is solvable in the tests but not by a person" puzzles, each fixed by making the sim say
+  *why* a robot is blocked, in that robot's voice.
+
+**Honest limits.**
+
+- YouTube could not be reached from the agent's sandbox, so music was described to it, not heard.
+- Every render the agent judged was a headless software-GPU screenshot. Frame rate and feel on real
+  hardware came only from the human.
+
 ## Tools
 
 | Tool | Used for |
@@ -5510,3 +5566,57 @@ robot; solid; no room behind the sign; the stage waits for the sign; driven from
 in `chapters`, `tasks`, `party-tricks` and `curtain-call` were rewritten against the sign, never
 loosened. Mutation check: with the letters' colliders removed, three tests fail, the collider sweep
 among them. Suite **812 green**, build clean.
+
+- **Venue photos, Duke, Lize and Aurélie, and speaker lanyards** (28 Sep 2026). Michele sent five
+  venue photos: the main stairs from the side; the Devoxx sign with ceiling ducts, box truss and
+  disc pendants; two of Stephan ("remember the MIC"); Duke on the keynote screen ("should appear
+  somewhere"); and the entrance. He then added "We should add Lize Raes" and "Aurélie Vache",
+  and "they should have speakers badge, and the keynote another color, maybe multicolor?"
+  - *Stephan*: hair cropped short and grey all over, receding at the temples; lighter skin;
+    thinner amber frames; the mic is now a slim skin-tone boom hooked over his left ear with a
+    small capsule at the corner of his mouth, as in every photo. The polo has short sleeves
+    with tipped cuffs, hung on the arm pivots so they swing.
+  - *Lanyards (a sim change, decided by Michele):*
+    - a fifth ribbon, `LANYARD.keynote`, multicolour, worn only by the missing keynote speaker
+      in chapter 3 and on stage in chapter 4;
+    - every named speaker (Mario, Venkat, Josh, Lize, Aurélie) now wears speaker teal. This
+      reverses the agent's earlier choice of attendee grey, which it had only made to protect
+      teal's meaning;
+    - the chapter 3 hint now says "multicolour lanyard and teal hoodie";
+    - renderers paint that ribbon's key as rainbow bands;
+    - the distinct-colours test now counts five ribbons, and a new check requires exactly one
+      keynote ribbon.
+  - *Lize and Aurélie*, as NPCs on the hall's south strip. The sculpt gained `longHair`, a hair
+    curtain from the crown that frames the face, closes as it falls, drapes over the shoulders,
+    waves, and flares or flicks at the ends.
+    - Lize: long wavy auburn hair, blue eyes, a wide smile, a cheek mic, and a red wrap dress
+      with a V-neck, sash and skirt.
+    - Aurélie: dark jaw-length hair with a fringe and flicked ends, thin violet frames, a
+      closed smile, and a navy tee with a scoop neck.
+  - *Duke* (the artwork is BSD-licensed): a 2.9 m inflatable in the lobby south of the main stair,
+    facing the doors, swaying, one arm waving, under a display spot. He is solid in the sim
+    (`DUKE`, a `duke` wall with its own blocked line for Biggy), so nothing walks through him.
+    His first shape was a sharp cone that read as a gnome, and the dome fixed it. He also waves
+    from the corner of Room 8's holding slide.
+  - *Entrance*: the facade is glass in slim white frames, with mullions every 1.5 m, a transom,
+    glazed side screens where the sim has reveals (they had been solid white fins), open glass
+    leaves with push bars, and green exit signs over the bays. Outside is a sky-and-trees
+    backdrop, bright in chapter 3 and a dim street in chapter 2.
+  - *Hall ceiling*: black, with aluminium box truss (four chords, laced), two runs of spiral
+    duct with seams, drops and diffusers, and the high bays redrawn as the photo's large disc
+    pendants with a warm orange rim.
+  - *Main stair*: white stepped side panels, with a glass balustrade on steel posts and a
+    handrail following the pitch. The first pass z-fought the treads into stripes; the panels
+    now stand just outside the footprint.
+  - A sponsor table top that burnt white under a pendant is now matt grey.
+- **Mouths, and Stephan's pointy hair** (28 Sep 2026). Michele: "Lize is good, but her mouth and
+  stephan's are odd. Stephan hair should be pointy!"
+  - *Mouths*: the first was a thin black lens with pointed corners and a sliver of teeth, which
+    read as a grimace. A grin is now a D: an almost level upper edge lifting at rounded corners,
+    a deep round lower curve, a row of upper teeth over a dark red mouth, and soft lips (a thin
+    upper, a fuller lower). The pieces are bands tessellated in rows, so their middles follow
+    the face; the flat outline shape had cut chords through the cheeks. A closed smile is a lip
+    line with the lower lip under it.
+  - *Stephan's hair*: 260 short cones, 1.3–2.1 cm each at his scale, leaning up and slightly
+    forward, salt-and-pepper, over the crown and front and kept off the forehead, ears and nape.
+    They are short on purpose: the first tall tufts, days ago, read as punk.

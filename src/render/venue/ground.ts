@@ -41,6 +41,7 @@ import * as THREE from 'three';
 import { H, T, W } from '../../sim/constants';
 import {
   COUNTER,
+  DUKE,
   ENTRANCE_BAYS,
   FORECOURT_BOLLARDS,
   FORECOURT_PLANTERS,
@@ -61,6 +62,7 @@ import {
 } from '../../sim/geometry';
 import type { Rect, Wall } from '../../sim/types';
 import { buildPrinter } from '../printer';
+import { buildDuke } from '../../render3d/duke';
 import { PX_PER_M, m } from '../../sim/units';
 import type { VenuePalette } from './materials';
 import {
@@ -147,6 +149,8 @@ function wallStyle(
   w: Wall,
   p: VenuePalette,
 ): { mat: THREE.MeshStandardMaterial; height: number; base: number } | null {
+  // Duke is drawn as himself (render3d/duke.ts, shared with the 3D build).
+  if (w.kind === 'duke') return null;
   /*
    * Every sponsor booth is drawn by `booths()` — half tables as cloth-draped
    * tables, built booths as a back wall, two returns and a counter. A built booth
@@ -1266,6 +1270,15 @@ export function buildGround(
     // stop a robot on the building line. Glass is a pane: draw it thin, on that
     // line, rather than as a two-and-a-half metre block of translucent nothing.
     group.add(slab(w.kind === 'facade' ? { ...w, w: 6 } : w, style.base, style.height, style.mat));
+  }
+  {
+    // Duke, the inflatable in the lobby: the 3D build's model, standing on the
+    // sim's footprint (`DUKE`) and facing the doors. Static here — the diorama
+    // camera is too far off to see him sway.
+    const duke = buildDuke();
+    duke.root.position.set(m(DUKE.x), baseAt(DUKE.x), m(DUKE.y));
+    duke.root.rotation.y = Math.PI / 2;
+    group.add(duke.root);
   }
 
   group.add(threshold(p, anchors));

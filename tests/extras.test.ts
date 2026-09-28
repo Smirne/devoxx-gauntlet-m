@@ -19,6 +19,8 @@ import { DT_MAX, createGame, type DebugGame, type BreakfastState } from '../src/
 import { DEMO_CHAPTER, GF, type ExpoState } from '../src/sim';
 import { CFP_WALL } from '../src/sim/geometry';
 import { LANYARD, lanyardFor } from '../src/sim/lanyards';
+import { FRONT_ROW } from '../src/sim/speakers';
+import type { Person } from '../src/sim/types';
 import { walkTo } from './pilot';
 
 const SEED = 20260930;
@@ -34,8 +36,10 @@ describe('lanyards', () => {
     expect(lanyardFor('speaker')).toBe(LANYARD.speaker);
     expect(lanyardFor('stephan')).toBe(LANYARD.chair);
     expect(lanyardFor('visitor')).toBe(LANYARD.attendee);
-    // Four distinct colours, or the whole idea says nothing.
-    expect(new Set(Object.values(LANYARD)).size).toBe(4);
+    // Every ribbon a distinct colour, or the whole idea says nothing. Five since
+    // 28 Sep 2026: the keynote's own multicolour one joined the four.
+    expect(new Set(Object.values(LANYARD)).size).toBe(Object.keys(LANYARD).length);
+    expect(Object.keys(LANYARD)).toHaveLength(5);
   });
 
   it('puts one on every person who has been past the desk, with Stephan the only chair', () => {
@@ -56,6 +60,8 @@ describe('lanyards', () => {
     expect(served.length).toBeGreaterThan(8);
     expect(served.every((p) => p.lanyard !== undefined), 'somebody got in without a badge').toBe(true);
     expect(people.filter((p) => p.lanyard === LANYARD.chair)).toHaveLength(1);
+    // ...and exactly one keynote speaker: the multicolour ribbon is the search.
+    expect(people.filter((p) => p.lanyard === LANYARD.keynote)).toHaveLength(1);
     expect(people.filter((p) => p.lanyard === LANYARD.crew).length).toBeGreaterThan(0);
   });
 });
@@ -271,5 +277,23 @@ describe('reaching the shadow rig without a URL', () => {
     const g = mk(4);
     g.skipChapter();
     expect(g.snapshot().chapter).toBe(4);
+  });
+});
+
+describe('the keynote front row', () => {
+  it('seats every speaker from the hall floor in Room 8, front row, from the start — and the crowd never takes their chairs', () => {
+    const g = mk(4);
+    const seatedNamed = (): Person[] => g.snapshot().people.filter((p) => p.role === 'seated' && p.name !== undefined);
+    const at0 = seatedNamed();
+    expect(at0.map((p) => p.name)).toEqual([...FRONT_ROW]);
+    // One row, all of them.
+    expect(new Set(at0.map((p) => p.y)).size).toBe(1);
+    // Let the room fill: nobody else is ever seated on a speaker's seat.
+    for (let i = 0; i < 60 * 240; i++) g.update(DT_MAX);
+    const people = g.snapshot().people;
+    for (const sp of seatedNamed()) {
+      const clash = people.filter((p) => p.role === 'seated' && p.name === undefined && Math.hypot(p.x - sp.x, p.y - sp.y) < 1);
+      expect(clash, `${sp.name}'s seat was given away`).toHaveLength(0);
+    }
   });
 });

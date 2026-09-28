@@ -1,15 +1,15 @@
 /**
- * main3d.ts — the full-3D proof of concept's entry point (`3d.html`).
+ * main3d.ts — the 3D build's entry point (`3d.html`), which is the entry.
  *
  * Same sim, same HUD, same audio as the 2.5D diorama (`src/main.ts`); a
  * different renderer (`src/render3d`): a third-person camera inside the
  * building, an HDR pipeline with reflections, volumetric light, bloom and a
- * filmic grade. Chapter 1 only — the closed cinema section is what this proof
- * of concept builds; the chapter-2 hand-off shows an end card.
+ * filmic grade. All four chapters.
  *
  * ## Debug URL
  *
- *   ?q=low|medium|high|ultra   render quality (default high)
+ *   ?q=low|medium|high|ultra   render quality (default: picked from the GPU)
+ *   ?resume=N                  start in chapter N with its briefing (quality changes use it)
  *   ?seed=N                    sim RNG seed
  *   ?warm=N                    sim steps before the first frame
  *   ?nohud=1                   hide the DOM overlay
@@ -84,8 +84,31 @@ function storedQuality(): QualityName | null {
     return null;
   }
 }
+/**
+ * The first-run quality, from the GPU the browser reports: a software renderer
+ * or a phone gets `low`, an integrated laptop GPU `medium`, anything else
+ * `high`. A safety net for the judges' machines — the quality button (and Q)
+ * still move it, and the adaptive resolution trims it further at run time.
+ */
+function autoQuality(): QualityName {
+  try {
+    if (/android|iphone|ipad|mobile/i.test(navigator.userAgent)) return 'low';
+    const gl = document.createElement('canvas').getContext('webgl2');
+    if (!gl) return 'low';
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const r = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : '';
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    if (/swiftshader|llvmpipe|software|basic render/i.test(r)) return 'low';
+    if (/intel|mali|adreno|powervr|vivante/i.test(r)) return 'medium';
+    return 'high';
+  } catch {
+    return 'medium';
+  }
+}
 const qParam = params.get('q') as QualityName | null;
-const quality: QualityName = qParam && Q.includes(qParam) ? qParam : storedQuality() ?? 'high';
+const quality: QualityName = qParam && Q.includes(qParam) ? qParam : storedQuality() ?? autoQuality();
+/** Set by a quality change: the chapter to come back to after the reload. */
+const resumeAt = int('resume');
 const shotMode = flag('shot');
 const hideHud = flag('nohud') || (shotMode && !flag('hud'));
 const warm = Math.max(0, Math.min(int('warm') ?? 0, 20000));
@@ -106,8 +129,17 @@ installHudTheme();
 // Play starts with the sim's opening (the crates), exactly as the 2.5D page
 // does: no chapter, cards on. Screenshot runs go straight to chapter 1 unless
 // they ask for the opening with ?cards=1.
-const withOpening = !shotMode || flag('cards');
-const game: DebugGame = createGame({ seed: int('seed'), chapter: withOpening ? undefined : (int('chapter') ?? 1), cards: withOpening, clueSpot: CLUE_SPOT_3D });
+// A quality change reloads the page (the pipeline is built for one quality);
+// `?resume=N` brings the player back to the chapter they were in, with its
+// briefing card, instead of the opening.
+const resuming = !shotMode && resumeAt !== undefined && resumeAt >= 1 && resumeAt <= 4;
+const withOpening = (!shotMode || flag('cards')) && !resuming;
+const game: DebugGame = createGame({
+  seed: int('seed'),
+  chapter: resuming ? resumeAt : withOpening ? undefined : (int('chapter') ?? 1),
+  cards: withOpening || resuming,
+  clueSpot: CLUE_SPOT_3D,
+});
 
 /*
  * A black "press any key" gate before the opening. Browsers hold audio until a
@@ -288,13 +320,7 @@ window.addEventListener('keydown', (ev) => {
   // Q cycles the render quality. The pipeline is built for one quality, so the
   // choice is remembered and the page reloads into it.
   if (code === 'KeyQ' && !game.snapshot().typing) {
-    const next = Q[(Q.indexOf(quality) + 1) % Q.length];
-    try {
-      window.localStorage.setItem(Q_KEY, next);
-    } catch {
-      /* no storage: the URL's ?q= still works */
-    }
-    window.location.reload();
+    cycleQuality();
     return;
   }
   if (code === 'KeyP') {
@@ -357,6 +383,50 @@ function showEnd(): void {
   card.querySelector('#ad3d-replay')?.addEventListener('click', () => window.location.reload());
 }
 
+/* ======================================================= quality control === */
+
+/** Next quality, remembered, and back into the same chapter after the reload. */
+function cycleQuality(): void {
+  const next = Q[(Q.indexOf(quality) + 1) % Q.length];
+  try {
+    window.localStorage.setItem(Q_KEY, next);
+  } catch {
+    /* no storage: the URL's ?q= still works */
+  }
+  const url = new URL(window.location.href);
+  url.searchParams.set('q', next);
+  const ch = game.snapshot().chapter;
+  if (ch >= 1 && ch <= 4) url.searchParams.set('resume', String(ch));
+  else url.searchParams.delete('resume');
+  window.location.replace(url.toString());
+}
+
+/*
+ * The quality button, bottom-left: what it is set to, and a click moves it on.
+ * When the frame rate stays low even after the resolution has been trimmed as
+ * far as it goes (`world.struggling`), it says so once, in words.
+ */
+const qBtn = document.createElement('button');
+qBtn.type = 'button';
+qBtn.className = 'ad3d-quality';
+qBtn.textContent = `Quality: ${quality.toUpperCase()} (Q)`;
+qBtn.title = 'Change render quality (reloads into the same chapter)';
+qBtn.style.cssText =
+  'position:fixed;left:12px;bottom:12px;z-index:30;font:600 12px system-ui,sans-serif;color:#ffd27a;background:rgba(10,10,14,.6);border:1px solid rgba(255,210,122,.45);border-radius:6px;padding:5px 9px;cursor:pointer';
+qBtn.addEventListener('click', (e) => {
+  e.preventDefault();
+  cycleQuality();
+});
+if (!shotMode && !hideHud) app.appendChild(qBtn);
+let warnedSlow = false;
+function checkSlow(): void {
+  if (warnedSlow || !world.struggling || quality === 'low') return;
+  warnedSlow = true;
+  qBtn.textContent = `Running slow — click for lower quality (now ${quality.toUpperCase()})`;
+  qBtn.style.borderColor = '#ff7a1a';
+  qBtn.style.color = '#ff9a4a';
+}
+
 /* ================================================================= loop ==== */
 
 for (let i = 0; i < warm; i++) {
@@ -398,6 +468,7 @@ function frame(dt: number): void {
     hud.update(snap, anchors);
   }
   updateAudio(snap, dt);
+  checkSlow();
   if (Math.abs(snap.fade - lastFade) > 0.004) {
     lastFade = snap.fade;
     fadeEl.style.opacity = snap.fade.toFixed(3);
