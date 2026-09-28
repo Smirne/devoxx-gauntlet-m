@@ -85,7 +85,7 @@ export function buildDuke(): Duke3D {
     const hand = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10), new THREE.MeshPhysicalMaterial({ color: 0xf4f2ee, roughness: 0.35, clearcoat: 0.6 }));
     hand.position.y = 0.72;
     pivot.add(arm, hand);
-    pivot.rotation.z = sx * (sx > 0 ? -0.5 : -2.2);
+    pivot.rotation.z = sx * (sx > 0 ? -0.5 : -2.6);
     body.add(pivot);
     arms.push(pivot);
   }

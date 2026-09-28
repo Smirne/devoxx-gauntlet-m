@@ -806,8 +806,10 @@ export function buildGround(mats: Materials): Ground3D {
   // hall from the lobby end when the power comes on.
   const bays: Array<{ light: THREE.SpotLight; lamp: THREE.Mesh; ring: THREE.MeshBasicMaterial; at: number }> = [];
   const lampMat = new THREE.MeshBasicMaterial({ color: 0x000000, toneMapped: false });
-  // Four across the hall, three more over the lobby, two rows of each.
-  const bayXs = [GF.hall.x + 130, GF.hall.x + 370, GF.hall.x + 610, GF.hall.x + 850, 1220, 1480, 1740];
+  // Four across the hall, two more over the lobby, two rows of each — all
+  // INSIDE the glass: the lobby's used to run on to x 1480 and 1740, into the
+  // facade and out over the forecourt (backlog, 28 Sep).
+  const bayXs = [GF.hall.x + 130, GF.hall.x + 370, GF.hall.x + 610, GF.hall.x + 850, 1180, 1390];
   for (const x of bayXs) {
     for (let iz = 0; iz < 2; iz++) {
       const z = GF.hall.y + 150 + iz * 300;

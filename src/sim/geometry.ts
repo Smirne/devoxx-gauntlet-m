@@ -1113,7 +1113,7 @@ export const GF = {
  * wall — and he is solid: the sim knows his footprint, so nobody walks through
  * him (the lesson of the drawn-but-not-simulated columns, `groundWalls`).
  */
-export const DUKE = { x: 1340, y: 600, r: 13 } as const;
+export const DUKE = { x: 1340, y: 600, r: 17 } as const;
 
 export const BAR_RECT: Rect = { x: 336, y: 96, w: 92, h: 26 };
 
