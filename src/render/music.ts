@@ -29,13 +29,13 @@ import { LEAD, SLOT } from '../sim/opening';
 /* ============================================================ the score ===== */
 
 /**
- * The instruments. The first four are pitched and read the bar's chord; the last
- * five are drums, have no pitch, and exist only where a chapter wants a pulse.
+ * The instruments. The first six are pitched and read the bar's chord; the last
+ * seven are drums, have no pitch, and exist only where a chapter wants a pulse.
  */
-export type VoiceName = 'pad' | 'bell' | 'pluck' | 'bass' | 'kick' | 'hat' | 'shaker' | 'rim' | 'snare';
+export type VoiceName = 'pad' | 'bell' | 'pluck' | 'bass' | 'guitar' | 'chug' | 'kick' | 'hat' | 'shaker' | 'rim' | 'snare' | 'clap' | 'crash';
 
 /** Which voices take a MIDI note. Everything else is a drum and carries `midi: -1`. */
-export const PITCHED: ReadonlySet<VoiceName> = new Set<VoiceName>(['pad', 'bell', 'pluck', 'bass']);
+export const PITCHED: ReadonlySet<VoiceName> = new Set<VoiceName>(['pad', 'bell', 'pluck', 'bass', 'guitar', 'chug']);
 
 /** Sixteenths in a bar. Four-four throughout: this is a puzzle game, not a prog record. */
 export const STEPS = 16;
@@ -231,30 +231,22 @@ const KEYNOTE: Score = {
 };
 
 /**
- * The opening — three crates in a dark corridor, and the robots in them.
+ * The opening — three crates, three robots, and a stadium's worth of stomping.
  *
- * Michele, 28 Sep 2026: *"There should be music also in the animation. Cool
- * music."* Synthwave in the night's own key, 92 bpm, built to the opening's
- * length (five bars is about thirteen seconds): a pad and a pulsing octave bass
- * from the first bar, an arpeggio over it, the kick joining as the first crate
- * lights, hats and a rim on the second robot, a bell lead for the third. Am, F,
- * C, G — the chapter 2 climb reordered to fall back to the tonic every loop, so
- * it hands over to chapter 1's unresolved night without a jolt.
- */
-/**
- * The opening — three crates, three robots, one light that gives out.
+ * Michele, 28 Sep, on the percussive first version: *"music is still too ambient
+ * for the intro. I want something impacting. Rock guitar, stomping, energy!"* So:
+ * the stomp-stomp-clap everybody in a hall can join in with, a distorted guitar,
+ * and a band that arrives one robot at a time.
  *
- * Michele, 28 Sep: *"should be more captivating, rhythmic, percussions, and on par
- * with the scenes. Crates open: boom."* So the tempo is the scene's, not a nice
- * number: one bar is exactly one robot's `SLOT`, and `lead` puts bar 0 on the
- * first slot's start, so every downbeat is a crate waking. The boom itself is a
- * cue (`crate` in `audio.ts`), fired by the panel actually landing — a cue always
- * lands on its frame, a note only on its beat.
+ * The tempo is still the scene's: one bar is exactly one robot's `SLOT` (2.9 s,
+ * 82.8 bpm — the tempo that stomp-clap is always played at anyway), and `lead`
+ * puts bar 0 on the first slot, so every downbeat is a crate waking. The crate
+ * booms are cues fired by the panels landing (`crate` in `audio.ts`).
  *
- * The kit arrives with the robots. Voxxy: a heartbeat under a ticking hat.
- * Droid: the backbeat and a shaker. Biggy: four on the floor, the arpeggio in
- * sixteenths, a snare fill into the walk. Then the bell over the pull-back while
- * the light dies, and chapter 1's score takes over in the dark.
+ *  - Voxxy: stomp, stomp, CLAP, and the guitar's palm-muted chug creeping in.
+ *  - Droid: the chug opens up, bass locks to it, a crash on the one.
+ *  - Biggy: full kit, power chords on the pushes, hats in eighths.
+ *  - The walk and the light dying: the riff, ringing out.
  */
 const OPENING: Score = {
   bpm: 240 / SLOT,
@@ -262,26 +254,25 @@ const OPENING: Score = {
   tonic: 9,
   scale: A_MINOR,
   chords: [
-    [45, 57, 60, 64], // Am
-    [41, 57, 60, 65], // F
-    [43, 55, 59, 62], // G
-    [45, 57, 60, 64], // Am
-    [40, 55, 59, 64], // Em
+    [45, 52, 57], // A5
+    [41, 48, 53], // F5
+    [43, 50, 55], // G5
+    [45, 52, 57], // A5
+    [40, 47, 52], // E5
   ],
   parts: [
-    { voice: 'pad', gain: 0.07, steps: on([0], 2), len: 15 },
-    // Heartbeat, then the floor.
-    { voice: 'kick', gain: 0.5, steps: on([0, 3], 1), len: 1 },
-    { voice: 'kick', gain: 0.46, steps: on([8, 11], 1), len: 1, from: 1 },
-    { voice: 'kick', gain: 0.42, steps: on([4, 12, 14], 1), len: 1, from: 2 },
-    { voice: 'hat', gain: 0.06, steps: on([0, 2, 4, 6, 8, 10, 12, 14], 1), len: 1 },
+    // Stomp, stomp, CLAP — the whole bar, the whole time.
+    { voice: 'kick', gain: 0.34, steps: on([0, 2, 8, 10], 1), len: 1 },
+    { voice: 'clap', gain: 0.22, steps: on([4, 12], 1), len: 1 },
+    // The guitar: muted eighths under Voxxy, opened from Droid on.
+    { voice: 'chug', gain: 0.05, steps: on([0, 2, 4, 6, 8, 10, 12, 14], 0), len: 1, shift: 12 },
+    { voice: 'bass', gain: 0.14, steps: on([0, 2, 4, 6, 8, 10, 12, 14], 0), len: 2, from: 1 },
+    { voice: 'crash', gain: 0.12, steps: on([0], 1), len: 1, from: 1 },
+    // Biggy: power chords on the one and the pushes, and a rock beat.
+    { voice: 'guitar', gain: 0.1, steps: on([0, 7, 10], 0), len: 3, shift: 12, from: 2 },
+    { voice: 'snare', gain: 0.18, steps: on([4, 12], 1), len: 1, from: 2 },
     { voice: 'hat', gain: 0.045, steps: on([1, 3, 5, 7, 9, 11, 13, 15], 1), len: 1, from: 2 },
-    { voice: 'snare', gain: 0.2, steps: on([4, 12], 1), len: 1, from: 1 },
-    { voice: 'snare', gain: 0.12, steps: on([13, 15], 1), len: 1, from: 2 },
-    { voice: 'shaker', gain: 0.05, steps: on([2, 6, 10, 14], 1), len: 1, from: 1 },
-    { voice: 'bass', gain: 0.16, steps: on([0, 3, 6, 8, 11, 14], 0), len: 2, shift: -12 },
-    { voice: 'pluck', gain: 0.06, steps: seq([0, 1, 2, 3, 4, 3, 2, 1, 0, 1, 2, 3, 4, 3, 2, 1], 1, 0), len: 1, from: 2 },
-    { voice: 'bell', gain: 0.07, steps: seq([4, 3, 2, 3], 4, 0), len: 3, from: 3 },
+    { voice: 'snare', gain: 0.1, steps: on([14, 15], 1), len: 1, from: 3 },
   ],
 };
 
@@ -561,6 +552,73 @@ export function startMusic(ctx: AudioContext, out: AudioNode, noise: AudioBuffer
     noiseHit(t, gain * 0.5, 2400, 1.4, 0.04);
   }
 
+  /**
+   * The distortion curve, built once: a tanh drive hard enough that a saw power
+   * chord comes out as an amp, not a synth.
+   */
+  let drive: Float32Array | null = null;
+  function driveCurve(): Float32Array {
+    if (drive) return drive;
+    const n = 1024;
+    const c = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const x = (i / (n - 1)) * 2 - 1;
+      c[i] = Math.tanh(x * 9) / Math.tanh(9);
+    }
+    drive = c;
+    return c;
+  }
+
+  /**
+   * A power chord through an amp: root, fifth and octave as detuned saws, into a
+   * waveshaper, then a speaker-cabinet's worth of filtering. `muted` is the
+   * palm-muted chug — short, darker, and the thing a riff is made of.
+   */
+  function guitar(f: number, t: number, dur: number, gain: number, muted = false): void {
+    if (!dest) return;
+    const pre = ctx.createGain();
+    pre.gain.value = 0.5;
+    const sh = ctx.createWaveShaper();
+    sh.curve = driveCurve() as Float32Array<ArrayBuffer>;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.setValueAtTime(110, t);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(muted ? 1200 : 3400, t);
+    lp.Q.value = 0.8;
+    const len = muted ? Math.min(dur, 0.16) : dur;
+    const g = env(t, gain, 0.004, len);
+    pre.connect(sh).connect(hp).connect(lp).connect(g).connect(dest);
+    const voices: AudioNode[] = [];
+    for (const [r, det] of [
+      [1, -8],
+      [1, 8],
+      [1.5, -5],
+      [1.5, 5],
+      [2, 0],
+    ] as const) {
+      const o = osc('sawtooth', f * r, t, len, det);
+      o.connect(pre);
+      voices.push(o);
+    }
+    retire(voices[0] as OscillatorNode, [...voices, pre, sh, hp, lp, g]);
+  }
+
+  /** Hands: three noise bursts a few milliseconds apart, the way a crowd claps. */
+  function clap(t: number, gain: number): void {
+    for (const [dt, k] of [
+      [0, 0.7],
+      [0.011, 0.8],
+      [0.023, 1],
+    ] as const) noiseHit(t + dt, gain * k, 1300, 1.2, dt === 0.023 ? 0.14 : 0.03);
+  }
+
+  /** A crash: bright noise with a long tail. */
+  function crash(t: number, gain: number): void {
+    noiseHit(t, gain, 6500, 0.5, 1.3);
+  }
+
   /** A body tone under a wide noise crack: the opening's backbeat. */
   function snare(t: number, gain: number): void {
     if (!dest) return;
@@ -601,6 +659,18 @@ export function startMusic(ctx: AudioContext, out: AudioNode, noise: AudioBuffer
         break;
       case 'snare':
         snare(t, n.gain);
+        break;
+      case 'guitar':
+        guitar(hz(n.midi), t, dur, n.gain);
+        break;
+      case 'chug':
+        guitar(hz(n.midi), t, dur, n.gain, true);
+        break;
+      case 'clap':
+        clap(t, n.gain);
+        break;
+      case 'crash':
+        crash(t, n.gain);
         break;
       default:
         break;

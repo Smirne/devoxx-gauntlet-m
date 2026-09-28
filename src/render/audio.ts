@@ -509,6 +509,8 @@ export function createAudio(): Audio {
         tone({ type: 'triangle', f0: 180, f1: 70, t0, dur: 0.18, peak: 0.12 * g * k, attack: 0.002 });
         noise({ t0, dur: 0.12, peak: 0.16 * g * k, attack: 0.002, filter: { type: 'bandpass', f: 1300, q: 0.8 } });
         noise({ t0: t0 + 0.05, dur: 1.2, peak: 0.05 * g * k, attack: 0.08, filter: { type: 'lowpass', f: 700, f1: 180 } });
+        // ...and a crash cymbal on it, because the band hits with the box.
+        noise({ t0: t0 + 0.005, dur: 1.4, peak: 0.07 * g * k, attack: 0.003, filter: { type: 'highpass', f: 5200 } });
         break;
       }
       case 'door-open': {

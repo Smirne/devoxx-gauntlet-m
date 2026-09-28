@@ -4563,3 +4563,18 @@ ordinary figures with their role colours.
     presses R at once (no restart), then again after 2.2 s (restart).
   - *Not done yet:* the booth stands ("unfinished, it should be clear when you're passing under
     them") and a rock intro score ("rock guitar, stomping, energy").
+- *Intro, third score, and a clip.* "Music is still too ambient for the intro. I want something
+  impacting. Rock guitar, stomping, energy!" Rewritten as rock at the same scene-locked tempo (one
+  bar per robot, 82.8 bpm, which is also the tempo stomp-stomp-clap is always played at). Stomp,
+  stomp, CLAP from the first crate. A distorted guitar: five detuned saws for root, fifth and
+  octave, through a tanh waveshaper and a cabinet's worth of filtering. It starts as palm-muted
+  eighths and opens into power chords on the pushes when Biggy's crate lands, with bass, crash,
+  snare and hats joining a robot at a time. New voices: `guitar`, `chug`, `clap`, `crash`. The
+  crate boom now has a crash cymbal on it.
+  "How long is the starting sequence? Can you extract it in a movie?" It runs 12.4 s: 1.6 s dark,
+  two 2.9 s slots, Biggy's 2.4 s, a 0.8 s hold, the 1.05 s flicker and 0.75 s dark. The clip is
+  rendered headless and deterministic: the page's AudioContext is swapped for an
+  OfflineAudioContext that pauses at every video frame. At each pause the game steps one frame
+  (firing the score and the cues at exactly that sim time) and a screenshot is taken. The frames
+  and the rendered audio are then muxed with ffmpeg. The picture and the synthesised sound are in
+  sync without anything playing in real time.

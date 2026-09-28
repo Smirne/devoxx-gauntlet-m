@@ -167,6 +167,9 @@ function stubCtx(): { ctx: AudioContext; made: Made; advance: (s: number) => voi
     createBiquadFilter(): unknown {
       return { type: 'lowpass', frequency: param(), Q: param(), connect, disconnect: (): void => undefined };
     },
+    createWaveShaper(): unknown {
+      return { curve: null, oversample: 'none', connect, disconnect: (): void => undefined };
+    },
     createOscillator(): unknown {
       const v = { freqs: [] as number[] };
       made.oscs.push(v);
