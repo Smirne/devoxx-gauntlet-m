@@ -259,3 +259,118 @@ describe('only Biggy is a ball', () => {
     });
   }
 });
+
+/* ============================== the pose, and who is allowed to be in it */
+
+/**
+ * WHAT THE ROLL LOOKS LIKE, and the line Michele drew round it.
+ *
+ * The gate went the whole way across and came back in two days. Four rounds of
+ * *"I can't get biggy to roll"* ended with *"I tried running but it keeps
+ * walking"*, so for one build SPEED was the gate, whoever set him going. He drove
+ * that build and answered both halves in one line: *"the roll is great! Biggy
+ * should retreat his feet while rolling. And maybe it's better to reserve it for
+ * when he's pushed to high speed."*
+ *
+ * So: a robot on his own stick walks at any speed, a shove past 1.5 m/s rolls him,
+ * and while he is rolling the legs are not folded up inside the ball — they are
+ * SCALED away to a fifth of themselves (`LEG_TUCK`), because folded legs still put
+ * two boots outside a 1.2 m sphere, which is exactly what he was looking at.
+ *
+ * These read the RIG rather than a flag: the pose is the feature, so the pose is
+ * what is asserted.
+ */
+describe('the ball has no feet, and nobody rolls it but a shove', () => {
+  /**
+   * Run one Biggy for `seconds` — driving himself, or shoved by Voxxy — and report
+   * the rig at the end of it.
+   */
+  function run(
+    seconds: number,
+    opts: { drive?: boolean; carrying?: boolean } = {},
+  ): { v: number; thigh: number; legScale: number; pelvisSwing: number } {
+    const drive = opts.drive ?? true;
+    const bg = mkBot('biggy', 300, 160);
+    const pusher = mkBot('voxxy', 300 - bg.r - DEFS.voxxy.r, 160);
+    const bots: Bot[] = [pusher, bg];
+    const rig = createRobot('biggy');
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i * DT < seconds; i++) {
+      bg.ix = drive ? 1 : 0;
+      bg.iy = 0;
+      pusher.ix = drive ? 0 : 1;
+      pusher.iy = 0;
+      stepBot(pusher, DT, []);
+      stepBot(bg, DT, []);
+      if (!drive) {
+        botsCollide(pusher, bg);
+        pushBiggy(bots, DT, i * DT, noop);
+      }
+      updateRobot(rig, {
+        speedMps: speed(bg) / PX_PER_M,
+        heading: bg.face,
+        dt: DT,
+        shoved: worldMoved(bg) ? 1 : 0,
+        carrying: opts.carrying ?? false,
+      });
+      if (i * DT > seconds - 1) {
+        lo = Math.min(lo, rig.bones.pelvis.rotation.x);
+        hi = Math.max(hi, rig.bones.pelvis.rotation.x);
+      }
+    }
+    return {
+      v: speed(bg) / PX_PER_M,
+      thigh: rig.bones.thighL.rotation.x,
+      legScale: rig.bones.thighL.scale.y,
+      pelvisSwing: hi - lo,
+    };
+  }
+
+  it('walks when he is driving himself, however fast he is going', () => {
+    // Four seconds of held stick is 4.3 m/s — faster than any shove in the game,
+    // and still a walk, because the roll is not his to start. Michele's call.
+    const t = run(4);
+    expect(t.v).toBeGreaterThan(3.4);
+    expect(t.thigh).toBeGreaterThan(-1.3);
+    expect(t.legScale).toBeCloseTo(1, 3);
+    expect(t.pelvisSwing).toBeLessThan(0.5);
+  });
+
+  it('balls up when somebody else has him moving, and pulls the legs in with it', () => {
+    const t = run(4, { drive: false });
+    expect(t.v, 'Voxxy never got him up to a rolling speed').toBeGreaterThan(1.5);
+    // Legs folded into the gut (the tuck is -1.45 rad at the thigh)...
+    expect(t.thigh).toBeLessThan(-1.3);
+    // ...and then taken away altogether, which is the half he asked for: a leg at
+    // a fifth of its length is entirely inside the ball.
+    expect(t.legScale).toBeLessThan(0.3);
+    // ...and the body turning through whole revolutions rather than stepping.
+    expect(t.pelvisSwing).toBeGreaterThan(2);
+  });
+
+  it('gives the legs back the moment the roll lets go', () => {
+    const bg = mkBot('biggy', 300, 160);
+    const rig = createRobot('biggy');
+    // Rolling, hard.
+    for (let i = 0; i * DT < 2; i++) {
+      updateRobot(rig, { speedMps: 4, heading: 0, dt: DT, shoved: 1 });
+    }
+    expect(rig.bones.thighL.scale.y).toBeLessThan(0.3);
+    // ...and then standing still, on his own two feet, with nothing shrunk.
+    for (let i = 0; i * DT < 3; i++) {
+      bg.ix = 0;
+      bg.iy = 0;
+      updateRobot(rig, { speedMps: 0, heading: 0, dt: DT, shoved: 0 });
+    }
+    expect(rig.bones.thighL.scale.y).toBeCloseTo(1, 2);
+  });
+
+  it('never rolls with the soup pot in his hands, shove or no shove', () => {
+    const t = run(4, { drive: false, carrying: true });
+    expect(t.v).toBeGreaterThan(1.5);
+    expect(t.thigh).toBeGreaterThan(-1.3);
+    expect(t.legScale).toBeCloseTo(1, 3);
+    expect(t.pelvisSwing).toBeLessThan(0.5);
+  });
+});

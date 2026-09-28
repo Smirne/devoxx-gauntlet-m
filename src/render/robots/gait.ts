@@ -135,6 +135,15 @@ export interface GaitParams {
    * anything at all — Voxxy and Droid are not balls.
    */
   shoved?: number;
+  /**
+   * Both hands full: Biggy with chapter 3's soup pot on his shoulder.
+   *
+   * The renderer reads it off the published `pot` prop rather than from a new sim
+   * flag, because the pot IS the sim's answer to the question — it is only
+   * published while he is carrying it. All it does here is keep the ball from
+   * rolling with a pot on top of it.
+   */
+  carrying?: boolean;
 }
 
 /**
@@ -286,6 +295,13 @@ interface GaitState {
    */
   shove: number;
   rollA: number;
+  /**
+   * 0 walking .. 1 tucked up and rolling like the ball he is.
+   *
+   * Separate from `shove`, which is only "is somebody else moving him": a slow
+   * nudge tips him, a real shove rolls him. See `applyShove`.
+   */
+  roll: number;
   base: Map<THREE.Object3D, BoneBase>;
   partScale: Map<THREE.Object3D, THREE.Vector3>;
   /** Ankle rest positions in root space, [left, right]. */
@@ -392,6 +408,7 @@ function capture(rig: RobotRig): GaitState {
     contact: [true, true],
     shove: 0,
     rollA: 0,
+    roll: 0,
   };
 }
 
@@ -552,9 +569,48 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
   const accelRaw = dt > 0 ? (v - st.prevSpeed) / dt : 0;
   st.prevSpeed = v;
   st.accel += (accelRaw - st.accel) * (1 - Math.exp(-6 * dt));
-  const moving = smoothstep(0.03, 0.35, v);
+  /*
+   * IS HE ROLLING? — and if he is, he is not walking.
+   *
+   * Michele asked for this four times across two rounds, the last three of them
+   * while looking at the answer: *"I can't get biggy to roll"*, *"How do I
+   * activate Biggy's rolling? I tried running but it keeps walking"*, *"(still
+   * can't make it roll)"*. He was right every time. What existed was a **tip** —
+   * eleven degrees of gut and a lean — over a walk cycle that never stopped, and
+   * a robot taking little steps while leaning is not a ball rolling, whatever the
+   * sim's flag says.
+   *
+   * So above a real rolling speed the walk is switched off at the source: `moving`
+   * and `amp` are what every part of the gait is scaled by, and both go to zero
+   * as `st.roll` comes up. `applyShove` then tucks the legs and spins the whole
+   * body about the gut's own centre. Below that speed nothing changes, because a
+   * ball being nudged across a floor does not roll either.
+   *
+   * PUSHED, AND FAST — both, and that is Michele's call rather than a reading of
+   * the physics. For one round the gate was SPEED alone, whoever set him going,
+   * because *"I tried running but it keeps walking"* was a fair complaint about a
+   * ball. He drove it, liked the move, and drew the line somewhere else: *"the
+   * roll is great! ... maybe it's better to reserve it for when he's pushed to
+   * high speed"*. So a robot under his own stick walks however fast he is going,
+   * and the roll belongs to the thing it started as — a heavy body somebody else
+   * has set moving. It is a game-feel decision, it is his, and the physics reads
+   * the same either way.
+   */
+  // ...and he does not roll with a pot of hot soup on his shoulder. Chapter 3
+  // asks the heavy robot to be driven gently with both hands full; a ball is the
+  // one thing that errand is not.
+  const rolling =
+    rig.kind === 'biggy' && (params.shoved ?? 0) > 0.5 && !params.mounted && !params.carrying;
+  const wantRoll = rolling ? smoothstep(ROLL_MIN_MPS, ROLL_FULL_MPS, v) : 0;
+  st.roll += (wantRoll - st.roll) * (1 - Math.exp(-(wantRoll > st.roll ? ROLL_ON : ROLL_OFF) * dt));
+  // The legs go away as he balls up. `tuckLegs` is called here rather than inside
+  // `applyShove` because it writes a SCALE, and a scale that is not written every
+  // frame leaves a robot standing about with no legs when the roll ends.
+  tuckLegs(rig, flairing ? 0 : st.roll);
+  const walkAmt = 1 - st.roll;
+  const moving = smoothstep(0.03, 0.35, v) * walkAmt;
   const idleAmt = 1 - moving;
-  const amp = smoothstep(IDLE_SPEED_MPS, p.speedRef, v);
+  const amp = smoothstep(IDLE_SPEED_MPS, p.speedRef, v) * walkAmt;
 
   /* ---------------------------------------------------------- heading */
   const targetYaw = yawFromSimHeading(params.heading);
@@ -1059,6 +1115,33 @@ const PUSH_LAG = 0.12;
  */
 const SHOVE_ON = 9;
 /**
+ * The speeds a shove has to reach before Biggy stops walking and starts ROLLING.
+ *
+ * 1.5 m/s to begin and 3 m/s for the full tuck — against a top speed of 4.7. A
+ * ball that is nudged does not roll, it is nudged; a ball that is shoved across a
+ * hall does nothing else. Both are metres per second and neither is a px/s
+ * quantity, so the 23 Sep rescale does not touch them.
+ */
+const ROLL_MIN_MPS = 1.5;
+const ROLL_FULL_MPS = 3;
+/**
+ * HOW FAR THE LEGS GO AWAY when he balls up, as a fraction of their own length.
+ *
+ * Michele, looking at the first roll: *"Biggy should retreat his feet while
+ * rolling."* Folding them (thigh back, shin up, toe down) put the knees inside the
+ * gut and left two boots sticking out of a sphere, which is what he saw. A leg
+ * that is scaled to a fifth of itself about the hip ends up entirely inside a
+ * 1.2 m ball, so the silhouette while rolling is the ball and nothing else, and it
+ * comes back out as the tuck lets go. Scale rather than a hidden mesh, because a
+ * scale blends: there is no frame where a boot pops.
+ */
+const LEG_TUCK = 0.8;
+/** How fast the tuck comes on and lets go, per second. Faster in than out. */
+const ROLL_ON = 7;
+const ROLL_OFF = 4;
+/** Where the gut's centre sits above the sole, as a fraction of his height. */
+const GUT_CY_PER_H = 0.507;
+/**
  * ...and how fast it lets go when the player takes the stick back, per second.
  *
  * Slower than it came on, because standing up out of a roll is a recovery and
@@ -1090,6 +1173,24 @@ const SHOVE_OFF = 3.5;
  * Only Biggy. Voxxy and Droid are not balls, and a shoved Droid staying upright
  * and offended is the right picture for Droid.
  */
+/**
+ * Pull Biggy's legs up inside his own gut, by `k` (0 standing, 1 fully balled up).
+ *
+ * One scale on each thigh, which carries the shin and the boot with it because
+ * they hang off it: the whole leg shortens towards the hip joint, and the hip
+ * joint is already inside the sphere. Written EVERY frame — including at 0, and
+ * including while a party trick is playing — because the one thing a pose made of
+ * scale cannot survive is a frame that forgets to set it.
+ *
+ * Only Biggy has a gut to hide them in; the other two keep their legs.
+ */
+function tuckLegs(rig: RobotRig, k: number): void {
+  if (rig.kind !== 'biggy') return;
+  const s = 1 - LEG_TUCK * Math.max(0, Math.min(1, k));
+  rig.bones.thighL.scale.setScalar(s);
+  rig.bones.thighR.scale.setScalar(s);
+}
+
 function applyShove(
   rig: RobotRig,
   st: GaitState,
@@ -1103,11 +1204,71 @@ function applyShove(
   const pushed = shoved > 0.5;
   st.shove += ((pushed ? 1 : 0) - st.shove) * (1 - Math.exp(-(pushed ? SHOVE_ON : SHOVE_OFF) * dt));
   st.rollA = (st.rollA + (v * dt) / (rig.height * GUT_R_PER_H)) % TAU;
-  const w = st.shove * amp;
+  const b = rig.bones;
+
+  /*
+   * THE ROLL PROPER — he tucks up and the whole ball turns.
+   *
+   * `st.roll` has already taken the walk out (`applyGait`), so there is no stride
+   * to fight: the legs fold into the gut, the arms come in, and the body rotates
+   * about the GUT'S OWN CENTRE rather than about the floor between his boots.
+   * That distinction is the whole move. A rotation about the floor swings a robot
+   * round a point like a falling tree; a rotation about the centre of a ball, with
+   * the centre held one radius above the floor, IS rolling — and because `rollA`
+   * is integrated from distance (`v dt / r`), the surface turns at exactly the
+   * rate the floor goes past. No wheel slip, no animation on a timer.
+   *
+   * He also comes DOWN as he tucks: standing, the gut's centre is 0.735 m up and
+   * the ball's radius is 0.602, so a ball actually resting on the floor sits
+   * 13 cm lower than a ball carried on two legs. That drop is what sells the tuck.
+   */
+  if (st.roll > 0.01) {
+    const k = st.roll;
+    const gutC = rig.height * GUT_CY_PER_H;
+    const gutR = rig.height * GUT_R_PER_H;
+    // Legs in first: they are posed off the IK's own result, so blending toward
+    // the tuck rather than setting it keeps the transition continuous.
+    for (const L of ['L', 'R'] as const) {
+      const thigh = b[`thigh${L}`];
+      const shin = b[`shin${L}`];
+      const foot = b[`foot${L}`];
+      thigh.rotation.x += (-1.45 - thigh.rotation.x) * k;
+      shin.rotation.x += (2.1 - shin.rotation.x) * k;
+      foot.rotation.x += (0.5 - foot.rotation.x) * k;
+      const hip = b[`hip${L}`];
+      if (hip) hip.rotation.z += ((L === 'L' ? 0.35 : -0.35) - hip.rotation.z) * k;
+      // ...and the stubby arms come in against the gut, out of the floor's way.
+      const sh = b[`shoulder${L}`];
+      sh.rotation.x += (-0.5 - sh.rotation.x) * k;
+      sh.rotation.z += ((L === 'L' ? 0.45 : -0.45) - sh.rotation.z) * k;
+    }
+    // Down onto the ball, then the spin about its centre. `standH - gutC` is the
+    // pivot's depth below the pelvis, which is negative: the centre is ABOVE it.
+    rig.bones.pelvis.position.y -= (gutC - gutR) * k;
+    tipBiggy(rig, st.rollA * k, standH - gutC, 'x', 0);
+    /*
+     * The lid keeps its head, mostly.
+     *
+     * A full counter-rotation would weld his face to the camera and lose the roll;
+     * none at all tumbles him through a full revolution three times a second and
+     * loses HIM. 0.8 leaves a fifth of the turn on the lid, so the face rides
+     * round a little and comes back up — recognisable beats precise (CLAUDE.md),
+     * and what has to stay recognisable is the face.
+     */
+    b.head.rotation.x -= st.rollA * k * 0.8;
+    // Rolling has no footfalls.
+    if (k > 0.5) {
+      st.contact[0] = false;
+      st.contact[1] = false;
+    }
+  }
+
+  const w = st.shove * amp * (1 - st.roll);
   if (w < 0.01) return;
+  // Below the roll speed it is still the old weeble tip, which is what being
+  // nudged looks like: a lean and a wobble, not a revolution.
   const th = Math.sin(st.rollA) * ROLL_TIP * w - PUSH_LAG * w;
   tipBiggy(rig, th, standH, 'x', 0);
-  const b = rig.bones;
   // The lid tries to stay level and fails by about half — the same half it fails
   // by in the flourish, because it is the same lid on the same ball.
   b.head.rotation.x -= 0.45 * th;

@@ -108,18 +108,15 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
    */
   roller: { h: ROLLER_H, tl: true },
   /*
-   * And the registration gate, for the same reason and with the same history:
+   * And the stair nastri, for the same reason and with the same history:
    * `ch3-breakfast.ts` removes the `gate` wall in `done()` and goes on publishing
    * the prop, so a 1.1 m box at that rect was a barrier standing across a stair
-   * foot the sim had already opened. It swings back along the flight's west cheek
-   * now, and `propBox` asks `gateDraw`.
+   * foot the sim had already opened.
    *
-   * The box below is the LEAF. The gate's two posts do not move and are separately
-   * covered — by the `gate` wall while it is shut, and by `gateleaf`/`gatepost`
-   * once it is open — and a single box round leaf AND far post would claim the
-   * whole 8 m stair mouth as solid, which is the opposite of what this sweep is
-   * for. `tests/doors.test.ts` checks every rect `gateSolids` returns, posts
-   * included, against the wall list in both states.
+   * It is a line of belt posts now (`src/sim/nastri.ts`), and `propBox` below asks
+   * `gateDraw` for the belts that are still across it. Empty once the eighth has
+   * wound home, which is the roller door's answer to the same question: a prop with
+   * nothing left in the robot band claims nothing.
    */
   gate: { h: GATE_H, tl: true },
   lane: { h: 0.04, tl: true, flat: true },
@@ -140,12 +137,44 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
    * beer glass that is a metre off the floor without first walking into the bar.
    */
   'bar-counter': { h: 1.05 },
-  'beer-tap': { h: 0.34, lift: 1.05 },
-  'beer-glass': { h: 0.16, lift: 1.05 },
-  ladle: { h: 0.9, tl: true },
+  /*
+   * The taps and the glassware are modelled now (`drawTap`, `drawGlass` in
+   * src/render/scene.ts) — a tap with a spout and a handle, and the four Belgian
+   * silhouettes the sim names by number. Both still stand ON the counter, which is
+   * what `lift: 1.05` says and the only thing this sweep measures.
+   */
+  'beer-tap': { h: 0.51, lift: 1.05 },
+  'beer-glass': { h: 0.32, lift: 1.05 },
+  /*
+   * The kegs stand BEHIND the counter, inside the `bar-counter` rect, which is a
+   * `low` wall in the sim — so nothing can stand where they are and they need no
+   * collider of their own. That is asserted by the sweep rather than asked for:
+   * a keg that ever ends up in front of the bar fails here.
+   */
+  keg: { h: 0.64 },
+  /** Carried, like the pot: the glass Biggy raises when the bar is stocked. */
+  toast: { h: 0.48, lift: 0.9 },
+  /*
+   * The ladle is ON the shelf now, which is where it always was in the fiction.
+   *
+   * It was `{ h: 0.9, tl: true }` — a grey slab standing on the FLOOR under the
+   * shelf, in the middle of the robot band, which is why chapter 3's walk-through
+   * list carried it. Michele: *"Soup ladle should be visible - visual hint."* It is
+   * a modelled ladle sitting on the 1.35 m shelf slab `src/render/venue/ground.ts`
+   * builds, so its own band starts at `SHELF_TOP_H` and clears `BAND_HI` — nothing
+   * walks into a ladle on a shelf, which is the point of putting it there.
+   */
+  ladle: { h: 0.52, tl: true, lift: 1.41 },
   dropzone: { h: 0.04, tl: true, flat: true },
-  pot: { h: 0.45 },
-  soup: { h: 0.12 },
+  /*
+   * The pot and what is in it are CARRIED — chest height on the robot holding them
+   * (`POT_CARRY_H` in `src/render/scene.ts`), published at his own centre. Above
+   * the band, because the collider under a carried pot is the robot carrying it.
+   */
+  pot: { h: 0.3, lift: 0.95 },
+  soup: { h: 0.12, lift: 0.97 },
+  /** Spilled soup: a puddle, and a puddle is a decal. */
+  spill: { h: 0.02, flat: true },
   sign: { h: 2.2, fw: 4.8, fd: 0.14, lift: 2.2 },
   /* chapter 4 */
   cake: { h: 0.55 },
@@ -154,7 +183,7 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
   crowd: { h: 0.05, flat: true, fw: 2, fd: 2 },
   'banner-hook': { h: 0.25 },
   banner: { h: 1.1, tl: true },
-  spotlight: { h: 0.35 },
+  spotlight: { h: 0.5 },
   /*
    * A seat row is no longer a 0.55 m slab, and that is a real change, not a fudge.
    *
@@ -170,6 +199,12 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
    */
   seatrow: { h: SEAT_TOP_M, tl: true },
   seatblock: { h: SEAT_TOP_M, tl: true },
+
+  /* the shadow rig — `?chapter=5` only */
+  'lamp-pad': { h: 0.04, flat: true, fw: 1.3, fd: 1.3 },
+  photocell: { h: 0.28, fw: 0.4, fd: 0.4 },
+  'beam-sign': { h: 0.5, fw: 0.9, fd: 0.12, lift: 0.3 },
+  'sensor-bar': { h: 0.05, tl: true, flat: true },
   /*
    * Drawn by their own functions rather than from the table — `drawBreaker`,
    * `drawTerminal`, `drawCabinet`, `drawCrate`, `drawJammed`, the cable. Their
@@ -254,9 +289,28 @@ export function propBox(p: Prop): { rect: Rect; lo: number; hi: number } | null 
   if (p.kind === 'lock') {
     return { rect: lockDoorDraw(p, []).leaf.rect, lo: 0, hi: spec.h };
   }
-  /* ...and the stair gate's leaf. See its entry above for why the posts are not in here. */
+  /*
+   * ...and the stair nastri: the belts still clipped across it, as one box.
+   *
+   * The posts are deliberately NOT in here. A box round the belts AND the two end
+   * posts is the same box, but a box that included a post standing alone would
+   * claim a 15.76 m stair mouth as solid on the strength of a 13 cm column — the
+   * opposite of what this sweep is for. `tests/doors.test.ts` checks every rect
+   * `gateSolids` returns, posts included, against the sim's own wall list in both
+   * states, which is the measurement that actually matters.
+   *
+   * Mid-wave a single box does bridge a belt that has already wound home. That is
+   * the honest limit of one rect per prop, and it is why the per-belt check lives
+   * in `doors.test.ts` rather than here.
+   */
   if (p.kind === 'gate') {
-    return { rect: gateDraw(p, []).leaf.rect, lo: 0, hi: spec.h };
+    const up = gateDraw(p, []).belts.filter((b) => b.up);
+    if (up.length === 0) return { rect: { x: p.x, y: p.y, w: 0, h: 0 }, lo: 0, hi: 0 };
+    const x0 = Math.min(...up.map((b) => b.rect.x));
+    const y0 = Math.min(...up.map((b) => b.rect.y));
+    const x1 = Math.max(...up.map((b) => b.rect.x + b.rect.w));
+    const y1 = Math.max(...up.map((b) => b.rect.y + b.rect.h));
+    return { rect: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, lo: 0, hi: spec.h };
   }
   const wPx = p.w !== undefined ? p.w : (spec.fw ?? 0.8) * PX_PER_M;
   const dPx = p.h !== undefined ? p.h : (spec.fd ?? 0.8) * PX_PER_M;

@@ -220,19 +220,27 @@ describe('the beer delivery has its own path', () => {
   });
 
   /*
-   * A MEASUREMENT THAT IS NOT A PASS MARK, and a note for whoever owns the soup.
+   * THE SOUP'S GATE, WHICH IS NOW A GATE.
    *
-   * While measuring the beer's route this fill also measured the soup's gate, and
-   * the gate is softer than the chapter reads: a catering doorway is 44 px wide,
-   * the queue standing in it is two files 10 px apart, and at Biggy's radius that
-   * leaves a clear window of about 11 px of centre line beside the people — enough
-   * to drive through without Voxxy saying a word. Clearing the queue still helps,
-   * and that is what is asserted here: the window is strictly wider once they make
-   * way. The absolute "he cannot get in at all" is NOT asserted, because it is not
-   * true today and a test that claimed it would be a false pass.
+   * This test used to say the opposite, and said it on purpose: the same fill that
+   * measures the beer's path measured the soup's gate and found it soft. A catering
+   * doorway is 44 px, the queue standing in it was two files 10 px apart, and at
+   * Biggy's radius that left about 11 px of clear centre line beside the people —
+   * he could drive in and fill the pot without Voxxy saying a word. So the test
+   * asserted only that clearing a queue WIDENS the opening, and carried a comment
+   * saying why it did not assert the seal a reader expects.
+   *
+   * Michele, 26 Sep 2026: *"increase the queue but just the minimun needed."* One
+   * more person per queue, standing abreast of the first (`QUEUE_SPREAD` in
+   * `ch3-breakfast.ts`), and the doorway is shut to him: measured, the nearest
+   * floor he can reach is 136 px from the soup station against a `POT_REACH` of
+   * 70, and not one cell inside the catering court is reachable at all. Clear the
+   * queue and the same fill puts him 24 px from it.
    */
-  it('widens the catering doorway when Voxxy clears the queue — it does not seal it', () => {
+  it('seals the catering doorway against Biggy, and opens it when Voxxy clears the queue', () => {
     const g = mk();
+    const soup = g.snapshot().props.find((p) => p.kind === 'soup-station');
+    if (!soup) throw new Error('no soup station');
     // Everything here is read off the people standing in the doorway rather than
     // off a constant, so the measurement still means something if somebody moves
     // the catering block.
@@ -240,35 +248,63 @@ describe('the beer delivery has its own path', () => {
       .snapshot()
       .people.filter((p) => p.role === 'queue')
       .sort((p, q) => p.x - q.x);
-    const first = file.filter((p) => p.x <= file[0].x + 30);
-    const qx = first.reduce((a2, p) => a2 + p.x, 0) / first.length;
+    const qx = GF.food.court.x + (GF.food.gaps[0][0] + GF.food.gaps[0][1]) / 2 - GF.food.court.x;
+    expect(file.length).toBeGreaterThan(15);
     // The scan line is the doorway itself — the outer face of the catering block's
     // south wall, where the queue's front rank is what narrows the opening.
     const y = GF.food.court.y + GF.food.court.h + 3;
 
-    const window = (): number => {
-      const big = bot(g, 'biggy');
-      const snap = g.snapshot();
-      const walls = (snap.walls as Wall[]).filter((w) => !(w.skipFor && w.skipFor(big)));
-      const discs = snap.people.filter((p) => p.role === 'queue').map((p) => ({ x: p.x, y: p.y, r: p.r }));
-      const blocked = blockedGrid(walls, discs, R);
-      let best = 0;
-      let run = 0;
-      for (let x = qx - 45; x <= qx + 45; x++) {
-        run = blocked[cell({ x, y })] ? 0 : run + 1;
-        best = Math.max(best, run);
+    /** How near the soup he can actually get, walking from where he stands. */
+    const nearestToSoup = (blocked: Uint8Array): { best: number; inCourt: number } => {
+      const from = bot(g, 'biggy');
+      const seen = new Uint8Array(NX * NY);
+      const queue = new Int32Array(NX * NY);
+      let head = 0;
+      let tail = 0;
+      const s0 = cell(from);
+      expect(blocked[s0], 'Biggy is standing inside something').toBe(0);
+      seen[s0] = 1;
+      queue[tail++] = s0;
+      let best = Infinity;
+      let inCourt = 0;
+      while (head < tail) {
+        const c = queue[head++];
+        const i = c % NX;
+        const j = (c - i) / NX;
+        const p = at(i, j);
+        best = Math.min(best, Math.hypot(p.x - soup.x, p.y - soup.y));
+        if (inRectPt(p, GF.food.court)) inCourt++;
+        for (const k of [i + 1 < NX ? c + 1 : -1, i > 0 ? c - 1 : -1, j + 1 < NY ? c + NX : -1, j > 0 ? c - NX : -1]) {
+          if (k < 0 || blocked[k] || seen[k]) continue;
+          seen[k] = 1;
+          queue[tail++] = k;
+        }
       }
-      return best;
+      return { best, inCourt };
     };
 
-    const shut = window();
+    /*
+     * The measure is the FILL, not a scan line across the opening. A scan line
+     * three pixels outside the wall is open floor in both states and says nothing:
+     * it reported 11 px through the old gate and 7 px through the sealed one,
+     * because the rank stands ten pixels inside the doorway and the line was
+     * measuring the shadow it casts, not the way through. What decides whether
+     * Biggy gets his soup is whether a body his size can WALK there.
+     */
+    const before = nearestToSoup(biggyGrid(g).blocked);
+    expect(before.inCourt, 'Biggy can walk into the catering court past the queue').toBe(0);
+    // The pot's own reach is 70 px; this is the number that makes the gate a gate.
+    expect(before.best, `Biggy can get ${Math.round(before.best)} px from the soup`).toBeGreaterThan(100);
+
     g.debug.select('voxxy');
     g.debug.place('voxxy', qx, y + 20);
     g.key('KeyE');
     expect(breakfastOf(g).queues.some((q) => q.open > 0), 'Voxxy did not clear a queue').toBe(true);
     for (let i = 0; i < 40; i++) g.update(DT_MAX);
-    const open = window();
-    expect(open, `doorway window ${shut}px shut, ${open}px open`).toBeGreaterThan(shut);
+
+    const after = nearestToSoup(biggyGrid(g).blocked);
+    expect(after.inCourt, 'the cleared queue does not let him in').toBeGreaterThan(0);
+    expect(after.best, `${Math.round(after.best)} px from the soup with the queue aside`).toBeLessThan(70);
   });
 
   it('puts the bar outside the catering block, and makes its counter solid', () => {
@@ -338,23 +374,34 @@ describe('the bar reads as a bar', () => {
     for (const r of after) expect(r.state).toBe('done');
   });
 
-  it('wears the same halo on the soup mark, so one ring means one thing', () => {
+  /**
+   * Every labelled mark in the chapter wears the same ring.
+   *
+   * There are three now — the beer's, the soup's and, since Michele's *"the
+   * speaker should also go to stephan"*, the speaker's beside it. The ring pieces
+   * carry no label of their own, so each mark is matched to the four strips that
+   * lie inside its own rect grown by `HALO_W`: two marks a body's length apart
+   * used to answer this question with seven, which was the test's window being
+   * loose rather than the ring being wrong.
+   */
+  it('wears the same halo on every mark, so one ring means one thing', () => {
     const g = mk();
-    const soupMark = g.snapshot().props.find((p) => p.kind === 'dropzone' && (p.label ?? '').includes('soup'));
-    expect(soupMark, 'no soup drop mark').toBeTruthy();
-    const m = soupMark as Prop;
-    const ring = g
-      .snapshot()
-      .props.filter(
+    const HALO_W = 3;
+    const props = g.snapshot().props;
+    const marks = props.filter((p) => p.kind === 'dropzone' && p.label !== undefined);
+    expect(marks.length, 'chapter 3 should mark the beer, the soup and the speaker').toBe(3);
+    for (const m of marks) {
+      const ring = props.filter(
         (o) =>
           o.kind === 'dropzone' &&
           o.label === undefined &&
-          o.x >= m.x - 8 &&
-          o.x <= m.x + (m.w ?? 0) + 8 &&
-          o.y >= m.y - 8 &&
-          o.y <= m.y + (m.h ?? 0) + 8,
+          o.x >= m.x - HALO_W &&
+          o.x + (o.w ?? 0) <= m.x + (m.w ?? 0) + HALO_W &&
+          o.y >= m.y - HALO_W &&
+          o.y + (o.h ?? 0) <= m.y + (m.h ?? 0) + HALO_W,
       );
-    expect(ring).toHaveLength(4);
+      expect(ring, `no ring round “${m.label}”`).toHaveLength(4);
+    }
   });
 
   it('puts an invented Belgian brewery on every crate, and says it out loud', () => {
@@ -478,5 +525,84 @@ describe('playing the delivery', () => {
     for (const c of stacked) expect(inRectPt({ x: c.x, y: c.y }, mark), 'the stack grows where the player stands').toBe(false);
     // Piled, not spread: three wide and two layers deep.
     expect(new Set(stacked.map((c) => c.v)).size).toBe(2);
+  });
+});
+
+/* ======================================================== the bar pays off */
+
+/**
+ * WHAT HAPPENS WHEN THE SIXTH CRATE LANDS.
+ *
+ * Michele, 28 Sep 2026: *"When all is delivered, something should happen (Spiller
+ * start and biggy toasts?)"* — *spillare*, to pour. Until this round the last
+ * crate set a flag, printed a line, and left the bar exactly as it had been since
+ * the chapter opened: three taps that had always said "ready", four glasses that
+ * were always empty, and a robot who walked away.
+ *
+ * The payoff is one clock in `ch3-breakfast.ts` (`beerAt`) and everything reads
+ * off it, which is what these tests pin: a beat of nothing, then the taps run and
+ * the glassware fills together, then Biggy raises one and puts it down again. The
+ * renderer owns none of the timing — it draws a stream when a tap's `v` is between
+ * 0 and 1, and that is the whole of its judgement.
+ */
+describe('the bar pays off when the last crate lands', () => {
+  const taps = (g: DebugGame): Prop[] => g.snapshot().props.filter((p) => p.kind === 'beer-tap');
+  const pour = (g: DebugGame): number => Math.max(...taps(g).map((p) => p.v ?? 0));
+  const toastProp = (g: DebugGame): Prop | undefined => g.snapshot().props.find((p) => p.kind === 'toast');
+  const run = (g: DebugGame, seconds: number): void => {
+    for (let i = 0; i * DT_MAX < seconds; i++) g.update(DT_MAX);
+  };
+
+  it('keeps the taps shut until the delivery is finished', () => {
+    const g = mk();
+    run(g, 3);
+    expect(pour(g)).toBe(0);
+    expect(toastProp(g)).toBeUndefined();
+    // ...and the glasses are all empty, which is the state the renderer fills from.
+    for (const gl of g.snapshot().props.filter((p) => p.kind === 'beer-glass')) expect(gl.state).toBe('active');
+  });
+
+  it('runs the taps and fills the glassware on one clock', () => {
+    const g = mk();
+    clearTheDelivery(g);
+    expect(breakfastOf(g).beer.done).toBe(true);
+    // The beat first: a tap that opens on the same frame as the flash line reads
+    // as part of the HUD rather than as something happening in the room.
+    expect(pour(g)).toBe(0);
+    run(g, 1.2);
+    const started = pour(g);
+    expect(started).toBeGreaterThan(0);
+    expect(started).toBeLessThan(1);
+    run(g, 4);
+    expect(pour(g)).toBe(1);
+    // All three taps run together — one clock, three taps.
+    const vs = taps(g).map((p) => p.v ?? 0);
+    expect(new Set(vs.map((v) => v.toFixed(6))).size).toBe(1);
+    for (const gl of g.snapshot().props.filter((p) => p.kind === 'beer-glass')) expect(gl.state).toBe('done');
+  });
+
+  it('has Biggy raise one, once, and put it down again', () => {
+    const g = mk();
+    clearTheDelivery(g);
+    const big = (): Bot => bot(g, 'biggy');
+    expect(toastProp(g)).toBeUndefined();
+    run(g, 3);
+    const held = toastProp(g);
+    expect(held, 'Biggy never raised a glass').toBeTruthy();
+    // It is in his hand, not on the floor across the hall: the sim publishes it at
+    // his own centre and the renderer puts it where a hand is.
+    expect(Math.hypot((held as Prop).x - big().x, (held as Prop).y - big().y)).toBeLessThan(1);
+    // And it is a flourish on the robot, not a line in the HUD.
+    expect(big().flair ?? 0).toBeGreaterThan(0);
+    run(g, 8);
+    expect(toastProp(g), 'the glass never came down').toBeUndefined();
+  });
+
+  it('pours three kegs of it, behind the counter where nothing can stand', () => {
+    const g = mk();
+    const bar = g.snapshot().walls.find((w) => w.kind === 'bar') as Wall;
+    const kegs = g.snapshot().props.filter((p) => p.kind === 'keg');
+    expect(kegs.length).toBeGreaterThanOrEqual(2);
+    for (const k of kegs) expect(inRectPt({ x: k.x, y: k.y }, bar)).toBe(true);
   });
 });

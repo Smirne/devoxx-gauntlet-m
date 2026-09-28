@@ -55,7 +55,7 @@
  * is how the rest of this game works.
  */
 
-import { PUSH_LEAN_MIN, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
+import { BIGGY_ROLL_DUR, FACE_MIN_SPEED, PUSH_LEAN_MIN, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
 import {
   CRATE_DELIVERY,
   CRATE_DRAG,
@@ -75,6 +75,8 @@ import {
   loadBiggy,
 } from '../crates';
 import { BAR_RECT, GF, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
+import { LANYARD } from '../lanyards';
+import { beltUp, nastriRun } from '../nastri';
 import { botsCollide, circleRect, dist, inRect, mkBody, speed, standOff, stepBot } from '../bot';
 import type { Bot, Person, Prop, Rect, Task, Vec2, Wall } from '../types';
 
@@ -102,6 +104,16 @@ const CRAB_REACH = 46;
 const QUEUE_OPEN = 5 * TRAVEL_TIME_SCALE;
 /** Sideways shuffle of a queue that is making way. */
 const QUEUE_STEP = 30;
+/**
+ * How far either side of the queue's centre line the FRONT RANK stands.
+ *
+ * A catering doorway is 44 px and a queuer is 6, so a body at 11 px off centre
+ * blocks Biggy's centre (r 9) from 76 to 106 px; the pair of them covers the whole
+ * opening with 4 px to spare at each jamb. Measured, not chosen: at the old 5 px
+ * the two files left an 11 px window of clear centre line beside them. See
+ * `mkQueue`, and `tests/beer-bar.test.ts`, which does the fill.
+ */
+const QUEUE_SPREAD = 11;
 /**
  * Seconds for the soup to go from boiling to stone cold.
  *
@@ -138,6 +150,8 @@ const SPAWN_EVERY = 0.55;
 const BOWL_OVER = 110 * SPEED_SCALE;
 /** The jerk that counts as "Biggy hit something" while he is carrying the pot. px/s. */
 const SPILL_DV = 90 * SPEED_SCALE;
+/** How many spills stay on the floor. The oldest goes first — see `stains`. */
+const MAX_STAINS = 14;
 const SPILL_MIN_SPEED = 60 * SPEED_SCALE;
 /** The speaker's walking pace once Voxxy has talked them out from behind the booth. px/s. */
 const SPEAKER_WALK = 150 * SPEED_SCALE;
@@ -239,6 +253,72 @@ const inFrontOf = (b: Rect): Vec2 => ({ x: b.x + b.w / 2, y: b.y + b.h + 14 });
  * two spots have to be further apart than one of her plus the slack a player leaves.
  */
 const SPEAKER_CLEAR = 24;
+/**
+ * How long a visitor has to be grazing built fabric without gaining ground before
+ * the leg they are walking, rather than the crowd around them, is what gets blamed.
+ * Half a second: long enough to thread a door bay, short enough that nobody crawls
+ * the face of a booth for a visible moment. See `stepVisitor`.
+ */
+const GRAZE_STALL = 0.5;
+/**
+ * ...and how long they get when nothing is grazed and it is simply the crowd.
+ *
+ * Longer, because a stream of people threading a doorway is SUPPOSED to be slow
+ * and a person who re-routes at the first shoulder never gets anywhere. Two
+ * seconds of no ground gained is not a slow queue, it is a knot — Michele's
+ * photograph of fourteen of them stopped along the threshold. See `stepVisitor`.
+ */
+const CROWD_STALL = 2;
+/**
+ * How close a robot stands to a queue before `E` means "make way", sim px.
+ *
+ * 44, which is the doorway's own width and the distance `tests/beer-bar.test.ts`
+ * has always asked from: it parks Voxxy 33 px south of the front rank, walks
+ * Biggy's own grid through the gap afterwards, and that test is the acceptance
+ * criterion for this beat.
+ */
+const QUEUE_ASK = 44;
+/**
+ * How close Biggy gets to Stephan before Stephan simply takes the pot, sim px.
+ *
+ * 34 is a long arm's reach at this scale — 2.7 m — and it is deliberately bigger
+ * than the mark on the floor. Michele: *"He could also get it on it's own when
+ * it's near."* A man who has been asking for soup for ten minutes does not make
+ * you park it in a box first.
+ */
+const SOUP_HANDOVER = 34;
+/**
+ * ...and how close the keynote speaker gets before Stephan claims them, sim px.
+ *
+ * The same idea one step further out (38 px, 3 m): a pot has to be handed over
+ * and a person only has to arrive, and the walk is Voxxy's rather than theirs —
+ * a follower who has to thread a box while the robot she is following stands in
+ * it is the fiddliest thing in the chapter. Michele, 28 Sep 2026: *"the speaker
+ * should also go to stephan."*
+ */
+const SPEAKER_HANDOVER = 38;
+/**
+ * The keynote speaker's teal — hoodie, cap and lanyard, all of it.
+ *
+ * `LANYARD.speaker` is this colour and nothing else in the hall wears it. At the
+ * zoom this game is played at a person is thirty pixels tall, so one colour worn
+ * head to foot is the only kind of "recognisable" that survives, and it is what
+ * Michele asked for when he could not find them: *"therse should also be
+ * something recognizable about thim."*
+ */
+const SPEAKER_TEAL = '#1f9e9b';
+/** Stephan's polo: the dark olive one, off the photograph he sent. */
+const STEPHAN_POLO = '#434a3c';
+/** ...and its collar stripe, which is the half of it that reads at this size. */
+const DEVOXX_ORANGE = '#e8a01c';
+/** Celestino's crew raglan — the orange half of it; the trim is the white. */
+const CREW_ORANGE = '#e0692a';
+/** How far in front of the reception counter an arrival stands to be served, px. */
+const BADGE_STAND = 11;
+/** ...and how long that takes. A badge desk is quick; it is a queue that is slow. */
+const BADGE_DWELL = 1.1;
+/** How near that line counts as being at the desk, sim px. */
+const BADGE_REACH = 22;
 /** How close a robot has to get to the pallet to read what is printed on the wrap. */
 const LABEL_REACH = 90;
 /** The middle of the stack zone, and how close to it counts as "on the mark". */
@@ -261,6 +341,24 @@ const STACK_STEP = 13;
  */
 const BAR_TOP = BAR.y + BAR.h - 7;
 const TAPS: readonly Vec2[] = [352, 368, 384].map((x) => ({ x, y: BAR_TOP }));
+/**
+ * The pour, in seconds: the beat before the taps run, how long they run for, when
+ * Biggy raises his, and how long he holds it up.
+ *
+ * Real seconds and not px/s, so the 23 Sep rescale does not touch them. The beat
+ * exists because a tap that starts on the same frame as the flash line reads as
+ * part of the HUD rather than as something happening in the room.
+ */
+const POUR_LEAD = 0.7;
+const POUR_RUN = 3.4;
+const TOAST_AT = 2.2;
+const TOAST_HOLD = 3.4;
+/**
+ * The kegs behind the bar. BEHIND it: the counter is a `low` wall, so nothing can
+ * stand where these are, which is both what a cellar looks like and why they need
+ * no collider of their own.
+ */
+const KEGS: readonly Vec2[] = [344, 358, 420].map((x) => ({ x, y: BAR.y + 7 }));
 /** Belgian glassware, one shape per beer. */
 const GLASSES: readonly Vec2[] = [400, 408, 416, 424].map((x) => ({ x, y: BAR_TOP }));
 
@@ -362,6 +460,10 @@ interface Visitor extends Bot {
   dwell: number;
   hitCd: number;
   colour: string;
+  /** Seconds spent grazing built fabric without getting any closer. See `stepVisitor`. */
+  stall: number;
+  /** Have they been past Celestino's desk yet? See `arrivalLegs`. */
+  badge: boolean;
 }
 
 interface QueuePerson {
@@ -433,7 +535,12 @@ interface Minigames {
   won(): number;
 }
 
-function setupMinigames(ctx: ChapterCtx): Minigames {
+/**
+ * `hints()` is the chapter's own task list, handed in as a function because the
+ * rubber duck reads it and `tasks()` is defined further down `setup`. Nothing here
+ * decides what a hint says — the duck repeats the chapter's own line back at you.
+ */
+function setupMinigames(ctx: ChapterCtx, hints: () => readonly Task[]): Minigames {
   const booth = (name: string): { x: number; y: number; w: number; h: number } => {
     const b = GF.booths.find((o) => o.name === name);
     if (!b) throw new Error(`no booth ${name}`);
@@ -482,6 +589,25 @@ function setupMinigames(ctx: ChapterCtx): Minigames {
     drag: 1.1,
   });
   const duckTarget = { x: duckB.x - 85, y: duckB.y - 30, r: 22 };
+  /** Where the duck sits before anybody shoves it — the only place it listens. */
+  const duckHome: Vec2 = { x: duck.x, y: duck.y };
+  /**
+   * How close a robot has to be to rubber-duck at it, px, and how far the duck may
+   * have wandered from its stand and still be a duck you talk to.
+   *
+   * Michele, 26 Sep 2026, from the list of cheap extras: *"Let's try 5 6 7 too"* —
+   * number 5 was **the duck listens**. Rubber-duck debugging is the oldest joke in
+   * the building and the only one that is also a game mechanic: you say the problem
+   * out loud and the answer turns up on its own. So the duck gives you the same line
+   * `H` gives you, in the robot's voice, for whatever the chapter is waiting on.
+   *
+   * It only works while the duck is still ON its stand, and that is not a
+   * restriction, it is the honest reading: once it has been shoved down the lane it
+   * is a puck. It also keeps `keySpots` a fixed circle, so the chapter's own beats
+   * can be kept out of it the way they are kept out of the sticker's.
+   */
+  const DUCK_REACH = 26;
+  const DUCK_HOME_SLACK = 30;
   // Swag already won stays won: `ctx.swag` outlives the chapter object, so a
   // replay of chapter 3 (R, or Skip back into it) does not re-award anything.
   let duckDone = ctx.swag.includes('duck');
@@ -515,8 +641,37 @@ function setupMinigames(ctx: ChapterCtx): Minigames {
    * A gate, so each robot says why in its own voice (CLAUDE.md) — and now there is
    * somebody behind the counter who could hand it down and is enjoying not to.
    */
+  /** The line the duck answers with: the chapter's own hint for what is still open. */
+  function duckHint(b: Bot): string {
+    const open = hints().filter((t) => !t.done);
+    // The one this robot can actually do, if there is one — a hint about somebody
+    // else's job is a hint about the wrong problem (`Task.hint`).
+    const mine = open.find((t) => t.who?.includes(b.kind)) ?? open[0];
+    if (!mine) return 'Biggy: "Everything is done." The duck agrees.';
+    const line = Array.isArray(mine.hint) ? mine.hint[0] : mine.hint;
+    return typeof line === 'string' && line.length > 0 ? line : `Still open: ${mine.text}.`;
+  }
+
   function key(code: string, b: Bot): boolean {
     if (code !== 'KeyE') return false;
+
+    /*
+     * RUBBER-DUCK DEBUGGING, at the stand that sells them. The robot says the
+     * problem out loud to a plastic duck; the duck says nothing; the robot works
+     * it out. The line it "works out" is the chapter's own hint, so this can never
+     * drift from what `H` would have said.
+     */
+    if (dist(b, duck) < DUCK_REACH && dist(duck, duckHome) < DUCK_HOME_SLACK) {
+      const said =
+        b.kind === 'voxxy'
+          ? 'Voxxy explains the whole thing to a rubber duck, at speed. The duck says nothing.'
+          : b.kind === 'droid'
+            ? 'Droid states the problem to the duck, twice, in order. The duck declines to comment.'
+            : 'Biggy tells the duck everything. The duck looks up at him and waits.';
+      ctx.flash(`${said}<br>${duckHint(b)}`, 6000);
+      return true;
+    }
+
     if (!stickerDone && dist(b, sticker) < STICKER_REACH) {
       if (b.kind === 'droid') {
         stickerDone = true;
@@ -636,7 +791,12 @@ function setupMinigames(ctx: ChapterCtx): Minigames {
     key,
     // Only the sticker swallows `E`. The duck is shoved by driving into it and the
     // race is started by crossing its own line, so neither owns a key anywhere.
-    keySpots: () => [{ x: sticker.x, y: sticker.y, r: STICKER_REACH }],
+    keySpots: () => [
+      { x: sticker.x, y: sticker.y, r: STICKER_REACH },
+      // The duck's stand. The duck itself moves; the circle where it answers to
+      // `E` does not, which is what lets the chapter's beats be kept out of it.
+      { x: duckHome.x, y: duckHome.y, r: DUCK_REACH },
+    ],
     update,
     props,
     place(kind: string, x: number, y: number): boolean {
@@ -666,7 +826,7 @@ export interface BreakfastState {
   /** Has anybody walked up to the crab sandwich yet. Flavour, and a test hook. */
   crabFound: boolean;
   complaints: number;
-  speaker: { following: boolean; onStage: boolean; booth: string };
+  speaker: { following: boolean; withStephan: boolean; booth: string };
   queues: Array<{ label: string; open: number }>;
   gateOpen: boolean;
   /** 0..1, how far Stephan has walked the barrier back. See `GATE_SWING_TIME`. */
@@ -698,7 +858,7 @@ const OBJECTIVE =
   'speaker at a built booth. The sponsor booths are open and running their games: three bits of ' +
   '<b>swag</b> to be won on the way, all optional.';
 const KEYS =
-  '1/2/3/Tab: switch · WASD · E: use / lift / ask / clear a queue / play a game / tow Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint';
+  '1/2/3/Tab: switch · WASD · E: use / lift / ask / clear a queue / play a game / tow Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');
@@ -735,18 +895,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * `play`, still driveable — for the swing plus this, and only then hands over.
    */
   const GATE_CUT_DELAY = 0.5;
-  /** The barrier's own thickness. Matches `GATE_LEAF_T` in `src/render/doors.ts`. */
-  const GATE_LEAF_T = 4;
-  /**
-   * ...and how wide the opening in it is (`GATE_MOUTH` in `src/render/doors.ts`).
+  /*
+   * The barrier itself is `src/sim/nastri.ts` — nine belt posts and eight webbing
+   * belts, with every position, the release order and each belt's own retraction in
+   * that one module.
    *
-   * Both numbers are duplicated rather than imported because `src/sim` may not
-   * read `src/render` (CLAUDE.md). `tests/doors.test.ts` asserts the two copies
-   * against each other so they cannot drift.
+   * It used to be three numbers copied out of `src/render/doors.ts` with a test
+   * holding the copies against each other, because `src/sim` may not read
+   * `src/render` (CLAUDE.md). The arithmetic moved the other way instead: the belts
+   * are colliders as well as a picture, so the sim owns them and the renderer reads
+   * the sim, which is the direction that was always allowed.
    */
-  const GATE_MOUTH = 44;
-  const GATE_POST_R = 1.6;
-
   const gate: Wall = {
     ...GF.gate,
     kind: 'gate',
@@ -764,76 +923,57 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /** Sim time the exit cutscene starts, once Stephan has opened up. -1 until then. */
   let leaveAt = -1;
   /*
-   * WHERE THE BARRIER ENDS UP, and what it leaves behind.
+   * WHAT IS LEFT WHEN IT IS OPEN, and what goes away as it opens.
    *
-   * The rects `gateDraw` poses at `progress = 1` (`src/render/doors.ts`), which
-   * since the staircase was turned to face the entrance is a **gate in a run of
-   * barrier** rather than one enormous leaf: the flight is 197 px — 15.7 m —
-   * across its foot, and the 55 px of concourse between it and the glazed wall has
-   * nowhere to put a leaf that long. `GATE_MOUTH` is the opening; the leaf is that
-   * wide, hinged on its north post and swung a quarter turn EAST into the
-   * concourse; both posts stay, and so does the barrier either side.
+   * Michele, 27 Sep 2026, on the steel run this replaced: *"Stephan is powerful,
+   * but i don't think he can remove a wall. I'd use something simpler, like
+   * «Nastri»"*, and then *"We could also have some kind of scene/effect where
+   * stephan pull one spot and the 8 nastri retract one by one."*
    *
-   * East rather than into the shaft, because the flight starts climbing at this
-   * line and is 3.9 m up within the leaf's own length (`groundPlates`): a barrier
-   * lying in there would be buried in the treads, and the transition walks three
-   * robots up the middle of it a second and a half later. Out here it lies flat on
-   * the lobby floor with 11 px to spare in front of the glazing, and nothing in
-   * the cutscene goes near it.
+   * So: the nine posts STAY, for good — they are 13 cm of chrome each and a venue
+   * leaves them standing all day. The eight belts go, one at a time, each on the
+   * frame it finishes winding into its own post (`beltUp`). Between the posts there
+   * is 1.94 m of clear floor, which is what gives the flight back: the widest robot
+   * in the game is 1.44 m across.
+   *
+   * `pullT` is 0.5 because that is where Stephan stands — `stephan` below is at the
+   * middle of this line — so the release runs outward from his hand in both
+   * directions, alternating, and no two belts share a rank.
    */
-  const gateX = GF.gate.x + GF.gate.w / 2;
-  /** The middle of the barrier: where the opening is, and where Stephan stands. */
-  const gateMouthY = GF.gate.y + (GF.gate.h - GATE_MOUTH) / 2;
-  const gateOpenWalls: Wall[] = [
-    // The leaf, swung a quarter turn east into the concourse and resting there.
-    {
-      x: gateX - GATE_LEAF_T / 2,
-      y: gateMouthY - GATE_LEAF_T / 2,
-      w: GATE_MOUTH + GATE_LEAF_T,
-      h: GATE_LEAF_T,
-      kind: 'gateleaf',
+  const run = nastriRun(GF.gate, 0.5);
+  const gatePostWalls: Wall[] = run.postRects.map(
+    (r): Wall => ({
+      ...r,
+      kind: 'gatepost',
       flavour: true,
-    why: (b) => `${b.name}: that is the gate itself, walked back out of the way. The way up is beside it`,
+      why: (b) =>
+        b.kind === 'voxxy'
+          ? `${b.name}: a belt post. Thirteen centimetres of chrome, and there is nearly two metres of floor either side of it`
+          : b.kind === 'droid'
+            ? `${b.name}: the post stays. The belt was the barrier; this is what held it`
+            : `${b.name}: post. I am wider than most things and still narrower than that gap — line up and go through`,
+    }),
+  );
+  /**
+   * The belts, each with the rank that says when it lets go.
+   *
+   * `live` is the wall while it is still across the line and `null` once `update`
+   * has taken it away, so the list stays parallel to what the renderer is drawing
+   * from the same `gateSwing` — one number, two readers, no second opinion.
+   */
+  const gateBeltWalls: Array<{ rank: number; live: Wall | null }> = run.belts.map((n) => ({
+    rank: n.rank,
+    live: {
+      ...n.rect,
+      kind: 'gatebelt',
+      why: (b) =>
+        b.kind === 'voxxy'
+          ? `${b.name}: that one is still clipped. Wait — Stephan is working down the line`
+          : b.kind === 'droid'
+            ? `${b.name}: this nastro has not wound in yet. Four seconds of patience, at most`
+            : `${b.name}: a webbing belt would not stop me, and I am not going to be the robot that finds out in front of Stephan`,
     },
-    // Both posts stay. So does the rest of the barrier, either side of the
-    // opening: Stephan opened a gate, he did not take the stair's whole front off.
-    ...[gateMouthY, gateMouthY + GATE_MOUTH].map(
-      (y): Wall => ({
-        x: gateX - GATE_POST_R,
-        y: y - GATE_POST_R,
-        w: GATE_POST_R * 2,
-        h: GATE_POST_R * 2,
-        kind: 'gatepost',
-        flavour: true,
-        why: (b) => `${b.name}: the gate post. It stays where it is`,
-      }),
-    ),
-    ...(
-      [
-        [GF.gate.y, gateMouthY],
-        [gateMouthY + GATE_MOUTH, GF.gate.y + GF.gate.h],
-      ] as const
-    )
-      .filter(([a, b]) => b - a > 0.5)
-      .map(
-        ([a, b]): Wall => ({
-          x: gateX - GATE_LEAF_T / 2,
-          y: a,
-          w: GATE_LEAF_T,
-          h: b - a,
-          /*
-           * `gatebar`, NOT `gate`. `openness()` in `src/render/doors.ts` reads the
-           * wall list for a `gate` to decide whether the barrier is still sealed,
-           * so leaving these two runs under that kind told the renderer the gate
-           * had never opened and drew the leaf shut across its own opening — with
-           * nothing in the sim behind it, which `tests/colliders.test.ts` catches
-           * as a wall you can walk through.
-           */
-          kind: 'gatebar',
-          why: (bot) => `${bot.name}: the barrier still runs the width of the stair. The gate is the gap in the middle`,
-        }),
-      ),
-  ];
+  }));
 
   /*
    * The bar itself, as a collider.
@@ -859,12 +999,27 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           : `Biggy: "I have been through a bar before. They still talk about it. Round the end."`,
   });
 
-  const mg = setupMinigames(ctx);
+  const mg = setupMinigames(ctx, () => tasks());
 
   const food = GF.food;
   const station: Vec2 = { x: food.soup.x + 45, y: food.soup.y + 15 };
   const shelfAt: Vec2 = { x: food.shelf.x + 11, y: food.shelf.y + 8 };
   let ladle = false;
+  /**
+   * WHERE THE SOUP WENT — one stain on the floor per splash, and they stay.
+   *
+   * Michele, 28 Sep 2026: *"Soup graphics(including spilling and leaving spill on
+   * the ground"*. A spill that only prints a line in the flash bar is a number
+   * going down; a spill that leaves a puddle at the corner Biggy clipped is the
+   * chapter telling its own story back to the player, and by the third batch the
+   * route he keeps getting wrong is drawn on the floor in tomato.
+   *
+   * The sim owns them because they are facts about the run, not decoration: the
+   * position is where the body was when it happened, and the radius is how much
+   * came out. `MAX_STAINS` is a memory bound and nothing more — the oldest goes
+   * when the list is full, which is also the one furthest back in the story.
+   */
+  const stains: Array<{ x: number; y: number; r: number }> = [];
   let carrying = false;
   let delivered = false;
   let soup = 100;
@@ -899,20 +1054,36 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /* --------------------------------------------------------------- the queues */
 
   const queues: Queue[] = [];
+  /**
+   * One queue: a FRONT RANK across the doorway, and a tail of singles behind it.
+   *
+   * The rank is the gate. Michele had already ruled on the gate itself — *"That is
+   * a good gate and it stays"* — but the fill in `tests/beer-bar.test.ts` measured
+   * what was actually standing there: two files 10 px apart in a 44 px doorway,
+   * which at Biggy's radius leaves an 11 px window of clear centre line beside
+   * them. He could drive in and fill the pot without Voxxy saying a word, and the
+   * test said so in a comment rather than asserting a seal that was not true.
+   *
+   * Michele, 26 Sep 2026: *"increase the queue but just the minimun needed."* The
+   * minimum is ONE extra person per queue. Two of them abreast at `QUEUE_SPREAD`
+   * either side of the centre line each block Biggy's centre within 15 px, and
+   * 2 x 15 px overlapping across a 44 px opening leaves nothing to drive through.
+   * Everybody behind them stands as they always did — a queue is a file, not a
+   * phalanx, and widening the whole thing would read as a wall of people.
+   *
+   * The same pair is what makes the clearing worth something: shifted `QUEUE_STEP`
+   * west they take the west half of the doorway with them and leave the east half
+   * open, which is the beat — Voxxy asks, the queue shuffles, Biggy gets in.
+   */
   const mkQueue = (x0: number, n: number, label: string): void => {
     const q: Queue = { label, x: x0, people: [], open: 0 };
-    for (let i = 0; i < n; i++) {
-      const x = x0 + (i % 2 ? 5 : -5);
-      q.people.push({
-        seed: nextSeed++,
-        x,
-        hx: x,
-        y: food.court.y + food.court.h - 10 - i * 16,
-        r: 6,
-        colour: QUEUE_COLOURS[(i * 7) % 4],
-        cd: 0,
-      });
-    }
+    const front = food.court.y + food.court.h - 10;
+    const stand = (x: number, y: number, i: number): void => {
+      q.people.push({ seed: nextSeed++, x, hx: x, y, r: 6, colour: QUEUE_COLOURS[(i * 7) % 4], cd: 0 });
+    };
+    stand(x0 - QUEUE_SPREAD, front, 0);
+    stand(x0 + QUEUE_SPREAD, front, 1);
+    for (let i = 1; i < n; i++) stand(x0 + (i % 2 ? 5 : -5), front - i * 16, i + 1);
     queues.push(q);
   };
   mkQueue(102, 7, 'soup queue');
@@ -937,6 +1108,29 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       line: 'Stephan is at the main staircase, arms crossed. He is not opening it before his soup.',
     },
     { x: 370, y: 215, r: 8, name: 'Devoxx crew', line: 'Mind the coffee queue with that pot. It bites.' },
+    /*
+     * CELESTINO, ON THE DESK.
+     *
+     * Michele, 27 Sep 2026, with a photograph of him in the crew raglan:
+     * *"People should maybe pass at the reception to get a badge. Celestino should
+     * be there."* Both halves are here — he is behind the counter, and every one
+     * of the three thousand now walks past him on the way in and comes away
+     * wearing a lanyard (`arrivalLegs`).
+     *
+     * First name and a caricature, the same rule Stephan gets: an orange-and-white
+     * crew raglan, a crew-red ribbon, and the one job in the building that never
+     * stops. Nothing here needs anybody's permission.
+     */
+    {
+      x: GF.reception.x + GF.reception.w * 0.62,
+      y: GF.reception.y + GF.reception.h * 0.42,
+      r: 8,
+      name: 'Celestino',
+      line: 'Badges here! Wardrobe behind me, rooms are upstairs when Stephan says so. You three are not on my list, but go on.',
+      colour: CREW_ORANGE,
+      collar: '#f2efe9',
+      face: Math.PI / 2,
+    },
   ];
 
   /*
@@ -965,7 +1159,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     (b) => !b.table && !noGo.some((s) => Math.hypot(inFrontOf(b).x - s.x, inFrontOf(b).y - s.y) < s.r + SPEAKER_CLEAR),
   );
   const hideBooth = built[Math.floor(ctx.rng() * built.length)];
-  const speaker = { ...inFrontOf(hideBooth), r: 7, following: false, onStage: false };
+  const speaker = { ...inFrontOf(hideBooth), r: 7, following: false, withStephan: false, sp: 0, face: Math.PI / 2 };
 
   /*
    * Stephan, and the spot the soup has to reach him.
@@ -982,16 +1176,41 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const gateMidY = GF.gate.y + GF.gate.h / 2;
   const stephan = { x: stair.x + stair.w + 26, y: gateMidY, r: 8 };
   /*
-   * The stage stays SOUTH of the stair, where it always was.
+   * THE SPEAKER GOES TO STEPHAN TOO. Michele, 28 Sep 2026: *"the speaker should
+   * also go to stephan."*
    *
-   * Stephan moved to the east face with the gate; the stage did not follow him,
-   * because it cannot: the concourse east of the flight is 49 px — 3.9 m — of
-   * clear floor between the barrier and the glazed wall, which is a corridor two
-   * robots wide and not somewhere to stand a lectern, a soup pot and a keynote
-   * speaker. Down here is the open lobby in front of reception, it is in the same
-   * frame as the gate, and it is the ground a robot already crosses on the way in.
+   * They used to be walked to a stage in the lobby, 17 m south of the man asking
+   * for them, on the reasoning that a lectern belongs on a stage. It does — but
+   * nobody in this chapter is giving a talk yet: Stephan is holding a staircase
+   * and counting the three things he is waiting for, and one of them is a person.
+   * Handing that person over is the beat, and it happens where he is standing.
+   *
+   * So the speaker's mark is the floor beside the soup's, a body's length further
+   * south down the same concourse strip: two marks at his feet, both 36 px of the
+   * 49 px between the barrier and the glazing, near enough that he can turn round
+   * and greet them and far enough apart that Biggy setting a pot down does not
+   * stand in the speaker's box. The prototype's HUD said *"speaker · with
+   * Stephan"* all along; this is the game finally agreeing with it.
    */
-  const stage = { x: stair.x + 6, y: stair.y + stair.h + 40, w: 100, h: 110 };
+  const speakerSpot = { x: stephan.x - 18, y: stephan.y + 42, w: 36, h: 48 };
+  /*
+   * ...BUT THE SOUP GOES WHERE THE MAN IS.
+   *
+   * Michele, 28 Sep 2026: *"maybe it's because steph moved, but the soup drop zone
+   * is far from him. He could also get it on it's own when it's near."* Both
+   * halves are right. The stage is 210 px — 17 m — from where Stephan has stood
+   * since the staircase turned, so the chapter asked you to carry a pot of soup
+   * past him and set it down across the lobby, and then had him drink it from
+   * there. That is not a drop zone, it is a filing cabinet.
+   *
+   * So the soup's mark is the floor at his feet: the concourse strip between the
+   * barrier and the glazing is 49 px wide and this is 36 of them, which Biggy
+   * (18 px across) walks into with room either side. The stage keeps the keynote
+   * speaker — a lectern belongs on a stage — and the two jobs stop sharing one
+   * box. He also simply TAKES it if you get close enough to hand it over, which
+   * is the other half of his note and the thing a man waiting for soup does.
+   */
+  const soupSpot = { x: stephan.x - 18, y: stephan.y - 30, w: 36, h: 60 };
 
   /* --------------------------------------------------------------- the crowd */
 
@@ -1017,15 +1236,65 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * turn at the wardrobe and go DOWN THE STEPS into the hall: the small staircase
    * is the only way through the hall's right edge, so the crowd has to use it too.
    */
+  /**
+   * The way in, from anywhere on the concourse: SOUTH OF THE GATE, then down the steps.
+   *
+   * Both the arrival and the re-acquire below need this, and they need the same one.
+   * `GF.gate` — Stephan's barrier across the foot of the main staircase — is a
+   * 6 x 197 px slab at x 1417, standing in the concourse for the whole of breakfast,
+   * and a visitor aimed west at their own y walks into its east face and crawls it:
+   * measured, ten of sixty standing in a 10 px-spaced line at x 1428, the gate's
+   * face plus a body's radius, for a hundred seconds.
+   *
+   * So the first leg is always SOUTHWARD, to the clear band below the gate's foot,
+   * and only then west. `lane` (0..1) spreads them across that band and across the
+   * 22 m of steps, so the whole crowd is not single file through one waypoint.
+   */
+  function arrivalLegs(x: number, lane: number): Vec2[] {
+    const st = GF.smallStairs;
+    const doorY = 520 + (lane - 0.5) * 90;
+    const step = st.y + 34 + lane * (st.h - 68);
+    return [
+      { x, y: doorY },
+      /*
+       * PAST THE DESK, AND NOBODY GETS IN WITHOUT A BADGE.
+       *
+       * Michele, 27 Sep 2026: *"People should maybe pass at the reception to get a
+       * badge. Celestino should be there."*
+       *
+       * It costs one waypoint, because the route already ran along the front of
+       * the reception counter on its way to the steps — the stanchions in the
+       * lobby are there to funnel arrivals past exactly this desk
+       * (`LOBBY_STANCHIONS`). So the leg is not a detour, it is the same walk with
+       * a stop in it: they pause at the counter, and they come away wearing the
+       * attendee ribbon they did not have when they came through the door.
+       *
+       * Spread along the counter by `lane` so three thousand people do not queue
+       * at one point of it.
+       */
+      badgeStopFor(lane),
+      { x: 1240, y: doorY },
+      { x: st.x + st.w + 20, y: step },
+      { x: GF.hall.x + GF.hall.w - 40, y: step },
+    ];
+  }
+
+  /** The line in front of the reception counter that arrivals are served on. */
+  const badgeLine = GF.reception.y + GF.reception.h + BADGE_STAND;
+
+  /** The spot at the counter this arrival collects their badge at. */
+  function badgeStopFor(lane: number): Vec2 {
+    const rc = GF.reception;
+    return { x: rc.x + 18 + lane * (rc.w - 36), y: badgeLine };
+  }
+
   function spawnVisitor(): void {
     const e = GF.entrance;
-    const st = GF.smallStairs;
     // Which door leaf, and which part of the 22 m wide steps, this one takes. One
     // shared route would put three thousand people in single file: they all aim at
     // the same waypoint, and "do not walk into the back of the person in front"
     // then turns the only threshold into a stationary conga line.
     const lane = ctx.rng();
-    const step = st.y + 34 + lane * (st.h - 68);
     /*
      * ...and which of the three DOOR BAYS. The entrance is one opening in the
      * plot and three bays on the ground: the mullions between them and the
@@ -1042,13 +1311,13 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     v.colour = VISITOR_COLOURS[Math.floor(ctx.rng() * 4)];
     v.dwell = 0;
     v.hitCd = 0;
+    v.stall = 0;
+    v.badge = false;
     v.route = [
       // Straight through the bay first, then turn: the leaf is standing open in it.
       { x: e.x - 24, y: inY },
       { x: e.x - 40, y: inY },
-      { x: 1240, y: 520 + (lane - 0.5) * 90 },
-      { x: st.x + st.w + 20, y: step },
-      { x: GF.hall.x + GF.hall.w - 40, y: step },
+      ...arrivalLegs(e.x - 40, lane),
     ];
     crowd.push(v);
   }
@@ -1064,7 +1333,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * for the robots, minus the bounce: a visitor has no velocity response, it just
    * cannot be inside a slab.
    */
-  function pushOutOfWalls(a: { x: number; y: number; r: number }): void {
+  /** True when it actually had to move `a` — the caller uses that. */
+  function pushOutOfWalls(a: { x: number; y: number; r: number }): boolean {
+    let moved = false;
     for (const w of ctx.walls) {
       if (w.hidden) continue;
       const cx = a.x < w.x ? w.x : a.x > w.x + w.w ? w.x + w.w : a.x;
@@ -1073,6 +1344,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       const dy = a.y - cy;
       const d2 = dx * dx + dy * dy;
       if (d2 > a.r * a.r) continue;
+      moved = true;
       if (d2 > 1e-6) {
         const d = Math.sqrt(d2);
         a.x = cx + (dx / d) * a.r;
@@ -1090,6 +1362,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       else if (min === up) a.y = w.y - a.r;
       else a.y = w.y + w.h + a.r;
     }
+    return moved;
   }
 
   function stepVisitor(a: Visitor, dt: number): void {
@@ -1100,6 +1373,24 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       return;
     }
     if (!a.route.length) {
+      /*
+       * NOT IN YET? THEN THE ONLY ROUTE IS THE STEPS.
+       *
+       * The lane grid is a HALL grid — `GF.laneX` stops at 1010 and `GF.laneY`
+       * runs the hall's depth — so handing it to a visitor who is still out on the
+       * concourse aims them at a node on the far side of the hall's east wall.
+       * They walked the wall's face until it let them past: measured, one crossing
+       * it at y 627, sixty px south of the steps that are the only way through it.
+       *
+       * So anybody who runs out of route east of that edge takes the arrival route
+       * again — up to the stairs and down them — from wherever they now stand.
+       */
+      if (a.x > GF.hall.x + GF.hall.w) {
+        // `seed`, not `rng`: the same person keeps the same lane every time they
+        // have to take the route again, which is what a person does.
+        a.route.push(...arrivalLegs(a.x, (a.seed % 17) / 17));
+        return;
+      }
       // Pick a neighbouring lane node and amble to it. No pathfinding, no goals —
       // a trade show floor is Brownian motion with coffee.
       const n = nearestNode(a.x, a.y);
@@ -1145,9 +1436,63 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       const ox = o.x - a.x;
       const oy = o.y - a.y;
       const od = Math.hypot(ox, oy);
+      /*
+       * ...AND TWO PEOPLE ARE NEVER IN THE SAME PLACE.
+       *
+       * The sidestep above steers, and steering alone lets a dense stream merge:
+       * measured at the threshold steps, two visitors were standing at exactly
+       * (945, 453) — one body drawn twice. Nothing in this chapter depenetrated
+       * the crowd from itself, because when they were pawns nobody could tell.
+       *
+       * So the same pass that looks for a blocker also parts an overlapping pair,
+       * which is `botsCollide`'s positional half without its restitution: a crowd
+       * should part, not bounce. It costs nothing — the loop was already here, and
+       * this is the branch it was missing.
+       *
+       * It moves ONLY `a`, by half the overlap, and leaves `o` where it is: `o`
+       * takes its own half when its turn to be stepped comes, and the pair is
+       * symmetric over a frame either way. Pushing `o` here instead put a body
+       * outside its own step, after the wall push-out that would have caught it —
+       * so crowd pressure walked people THROUGH the stair wall (measured: a
+       * visitor at y 594, twenty px south of the steps' own edge). A body is only
+       * ever moved while it can still be un-moved by the wall list.
+       */
+      if (od > 0 && od < a.r + o.r) {
+        const push = (a.r + o.r - od) / 2;
+        a.x -= (ox / od) * push;
+        a.y -= (oy / od) * push;
+      }
       if (od < 12 && (ox * dx + oy * dy) / (od * d) > 0.6) {
         blocker = o;
         break;
+      }
+    }
+    /*
+     * ...AND A ROBOT STANDING IN THE LANE IS SOMETHING YOU WALK ROUND.
+     *
+     * Michele, 28 Sep 2026, with a photograph of fourteen people stopped nose to
+     * tail along the threshold: *"people keep getting clustered - blocked on this
+     * line"*, and then *"Crowd also block Droid now."* Both are the same missing
+     * line. A visitor only ever looked for another VISITOR in the way, so a robot
+     * parked on a lane was not something to walk round — it was a solid the
+     * push-out slid them along, and the people behind piled into the people in
+     * front. One robot standing still made a fourteen-person queue out of a crowd
+     * that had somewhere else to be.
+     *
+     * A robot is bigger than a person, so it gets a wider berth (`b.r + 8` rather
+     * than the flat 12 px a body gets), and it is checked after the crowd so a
+     * person already dodging somebody keeps dodging them.
+     */
+    if (!blocker) {
+      for (const bot of ctx.bots) {
+        if (bot.mounted) continue;
+        const ox = bot.x - a.x;
+        const oy = bot.y - a.y;
+        const od = Math.hypot(ox, oy);
+        if (od > 0 && od < bot.r + 8 && (ox * dx + oy * dy) / (od * d) > 0.4) {
+          blocker = { x: bot.x, y: bot.y } as Visitor;
+          break;
+        }
       }
     }
     let ux = dx / d;
@@ -1171,8 +1516,91 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     a.vy += (uy * spd - a.vy) * k;
     a.x += a.vx * dt;
     a.y += a.vy * dt;
-    pushOutOfWalls(a);
+    /*
+     * ...AND THEY FACE THE WAY THEY ARE WALKING.
+     *
+     * Michele, with a screenshot of the threshold steps: *"Some seem to walk
+     * backward or have the backpack on front."* They did, all sixty of them.
+     * `Visitor extends Bot`, so every one of them carried `Bot.face`, and `mkBot`
+     * sets that to **0** — due east — while nothing in this function ever touched
+     * it again. `stepBot`'s `stepAim` is what keeps a robot's heading honest and
+     * a visitor is not stepped by `stepBot`. So the renderer, which had just
+     * started drawing people with a front, a back and a rucksack, pointed every
+     * single one of them east regardless of where they were going.
+     *
+     * Invisible until the crowd stopped being pawns, which is the shape this
+     * chapter keeps producing: the renderer knowing about something the sim does
+     * not. The threshold shows it first because that is where they turn.
+     *
+     * Below `FACE_MIN_SPEED` the heading holds: somebody who has stopped to look
+     * at a booth keeps the way they were pointing rather than spinning on drift.
+     */
+    if (speed(a) > FACE_MIN_SPEED) a.face = Math.atan2(a.vy, a.vx);
+    /*
+     * TOUCHING A BOOTH MEANS THE ROUTE IS STALE — TAKE A NEW ONE.
+     *
+     * Michele: *"The small stair between reception and main hall seem to block
+     * them."* It is not the stair. The crossing is `GF.smallStairs`, 93 x 283 px,
+     * and the wall list over it is **empty**: measured, nothing stands in it at all.
+     *
+     * What jams is the corner beside it. A leg of the lane grid is axis-aligned,
+     * but a visitor who has sidestepped is no longer ON the lane, so the straight
+     * line from where they actually are to the next node clips the end-of-row booth
+     * at x 880..940 — twelve pixels from the stairwell and they are sixteen across.
+     * The push-out then slid them along the booth's face and they kept aiming at
+     * the same node, so they crawled the wall instead of walking the floor:
+     * measured, a standing line of them at x 936..948 with the 283 px opening
+     * beside it empty.
+     *
+     * Grazing something means the line you were walking may no longer be a line you
+     * can walk, so the leg is dropped and the next tick either takes the next
+     * waypoint or re-acquires the grid from where they now stand. It is what a
+     * person does when they bump into a stand.
+     *
+     * But ONLY once the graze has actually cost them ground. Dropping a leg on the
+     * first touch reads as a bug at the doors: the three entrance bays have their
+     * mullions and their standing-open leaves in the wall list, so a visitor
+     * threading a bay grazes one for a frame or two while still walking straight
+     * in. Dropping the leg there threw away the arrival route inside the doorway
+     * and left them ambling the lane grid from the wrong side of the concourse —
+     * measured, eight of sixty parked at x 1428 with the hall empty in front of
+     * them. So the touch has to come with no progress, for `GRAZE_STALL` of it,
+     * before the leg is what gets blamed.
+     */
+    /*
+     * BEING AT THE DESK IS WHERE A BADGE COMES FROM.
+     *
+     * Checked on POSITION every frame rather than on arriving at the waypoint,
+     * and the difference is 24 of 60 people: a visitor who is shoved off the mark
+     * by the crowd, or whose leg the stall-breaker drops, still walks the length
+     * of that counter — and measured on the waypoint alone, forty per cent of
+     * them reached the hall with no ribbon on. Anybody who comes within a body's
+     * length of the front of the counter is served, which is also what a desk is.
+     */
+    if (!a.badge && Math.abs(a.y - badgeLine) < BADGE_REACH && a.x > GF.reception.x - 12 && a.x < GF.reception.x + GF.reception.w + 12) {
+      a.badge = true;
+      a.dwell = BADGE_DWELL * (0.7 + ctx.rng() * 0.6);
+    }
+    const grazed = pushOutOfWalls(a);
     pushOutOfCrates(a);
+    /*
+     * A leg that is making no ground gets dropped, whether a wall is to blame or
+     * a person is.
+     *
+     * It used to need `grazed` — the fault it was written for was a visitor
+     * crawling a booth's face — and a crowd that jams on itself grazes nothing at
+     * all. Michele's photograph of the threshold is that case: everybody walking,
+     * nobody arriving, because each of them was steering round the one in front
+     * and none of them was getting closer to a waypoint they all shared. Progress
+     * is the test now, and the graze only decides how long it is given.
+     */
+    const stuck = Math.hypot(t.x - a.x, t.y - a.y) > d - a.walk * dt * 0.25;
+    if (stuck) a.stall += dt * (grazed ? 1 : GRAZE_STALL / CROWD_STALL);
+    else a.stall = 0;
+    if (a.stall > GRAZE_STALL) {
+      a.stall = 0;
+      a.route.shift();
+    }
   }
 
   /* --------------------------------------------------------- the beer delivery */
@@ -1198,6 +1626,21 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     crates.push(c);
   }
   let beerDone = false;
+  /**
+   * WHEN THE LAST CRATE LANDED — the clock the bar's payoff runs on.
+   *
+   * Michele, 28 Sep 2026: *"When all is delivered, something should happen
+   * (Spiller start and biggy toasts?)"* — *spillare*, to pour. Until now the
+   * sixth crate set `beerDone`, printed a line and left the bar exactly as it
+   * was: the taps that had been "ready" since the chapter opened stayed ready,
+   * and the only thing that happened was a flag going true.
+   *
+   * So the bar pays off on its own clock: a beat, then the three taps run, the
+   * glassware fills, and Biggy raises one. `-1` until the last crate is on.
+   */
+  let beerAt = -1;
+  /** Has he raised it yet? The toast fires once, on its own beat. */
+  let toasted = false;
   /** Heap errors thrown this run. It goes on the final card. */
   let oom = 0;
   let oomCardShown = false;
@@ -1361,6 +1804,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     const done = held('stacked').length;
     if (done >= CRATE_DELIVERY) {
       beerDone = true;
+      beerAt = ctx.t;
       ctx.flash(
         `Biggy: "${CRATE_DELIVERY} crates on the bar, ${oom} heap error${oom === 1 ? '' : 's'}. ` +
           `${BAR_NAME} is stocked and the aisle is yours, Stephan."`,
@@ -1469,7 +1913,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       if (ladle) return pick(['Where is my soup?', 'Tomato. At breakfast, yes. It is a tradition and I am the one who keeps it.']);
       return pick(['Where is my soup?', 'The pot is on the counter and the ladle is on the shelf. I am not doing it myself, I am holding a staircase.']);
     }
-    if (!speaker.onStage) {
+    if (!speaker.withStephan) {
       if (speaker.following) return pick(['That is them? Good. Over here, please.', 'Hurry them along. The programme still says TBA and people are reading it.']);
       return pick([
         'The keynote speaker! Where is he? Or she. The programme says <b>TBA</b> and it has said TBA for a month.',
@@ -1490,6 +1934,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   function spill(amount: number, why: string): void {
     if (!carrying || delivered) return;
     soup = Math.max(0, soup - amount);
+    // The splash that empties the pot puts the REST of the pot on the floor, so it
+    // leaves a lake and not the same little mark as a graze.
+    stain(soup <= 0 ? Math.max(amount, 22) : amount);
     if (soup > 0) {
       ctx.flash(`Splash — ${why} (${Math.trunc(soup)}% left)`);
       return;
@@ -1512,7 +1959,20 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * player can see and can do something about, and Stephan's line at the end
    * counts the batches — the joke is better than the failure was.
    */
+  /** Put what came out of the pot on the floor, where the body is standing. */
+  function stain(amount: number): void {
+    const bg = ctx.byKind('biggy');
+    // A 4% bump is a splash at his feet; the last of a pot is a lake. The spread
+    // is the body's own radius plus the amount, so the two read as the same event.
+    const r = Math.min(26, 7 + amount * 0.7);
+    if (stains.length >= MAX_STAINS) stains.shift();
+    stains.push({ x: bg.x, y: bg.y + bg.r * 0.6, r });
+  }
+
   function ruined(line: string): void {
+    // No stain here. This runs for the cold pot too, and soup going cold is not
+    // soup going on the floor — the splash that empties it has already left its
+    // own lake (`spill`).
     carrying = false;
     batches++;
     soup = 100;
@@ -1590,6 +2050,42 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     }
 
     /*
+     * ASKING A QUEUE TO MAKE WAY — ANY OF THE THREE, NOT JUST VOXXY.
+     *
+     * Michele, 28 Sep 2026, playing chapter 3: *"Crowd also block Droid now. Fine
+     * but all robots should be able to move them, not only voxxy."* He is right,
+     * and the old arrangement was worse than a missing feature: the queue is a
+     * wall of people across the one doorway the soup comes through, and the only
+     * robot who could open it was the one not carrying the pot. Biggy, stood at
+     * the queue with the soup going cold in his arms, had to put the errand down
+     * and go and fetch Voxxy to say a sentence.
+     *
+     * Three voices, because a line that stops you owes you one in the voice of
+     * whoever is speaking (CLAUDE.md) — and because what is funny here is the
+     * difference between being asked by a small orange robot, by a very tall
+     * polite one, and by something the size of a fridge.
+     *
+     * It is every robot's LAST resort rather than their first, which is not a
+     * detail: the soup pot stands 60 px behind the soup queue's own tail, so a
+     * version of this that ran before the errands had Biggy walk up to the pot,
+     * press `E`, and ask the queue to make way instead of picking it up.
+     * `tests/chapters.test.ts` caught that on the first run.
+     */
+    const askQueue = (who: Bot): boolean => {
+      const q = queues.find((o) => o.people.some((pp) => Math.hypot(pp.x - who.x, pp.y - who.y) < QUEUE_ASK));
+      if (!q || q.open > 0) return false;
+      q.open = QUEUE_OPEN;
+      const said =
+        who.kind === 'voxxy'
+          ? 'Voxxy: "Excuse me — soup coming through!"'
+          : who.kind === 'droid'
+            ? 'Droid: "Excuse me. I can see over all of you, and what I can see is that the soup is that way."'
+            : 'Biggy: "Mind your feet. Mind all of your feet."';
+      ctx.flash(`${said} — the ${q.label} makes way for ${QUEUE_OPEN}s`);
+      return true;
+    };
+
+    /*
      * THE CRAB SANDWICH. One per robot, in three voices, because the joke is what
      * each of them makes of it — and Biggy carrying the pot is working, so he gets
      * the one line that admits it.
@@ -1618,6 +2114,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         ctx.flash(`Droid: "${dc.name}. Half my own mass, all of it above the knee. This one is Biggy's."`);
         return true;
       }
+      if (askQueue(d)) return true;
       // His dead end, handed back: at Biggy it becomes a grab, anywhere else the
       // stretch. "Nothing to reach here" is what the stretch says, without words.
       return false;
@@ -1647,7 +2144,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         ctx.flash("Biggy has the pot. Careful — it can't stop and the soup can't either.");
         return true;
       }
-      if (carrying && !delivered && inRect(bg, stage)) {
+      if (carrying && !delivered && (inRect(bg, soupSpot) || dist(bg, stephan) < SOUP_HANDOVER)) {
         delivered = true;
         const said =
           soup > 70 ? 'Finally! Still hot.' : soup > 35 ? "Half a bowl. It's… something." : 'Is this a bowl or a hint?';
@@ -1662,18 +2159,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         ctx.flash(`Biggy: "I am not putting these down in the middle of the floor. They go to ${BAR_NAME}, by the taps."`);
         return true;
       }
+      if (askQueue(bg)) return true;
       // His dead end. He cannot hop, but he can be taken hold of, and `spareE`
       // has a better line for him than this one did.
       return false;
     }
 
-    // Voxxy: the one who talks to people.
-    const q = queues.find((o) => Math.abs(v.x - o.x) < 50 && v.y < 300);
-    if (q && q.open <= 0) {
-      q.open = QUEUE_OPEN;
-      ctx.flash(`Voxxy: "Excuse me — soup coming through!" — the ${q.label} makes way for ${QUEUE_OPEN}s`);
-      return true;
-    }
     const n = npcs.find((o) => dist(o, v) < TALK_REACH);
     if (n) {
       ctx.flash(`${n.name}: "${n.line}"`, 4500);
@@ -1689,6 +2180,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       ctx.flash(`Voxxy: "${vc.name} weighs more than I do. Considerably more. BIGGY!"`);
       return true;
     }
+    if (askQueue(v)) return true;
     // Her dead end, handed back: at Biggy it becomes a grab, anywhere else a hop.
     return false;
   }
@@ -1698,15 +2190,23 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   function done(): void {
     gateOpen = true;
     ctx.removeWall(gate);
-    // The barrier does not vanish, it moves: the foot of the flight is free from
-    // this frame and the leaf is solid where it comes to rest. `gateSwing` is only
-    // the picture.
-    for (const w of gateOpenWalls) ctx.walls.push(w);
+    /*
+     * Stephan's own wall comes off and the barrier's does not — the posts for good,
+     * the belts until each has wound home (`update`). The line is not open on this
+     * frame and it is not meant to be: what opened on this frame is Stephan, and
+     * `gateSwing` is the eight belts letting go one after another behind him.
+     */
+    for (const w of gatePostWalls) ctx.walls.push(w);
+    for (const b of gateBeltWalls) if (b.live) ctx.walls.push(b.live);
     ctx.score.soup = Math.trunc(soup);
     ctx.score.temp = Math.trunc(temp);
     ctx.score.complaints = complaints;
     ctx.score.breakfastT = Math.round(ctx.t);
-    ctx.flash('Stephan unhooks the barrier and walks it back against the wall: "Soup. Speaker. Fine — the stairs are open." Up you go', 4000);
+    ctx.flash(
+      'Stephan takes the clip in front of him and lets go: "Soup. Speaker. Fine — the stairs are open." ' +
+        'Eight belts snap back into their posts, one after the other. Up you go',
+      4000,
+    );
     // Watch him open it first. See `GATE_CUT_DELAY`.
     leaveAt = ctx.t + GATE_SWING_TIME + GATE_CUT_DELAY;
   }
@@ -1714,24 +2214,33 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /** The exit: up the main staircase Stephan has just opened. */
   function leave(): void {
     /*
-     * Up the flight, which climbs WEST from the gate Stephan has just opened, and
-     * through the OPENING in the barrier rather than through the barrier.
+     * Up the flight, which climbs WEST from the line Stephan has just opened, and
+     * through the GAPS BETWEEN THE POSTS rather than through a post.
      *
-     * The three lanes used to be 34 px either side of the centre line, which was
-     * fine across a 112 px gate and is 24 px too wide for a 44 px one. They queue
-     * through the mouth and fan out once they are on the treads, where there is
-     * 15.7 m of stair to fan out across.
+     * The three lanes were 34 px either side of the centre line, which was right
+     * when the barrier was a run of steel with one 44 px gate cut in the middle of
+     * it and is wrong now for a reason the arithmetic will not forgive: eight belts
+     * means nine posts, and nine posts across a 15.76 m line puts a post EXACTLY on
+     * the centre. The old middle lane walked Droid straight through it.
+     *
+     * So the lanes are three of the run's own gaps, read off `run` rather than
+     * guessed — the three either side of Stephan, who is standing at the middle of
+     * the line, so they file past him. Cutscene walks ignore walls (`cutUpdate` in
+     * `game.ts`), which is exactly why this has to be right here: nothing would have
+     * stopped them, and a robot clipping through a chrome post in the last shot of
+     * the chapter is something a viewer sees and no collider test does.
      */
-    const route = (dy: number): Vec2[] => [
-      { x: stair.x + stair.w + 34, y: gateMidY + dy * 0.4 },
-      { x: stair.x + stair.w - 10, y: gateMidY + dy * 0.4 },
-      { x: stair.x + 24, y: gateMidY + dy },
+    const gapY = (i: number): number => (run.belts[i].a.y + run.belts[i].b.y) / 2;
+    const route = (cross: number, fan: number): Vec2[] => [
+      { x: stair.x + stair.w + 34, y: cross },
+      { x: stair.x + stair.w - 10, y: cross },
+      { x: stair.x + 24, y: gateMidY + fan },
     ];
     ctx.startCut(
       [
-        { kind: 'voxxy', pts: route(-34) },
-        { kind: 'droid', pts: route(0) },
-        { kind: 'biggy', pts: route(34) },
+        { kind: 'voxxy', pts: route(gapY(3), -34) },
+        { kind: 'droid', pts: route(gapY(4), 0) },
+        { kind: 'biggy', pts: route(gapY(5), 34) },
       ],
       () => ctx.startChapter(4),
       VIEW_GROUND,
@@ -1739,7 +2248,19 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   }
 
   function update(dt: number): void {
-    if (gateOpen && gateSwing < 1) gateSwing = Math.min(1, gateSwing + dt / GATE_SWING_TIME);
+    if (gateOpen && gateSwing < 1) {
+      gateSwing = Math.min(1, gateSwing + dt / GATE_SWING_TIME);
+      // Each belt stops being a collider on the frame it finishes winding in, which
+      // is the same frame the renderer stops drawing it: both ask `beltUp` of the
+      // same `gateSwing`, so a belt cannot be a picture without a wall or a wall
+      // without a picture.
+      for (const b of gateBeltWalls) {
+        if (b.live && !beltUp(gateSwing, b.rank)) {
+          ctx.removeWall(b.live);
+          b.live = null;
+        }
+      }
+    }
     if (leaveAt >= 0 && ctx.t >= leaveAt) {
       leaveAt = -1;
       leave();
@@ -1834,15 +2355,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       if (!speaker.following) standOff(b, speaker);
     }
 
-    if (speaker.following && !speaker.onStage) {
+    if (speaker.following && !speaker.withStephan) {
       const v = ctx.byKind('voxxy');
       // Follow Voxxy, unless Voxxy is already on the spot — then head for the spot,
       // so the speaker settles next to Stephan instead of orbiting the robot.
-      const tgt = inRect(v, stage) ? { x: stage.x + 30, y: stage.y + 30 } : { x: v.x, y: v.y };
+      const tgt = inRect(v, speakerSpot) ? speakerAt : { x: v.x, y: v.y };
       const dx = tgt.x - speaker.x;
       const dy = tgt.y - speaker.y;
       const dd = Math.hypot(dx, dy);
+      speaker.sp = dd > 22 ? SPEAKER_WALK : 0;
       if (dd > 22) {
+        speaker.face = Math.atan2(dy, dx);
         speaker.x += (dx / dd) * SPEAKER_WALK * dt;
         speaker.y += (dy / dd) * SPEAKER_WALK * dt;
         for (const w of ctx.walls) {
@@ -1854,13 +2377,40 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           }
         }
       }
-      if (inRect(speaker, stage)) {
-        speaker.onStage = true;
-        ctx.flash('Keynote speaker: "Stephan! Sorry — the queues."');
+      /*
+       * ...and Stephan will step over for them, the way he takes the soup out of
+       * Biggy's arms. A man who has been asking for this person for ten minutes
+       * does not stand on a mark waiting for them to line up on it.
+       */
+      if (inRect(speaker, speakerSpot) || dist(speaker, stephan) < SPEAKER_HANDOVER) {
+        speaker.withStephan = true;
+        ctx.flash('Keynote speaker: "Stephan! Sorry — the queues." — Stephan: "You are here. Nothing else matters."', 3600);
       }
     }
 
-    if (delivered && speaker.onStage && beerDone && !gateOpen) done();
+    /*
+     * THE BAR PAYS OFF — the taps run and Biggy raises one.
+     *
+     * The pour itself is in `props()`, because it is a picture and nothing else;
+     * this is the one beat that changes the sim, and it is a flourish on a robot.
+     * `flair` is set directly rather than through `partyTrick` on purpose: the
+     * toast is the chapter's, not the player's, so it does not check the stick,
+     * the rest timer or Droid's feet, and it does not speak Biggy's `E` line.
+     */
+    if (beerDone && !toasted && ctx.t - beerAt >= TOAST_AT) {
+      toasted = true;
+      const bg = ctx.byKind('biggy');
+      if (!bg.mounted) {
+        bg.flair = BIGGY_ROLL_DUR;
+        bg.flairDur = BIGGY_ROLL_DUR;
+      }
+      ctx.flash(
+        `Biggy raises one at ${BAR_NAME}: "To tonight. ${CRATE_DELIVERY} crates, ${oom} heap error${oom === 1 ? '' : 's'}, ` +
+          'and not a drop before doors."',
+        4200,
+      );
+    }
+    if (delivered && speaker.withStephan && beerDone && !gateOpen) done();
   }
 
   /* --------------------------------------------------------- snapshot payload */
@@ -1883,7 +2433,21 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         state: ladle ? 'done' : 'idle',
         label: ladle ? 'shelf' : 'ladle (high)',
       },
-      { kind: 'dropzone', ...stage, state: delivered ? 'done' : 'idle', label: 'bring the soup here' },
+      { kind: 'dropzone', ...soupSpot, state: delivered ? 'done' : 'idle', label: 'bring the soup to Stephan' },
+      /*
+       * ...and the speaker's own mark, a body's length south of the soup's.
+       *
+       * Two marks at the same man's feet rather than one: they are two different
+       * jobs by two different robots, they finish at different times, and a single
+       * box that means "put a pot here OR stand a person here" is a box that says
+       * neither. Same ring, same green, one step apart.
+       */
+      {
+        kind: 'dropzone',
+        ...speakerSpot,
+        state: speaker.withStephan ? 'done' : 'idle',
+        label: 'lead the keynote speaker here',
+      },
       /*
        * The crab sandwich on the counter, under its own sign. Lit before it is
        * found, because the whole point of it is that you notice it and go and
@@ -1952,8 +2516,49 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         label: 'Belgian beers may cause hangovers and OutOfMemoryErrors',
       },
     ];
+    /*
+     * THE POUR. 0 until the last crate is on the bar, then it runs for `POUR_RUN`
+     * and stays at 1: what the taps are doing and how full the glassware is, as
+     * one number both of them carry. The renderer draws a stream out of a tap
+     * whose `v` is between 0 and 1 and a full glass at 1 — it never has to know
+     * what a crate is.
+     */
+    const pour = beerAt < 0 ? 0 : Math.max(0, Math.min(1, (ctx.t - beerAt - POUR_LEAD) / POUR_RUN));
     for (const t of TAPS) {
-      out.push({ kind: 'beer-tap', x: t.x, y: t.y, w: 3, h: 3, state: beerDone ? 'done' : 'active', label: 'tap' });
+      out.push({
+        kind: 'beer-tap',
+        x: t.x,
+        y: t.y,
+        w: 3,
+        h: 3,
+        v: pour,
+        state: beerDone ? 'done' : 'active',
+        label: pour > 0 && pour < 1 ? 'tap · pouring' : 'tap',
+      });
+    }
+    // The cellar end of it: three kegs behind the counter, where nothing stands.
+    for (const k of KEGS) {
+      out.push({ kind: 'keg', x: k.x, y: k.y, w: 9, h: 9, state: beerDone ? 'done' : 'active', label: `${BAR_NAME} · keg` });
+    }
+    /*
+     * ...and the glass Biggy holds up, for as long as he holds it up.
+     *
+     * Published as its own prop rather than as part of him, because the sim has no
+     * idea what a hand is: it is at his feet on the floor plan and the renderer
+     * puts it where his hand is, exactly as it does with the soup pot.
+     */
+    if (toasted && ctx.t - beerAt < TOAST_AT + TOAST_HOLD) {
+      const bgt = ctx.byKind('biggy');
+      out.push({
+        kind: 'toast',
+        x: bgt.x,
+        y: bgt.y,
+        w: 6,
+        h: 6,
+        v: Math.max(0, Math.min(1, (ctx.t - beerAt - TOAST_AT) / TOAST_HOLD)),
+        state: 'done',
+        label: 'Biggy raises one',
+      });
     }
     GLASSES.forEach((gl, k) => {
       out.push({
@@ -1966,6 +2571,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         // flute, a chalice. `v` is which, so a renderer can turn four numbers into
         // four silhouettes without the sim knowing what a goblet looks like.
         v: k,
+        // `done` is a full glass and `active` an empty one; the renderer takes HOW
+        // full from the taps' own `v`, so one pour clock drives the whole bar.
         state: beerDone ? 'done' : 'active',
         label: 'Belgian glassware',
       });
@@ -1974,7 +2581,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     // One ring, three jobs — see `halo` above.
     if (held('loose').length > 0 && !beerDone) out.push(...halo(PALLET_MARK, 'active'));
     out.push(...halo(BEER_STACK, beerDone ? 'done' : 'active'));
-    out.push(...halo(stage, delivered ? 'done' : 'active'));
+    // Both of Stephan's marks wear the ring: one visual language for "you can use
+    // this", on the soup's patch of floor and on the speaker's beside it.
+    out.push(...halo(soupSpot, delivered ? 'done' : 'active'));
+    out.push(...halo(speakerSpot, speaker.withStephan ? 'done' : 'active'));
     // Crates: on the floor where they lie, on the stack in layers, or piled on
     // Biggy's back in the order he picked them up.
     for (const c of crates) {
@@ -2003,9 +2613,24 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       });
     });
     if (carrying && !delivered) {
-      // The pot rides on Biggy's shoulder; `v` carries what each meter needs.
-      out.push({ kind: 'pot', x: bg.x, y: bg.y - bg.r - 8, w: 20, h: 20, v: temp / 100, state: 'active', label: 'tomato soup · temperature' });
-      out.push({ kind: 'soup', x: bg.x, y: bg.y - bg.r - 8, w: 16, h: 16, v: soup / 100, state: 'active', label: 'soup in the pot' });
+      /*
+       * The pot rides ON Biggy, so it is published at his own centre and the
+       * renderer lifts it to his shoulder — a prop's x,y is a floor position and
+       * the height of a carried thing is the renderer's business, exactly as a
+       * hopping robot's height is. It used to be pushed 20 px north of him, which
+       * drew a cooking pot standing on the floor a metre and a half behind the
+       * robot who was supposed to be holding it.
+       *
+       * Two props for one pot, because `v` is one number and the HUD needs both
+       * meters: `pot` carries the TEMPERATURE and `soup` HOW MUCH IS LEFT. The
+       * renderer draws the vessel from the first and the level in it from the
+       * second (`drawPot`), so nothing is drawn twice.
+       */
+      out.push({ kind: 'pot', x: bg.x, y: bg.y, w: 20, h: 20, v: temp / 100, state: 'active', label: 'tomato soup · temperature' });
+      out.push({ kind: 'soup', x: bg.x, y: bg.y, w: 16, h: 16, v: soup / 100, state: 'active', label: 'soup in the pot' });
+    }
+    for (const sp of stains) {
+      out.push({ kind: 'spill', x: sp.x, y: sp.y, w: sp.r * 2, h: sp.r * 2, state: 'active', label: 'spilled soup' });
     }
     for (const q of queues) {
       out.push({
@@ -2024,7 +2649,20 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   function people(): Person[] {
     const out: Person[] = [];
     for (const a of crowd) {
-      out.push({ x: a.x, y: a.y, r: a.r, colour: a.colour, role: 'visitor', seed: a.seed, face: a.face, speed: speed(a) });
+      out.push({
+        x: a.x,
+        y: a.y,
+        r: a.r,
+        colour: a.colour,
+        role: 'visitor',
+        // Nobody wears a ribbon they have not been given: the lanyard appears at
+        // the reception counter and not before, which is the whole point of the
+        // beat and the one way a player can see it working from across the lobby.
+        lanyard: a.badge ? LANYARD.attendee : undefined,
+        seed: a.seed,
+        face: a.face,
+        speed: speed(a),
+      });
     }
     for (const q of queues) {
       for (const p of q.people) {
@@ -2034,6 +2672,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           r: p.r,
           colour: p.colour,
           role: 'queue',
+          lanyard: LANYARD.attendee,
           tx: p.hx,
           seed: p.seed,
           // A queue faces the counter it is queueing at, which is north of it.
@@ -2045,33 +2684,106 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     }
     for (let i = 0; i < npcs.length; i++) {
       const n = npcs[i];
-      out.push({ x: n.x, y: n.y, r: n.r, name: n.name, colour: '#d9c3a5', role: 'staff', seed: 900 + i });
+      out.push({
+        x: n.x,
+        y: n.y,
+        r: n.r,
+        name: n.name,
+        // Crew beige unless this one has a shirt of their own — Celestino does.
+        colour: n.colour ?? '#d9c3a5',
+        collar: n.collar,
+        face: n.face,
+        role: 'staff',
+        lanyard: LANYARD.crew,
+        seed: 900 + i,
+      });
     }
     out.push({
       x: stephan.x,
       y: stephan.y,
       r: stephan.r,
       name: 'Stephan',
-      colour: '#e8d5b5',
-      hat: true,
+      /*
+       * THE DEVOXX POLO, THE GLASSES AND THE HEADSET MIC.
+       *
+       * Michele, 28 Sep 2026, with two photographs — Stephan on stage, and the
+       * shirt itself folded on a table: *"Also Stephan must be identifiable:
+       * Devoxx shirt, mic, glasses as accessories"*.
+       *
+       * The shirt is the dark olive polo with the orange-and-white striped collar;
+       * at thirty pixels the stripe IS the shirt, which is why the collar is its
+       * own field. The glasses and the headset are the other two marks anybody
+       * who has seen him on a stage would name first. Nothing here needs
+       * permission: it is a caricature of a man in a company polo, which is what
+       * CLAUDE.md asks for.
+       */
+      colour: STEPHAN_POLO,
+      collar: DEVOXX_ORANGE,
+      glasses: true,
+      mic: true,
       role: 'stephan',
+      lanyard: LANYARD.chair,
       seed: 910,
       // He stands at the gate with his back to the stairs, looking at whoever is
       // coming up the concourse — which since the staircase was turned is west.
       face: Math.PI,
     });
-    // The speaker is only drawn once Voxxy is close enough to have spotted them.
-    if (speaker.following || dist(ctx.byKind('voxxy'), speaker) < 90) {
-      out.push({
-        x: speaker.x,
-        y: speaker.y,
-        r: speaker.r,
-        name: 'keynote speaker (TBA)',
-        colour: '#f0e0c0',
-        role: 'speaker',
-        seed: 911,
-      });
-    }
+    /*
+     * THE KEYNOTE SPEAKER IS ALWAYS DRAWN, AND THEY LOOK LIKE SOMETHING.
+     *
+     * Michele, 28 Sep 2026: *"I cannot find the keynote speaker. The hint system
+     * does not give the cirlce.- arrow for this? therse should also be something
+     * recognizable about thim. Not announced yet? We need to invent something."*
+     *
+     * All three notes are the same failure. This person was not PUBLISHED at all
+     * until Voxxy was within 90 px of them — so the search was twelve booths of
+     * empty floor with nothing to see from anywhere, and the only feedback was
+     * arriving. A hidden thing you cannot see from ten metres is not hidden, it is
+     * absent.
+     *
+     * So they stand there from the first frame, and since the programme has said
+     * **TBA** for a month, that is what we invented for them: the one person at
+     * Devoxx in a teal speaker's hoodie, teal cap and teal lanyard, with a badge
+     * that says TBA because nobody has printed the real one yet. Teal is the
+     * speaker ribbon's own colour (`src/sim/lanyards.ts`) and nothing else in the
+     * hall wears it, which is what makes a 30 px figure recognisable at all.
+     *
+     * The NAME still only shows up close. A floating label across the hall would
+     * not be finding somebody, it would be reading a sign — and the booth arrow
+     * the task now carries is the help he actually asked for.
+     */
+    const seen = speaker.following || dist(ctx.byKind('voxxy'), speaker) < 120;
+    out.push({
+      x: speaker.x,
+      y: speaker.y,
+      r: speaker.r,
+      name: seen ? 'TBA — the keynote speaker' : undefined,
+      colour: SPEAKER_TEAL,
+      hat: true,
+      /*
+       * ...and the laptop, open, in both hands.
+       *
+       * Michele: *"He could have a laptop in hand to fix the slides? In order to
+       * find him."* Nobody else in the hall is carrying one, so it is a shape you
+       * can pick out of a crowd — and it answers what they are doing behind a
+       * sponsor booth twenty minutes before their own keynote.
+       */
+      laptop: true,
+      role: 'speaker',
+      lanyard: LANYARD.speaker,
+      /*
+       * They WALK when they are walking.
+       *
+       * Michele, watching them follow Voxxy: *"keynote speaker does not walk when
+       * moving."* They did not: `people()` published neither `speed` nor `face`
+       * for them, and the renderer's gait reads exactly those two (`people.ts`),
+       * so the most important person in the chapter glided across the lobby
+       * pointing east with their legs still. Both are facts the sim already had.
+       */
+      speed: speaker.sp,
+      face: speaker.face,
+      seed: 911,
+    });
     return out;
   }
 
@@ -2098,7 +2810,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         : ladle
           ? `soup: ladle in hand — ${batches > 0 ? 'fill it again' : 'fill the pot'} at the counter`
           : 'soup: the ladle is on the high shelf (Droid)';
-    const spk = speaker.onStage
+    const spk = speaker.withStephan
       ? 'speaker ✓'
       : speaker.following
         ? 'speaker: following you to Stephan'
@@ -2121,8 +2833,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const shelfStand: Vec2 = { x: shelfAt.x, y: shelfAt.y + 26 };
   /** In front of the soup counter, inside `POT_REACH`. */
   const soupStand: Vec2 = { x: station.x, y: food.soup.y + food.soup.h + 22 };
-  /** The spot in front of Stephan the soup and the speaker both have to reach. */
-  const stageAt: Vec2 = { x: stage.x + stage.w / 2, y: stage.y + stage.h / 2 };
+  /** The speaker's own mark at Stephan's feet, one body south of the soup's. */
+  const speakerAt: Vec2 = { x: speakerSpot.x + speakerSpot.w / 2, y: speakerSpot.y + speakerSpot.h / 2 };
+  const soupAt: Vec2 = { x: soupSpot.x + soupSpot.w / 2, y: soupSpot.y + soupSpot.h / 2 };
   /** Stephan's own feet, at the foot of the flight he is not opening yet. */
   const stephanAt: Vec2 = { x: stephan.x, y: stephan.y + 14 };
 
@@ -2158,7 +2871,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         text: 'take Stephan his tomato soup',
         done: delivered,
         who: ['biggy'],
-        at: carrying && !delivered ? stageAt : soupStand,
+        at: carrying && !delivered ? soupAt : soupStand,
         hint: carrying
           ? 'Biggy: it goes cold while I walk and it comes out of the pot every time I hit something. Smooth lines — and let Voxxy open a queue before I am standing in it'
           : batches > 0
@@ -2168,7 +2881,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       {
         id: 'speaker',
         text: 'find the keynote speaker and walk them to Stephan',
-        done: speaker.onStage,
+        done: speaker.withStephan,
         who: ['voxxy'],
         /*
          * NO ARROW WHILE THEY ARE STILL HIDING.
@@ -2179,8 +2892,18 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
          * hand over the search; once they are following her, where they have to
          * END UP is not a secret at all.
          */
-        at: speaker.following ? stageAt : undefined,
-        hint: 'Voxxy: they are hiding from the queues behind one of the booths with WALLS — you can see straight under the cloth tables, so it is none of those',
+        /*
+         * The arrow points at the BOOTH they are hiding at, from the start.
+         *
+         * It used to point nowhere until they were already following, on the
+         * reasoning that an arrow would hand the search over. Michele, playing
+         * it: *"I cannot find the keynote speaker. The hint system does not give
+         * the cirlce.- arrow for this?"* Twelve booths and no arrow is not a
+         * search, it is a sweep. The arrow gets you to the right stand; the
+         * person is still round the back of it, and you still have to walk round.
+         */
+        at: speaker.following ? speakerAt : { x: speaker.x, y: speaker.y },
+        hint: 'Voxxy: they are hiding from the queues behind one of the booths with WALLS — you can see straight under the cloth tables, so it is none of those. Look for the teal lanyard: it is the one thing about them that is not hiding',
       },
       {
         id: 'beer',
@@ -2238,7 +2961,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       soup,
       temp,
       complaints,
-      speaker: { following: speaker.following, onStage: speaker.onStage, booth: hideBooth.name },
+      speaker: { following: speaker.following, withStephan: speaker.withStephan, booth: hideBooth.name },
       queues: queues.map((q) => ({ label: q.label, open: q.open })),
       gateOpen,
       gateSwing,

@@ -302,8 +302,44 @@ export interface Person {
   name?: string;
   colour?: string;
   hat?: boolean;
+  /**
+   * The three things that make ONE person recognisable rather than a crowd member.
+   *
+   * Michele, 28 Sep 2026, with two photographs of Stephan Janssen: *"Also Stephan
+   * must be identifiable: Devoxx shirt, mic, glasses as accessories"*. A figure in
+   * this game is thirty pixels tall, so "identifiable" cannot be a face — it is
+   * three silhouette marks and a colour, which is exactly how a caricature works.
+   *
+   * `collar` is the polo's striped trim (the Devoxx shirt's orange-and-white
+   * collar, the one thing about it that reads at this size), `glasses` a pair of
+   * lenses, `mic` a headset boom. They are on the person rather than derived from
+   * `role` in the renderer because who is wearing what is a fact about the chapter
+   * (`src/sim/chapters/ch3-breakfast.ts`), not about a picture.
+   */
+  collar?: string;
+  glasses?: boolean;
+  mic?: boolean;
+  /**
+   * An open laptop, held in both hands in front of them.
+   *
+   * Michele, on the keynote speaker nobody could find: *"He could have a laptop in
+   * hand to fix the slides? In order to find him."* Nobody else in the hall
+   * carries one, so it is a silhouette you can pick out of a crowd — and it says
+   * what they are doing behind that booth, which is not hiding, it is panicking
+   * about slide 34.
+   */
+  laptop?: boolean;
   /** 'visitor' | 'queue' | 'seated' | 'stephan' | 'speaker' | 'staff' */
   role: string;
+  /**
+   * The colour of the badge ribbon round their neck, or nothing for somebody not
+   * wearing one — `src/sim/lanyards.ts` says which colour means what.
+   *
+   * It is on the person rather than derived from `role` in the renderer because it
+   * is how you tell a speaker from an attendee at forty metres, and chapter 3 asks
+   * you to do exactly that.
+   */
+  lanyard?: string;
   /** Lane-walk target. */
   tx?: number;
   ty?: number;
@@ -454,6 +490,58 @@ export interface Task {
 import type { OpeningView } from './opening';
 
 /** Everything the renderer reads for one frame. */
+/**
+ * One card of the Devoxx opening video that plays on Room 8's screen when the
+ * three robots reach the stage — see `src/sim/reel.ts`.
+ */
+export interface ReelCard {
+  title: string;
+  sub: string;
+  /** Seconds this card holds, excluding the black beat after it. */
+  hold: number;
+  kind: 'title' | 'stat' | 'blooper' | 'end';
+}
+
+/** The reel's state this frame. `card: null` is the black beat between two cards. */
+export interface ReelView {
+  /** Seconds since the reel started. */
+  t: number;
+  /** The whole reel's length, so a renderer can show how far in it is. */
+  len: number;
+  /** Index of the card being held, or of the gap after it. */
+  index: number;
+  card: ReelCard | null;
+  /** 0..1, the card's own fade. */
+  alpha: number;
+}
+
+/**
+ * One contact the solver resolved, as telemetry for the physics view.
+ *
+ * Written by the three places that resolve one — the wall bounce in `stepBot`,
+ * `botsCollide` and `standOff` — collected in `src/sim/contacts.ts` and published
+ * on the snapshot. Nothing in the sim reads it back.
+ */
+export interface Contact {
+  /** Where the two bodies touched, sim px — on the surface, not at either centre. */
+  x: number;
+  y: number;
+  /** Unit normal, pointing OUT of whatever was hit and into the body that hit it. */
+  nx: number;
+  ny: number;
+  /** Closing speed along the normal before the solve, px/s. Always >= 0. */
+  rv: number;
+  /**
+   * The impulse the solver applied, in mass-px/s — the momentum this contact
+   * actually took out of the body, which is the number the physics view draws.
+   */
+  j: number;
+  /** What was hit. A `person` never moves; a `wall` never moves; a `bot` does. */
+  kind: 'wall' | 'bot' | 'person';
+  /** The robot that took the impulse, for the readout's own line. */
+  who: RobotKind | string;
+}
+
 export interface GameSnapshot {
   chapter: number;
   phase: Phase;
@@ -529,6 +617,20 @@ export interface GameSnapshot {
   entered: string;
   score: Record<string, number>;
   swag: string[];
+  /**
+   * Every contact the solver resolved this frame — where, which way, how hard.
+   *
+   * Telemetry for the physics view (`P`), and the one thing that readout cannot
+   * work out for itself without redoing the solver in drawing code. The sim never
+   * reads it back; see `src/sim/contacts.ts`.
+   */
+  contacts: readonly Contact[];
+  /**
+   * The Devoxx opening video, while it is playing on Room 8's screen — the
+   * blooper reel of the run that has just finished (`src/sim/reel.ts`). `null`
+   * every other frame of the game.
+   */
+  reel: ReelView | null;
 }
 
 /** The headless game. `src/render` holds one of these and only reads its snapshot. */

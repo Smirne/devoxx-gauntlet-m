@@ -181,7 +181,7 @@ describe('a person', () => {
    * and the geometries and every material but the clothes are shared between
    * every figure ever built.
    */
-  it('costs twelve meshes and one material of its own', () => {
+  it('costs seventeen meshes and two materials of its own', () => {
     const a = mk();
     const b = mk();
     a.pose(person(), 0, 0);
@@ -190,11 +190,25 @@ describe('a person', () => {
     a.root.traverse((o) => {
       if ((o as THREE.Mesh).isMesh) meshes++;
     });
-    expect(meshes).toBeLessThanOrEqual(12);
+    /*
+     * Twelve became seventeen on 28 Sep 2026, and the five are named: a polo
+     * collar, a pair of glasses, a headset boom and a laptop's two halves.
+     *
+     * Michele: *"Stephan must be identifiable: Devoxx shirt, mic, glasses as
+     * accessories"*, and, on the keynote speaker: *"He could have a laptop in hand
+     * to fix the slides?"* They are hidden on everybody who is not one of those
+     * two, and they cost geometries the crowd already shares — the budget this
+     * test guards is the per-figure one, and it is five boxes.
+     */
+    expect(meshes).toBeLessThanOrEqual(17);
     const geo = (pm: PersonModel, n: string): THREE.BufferGeometry => (pm.root.getObjectByName(n) as THREE.Mesh).geometry;
     for (const n of ['head', 'torso', 'leg-l', 'contact']) expect(geo(a, n)).toBe(geo(b, n));
     const mat = (pm: PersonModel, n: string): THREE.Material => (pm.root.getObjectByName(n) as THREE.Mesh).material as THREE.Material;
-    // Clothes are per figure; skin is shared out of a palette of five.
+    // Clothes are per figure; skin is shared out of a palette of five. The collar
+    // is the second per-figure material, for the same reason: the chapter colours it.
     expect(mat(a, 'torso')).not.toBe(mat(b, 'torso'));
+    expect(mat(a, 'collar')).not.toBe(mat(b, 'collar'));
+    // ...and everything else on the accessories is shared.
+    for (const n of ['glasses', 'mic', 'laptop-lid']) expect(mat(a, n)).toBe(mat(b, n));
   });
 });

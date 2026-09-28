@@ -1008,14 +1008,23 @@ describe('chapter 3 — breakfast', () => {
     expect(breakfast().soup).toBeLessThan(100);
     expect(breakfast().soup).toBeGreaterThan(0);
 
-    // Soup alone is not enough. The drop is where Stephan stands: SOUTH of the main
-    // staircase, past the reception desk — the only side of the flight anyone can
-    // reach now that the lobby follows the plan.
-    const drop = g.snapshot().props.find((p) => p.kind === 'dropzone');
+    /*
+     * Soup alone is not enough, and the drop is AT STEPHAN'S FEET.
+     *
+     * It used to be the stage, 210 px — 17 m — south of him, which is where the
+     * mark stayed when the staircase turned and took him with it. Michele, 28 Sep
+     * 2026: *"maybe it's because steph moved, but the soup drop zone is far from
+     * him."* So this asserts the thing that was wrong: the mark is beside the man
+     * who asked for the soup, on the concourse east of his barrier, and not
+     * somewhere you walk past him to reach.
+     */
+    const drop = g.snapshot().props.find((p) => p.kind === 'dropzone' && (p.label ?? '').includes('soup'));
     expect(drop).toBeDefined();
     const dropAt = { x: drop!.x + (drop!.w ?? 0) / 2, y: drop!.y + (drop!.h ?? 0) / 2 };
-    expect(dropAt.y).toBeGreaterThan(GF.mainStair.y + GF.mainStair.h);
-    expect(dropAt.x).toBeGreaterThan(GF.reception.x + GF.reception.w);
+    const steph = g.snapshot().people.find((p) => p.role === 'stephan');
+    expect(steph, 'nobody is standing at the stairs').toBeDefined();
+    expect(Math.hypot(dropAt.x - steph!.x, dropAt.y - steph!.y), "the soup mark is not within arm\u2019s reach of Stephan").toBeLessThan(40);
+    expect(dropAt.x, 'the mark is inside the stairwell rather than on the concourse').toBeGreaterThan(GF.gate.x);
     g.debug.place('biggy', dropAt.x, dropAt.y);
     g.key('KeyE');
     expect(breakfast().delivered).toBe(true);
@@ -1043,8 +1052,22 @@ describe('chapter 3 — breakfast', () => {
     g.key('KeyE');
     expect(breakfast().speaker.following).toBe(true);
 
-    expect(walkTo(g, 'voxxy', dropAt)).toBe(true);
-    expect(until(g, () => breakfast().speaker.onStage, 900)).toBe(true);
+    /*
+     * ...and the speaker goes TO STEPHAN, on their own mark beside the soup's.
+     *
+     * Michele, 28 Sep 2026: *"the speaker should also go to stephan."* They used
+     * to be walked to a stage in the lobby, 17 m from the man who is asking for
+     * them; both of his conditions are handed over at his feet now, one mark each.
+     */
+    const spkMark = g.snapshot().props.find((p) => p.kind === 'dropzone' && (p.label ?? '').includes('speaker'));
+    expect(spkMark, 'the speaker has no mark on the floor').toBeDefined();
+    const spkAt = { x: spkMark!.x + (spkMark!.w ?? 0) / 2, y: spkMark!.y + (spkMark!.h ?? 0) / 2 };
+    expect(
+      Math.hypot(spkAt.x - steph!.x, spkAt.y - steph!.y),
+      'the speaker’s mark is not within arm’s reach of Stephan',
+    ).toBeLessThan(70);
+    expect(walkTo(g, 'voxxy', spkAt)).toBe(true);
+    expect(until(g, () => breakfast().speaker.withStephan, 900)).toBe(true);
 
     // Soup and speaker are BOTH in, and the stairs stay shut: the beer delivery
     // is Stephan's third condition, not decoration (`gameplay-additions.md` §3).
@@ -1369,6 +1392,96 @@ describe('chapter 3 — breakfast', () => {
     }
   });
 
+  /**
+   * THEY FACE THE WAY THEY ARE WALKING, AND THEY ACTUALLY GET SOMEWHERE.
+   *
+   * Two faults from Michele's replay of 26 Sep, both of them invisible while the
+   * crowd was pawns and both of them visible the moment the renderer gave a person
+   * a front, a back and a rucksack.
+   *
+   * *"Some seem to walk backward or have the backpack on front."* — `Visitor extends
+   * Bot`, `mkBot` sets `face` to 0, and `stepVisitor` never touched it again, so all
+   * sixty of them faced due east regardless of where they were going.
+   *
+   * *"The small stair between reception and main hall seem to block them."* — it is
+   * not the stair, which carries no walls at all. What blocks them is fabric they
+   * press against while their velocity keeps pointing into it: measured, ten of
+   * sixty standing in a 10 px-spaced line at x 1428 — the east face of `GF.gate`,
+   * Stephan's barrier, plus a body's radius — with a full walking speed on the
+   * clock and no ground gained for a hundred seconds. Which is why this asserts
+   * DISPLACEMENT and not `speed`: speed said they were walking briskly.
+   */
+  it('faces the crowd the way it walks, and never lets it walk on the spot', () => {
+    // Seed 4, not the suite's: it is the stream the ten gate-crawlers were measured
+    // on, and a fault that only some seeds walk into needs the seed that does.
+    const g = createGame({ seed: 4, chapter: 3, cards: false });
+    steps(g, 3000);
+    let prev = new Map(
+      g.snapshot().people.filter((p) => p.role === 'visitor').map((p) => [p.seed, { x: p.x, y: p.y }]),
+    );
+    expect(prev.size).toBe(60);
+
+    /*
+     * FORTY SECONDS OF FLOOR, PER PERSON.
+     *
+     * Not `speed`, which is what made this fault so hard to see: the ten at the
+     * gate had a full walking pace on the clock the whole time. Ground covered is
+     * the honest measure, and dwelling does not hide in it — everybody is somewhere
+     * else two seconds later, so the crowd's own floor is 240 px over this window,
+     * measured across four seeds, against the crawlers' nothing at all.
+     */
+    const path = new Map<number, number>();
+    for (let w = 0; w < 40; w++) {
+      steps(g, 30);
+      const now = new Map<number, { x: number; y: number }>();
+      for (const p of g.snapshot().people) {
+        if (p.role !== 'visitor') continue;
+        now.set(p.seed, { x: p.x, y: p.y });
+        const was = prev.get(p.seed);
+        if (was) path.set(p.seed, (path.get(p.seed) ?? 0) + Math.hypot(p.x - was.x, p.y - was.y));
+      }
+      prev = now;
+    }
+    const parked = [...path.entries()].filter(([, d]) => d < 80);
+    expect(parked.map(([k, d]) => `${k} covered ${Math.round(d)} px`), 'somebody is leaning on the fabric').toEqual([]);
+
+    /*
+     * ...AND THE CROWD FACES ITS TRAVEL.
+     *
+     * A third of a second, not a second: a second of walking has a turn in it and
+     * the net line across a turn is nobody's heading. Nor is it every last body —
+     * `face` follows VELOCITY, while the last thing to touch a position each frame
+     * is the push-out that parts a pair or clears a booth, so somebody being shoved
+     * sideways by the person next to them legitimately travels off their own nose.
+     * The fault was the aggregate: `mkBot` sets `face` to 0 and nothing in
+     * `stepVisitor` ever set it again, so the whole crowd faced due east and only
+     * the quarter of them walking east agreed with it by luck.
+     */
+    const was = new Map(
+      g.snapshot().people.filter((p) => p.role === 'visitor').map((p) => [p.seed, { x: p.x, y: p.y }]),
+    );
+    steps(g, 10);
+    const faces = new Set<number>();
+    let walking = 0;
+    let facing = 0;
+    for (const p of g.snapshot().people) {
+      if (p.role !== 'visitor') continue;
+      const w0 = was.get(p.seed);
+      if (!w0) continue;
+      const dx = p.x - w0.x;
+      const dy = p.y - w0.y;
+      if (Math.hypot(dx, dy) < 3) continue;
+      walking++;
+      faces.add(Math.round((p.face ?? 0) * 4));
+      const err = Math.atan2(dy, dx) - (p.face ?? 0);
+      if (Math.abs(Math.atan2(Math.sin(err), Math.cos(err))) < 0.7) facing++;
+    }
+    expect(walking, 'nobody is walking at all').toBeGreaterThan(20);
+    expect(facing / walking, `only ${facing} of ${walking} face their travel`).toBeGreaterThan(0.85);
+    // Sixty headings, not one: the bug pointed every single one of them at 0.
+    expect(faces.size, 'the whole crowd shares one heading').toBeGreaterThan(4);
+  });
+
   /* ----------------------------------------------------- the booth games
    *
    * Moved out of chapter 2 on Michele's call, 24 Sep 2026: *"Minigames should be
@@ -1527,9 +1640,79 @@ describe('chapter 4 — keynote', () => {
     g.debug.place('droid', stage!.x + 90, sy);
     g.debug.place('biggy', stage!.x + 160, sy);
     steps(g, 1);
+
+    /*
+     * ...AND THEN THE OPENING VIDEO, which is what the game now ends on.
+     *
+     * Michele: *"Devoxx usually starts with a video... Movie approved, build it."*
+     * The three of them reach the stage, Room 8's house screen wakes up and plays
+     * the night's bloopers (`src/sim/reel.ts`), and the final card comes after it.
+     * The run is already scored at this point — the reel is reading numbers, not
+     * making them.
+     */
+    const reel = g.snapshot().reel;
+    expect(reel, 'no opening video').not.toBeNull();
+    expect(g.snapshot().phase).toBe('play');
+    expect(reel!.card?.title).toBe('DEVOXX BELGIUM');
+    // It ends on the running joke, and it is a real length rather than a frame.
+    expect(reel!.len).toBeGreaterThan(8);
+    let sawEnd = false;
+    for (let i = 0; i < Math.ceil(reel!.len / DT_MAX) + 4; i++) {
+      g.update(DT_MAX);
+      const r = g.snapshot().reel;
+      if (r?.card?.kind === 'end') sawEnd = true;
+    }
+    expect(sawEnd, 'the reel never reached its last card').toBe(true);
+    expect(g.snapshot().reel, 'the reel outlived the game').toBeNull();
     expect(g.snapshot().phase).toBe('done');
     expect(g.snapshot().card).toContain('Keynote starts');
     expect(g.snapshot().score.points).toBeGreaterThan(0);
+  });
+
+  /**
+   * A VIDEO YOU CANNOT SKIP IS A VIDEO NOBODY WATCHES TWICE.
+   *
+   * Four chapters in, a judge with ten minutes, and a player who has just seen it —
+   * any key cuts to the final card, which is the rule every card in this game
+   * already follows.
+   */
+  it('lets any key skip the opening video straight to the final card', () => {
+    const g = mk(4);
+    const key = (): KeynoteState => g.debug.chapter() as KeynoteState;
+    const mark = g.snapshot().props.find((p) => p.kind === 'cake-mark');
+    const markX = mark!.x + (mark!.w ?? 0) / 2;
+    g.debug.placeProp('cake', markX, mark!.y + 58);
+    g.debug.select('biggy');
+    g.debug.place('biggy', markX, mark!.y + 98);
+    g.setStick(0, -1);
+    until(g, () => key().cake, 200);
+    g.setStick(0, 0);
+    g.debug.select('droid');
+    for (const h of g.snapshot().props.filter((p) => p.kind === 'banner-hook')) {
+      g.debug.place('droid', h.x, h.y + 22);
+      g.key('KeyE');
+    }
+    g.debug.select('voxxy');
+    for (const sp of g.snapshot().props.filter((p) => p.kind === 'spotlight')) {
+      g.debug.place('voxxy', sp.x, sp.y);
+      steps(g, 1);
+    }
+    const stage = g.snapshot().props.find((p) => p.kind === 'stage');
+    const sy = stage!.y + (stage!.h ?? 0) / 2;
+    g.debug.place('voxxy', stage!.x + 20, sy);
+    g.debug.place('droid', stage!.x + 90, sy);
+    g.debug.place('biggy', stage!.x + 160, sy);
+    steps(g, 1);
+    expect(g.snapshot().reel, 'the video never started').not.toBeNull();
+
+    // Two seconds in — long enough that a player has seen the first card and
+    // decided they have had enough of it.
+    steps(g, 60);
+    expect(g.snapshot().reel).not.toBeNull();
+    g.key('Space');
+    expect(g.snapshot().reel, 'the key did not stop the video').toBeNull();
+    expect(g.snapshot().phase).toBe('done');
+    expect(g.snapshot().card).toContain('Keynote starts');
   });
 
   it('blocks the seat blocks and leaves the aisles open', () => {

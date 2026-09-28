@@ -60,6 +60,7 @@ import {
   toiletDoor,
 } from '../../sim/geometry';
 import type { Rect, Wall } from '../../sim/types';
+import { buildPrinter } from '../printer';
 import { PX_PER_M, m } from '../../sim/units';
 import type { VenuePalette } from './materials';
 import {
@@ -80,6 +81,7 @@ import {
   SHELL_H,
   WALL_H,
   anchorAt,
+  nastriRunGroup,
   boxAt,
   clothTable,
   floorSlab,
@@ -126,6 +128,11 @@ export interface GroundBuild {
   anchors: Map<number | string, THREE.Object3D>;
   /** Everything above head height, so a top-down debug shot can hide it. */
   overhead: THREE.Group;
+  /**
+   * Teardown for the few pieces down here that own materials of their own rather
+   * than borrowing the palette's — today, the badge printer's model.
+   */
+  dispose(): void;
 }
 
 /** The walking surface a thing at this sim x stands on. */
@@ -792,7 +799,7 @@ function booths(p: VenuePalette, art: SignPainter): THREE.Group {
  * and the wardrobe's hand-in top are sim walls (`wallStyle` gives them the white);
  * everything here is what stands on, behind and above them.
  */
-function reception(p: VenuePalette, overhead: THREE.Group): THREE.Group {
+function reception(p: VenuePalette, overhead: THREE.Group, owned: Array<() => void>): THREE.Group {
   const g = new THREE.Group();
   g.name = 'reception';
   const r = GF.reception;
@@ -820,9 +827,26 @@ function reception(p: VenuePalette, overhead: THREE.Group): THREE.Group {
     }
   }
 
-  const printer = slab(GF.printer, RISE + LOW_H, 0.28, p.printerWhite);
-  printer.name = 'badge-printer';
-  g.add(printer);
+  /*
+   * THE BADGE PRINTER — the real machine, in every chapter.
+   *
+   * Michele, 26 Sep 2026, with a shot of the counter: *"object at the recpeption
+   * still miss shape. The printer in particular, it should be clear it's the
+   * objective of a task."* It was a `printerWhite` slab 28 cm tall, which is what
+   * this line drew, and the recognisable machine — hopper, feed slot, screen,
+   * status lamp, lanyard spool — only ever existed as chapter 2's PROP
+   * (`src/render/printer.ts`, built after his *"printer should be recognizable and
+   * glowing as a hint"*). So the one chapter that makes the printer an objective
+   * had a printer and every other chapter had a white brick on the desk.
+   *
+   * It is the same model now, standing here dark with no chapter behind it, and
+   * `scene.ts` still hides it by name while chapter 2 poses the live one in the
+   * same footprint.
+   */
+  const printer = buildPrinter();
+  printer.pose({ kind: 'printer', ...GF.printer, state: 'idle' }, RISE);
+  g.add(printer.root);
+  owned.push(printer.dispose);
   /*
    * Cream-shaded table lamps ALONG THE TWO RUNS, not floating in the middle.
    *
@@ -836,8 +860,16 @@ function reception(p: VenuePalette, overhead: THREE.Group): THREE.Group {
     [r.x + r.w - 14, southMid],
     [r.x + COUNTER / 2, r.y + 26],
   ] as const) {
-    g.add(postAt(lx, ly, 0.03, 0.26, RISE + LOW_H, p.brass, 8));
-    g.add(boxAt(lx, ly, 9, 9, RISE + LOW_H + 0.26, 0.2, p.lampWarm));
+    // Base, stem, shade. The shade was a 9 x 9 px box — a pale yellow tile lying on
+    // the desk at this camera's pitch, and the other half of Michele's *"object at
+    // the recpeption still miss shape"*. A tapered drum is three vertices' worth of
+    // difference and it reads as a lamp from across the hall.
+    g.add(postAt(lx, ly, 0.07, 0.025, RISE + LOW_H, p.brass, 12));
+    g.add(postAt(lx, ly, 0.014, 0.26, RISE + LOW_H, p.brass, 8));
+    const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.145, 0.2, 14), p.lampWarm);
+    shade.position.set(m(lx), RISE + LOW_H + 0.24 + 0.1, m(ly));
+    shade.castShadow = true;
+    g.add(shade);
   }
 
   /*
@@ -1007,14 +1039,23 @@ function staircases(p: VenuePalette, anchors: Map<number | string, THREE.Object3
   main.name = 'ground-stair-main';
   g.add(main);
 
-  // The gate across the foot. Chapter 3 decides when it opens; this is its look.
-  const gate = slab(GF.gate, RISE, 1.55, p.steelBlue);
+  /*
+   * The barrier across the foot. Chapter 3 decides when it opens; this is its look.
+   *
+   * Two rounds of Michele on this one line. 26 Sep 2026: *"stairs are great, but
+   * there's a wall! a temporary barrier is fine, that should be openend at the end
+   * of chapter 3"* — it was a 15.7 m slab 1.55 m tall. Then 27 Sep, on the run of
+   * steel crowd barriers that answered him: *"Stephan is powerful, but i don't
+   * think he can remove a wall. I'd use something simpler, like «Nastri»"*.
+   *
+   * So it is a line of belt posts: nine of them, eight webbing belts, and every
+   * position out of `src/sim/nastri.ts` because those belts are colliders too.
+   * Chapter 3's prop is posed out of the same kit (`nastriRunGroup` in `props.ts`),
+   * so the thing Stephan unclips is the thing that was standing there.
+   */
+  const gate = nastriRunGroup(GF.gate, RISE, p.postChrome, p.beltWebbing);
   gate.name = 'main-stair-gate';
   g.add(gate);
-  // Posts up the barrier's long side — which is its y now, not its x.
-  for (let k = 0; k <= 8; k++) {
-    g.add(postAt(GF.gate.x + T / 2, GF.gate.y + (GF.gate.h * k) / 8, 0.09, 1.6, RISE, p.steelBlue, 10));
-  }
 
   const a = anchorAt('anchor-stair-main', ms.x + ms.w / 2, ms.y + ms.h / 2, RISE);
   anchors.set('stair-main', a);
@@ -1182,6 +1223,8 @@ export function buildGround(
   const overhead = new THREE.Group();
   overhead.name = 'overhead';
   const anchors = new Map<number | string, THREE.Object3D>();
+  /** Teardown for the pieces down here that own their own materials. See `GroundBuild`. */
+  const owned: Array<() => void> = [];
 
   /*
    * The hall plate at the datum, the lobby plate half a metre above it. The raised
@@ -1228,7 +1271,7 @@ export function buildGround(
   group.add(threshold(p, anchors));
   group.add(catering(p));
   group.add(booths(p, painter));
-  group.add(reception(p, overhead));
+  group.add(reception(p, overhead, owned));
   group.add(staircases(p, anchors));
 
   // The red accent panels down the hall's long walls — the empty-hall
@@ -1353,5 +1396,5 @@ export function buildGround(
     group.add(a);
   }
 
-  return { group, anchors, overhead };
+  return { group, anchors, overhead, dispose: (): void => owned.forEach((f) => f()) };
 }

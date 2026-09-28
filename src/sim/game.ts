@@ -37,6 +37,7 @@ import {
   syncMount,
   toggleMount as climbBiggy,
 } from './bot';
+import { clearContacts, contacts } from './contacts';
 import { canGrab, grab as takeHold, stepTow, towPlace, type TowState } from './tow';
 import type {
   Bot,
@@ -56,8 +57,24 @@ import type {
   Wall,
 } from './types';
 import { CHAPTERS, type ChapterCtx, type ChapterRuntime, type ChapterState, type PrevVel } from './chapters';
+import { makeQuips } from './quips';
 
 export const CHAPTER_COUNT = 4;
+
+/**
+ * The shadow rig (`src/sim/chapters/demo-dark.ts`), one past the run.
+ *
+ * It is a manifest entry rather than a chapter: `startChapter` can reach it, Skip
+ * and the end of chapter 4 cannot, because both are bounded by `CHAPTER_COUNT`.
+ *
+ * Exported because a URL is not a reliable way to reach it. Michele, 27 Sep 2026:
+ * *"?chapter=5 leads me to the start scene, is this correct?"* — it is not, and it
+ * is not a bug in the clamp either: the published build runs inside the artifact
+ * host, which does not pass the outer page's query string down to the page, so
+ * `?chapter=`, `?topdown=` and the rest are only read when the game is served from
+ * its own origin (a clone, `pnpm dev`). The shell binds a key to this instead.
+ */
+export const DEMO_CHAPTER = CHAPTER_COUNT + 1;
 
 /** Robot order in `bots`, and therefore what 1/2/3 select. */
 const ORDER: readonly RobotKind[] = ['voxxy', 'droid', 'biggy'];
@@ -776,6 +793,11 @@ export function createGame(opts: GameOptions = {}): DebugGame {
    * run as a whole stays one deterministic stream from one seed.
    */
   let chapterSeed = 0;
+  /**
+   * The running joke about Biggy's momentum — `src/sim/quips.ts`. It is state, so
+   * it is made once and reset with the chapter, like everything else here.
+   */
+  const quips = makeQuips();
   function startChapter(n: number, seed?: number): void {
     const def = CHAPTERS[n - 1];
     if (!def) throw new Error(`no chapter ${n}`);
@@ -786,8 +808,20 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     cur = 0;
     toast = null;
     cut = null;
+    /*
+     * Any opening still running belongs to the chapter being left.
+     *
+     * `endOpening` used to be the only way out of it, so a `startChapter` from
+     * anywhere else — the shell's `Shift+D` into the shadow rig, a test starting a
+     * chapter mid-intro — set the chapter up correctly and then never ticked it:
+     * `update` sees `opening !== null` first and returns. The fade is deliberately
+     * NOT reset here; a chapter transition sets it and `update` decays it, and
+     * clearing it would turn every transition into a cut.
+     */
+    opening = null;
     dropTow();
     blockedAt.clear();
+    quips.reset();
     walls.length = 0;
     restoreIdentity();
     runtime = def.setup(ctx);
@@ -1014,6 +1048,9 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     // Clamped again here even though the caller is supposed to: one stalled frame
     // must never be able to tunnel Biggy through a wall.
     const dt = Math.min(Math.max(dtRaw, 0), DT_MAX);
+    // Last frame's contacts go now, so a snapshot only ever carries its own. Pure
+    // telemetry for the physics view — nothing in the sim reads it. See `contacts.ts`.
+    clearContacts();
     if (fade > 0 && phase !== 'cut') fade = Math.max(0, fade - dt * FADE_IN_RATE);
     if (toast && t > toast.until) toast = null;
     if (card !== null) return;
@@ -1085,6 +1122,18 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     if (phase !== 'play' || !runtime) return;
     t += dt;
     runtime.update(dt);
+    /*
+     * After the chapter, never before: a chapter that has just ended the run has
+     * the floor, and a toast about Biggy's heap on top of the final card would be
+     * the worst timed joke in the building.
+     *
+     * It is TICKED every frame and told separately whether the screen is free:
+     * `flash` replaces whatever is showing, and a gag that talks over the line
+     * telling you why you are blocked is not a gag — but skipping the tick
+     * outright, which is what this used to do, also threw away the wind-up every
+     * time Biggy's run ended the way a heavy robot's run usually ends.
+     */
+    quips.tick(bots, dt, flash, toast === null);
   }
 
   /**
@@ -1115,6 +1164,20 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     if (card !== null) {
       card = null;
       if (chapter === 0) startChapter(1);
+    }
+    /*
+     * WHILE A CHAPTER IS PLAYING A VIDEO, EVERY KEY MEANS SKIP.
+     *
+     * Chapter 4's opening video (`src/sim/reel.ts`) runs with the room finished and
+     * nothing else live, so a key cannot mean anything else — and "any key" has to
+     * be true of the keys the shell handles here as well, or `Space` toggles the
+     * tow bar behind a video the player is trying to get past and `R` restarts the
+     * chapter they have just won. The chapter is asked, it stops its own reel, and
+     * the final card is up before the next frame.
+     */
+    if (phase === 'play' && runtime && (runtime.reel?.() ?? null) !== null) {
+      runtime.key(code);
+      return;
     }
     /*
      * `R` restarts THE CHAPTER, except in the two places where there is no
@@ -1225,6 +1288,11 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       prompt: r?.prompt?.() ?? null,
       score,
       swag,
+      // Everything the solver resolved this frame, for the physics view. Live
+      // array, owned by the sim, empty on any frame nothing touched anything.
+      contacts: contacts(),
+      // The opening video, while chapter 4 is running it. See `src/sim/reel.ts`.
+      reel: r?.reel?.() ?? null,
     };
   }
 

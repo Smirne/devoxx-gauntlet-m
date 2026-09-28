@@ -4615,3 +4615,398 @@ ordinary figures with their role colours.
     orange REGISTRATION banner hung over the desk, so the cable run's goal reads from the hall. The
     technical room has its own fluorescent batten, which strikes and flickers on when the supply
     lands.
+
+## 26 Sep 2026 — the crowd he photographed, the wall on the stairs, and a gate that is now a gate
+
+Four screenshots came back from his replay, one line each, and every one of them was
+a bug report with a picture attached. The agent's job this session was to find what
+each picture was actually showing, which in three cases out of four was not what the
+line said.
+
+**"Some seem to walk backward or have the backpack on front."** They did — all sixty
+of them. `Visitor extends Bot`, `mkBot` sets `face` to 0, and `stepVisitor` never
+touched it again, so the whole crowd pointed due east however it walked. Invisible
+while the crowd were pawns; visible the frame the renderer gave a person a front, a
+back and a rucksack. One line of sim, and a test that reads 9 of 40 facing their
+travel with the line removed and 40 of 40 with it in.
+
+**"The small stair between reception and main hall seem to block them."** It is not
+the stair: the crossing carries no walls at all, measured. Three faults behind that
+one picture, and the third is the interesting one.
+
+- Nothing depenetrated the crowd from itself — two visitors stood at exactly
+  (945, 453), one body drawn twice. A pair parts now, half the overlap, moving only
+  the body whose step it is, so the wall push-out can still catch it. The first
+  version moved both and walked people **through** the stair wall under crowd
+  pressure: measured, one at y 594, twenty px past the steps' own edge.
+- A visitor who had sidestepped off the lane grid clipped the end-of-row booth
+  beside the stairwell and crawled its face. Grazing drops the leg being walked now —
+  but only after half a second of touching without gaining ground, because threading
+  a door bay grazes a leaf too, and dropping on first touch stranded eight of sixty
+  inside the doorway.
+- And the one nobody would have guessed: a visitor who ran out of route east of the
+  hall was handed a **hall** lane node, so they walked west into `GF.gate` — Stephan's
+  barrier — and stood on its east face. Ten of sixty in a 10 px-spaced line at
+  x 1428, at a full walking speed on the clock, for a hundred seconds. `speed` said
+  they were walking briskly, which is why the durable test measures **ground covered**
+  instead: the crowd's own floor is 240 px over forty seconds, against the crawlers'
+  nothing.
+
+**"Stairs are great, but there's a wall!"** — and there was: a 15.7 m slab 1.55 m
+tall with nine posts on its face. It already opened at the end of chapter 3; what was
+wrong was that it read as the edge of the building rather than as something one man
+unhooks. `barrierRun` builds what stands at the foot of a staircase on a conference
+morning — 2 m barriers hooked together, waist high, feet on the floor, rails you can
+see the treads through — and chapter 3's prop is posed out of the same kit, so the
+thing that opens is the thing that was standing there.
+
+**"The printer in particular, it should be clear it's the objective of a task."** The
+recognisable printer — hopper, feed slot, screen, lamp, lanyard spool — has existed
+since his earlier *"printer should be recognizable"*, and it was only ever chapter 2's
+prop. Every other chapter drew a white slab. It is the same model everywhere now, and
+it turned out to be **floating**: `printer.ts` guessed a 1.02 m counter while the desk
+is a `low` wall the renderer draws at 0.78, so the machine hovered 24 cm over its own
+desk. Two modules with a number for the same surface, only one of them drawing it.
+
+**"Increase the queue but just the minimun needed."** One person per queue. The front
+rank stands two abreast 11 px either side of the centre line, where each body blocks
+Biggy's centre within 15 px, and the pair covers a 44 px doorway with 4 px to spare at
+each jamb. Measured on the beer test's own fill, from where Biggy actually stands:
+136 px from the soup with the queues standing and not one reachable cell inside the
+court, 24 px once Voxxy clears the queue, against a `POT_REACH` of 70. `beer-bar.test.ts`
+asserts that now instead of carrying a comment explaining why it could not. The scan
+line it used to measure went with it — three pixels outside the wall is open floor in
+both states, which is why it read 11 px through the leaking gate and 7 through the
+sealed one.
+
+**The fresh-clone check** he asked for: cloned from the remote into an empty
+directory, `corepack enable`, `pnpm install` (1.4 s on a warm store), `pnpm test`
+**712 passing in 45 files**, `pnpm build` clean, `pnpm dev` serves, and all four
+chapters run from the built bundle with `ERRORS:0`. One finding: `.git` is **83 MB**
+because `tools/progress/shots` (53 MB) is in history. The working tree without it is
+4 MB. Pruning is still his call.
+
+Human decisions this session: the four screenshot findings above, *"increase the queue
+but just the minimun needed"*, *"a temporary barrier is fine"*, and *"do the check"*.
+Rejected: nothing of his; the agent threw away two of its own fixes (moving both bodies
+in the depenetration, dropping a route leg on first contact) after measuring what they
+did to the crowd.
+
+## 26 Sep 2026, later — the physics view, and 53 MB of screenshots
+
+**`P`, the physics view.** Michele: *"Add the physics view."* The point of it is
+scoring: physics realism is twenty of the hundred points and every bit of it was
+invisible, because a judge watching the game sees robots moving, not a seven-to-one
+mass ratio. It draws each robot's collision circle at its own frozen radius, its
+velocity as an arrow scaled against that robot's own top speed, and every contact
+of the frame as a splash on the contact normal sized by the impulse — with the
+numbers beside it, including the restitution constants that make Biggy bounce off a
+wall where the other two do not.
+
+The agent's one real decision here was **not to derive anything in drawing code**.
+The circles and arrows are already on the snapshot (`Bot.r`, `Bot.vx/vy`), but the
+impulse is not — and re-deriving it in the renderer would have been the fault this
+repo keeps catching itself in, with the added sting that the readout would drift
+from the solver it claims to be showing, which is worthless for the points it
+exists for. So the solver publishes what it applied: `src/sim/contacts.ts`,
+written by the three places that resolve a contact, cleared by `game.update` at the
+top of every frame. It is telemetry and nothing reads it back, and
+`tests/contacts.test.ts` plays the same seed twice — once with the log being read,
+once without — to prove the game does not change because somebody pressed `P`.
+
+Two things the measurement corrected on the way:
+
+- the overlay first went into `renderTopDown` rather than the play camera, because
+  the two render paths share the same two lines above the insertion point. A probe
+  that read the geometry's draw range found 4096 zeroes where the rings should be.
+- the first test counted vertices by scanning the buffer for non-zeroes, which
+  *passed* for the wrong reason: the buffer is preallocated and never cleared, so a
+  splash that had expired was still sitting in it. `drawRange` is what the GPU is
+  told to read and is therefore what a test about drawing should ask.
+
+**The shots.** *"Yes prune the shots."* `tools/progress/shots` was 53 MB of 285
+PNGs and `pieces.json` references ten of them; the rest are gone and the page
+regenerates unchanged. The working tree is 4 MB now. The agent did **not** rewrite
+history to get them out of `.git` (still 83 MB): that is a force-push of every
+branch on a public submission repo four days from the deadline, which is a human's
+call to make and not a builder's, and it is the one thing in this session that was
+deliberately left undone.
+
+## 26 Sep 2026 — bodies cast shadows, and the rig that proves it (chapter 5)
+
+**Human decision.** Michele, on the two darkness puzzles the agent had proposed: *"A puzzle needing
+darkness, with biggy obstucting a lamp is fine, but where would you place it?"* and then *"Can you
+make a poc / demonstration for the two no light games?"*
+
+**What the agent did.**
+
+- Taught `src/sim/lights.ts` to occlude on **bodies** as well as walls: `rayCircle` clips each ray of
+  a visibility fan against a list of circles, so a robot standing in a beam casts a real umbra. It is
+  **opt-in per cast** — `buildLights(bots, walls, mirrors)` still means exactly what it meant, because
+  chapters 1 and 2 were measured and playtested against light that only walls could stop.
+- Built the rig as **chapter 5**, reachable only from `?chapter=5` and deliberately outside
+  `CHAPTER_COUNT`, so Skip chapter and the end of chapter 4 can never land on it.
+- **Station A — the photocell pair.** Two cells and a sign in a row, 70 px out from the work lamp
+  (Droid, parked on a pad). Both cells dark, sign still lit. One body cannot do it: a disc that
+  touches both outer rays from that distance also covers the middle one. It takes two, and each has
+  to stand back far enough that its shadow is a stripe rather than a curtain.
+- **Station B — the wide sensor bar.** 80 px of sensor, all of it dark at once. A body of radius `r`
+  at distance `d` shadows a half-angle `asin(r/d)`, and `d` can never be less than the two radii
+  added together — so every robot has a *widest possible shadow*. Voxxy's tops out 6.5 px short of
+  the bar's end from anywhere in the building; Biggy's clears it, pressed against the lamp. That is
+  Michele's "Biggy obstructing a lamp", made arithmetic.
+
+**Answer to "where would you place it?"** — the closed cinema section's own corridor, chapter 1's
+ground and the only part of the building that is dark by architecture rather than by the hour. No new
+venue, no new floor, no new kind of light source.
+
+**What was tried and rejected.**
+
+- *A static "work lamp" light source.* `LightSource.owner` is a `RobotKind`, and widening it ripples
+  through the renderer and the clue-colour code. Parking Droid on a marked pad gives the same fixed
+  geometry for nothing.
+- *Colour-blind photocells.* Voxxy and Biggy carry headlights that point where they last moved, so a
+  cell that counted any colour would be lit by the very robot sent to shade it. The cells read the
+  work lamp's green, which is also just what a photocell is.
+- *Clipping rays against bodies and stopping there.* This is the bug worth writing down. A pool is 72
+  rays over the full circle — 5° apart — and a robot 11 px from the lamp subtends 50° of it, so the
+  polygon had one vertex at 6 px next to one at 95 px and the straight EDGE between them swept 8 px
+  of floor at the far end, cutting out a whole sector of LIT floor. Measured, not guessed: Voxxy
+  parked on the axis darkened all 17 of station B's samples, including ones 44° off an axis her 25°
+  shadow cannot reach — the sweep caught it as a false solve. The fix is a vertex PAIR at each umbra
+  edge (`POLY_EXTRA`), which also meant growing the renderer's fan buffers, since a truncated polygon
+  is not drawn wrong, it is drawn closed across the room.
+
+**Tests.** `tests/dark-rig.test.ts` (10) sweeps the corridor rather than asserting one pose: station B
+is proved impossible for Voxxy from ~900 positions, station A impossible for one body from ~1,600,
+and both are proved possible from the poses the notes claim. Suite 736 green.
+
+## 26 Sep 2026 — the cheap extras, 5 · 6 · 7
+
+**Human decision.** Michele, of the seven small additions the agent had listed: *"The cheap gain are
+ok"* and *"Let's try 5 6 7 too."*
+
+- **5 · the rubber duck listens.** `E` at the Rubber Duck Inc stand: the robot says the problem out
+  loud, the duck says nothing, and the robot "works it out" — the answer being the chapter's own
+  hint for whatever is still open, picked for the robot standing there so it is never a hint about
+  somebody else's job. It reads `tasks()`, so it can never drift from what `H` would have said. It
+  only listens while the duck is still ON its stand: once shoved down the lane it is a puck, which
+  also keeps its `keySpots` circle fixed so the chapter's own beats can be kept out of it.
+- **6 · lanyard colours mean something.** `src/sim/lanyards.ts`: crew red, speaker teal, attendee
+  grey-blue, chair orange, on `Person.lanyard` and painted by the renderer. It is a fact about a
+  person and not a render flourish, which is why it lives in the sim — the reason you can pick the
+  keynote speaker out of three thousand people is the ribbon round their neck, and chapter 3's middle
+  act is doing exactly that. The speaker hint now says so.
+- **7 · "GC pause" when Biggy stops.** `src/sim/quips.ts`, ticked by `game.ts` after the chapter, so
+  it is true in all four rather than being one chapter's joke. It needs a real run-up (1.2 s above
+  55% of his top speed) and fires **once a chapter**, and it waits for a clear screen: the first cut
+  of the test ran him down the exhibition hall, he hit a sponsor table, and the toast explaining
+  what he walked into is not a screen a joke may talk over. That became the rule and the test.
+
+**Still open from the same list:** 1 (colour legend as an in-world AV rider), 2 (wrong-name badge
+from the printer), 3 (the CFP rejection wall under Voxxy's beam). 4 (speaker in the wrong room) is
+**withdrawn** — Michele: *"the speaker is the keynote? Rooms are on a separate floor."* He is right
+on both counts: chapter 3's speaker IS the keynote speaker, and rooms 4 and 8 are on floor 1 while
+the hall is on the ground floor, so the gag as written could not happen. If it comes back it will be
+a TRACK speaker in chapter 4's floor-1 corridor, outside the wrong door — which is a different joke.
+
+**Tests.** `tests/extras.test.ts` (6): the ribbons are four distinct colours and everybody in the
+hall wears one with Stephan the only chair; the duck answers at its stand and refuses once shoved;
+the GC pause fires after a run and never twice in a chapter. Suite 742 green.
+
+## 26 Sep 2026 — the cheap extras, 1 · 2 · 3
+
+**Human decision.** Michele: *"The cheap gain are ok."*
+
+- **1 · the colour legend, as an in-world AV rider.** A laminated sheet taped to the closed
+  corridor's north wall, a few strides east of the opening marks: *"house rig: Voxxy orange spot ·
+  Droid green wash · Biggy blue flood. A mark lights when every colour it is written for is on it at
+  the same time."* Any robot walking past reads it, once — it is a legend, not a puzzle, and it is in
+  chapter 1 because that is the chapter that teaches the mix. An AV rider is the document a touring
+  show sends the venue, so the legend is something the building would really have.
+- **2 · the wrong-name badge.** The first thing a badge printer does when it comes up is print one
+  test badge, and the first thing it gets wrong is a name: `VOXY`, one X. It lands `BADGE_WARMUP`
+  seconds after the printer comes online, and that delay is load-bearing — without it the joke
+  replaces "cable in — the run is made", which is the line that tells the player the job worked. When
+  the store and the printer finish on the same frame, the curtain line carries the badge instead.
+- **3 · the CFP rejection wall.** Six rejected talk slips pinned up past cinema D's door, readable
+  only under **Voxxy's cone** inside 70 px and with her skirt filtered out — the same rule chapter
+  2's spray tag is read under, so the beam is doing the reading rather than the standing. One slip
+  every 3.5 s, cycling. They are jokes about the shape of a programme, never about a real talk or a
+  real person.
+
+**Tests.** `tests/extras.test.ts` is now 9: the rider's toast names all three colours, Biggy's flood
+on the CFP wall gets nothing while Voxxy's cone gets a slip, and the badge is measured by playing
+chapter 2's chain to the printer and then checking that "Cable in" survived and `VOXY` arrived after
+it. Suite 745 green.
+
+## 27 Sep 2026 — «Nastri»: the stair barrier, and the wall it was guarding
+
+**Human decision, twice in one day.** Michele, looking at the shut barrier in chapter 3:
+*"Stephan is powerful, but i don't think he can remove a wall. I'd use something simpler, like
+«Nastri»"*. The agent drew him a diagram of what the barrier then did (a 15.76 m run of steel with
+a 3.52 m gate hung in the middle, of which only the gate moved), and he ruled: *"Nastri is fine. We
+could also have some kind of scene/effect where stephan pull one spot and the 8 nastri retract one
+by one."* Eight is his number, and the implementation uses it: **nine posts, eight belts**.
+
+**What the agent built.** `src/sim/nastri.ts` — post positions, belt spans, release order and each
+belt's own retraction, all in the sim, because the belts are *colliders* as well as a picture and
+`src/render` may read `src/sim` but never the reverse. `gateDraw` in `src/render/doors.ts` is now a
+thin read of it; the swing, the hinge and `GATE_MOUTH` are gone. Stephan takes the clip in front of
+him (`pullT = 0.5`, which is where he stands) and the release ranks by distance from his hand, so
+the wave alternates outward — 3, 4, 2, 5, 1, 6, 0, 7 — and no two belts let go on the same frame.
+Each belt winds into the post *farther* from him, so the gap opens at his end and grows away.
+`ch3-breakfast.ts` pushes nine post walls and eight belt walls when he opens up and drops each belt
+wall on the frame `beltUp` turns false; the renderer stops drawing it on that same frame, off the
+same number.
+
+**What it cost, and what it found.**
+
+- **The stair's shell still opened SOUTH.** `shellOf` opens the south face of whatever it is given,
+  which was right while the main staircase ran north–south. The flight took a quarter turn on
+  25 Sep and `GF.gate` turned with it to the east face — the foot — and the shell did not. So the
+  foot of the flight was walled along its whole length and the open face was the south cheek, three
+  metres up: **Stephan's barrier was guarding a wall**, and the exit cutscene walked three robots
+  through a balustrade. Found by a new test asking whether Biggy fits between two posts, which is
+  the question the nastri made worth asking. Fixed in `groundWalls()`; 753 tests green after it.
+- **A one-frame pop in every door in the game.** `openness()` treated "clock at zero and state
+  open" as fully open. The frame `done()` fires is exactly that, so the barrier was drawn fully
+  retracted for one frame with all eight belts still walls in the sim. "No clock" now means
+  `progress === undefined`, which is what the sentence always meant.
+- **The crowd-barrier kit is gone** from `venue/props.ts` (`barrierPanelGeometry`, `barrierRun`) and
+  a belt-post kit replaces it: a weighted disc, a chrome column, a cassette head, and 7 cm of
+  webbing in Devoxx orange. The two colours live in the palette so the chapter's prop and the
+  venue's static line cannot drift apart when they swap places at a chapter boundary. Post chrome is
+  `metalness: 0.5` on purpose — real chrome at 0.9 is black in a room with no environment map, and
+  every room in this game is that room.
+
+**Tests.** `tests/nastri.test.ts`, six: the line is nine posts and eight belts and all of it is
+inside `GF.gate`; the release runs outward from Stephan one belt at a time; every belt finishes by
+the end of the wave and no two land together; **through the whole wave, frame by frame, a belt is
+drawn if and only if the sim has a wall under it**; the widest robot fits through every gap; and the
+exit cutscene walks the three of them out *between* the posts — measured on the robots' own
+positions, because a cutscene ignores walls and no collider test can catch that. Suite 753 green.
+
+**Rejected.** Keeping the posts out of the collider list so the flight would be one clean opening.
+It would have made the gaps a lie: a chrome post is a thing you steer around, and the cutscene
+would have been free to walk through one. The lanes moved instead — nine posts across a 15.76 m
+line puts a post exactly on the centre, and the old middle lane walked Droid straight through it.
+
+## 28 Sep 2026 — the day's second round: the roll, the soup, the bar and the rig
+
+**What he asked for.** Fourteen playtest notes in one sitting. Seven went into the previous commit
+(the crowd, the badge desk, Stephan's clothes, the keynote speaker, the soup's drop mark); this is
+the rest, plus two from the same pass that had been carried — the cake and a flicker by room 7.
+
+**What the agent did.**
+
+- **Biggy rolls when he runs.** `src/render/robots/gait.ts`. The roll existed and was gated on
+  `worldMoved` — somebody else pushing him. Michele had asked four times why he could not make it
+  happen and the fourth time said how: *"I tried running."* The gate is SPEED now (`st.roll` is a
+  smoothstep on it, and the walk is switched off at the source — `moving` and `amp` both scale by
+  `1 - roll`), and `shoved` only chooses the window: 1.5–3 m/s for a shove, 2.2–3.4 m/s for a run
+  under his own power, nothing at all with the soup pot in his hands (`GaitParams.carrying`, read
+  off the published `pot` prop rather than a new sim flag — the pot is only published while
+  somebody is carrying it, so it already IS the flag).
+- **The soup is drawn.** `drawLadle`, `drawPot`, `drawSpill` in `src/render/scene.ts`, and stains in
+  `src/sim/chapters/ch3-breakfast.ts`. The sim keeps the puddles because they are facts about the
+  run — where the body was, how much came out — and the list is bounded at fourteen.
+- **The bar pays off.** One clock in the chapter (`beerAt`) drives everything: `pour` 0→1 across
+  3.4 s after a 0.7 s beat, published on each tap's `v`; the glassware fills off the same number;
+  Biggy's flourish is set directly rather than through `partyTrick`, because the toast is the
+  chapter's and not the player's — it does not check the stick, the rest timer or Droid's feet, and
+  it does not speak his `E` line. Three kegs stand inside the `bar-counter` rect, which is a `low`
+  wall, so nothing can walk where they are and they need no collider.
+- **The shadow rig says where to stand.** Two painted lanes from each lamp pad to its sensors, red
+  cells while lit, and a sensor bar that lights from its own supply.
+
+**What it cost, and what it found.**
+
+- **The drive threshold could not come off `DEFS.biggy.max`.** The first cut used 2.6–3.8 m/s,
+  reasoning from his 4.7 m/s top speed. A headless probe then drove him flat out across the
+  exhibition hall: he reaches the far wall at **2.88 m/s**. Rooms are shorter than top speeds, so
+  the window is 2.2–3.4 and the number is in the comment beside it.
+- **The ladle was the walk-through prop chapter 3 carried.** `KNOWN_WALKTHROUGH[3]` had listed
+  `ladle` since the sweep was written: the renderer drew it as a 0.9 m slab standing on the floor
+  under the shelf, with no collider, because nobody had ever drawn the shelf. Putting the ladle ON
+  the 1.35 m shelf took it off both lists, and the sweep's own "this list cannot go stale"
+  assertion is what forced the edit.
+- **The pot disappeared behind the robot carrying it.** First cut put it in front along his
+  heading, which is correct and invisible: this camera is fixed on the +z side, so a robot walking
+  north carries the pot behind his own lid. It is biased half a heading plus one camera-ward unit
+  now — in front when he walks at you, round to the near side when he walks away.
+- **Headless probes of chapter 3 run at about one frame a second.** Sixty visitors in swiftshader,
+  and the game's clock is the rAF loop, so a probe that sleeps for the pour measures nothing. The
+  beer probe polls the STATE instead of the clock. (Chrome also stops producing frames when the page
+  is static, so a probe that waits on a still scene waits for ever — the robot has to be moving, or
+  the sim is not running at all.)
+
+**Tests.** `tests/soup.test.ts` (4, new): the ladle prop is the shelf rect and empties when Droid
+takes it; the pot is published at the carrier's own centre and follows him; a splash leaves a puddle
+where the body was, and six ruined pots stay under the bound. `tests/beer-bar.test.ts` (+4): the
+taps are shut until the delivery is finished, all three run on one clock, Biggy raises one glass
+once and puts it down, and every keg is inside the counter's rect. `tests/shove-roll.test.ts` (+3):
+a manoeuvre walks, a run tucks (thigh past -1.3 rad, pelvis turning through whole revolutions), and
+the pot forbids both. `tests/dark-rig.test.ts` (+2): each station paints a lane from its pad to its
+own sensors, and a lit cell is red. `tests/colliders.test.ts`, `tests/prop-geometry.ts`: four new
+kinds classified (`spill`, `keg`, `toast`, and the ladle's new band). Suite **769 green**.
+
+**Rejected.** Hanging a `sign` prop over each station of the shadow rig to name it. A chapter's
+`sign` is a blue panel and nothing paints text on one — only the venue's own `SignPainter` does — so
+two more would have been two blank boards over a rig that was already hard to read. The lanes and
+the red cells carry it instead.
+
+## 28 Sep 2026, V46 round — the feet, the speaker, the cake and the spotlights
+
+**What he asked for.** Four notes on V46, one of them reversing a decision from the build before it.
+
+**What the agent did.**
+
+- **Biggy's feet go away, and the roll goes back to shoves.** `src/render/robots/gait.ts`. Two
+  changes in one line of feedback: *"Biggy should retreat his feet while rolling. And maybe it's
+  better to reserve it for when he's pushed to high speed."* The tuck folded the legs, which puts
+  the knees inside the gut and the boots outside it; `tuckLegs` now SCALES each thigh (and with it
+  the shin and the boot hanging off it) to a fifth of its length, so the leg ends up entirely inside
+  a 1.2 m ball. It is written every frame, including at zero and including while a party trick
+  plays, because a pose made of scale is the one kind that cannot survive a frame that forgets it.
+  The gate went back to `shoved && speed`: `DRIVE_ROLL_*` is deleted.
+- **The speaker is handed to Stephan.** `ch3-breakfast.ts`: the stage rect is gone, `speakerSpot` is
+  a mark beside the soup's, `speaker.onStage` is `speaker.withStephan`, and a 38 px handover lets
+  Stephan claim them without anybody threading a box.
+- **The cake is a trolley, not a billiard ball.** `ch4-keynote.ts`: `CAKE_STEER` (0.7) blends the
+  push direction from the contact normal towards Biggy's own stick, and `CAKE_SCRUB` (10 s^-1)
+  decays the component of the board's velocity across the push while he is pushing. Both are what a
+  wheeled board does and neither is what two discs do.
+- **The spotlights do something.** `src/render/scene.ts`: each is a floor can on a base, aimed at the
+  stage prop the chapter publishes, with an additive beam and a warm pool when the sim says it is
+  lit and a standby glow on the one that is next. No `THREE.Light` — this renderer has never had
+  one, and four shadow-casting spots would cost the frame.
+- **The beer crates are crates.** A case with a lip, a pale band, and twelve caps in one instanced
+  draw per crate — ninety cylinders across a full stack, which is no place for ninety draw calls.
+
+**What it cost, and what it found.**
+
+- **A shared material painted six crates the same colour.** The first cut gave every crate one
+  `MeshStandardMaterial`, and the six of them are in four different states at once (loose, carried,
+  the one that will throw the heap error, stacked): whichever was drawn last won. Each pooled crate
+  owns its case material now, the way each pooled person owns a collar.
+- **Two marks 4 px apart broke a test that was measuring loosely.** `beer-bar.test.ts` counted the
+  ring round the soup's mark by taking every unlabelled `dropzone` within 8 px of it, which is fine
+  with one mark in the area and answers 7 with two. The gap is 12 px now AND the test matches each
+  ring to the rect it belongs to, so the chapter can put three marks at a man's feet if it wants to.
+- **The cake's numbers were tuned against a measurement, not an opinion.** 0.45/6 left a 6 px
+  off-centre push 18 px off line over 3 s; 0.7/10 brings it under 14 while a corner shove still
+  turns the board by more than 3 px, which is the test that stops the fix from welding it to an axis.
+
+**Tests.** `tests/cake-push.test.ts` (4, new): straight east–west from dead behind and from 6 px off
+either side, straight north up the aisle, and a corner shove that still steers. `tests/shove-roll.
+test.ts`: the drive-roll block is replaced by four that assert the pose — a self-driven sprint at
+4.3 m/s stays a walk, a shove balls him up AND scales the legs to under a third, the legs come back
+when the roll ends, and the soup pot forbids the whole thing. `tests/chapters.test.ts`, `pilot.ts`,
+`speaker-spot.test.ts`: the speaker's destination is Stephan's own mark, asserted by distance to the
+man rather than by a rect. Suite **774 green**.
+
+**Rejected.** Making the spotlights real `THREE.Light`s. The whole lighting model in this game is
+drawn geometry (`src/render/lighting.ts` draws the robots' lamps as meshes off the sim's visibility
+polygons); four spots with shadow maps would have been the only real lights in the build, would not
+have matched the room around them, and would have cost more than the entire rest of the frame.
