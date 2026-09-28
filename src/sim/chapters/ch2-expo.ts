@@ -106,7 +106,7 @@ import {
   TRAVEL_TIME_SCALE,
 } from '../constants';
 import { m } from '../units';
-import { GF, VIEW_GROUND, WIFI_TAG, groundWallsFor, stairLanding } from '../geometry';
+import { GF, VIEW_GROUND, WIFI_TAG, WIFI_TAG_W, groundWallsFor, stairLanding } from '../geometry';
 import { dist, inRect, speed } from '../bot';
 import { buildLights, litBy } from '../lights';
 import type { Bot, LightSource, Mirror, Prop, Task, TextPrompt, Vec2, Wall } from '../types';
@@ -833,7 +833,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           'one for everything. That label will be taped inside the lid, up at the top; from Biggy\'s ' +
           'shoulders I could read it'
         : 'Voxxy: <b>AUTHORISATION?</b>, it says — the venue WiFi password. Nobody writes those down. Except ' +
-          'that somebody sprayed it along the top wall of the hall, in orange, and small paint is what I am for') +
+          'that somebody sprayed it on the side of the Legacy Systems stand, in orange, and small paint is what I am for') +
         '. Type it: A–Z, Backspace fixes a slip, Esc steps away',
       4600,
     );
@@ -1699,10 +1699,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
        */
       {
         kind: 'poster',
-        x: posterAt.x - 44,
-        y: posterAt.y - 6,
-        w: 88,
-        h: 4,
+        // The paint's own rect, 2..6 px off the wall it is on, facing (nx, ny).
+        ...(WIFI_TAG.nx !== 0
+          ? { x: posterAt.x - WIFI_TAG.nx * 2 - 4 * (WIFI_TAG.nx > 0 ? 1 : 0), y: posterAt.y - WIFI_TAG_W / 2, w: 4, h: WIFI_TAG_W }
+          : { x: posterAt.x - WIFI_TAG_W / 2, y: posterAt.y - WIFI_TAG.ny * 2 - 4 * (WIFI_TAG.ny > 0 ? 1 : 0), w: WIFI_TAG_W, h: 4 }),
         state: router.known ? 'done' : router.posterLit ? 'active' : 'idle',
         label: router.known ? 'the wall: DevoxxForever' : 'spray tag — wifi symbol, unreadable (Voxxy\u2019s beam)',
       },

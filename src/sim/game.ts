@@ -233,6 +233,9 @@ const NO_PEOPLE: Person[] = [];
 const GROUND_PLATES: Plate[] = groundPlates();
 const NO_PLATES: Plate[] = [];
 
+/** Seconds after typing into a prompt during which R does not restart. */
+const TYPING_GRACE = 2;
+
 export function createGame(opts: GameOptions = {}): DebugGame {
   const showCards = opts.cards !== false;
   let rng = mulberry32(opts.seed ?? 0x9e3779b9);
@@ -290,6 +293,9 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   };
 
   /* ------------------------------------------------------------- feedback */
+
+  /** Sim time of the last key pressed while a chapter had the keyboard; see `KeyR`. */
+  let typedAt = -Infinity;
 
   function flash(text: string, ms: number = TOAST_MS, flavour = false): void {
     toast = { t: text, until: t + ms / 1000, flavour };
@@ -1117,7 +1123,16 @@ export function createGame(opts: GameOptions = {}): DebugGame {
      * offers. Inside a chapter's text prompt it is not a control at all: it is
      * the two Rs of `DevoxxForever` (`ChapterRuntime.typing`).
      */
-    if (code === 'KeyR' && !(runtime?.typing?.() ?? false)) {
+    /*
+     * ...and not for TYPING_GRACE after the last letter typed into one either.
+     * The password ends in an R: Michele finished typing it, the router took it,
+     * the prompt closed, and one R too many restarted the chapter (28 Sep: "keep
+     * a tolerance on keypress here too").
+     */
+    const typingNow = runtime?.typing?.() ?? false;
+    if (typingNow) typedAt = t;
+    if (code === 'KeyR' && !typingNow && t - typedAt < TYPING_GRACE) return;
+    if (code === 'KeyR' && !typingNow) {
       if (chapter >= 1 && phase === 'play') restartChapter();
       else restart();
       return;

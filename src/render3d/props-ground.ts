@@ -441,8 +441,15 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         // The spray tag: DevoxxForever, a wifi symbol, and the joke. Faint
         // until a beam finds it (the sim's `active`), then orange paint.
         tagTex ??= sprayTag();
-        const tag = emitter(tagTex, w, w / 4, 0, 0xff7a1a);
-        tag.position.set(cx, 2.6, cz + d / 2 + 0.02);
+        // On a wall that runs along z (a booth's side) the paint faces west or
+        // east; on one along x (the hall's top wall) it faces south.
+        const side = d > w;
+        const len = side ? d : w;
+        const tag = emitter(tagTex, len, len / 4, 0, 0xff7a1a);
+        if (side) {
+          tag.rotation.y = -Math.PI / 2;
+          tag.position.set(cx - w / 2 - 0.02, 1.6, cz);
+        } else tag.position.set(cx, 2.6, cz + d / 2 + 0.02);
         g.add(tag);
         g.userData = { tag };
         return g;

@@ -96,6 +96,9 @@ const HUB: Vec2 = { x: GF.cabinet.x + GF.cabinet.w / 2, y: GF.cabinet.y + GF.cab
  */
 // The venue's own number, not a third copy of it — see `WIFI_TAG`.
 const POSTER: Vec2 = { x: WIFI_TAG.x, y: WIFI_TAG.y };
+/** A point `d` px out from the tag along the way it faces, and the heading that looks back at it. */
+const OUT = (d: number): [number, number] => [POSTER.x + WIFI_TAG.nx * d, POSTER.y + WIFI_TAG.ny * d];
+const AT_TAG = Math.atan2(-WIFI_TAG.ny, -WIFI_TAG.nx);
 /** The three breakers, on the technical room's high panel. */
 const PANEL: Vec2 = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
 
@@ -649,7 +652,7 @@ describe('chapter 2 — expo', () => {
     // teleported inside a collider.)
     const g = mk(2);
     park(g, ['droid', 'biggy']);
-    g.debug.place('voxxy', POSTER.x, POSTER.y + 34, -Math.PI / 2);
+    g.debug.place('voxxy', ...OUT(34), AT_TAG);
     steps_(g, 4);
     expect(expo(g).router.posterLit).toBe(true);
     expect(expo(g).router.known).toBe(true);
@@ -659,7 +662,7 @@ describe('chapter 2 — expo', () => {
     // and it is still not reading.
     const away = mk(2);
     park(away, ['droid', 'biggy']);
-    away.debug.place('voxxy', POSTER.x, POSTER.y + 18, Math.PI / 2);
+    away.debug.place('voxxy', ...OUT(18), AT_TAG + Math.PI);
     steps_(away, 4);
     expect(expo(away).router.posterLit, 'the skirt read the small print').toBe(false);
     expect(expo(away).router.known).toBe(false);
@@ -667,7 +670,7 @@ describe('chapter 2 — expo', () => {
     // Beam on it from across the hall: lit is not read.
     const far = mk(2);
     park(far, ['droid', 'biggy']);
-    far.debug.place('voxxy', POSTER.x, POSTER.y + 140, -Math.PI / 2);
+    far.debug.place('voxxy', ...OUT(140), AT_TAG);
     steps_(far, 4);
     expect(expo(far).router.known, 'she read 8-point type from 11 m').toBe(false);
 
@@ -676,7 +679,7 @@ describe('chapter 2 — expo', () => {
       const other = mk(2);
       other.debug.place('voxxy', 560, 660);
       other.debug.place(kind === 'droid' ? 'biggy' : 'droid', 600, 660);
-      other.debug.place(kind, POSTER.x, POSTER.y + 34, -Math.PI / 2);
+      other.debug.place(kind, ...OUT(34), AT_TAG);
       steps_(other, 4);
       expect(expo(other).router.known, `${kind} read the small print`).toBe(false);
     }

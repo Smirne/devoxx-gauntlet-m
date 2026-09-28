@@ -1120,9 +1120,23 @@ export const BAR_RECT: Rect = { x: 336, y: 96, w: 92, h: 26 };
  * it here (`ch2-expo.ts`), so the paint and the thing Voxxy's beam has to find
  * cannot drift apart — which is the fault this constant exists to prevent.
  */
-export const WIFI_TAG: { readonly x: number; readonly y: number } = { x: 500, y: GF.hall.y + 8 };
+/**
+ * ...and since 28 Sep 2026 it is not on that wall at all. Michele, from the 2D
+ * view: *"the wall is Legacy Systems' West wall"* — on the way to the cabinet,
+ * where the robots walk anyway coming out of the stairwell, instead of a detour
+ * to the hall's top wall. A built booth's side is 70 px, so the paint narrows
+ * to 64. `nx, ny` is the way the paint faces (out of the wall, toward whoever
+ * reads it); `x, y` is 8 px out along it, as before.
+ */
+const LEGACY = booths.find((b) => b.name === 'Legacy Systems SA') ?? booths[4];
+export const WIFI_TAG: { readonly x: number; readonly y: number; readonly nx: number; readonly ny: number } = {
+  x: LEGACY.x - 8,
+  y: LEGACY.y + LEGACY.h / 2,
+  nx: -1,
+  ny: 0,
+};
 /** How wide the paint is, sim px — the renderer's plane, and the room it needs. */
-export const WIFI_TAG_W = 88;
+export const WIFI_TAG_W = 64;
 
 /**
  * How far the lobby floor stands above the exhibition hall's, metres.

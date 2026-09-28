@@ -1049,12 +1049,14 @@ export function buildSignage(
    */
   ground.add(
     signFace(
-      WIFI_TAG.x,
-      WIFI_TAG.y - 8 + T + 0.6,
+      // On the wall it faces away from: 8 px back along (nx, ny), then 0.6 px
+      // proud of that face so the two never z-fight.
+      WIFI_TAG.x - WIFI_TAG.nx * (8 - 0.6),
+      WIFI_TAG.y - WIFI_TAG.ny * (8 - 0.6),
       WIFI_TAG_W / PX_PER_M,
       1.7,
       1.35,
-      0,
+      Math.atan2(WIFI_TAG.nx, WIFI_TAG.ny),
       painter.material('wifi-tag', 1024, 198, '#14161a', wifiTag, 0.24),
       'wifi-tag',
     ),

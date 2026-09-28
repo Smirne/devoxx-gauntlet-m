@@ -4535,3 +4535,31 @@ ordinary figures with their role colours.
   - *Stairwell door leaves.* "It's in the way." The leaves stood square to the wall 1.2 m out into
     the path. They now fold flat against the wall, both on the east side of the opening, because
     west of it there is only 0.6 m of wall before the shaft's corner.
+- *Fourth batch, 28 Sep, from Michele's full chapter 2 run.*
+  - *Cable.* "At a certain point the cable vanished, while crossing the stairs." The tube ran at 0
+    or 0.5 m, so inside the small staircase it was under the treads. It is now resampled every
+    ~0.25 m and follows each tread at the height `stepsFor` draws it.
+    "When reaching the dropzone, cable should be automatically attached (animation would be
+    welcome) without pressing E." The sim plugs in when Voxxy is within reach; E still works. The
+    printer socket becomes the run's last point, and in 3D that last stretch grows up the desk into
+    the printer over 0.7 s.
+  - *Printer.* The desk stands on the 0.5 m lobby, so its top is at 1.55 m, and the old printer box
+    at 1.05 m sat inside the counter. It is now a card printer on the desk top: an LCD reading NO
+    LINK / LINK UP / PRINTING, a hopper of blank cards, and badges (orange DEVOXX stripe,
+    ATTENDEE) sliding out of the slot every 1.1 s onto a stack once it is online.
+  - *Stairwells.* The walls are black moquette ("stairs wall might be black moquette"). The start
+    moved Voxxy three steps back from the west wall, so her lamp no longer paints a halo on it.
+  - *Sign, again.* "Still in the wall." The blade guessed the wall's face. A sign near a wall is now
+    mounted flat on the sim wall rect's own face, 3 cm proud, with no post.
+  - *Spray tag.* Michele chose the wall: "Legacy Systems' West wall". `WIFI_TAG` gained a facing
+    (`nx, ny`), and chapter 2's prop rect, the 2.5D painter and the 3D painter all orient from it.
+    The paint narrows from 88 to 64 px to fit a 70 px booth side. Voxxy's line now says where it
+    is. The tests that pinned the old wall (placement, reading, the bar-overlap check) now derive
+    from the facing instead of the old north wall.
+  - *R during the password.* "I was typing the password and the chapter restarted... I think that
+    was the R in DevoxxForever, that maybe I retyped. Keep a tolerance on keypress here too." The
+    password ends in R, and the last letter closes the prompt, so one R too many was a restart. For
+    2 s after any keystroke typed into a prompt, R is swallowed. A new test types the password,
+    presses R at once (no restart), then again after 2.2 s (restart).
+  - *Not done yet:* the booth stands ("unfinished, it should be clear when you're passing under
+    them") and a rock intro score ("rock guitar, stomping, energy").

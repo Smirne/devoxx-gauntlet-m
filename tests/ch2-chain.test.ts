@@ -317,6 +317,31 @@ describe('chapter 2 — the password field', () => {
     expect(expo(g).router.online).toBe(true);
     expect(g.snapshot().chapter, 'the two Rs in DevoxxForever restarted the run').toBe(2);
   });
+
+  /**
+   * *"I was typing the password and the chapter restarted... I think that was the
+   * R in DevoxxForever, that maybe I retyped. Keep a tolerance on keypress here
+   * too."* The last letter closes the prompt, so an R typed once too often landed
+   * as a restart. For two seconds after typing, R is still just a letter.
+   */
+  it('does not restart on an R typed just after the password went in', () => {
+    const g = mk();
+    powerUp(g);
+    openCabinet(g);
+    atTerminal(g, 'voxxy');
+    g.key('KeyE');
+    for (const ch of 'DEVOXXFOREVER') {
+      g.key(`Key${ch}`);
+      g.update(DT_MAX);
+    }
+    expect(expo(g).router.online).toBe(true);
+    g.key('KeyR');
+    expect(expo(g).router.online, 'one R too many restarted the chapter').toBe(true);
+    // ...and R is a restart again once the hands are off the keyboard.
+    steps(g, Math.ceil(2.2 / DT_MAX));
+    g.key('KeyR');
+    expect(expo(g).router.online, 'R never came back as restart').toBe(false);
+  });
 });
 
 /* ============================================ the intro, and where things are */
@@ -358,10 +383,17 @@ describe('chapter 2 — what the player is told, and what they have to find', ()
     expect(tag, 'the tag is not in the world').toBeDefined();
     expect(tag?.state).toBe('idle');
     expect(tag?.label?.toLowerCase()).toContain('spray');
-    // On the top wall, above the first row of booths (y 250).
-    expect((tag?.y ?? 999) + (tag?.h ?? 0)).toBeLessThan(GF.booths[0].y);
+    // On the Legacy Systems stand's west side (Michele, 28 Sep), against it.
+    const legacy = GF.booths.find((b) => b.name === 'Legacy Systems SA');
+    expect(legacy).toBeDefined();
+    if (tag && legacy) {
+      expect(tag.x + (tag.w ?? 0)).toBeLessThanOrEqual(legacy.x);
+      expect(tag.x).toBeGreaterThan(legacy.x - 10);
+      expect(tag.y).toBeGreaterThanOrEqual(legacy.y);
+      expect(tag.y + (tag.h ?? 0)).toBeLessThanOrEqual(legacy.y + legacy.h);
+    }
     // A wall's worth of paint, not eight-point type: at least 5 m of it.
-    expect(tag?.w ?? 0).toBeGreaterThan(62);
+    expect(Math.max(tag?.w ?? 0, tag?.h ?? 0)).toBeGreaterThan(62);
 
     // ...and a short walk from where the robots are standing when the chapter opens.
     const start = g.snapshot().bots[0];
@@ -375,7 +407,7 @@ describe('chapter 2 — what the player is told, and what they have to find', ()
     const g = mk();
     g.debug.place('droid', 560, 660);
     g.debug.place('biggy', 600, 660);
-    g.debug.place('voxxy', TAG.x, TAG.y + 34, -Math.PI / 2);
+    g.debug.place('voxxy', TAG.x + WIFI_TAG.nx * 34, TAG.y + WIFI_TAG.ny * 34, Math.atan2(-WIFI_TAG.ny, -WIFI_TAG.nx));
     steps(g, 4);
     expect(expo(g).router.posterLit).toBe(true);
     expect(expo(g).router.known).toBe(true);
