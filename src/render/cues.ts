@@ -13,6 +13,7 @@
  */
 
 import { flairPhase } from '../sim/bot';
+import { SIGN } from '../sim/letters';
 import type { GameSnapshot, RobotKind } from '../sim/types';
 import { PX_PER_M } from '../sim/units';
 
@@ -103,6 +104,12 @@ export function createCues(audio: Audio): (snap: GameSnapshot, dt: number) => vo
    * exactly one clue solved.
    */
   let lastFound = 0;
+  /**
+   * Letters standing in chapter 4's #DEVOXX sign last frame (`src/sim/letters.ts`).
+   * Zero outside chapter 4, so the crew's own #DEV, already up when the chapter
+   * opens, arrives from zero and is not mistaken for four letters Droid put in.
+   */
+  let lastSignUp = 0;
   let lastActive = -1;
   let lastMounted = false;
 
@@ -271,6 +278,20 @@ export function createCues(audio: Audio): (snap: GameSnapshot, dt: number) => vo
       if (snap.clues.length > 0 && found === snap.clues.length) audio.play('chime', { delay: 0.32 });
     }
     lastFound = found;
+
+    /*
+     * The #DEVOXX sign: a letter going into its gap is a digit's cue, and the sign
+     * complete is the set's — the same pair as chapter 1's clues, for the same
+     * reason. Only a RISE from a sign that was already standing counts, so the
+     * chapter opening (0 to the crew's four) and a restart (back down to four) are
+     * silent, and each letter Droid sets in is heard exactly once.
+     */
+    const signUp = snap.chapter === 4 ? snap.props.reduce((n, p) => n + (p.kind === 'letter' && p.state === 'done' ? 1 : 0), 0) : 0;
+    if (signUp > lastSignUp && lastSignUp > 0) {
+      audio.play('clue');
+      if (signUp === SIGN.length) audio.play('chime', { delay: 0.32 });
+    }
+    lastSignUp = signUp;
 
     // Two more cues that were written and silent: the switcher, and Droid going up.
     if (snap.active !== lastActive) {

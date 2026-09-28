@@ -302,6 +302,8 @@ interface GaitState {
    * nudge tips him, a real shove rolls him. See `applyShove`.
    */
   roll: number;
+  /** 0 arms down .. 1 both hands on chapter 3's soup pot. See `applyCarry`. */
+  hold: number;
   base: Map<THREE.Object3D, BoneBase>;
   partScale: Map<THREE.Object3D, THREE.Vector3>;
   /** Ankle rest positions in root space, [left, right]. */
@@ -409,6 +411,7 @@ function capture(rig: RobotRig): GaitState {
     shove: 0,
     rollA: 0,
     roll: 0,
+    hold: 0,
   };
 }
 
@@ -844,6 +847,17 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
    * be two pivots fighting over one pelvis.
    */
   if (!flairing) applyShove(rig, st, params.shoved ?? 0, v, amp, dt, standH);
+  /*
+   * ...and BOTH HANDS ON THE POT, last, so it wins over the walk's arm swing.
+   *
+   * Michele, 28 Sep 2026, with a photograph of Biggy and a pot of soup floating
+   * beside his head: *"GRAB that thing :D"*. It was drawn where a carried pot
+   * belongs and he was standing there with his arms down, which reads as a pot
+   * that has nothing to do with him. `src/render/scene.ts` puts it in the hands
+   * this pose makes — it reads the rig's own hand bones rather than a number typed
+   * twice — so the two cannot come apart however the pose is tuned.
+   */
+  applyCarry(rig, st, (params.carrying ?? false) && !flairing, dt);
 
   /* --------------------------------------------------------- antenna */
   const ant = bones.antenna;
@@ -1136,6 +1150,15 @@ const ROLL_FULL_MPS = 3;
  * scale blends: there is no frame where a boot pops.
  */
 const LEG_TUCK = 0.8;
+/**
+ * How fast both hands come onto the pot, and let go of it, per second.
+ *
+ * Quick on, because picking a pot up is a decision; slower off, because handing
+ * it over is a hand-over. Neither is a cut: `E` at the counter is one frame and a
+ * robot whose arms teleport into a carry on that frame reads as a glitch.
+ */
+const CARRY_ON = 8;
+const CARRY_OFF = 5;
 /** How fast the tuck comes on and lets go, per second. Faster in than out. */
 const ROLL_ON = 7;
 const ROLL_OFF = 4;
@@ -1173,6 +1196,37 @@ const SHOVE_OFF = 3.5;
  * Only Biggy. Voxxy and Droid are not balls, and a shoved Droid staying upright
  * and offended is the right picture for Droid.
  */
+/**
+ * HOLDING THE POT: both arms up and forward, hands together in front of the lid.
+ *
+ * Only the arms — he still walks, still leans into a turn, still takes the stairs;
+ * a robot carrying something does not stop being a robot walking. The pose is
+ * blended in and out on its own clock (`CARRY_ON`) so picking the pot up and
+ * handing it over are moves rather than cuts, and it is applied AFTER the walk so
+ * the arm swing does not fight it.
+ *
+ * The numbers are a two-handed carry at chest height: shoulders forward and up,
+ * elbows bent, hands turned inwards to meet. What makes it a carry rather than a
+ * shrug is that the renderer then puts the pot exactly where those hands ended up.
+ */
+function applyCarry(rig: RobotRig, st: GaitState, carrying: boolean, dt: number): void {
+  st.hold += ((carrying ? 1 : 0) - st.hold) * (1 - Math.exp(-(carrying ? CARRY_ON : CARRY_OFF) * dt));
+  const k = st.hold;
+  if (k < 0.01) return;
+  const b = rig.bones;
+  for (const L of ['L', 'R'] as const) {
+    const sh = b[`shoulder${L}`];
+    sh.rotation.x += (-1.15 - sh.rotation.x) * k;
+    sh.rotation.z += ((L === 'L' ? -0.5 : 0.5) - sh.rotation.z) * k;
+    const up = b[`upperArm${L}`];
+    if (up) up.rotation.x += (-0.25 - up.rotation.x) * k;
+    const fore = b[`forearm${L}`];
+    if (fore) fore.rotation.x += (-0.55 - fore.rotation.x) * k;
+    const hand = b[`hand${L}`];
+    if (hand) hand.rotation.z += ((L === 'L' ? -0.4 : 0.4) - hand.rotation.z) * k;
+  }
+}
+
 /**
  * Pull Biggy's legs up inside his own gut, by `k` (0 standing, 1 fully balled up).
  *

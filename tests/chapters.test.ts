@@ -74,7 +74,7 @@ function until(g: DebugGame, done: () => boolean, budget = 600): boolean {
   return done();
 }
 
-import { bot, driveTo, walkTo } from './pilot';
+import { bot, driveTo, raiseSign, walkTo } from './pilot';
 
 
 /* --------------------------------------------- the chapter-2 network closet
@@ -985,7 +985,8 @@ describe('chapter 3 — breakfast', () => {
     g.key('KeyE');
     expect(breakfast().queues[0].open).toBeGreaterThan(0);
 
-    // The pot needs the ladle first, and the ladle needs Droid's reach.
+    // The pot needs the ladle IN it, and the ladle needs Droid's reach and then
+    // Droid's walk: off the shelf, over to the counter, into the pot.
     g.debug.select('biggy');
     g.debug.place('biggy', 105, 180);
     g.key('KeyE');
@@ -994,7 +995,10 @@ describe('chapter 3 — breakfast', () => {
     g.debug.select('droid');
     g.debug.place('droid', 176, 150);
     g.key('KeyE');
-    expect(breakfast().ladle).toBe(true);
+    expect(breakfast().ladle).toBe('carried');
+    g.debug.place('droid', 105, 180);
+    g.key('KeyE');
+    expect(breakfast().ladle).toBe('in');
 
     g.debug.select('biggy');
     g.key('KeyE');
@@ -1608,15 +1612,14 @@ describe('chapter 4 — keynote', () => {
     expect(until(g, () => key().cake, 200)).toBe(true);
     g.setStick(0, 0);
 
-    // Droid hangs the banner: one hook, then the other.
-    const hooks = g.snapshot().props.filter((p) => p.kind === 'banner-hook');
-    expect(hooks).toHaveLength(2);
-    g.debug.select('droid');
-    for (const h of hooks) {
-      g.debug.place('droid', h.x, h.y + 22);
-      g.key('KeyE');
-    }
-    expect(key().hooks).toBe(2);
+    // Droid finishes the #DEVOXX sign: the crew stood up #DEV, and the O and both
+    // X's go from the wing into their own gaps (`src/sim/letters.ts`).
+    expect(key().sign).toBe('#DEV___');
+    expect(g.snapshot().props.filter((p) => p.kind === 'letter' && p.state === 'idle')).toHaveLength(3);
+    raiseSign(g);
+    expect(key().letters).toBe(3);
+    expect(key().sign).toBe('#DEVOXX');
+    expect(key().ready, 'the stage came ready before the lights were on').toBe(false);
 
     // Voxxy lights the spotlights, and only in order.
     const spots = g.snapshot().props.filter((p) => p.kind === 'spotlight');
@@ -1687,11 +1690,7 @@ describe('chapter 4 — keynote', () => {
     g.setStick(0, -1);
     until(g, () => key().cake, 200);
     g.setStick(0, 0);
-    g.debug.select('droid');
-    for (const h of g.snapshot().props.filter((p) => p.kind === 'banner-hook')) {
-      g.debug.place('droid', h.x, h.y + 22);
-      g.key('KeyE');
-    }
+    raiseSign(g);
     g.debug.select('voxxy');
     for (const sp of g.snapshot().props.filter((p) => p.kind === 'spotlight')) {
       g.debug.place('voxxy', sp.x, sp.y);
@@ -1953,11 +1952,14 @@ describe('chapter 3 — the soup is refillable', () => {
   const start = (): DebugGame => {
     const g = createGame({ seed: 20260930, chapter: 3, cards: false }) as DebugGame;
     const st = (): BreakfastState => g.debug.chapter() as BreakfastState;
-    // Ladle, then pot.
+    // Ladle off the shelf, ladle into the pot, then the pot.
     g.debug.select('droid');
     g.debug.place('droid', 176, 150);
     g.key('KeyE');
-    expect(st().ladle).toBe(true);
+    expect(st().ladle).toBe('carried');
+    g.debug.place('droid', 105, 180);
+    g.key('KeyE');
+    expect(st().ladle).toBe('in');
     g.debug.select('biggy');
     g.debug.place('biggy', 105, 180);
     g.key('KeyE');
@@ -1983,7 +1985,7 @@ describe('chapter 3 — the soup is refillable', () => {
     expect(st().batches, 'the ruined pot was not counted').toBeGreaterThan(0);
     expect(st().soup, 'the counter did not refill it').toBe(100);
     expect(g.snapshot().phase, 'a spilled pot ended the run').toBe('play');
-    expect(st().ladle, 'he lost the ladle with the soup').toBe(true);
+    expect(st().ladle, 'he lost the ladle with the soup').toBe('in');
 
     // ...and he can simply go and get another one.
     g.debug.select('biggy');

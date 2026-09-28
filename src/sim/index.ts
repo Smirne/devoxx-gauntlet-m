@@ -13,6 +13,7 @@ export * from './bot';
 export * from './contacts';
 export * from './reel';
 export * from './crates';
+export * from './letters';
 export * from './lights';
 export * from './game';
 export * from './chapters';

@@ -867,3 +867,185 @@ rest are here.
 ### Still open
 
 - Chapter 4 runs about six minutes — his note, still not acted on.
+
+## Michele, 28 Sep — V47: three things that were not being held
+
+- *"The ladle thing: I think droid should take it and drop it in the soup. Otherwise the action is
+  a bit pointless."* He was right: reaching the high shelf was the whole errand, and reaching it
+  set a boolean nobody could see. The ladle is an **object with a journey** now — `shelf` →
+  `carried` → `in` — and it is only `in` that unlocks Biggy's pot. Droid presses `E` under the
+  shelf to take it, walks it to the soup counter and presses `E` again to drop it in; the run-sheet
+  row counts 1 of 2 and 2 of 2, its "go here" mark moves from the shelf to the counter as he goes,
+  and Biggy asking for a pot with the ladle still in Droid's hand gets a different refusal from
+  Biggy asking with the ladle still on the shelf. The renderer draws all three places: on the slab,
+  hanging from Droid's hand, and standing upright in the pot — where it then travels with the pot,
+  because a ladle in a pot goes where the pot goes.
+- *"GRAB that thing :D"* — a screenshot of the soup pot flying along beside Biggy's head. It was
+  positioned off his BODY, with a camera-ward bias to stop it hiding behind him, which is exactly
+  what a floating pot looks like. Two halves to the fix: a **carry pose** in `gait.ts` that brings
+  both shoulders up and IN as he picks something up and eases out again when he puts it down, and
+  a pot **positioned off the hand bones** rather than off the body. Measured on the real rig at the
+  end of a carry: his hands close to 0.68 m apart around a 0.52 m pot, the pot at their midpoint,
+  0.45 m out in front of his centre. The arms go round it instead of past it.
+- *"the cable roll should not disappear when taken."* There was never a reel: chapter 2 drew the
+  RUN — a polyline — so before Voxxy picked up the end there was nothing at the rack at all, and
+  after she did, the line simply started in mid-air. A reel is bolted down; what leaves is the
+  cable. The drum is modelled now (two flanges on a spindle over a frame) and drawn in every state
+  the chapter can be in, with a wound web whose radius is what is still on it: full before she
+  takes the end, winding down as she walks, red while the reel is holding her back, a bare core
+  when the run is made.
+
+### Still open
+
+- Chapter 4 runs about six minutes — his note, still not acted on.
+- Chapter 2's rack sits low on the left of the frame, where the speed/physics panel overlaps it.
+  The new reel is drawn correctly and is partly behind the HUD — worth a look next round.
+
+## Michele, 28 Sep — *"Where are we with the ending video/animation? Could we start that?"*
+
+**Where it was.** The video existed; the animation did not. Since 26 Sep the game has ended on
+Devoxx's own opening video, cut from the run you just played (*"Movie approved, build it."*) — the
+three robots reach the stage in Room 8, the house screen wakes up, and the night's bloopers play on
+it as typography, every number a thing that really happened. What was missing is that **the robots
+stood still for all twenty seconds of it**, exactly where the player had parked them. A video of
+your own night playing over a still photograph of yourself is a pause, not an ending.
+
+**What it is now — the curtain call.** The act is built out of verbs the game already had, which is
+why it went in fast and why it reads as this game rather than as a cutscene bolted on:
+
+- The three of them **take their marks** on the apron and turn out to the house. The marks are dealt
+  to whoever is nearest, not nailed to roles, with one constraint — Droid's mark must be beside
+  Biggy's — because the player parks them in any order and the first cut had Biggy walking through
+  Droid to reach a fixed centre mark.
+- **Each one does its own party trick, in turn**: Voxxy jumps, Biggy rolls, Droid unfolds. The same
+  `E` flourishes from 25 Sep (*"Could we add a basic action to each robot on E?"*), and this is the
+  one place in the game where all three read as a performance instead of three separate showings-off.
+- **Droid climbs Biggy** and the tower holds to the last card, with Voxxy hopping beside it every
+  three seconds — the shape the whole game has been building towards since chapter 1.
+- **The room applauds.** Every seated attendee, plus Stephan and the speaker on the stage, claps —
+  arms up, hands beating about the midline, every row on its own beat — and the applause *comes up*
+  over three seconds rather than switching on, because a room at full volume on frame one is a
+  laugh track.
+
+They walk there on their own legs: every beat writes an input vector and runs the ordinary physics
+step, so nothing in the act can put a robot above its own frozen top speed, and the tests measure
+exactly that.
+
+Two smaller things went in with it: the reel camera was **tightened** (it used to run half a frame
+of empty seating, which left the robots taking their bow about twenty pixels tall — it is now the
+screen's own width plus ten pixels of air each side), and the four spotlights now aim three
+quarters of the way **downstage** instead of at the dead centre of the stage, so the pool of light
+is on the act rather than two metres behind it.
+
+**Still to do on the ending**: the camera holds one shot for the whole video and could cut — wide
+on the act, in on the screen, low on the tower; and the final score card is still a card, arriving
+over a static frame.
+
+## Michele, 28 Sep — *"What happens if I have no bloopers (skipping scenes, or not dropping any soup)?"*
+
+Asked about the degenerate endings, and both of them were wrong.
+
+- **You could not get "A flawless night." by playing well.** The video's blooper for the cable
+  fired on *any* run at all — and chapter 2 cannot be finished without paying cable out, so every
+  completed run had at least one blooper and the perfect-run card was unreachable. Running the
+  cable is the job; running two thirds of the reel out to do it is the blooper, so the card is
+  gated on `CABLE_MAX * 2/3` now. A clean run with the cable down the signposted route gets
+  **"A flawless night. / Suspicious."** as it was always meant to. (It also says *94 m* instead of
+  *1180 px* — the rest of the game talks in metres and a card a judge reads should too.)
+- **Skipping every chapter DID get you "A flawless night."** `defaultScore` fills a skipped chapter
+  in as a clean one — soup 100, no complaints, no cable — so the one player who deserved it least
+  was the only one getting it. The reel is cut from what really happened, and skipping is part of
+  what really happened: it is the first blooper on the video now, *"4 chapters skipped / Chapters
+  1, 2, 3, 4 happened without you. Nobody is asking."*
+
+So the four endings now run: a clean night 16.5 s and 6 cards, a normal night 26.4 s and 10, a bad
+night the same 26.4 s (the reel holds four bloopers at most, so the worst runs drop the smaller
+ones), and a skipped run 15.8 s and 6 — all of them with the curtain call playing in front.
+
+## Michele, 28 Sep — *"Game does not end if room is full, but some rumors from the crowd?"* and *"measure your run. I'd say 3 minutes?"*
+
+**The full room was a game over, and it should not have been.** Chapter 4 failed the chapter the
+moment the last attendee sat down in front of an unfinished stage: a player two jobs from the end
+was handed a card telling them to press R. Three thousand people arriving early does not cancel a
+keynote. It is a *noise* now — the objective line changes to say the room is watching you build it,
+and the crowd says something every 9 s, escalating through six lines from *"Somebody checks the
+schedule on their phone. Then again"* to a slow clap in row four that does not catch on. What being
+late costs you is the `spare` on your card, the `late` flag, and a line on the opening video:
+*"96s of three thousand people waiting / The stage was still being built. They were extremely
+polite about it."*
+
+**And the six minutes turned out to be about a hundred seconds.** The chapter is now driven by a
+test on one stick, in series, through the room's single door and along the real aisles, with
+nothing teleported anywhere — a player who knows the solution and never stops to think:
+
+```
+    15.7s  Voxxy and Droid in through the one door
+    13.4s  Voxxy · four spotlights, two aisles
+    20.1s  Droid · a hook at each end of the room
+    38.5s  Biggy · the cake in from the corridor
+     4.7s  everyone onto the stage
+    92.3s  TOTAL, + 14s of video
+```
+
+So the floor is 1:32 and the ending card lands at about 1:46. Against a three-minute target that
+leaves a player 88 s to be a person in — to read the hints, pick the wrong robot, and lose the cake
+down an aisle once. Nothing has been cut: the number says there is nothing to cut. The cake is the
+single longest job at 38.5 s and it is also the one Michele asked to be made *more* predictable, so
+it stays.
+
+## The ship gate, 28 Sep — one full run, and what it caught
+
+`GAUNTLET.md` Stage 3: *"Nothing ships without at least one clean full run."* The suite had four
+chapters covered and the game itself covered nowhere, because every test starts the chapter it is
+about. `tests/full-run.test.ts` plays it: one `createGame`, no `startChapter`, no `skipChapter`,
+chapter 1's code → the cutscene → chapter 2 → chapter 3 → chapter 4 → the opening video → the score
+card, nothing skipped.
+
+It caught a soft-lock on its first run, and it caught it for exactly the reason the gate exists.
+**The keynote speaker could not be delivered.** Voxxy walks at 72.5 px/s and the speaker at 37.5,
+so she reaches Stephan's mark well before them; the moment she stood on the spot they stopped
+following her and set off *straight* across the hall for the mark, through whichever booth was on
+the line, and jammed. Every chapter test starts chapter 3 on a fresh RNG, which hides the speaker
+at Regex Racing — the one booth with a clear line to Stephan. Chained behind two chapters the RNG
+has moved on, the speaker hides somewhere else, and the chapter cannot be finished. Measured over
+fourteen seeds: **twelve of them stranded the speaker.**
+
+The speaker walks Voxxy's *route* now, not at Voxxy — her positions are dropped behind her as
+breadcrumbs and they take them in order, so the way round the booths is the way a robot just
+walked. `tests/speaker-follow.test.ts` leads them from all five booths the chapter can pick; the
+longest is Kube Kettle at 13.2 s.
+
+Two smaller things the same run found, both in the test pilot rather than the game: a fixed
+400-frame budget per waypoint, which called a real 920 px leg impossible, and no way round a
+*person* — the router only knows about walls, so it routed a leg through the JUG leader, who stands
+in the lane, and the stick pinned Voxxy against him for good. The pilot sidesteps now.
+
+```
+one full run, chapter 1 to the card:
+     8.6s  1 · night — the code and the fire door
+    39.9s  2 · expo — power, router, cable, roller door
+    37.3s  3 · breakfast — soup, speaker, beer
+     1.5s  4 · keynote — cake, banner, lights, stage
+    21.0s  the opening video
+   108.2s  TOTAL sim clock
+```
+
+(That clock is the sim's, not a player's — the choreography places robots where a solved puzzle
+needs them. `tests/chapter4-length.test.ts` is the one that drives.)
+
+### ...and the same run in the real build
+
+The headless test proves the sim; the gate also wants the renderer. The same
+choreography was driven through the published bundle in headless Chromium — the opening crate
+sequence, the code, both cutscenes, all four rooms, the opening video and the score card — with the
+page's own error counter read at the end:
+
+```
+frames 2602    1 night 21.0s · 2 expo 10.4s · 3 breakfast 37.2s · 4 keynote 1.5s · video 15.8s
+phase  done    "Keynote starts. 7/9 — Night 0s · Expo 16s (cable 0 px) · Soup 100% at 100° …"
+title  After Dark · ERRORS:0
+```
+
+Zero console errors on every leg, and a screenshot per chapter. 7/9 on the card: the run drops
+points for the five catering complaints it never stopped to clear and for the stage finished with
+374 s of slack rather than at a run.

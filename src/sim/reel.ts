@@ -25,7 +25,9 @@
  * has nothing to show, which is funnier than any blooper, so it says so and stops.
  */
 
+import { CABLE_MAX } from './constants';
 import type { ReelCard, ReelView } from './types';
+import { m } from './units';
 
 /** Fade in and out at each end of a card, seconds. */
 const FADE = 0.4;
@@ -33,6 +35,15 @@ const FADE = 0.4;
 const GAP = 0.22;
 /** At most this many blooper cards, so the reel stays a reel and not a report. */
 const MAX_BLOOPERS = 4;
+/**
+ * Past this much cable, the run stopped being a cable run and became a tour.
+ *
+ * Two thirds of the reel. The straight route — down the right-hand wall, under
+ * the sponsor tables, to the reception desk — comes in a little over half of it,
+ * so a player who took the route the chapter signposts is under this and a player
+ * who dragged it round the hall is over.
+ */
+const CABLE_SCENIC = CABLE_MAX * (2 / 3);
 
 const s = (n: number): string => (n === 1 ? '' : 's');
 
@@ -42,7 +53,12 @@ const s = (n: number): string => (n === 1 ? '' : 's');
  * `score` is the flat bag every chapter writes into (`ChapterCtx.score`) and
  * `swag` the three collectables; `total` is the run's length in seconds.
  */
-export function buildReel(score: Record<string, number>, swag: readonly string[], total: number): ReelCard[] {
+export function buildReel(
+  score: Record<string, number>,
+  swag: readonly string[],
+  total: number,
+  skipped: readonly number[] = [],
+): ReelCard[] {
   const n = (k: string): number => Math.max(0, Math.round(score[k] ?? 0));
   const complaints = n('complaints') + n('keynoteComplaints');
   const soup = n('soup');
@@ -50,12 +66,30 @@ export function buildReel(score: Record<string, number>, swag: readonly string[]
   const oom = n('oom');
   const cable = n('cable');
   const spare = n('spare');
+  const lateT = n('lateT');
 
   const bloopers: ReelCard[] = [];
   const add = (title: string, sub: string): void => {
     if (bloopers.length < MAX_BLOOPERS) bloopers.push({ title, sub, hold: 2.5, kind: 'blooper' });
   };
 
+  /*
+   * SKIPPED CHAPTERS COME FIRST, because they are the biggest thing that happened
+   * to the night and because a reel that leaves them out lies.
+   *
+   * Michele, 28 Sep: *"What happens if I have no bloopers — skipping scenes...?"*
+   * What happened was that `defaultScore` fills a skipped chapter in as a clean
+   * one (soup 100, no complaints, no cable), so skipping the entire game produced
+   * the perfect-run card. The run sheet's own final card has always listed them.
+   * Now the video does too, and it is the first thing on it.
+   */
+  if (skipped.length > 0) {
+    const which = [...skipped].sort((a, b) => a - b).join(', ');
+    add(
+      `${skipped.length} chapter${s(skipped.length)} skipped`,
+      `${skipped.length === 1 ? `Chapter ${which}` : `Chapters ${which}`} happened without you. Nobody is asking.`,
+    );
+  }
   // Ordered by how much they say about the night, not by size.
   if (complaints > 0) {
     add(`${complaints} attendee${s(complaints)} bowled over`, 'No robot has been charged.');
@@ -68,11 +102,36 @@ export function buildReel(score: Record<string, number>, swag: readonly string[]
   } else if (temp > 0 && temp < 60) {
     add(`Tomato soup, ${temp}°`, 'Served at the speed of a robot who is not in a hurry.');
   }
-  if (cable > 0) {
-    add(`${cable} px of network cable`, 'Dragged the length of the hall by the smallest robot in it.');
+  /*
+   * THE CABLE IS ONLY A BLOOPER IF YOU TOOK THE SCENIC ROUTE.
+   *
+   * Michele, 28 Sep: *"What happens if I have no bloopers... not dropping any
+   * soup?"* — and the answer was "that cannot happen", because this fired on any
+   * run at all. Chapter 2 cannot be finished without paying out cable, so every
+   * completed run had at least one blooper and the flawless card was unreachable
+   * by playing well. The only player who ever saw it was the one who skipped every
+   * chapter, which is funny by accident and useless as a reward.
+   *
+   * Running the cable is the JOB. Running two thirds of the reel out to do it is
+   * the blooper, and `CABLE_SCENIC` is where the straight line down the hall (a
+   * little over half the reel) stops and the wander begins.
+   */
+  if (cable > CABLE_SCENIC) {
+    add(`${Math.round(m(cable))} m of network cable`, 'Dragged the length of the hall by the smallest robot in it. Twice, in places.');
   }
   if (spare > 0 && spare < 20) {
     add(`Stage ready with ${spare}s to spare`, 'Nobody in that room needs to know.');
+  }
+  /*
+   * The room filling before the stage was ready is not a fail any more
+   * (`ch4-keynote.ts`, 28 Sep) — it is a noise, and this is where the noise ends
+   * up. A consequence a player can see on the video beats a flag in the score bag.
+   */
+  if (lateT > 0) {
+    add(
+      `${lateT}s of three thousand people waiting`,
+      'The stage was still being built. They were extremely polite about it.',
+    );
   }
 
   const cards: ReelCard[] = [

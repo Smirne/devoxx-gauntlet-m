@@ -299,6 +299,29 @@ const SOUP_HANDOVER = 34;
  */
 const SPEAKER_HANDOVER = 38;
 /**
+ * HOW THE SPEAKER FOLLOWS: Voxxy's ROUTE, not Voxxy.
+ *
+ * Found by the ship-gate run (`tests/full-run.test.ts`, 28 Sep 2026), and it was
+ * not a seed thing: the speaker walked at wherever Voxxy was standing and pushed
+ * back out of any wall they ended up inside, which is a beeline with a shove on
+ * it. Voxxy walks at 72.5 px/s and the speaker at 37.5, so she arrives at the
+ * mark well ahead of them; the moment she stood in the spot they stopped aiming
+ * at her and set off straight across the hall for the mark — through whichever
+ * booth was in the way — and jammed against it. Measured over fourteen seeds:
+ * **twelve of them stranded the speaker**, and the chapter's third condition with
+ * them. Only a hiding place with clear line of sight to Stephan worked.
+ *
+ * So the speaker walks where Voxxy WALKED. Her positions are dropped behind her
+ * as breadcrumbs, the speaker takes them in order, and the route they walk is
+ * therefore a route a robot just walked — around the booths, because Voxxy went
+ * around the booths. It is also what being led actually looks like.
+ */
+const TRAIL_STEP = 12;
+/** How close the speaker gets to a breadcrumb before taking the next one, px. */
+const TRAIL_REACH = 9;
+/** How much of Voxxy's route the speaker remembers — 120 crumbs is ~14 m. */
+const TRAIL_MAX = 120;
+/**
  * The keynote speaker's teal — hoodie and cap; the ribbon is `LANYARD.keynote`.
  *
  * Nothing else in the hall wears the hoodie, and the ribbon is `LANYARD.keynote`, the only multicolour one. At the
@@ -815,7 +838,8 @@ function setupMinigames(ctx: ChapterCtx, hints: () => readonly Task[]): Minigame
 
 export interface BreakfastState {
   chapter: 3;
-  ladle: boolean;
+  /** Where the ladle is: still on the shelf, in Droid's hand, or in the pot. */
+  ladle: 'shelf' | 'carried' | 'in';
   carrying: boolean;
   delivered: boolean;
   /** Percent left in the pot. */
@@ -1005,7 +1029,22 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const food = GF.food;
   const station: Vec2 = { x: food.soup.x + 45, y: food.soup.y + 15 };
   const shelfAt: Vec2 = { x: food.shelf.x + 11, y: food.shelf.y + 8 };
-  let ladle = false;
+  /**
+   * WHERE THE LADLE IS — and it is three places, not two.
+   *
+   * Michele, 28 Sep 2026: *"The ladle thing: I think droid should take it and drop
+   * it in the soup. Otherwise the action is a bit pointless."* He is right, and it
+   * was the thinnest beat in the chapter: Droid stood under a shelf, pressed `E`,
+   * a flag went true somewhere, and a robot on the other side of the court could
+   * suddenly fill a pot. Nothing moved, so nothing happened.
+   *
+   * Now the ladle is an OBJECT with a journey: it is on the shelf, then it is in
+   * Droid's hand and goes where he goes, then he drops it in the pot at the
+   * counter and Biggy can fill it. Two presses and a walk instead of one press —
+   * and the walk is the one only Droid can start, which is what the errand was
+   * always for.
+   */
+  let ladle: 'shelf' | 'carried' | 'in' = 'shelf';
   /**
    * WHERE THE SOUP WENT — one stain on the floor per splash, and they stay.
    *
@@ -1244,6 +1283,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   );
   const hideBooth = built[Math.floor(ctx.rng() * built.length)];
   const speaker = { ...inFrontOf(hideBooth), r: 7, following: false, withStephan: false, sp: 0, face: Math.PI / 2 };
+  /** Voxxy's route, dropped behind her for the speaker to walk — see `TRAIL_STEP`. */
+  const trail: Vec2[] = [];
 
   /*
    * Stephan, and the spot the soup has to reach him.
@@ -1994,7 +2035,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     if (gateOpen) return pick(['All is ready. All is ready! Up you go, the rooms are yours.', 'Go on. Before I find something else that is missing.']);
     if (!delivered) {
       if (carrying) return pick(['Is that my soup? Bring it here before it is a cold soup.', 'I can see it from here. Walk. Do not run.']);
-      if (ladle) return pick(['Where is my soup?', 'Tomato. At breakfast, yes. It is a tradition and I am the one who keeps it.']);
+      if (ladle === 'in') return pick(['Where is my soup?', 'Tomato. At breakfast, yes. It is a tradition and I am the one who keeps it.']);
+      if (ladle === 'carried')
+        return pick(['Where is my soup?', 'The tall one is walking about with my ladle. It goes IN the pot. It is not a souvenir.']);
       return pick(['Where is my soup?', 'The pot is on the counter and the ladle is on the shelf. I am not doing it myself, I am holding a staircase.']);
     }
     if (!speaker.withStephan) {
@@ -2188,9 +2231,15 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     }
 
     if (b.kind === 'droid') {
-      if (!ladle && dist(d, shelfAt) < SHELF_REACH) {
-        ladle = true;
-        ctx.flash('Droid reaches the high shelf — ladle secured');
+      if (ladle === 'shelf' && dist(d, shelfAt) < SHELF_REACH) {
+        ladle = 'carried';
+        ctx.flash('Droid reaches the high shelf — ladle in hand. Now the pot, on the soup counter.');
+        return true;
+      }
+      // ...and the other half of the errand: he has to go and put it IN the pot.
+      if (ladle === 'carried' && dist(d, station) < POT_REACH) {
+        ladle = 'in';
+        ctx.flash('Droid drops the ladle in the pot: "It is a long arm. That is the whole of my contribution to breakfast."', 3600);
         return true;
       }
       const dc = crateInReach(d);
@@ -2215,8 +2264,14 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         return true;
       }
       if (!carrying && dist(bg, station) < POT_REACH) {
-        if (!ladle) {
-          ctx.flash('Biggy: no ladle. Droid, the shelf!');
+        if (ladle !== 'in') {
+          // Two different problems, two different answers: nobody has the ladle,
+          // or somebody is standing there holding it.
+          ctx.flash(
+            ladle === 'carried'
+              ? 'Biggy: "Droid. It goes IN the pot. I am not fishing it out of your hand."'
+              : 'Biggy: no ladle. Droid, the shelf!',
+          );
           return true;
         }
         if (carriedCrates() > 0) {
@@ -2441,14 +2496,33 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
     if (speaker.following && !speaker.withStephan) {
       const v = ctx.byKind('voxxy');
-      // Follow Voxxy, unless Voxxy is already on the spot — then head for the spot,
-      // so the speaker settles next to Stephan instead of orbiting the robot.
-      const tgt = inRect(v, speakerSpot) ? speakerAt : { x: v.x, y: v.y };
+      /*
+       * Drop a breadcrumb where Voxxy is — but only where the SPEAKER could
+       * stand. Voxxy is the one robot that fits under the sponsor tables, and a
+       * crumb left under one is a crumb the person following her cannot reach.
+       */
+      const last = trail[trail.length - 1];
+      if (!last || Math.hypot(v.x - last.x, v.y - last.y) > TRAIL_STEP) {
+        const probe = { x: v.x, y: v.y, r: speaker.r };
+        if (!ctx.walls.some((w) => !w.low && circleRect(probe, w))) {
+          trail.push({ x: v.x, y: v.y });
+          if (trail.length > TRAIL_MAX) trail.shift();
+        }
+      }
+      while (trail.length > 0 && dist(trail[0], speaker) < TRAIL_REACH) trail.shift();
+
+      // The next crumb if there is one; otherwise Voxxy herself, unless she is
+      // already standing on the spot — then the spot, so the speaker settles next
+      // to Stephan instead of orbiting the robot.
+      const head = trail[0];
+      const tgt = head ?? (inRect(v, speakerSpot) ? speakerAt : { x: v.x, y: v.y });
       const dx = tgt.x - speaker.x;
       const dy = tgt.y - speaker.y;
       const dd = Math.hypot(dx, dy);
-      speaker.sp = dd > 22 ? SPEAKER_WALK : 0;
-      if (dd > 22) {
+      // A crumb is walked onto; a person is stopped short of.
+      const stop = head ? 0 : 22;
+      speaker.sp = dd > stop ? SPEAKER_WALK : 0;
+      if (dd > stop) {
         speaker.face = Math.atan2(dy, dx);
         speaker.x += (dx / dd) * SPEAKER_WALK * dt;
         speaker.y += (dy / dd) * SPEAKER_WALK * dt;
@@ -2501,6 +2575,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   function props(): Prop[] {
     const bg = ctx.byKind('biggy');
+    const droidNow = (): Vec2 => ctx.byKind('droid');
     const out: Prop[] = [
       {
         kind: 'soup-station',
@@ -2511,11 +2586,26 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         state: carrying ? 'done' : 'idle',
         label: 'TOMATO SOUP',
       },
+      /*
+       * The ladle, wherever it is: on the shelf, in Droid's hand, or in the pot.
+       *
+       * One prop with three places and three states, rather than a flag and a
+       * decoration — the renderer draws it at the height each of those means (on
+       * the shelf slab, at Droid's hand, standing in the pot), and a player who
+       * cannot find it can follow it. The rect while it is carried is a small box
+       * on Droid's own centre, exactly as the soup pot rides on Biggy's.
+       */
       {
         kind: 'ladle',
-        ...GF.food.shelf,
-        state: ladle ? 'done' : 'idle',
-        label: ladle ? 'shelf' : 'ladle (high)',
+        ...(ladle === 'shelf'
+          ? GF.food.shelf
+          : ladle === 'carried'
+            ? { x: droidNow().x - 8, y: droidNow().y - 8, w: 16, h: 16 }
+            : carrying
+              ? { x: bg.x - 8, y: bg.y - 8, w: 16, h: 16 }
+              : { x: station.x - 8, y: station.y - 8, w: 16, h: 16 }),
+        state: ladle === 'in' ? 'done' : ladle === 'carried' ? 'active' : 'idle',
+        label: ladle === 'in' ? 'ladle · in the pot' : ladle === 'carried' ? 'ladle · Droid has it' : 'ladle (high shelf)',
       },
       { kind: 'dropzone', ...soupSpot, state: delivered ? 'done' : 'idle', label: 'bring the soup to Stephan' },
       /*
@@ -2894,9 +2984,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       ? 'soup ✓'
       : carrying
         ? `soup: carrying the pot · ${Math.round(soup)}% left at ${Math.round(temp)}°`
-        : ladle
-          ? `soup: ladle in hand — ${batches > 0 ? 'fill it again' : 'fill the pot'} at the counter`
-          : 'soup: the ladle is on the high shelf (Droid)';
+        : ladle === 'in'
+          ? `soup: ladle is in the pot — ${batches > 0 ? 'fill it again' : 'fill the pot'} at the counter`
+          : ladle === 'carried'
+            ? 'soup: Droid has the ladle — it goes in the pot on the soup counter'
+            : 'soup: the ladle is on the high shelf (Droid)';
     const spk = speaker.withStephan
       ? 'speaker ✓'
       : speaker.following
@@ -2947,11 +3039,18 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     return [
       {
         id: 'ladle',
-        text: 'fetch the ladle off the high shelf',
-        done: ladle,
+        text: 'take the ladle off the high shelf and drop it in the pot',
+        done: ladle === 'in',
         who: ['droid'],
-        at: shelfStand,
-        hint: 'Droid: top shelf in the catering block, and nobody fills a pot without it. Voxxy cannot see over that shelf and Biggy cannot get an arm into it',
+        // Two legs, two addresses: the shelf until he has it, then the pot. An
+        // errand whose arrow never moves is an errand that is really one press.
+        at: ladle === 'carried' ? soupStand : shelfStand,
+        n: ladle === 'in' ? 2 : ladle === 'carried' ? 1 : 0,
+        of: 2,
+        hint:
+          ladle === 'carried'
+            ? 'Droid: I have it. It goes IN the pot — the soup counter is the one with the vat, a few steps west along the block'
+            : 'Droid: top shelf in the catering block, and nobody fills a pot without it. Voxxy cannot see over that shelf and Biggy cannot get an arm into it',
       },
       {
         id: 'soup',

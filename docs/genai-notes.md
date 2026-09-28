@@ -5213,6 +5213,368 @@ have matched the room around them, and would have cost more than the entire rest
     - hair is now a shell with a hairline, high at the forehead and low at the nape, with a
       ragged fringe. It had been the same "beanie" cap Stephan's first head had;
     - every figure has hands that swing with its arms, and two eyes.
+
+## 28 Sep 2026 — the intro's soundtrack, from the conference's own track
+
+- *The ask.* Michele uploaded the MP3 of the Devoxx Belgium 2026 ticket trailer: "The part from
+  2.30 is what I'm looking for (vocal excluded). Can we use this (it's generated too!) or create
+  something similar? It should fit also with crate opening and current sounds (but you can also
+  adapt the animation timing to the music)."
+- *Rejected: shipping the file.* CLAUDE.md forbids audio assets, and the repo is MIT: putting the
+  track in it would mean licensing Devoxx's audio, AI-generated or not, which is "something that
+  needs permission". So the file was analysed, and the score was written from scratch to match
+  what the analysis measured. No note of its melody is used.
+- *Rejected: stem separation.* Demucs could have split the vocals off for a cleaner analysis, but
+  its model host is blocked by the build container's network policy. The analysis used plain signal
+  processing instead (librosa, scipy), which was enough.
+- *What the analysis found.* 95.75 bpm in four, with driving eighths; standard tuning; G
+  mixolydian (a G major with an F natural: spectral peaks on a 49 Hz sub G, stacked G/D/B, and
+  F); a two-bar riff that sits on G and dips to F; snare on 2 and 4 over a pushed kick. The
+  section from 2:30 is a build and a drop: a bar of eighth-note kicks, then a bar where the kick
+  drops out under a sixteenth-note snare roll, then everything on the downbeat at 2:34.6. It ends
+  with the highs cut and a last low hit.
+- *The bug under every "too ambient".* The opening's own score had never played. The opening runs
+  on top of chapter 1, so `snap.chapter` reads 1 under the crates, and the cues picked the score
+  from it. Every intro Michele heard was chapter 1's quiet night score, and both the percussive
+  and the rock rewrites were written and never heard. `scoreFor()` in `cues.ts` now picks score 0
+  while the opening runs, in both pages. A test walks a real game through its opening and checks
+  which scores get asked for, and when.
+- *An offline renderer* (`tools/render-audio/`): the real sim, cues and audio code on an
+  `OfflineAudioContext` in headless Chromium, stepped frame by frame. Its timers run on the render's
+  own clock, so any machine renders the same file. Michele asked "can you extract the current track
+  so i can listen to it?" and got three renders: the intro as shipped, the unheard rock score in
+  the same mix, and the rock score alone. It also measured why the rock score would have been
+  buried anyway: -35.6 LUFS, under chapter 1's room hum at -32. His verdict on the rock version:
+  "a little better, but we can do more."
+- *Timing adapted to the music, as he offered.* `SLOT` 2.9 s became 2.5 s, one bar at 96 bpm.
+  `PANEL_DELAY` 0.5 became 0.55, so a lamp comes on on beat 3 and its crate front lands on the
+  downbeat. `HOLD` is now derived, so the walk starts on the next downbeat. The flicker became
+  1.25 s (two beats), with its strikes on sixteenths. The opening is 12.35 s (was 12.38).
+- *The score.* One bar per robot:
+  - title: a boom and a swell;
+  - Voxxy: the groove arrives;
+  - Droid: the build, on F;
+  - Biggy: his crate is the drop, with a wall of double-tracked guitars, a sub, and a new hook;
+  - the walk: home on G.
+
+  The crate booms stay cues, and the score leaves its kick off those three downbeats, so the crate
+  is the kick. The music then cuts out exactly while the emergency light does (its gates are the
+  light's own strikes), and on the strike the light does not come back from, the band loses its
+  power in a tape-stop dive. New voices: rock kick, open hat, toms, lead guitar, riser,
+  reverse-cymbal swell, the dive. A generated reverb room, stereo placement, and held envelopes
+  so a power chord is a wall, not a pluck.
+- *Measured, not heard.* The rendered booms land within 12 ms of the score's downbeats, and the
+  gates fall exactly inside the light's dark windows. The loudness climbs from -34.5 to -33.0,
+  -30.7 and -26.9 LUFS (title, Voxxy, Droid, drop), against -35.6 for the old score. The loudest
+  instant is 0.2375 of full scale, inside the test's quarter-scale budget. Against the reference,
+  the drop is still about 3 dB lighter in the sub and 10 dB heavier in the mids. That was kept on
+  purpose, because most people will hear it on laptop speakers, which have no sub. Michele's ear
+  decides.
+- *Tests.* The "builds up when it says it does" check is now per part: it is stricter, and it
+  understands parts that leave. New checks: crates land on downbeats, the walk starts on a
+  downbeat, the gates cut only while the light is out, the dive starts on the light's death, the
+  score plays once, and which score the game asks for.
+
+## 28 Sep 2026, V47 round — the ladle's journey, the grip, and the reel that was never there
+
+**What the human decided.** Three notes, all of them about a thing the game claimed was happening
+and was not: *"The ladle thing: I think droid should take it and drop it in the soup. Otherwise the
+action is a bit pointless."* · *"GRAB that thing :D"*, with a screenshot of the soup pot flying
+along beside Biggy's head · *"the cable roll should not disappear when taken."*
+
+**What the agent did.**
+
+- **Turned the ladle into an object with a journey.** It was a boolean: press `E` under the shelf,
+  `ladle = true`, and the pot unlocked. It is a three-state union now — `shelf` → `carried` → `in`
+  — with a press at each end of the walk, and it is `in` that Biggy's fill is gated on. Everything
+  downstream reads the union rather than a flag: the run-sheet row is a 2-step counter whose "go
+  here" mark moves from the shelf to the counter, Biggy has one refusal for "nobody has the ladle"
+  and another for "it is in your hand, Droid", Stephan has a line for the middle state, and the
+  prop is published at three positions so a player who cannot find the ladle can follow it.
+- **Gave Biggy hands.** A carry pose in `gait.ts` (both shoulders up and in, forearms folded,
+  blended on and off with the same exponential the roll uses) plus a pot positioned off the rig's
+  `handL`/`handR` world positions instead of off the body. The old code aimed the pot half along
+  his heading and half at the camera to stop it hiding behind him, which is why it looked like it
+  was flying.
+- **Modelled the cable reel.** Two flanges on a spindle over a frame, at the rack, drawn in every
+  state chapter 2 can be in, with a wound web whose radius is the length still on the drum.
+
+**What it cost, and what it found.**
+
+- **A boolean that had leaked into nine places.** Widening `ladle` to a union broke `pilot.ts` and
+  with it seven test files that had never mentioned the ladle — the shared chapter-3 choreography
+  runs through one helper. That is the good version of the problem: one edit to the choreography
+  and the rest followed, and a union would have been the right type from the start.
+- **Measuring the grip beat looking at it.** Headless screenshots of the food court kept catching
+  the selected robot's x-ray ghost, or the briefing panel, or a counter between the camera and the
+  robot. Reading the rig's own hand bones out of the live scene graph through `__afterdark.debugRoot()`
+  answered it in one run: hands 1.58 m apart on the first cut of the pose (arms out, pot in the
+  gap), 0.68 m after flipping the shoulder roll, around a 0.52 m pot. The screenshots were the
+  slow way to learn the sign of an angle.
+- **The reel's own numbers, measured the same way.** Drum at the rack before and after the cable is
+  taken, not one millimetre of travel, web winding from 0.30 m to 0.211 m over the first 697 px of
+  1480 paid out.
+
+**Tests.** `tests/soup.test.ts` grows the three-place ladle: the prop is the shelf rect, then a box
+on Droid himself, then a box on whoever holds the pot, and Biggy cannot fill the pot until it is
+`in`. `tests/tasks.test.ts` asserts the 2-step row counts the shelf without ticking.
+`tests/ch2-chain.test.ts` (new): the reel is published before, during and after the run and never
+moves off the rack. `tests/prop-geometry.ts` gives `cable` the drum's real box, and the collider
+sweep accepts it because the rack it stands in is already solid. Suite **776 green**.
+
+**Rejected.** Giving Droid the same two-handed carry pose for the ladle. A ladle hangs from one
+hand; posing him as if he were carrying a pot to hold a 0.5 m spoon would have been a worse lie
+than the one being fixed.
+
+## 28 Sep 2026 — the curtain call: giving the ending something to look at
+
+**What the human decided.** *"Where are we with the ending video/animation? Could we start that?"*
+The answer to the first half was: the video shipped on 26 Sep and the animation was never built.
+The answer to the second half is this section.
+
+**What the agent did.** Wrote a stage act that plays in front of the opening video, entirely out of
+verbs the game already had — `partyTrick` (Voxxy's jump, Biggy's roll, Droid's stretch), the climb,
+and the ordinary physics step. Three robots take marks on the apron, turn to the house, solo in
+turn, and finish as the tower, held to the last card. The room applauds: a new `Person.cheer`, 0 to
+1, that the sim raises over three seconds and the renderer turns into arms.
+
+**What it cost, and what it found.**
+
+- **`ctx.stepAll` hands the stick to whoever the player last selected.** The first cut set an input
+  vector per robot and called `stepAll`, which promptly overwrote all three — two robots zeroed and
+  one driven by a stick nobody was holding. The act runs `stepBot` per robot instead, plus
+  `syncMount` and the pairwise collide that `stepAll` does after it. Same physics, no stick.
+- **Bang-bang steering orbits a heavy robot.** Full stick at the mark until the last pixel is fine
+  for Voxxy and hopeless for Biggy — 130 kg, `accel` 0.6, drag that takes a second to bite. He
+  circled his mark for the whole video and was therefore never still enough for `toggleMount` to
+  let anyone climb him. The stick now steers at the velocity ERROR against a target speed that eases
+  to nothing inside 14 px, which brakes him into the mark; on it, the velocity is cleared, the same
+  thing `cutUpdate`'s hold already does.
+- **Marks nailed to roles make robots walk through each other, which they cannot do.** Voxxy stage
+  left, Biggy centre, Droid stage right is the obvious layout and it is wrong, because the player
+  leaves them in any order: Biggy walked from stage right straight into Droid and the two shoved
+  each other for twenty seconds. The three marks are dealt to whoever is nearest — the cheapest of
+  the four orderings that keep Droid beside Biggy — so the assignment has no crossings by
+  construction.
+- **Arm's length is not close enough when both ends have slack.** Droid aimed at a point one arm
+  from Biggy's mark, `driveTo` gave up 3 px short, Biggy was allowed 3 px on his own mark, and the
+  gap landed outside `MOUNT_REACH` with Droid standing there for the rest of the video with his hand
+  out. He now aims a pixel INSIDE Biggy, read off where Biggy actually is; `botsCollide` is what
+  stops him, which is the honest version of "close enough to climb".
+
+**Tests.** `tests/curtain-call.test.ts` (4, new): every beat fires and in order (jump, roll, unfold,
+climb) with the whole act inside the shortest reel the game can cut; nobody leaves the stage rect
+and they finish in a line with real daylight between them; the room comes up to applause and only
+the people sitting down are clapping; and a skipped video stops the act dead rather than leaving a
+robot walking behind the final card. Every frame of the act is also checked against each robot's
+own `max`, the same guard `tests/cutscene-pace.test.ts` puts on the chapter transitions. Suite
+**780 green**.
+
+Two framing changes went with it. `VIEW_REEL` was cut from 310x210 to 250x160 — the screen's own
+width (`roomScreen(R(8))` is x 1271.6..1501.4) plus ten pixels of air, because a cropped card is
+worse than a small robot, and the height is what that width gives at the canvas aspect; the old
+rect ran to y 216 and spent half the frame on empty seating. And `drawSpotlight` aims three
+quarters of the way downstage rather than at the stage's centre, which is where the act lines up.
+
+**Rejected.** Driving the act through `startCut`, the existing cutscene machinery. It fades to
+black, teleports everyone to the head of a route and walks them at a pace derived from the shot
+length — all three of which are exactly wrong here: the video is already playing, the player is
+watching the robots they just parked, and a teleport under a screen that is mid-card is a jump cut
+in the middle of a scene nobody asked to leave.
+
+## 28 Sep 2026 — the two endings nobody could reach
+
+**What the human decided.** *"Can you show me an example video? What happens if I have no
+'bloopers' (skipping scenes, or not dropping any soup)?"* — a question, not a change request. The
+answer needed the four degenerate reels printed out, and printing them out showed that both ends of
+the range were broken.
+
+**What the agent did.** Dumped `buildReel` for a clean run, a normal run, a disaster and a skipped
+run (it is a pure function of the score bag, so this costs one throwaway test and no browser), then
+fixed what the dump showed:
+
+- **The flawless card was unreachable by playing well.** The cable blooper fired on any `cable > 0`,
+  and chapter 2 writes `score.cable` on the frame the run connects — so every completed run had a
+  blooper. It is gated on two thirds of `CABLE_MAX` now: the signposted route comes in a little over
+  half the reel, so a tidy run is under it and a wander is over. The card also reads in metres.
+- **The flawless card WAS reachable by skipping everything**, because `defaultScore` fills a skipped
+  chapter in as a clean one. `ChapterCtx` carries `skipped` now, `buildReel` takes it, and it is the
+  first blooper on the reel.
+
+**What it found.** That a "pure function of the run" is only as honest as the counters it reads, and
+two of those counters lie in opposite directions: `cable` is written by a chapter that cannot be
+finished without writing it (so it is never zero on a real run), and the chapter-3 and chapter-4
+counters are written by `defaultScore` as *perfect* when the chapter never ran (so they are never
+bad on a skipped run). Neither is visible from inside `reel.ts`, and neither showed up in four
+rounds of tests, because every test handed it a hand-written score bag.
+
+**Tests.** `tests/reel.test.ts` +3: a clean run that ran the cable the short way gets the flawless
+card and no bloopers reel at all; a 112 m cable run still gets called out and is not flawless;
+skipping names the chapters, singular and plural, and is never flawless. Suite **783 green**.
+
+**Also made.** A standalone preview page that plays the real reel — the same card text, holds,
+fades and black beats, with the logic ported line for line from `src/sim/reel.ts` and five runs to
+pick between. It exists so the ending can be judged without playing ten minutes to reach it; it is
+not part of the game and not in the repo.
+
+## 28 Sep 2026 — a full room stops being a game over, and chapter 4's length becomes a number
+
+**What the human decided.** Michele, on the backlog: *"Game does not end if room is full, but some
+rumors from the crowd?"* and, on the chapter's length, *"measure your run. I'd say 3 minutes?"*.
+Also *"robots should end on stage by the tasks (voxxy excluded)"*, and that he is reworking Droid's
+task in a separate session — so the agent left that code alone.
+
+**What the agent did.**
+
+- Deleted chapter 4's `ctx.fail(...)` on a full room and replaced it with a restlessness clock:
+  the objective line rewrites itself once the room is full, and six escalating crowd lines cycle
+  every 9 s. The cost moved onto the score bag (`late`, `lateT`) and onto the opening video.
+- Wrote `tests/chapter4-length.test.ts`, which is the interesting one. It refuses every shortcut
+  the other chapter tests take: no `debug.place`, no ignoring walls, one stick at a time (because
+  `stepAll` hands the stick to the selected robot and zeroes the other two), the room's one door,
+  and the two real aisles. It prints the per-leg timings and fails if the total outgrows a 150 s
+  budget — half Michele's own three-minute figure, so a player gets the other half to think in.
+
+**What it found, by being made to drive rather than teleport.** Five separate things that only a
+real drive can see, each of which would have been invisible to a test that placed robots where it
+wanted them: room 8 has a single doorway, so everything costs a trip to it; the seat blocks are
+walls, so the room is two aisles and a strip, not open floor; `HOOK_REACH` is 45 px and the front
+strip is 38 px from the hooks, so Droid has to stand *under* a hook and not merely level with it;
+the stance for pushing the cake has to be two radii out or `botsCollide` spends the chapter shoving
+Biggy back out of the crate; and the apron has about 80 clear pixels on it, between the cake parked
+on its mark at one end and Stephan and the speaker standing at the other.
+
+**What was rejected.** The first driver steered flat at the target and the heavy robots orbited
+their marks forever — replaced with the velocity-error servo the curtain call already uses. The
+first set of stage marks was nailed to roles, and two of the three sat on top of a person or the
+cake. And the driver's last leg had to learn that the chapter ends *under its own feet*: the third
+robot onto the stage starts the video, the curtain call takes the sticks away, and a driver that
+kept pushing was reporting a stuck robot when what it had actually done was win.
+
+**Also.** README's "Status" section was stale — it still listed the ending as missing — and three
+`.DS_Store` files were tracked despite being gitignored since before the repo was public. Both
+fixed. Suite **787 green**, `tsc --noEmit` clean.
+
+## 28 Sep 2026 — the ship gate finds a soft-lock nobody had hit
+
+**What the human decided.** Michele approved backlog item 1: *"one clean full run, chapter 1 →
+final card, measured and recorded"* — `GAUNTLET.md` Stage 3's own gate, and the last one the build
+had not passed.
+
+**What the agent did.** Wrote `tests/full-run.test.ts`: one `createGame`, no `startChapter`, no
+`skipChapter`, chapter 1 solved and each chapter arriving on its own to the score card.
+
+**What it found on its first run, which is the whole argument for the gate.** The keynote speaker
+could not be delivered, on twelve of fourteen seeds. The follower walked at wherever Voxxy was
+*standing* and pushed itself out of any wall it ended up inside — a beeline with a shove on it. She
+is nearly twice their pace, so she always reaches the mark first, and the moment she stands on it
+they aim at the mark themselves and walk into the nearest booth. Every existing chapter-3 test
+starts chapter 3 on a fresh RNG, which happens to hide the speaker at the one booth with clear line
+of sight to Stephan. Nothing else in 787 tests could see it, because nothing else played the game.
+
+**The fix, and why this one.** The speaker follows Voxxy's *route* rather than Voxxy: her positions
+are dropped behind her as breadcrumbs and taken in order. Considered and rejected: giving the
+speaker the crowd's lane grid (correct, but the lane grid is built for arrivals coming in through
+the doors, and the speaker starts behind a booth in the middle of the hall); and A* for one NPC (a
+second router in the sim, to solve a problem a breadcrumb solves). The breadcrumb also has the
+better reading — being led looks like walking where the leader walked. One guard: a crumb is only
+dropped where the *speaker* could stand, because Voxxy is the one robot that fits under the sponsor
+tables.
+
+**Two more, both in the test pilot.** `driveTo` had a fixed 400-frame budget per waypoint, which
+reports a real 920 px leg as an impossible route; it is a floor now, with the leg's own length
+added. And the router only knows about walls, so it routed a leg straight through the JUG leader,
+who is a person standing in a lane, and an eight-way stick held dead at the waypoint pinned Voxxy
+against his standoff forever. The pilot steps round now, which is what a player does.
+
+**Tests.** `tests/full-run.test.ts` (1), `tests/speaker-follow.test.ts` (2, sweeping all five
+booths the chapter can hide the speaker at). Suite **790 green**, `tsc --noEmit` clean.
+
+## 28 Sep 2026 — the #DEVOXX letters replace Droid's banner
+
+**What the human decided.** Michele, with a photograph taken from behind the giant letters on the
+keynote stage: *"Another puzzle we could add, but maybe it's too late. There are always those 3d
+letters in Devoxx, used for the keynote and the closing. They could be hidden around and be brought
+on stage by the robot? Maybe we can change Voxxy or Droid's task?"* The agent answered first, without
+building: yes to the letters, no to hiding them around the venue, and Droid rather than Voxxy. Then
+Michele, one line: *"Droid swap. Droid is already slow, so don't scatter the letters around."*
+
+**The case the agent made, and what it rested on.**
+
+- *The letters are the real thing and the banner was not.* `media/venue-photos/54836008506_68c9fc5562_k.jpg`
+  — the photo this project has always captioned "the stage ← chapter 4" — has `#DEVOXX` standing on
+  Room 8's stage, white, the last X in Devoxx orange. The "HAPPY DEVOXX" banner was invented. So the
+  change is a sense-of-place gain before it is a gameplay one.
+- *Droid, not Voxxy.* The banner was the thinnest job in the room (two presses of `E` at two hooks),
+  and the letters are the same thing done for real — the stage's Devoxx branding — so swapping one
+  for the other keeps one job per robot. Voxxy's spotlights had got their beams that same day, from
+  Michele's V46 note, and were worth keeping.
+- *Not scattered.* Michele's own ruling of 22 Sep on the WiFi password (`docs/gameplay-additions.md`
+  §2): not "find 13 letters scattered around the venue" — letter-collection is busywork. Chapter 4
+  was also already the longest chapter (his open note, "about six minutes").
+
+**What the agent did.**
+
+- *Merged the three live branches first* onto `claude/nice-wright-ms1qmg` — the 3D line, the 2.5D
+  line's curtain call and reel endings, and the intro score — because chapter 4 had been changed on
+  two of them that day and the letters had to land on all of it. Only the GenAI notes conflicted
+  (both sides appended); 799 tests green on the merge.
+- *The sim* (`src/sim/letters.ts`, `ch4-keynote.ts`). `#DEV` stands; the O, X and orange X lean in
+  one stash in the east wing. Droid lifts one with `E` and sets it into its own gap with `E`, so the
+  sign spells itself and there is no wrong order. Only at its gap, never onto a robot standing in it;
+  Voxxy (*"it's as big as I am. I can carry it or see where I'm going, not both"*) and Biggy (*"these
+  hands are for pots. An X has no handle"*) refuse in their own voices and keep the key. Carrying is a
+  load exactly like Biggy's crates: mass + 0.7, acceleration scaled by the mass ratio — the same
+  force on more mass, which turns out to be exactly what the crate factor already was (7 / 8.5 =
+  0.82) — and `DEFS` untouched. Every standing letter stands on its own collider.
+- *Both renderers.* `src/render/letters.ts` cuts `#`, `D`, `E`, `V`, `O` and `X` as extruded shapes
+  — no font file, no asset — shared by the 2.5D and 3D builds. 2.5D draws amber tape in the empty
+  gaps, so the stage reads `#DEV___` exactly like the progress line; 3D draws a faint ghost of each
+  missing letter standing in its gap. Droid carries with the gait's existing carry pose (Biggy's pot),
+  the letter in his hands. A placed letter plays the `clue` cue and the finished sign the `chime`.
+
+**What it cost, measured.**
+
+- *The first layout was bad and the numbers said so.* Driven from the top of the stairs by the test
+  pilot, the sign took **94 s** against **31 s** for the two hooks walked the same way — the opposite
+  of "Droid is already slow". Leg timings showed why: with Stephan and the speaker mid-stage the only
+  lane to the gaps was 4 px wide, and the router went down one aisle, across the room and up the
+  other, 17 s a trip. Standing the two hosts beside the sign, where presenters stand, opened the whole
+  front of the stage: **43 s**. Moving the stash from the room's east wall to the wing's back wall,
+  70 px nearer the gaps: **39.5 s**. The honest figure is about **40 s against 25–31 s** for the
+  banner's two hooks walked the same way (31 with the hosts where they used to stand, which the
+  pilot bumps into; 25 with them moved) — ten to fifteen seconds more, nearly all of it the three
+  carries, which are the job. The 2.5D line's own one-stick driver (`tests/chapter4-length.test.ts`,
+  merged in afterwards, and it drives the sign now) agrees: Droid's leg **20.1 s → 30.7 s**, the whole
+  chapter **92.3 s → 101.3 s**, against its 150 s budget and Michele's three-minute figure.
+- *The 2.5D stage ate the letters.* It was drawn as a 0.45 m box while the sim's stage is floor, so
+  the robots had always stood sunk to the shins in it; with letters on it, the bottom 45 cm of every
+  glyph vanished and the orange X read as a Y. It is a 5 cm dais now, as the 3D build had already
+  decided for the same reason, and `stage` came off the collider sweep's walk-through list with it.
+- *A test pilot that walked through people.* `tests/pilot.ts` routed Droid straight through Stephan,
+  who is solid through `standOff` rather than a wall. The router takes obstacles now.
+
+**Rejected.** Hiding the letters around the Devoxx floor (Michele's own busywork rule, and minutes on
+the longest chapter); Voxxy carrying them (it would have deleted the spotlights built that day, and
+she is only as tall as a letter); an order puzzle on the stage (everybody knows how DEVOXX is spelt,
+so it would be a chore, not a puzzle); letting Droid carry two at once (it halves the trips, but costs
+a second carried-state and a two-handed pose on the last day).
+
+**Tests.** `tests/letters.test.ts` (12, new): one stash within 3 m and every letter within 12 m of its
+gap; only Droid lifts, and the other two keep the key; the load and its exact removal; felt in the
+first 0.4 s, same top speed; its own gap only, with the right words when it is not; never through a
+robot; solid; no room behind the sign; the stage waits for the sign; driven from the stairs in under
+50 s; `R` gives Droid his weight back; the arrow is always within reach of a letter. The banner tests
+in `chapters`, `tasks`, `party-tricks` and `curtain-call` were rewritten against the sign, never
+loosened. Mutation check: with the letters' colliders removed, three tests fail, the collider sweep
+among them. Suite **812 green**, build clean.
+
+**Then both live branches moved again, and were merged under the letters.** The 2.5D line's full
+room, one-stick chapter-4 length and ship-gate run (its Droid legs ported to the sign), and the 3D
+line's front row of hall speakers, README and venue photos. One seam that was not a conflict: the
+front row was published seated but without the curtain call's `cheer`, so five famous faces sat still
+while the room applauded; `tests/curtain-call.test.ts` caught it and they clap now. **820 green**.
+
 - **Venue photos, Duke, Lize and Aurélie, and speaker lanyards** (28 Sep 2026). Michele sent five
   venue photos: the main stairs from the side; the Devoxx sign with ceiling ducts, box truss and
   disc pendants; two of Stephan ("remember the MIC"); Duke on the keynote screen ("should appear
@@ -5398,3 +5760,4 @@ have matched the room around them, and would have cost more than the entire rest
       doors, solid and `low`.
     - Black velvet, white power trunking, laptops, bottles, folding chairs.
     - Behind them, the wall of raised film quotes from his photograph.
+

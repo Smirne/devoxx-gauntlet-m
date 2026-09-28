@@ -2130,8 +2130,16 @@ export const VIEW_DEVOXX: ViewRect = { x: 590, y: 14, w: 1310, h: 672 };
  * on the stage (`src/sim/reel.ts`), and a video you cannot read is not a payoff —
  * so the camera comes in off `VIEW_DEVOXX` to the screen's own end of the room.
  * Room 8 is x 1195..1578, its screen sits along y 24 and the stage just under it.
+ *
+ * TIGHTENED 28 Sep, when the video got a stage act in front of it (the curtain
+ * call, `ch4-keynote.ts`). The old rect ran to y 216, so half the frame was empty
+ * seating and the three robots taking their bow were twenty pixels tall. The
+ * width is the screen's own — `roomScreen(R(8))` is x 1271.6..1501.4, and a card
+ * you have cropped is worse than a robot you cannot see — plus ten pixels of air
+ * each side; the height is what that width gives at the canvas's aspect, which
+ * lands just under the front row.
  */
-export const VIEW_REEL: ViewRect = { x: 1232, y: 6, w: 310, h: 210 };
+export const VIEW_REEL: ViewRect = { x: 1262, y: 4, w: 250, h: 160 };
 /** The whole cinema level — only during the first cutscene. */
 export const VIEW_F1: ViewRect = { x: 0, y: 14, w: 1900, h: 672 };
 /** Chapters 2 and 3: the whole hall plus the lobby. */

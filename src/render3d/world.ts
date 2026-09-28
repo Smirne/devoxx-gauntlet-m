@@ -20,7 +20,7 @@ import { buildGround, type Ground3D } from './ground3d';
 import { buildKeynote, type Keynote3D } from './keynote3d';
 import { createPeople } from './people3d';
 import { createProps, type Props3D } from './props3d';
-import { createRobots, dimLamps, updateGlare, updateRobots, type Robot3D } from './robots3d';
+import { createRobots, dimLamps, handsOf, updateGlare, updateRobots, type Robot3D } from './robots3d';
 import { CORRIDOR_END, HEIGHTS, SIGN_SPANS, buildVenue, type Venue3D } from './venue';
 import { CY0, CY1, F1 } from '../sim/geometry';
 import { CRATE_AT, CRATE_ROW, LEAD, OVER_AT, SLOT, STAND_AT, WALK_AT } from '../sim/opening';
@@ -495,7 +495,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     if (door8) door8.visible = !keynoteOn;
     propsRoot1.visible = !onGround && !keynoteOn;
     updateRobots(robots, snap, dt, crateSurface);
-    if (keynoteOn && keynote) keynote.update(snap, time, dt);
+    if (keynoteOn && keynote) keynote.update(snap, time, dt, (kind) => handsOf(robots, kind));
     else props.update(snap, time, dt);
     seatOnBiggy(snap);
     peopleRoot.visible = onGround || snap.chapter === 4;
