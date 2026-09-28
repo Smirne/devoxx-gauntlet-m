@@ -68,3 +68,21 @@ Use: the view out through the entrance doors (the backdrop), if anyone looks bac
   me?", "we'll always have Paris", "I'll make him an offer...", "HASTA LA ...", "... ends up owning
   you").
 - **Blue neon** at the ceiling line, dark ceiling with spots, a screen on the far wall.
+
+## Expo hall, empty and full (five more photos)
+
+- The central aisle is a **double row of high tables** (slim black square frames, dark top, a small
+  potted succulent and a black card holder on each), running between **pairs of glass-door drinks
+  fridges** with red headers and lit bottle graphics.
+- White square columns with **wall speakers** on them; grey **curtains** at the far end and along
+  the side walls; a **black draped stage/table** at the far end.
+- Stands are **open boxes on a raised floor with a white edge**: back walls in bold printed graphics
+  (purple-pink gradients with square perforations; wood with hanging plants and orange neon-rim
+  frames; a white wall of client logos), bar stools and high tables inside, screens on the walls,
+  **arm spotlights** on top of the back walls.
+- Fun at the stands: a **claw machine** full of prizes, a **small white humanoid robot** with a
+  chest tablet, a football goal net, roll-up banners.
+- In the black-ceiling half: **mushroom duct diffusers** hanging from spiral ducts, diagonal
+  aluminium truss, big white ring pendants, and a **bar with an underlit glowing counter** (pale
+  green) and a table lamp at the far end.
+- Lighter grey carpet with a faint tile pattern.
