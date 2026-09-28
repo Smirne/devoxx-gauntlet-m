@@ -445,8 +445,18 @@ describe('chapter 3 — breakfast', () => {
     g.debug.select('droid');
     g.debug.place('droid', 176, 150);
     g.key('KeyE');
-    expect(breakfast(g).ladle, 'Droid never got the ladle').toBe(true);
-    expect(row(g, 'ladle').done, 'the ladle is in hand and the row says it is on the shelf').toBe(true);
+    expect(breakfast(g).ladle, 'Droid never got the ladle').toBe('carried');
+    // Half done is half counted: the row is a two-step counter, and it does not
+    // tick until the ladle is in the pot.
+    expect(row(g, 'ladle').done, 'the row ticked on the shelf half of the errand').toBe(false);
+    expect(row(g, 'ladle').n, 'the row does not count the shelf').toBe(1);
+    expect(row(g, 'ladle').of).toBe(2);
+    wellFormed(g, 'chapter 3 with the ladle in hand');
+
+    g.debug.place('droid', 105, 180);
+    g.key('KeyE');
+    expect(breakfast(g).ladle, 'Droid never dropped it in the pot').toBe('in');
+    expect(row(g, 'ladle').done, 'the ladle is in the pot and the row says it is not').toBe(true);
     expect(row(g, 'soup').done, 'the ladle delivered the soup').toBe(false);
     wellFormed(g, 'chapter 3 with the ladle');
 

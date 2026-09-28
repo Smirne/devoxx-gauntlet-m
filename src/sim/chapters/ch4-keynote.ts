@@ -16,11 +16,11 @@
  */
 
 import { CY0, CY1, F1, R, VIEW_DEVOXX, VIEW_REEL, floor1Walls, roomDoor } from '../geometry';
-import { SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
-import { botsCollide, circleRect, dist, inRect, mkBody, speed, standOff, stepBot } from '../bot';
+import { MOUNT_REACH, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
+import { botsCollide, circleRect, dist, inRect, mkBody, partyTrick, speed, standOff, stepBot, syncMount } from '../bot';
 import { LANYARD, lanyardFor } from '../lanyards';
 import { buildReel, reelAt, reelLength } from '../reel';
-import type { Bot, Person, Prop, Rect, ReelCard, ReelView, Task, Vec2 } from '../types';
+import type { Bot, Person, Prop, Rect, ReelCard, ReelView, RobotKind, Task, Vec2 } from '../types';
 
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 
@@ -369,8 +369,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let reelT = -1;
 
   function startReel(): void {
-    reelCards = buildReel(ctx.score, ctx.swag, ctx.t);
+    reelCards = buildReel(ctx.score, ctx.swag, ctx.t, ctx.skipped);
     reelT = 0;
+    dealMarks();
     ctx.setView(VIEW_REEL);
     ctx.flash('The house screen wakes up. <b>Devoxx opening video</b> \u2014 any key to skip', 3200);
   }
@@ -388,6 +389,216 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     ctx.finish();
   }
 
+  /* --------------------------------------------------- the curtain call ---- */
+
+  /**
+   * WHAT THE ROBOTS DO WHILE THE VIDEO PLAYS.
+   *
+   * The reel was the ending and the ending was typography: the house screen woke
+   * up, the cards came and went, and the three of them stood exactly where the
+   * player had parked them for the whole twenty seconds. A video of your own night
+   * playing over a still photograph of yourself is not an ending, it is a pause.
+   *
+   * So the video has a stage act in front of it, and the act is built out of the
+   * verbs the game already has rather than out of new ones: they take their marks
+   * on the apron, turn to the house, and then take it in turns — Voxxy hops, Biggy
+   * rolls, Droid unfolds — which is exactly `partyTrick`, the thing Michele asked
+   * for on 25 Sep (*"Could we add a basic action to each robot on E?"*) and the one
+   * place in the game where all three of those read as a performance instead of as
+   * three separate showings-off. Then Droid climbs Biggy, the tower the whole cast
+   * has been building towards since chapter 1, and holds it while the credits run.
+   *
+   * THEY WALK THERE ON THEIR OWN LEGS. Every beat below writes an input vector and
+   * then runs the ordinary `stepBot` — the same acceleration, drag and top speed
+   * the player drives against, so nothing here can put a robot above its own
+   * `max`. It is `stepBot` and not `ctx.stepAll` because `stepAll` hands the stick
+   * to whichever robot the player last selected and zeroes the other two, which is
+   * exactly right for play and exactly wrong for a script. The marks are on the
+   * apron, clear of the cake's mark, Stephan and the speaker.
+   */
+  const apron = stage.y + stage.h - 12;
+  const marks: Vec2[] = [
+    { x: cx - 46, y: apron },
+    { x: cx - 10, y: apron },
+    { x: cx + 20, y: apron },
+  ];
+  const callMarks: Record<RobotKind, Vec2> = { voxxy: marks[0], biggy: marks[1], droid: marks[2] };
+  /** Which side of Biggy Droid climbs from: +1 stage right, -1 stage left. */
+  let climbSide = 1;
+
+  /**
+   * Where Droid stands to climb, read off Biggy where he actually is.
+   *
+   * Aimed a pixel INSIDE him rather than a pixel outside: `driveTo` gives up
+   * within `MARK_REACH` of its target, and Biggy is allowed the same slack on his
+   * own mark, so a target at arm's length can leave a gap of two slacks — wider
+   * than `MOUNT_REACH`, and Droid stands there for the rest of the video with his
+   * hand out. Aimed to touch, the slack cannot push it past the reach, and
+   * `botsCollide` is what actually stops him, which is the honest version of
+   * "close enough to climb".
+   */
+  function climbPoint(d: Bot, bg: Bot): Vec2 {
+    return { x: bg.x + climbSide * (bg.r + d.r - 1), y: bg.y };
+  }
+
+  /**
+   * WHO GETS WHICH MARK — decided when the video starts, from where they are.
+   *
+   * Marks nailed to roles (Voxxy stage left, Biggy centre, Droid stage right) is
+   * the obvious version and it is wrong, because the player parks them in whatever
+   * order they please: the first cut had Biggy walking from stage right to a
+   * centre mark straight through Droid, the two of them shoving each other for the
+   * whole video, and a Biggy who never stood still long enough for anyone to climb
+   * him. Robots do not walk through each other, so the choreography has to not ask
+   * them to.
+   *
+   * So the three marks are three PLACES, and they are dealt out to whoever is
+   * nearest — the assignment with the least total walking, which is the one with
+   * no crossings. The one constraint is the finale: Droid's mark must be NEXT to
+   * Biggy's, or there is a small orange robot standing between the tower's two
+   * halves. Four of the six orderings satisfy that, and the cheapest of the four
+   * is the shot.
+   */
+  const PERMS: ReadonlyArray<readonly [number, number, number]> = [
+    [0, 1, 2],
+    [0, 2, 1],
+    [1, 0, 2],
+    [1, 2, 0],
+    [2, 0, 1],
+    [2, 1, 0],
+  ];
+  function dealMarks(): void {
+    const order: RobotKind[] = ['voxxy', 'biggy', 'droid'];
+    let best = PERMS[0];
+    let bestCost = Infinity;
+    for (const perm of PERMS) {
+      // Droid beside Biggy, or the tower has a gap in it.
+      if (Math.abs(perm[1] - perm[2]) !== 1) continue;
+      let cost = 0;
+      for (let i = 0; i < 3; i++) {
+        const b = ctx.byKind(order[i]);
+        cost += Math.hypot(marks[perm[i]].x - b.x, marks[perm[i]].y - b.y);
+      }
+      if (cost < bestCost) {
+        bestCost = cost;
+        best = perm;
+      }
+    }
+    for (let i = 0; i < 3; i++) callMarks[order[i]] = marks[best[i]];
+    // He climbs from his own side, so he never has to cross in front of Biggy.
+    climbSide = callMarks.droid.x > callMarks.biggy.x ? 1 : -1;
+  }
+  /** The beats, seconds into the video. */
+  const BEAT_VOXXY = 2.4;
+  const BEAT_BIGGY = 4.6;
+  const BEAT_DROID = 6.8;
+  /** He stops being a soloist and goes and stands by Biggy. */
+  const BEAT_CLOSE = 9.4;
+  const BEAT_CLIMB = 10.8;
+  /** ...and she keeps hopping, this often, for as long as the reel runs. */
+  const ENCORE = 3.2;
+  /** Seconds for the room to come up to full applause. */
+  const CHEER_RISE = 3;
+  /** How close to a mark counts as standing on it, px. */
+  const MARK_REACH = 3;
+  /** Inside this the target speed eases off, so a heavy robot brakes into its mark. */
+  const MARK_SLOW = 14;
+  /** Which beats have fired. Each one fires once; the reel's clock never rewinds. */
+  let beats = 0;
+  let encoreAt = 0;
+
+  /**
+   * Point a robot at a mark with its own stick. True once it is standing on it.
+   *
+   * A stick held flat at the mark until the last pixel is how the first cut of
+   * this was written, and Biggy — 130 kg, `accel` 0.6, and drag that takes a
+   * second to bite — orbited his mark for the whole video and was therefore never
+   * still enough for Droid to climb. So the stick steers at the VELOCITY ERROR
+   * rather than at the mark: a target speed that eases to nothing inside
+   * `MARK_SLOW`, minus what the robot is already doing, which brakes a heavy body
+   * into its mark instead of throwing it past. On the mark the velocity is
+   * cleared outright — the same thing `cutUpdate`'s hold does, and for the same
+   * reason: a shot lands on a pose, not on a wobble.
+   */
+  function driveTo(b: Bot, to: Vec2): boolean {
+    const dx = to.x - b.x;
+    const dy = to.y - b.y;
+    const d = Math.hypot(dx, dy);
+    if (d < MARK_REACH) {
+      b.ix = 0;
+      b.iy = 0;
+      b.vx = 0;
+      b.vy = 0;
+      return true;
+    }
+    const want = Math.min(1, d / MARK_SLOW) * b.max;
+    const ex = (dx / d) * want - b.vx;
+    const ey = (dy / d) * want - b.vy;
+    const el = Math.hypot(ex, ey) || 1;
+    b.ix = ex / el;
+    b.iy = ey / el;
+    return false;
+  }
+
+  /**
+   * That robot's own party trick, with the rest timer forgiven.
+   *
+   * `partyTrick` refuses a robot that is still catching its breath, which is the
+   * right answer to a player leaning on `E` and the wrong one to a script that has
+   * timed the beats itself. Nothing else about it is bypassed — a mounted Droid
+   * still cannot stretch and a Biggy with a passenger still cannot roll, and both
+   * of those are true on this stage.
+   */
+  function trick(b: Bot): void {
+    b.hopRest = 0;
+    partyTrick(ctx.bots, b, () => {});
+  }
+
+  function curtainCall(dt: number): void {
+    const d = ctx.byKind('droid');
+    const bg = ctx.byKind('biggy');
+    const vx = ctx.byKind('voxxy');
+    const closing = reelT >= BEAT_CLOSE && !d.mounted;
+    const parked: Bot[] = [];
+    for (const b of ctx.bots) {
+      if (b.mounted) continue;
+      if (driveTo(b, b.kind === 'droid' && closing ? climbPoint(d, bg) : callMarks[b.kind])) parked.push(b);
+    }
+    for (const b of ctx.bots) stepBot(b, dt, ctx.walls);
+    syncMount(ctx.bots);
+    for (let i = 0; i < ctx.bots.length; i++) {
+      for (let j = i + 1; j < ctx.bots.length; j++) botsCollide(ctx.bots[i], ctx.bots[j]);
+    }
+    // Standing still, they face the house — the far, high-y end of the room, where
+    // three thousand people are. `stepBot` turns a robot that is moving, so this
+    // only ever settles the ones that have arrived.
+    for (const b of parked) b.face = Math.PI / 2;
+
+    if (beats < 1 && reelT >= BEAT_VOXXY) {
+      beats = 1;
+      trick(vx);
+    }
+    if (beats < 2 && reelT >= BEAT_BIGGY) {
+      beats = 2;
+      trick(bg);
+    }
+    if (beats < 3 && reelT >= BEAT_DROID) {
+      beats = 3;
+      trick(d);
+    }
+    if (beats < 4 && reelT >= BEAT_CLIMB && dist(d, bg) - d.r - bg.r < MOUNT_REACH) {
+      beats = 4;
+      ctx.toggleMount();
+      encoreAt = reelT + ENCORE;
+    }
+    // The tableau, held to the last card: the tower stands and the small one will
+    // not stop jumping.
+    if (beats >= 4 && reelT >= encoreAt && (vx.hopRest ?? 0) <= 0) {
+      encoreAt = reelT + ENCORE;
+      trick(vx);
+    }
+  }
+
   /* ------------------------------------------------------------------- update */
 
   function update(dt: number): void {
@@ -399,6 +610,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
        */
       reelT += dt;
       for (const a of crowd) stepAttendee(a, dt);
+      curtainCall(dt);
       if (reelT >= reelLength(reelCards)) endReel();
       return;
     }
@@ -570,8 +782,21 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     return out;
   }
 
+  /**
+   * How hard the room is clapping, 0 before the act and 1 once it is under way.
+   *
+   * It comes UP rather than switching on: a room that is already at full applause
+   * on the frame the video starts is a laugh track. Three seconds from the first
+   * beat, which is about where Voxxy's first jump lands.
+   */
+  function cheerLevel(): number {
+    if (reelT < 0) return 0;
+    return Math.max(0, Math.min(1, reelT / CHEER_RISE));
+  }
+
   function people(): Person[] {
     const out: Person[] = [];
+    const cheer = cheerLevel();
     for (const a of crowd) {
       const p: Vec2 = a.seated ? { x: a.seat.x, y: a.seat.y } : { x: a.x, y: a.y };
       out.push({
@@ -585,6 +810,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         // Sat down, they all face the stage, which is the low-y end of the room.
         face: a.seated ? -Math.PI / 2 : a.face,
         speed: a.seated ? 0 : Math.hypot(a.vx, a.vy),
+        // Only the ones who are sitting down watching it: somebody still looking
+        // for a seat is not applauding, they are looking for a seat.
+        cheer: a.seated ? cheer : 0,
       });
     }
     // Both of them are on the stage looking back up the room at the audience.
@@ -603,6 +831,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       lanyard: LANYARD.chair,
       seed: 910,
       face: Math.PI / 2,
+      cheer,
     });
     out.push({
       x: speakerAt.x,
@@ -616,6 +845,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       lanyard: LANYARD.speaker,
       seed: 911,
       face: Math.PI / 2,
+      cheer,
     });
     return out;
   }

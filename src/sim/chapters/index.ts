@@ -94,6 +94,15 @@ export interface ChapterCtx {
   /** Flat, so the HUD and the final card can read it without chapter knowledge. */
   readonly score: Record<string, number>;
   readonly swag: string[];
+  /**
+   * Which chapters the player skipped, in order, as numbers.
+   *
+   * The final card has always listed them; the opening video has not, which is
+   * why a run that skipped everything used to come up "A flawless night." The
+   * reel is cut from what really happened and this is part of what really
+   * happened — see `src/sim/reel.ts`.
+   */
+  readonly skipped: readonly number[];
   /** Swag is worth 0.5 points each on the final card. */
   addSwag(id: string, toastText: string): void;
 }

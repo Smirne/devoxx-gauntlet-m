@@ -229,7 +229,14 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
    */
   'rack-lights': { h: 0.08, tl: true, lift: 1.86 },
   crate: { h: 0.34 },
-  cable: { h: 0.02, flat: true },
+  /*
+   * The cable is two drawn things: the run on the floor, which is a line and
+   * carries nothing, and the REEL at the rack, which is a 0.66 m drum on a frame
+   * — Michele, 28 Sep 2026: *"the cable roll should not disappear when taken"*.
+   * The drum is what is listed here, at the prop's own point, because the line
+   * has no footprint worth sweeping and the drum does.
+   */
+  cable: { h: 0.66, fw: 0.36, fd: 0.24 },
 });
 
 /** The box a prop is drawn as: its footprint in sim px, and its band in metres. */

@@ -5218,3 +5218,145 @@ have matched the room around them, and would have cost more than the entire rest
   understands parts that leave. New checks: crates land on downbeats, the walk starts on a
   downbeat, the gates cut only while the light is out, the dive starts on the light's death, the
   score plays once, and which score the game asks for.
+
+## 28 Sep 2026, V47 round — the ladle's journey, the grip, and the reel that was never there
+
+**What the human decided.** Three notes, all of them about a thing the game claimed was happening
+and was not: *"The ladle thing: I think droid should take it and drop it in the soup. Otherwise the
+action is a bit pointless."* · *"GRAB that thing :D"*, with a screenshot of the soup pot flying
+along beside Biggy's head · *"the cable roll should not disappear when taken."*
+
+**What the agent did.**
+
+- **Turned the ladle into an object with a journey.** It was a boolean: press `E` under the shelf,
+  `ladle = true`, and the pot unlocked. It is a three-state union now — `shelf` → `carried` → `in`
+  — with a press at each end of the walk, and it is `in` that Biggy's fill is gated on. Everything
+  downstream reads the union rather than a flag: the run-sheet row is a 2-step counter whose "go
+  here" mark moves from the shelf to the counter, Biggy has one refusal for "nobody has the ladle"
+  and another for "it is in your hand, Droid", Stephan has a line for the middle state, and the
+  prop is published at three positions so a player who cannot find the ladle can follow it.
+- **Gave Biggy hands.** A carry pose in `gait.ts` (both shoulders up and in, forearms folded,
+  blended on and off with the same exponential the roll uses) plus a pot positioned off the rig's
+  `handL`/`handR` world positions instead of off the body. The old code aimed the pot half along
+  his heading and half at the camera to stop it hiding behind him, which is why it looked like it
+  was flying.
+- **Modelled the cable reel.** Two flanges on a spindle over a frame, at the rack, drawn in every
+  state chapter 2 can be in, with a wound web whose radius is the length still on the drum.
+
+**What it cost, and what it found.**
+
+- **A boolean that had leaked into nine places.** Widening `ladle` to a union broke `pilot.ts` and
+  with it seven test files that had never mentioned the ladle — the shared chapter-3 choreography
+  runs through one helper. That is the good version of the problem: one edit to the choreography
+  and the rest followed, and a union would have been the right type from the start.
+- **Measuring the grip beat looking at it.** Headless screenshots of the food court kept catching
+  the selected robot's x-ray ghost, or the briefing panel, or a counter between the camera and the
+  robot. Reading the rig's own hand bones out of the live scene graph through `__afterdark.debugRoot()`
+  answered it in one run: hands 1.58 m apart on the first cut of the pose (arms out, pot in the
+  gap), 0.68 m after flipping the shoulder roll, around a 0.52 m pot. The screenshots were the
+  slow way to learn the sign of an angle.
+- **The reel's own numbers, measured the same way.** Drum at the rack before and after the cable is
+  taken, not one millimetre of travel, web winding from 0.30 m to 0.211 m over the first 697 px of
+  1480 paid out.
+
+**Tests.** `tests/soup.test.ts` grows the three-place ladle: the prop is the shelf rect, then a box
+on Droid himself, then a box on whoever holds the pot, and Biggy cannot fill the pot until it is
+`in`. `tests/tasks.test.ts` asserts the 2-step row counts the shelf without ticking.
+`tests/ch2-chain.test.ts` (new): the reel is published before, during and after the run and never
+moves off the rack. `tests/prop-geometry.ts` gives `cable` the drum's real box, and the collider
+sweep accepts it because the rack it stands in is already solid. Suite **776 green**.
+
+**Rejected.** Giving Droid the same two-handed carry pose for the ladle. A ladle hangs from one
+hand; posing him as if he were carrying a pot to hold a 0.5 m spoon would have been a worse lie
+than the one being fixed.
+
+## 28 Sep 2026 — the curtain call: giving the ending something to look at
+
+**What the human decided.** *"Where are we with the ending video/animation? Could we start that?"*
+The answer to the first half was: the video shipped on 26 Sep and the animation was never built.
+The answer to the second half is this section.
+
+**What the agent did.** Wrote a stage act that plays in front of the opening video, entirely out of
+verbs the game already had — `partyTrick` (Voxxy's jump, Biggy's roll, Droid's stretch), the climb,
+and the ordinary physics step. Three robots take marks on the apron, turn to the house, solo in
+turn, and finish as the tower, held to the last card. The room applauds: a new `Person.cheer`, 0 to
+1, that the sim raises over three seconds and the renderer turns into arms.
+
+**What it cost, and what it found.**
+
+- **`ctx.stepAll` hands the stick to whoever the player last selected.** The first cut set an input
+  vector per robot and called `stepAll`, which promptly overwrote all three — two robots zeroed and
+  one driven by a stick nobody was holding. The act runs `stepBot` per robot instead, plus
+  `syncMount` and the pairwise collide that `stepAll` does after it. Same physics, no stick.
+- **Bang-bang steering orbits a heavy robot.** Full stick at the mark until the last pixel is fine
+  for Voxxy and hopeless for Biggy — 130 kg, `accel` 0.6, drag that takes a second to bite. He
+  circled his mark for the whole video and was therefore never still enough for `toggleMount` to
+  let anyone climb him. The stick now steers at the velocity ERROR against a target speed that eases
+  to nothing inside 14 px, which brakes him into the mark; on it, the velocity is cleared, the same
+  thing `cutUpdate`'s hold already does.
+- **Marks nailed to roles make robots walk through each other, which they cannot do.** Voxxy stage
+  left, Biggy centre, Droid stage right is the obvious layout and it is wrong, because the player
+  leaves them in any order: Biggy walked from stage right straight into Droid and the two shoved
+  each other for twenty seconds. The three marks are dealt to whoever is nearest — the cheapest of
+  the four orderings that keep Droid beside Biggy — so the assignment has no crossings by
+  construction.
+- **Arm's length is not close enough when both ends have slack.** Droid aimed at a point one arm
+  from Biggy's mark, `driveTo` gave up 3 px short, Biggy was allowed 3 px on his own mark, and the
+  gap landed outside `MOUNT_REACH` with Droid standing there for the rest of the video with his hand
+  out. He now aims a pixel INSIDE Biggy, read off where Biggy actually is; `botsCollide` is what
+  stops him, which is the honest version of "close enough to climb".
+
+**Tests.** `tests/curtain-call.test.ts` (4, new): every beat fires and in order (jump, roll, unfold,
+climb) with the whole act inside the shortest reel the game can cut; nobody leaves the stage rect
+and they finish in a line with real daylight between them; the room comes up to applause and only
+the people sitting down are clapping; and a skipped video stops the act dead rather than leaving a
+robot walking behind the final card. Every frame of the act is also checked against each robot's
+own `max`, the same guard `tests/cutscene-pace.test.ts` puts on the chapter transitions. Suite
+**780 green**.
+
+Two framing changes went with it. `VIEW_REEL` was cut from 310x210 to 250x160 — the screen's own
+width (`roomScreen(R(8))` is x 1271.6..1501.4) plus ten pixels of air, because a cropped card is
+worse than a small robot, and the height is what that width gives at the canvas aspect; the old
+rect ran to y 216 and spent half the frame on empty seating. And `drawSpotlight` aims three
+quarters of the way downstage rather than at the stage's centre, which is where the act lines up.
+
+**Rejected.** Driving the act through `startCut`, the existing cutscene machinery. It fades to
+black, teleports everyone to the head of a route and walks them at a pace derived from the shot
+length — all three of which are exactly wrong here: the video is already playing, the player is
+watching the robots they just parked, and a teleport under a screen that is mid-card is a jump cut
+in the middle of a scene nobody asked to leave.
+
+## 28 Sep 2026 — the two endings nobody could reach
+
+**What the human decided.** *"Can you show me an example video? What happens if I have no
+'bloopers' (skipping scenes, or not dropping any soup)?"* — a question, not a change request. The
+answer needed the four degenerate reels printed out, and printing them out showed that both ends of
+the range were broken.
+
+**What the agent did.** Dumped `buildReel` for a clean run, a normal run, a disaster and a skipped
+run (it is a pure function of the score bag, so this costs one throwaway test and no browser), then
+fixed what the dump showed:
+
+- **The flawless card was unreachable by playing well.** The cable blooper fired on any `cable > 0`,
+  and chapter 2 writes `score.cable` on the frame the run connects — so every completed run had a
+  blooper. It is gated on two thirds of `CABLE_MAX` now: the signposted route comes in a little over
+  half the reel, so a tidy run is under it and a wander is over. The card also reads in metres.
+- **The flawless card WAS reachable by skipping everything**, because `defaultScore` fills a skipped
+  chapter in as a clean one. `ChapterCtx` carries `skipped` now, `buildReel` takes it, and it is the
+  first blooper on the reel.
+
+**What it found.** That a "pure function of the run" is only as honest as the counters it reads, and
+two of those counters lie in opposite directions: `cable` is written by a chapter that cannot be
+finished without writing it (so it is never zero on a real run), and the chapter-3 and chapter-4
+counters are written by `defaultScore` as *perfect* when the chapter never ran (so they are never
+bad on a skipped run). Neither is visible from inside `reel.ts`, and neither showed up in four
+rounds of tests, because every test handed it a hand-written score bag.
+
+**Tests.** `tests/reel.test.ts` +3: a clean run that ran the cable the short way gets the flawless
+card and no bloopers reel at all; a 112 m cable run still gets called out and is not flawless;
+skipping names the chapters, singular and plural, and is never flawless. Suite **783 green**.
+
+**Also made.** A standalone preview page that plays the real reel — the same card text, holds,
+fades and black beats, with the logic ported line for line from `src/sim/reel.ts` and five runs to
+pick between. It exists so the ending can be judged without playing ten minutes to reach it; it is
+not part of the game and not in the repo.

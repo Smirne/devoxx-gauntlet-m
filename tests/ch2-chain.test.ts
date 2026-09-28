@@ -425,6 +425,41 @@ describe('chapter 2 — what the player is told, and what they have to find', ()
    * pad on the counter where the plug goes. All three are prop kinds the renderer
    * already draws.
    */
+  /*
+   * THE REEL IS BOLTED DOWN. Michele, 28 Sep 2026: *"the cable roll should not
+   * disappear when taken"*.
+   *
+   * It used to, because the chapter's only drawn cable was the run itself, and a
+   * run that has not been started yet is a polyline with no points. This asserts
+   * the sim half of the fix — the prop is published in every state, at the rack,
+   * and never moves — so the renderer always has a drum to stand there, however
+   * much of the cable is off it.
+   */
+  it('leaves the reel standing at the rack, before, during and after the run', () => {
+    const g = mk();
+    const at = prop(g, 'cable');
+    expect(at, 'no cable prop before it is taken').toBeDefined();
+    expect(at!.state).toBe('idle');
+    // The rack's own corner, which is where the chapter pins the reel.
+    expect(at!.x).toBe(GF.rack.x + 10);
+    expect(at!.y).toBe(GF.rack.y + 12);
+    // Nothing is paid out yet: `v` is the metre count the drum winds down from.
+    expect(at!.v ?? 0).toBe(0);
+
+    g.debug.select('voxxy');
+    g.debug.place('voxxy', GF.rack.x + 10, GF.rack.y - 12);
+    g.key('KeyE');
+    expect(expo(g).cable.carrying).toBe(true);
+    g.debug.place('voxxy', 600, 400);
+    steps(g, 30);
+    const mid = prop(g, 'cable');
+    expect(mid, 'the reel vanished the moment it was taken').toBeDefined();
+    expect(mid!.x, 'the reel followed her').toBe(at!.x);
+    expect(mid!.y, 'the reel followed her').toBe(at!.y);
+    expect(mid!.state).toBe('active');
+    expect(mid!.v ?? 0, 'the drum has no idea how much is off it').toBeGreaterThan(0);
+  });
+
   it('signposts the cable run in the world, and says something a player can act on', () => {
     const g = mk();
     const signs = props(g, 'sign');

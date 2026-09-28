@@ -814,7 +814,8 @@ function setupMinigames(ctx: ChapterCtx, hints: () => readonly Task[]): Minigame
 
 export interface BreakfastState {
   chapter: 3;
-  ladle: boolean;
+  /** Where the ladle is: still on the shelf, in Droid's hand, or in the pot. */
+  ladle: 'shelf' | 'carried' | 'in';
   carrying: boolean;
   delivered: boolean;
   /** Percent left in the pot. */
@@ -1004,7 +1005,22 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const food = GF.food;
   const station: Vec2 = { x: food.soup.x + 45, y: food.soup.y + 15 };
   const shelfAt: Vec2 = { x: food.shelf.x + 11, y: food.shelf.y + 8 };
-  let ladle = false;
+  /**
+   * WHERE THE LADLE IS — and it is three places, not two.
+   *
+   * Michele, 28 Sep 2026: *"The ladle thing: I think droid should take it and drop
+   * it in the soup. Otherwise the action is a bit pointless."* He is right, and it
+   * was the thinnest beat in the chapter: Droid stood under a shelf, pressed `E`,
+   * a flag went true somewhere, and a robot on the other side of the court could
+   * suddenly fill a pot. Nothing moved, so nothing happened.
+   *
+   * Now the ladle is an OBJECT with a journey: it is on the shelf, then it is in
+   * Droid's hand and goes where he goes, then he drops it in the pot at the
+   * counter and Biggy can fill it. Two presses and a walk instead of one press —
+   * and the walk is the one only Droid can start, which is what the errand was
+   * always for.
+   */
+  let ladle: 'shelf' | 'carried' | 'in' = 'shelf';
   /**
    * WHERE THE SOUP WENT — one stain on the floor per splash, and they stay.
    *
@@ -1967,7 +1983,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     if (gateOpen) return pick(['All is ready. All is ready! Up you go, the rooms are yours.', 'Go on. Before I find something else that is missing.']);
     if (!delivered) {
       if (carrying) return pick(['Is that my soup? Bring it here before it is a cold soup.', 'I can see it from here. Walk. Do not run.']);
-      if (ladle) return pick(['Where is my soup?', 'Tomato. At breakfast, yes. It is a tradition and I am the one who keeps it.']);
+      if (ladle === 'in') return pick(['Where is my soup?', 'Tomato. At breakfast, yes. It is a tradition and I am the one who keeps it.']);
+      if (ladle === 'carried')
+        return pick(['Where is my soup?', 'The tall one is walking about with my ladle. It goes IN the pot. It is not a souvenir.']);
       return pick(['Where is my soup?', 'The pot is on the counter and the ladle is on the shelf. I am not doing it myself, I am holding a staircase.']);
     }
     if (!speaker.withStephan) {
@@ -2161,9 +2179,15 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     }
 
     if (b.kind === 'droid') {
-      if (!ladle && dist(d, shelfAt) < SHELF_REACH) {
-        ladle = true;
-        ctx.flash('Droid reaches the high shelf — ladle secured');
+      if (ladle === 'shelf' && dist(d, shelfAt) < SHELF_REACH) {
+        ladle = 'carried';
+        ctx.flash('Droid reaches the high shelf — ladle in hand. Now the pot, on the soup counter.');
+        return true;
+      }
+      // ...and the other half of the errand: he has to go and put it IN the pot.
+      if (ladle === 'carried' && dist(d, station) < POT_REACH) {
+        ladle = 'in';
+        ctx.flash('Droid drops the ladle in the pot: "It is a long arm. That is the whole of my contribution to breakfast."', 3600);
         return true;
       }
       const dc = crateInReach(d);
@@ -2188,8 +2212,14 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         return true;
       }
       if (!carrying && dist(bg, station) < POT_REACH) {
-        if (!ladle) {
-          ctx.flash('Biggy: no ladle. Droid, the shelf!');
+        if (ladle !== 'in') {
+          // Two different problems, two different answers: nobody has the ladle,
+          // or somebody is standing there holding it.
+          ctx.flash(
+            ladle === 'carried'
+              ? 'Biggy: "Droid. It goes IN the pot. I am not fishing it out of your hand."'
+              : 'Biggy: no ladle. Droid, the shelf!',
+          );
           return true;
         }
         if (carriedCrates() > 0) {
@@ -2474,6 +2504,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   function props(): Prop[] {
     const bg = ctx.byKind('biggy');
+    const droidNow = (): Vec2 => ctx.byKind('droid');
     const out: Prop[] = [
       {
         kind: 'soup-station',
@@ -2484,11 +2515,26 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         state: carrying ? 'done' : 'idle',
         label: 'TOMATO SOUP',
       },
+      /*
+       * The ladle, wherever it is: on the shelf, in Droid's hand, or in the pot.
+       *
+       * One prop with three places and three states, rather than a flag and a
+       * decoration — the renderer draws it at the height each of those means (on
+       * the shelf slab, at Droid's hand, standing in the pot), and a player who
+       * cannot find it can follow it. The rect while it is carried is a small box
+       * on Droid's own centre, exactly as the soup pot rides on Biggy's.
+       */
       {
         kind: 'ladle',
-        ...GF.food.shelf,
-        state: ladle ? 'done' : 'idle',
-        label: ladle ? 'shelf' : 'ladle (high)',
+        ...(ladle === 'shelf'
+          ? GF.food.shelf
+          : ladle === 'carried'
+            ? { x: droidNow().x - 8, y: droidNow().y - 8, w: 16, h: 16 }
+            : carrying
+              ? { x: bg.x - 8, y: bg.y - 8, w: 16, h: 16 }
+              : { x: station.x - 8, y: station.y - 8, w: 16, h: 16 }),
+        state: ladle === 'in' ? 'done' : ladle === 'carried' ? 'active' : 'idle',
+        label: ladle === 'in' ? 'ladle · in the pot' : ladle === 'carried' ? 'ladle · Droid has it' : 'ladle (high shelf)',
       },
       { kind: 'dropzone', ...soupSpot, state: delivered ? 'done' : 'idle', label: 'bring the soup to Stephan' },
       /*
@@ -2867,9 +2913,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       ? 'soup ✓'
       : carrying
         ? `soup: carrying the pot · ${Math.round(soup)}% left at ${Math.round(temp)}°`
-        : ladle
-          ? `soup: ladle in hand — ${batches > 0 ? 'fill it again' : 'fill the pot'} at the counter`
-          : 'soup: the ladle is on the high shelf (Droid)';
+        : ladle === 'in'
+          ? `soup: ladle is in the pot — ${batches > 0 ? 'fill it again' : 'fill the pot'} at the counter`
+          : ladle === 'carried'
+            ? 'soup: Droid has the ladle — it goes in the pot on the soup counter'
+            : 'soup: the ladle is on the high shelf (Droid)';
     const spk = speaker.withStephan
       ? 'speaker ✓'
       : speaker.following
@@ -2920,11 +2968,18 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     return [
       {
         id: 'ladle',
-        text: 'fetch the ladle off the high shelf',
-        done: ladle,
+        text: 'take the ladle off the high shelf and drop it in the pot',
+        done: ladle === 'in',
         who: ['droid'],
-        at: shelfStand,
-        hint: 'Droid: top shelf in the catering block, and nobody fills a pot without it. Voxxy cannot see over that shelf and Biggy cannot get an arm into it',
+        // Two legs, two addresses: the shelf until he has it, then the pot. An
+        // errand whose arrow never moves is an errand that is really one press.
+        at: ladle === 'carried' ? soupStand : shelfStand,
+        n: ladle === 'in' ? 2 : ladle === 'carried' ? 1 : 0,
+        of: 2,
+        hint:
+          ladle === 'carried'
+            ? 'Droid: I have it. It goes IN the pot — the soup counter is the one with the vat, a few steps west along the block'
+            : 'Droid: top shelf in the catering block, and nobody fills a pot without it. Voxxy cannot see over that shelf and Biggy cannot get an arm into it',
       },
       {
         id: 'soup',

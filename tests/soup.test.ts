@@ -34,19 +34,22 @@ const steps = (g: DebugGame, n: number): void => {
   for (let i = 0; i < n; i++) g.update(DT_MAX);
 };
 
-/** Ladle, then pot — the same two presses `tests/chapters.test.ts` uses. */
+/** Ladle off the shelf, ladle into the pot, then the pot — the standard opening. */
 function withThePot(g: DebugGame): void {
   g.debug.select('droid');
   g.debug.place('droid', 176, 150);
   g.key('KeyE');
-  expect(st(g).ladle, 'Droid did not reach the shelf').toBe(true);
+  expect(st(g).ladle, 'Droid did not reach the shelf').toBe('carried');
+  g.debug.place('droid', 105, 180);
+  g.key('KeyE');
+  expect(st(g).ladle, 'Droid did not drop it in the pot').toBe('in');
   g.debug.select('biggy');
   g.debug.place('biggy', 105, 180);
   g.key('KeyE');
   expect(st(g).carrying, 'the counter would not fill the pot').toBe(true);
 }
 
-describe('the ladle is on the shelf, and says so', () => {
+describe('the ladle has three places, and the prop says which', () => {
   it('stands on the high shelf rect until Droid takes it', () => {
     const g = mk();
     const before = props(g, 'ladle');
@@ -61,9 +64,47 @@ describe('the ladle is on the shelf, and says so', () => {
     g.debug.select('droid');
     g.debug.place('droid', 176, 150);
     g.key('KeyE');
-    expect(st(g).ladle).toBe(true);
-    // Taken: `done` is what empties the shelf on screen.
+    expect(st(g).ladle).toBe('carried');
+    // Taken: `active`, and the rect is now a small box on Droid himself, because
+    // the shelf is empty and the ladle is walking.
+    const held = props(g, 'ladle')[0];
+    expect(held.state).toBe('active');
+    const d = g.snapshot().bots.find((b) => b.kind === 'droid') as Bot;
+    expect(Math.hypot(held.x + (held.w ?? 0) / 2 - d.x, held.y + (held.h ?? 0) / 2 - d.y)).toBeLessThan(2);
+  });
+
+  /*
+   * Michele, 28 Sep 2026: *"I think droid should take it and drop it in the soup.
+   * Otherwise the action is a bit pointless."* So taking it is not the end of the
+   * row — the pot will not fill until the ladle is IN it, which is what makes the
+   * walk between the shelf and the counter a job rather than a button.
+   */
+  it('will not let Biggy fill the pot until the ladle is in it', () => {
+    const g = mk();
+    g.debug.select('droid');
+    g.debug.place('droid', 176, 150);
+    g.key('KeyE');
+    expect(st(g).ladle).toBe('carried');
+
+    g.debug.select('biggy');
+    g.debug.place('biggy', 105, 180);
+    g.key('KeyE');
+    expect(st(g).carrying, 'the pot filled with the ladle still in Droid\'s hand').toBe(false);
+
+    g.debug.select('droid');
+    g.debug.place('droid', 105, 180);
+    g.key('KeyE');
+    expect(st(g).ladle).toBe('in');
     expect(props(g, 'ladle')[0].state).toBe('done');
+
+    g.debug.select('biggy');
+    g.debug.place('biggy', 105, 180);
+    g.key('KeyE');
+    expect(st(g).carrying, 'the pot would not fill with the ladle in it').toBe(true);
+    // ...and from here the ladle rides with the pot, not with the counter.
+    const b = biggy(g);
+    const l = props(g, 'ladle')[0];
+    expect(Math.hypot(l.x + (l.w ?? 0) / 2 - b.x, l.y + (l.h ?? 0) / 2 - b.y)).toBeLessThan(2);
   });
 });
 

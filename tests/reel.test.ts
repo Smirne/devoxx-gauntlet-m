@@ -29,6 +29,47 @@ describe('the opening video', () => {
     expect(bloopers[0].title).toBe('A flawless night.');
   });
 
+  /*
+   * THE FLAWLESS CARD HAS TO BE REACHABLE BY PLAYING WELL.
+   *
+   * Michele, 28 Sep: *"What happens if I have no bloopers... not dropping any
+   * soup?"* — and it turned out the answer was "you still get one", because the
+   * cable card fired on any run at all and chapter 2 cannot be finished without
+   * paying cable out. The only player who ever saw "A flawless night." was the one
+   * who skipped the entire game, which `defaultScore` fills in as a clean run.
+   * Both halves of that are asserted here.
+   */
+  it('gives the flawless card to a clean run that ran the cable the short way', () => {
+    // The signposted route down the right-hand wall: a little over half the reel.
+    const cards = buildReel({ ...perfect, cable: 706 }, ['duck'], 612);
+    const bloopers = cards.filter((c) => c.kind === 'blooper');
+    expect(bloopers).toHaveLength(1);
+    expect(bloopers[0].title, 'a tidy cable run counted as a blooper').toBe('A flawless night.');
+    expect(cards.map((c) => c.title)).not.toContain('The bloopers');
+  });
+
+  it('still calls out a cable dragged round the hall', () => {
+    const cards = buildReel({ ...perfect, cable: 1400 }, [], 612);
+    expect(cards.map((c) => c.title)).toContain('112 m of network cable');
+    expect(cards.map((c) => c.title), 'a 112 m cable run was called flawless').not.toContain('A flawless night.');
+  });
+
+  it('says on the video which chapters were skipped, and never calls that flawless', () => {
+    // What `defaultScore` writes for a skipped chapter: a clean one.
+    const skippedClean = { soup: 100, temp: 100, complaints: 0, keynoteComplaints: 0, spare: 0, cable: 0 };
+    const cards = buildReel(skippedClean, [], 34, [1, 2, 3, 4]);
+    const titles = cards.map((c) => c.title);
+    expect(titles).toContain('4 chapters skipped');
+    expect(titles, 'skipping the whole game was called a flawless night').not.toContain('A flawless night.');
+    const sub = cards.find((c) => c.title === '4 chapters skipped')?.sub ?? '';
+    expect(sub).toContain('Chapters 1, 2, 3, 4');
+
+    // One skipped chapter is singular, and named.
+    const one = buildReel({ ...perfect, cable: 690 }, [], 420, [3]);
+    expect(one.map((c) => c.title)).toContain('1 chapter skipped');
+    expect(one.find((c) => c.title === '1 chapter skipped')?.sub ?? '').toContain('Chapter 3');
+  });
+
   it('cuts the bloopers from the counters the chapters actually wrote', () => {
     const cards = buildReel(
       { ...perfect, complaints: 2, keynoteComplaints: 1, oom: 1, soup: 60, temp: 44, cable: 1480, spare: 6 },
@@ -40,7 +81,7 @@ describe('the opening video', () => {
     expect(titles).toContain('3 attendees bowled over');
     expect(titles).toContain('OutOfMemoryError');
     expect(titles).toContain('40% of the soup on the floor');
-    expect(titles).toContain('1480 px of network cable');
+    expect(titles).toContain('118 m of network cable');
     expect(titles).toContain('512 seconds');
     expect(titles).toContain('2/3 swag');
     // ...and it stays a reel: four bloopers at most, however bad the night was.
