@@ -91,8 +91,10 @@ function styleOf(w: Wall, mats: Materials, concrete: THREE.Material): { h: numbe
   const k = w.kind ?? '';
   if (w.glass) return { h: 4.2, mat: mats.glass };
   switch (k) {
+    // A slim sign post in front of each stand: a person high, not a pillar
+    // hiding the open stand behind it.
     case 'totem':
-      return { h: 2.8, mat: mats.blackGloss };
+      return { h: 1.9, mat: mats.blackGloss };
     case 'crate':
       return { h: 1.1, mat: mats.counter };
     // White square columns, as in every photograph of the hall.
@@ -1045,29 +1047,145 @@ export function buildGround(mats: Materials): Ground3D {
       const bw = m(b.w);
       const bd = m(b.h);
       if (!b.table) {
+        /*
+         * AN OPEN STAND, off Michele's booth photographs (28 Sep): a raised floor
+         * with a white edge, a printed back wall and two printed side walls, arm
+         * spotlights on top, and the inside furnished — high table and stools, a
+         * screen, a plant, and each sponsor's crowd-puller (a claw machine, a
+         * little humanoid robot, a racing seat). The sim still has the whole
+         * footprint solid — it is where the keynote speaker hides — so a belt
+         * barrier runs across the open front: the stand is closed for the night,
+         * and a robot stopped at its edge is stopped by something you can see.
+         */
         const H = 2.6;
-        solid2.add(mats.darkMetal, box(bw - 0.04, H, bd - 0.04, V(cx, H / 2, cz), 2));
+        const T = 0.1;
+        const x0 = cx - bw / 2;
+        const x1 = cx + bw / 2;
+        const z0 = cz - bd / 2; // back (north)
+        const z1 = cz + bd / 2; // open front (south)
         const tex = boothGraphic(b.name, sch.brand, sch.ink, sch.strap);
         const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6, emissive: new THREE.Color(1, 1, 1), emissiveMap: tex, emissiveIntensity: 0.05 });
         panels.push(mat);
-        // Four printed faces; not the one the spray tag is painted on.
+        const brandMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(sch.brand), roughness: 0.7 });
+        // The raised floor, carpeted in the brand's colour, edged in white.
+        const floorMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(sch.brand).lerp(new THREE.Color(0x555555), 0.35), roughness: 1 });
+        group.add(new THREE.Mesh(box(bw, 0.08, bd, V(cx, 0.04, cz)), floorMat));
+        group.add(new THREE.Mesh(box(bw + 0.02, 0.085, 0.05, V(cx, 0.042, z1)), new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.5 })));
+        // The three walls: solid, dark cores; printed inside and out.
+        solid2.add(mats.darkMetal, box(bw, H, T, V(cx, H / 2, z0 + T / 2), 2));
+        solid2.add(mats.darkMetal, box(T, H, bd, V(x0 + T / 2, H / 2, cz), 2));
+        solid2.add(mats.darkMetal, box(T, H, bd, V(x1 - T / 2, H / 2, cz), 2));
         const faces: Array<[number, number, number, number]> = [
-          [cx, cz + bd / 2 + 0.005, 0, bw],
-          [cx, cz - bd / 2 - 0.005, Math.PI, bw],
-          [cx + bw / 2 + 0.005, cz, Math.PI / 2, bd],
-          [cx - bw / 2 - 0.005, cz, -Math.PI / 2, bd],
+          [cx, z0 + T + 0.005, 0, bw - 2 * T], // back wall, inside
+          [cx, z0 - 0.005, Math.PI, bw], // back wall, outside
+          [x0 + T + 0.005, cz, Math.PI / 2, bd - T], // west wall, inside
+          [x1 - T - 0.005, cz, -Math.PI / 2, bd - T], // east wall, inside
+          [x0 - 0.005, cz, -Math.PI / 2, bd], // west wall, outside
+          [x1 + 0.005, cz, Math.PI / 2, bd], // east wall, outside
         ];
         for (const [fx, fz, yaw, len] of faces) {
-          if (Math.abs(fx - m(tagFace.x)) < 0.05 && Math.abs(fz - m(tagFace.y)) < bd) continue;
+          if (Math.abs(fx - m(tagFace.x)) < 0.2 && Math.abs(fz - m(tagFace.y)) < bd) continue;
           const f = new THREE.Mesh(new THREE.PlaneGeometry(len - 0.1, H - 0.5), mat);
-          f.position.set(fx, 1.2, fz);
+          f.position.set(fx, 1.35, fz);
           f.rotation.y = yaw;
           group.add(f);
         }
-        // The header: a strip of light round the top edge, in the brand colour.
+        // The header: a strip of light along the top of the back wall.
         const strip = new THREE.MeshBasicMaterial({ color: 0x000000, toneMapped: false });
         strips.push({ mat: strip, base: new THREE.Color(sch.brand) });
-        group.add(new THREE.Mesh(box(bw + 0.02, 0.12, bd + 0.02, V(cx, H - 0.1, cz)), strip));
+        group.add(new THREE.Mesh(box(bw + 0.02, 0.1, T + 0.04, V(cx, H - 0.05, z0 + T / 2)), strip));
+        // Arm spotlights along the top of the back wall, leaning in over the stand.
+        for (let k = 0; k < 3; k++) {
+          const ax = x0 + (bw * (k + 0.5)) / 3;
+          const arm = new THREE.Mesh(box(0.03, 0.03, 0.7, V(ax, H + 0.15, z0 + 0.3)), mats.steel);
+          arm.rotation.x = -0.45;
+          group.add(arm);
+          group.add(new THREE.Mesh(box(0.14, 0.05, 0.1, V(ax, H + 0.28, z0 + 0.62)), mats.steel));
+        }
+        // A screen on the back wall.
+        const scr = new THREE.MeshBasicMaterial({ color: new THREE.Color(sch.brand).multiplyScalar(0.6), toneMapped: false });
+        strips.push({ mat: scr, base: new THREE.Color(sch.brand).multiplyScalar(0.25) });
+        group.add(new THREE.Mesh(box(1.1, 0.65, 0.05, V(cx - bw * 0.22, 1.75, z0 + T + 0.03)), mats.darkMetal));
+        const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.02, 0.57), scr);
+        screen.position.set(cx - bw * 0.22, 1.75, z0 + T + 0.06);
+        group.add(screen);
+        // A high table and stools, and a plant in the corner.
+        const blk = new THREE.MeshStandardMaterial({ color: 0x151517, roughness: 0.5, metalness: 0.3 });
+        const tx = cx - bw * 0.18;
+        const tz = cz + bd * 0.05;
+        solid2.add(blk, box(0.7, 0.03, 0.7, V(tx, 1.08, tz)));
+        solid2.add(blk, box(0.06, 1.06, 0.06, V(tx, 0.55, tz)));
+        for (const [sx, sz] of [
+          [-0.55, 0.1],
+          [0.55, 0.1],
+          [0, 0.55],
+        ]) {
+          solid2.add(new THREE.MeshStandardMaterial({ color: 0xf1efe9, roughness: 0.5 }) as unknown as THREE.Material, box(0.34, 0.06, 0.34, V(tx + sx, 0.78, tz + sz)));
+          solid2.add(blk, box(0.04, 0.75, 0.04, V(tx + sx, 0.42, tz + sz)));
+        }
+        group.add(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.16, 0.4, 14), mats.darkMetal).translateX(x1 - T - 0.35).translateY(0.28).translateZ(z0 + T + 0.35));
+        for (let k = 0; k < 7; k++) {
+          const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.8, 4), new THREE.MeshStandardMaterial({ color: 0x3f7a34, roughness: 0.8 }));
+          leaf.position.set(x1 - T - 0.35 + Math.cos(k) * 0.08, 0.85, z0 + T + 0.35 + Math.sin(k) * 0.08);
+          leaf.rotation.set(Math.sin(k * 2.1) * 0.5, 0, Math.cos(k * 1.7) * 0.5);
+          group.add(leaf);
+        }
+        // The crowd-puller, one per stand in turn.
+        const fx = cx + bw * 0.25;
+        const fz = cz;
+        const white = new THREE.MeshStandardMaterial({ color: 0xf4f4f2, roughness: 0.35 });
+        switch (i % 4) {
+          case 0: {
+            // A claw machine: white cabinet, glass box of prizes, brand header.
+            solid2.add(white, box(0.8, 0.9, 0.8, V(fx, 0.53, fz)));
+            solid2.add(mats.glass, box(0.76, 0.8, 0.76, V(fx, 1.38, fz)));
+            solid2.add(brandMat, box(0.82, 0.25, 0.82, V(fx, 1.9, fz)));
+            for (let k = 0; k < 14; k++) {
+              const ball = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL((k * 0.13) % 1, 0.7, 0.55), roughness: 0.4 }));
+              ball.position.set(fx - 0.25 + (k % 5) * 0.12, 1.05 + Math.floor(k / 5) * 0.07, fz - 0.2 + ((k * 7) % 4) * 0.12);
+              group.add(ball);
+            }
+            break;
+          }
+          case 1: {
+            // A little white humanoid robot with a tablet on its chest.
+            const r = new THREE.Group();
+            r.add(new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, 0.5, 16), white).translateY(0.25));
+            r.add(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.14, 0.45, 16), white).translateY(0.72));
+            r.add(new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 12), white).translateY(1.08));
+            r.add(new THREE.Mesh(box(0.18, 0.13, 0.02, V(0, 0.78, 0.15)), mats.blackGloss));
+            for (const ex of [-0.05, 0.05]) r.add(new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 6), mats.blackGloss).translateX(ex).translateY(1.1).translateZ(0.13));
+            r.position.set(fx, 0.08, fz + 0.4);
+            group.add(r);
+            break;
+          }
+          case 2: {
+            // A racing-sim rig: black bucket seat, wheel, a screen on a stand.
+            solid2.add(blk, box(0.6, 0.1, 1.3, V(fx, 0.2, fz)));
+            solid2.add(blk, box(0.5, 0.5, 0.12, V(fx, 0.55, fz + 0.45)));
+            solid2.add(blk, box(0.5, 0.1, 0.45, V(fx, 0.33, fz + 0.25)));
+            const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.025, 8, 20), blk);
+            wheel.position.set(fx, 0.7, fz - 0.3);
+            group.add(wheel);
+            solid2.add(mats.darkMetal, box(0.9, 0.52, 0.05, V(fx, 1.25, fz - 0.62)));
+            break;
+          }
+          default: {
+            // A counter in the brand colour with a stack of swag on it.
+            solid2.add(brandMat, box(1.0, 1.0, 0.5, V(fx, 0.58, fz)));
+            solid2.add(white, box(1.04, 0.04, 0.54, V(fx, 1.1, fz)));
+            for (let k = 0; k < 5; k++) solid2.add(blk, box(0.12, 0.08, 0.12, V(fx - 0.3 + k * 0.15, 1.16, fz)));
+          }
+        }
+        // The belt barrier across the open front: posts and a red belt.
+        const belt = new THREE.MeshStandardMaterial({ color: 0xb22222, roughness: 0.6 });
+        const posts = Math.max(2, Math.round(bw / 1.6) + 1);
+        for (let k = 0; k < posts; k++) {
+          const px = x0 + 0.15 + ((bw - 0.3) * k) / (posts - 1);
+          solid2.add(mats.steel, box(0.05, 0.95, 0.05, V(px, 0.48, z1 + 0.1)));
+          solid2.add(mats.steel, new THREE.CylinderGeometry(0.16, 0.16, 0.03, 16).translate(px, 0.015, z1 + 0.1));
+        }
+        solid2.add(belt, box(bw - 0.3, 0.05, 0.01, V(cx, 0.9, z1 + 0.1)));
         return;
       }
       // A high table.
