@@ -27,6 +27,7 @@ import { Vector3 } from 'three';
 
 import { DT_MAX } from './sim/constants';
 import { createGame, type DebugGame } from './sim/game';
+import { KEYNOTE_RAKE } from './sim/chapters/ch4-keynote';
 import type { RobotKind } from './sim/types';
 import { ROBOT_HEIGHT_M } from './sim/units';
 
@@ -110,6 +111,8 @@ const quality: QualityName = qParam && Q.includes(qParam) ? qParam : storedQuali
 /** Set by a quality change: the chapter to come back to after the reload. */
 const resumeAt = int('resume');
 const shotMode = flag('shot');
+// Room 8 as a raked cinema — a proposal, off by default (`KEYNOTE_RAKE`).
+KEYNOTE_RAKE.on = flag('rake');
 const hideHud = flag('nohud') || (shotMode && !flag('hud'));
 const warm = Math.max(0, Math.min(int('warm') ?? 0, 20000));
 

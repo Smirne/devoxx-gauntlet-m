@@ -5374,3 +5374,27 @@ have matched the room around them, and would have cost more than the entire rest
     review page where Michele marks each OK or Change and types a rewrite. His marks are stored
     in the page's own database, so the agent reads them back rather than asking for a
     transcription.
+- **The dark hall, a raked Room 8 to approve, the lab tables** (28 Sep 2026, same evening).
+  - *Dark chapter 2 hall, as approved:*
+    - exit signs wash their green down the wall beneath them;
+    - the drinks fridges glow all night, with a cold pool on the carpet;
+    - every half minute or so a car's headlights sweep through the entrance glass, but only
+      while the building is dark.
+    The first render showed the new reception lamps, soffit and ring pendant blazing with the
+    power off, so they now switch with the hall's circuit.
+  - *Room 8, raked, as a proposal behind `?rake=1`.* Michele asked for a before/after, so the
+    rake is built but switched off.
+    - The cross-aisle and door stay at corridor level, the rows step down 2.4 m to a pit, and
+      the stage is a 0.6 m platform standing in it.
+    - It is heights only: the chapter publishes three plates, and walls, paths, speeds and
+      timings are untouched.
+    - That needed `riseAt` to allow a surface below the storey datum. The rule is now "the
+      highest plate under the point, or the datum where there is none". Where no plate is
+      negative it is exactly the old rule, and every existing surface test still passes.
+      `riseForBody` climbs from the surface the centre stands on, not from 0.
+  - *Lab tables*, where Michele placed them: "near the entrance from the main stair, on both
+    sides".
+    - Two long tables along the corridor's two walls between room 8's door and the room 6/7
+      doors, solid and `low`.
+    - Black velvet, white power trunking, laptops, bottles, folding chairs.
+    - Behind them, the wall of raised film quotes from his photograph.

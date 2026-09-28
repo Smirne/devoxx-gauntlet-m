@@ -166,6 +166,34 @@ function boothGraphic(name: string, brand: string, ink: string, strap: string): 
   return t;
 }
 
+/**
+ * A soft pool of light painted onto a surface: a radial gradient, additive,
+ * no depth write. The dark hall's small lights — an exit sign's green on the
+ * curtain under it, a fridge's cold white on the carpet in front — cost a
+ * decal each instead of a real light each (Michele approved all three dark-hall
+ * touches, 28 Sep).
+ */
+const glowTex = ((): THREE.CanvasTexture | null => {
+  if (typeof document === 'undefined') return null;
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 128;
+  const x = c.getContext('2d')!;
+  const g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g;
+  x.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+})();
+function glowDecal(color: THREE.ColorRepresentation, strength: number, w: number, h: number): THREE.Mesh {
+  const mat = new THREE.MeshBasicMaterial({ map: glowTex, color: new THREE.Color(color).multiplyScalar(strength), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+  mesh.renderOrder = 3;
+  return mesh;
+}
+
 let columnMatCache: THREE.Material | null = null;
 function columnMat(mats: Materials): THREE.Material {
   if (!columnMatCache) {
@@ -297,6 +325,11 @@ function shafts(group: THREE.Group, mats: Materials, concrete: THREE.Material): 
       sign.position.set(m(d.x + d.w / 2), DOOR_H + 0.25, m(out1 < 0 ? d.y : d.y + d.h) + out1 * 0.03);
       if (out1 < 0) sign.rotation.y = Math.PI;
       group.add(sign);
+      // Its green, washed down the wall under it.
+      const wash = glowDecal(0x2bdc6a, 0.55, 2.4, 2.6);
+      wash.position.set(sign.position.x, DOOR_H + 0.1, sign.position.z + out1 * 0.01);
+      wash.rotation.y = sign.rotation.y;
+      group.add(wash);
     }
   }
   out.push(...dress.build(group));
@@ -583,6 +616,14 @@ function hallFurniture(group: THREE.Group, mats: Materials): THREE.Object3D[] {
   const head = new THREE.MeshBasicMaterial({ map: headTex, color: new THREE.Color(1.5, 1.5, 1.5), toneMapped: false });
   const FH = 2.0;
   for (const f of DRINK_FRIDGES) {
+    // Lit all night, as real ones are: a cold pool on the carpet in front.
+    const pool = glowDecal(0xbfd4ff, 0.5, m(f.w) + 1.6, 2.2);
+    pool.rotation.x = -Math.PI / 2;
+    pool.position.set(m(f.x + f.w / 2), 0.012, m(f.y) - 0.9);
+    group.add(pool);
+    const fl = new THREE.PointLight(0xcfe0ff, 2.5, 5, 1.8);
+    fl.position.set(m(f.x + f.w / 2), 1.2, m(f.y) - 0.5);
+    group.add(fl);
     const w = m(f.w) / 2;
     const d = m(f.h);
     for (const k of [0, 1]) {
@@ -611,10 +652,17 @@ function hallFurniture(group: THREE.Group, mats: Materials): THREE.Object3D[] {
  * the doors, a big white ring pendant lit underneath. The counter runs are the
  * sim's `desk` walls; the slat wall stands on the wardrobe's south face.
  */
+/** Reception's lit things, switched with the hall's power: material, full colour. */
+const receptionGlows: Array<{ mat: THREE.MeshBasicMaterial; base: THREE.Color }> = [];
+let receptionLight: THREE.PointLight | null = null;
+function glowing(mat: THREE.MeshBasicMaterial): THREE.MeshBasicMaterial {
+  receptionGlows.push({ mat, base: mat.color.clone() });
+  return mat;
+}
 function reception(group: THREE.Group, mats: Materials): THREE.Object3D[] {
   const b = new Buckets();
   const white = new THREE.MeshStandardMaterial({ color: 0xf1efea, roughness: 0.35 });
-  const led = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.7, 0.4).multiplyScalar(3), toneMapped: false });
+  const led = glowing(new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.7, 0.4).multiplyScalar(3), toneMapped: false }));
   const rise = LOBBY_RISE_M;
   const CH = 1.1;
   for (const w of groundWallsFor(2)) {
@@ -661,7 +709,7 @@ function reception(group: THREE.Group, mats: Materials): THREE.Object3D[] {
   x.fillText('Exhibition hall', 330, 250);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  const screenMat = new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(1.2, 1.2, 1.2), toneMapped: false });
+  const screenMat = glowing(new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(1.2, 1.2, 1.2), toneMapped: false }));
   for (const f of [0.3, 0.72]) {
     const sx = x0 + (x1 - x0) * f;
     b.add(mats.darkMetal, box(1.36, 0.8, 0.06, V(sx, rise + 1.95, wz + 0.11)));
@@ -674,7 +722,7 @@ function reception(group: THREE.Group, mats: Materials): THREE.Object3D[] {
   b.add(white, box(m(rc.w) + 0.4, 0.5, m(rc.h) + 0.4, V(m(rc.x + rc.w / 2), soffitY + 0.25, m(rc.y + rc.h / 2))));
   const glow = new THREE.Mesh(
     new THREE.PlaneGeometry(m(rc.w) + 0.2, m(rc.h) + 0.2),
-    new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.45, 0.15).multiplyScalar(2.2), toneMapped: false }),
+    glowing(new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.45, 0.15).multiplyScalar(2.2), toneMapped: false })),
   );
   glow.rotation.x = Math.PI / 2;
   glow.position.set(m(rc.x + rc.w / 2), soffitY - 0.005, m(rc.y + rc.h / 2));
@@ -682,8 +730,9 @@ function reception(group: THREE.Group, mats: Materials): THREE.Object3D[] {
   const warm = new THREE.PointLight(0xff9a5a, 18, 9, 1.6);
   warm.position.set(m(rc.x + rc.w / 2), soffitY - 0.4, m(rc.y + rc.h / 2));
   group.add(warm);
+  receptionLight = warm;
   // Two drum lamps on the counter ends.
-  const shade = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.92, 0.78).multiplyScalar(2.5), toneMapped: false });
+  const shade = glowing(new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.92, 0.78).multiplyScalar(2.5), toneMapped: false }));
   for (const [lx, lz] of [
     [m(rc.x) + 0.3, m(rc.y) + 0.4],
     [m(rc.x + rc.w) - 0.5, m(rc.y + rc.h) - 0.3],
@@ -698,7 +747,7 @@ function reception(group: THREE.Group, mats: Materials): THREE.Object3D[] {
   const px = m(GF.entrance.x) - 2.2;
   const pz = m(GF.entrance.y + GF.entrance.h / 2);
   b.add(white, new THREE.CylinderGeometry(1.1, 1.1, 0.28, 48, 1, true).translate(px, ringY, pz));
-  const under = new THREE.Mesh(new THREE.RingGeometry(0.2, 1.08, 48), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.95, 0.88).multiplyScalar(3), toneMapped: false, side: THREE.DoubleSide }));
+  const under = new THREE.Mesh(new THREE.RingGeometry(0.2, 1.08, 48), glowing(new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.95, 0.88).multiplyScalar(3), toneMapped: false, side: THREE.DoubleSide })));
   under.rotation.x = Math.PI / 2;
   under.position.set(px, ringY - 0.12, pz);
   group.add(under);
@@ -1118,6 +1167,20 @@ export function buildGround(mats: Materials): Ground3D {
   const fill = new THREE.HemisphereLight(0xfff4e6, 0x3a3430, 0);
   group.add(fill);
   let power = 0;
+  /*
+   * HEADLIGHTS. Every half minute or so a car turns in off the road and its
+   * lights sweep through the entrance glass, across the lobby and into the
+   * hall — only while the building is dark (chapter 2 before the breaker). A
+   * spot outside the facade, travelling along it and swinging in, with its
+   * beam in the fog.
+   */
+  const car = new THREE.SpotLight(0xfff1d8, 0, 60, 0.3, 0.5, 1.2);
+  car.position.set(m(GF.entrance.x) + 12, 0.8, m(GF.entrance.y));
+  car.target.position.set(m(GF.entrance.x) - 20, 0.6, m(GF.entrance.y));
+  group.add(car, car.target);
+  volumeSpots.push({ light: car, fog: 0.18 });
+  let nextCar = 9;
+  let carT = -1;
   /**
    * Chapter 3 is the morning: doors open, daylight through the glass, the
    * whole hall bright. It rendered as chapter 2's hall with the power on —
@@ -1151,6 +1214,26 @@ export function buildGround(mats: Materials): Ground3D {
     },
     update(t: number, dt: number): void {
       for (const u of updaters) u(t, dt);
+      {
+        const dark = poweredAt === null && !morning;
+        if (carT < 0 && t > nextCar && dark) carT = 0;
+        if (carT >= 0) {
+          carT += dt;
+          const u = carT / 4.5;
+          if (u >= 1 || !dark) {
+            carT = -1;
+            nextCar = t + 22 + ((t * 7.13) % 1) * 16;
+            car.intensity = 0;
+          } else {
+            // Along the forecourt, north to south, turning in towards the doors.
+            const z = m(40) + (m(GZ) - m(80)) * u;
+            car.position.set(m(GF.entrance.x) + 14 - 6 * Math.sin(u * Math.PI), 0.8, z);
+            const swing = Math.sin(u * Math.PI);
+            car.target.position.set(m(GF.entrance.x) - 25 * swing - 2, 0.5, z + 18 * (1 - swing));
+            car.intensity = 900 * Math.min(1, Math.sin(u * Math.PI) * 2.2);
+          }
+        }
+      }
       for (const b of bays) {
         // Booth by booth: each bay strikes 0.25 s after the one nearer the lobby.
         const k = poweredAt === null ? 0 : THREE.MathUtils.clamp((t - poweredAt - b.at * 2.2) / 0.5, 0, 1);
@@ -1161,6 +1244,9 @@ export function buildGround(mats: Materials): Ground3D {
       }
       const lit = poweredAt === null ? 0 : THREE.MathUtils.clamp((t - poweredAt - 1.2) / 1.2, 0, 1);
       fill.intensity = (morning ? 2.4 : 1.1) * lit;
+      // Reception is on the same circuit: dark until the breaker, lit after.
+      for (const g of receptionGlows) g.mat.color.copy(g.base).multiplyScalar(0.02 + 0.98 * lit);
+      if (receptionLight) receptionLight.intensity = 18 * lit;
       if (morning) fill.color.setRGB(1, 0.98, 0.95);
       boothBoards.forEach((mat, i) => mat.color.setScalar(0.08 + 2.2 * lit * (0.92 + 0.08 * Math.sin(t * 2 + i))));
       // The pods' print catches the hall lights; their header strips light up with it.

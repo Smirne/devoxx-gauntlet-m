@@ -23,7 +23,9 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 import { CY0, CY1, F1, R } from '../sim/geometry';
-import type { GameSnapshot, Prop, ReelCard } from '../sim/types';
+import { KEYNOTE_RAKE, LAB_DEPTH, LAB_X0, LAB_X1, RAKE_DEPTH, STAGE_RISE } from '../sim/chapters/ch4-keynote';
+import { riseAt } from '../sim/surface';
+import type { GameSnapshot, Plate, Prop, ReelCard } from '../sim/types';
 import { m } from '../sim/units';
 
 import type { Materials } from './materials';
@@ -67,9 +69,12 @@ export function buildKeynote(mats: Materials): Keynote3D {
 
   /* ------------------------------------------------------------ the shell */
   // Carpet, a ceiling with house lights, and the screen wall dressed in black.
-  const floor = new THREE.Mesh(box(x1 - x0, 0.02, z1 - z0, V(cx, -0.008, (z0 + z1) / 2), 3), mats.carpetRed);
-  floor.receiveShadow = true;
-  group.add(floor);
+  const rake = KEYNOTE_RAKE.on;
+  if (!rake) {
+    const floor = new THREE.Mesh(box(x1 - x0, 0.02, z1 - z0, V(cx, -0.008, (z0 + z1) / 2), 3), mats.carpetRed);
+    floor.receiveShadow = true;
+    group.add(floor);
+  }
   const ceil = new THREE.Mesh(box(x1 - x0, 0.1, z1 - z0, V(cx, HEIGHTS.room + 0.05, (z0 + z1) / 2), 3), mats.acoustic);
   group.add(ceil);
   colliders.push(ceil);
@@ -125,6 +130,82 @@ export function buildKeynote(mats: Materials): Keynote3D {
   for (const sgn of [-1, 1]) {
     const leaf = new THREE.Mesh(box(0.1, HEIGHTS.door, m(CY1 - CY0) / 2 - 0.02, V(m(F1.fireX + 7), HEIGHTS.door / 2, m((CY0 + CY1) / 2) + (sgn * m(CY1 - CY0)) / 4)), mats.darkMetal);
     group.add(leaf);
+  }
+
+  /* ------------------------------------------- the lab tables and the quote wall */
+  // Michele's photograph: a long row of tables in black velvet, a white power
+  // trunking down the middle, laptops and bottles, people on both sides — and
+  // behind them a white wall of film quotes in raised letters.
+  {
+    const velvet = new THREE.MeshStandardMaterial({ color: 0x0c0c10, roughness: 1, sheen: 0 } as THREE.MeshStandardMaterialParameters);
+    const trunk = new THREE.MeshStandardMaterial({ color: 0xeeeeea, roughness: 0.4 });
+    const lap = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.3, metalness: 0.8 });
+    const bottle = new THREE.MeshStandardMaterial({ color: 0xcfe6f0, roughness: 0.1, transparent: true, opacity: 0.7 });
+    const chair = new THREE.MeshStandardMaterial({ color: 0x1a1a1e, roughness: 0.6, metalness: 0.3 });
+    const TH = 0.76;
+    const qa = document.createElement('canvas');
+    qa.width = 2048;
+    qa.height = 512;
+    const q = qa.getContext('2d')!;
+    q.fillStyle = '#e9e6e2';
+    q.fillRect(0, 0, 2048, 512);
+    const lines: Array<[string, number, number, number]> = [
+      ['"MAKE MY DAY"', 150, 30, 120],
+      ['"you talkin\' to me?"  "shaken, not stirred"  "RUN FORREST, RUN!"', 56, 40, 200],
+      ['"we\'ll always have Paris"  "I\'LL BE BACK"', 90, 30, 300],
+      ['"I\'m the king of the world"  "HASTA LA VISTA, BABY"', 70, 60, 390],
+      ['"I\'ll make him an offer he can\'t refuse"  "It\'s showtime, folks"', 52, 30, 470],
+    ];
+    for (const [t, size, x, y] of lines) {
+      q.font = `600 ${size}px "Helvetica Neue", Arial, sans-serif`;
+      // Raised letters: a soft shadow down-right, the face a shade lighter.
+      q.fillStyle = 'rgba(0,0,0,0.22)';
+      q.fillText(t, x + 5, y + 6);
+      q.fillStyle = '#f7f5f2';
+      q.fillText(t, x, y);
+    }
+    const qt = new THREE.CanvasTexture(qa);
+    qt.colorSpace = THREE.SRGBColorSpace;
+    const quoteMat = new THREE.MeshStandardMaterial({ map: qt, roughness: 0.8 });
+    const len = m(LAB_X1 - LAB_X0);
+    const lx = m((LAB_X0 + LAB_X1) / 2);
+    for (const side of [-1, 1]) {
+      const wallZ = side < 0 ? m(CY0) + 0.02 : m(CY1) - 0.02;
+      const inward = -side;
+      const d = m(LAB_DEPTH);
+      const tz = wallZ + inward * (d / 2 + 0.3);
+      // The quote wall.
+      const qw = new THREE.Mesh(new THREE.PlaneGeometry(len, len / 4), quoteMat);
+      qw.position.set(lx, 1.2 + len / 8, wallZ + inward * 0.03);
+      if (side > 0) qw.rotation.y = Math.PI;
+      group.add(qw);
+      // The table: a velvet-draped block, the trunking along its middle.
+      group.add(new THREE.Mesh(box(len, TH, d * 0.8, V(lx, TH / 2, tz)), velvet));
+      group.add(new THREE.Mesh(box(len - 0.2, 0.05, 0.1, V(lx, TH + 0.025, tz)), trunk));
+      for (let i = 0; i < Math.floor(len / 0.9); i++) {
+        const x = m(LAB_X0) + 0.45 + i * 0.9;
+        for (const face of [-1, 1]) {
+          if ((i + (face > 0 ? 1 : 0)) % 3 === 0) continue;
+          const z = tz + face * d * 0.22;
+          const base = new THREE.Mesh(box(0.32, 0.015, 0.22, V(x, TH + 0.01, z)), lap);
+          const lid = new THREE.Mesh(box(0.32, 0.22, 0.012, V(x, TH + 0.12, z + face * 0.1)), lap);
+          lid.rotation.x = face * 0.25;
+          group.add(base, lid);
+          if (i % 2 === 0) {
+            const bt = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.22, 10), bottle);
+            bt.position.set(x + 0.25, TH + 0.11, z);
+            group.add(bt);
+          }
+          // A folding chair on the room side only (the wall side is against the quotes).
+          if (face === inward) {
+            const cz = tz + face * (d * 0.4 + 0.3);
+            group.add(new THREE.Mesh(box(0.42, 0.04, 0.4, V(x, 0.46, cz)), chair));
+            group.add(new THREE.Mesh(box(0.42, 0.42, 0.03, V(x, 0.7, cz + face * 0.2)), chair));
+            for (const lxo of [-0.19, 0.19]) group.add(new THREE.Mesh(box(0.025, 0.46, 0.025, V(x + lxo, 0.23, cz)), chair));
+          }
+        }
+      }
+    }
   }
 
   /* ------------------------------------------------------------- the screen */
@@ -193,6 +274,47 @@ export function buildKeynote(mats: Materials): Keynote3D {
     scrTex.needsUpdate = true;
   }
 
+  /** Floor height under a sim point, from the chapter's plates (the rake, when on). */
+  let plates: readonly Plate[] = [];
+  const hAt = (x: number, y: number): number => riseAt(x, y, plates);
+
+  /*
+   * THE RAKE (`KEYNOTE_RAKE`): the cross-aisle behind the seats at corridor
+   * level, the rows stepping down to the pit, the stage a platform standing in
+   * it — built from the chapter's own plates on the first frame that has them.
+   */
+  let rakeBuilt = false;
+  function buildRake(props: Prop[]): void {
+    const rows = props.filter((p) => p.kind === 'seatrow');
+    if (!rows.length) return;
+    const seatY0 = rows[0].y;
+    const seatY1 = rows[0].y + (rows[0].h ?? 0);
+    const r8y = r8.y;
+    const carpet = mats.carpetRed;
+    const riser = new THREE.MeshStandardMaterial({ color: 0x141416, roughness: 0.9 });
+    // The cross-aisle, corridor level.
+    group.add(new THREE.Mesh(box(x1 - x0, 0.2, m(r8.y + r8.h - seatY1), V(cx, -0.1, (m(seatY1) + z1) / 2), 3), carpet));
+    // The rows: a step every 18 px, each a slab from its tread down to the pit.
+    const N = Math.round((seatY1 - seatY0) / 18);
+    for (let i = 0; i < N; i++) {
+      const ya = seatY0 + ((seatY1 - seatY0) * i) / N;
+      const yb = seatY0 + ((seatY1 - seatY0) * (i + 1)) / N;
+      const h = -RAKE_DEPTH * (1 - (i + 1) / N);
+      const slab = new THREE.Mesh(box(x1 - x0, h + RAKE_DEPTH + 0.02, m(yb - ya), V(cx, (h - RAKE_DEPTH) / 2, m((ya + yb) / 2)), 3), carpet);
+      slab.receiveShadow = true;
+      group.add(slab);
+      // A dark nosing line on each riser, and step lights up both aisles.
+      group.add(new THREE.Mesh(box(x1 - x0, 0.03, 0.03, V(cx, h + 0.005, m(ya))), riser));
+    }
+    // The pit floor, from the stage wall to the first row.
+    group.add(new THREE.Mesh(box(x1 - x0, 0.2, m(seatY0 - r8y), V(cx, -RAKE_DEPTH - 0.1, m((r8y + seatY0) / 2)), 3), carpet));
+    // The side walls come down into the pit.
+    for (const wx of [x0 + 0.06, x1 - 0.06]) group.add(new THREE.Mesh(box(0.1, RAKE_DEPTH, z1 - z0, V(wx, -RAKE_DEPTH / 2, (z0 + z1) / 2)), mats.acoustic));
+    // A balcony rail along the front of the cross-aisle, as in the photograph.
+    group.add(new THREE.Mesh(box(x1 - x0, 0.05, 0.05, V(cx, 1.0, m(seatY1) + 0.05)), mats.steel));
+    rakeBuilt = true;
+  }
+
   /* ------------------------------------------------------ per-prop builders */
   const byKey = new Map<string, THREE.Object3D>();
   let seatsBuilt = false;
@@ -207,10 +329,10 @@ export function buildKeynote(mats: Materials): Keynote3D {
       const bx1 = p.x + (p.w ?? 0);
       for (let y = p.y + 11; y < p.y + (p.h ?? 0) - 5; y += 18) {
         for (let x = p.x + 10; x < bx1 - 6; x += 7) {
-          const mm = new THREE.Matrix4().compose(V(m(x), 0, m(y) + 0.1), new THREE.Quaternion(), V(0.9, 1, 1));
+          const mm = new THREE.Matrix4().compose(V(m(x), hAt(x, y), m(y) + 0.1), new THREE.Quaternion(), V(0.9, 1, 1));
           at.push(mm);
         }
-        dots.push(V(m(p.x) + 0.1, 0.06, m(y)), V(m(bx1) - 0.1, 0.06, m(y)));
+        dots.push(V(m(p.x) + 0.1, hAt(p.x, y) + 0.06, m(y)), V(m(bx1) - 0.1, hAt(bx1, y) + 0.06, m(y)));
       }
     }
     addSeats(group, mats, at);
@@ -228,13 +350,16 @@ export function buildKeynote(mats: Materials): Keynote3D {
     const d = m(p.h ?? 0);
     const sx = m(p.x) + w / 2;
     const sz = m(p.y) + d / 2;
-    const deck = new THREE.Mesh(box(w, DAIS, d, V(sx, DAIS / 2, sz)), mats.blackGloss);
+    // Raked: a platform STAGE_RISE up out of the pit, its front face black.
+    const floorY = rake ? -RAKE_DEPTH : 0;
+    const topY = rake ? -RAKE_DEPTH + STAGE_RISE : DAIS;
+    const deck = new THREE.Mesh(box(w, topY - floorY, d, V(sx, (topY + floorY) / 2, sz)), mats.blackGloss);
     deck.receiveShadow = true;
     o.add(deck);
     // An LED edge along the front of the stage: orange, green when it is ready.
     const edgeMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.45, 0.1).multiplyScalar(5), toneMapped: false });
     const edge = new THREE.Mesh(new THREE.BoxGeometry(w, 0.03, 0.05), edgeMat);
-    edge.position.set(sx, DAIS, sz + d / 2);
+    edge.position.set(sx, topY, sz + d / 2);
     o.add(edge);
     o.userData.edge = edgeMat;
     // A lectern at stage left, against the drape: where the speaker will stand.
@@ -245,7 +370,7 @@ export function buildKeynote(mats: Materials): Keynote3D {
     const logo = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.12), new THREE.MeshBasicMaterial({ map: word('DEVOXX', '#ff7a1a'), transparent: true, toneMapped: false }));
     logo.position.set(0, 0.8 + DAIS, 0.231);
     lect.add(body, top, logo);
-    lect.position.set(sx + w / 2 - 0.9, 0, m(p.y) + 0.6);
+    lect.position.set(sx + w / 2 - 0.9, topY - DAIS, m(p.y) + 0.6);
     o.add(lect);
     return o;
   }
@@ -258,7 +383,7 @@ export function buildKeynote(mats: Materials): Keynote3D {
     const x = m(p.x);
     const z = m(p.y);
     const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.8, 0.1).multiplyScalar(3), toneMapped: false });
-    const y = DAIS + 0.004;
+    const y = (rake ? -RAKE_DEPTH + STAGE_RISE : DAIS) + 0.004;
     const t = 0.07;
     for (const [bx, bz, bw, bd] of [
       [x + w / 2, z, w, t],
@@ -356,7 +481,7 @@ export function buildKeynote(mats: Materials): Keynote3D {
     const o = new THREE.Group();
     const x = m(p.x);
     const z = m(p.y);
-    o.position.set(x, 0, z);
+    o.position.set(x, hAt(p.x, p.y), z);
     const base = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.06, 20), mats.darkMetal);
     base.position.y = 0.03;
     o.add(base);
@@ -442,6 +567,8 @@ export function buildKeynote(mats: Materials): Keynote3D {
     colliders,
     reelView: { pos: V(cx, 2.4, z0 + 15), look: V(cx, SCREEN_BOTTOM + SCREEN_H * 0.45, z0) },
     update(snap: GameSnapshot, t: number): void {
+      plates = snap.plates ?? [];
+      if (rake && !rakeBuilt) buildRake(snap.props);
       if (!seatsBuilt && snap.props.some((p) => p.kind === 'seatrow')) {
         buildSeatBlocks(snap.props);
         seatsBuilt = true;
@@ -471,7 +598,7 @@ export function buildKeynote(mats: Materials): Keynote3D {
             break;
           }
           case 'cake': {
-            o.position.set(m(p.x), 0, m(p.y));
+            o.position.set(m(p.x), hAt(p.x, p.y), m(p.y));
             for (const [i, f] of (o.userData.flames as THREE.Mesh[]).entries()) f.scale.set(1, 1.6 + 0.3 * Math.sin(t * 13 + i * 2), 1);
             break;
           }

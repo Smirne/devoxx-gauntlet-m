@@ -86,3 +86,28 @@ Use: the view out through the entrance doors (the backdrop), if anyone looks bac
   aluminium truss, big white ring pendants, and a **bar with an underlit glowing counter** (pale
   green) and a table lamp at the far end.
 - Lighter grey carpet with a faint tile pattern.
+
+## Upper floor, top of the main stairs (the lab tables' place)
+
+- The landing at the top of the main staircase: a big screen high on the far wall over the stair
+  well, the glass behind it glowing blue; **red fabric funnels** hanging under the screen; dark
+  columns either side.
+- Sloping ceiling planes lit by **cold white LED lines** along their edges, with bars of stage
+  spots hung from them.
+- **Red portal frames** round the room doors (the "7" on one of them).
+- The lab tables run along **both walls** there, near the entrance from the main stair: rows of
+  black folding chairs in front of them.
+- The film-quote wall: raised white letters ("MAKE MY DAY", "RUN FORREST, RUN!", "I'll be back",
+  "I'm the king of the world", "It's showtime folks"...).
+
+## Other
+
+- **Stairs detail**: grey carpet treads speckled white, grey steel balustrade in diagonal
+  panels, "no entry" signs on the barrier; people eat lunch sitting on the steps.
+- **Backstage** (inspiration for a tech room): a narrow white corridor, suspended ceiling with
+  flat LED panels, white doors, dark carpet, one wall bare dark block-work, a small Devoxx sign on
+  a stand.
+- **Sandwiches**: a heap of long sandwiches in brown paper bags twisted at both ends, a black menu
+  board with vegetables across its top ("Sandwiches · CHICKEN CURRY"), a big vase of flowers.
+- **Stage with the #DEVOXX letters**: the crew holding giant 3D letters, the last X in orange —
+  in use on another branch, not here.

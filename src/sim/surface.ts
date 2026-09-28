@@ -72,13 +72,20 @@ export function plateRiseM(p: Plate, x: number, y: number): number {
  * the lobby's. Nothing covering the point is the datum itself, 0.
  */
 export function riseAt(x: number, y: number, plates: readonly Plate[]): number {
-  let out = 0;
+  /*
+   * The highest plate under the point, or the storey's datum where there is
+   * none. A plate may be BELOW the datum (Room 8's sunken rake, chapter 4): then
+   * the plates under the point decide on their own — the pit's floor, or the
+   * stage standing in it — and the datum does not pull the answer back up to 0.
+   * Where every plate is at or above the datum this is exactly the old rule.
+   */
+  let out = -Infinity;
   for (const p of plates) {
     if (!onPlate(p, x, y)) continue;
     const h = plateRiseM(p, x, y);
     if (h > out) out = h;
   }
-  return out;
+  return out === -Infinity ? 0 : out;
 }
 
 /**
@@ -130,14 +137,18 @@ function depthIn(p: Plate, x: number, y: number): number {
  * whole rise, never a dip between the two.
  */
 export function riseForBody(x: number, y: number, r: number, plates: readonly Plate[]): number {
-  if (r <= 0) return riseAt(x, y, plates);
-  let out = 0;
+  // The surface the centre stands on, then the lift towards any plate the body
+  // is already touching that stands HIGHER than it. From the datum this is the
+  // old rule exactly; from a sunken floor it climbs from that floor, not from 0.
+  const base = riseAt(x, y, plates);
+  if (r <= 0) return base;
+  let out = base;
   for (const p of plates) {
     const d = depthIn(p, x, y);
-    if (d <= -r) continue;
+    if (d <= -r || d >= 0) continue;
     const h = plateRiseM(p, x, y);
-    // `d >= 0` is inside, and gets the whole rise; the ramp is only the approach.
-    const lift = d >= 0 ? h : h * (1 + d / r);
+    if (h <= base) continue;
+    const lift = base + (h - base) * (1 + d / r);
     if (lift > out) out = lift;
   }
   return out;

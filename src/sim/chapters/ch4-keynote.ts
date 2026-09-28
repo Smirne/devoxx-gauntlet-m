@@ -21,7 +21,7 @@ import { botsCollide, circleRect, dist, inRect, mkBody, speed, standOff, stepBot
 import { LANYARD, lanyardFor } from '../lanyards';
 import { FRONT_ROW, SPEAKER_LOOKS } from '../speakers';
 import { buildReel, reelAt, reelLength } from '../reel';
-import type { Bot, Person, Prop, Rect, ReelCard, ReelView, Task, Vec2 } from '../types';
+import type { Bot, Person, Plate, Prop, Rect, ReelCard, ReelView, Task, Vec2 } from '../types';
 
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 
@@ -87,6 +87,26 @@ const CAKE_SCRUB = 10;
 const BOWL_OVER = 120 * SPEED_SCALE;
 /** The crate has to be actually moving to be blamed for shoving someone. px/s. */
 const CRATE_BLAME_SPEED = 25 * SPEED_SCALE;
+
+/**
+ * ROOM 8 AS A RAKED CINEMA — a proposal, switched off by default.
+ *
+ * Michele, 28 Sep 2026, on a photograph of the keynote room: *"room is quite deep
+ * in reality. Propose a solution."* The proposal is a sunken, raked auditorium:
+ * the door and the cross-aisle behind the seats stay at corridor level, the rows
+ * step down to a pit `RAKE_DEPTH` below it, and the stage is a platform
+ * `STAGE_RISE` up out of the pit. It is HEIGHTS ONLY — plates the renderers stand
+ * things on (`riseAt`); every wall, every speed, every path and every timing in
+ * this chapter is untouched. `?rake=1` turns it on for the before/after.
+ */
+export const KEYNOTE_RAKE = { on: false };
+/** The lab tables (see `setup`): x span along the corridor, and depth off each wall, sim px. */
+export const LAB_X0 = 1560;
+export const LAB_X1 = 1698;
+export const LAB_DEPTH = 12;
+export const labTable = (y: number): Rect => ({ x: LAB_X0, y, w: LAB_X1 - LAB_X0, h: LAB_DEPTH });
+export const RAKE_DEPTH = 2.4;
+export const STAGE_RISE = 0.6;
 
 const ATTENDEE_COLOURS = ['#b9a58c', '#8c9bb9', '#b98c8c', '#9bb98c'] as const;
 
@@ -154,6 +174,22 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     why: (b) => `${b.name}: the fire door is shut again — the cinema section is closed to the public`,
   });
   ctx.walls.push({ x: 0, y: CY0, w: F1.fireX, h: CY1 - CY0, hidden: true });
+
+  /*
+   * THE LAB TABLES, at the top of the main staircase. Michele, 28 Sep 2026, with a
+   * photograph of them: *"They are near the entrance from the main stair, on both
+   * sides"* — long black-draped tables along the corridor's two walls, against
+   * the white wall of raised film quotes. Solid (a table is a table), `low` so
+   * light crosses them, and they stop short of the room 6/7 doors.
+   */
+  for (const y of [CY0, CY1 - LAB_DEPTH]) {
+    ctx.walls.push({
+      ...labTable(y),
+      low: true,
+      kind: 'lab-table',
+      why: (b) => `${b.name}: a lab table, laid out for the hands-on sessions. Round it`,
+    });
+  }
 
   const r8 = R(8);
   const d8 = roomDoor(r8);
@@ -737,9 +773,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     ];
   }
 
+  /** The rake's plates, when it is on: see `KEYNOTE_RAKE`. */
+  const rakePlates: Plate[] = [
+    { kind: 'rake', x: r8.x, y: seatY0, w: r8.w, h: seatY1 - seatY0, lo: -RAKE_DEPTH, hi: 0, axis: 'y' },
+    { kind: 'pit', x: r8.x, y: top, w: r8.w, h: seatY0 - top, lo: -RAKE_DEPTH },
+    { kind: 'stage', ...stage, lo: -RAKE_DEPTH + STAGE_RISE },
+  ];
+
   return {
     key,
     update,
+    plates: (): Plate[] => (KEYNOTE_RAKE.on ? rakePlates : []),
     props,
     people,
     progress,
