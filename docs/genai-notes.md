@@ -5360,3 +5360,80 @@ skipping names the chapters, singular and plural, and is never flawless. Suite *
 fades and black beats, with the logic ported line for line from `src/sim/reel.ts` and five runs to
 pick between. It exists so the ending can be judged without playing ten minutes to reach it; it is
 not part of the game and not in the repo.
+
+## 28 Sep 2026 — the #DEVOXX letters replace Droid's banner
+
+**What the human decided.** Michele, with a photograph taken from behind the giant letters on the
+keynote stage: *"Another puzzle we could add, but maybe it's too late. There are always those 3d
+letters in Devoxx, used for the keynote and the closing. They could be hidden around and be brought
+on stage by the robot? Maybe we can change Voxxy or Droid's task?"* The agent answered first, without
+building: yes to the letters, no to hiding them around the venue, and Droid rather than Voxxy. Then
+Michele, one line: *"Droid swap. Droid is already slow, so don't scatter the letters around."*
+
+**The case the agent made, and what it rested on.**
+
+- *The letters are the real thing and the banner was not.* `media/venue-photos/54836008506_68c9fc5562_k.jpg`
+  — the photo this project has always captioned "the stage ← chapter 4" — has `#DEVOXX` standing on
+  Room 8's stage, white, the last X in Devoxx orange. The "HAPPY DEVOXX" banner was invented. So the
+  change is a sense-of-place gain before it is a gameplay one.
+- *Droid, not Voxxy.* The banner was the thinnest job in the room (two presses of `E` at two hooks),
+  and the letters are the same thing done for real — the stage's Devoxx branding — so swapping one
+  for the other keeps one job per robot. Voxxy's spotlights had got their beams that same day, from
+  Michele's V46 note, and were worth keeping.
+- *Not scattered.* Michele's own ruling of 22 Sep on the WiFi password (`docs/gameplay-additions.md`
+  §2): not "find 13 letters scattered around the venue" — letter-collection is busywork. Chapter 4
+  was also already the longest chapter (his open note, "about six minutes").
+
+**What the agent did.**
+
+- *Merged the three live branches first* onto `claude/nice-wright-ms1qmg` — the 3D line, the 2.5D
+  line's curtain call and reel endings, and the intro score — because chapter 4 had been changed on
+  two of them that day and the letters had to land on all of it. Only the GenAI notes conflicted
+  (both sides appended); 799 tests green on the merge.
+- *The sim* (`src/sim/letters.ts`, `ch4-keynote.ts`). `#DEV` stands; the O, X and orange X lean in
+  one stash in the east wing. Droid lifts one with `E` and sets it into its own gap with `E`, so the
+  sign spells itself and there is no wrong order. Only at its gap, never onto a robot standing in it;
+  Voxxy (*"it's as big as I am. I can carry it or see where I'm going, not both"*) and Biggy (*"these
+  hands are for pots. An X has no handle"*) refuse in their own voices and keep the key. Carrying is a
+  load exactly like Biggy's crates: mass + 0.7, acceleration scaled by the mass ratio — the same
+  force on more mass, which turns out to be exactly what the crate factor already was (7 / 8.5 =
+  0.82) — and `DEFS` untouched. Every standing letter stands on its own collider.
+- *Both renderers.* `src/render/letters.ts` cuts `#`, `D`, `E`, `V`, `O` and `X` as extruded shapes
+  — no font file, no asset — shared by the 2.5D and 3D builds. 2.5D draws amber tape in the empty
+  gaps, so the stage reads `#DEV___` exactly like the progress line; 3D draws a faint ghost of each
+  missing letter standing in its gap. Droid carries with the gait's existing carry pose (Biggy's pot),
+  the letter in his hands. A placed letter plays the `clue` cue and the finished sign the `chime`.
+
+**What it cost, measured.**
+
+- *The first layout was bad and the numbers said so.* Driven from the top of the stairs by the test
+  pilot, the sign took **94 s** against **31 s** for the two hooks walked the same way — the opposite
+  of "Droid is already slow". Leg timings showed why: with Stephan and the speaker mid-stage the only
+  lane to the gaps was 4 px wide, and the router went down one aisle, across the room and up the
+  other, 17 s a trip. Standing the two hosts beside the sign, where presenters stand, opened the whole
+  front of the stage: **43 s**. Moving the stash from the room's east wall to the wing's back wall,
+  70 px nearer the gaps: **39.5 s**. The honest figure is about **40 s against 25–31 s** for the
+  banner's two hooks walked the same way (31 with the hosts where they used to stand, which the
+  pilot bumps into; 25 with them moved) — ten to fifteen seconds more, nearly all of it the three
+  carries, which are the job.
+- *The 2.5D stage ate the letters.* It was drawn as a 0.45 m box while the sim's stage is floor, so
+  the robots had always stood sunk to the shins in it; with letters on it, the bottom 45 cm of every
+  glyph vanished and the orange X read as a Y. It is a 5 cm dais now, as the 3D build had already
+  decided for the same reason, and `stage` came off the collider sweep's walk-through list with it.
+- *A test pilot that walked through people.* `tests/pilot.ts` routed Droid straight through Stephan,
+  who is solid through `standOff` rather than a wall. The router takes obstacles now.
+
+**Rejected.** Hiding the letters around the Devoxx floor (Michele's own busywork rule, and minutes on
+the longest chapter); Voxxy carrying them (it would have deleted the spotlights built that day, and
+she is only as tall as a letter); an order puzzle on the stage (everybody knows how DEVOXX is spelt,
+so it would be a chore, not a puzzle); letting Droid carry two at once (it halves the trips, but costs
+a second carried-state and a two-handed pose on the last day).
+
+**Tests.** `tests/letters.test.ts` (12, new): one stash within 3 m and every letter within 12 m of its
+gap; only Droid lifts, and the other two keep the key; the load and its exact removal; felt in the
+first 0.4 s, same top speed; its own gap only, with the right words when it is not; never through a
+robot; solid; no room behind the sign; the stage waits for the sign; driven from the stairs in under
+50 s; `R` gives Droid his weight back; the arrow is always within reach of a letter. The banner tests
+in `chapters`, `tasks`, `party-tricks` and `curtain-call` were rewritten against the sign, never
+loosened. Mutation check: with the letters' colliders removed, three tests fail, the collider sweep
+among them. Suite **812 green**, build clean.
