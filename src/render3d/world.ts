@@ -23,7 +23,7 @@ import { createRobots, updateGlare, updateRobots, type Robot3D } from './robots3
 import { CORRIDOR_END, HEIGHTS, SIGN_SPANS, buildVenue, type Venue3D } from './venue';
 import { CY0, CY1, F1 } from '../sim/geometry';
 import { CRATE_AT, CRATE_ROW, LEAD, OVER_AT, SLOT, STAND_AT, WALK_AT } from '../sim/opening';
-import { buildCrates } from '../render/crates';
+import { PLANK_T, buildCrates } from '../render/crates';
 
 export interface World3D {
   readonly renderer: THREE.WebGLRenderer;
@@ -223,6 +223,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
    * should remain visible"). So: the same fall, no roll, lying on the floor.
    */
   function swingPanel(c: (typeof crates.crates)[number], t: number): void {
+    panelOpen.set(c.kind, t);
     c.setOpen(0);
     const y0 = c.panel.position.y;
     const z0 = c.panel.position.z;
@@ -235,6 +236,28 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     c.panel.position.set(0, y0 * (1 - k) + PANEL_REST * k, z0 + k * 0.04);
   }
   const PANEL_REST = 0.03;
+  /** How far each crate's front has fallen, by kind (1 = flat on the floor). */
+  const panelOpen = new Map<string, number>();
+  const _cs = new THREE.Vector3();
+  /**
+   * The height of whatever crate surface is under a robot, m: the crate's own
+   * floor while it is inside, the fallen front once it lies flat. The robots
+   * stood at floor level and their feet sank into both (Michele, 28 Sep: "the
+   * robots' feet are drowning in the wood; they should be ON it").
+   */
+  function crateSurface(x: number, z: number): number {
+    if (!crates.root.visible) return props.floorAt(x, z);
+    crates.root.updateMatrixWorld();
+    _cs.set(x, 0, z);
+    crates.root.worldToLocal(_cs);
+    for (const c of crates.crates) {
+      const g = c.geom;
+      if (Math.abs(_cs.x - g.centreX) > g.width / 2) continue;
+      if (_cs.z < 0 && _cs.z > -g.depth) return g.interior.floorY;
+      if (_cs.z >= 0 && _cs.z < g.height && (panelOpen.get(c.kind) ?? 0) > 0.97) return PANEL_REST + PLANK_T / 2;
+    }
+    return props.floorAt(x, z);
+  }
   const _want = new THREE.Vector3();
   const _wantPos = new THREE.Vector3();
   /** The follow camera's yaw and pitch at the hand-off; see `stageOpening`. */
@@ -412,7 +435,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       venue.update(time, dt);
       details.update(time);
     }
-    updateRobots(robots, snap, dt);
+    updateRobots(robots, snap, dt, crateSurface);
     props.update(snap, time, dt);
     peopleRoot.visible = onGround;
     if (onGround) people.update(snap, time);

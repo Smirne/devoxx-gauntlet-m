@@ -4408,3 +4408,42 @@ ordinary figures with their role colours.
   Rooms 4–9 stay unbuilt but have shut double doors; the corridor gets its floor, coves, ribs,
   columns, emergency lights and a line of warm downlights. Michele also passed the chapter 1 fire
   door and staircase animations: *"fine"*.
+- *Batch of 28 Sep, from a playthrough.* Eight asks, one change each.
+  - *Feet in the crates.* "Robot's feet are drowning in the wood." Robots were placed at floor
+    level inside the crate and on the fallen panels. The world now gives the renderer the surface
+    under each robot (the crate's inner floor, or the top of a fallen panel), and the rig stands on it.
+  - *Slow intro.* "Looks like a performance issue." It was one. The sim takes at most 1/30 s per
+    step, and the page used to clamp each frame to one step, so below 30 fps the whole game ran in
+    slow motion. It now takes as many steps as the frame needs (up to 0.1 s), so a slow machine
+    drops frames rather than slowing down.
+  - *Music in the opening.* A new score for chapter 0: 92 bpm, A minor, a pad, a pulsing bass, an
+    arpeggio, with drums and a bell joining over four bars. Two bugs were found while adding it:
+    the music player and the audio shell both treated chapter 0 as "nothing asked yet", so a
+    chapter 0 score could never have played. Both now start from -1. The test that used chapter
+    0 as its unscored example now uses 9.
+  - *A gate before the opening.* Browsers only allow sound after a key or click, and the first key
+    used to skip the opening. A black "AFTER DARK · press any key" screen now takes that key, and
+    the opening plays from its first frame with music. Michele had just said the splash should come
+    back "later"; this is not that splash, only the smallest gate that lets audio start.
+  - *Briefing.* "Make the main briefing bigger and just the story. Any key or → move to current
+    briefing." The story page is wider, set larger, and shows only the night and the goal. Any key
+    that does not act on the panel turns to the chapter page, and the key does nothing else. ←
+    returns to the story. Same in the 2.5D build, through the shared HUD.
+  - *Walking backwards.* "What if pressing down arrow could cause the robot to walk backwards?
+    keeping the camera and orientation." This replaces the 24 Sep about-face. It needed the sim:
+    the heading is sim state (the lamp's aim), so `setStick` takes an optional heading that the
+    driven robot keeps while it moves. S locks the current heading, and S with A/D backs away at a
+    diagonal. Speeds, inertia and every frozen constant are unchanged; it is input. The gait mirrors
+    its stride when a robot moves against its heading, so it steps back rather than moonwalking.
+  - *Camera on switch.* "The camera shouldn't reset to frontal when switching robot?" Read as a
+    request: switching now swings the camera round behind the new robot, and moving the mouse
+    cancels the swing. It used to keep its yaw, so a robot facing the old camera came up face-on
+    and W walked it the wrong way.
+  - *Floating clue number.* "Where's the floating number? ... make it 3d and slowly rotating." The
+    found digit was a flat billboard 1.35 m up, often out of frame from a close, steep camera. It is
+    now a solid pixel-font digit, extruded, 1.2 m up, turning slowly, with its "POSITION n" tag kept
+    as a small billboard underneath.
+  - *Biggy less bouncy with Droid on top.* The rider sits at a fixed height, so Biggy's full walking
+    bob under him read as a trampoline. Laden, Biggy's gait keeps a quarter of its bob, sway and
+    twist, and 40% of its lean. This is presentation only: the collision bounce is a frozen
+    constant and was not touched.

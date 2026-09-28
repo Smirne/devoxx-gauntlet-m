@@ -349,7 +349,7 @@ function gripBiggy(rig: RobotRig, lift: number): void {
 }
 
 /** Place and animate the robots from the snapshot, and aim their lamps. */
-export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot, dt: number): void {
+export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot, dt: number, surface?: (x: number, z: number) => number): void {
   const droid = robots.get('droid');
   const bg = snap.bots.find((o) => o.kind === 'biggy');
   // The sim's state changes that a hand makes: Droid throwing the projector
@@ -373,10 +373,16 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
     const hop = u > 0 ? JUMP_RISE_M * 4 * u * (1 - u) : 0;
     let x = m(b.x);
     let z = m(b.y);
-    // Standing on a raised surface the sim publishes (the fallen leaf of cinema
-    // E's door, the stair treads): the 2.5D renderer lifts by this, so does 3D.
-    const rise = riseAt(b.x, b.y, snap.plates ?? []);
-    let lift = hop + rise;
+    // Standing on a raised surface the sim publishes (the stair treads): the
+    // 2.5D renderer lifts by this, so does 3D. Not the fallen leaf of cinema E's
+    // door: that plate is the 2.5D leaf's pose (skidded, skewed, 0.48 m thick),
+    // and the 3D leaf falls straight and thin, so the plate lifted robots off it
+    // in places and let the leaf "eat the foot" in others (Michele, 28 Sep). The
+    // 3D leaf is a surface of its own, through `surface` below.
+    const rise = riseAt(b.x, b.y, (snap.plates ?? []).filter((q) => q.kind !== 'jammed-leaf'));
+    // Plus any renderer-only surface under them: the crates' floors and their
+    // fallen fronts, which the sim does not model as plates, and the fallen door.
+    let lift = hop + rise + (surface ? surface(x, z) : 0);
     let mounted = b.mounted;
     if (b.kind === 'droid' && droid) {
       // The sim snaps him on and off Biggy; the climb is eased here. While
@@ -410,7 +416,7 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
     // 3D intro looks at them from the east, so they stood side-on and turned on
     // the step (Michele: "I'd keep them frontal"). Facing east throughout.
     const face = snap.opening ? STAND_FACE : b.face;
-    updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: face, dt, mounted, hop: u, flair: trick ? trick.flair : flairPhase(b), shoved: worldMoved(b) ? 1 : 0, pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null });
+    updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: face, dt, mounted, backward: b.vx * Math.cos(face) + b.vy * Math.sin(face) < -8, laden: b.kind === 'biggy' && snap.bots.some((o) => o.mounted), hop: u, flair: trick ? trick.flair : flairPhase(b), shoved: worldMoved(b) ? 1 : 0, pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null });
     if (b.kind === 'droid' && snap.opening) glance(r.rig, snap.opening.t);
     // Solved at the final riding height, not wherever the climb has got to.
     if (b.kind === 'droid' && mounted) gripBiggy(r.rig, mountLift(r.rig));

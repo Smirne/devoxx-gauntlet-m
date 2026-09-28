@@ -238,6 +238,9 @@ function codeOf(ev: KeyboardEvent): string {
   return k;
 }
 
+/** Keys that act on the story page itself (or the view) rather than turning it. */
+const STORY_KEEPS = new Set(['KeyI', 'KeyH', 'KeyM', 'KeyN', 'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight']);
+
 function onKeyDown(ev: KeyboardEvent): void {
   const code = codeOf(ev);
   /*
@@ -250,6 +253,12 @@ function onKeyDown(ev: KeyboardEvent): void {
   // With the run sheet open, left/right turn its page (the night / this
   // chapter) instead of steering.
   if ((code === 'ArrowLeft' || code === 'ArrowRight') && hud.pageTasks(code === 'ArrowLeft' ? -1 : 1)) {
+    ev.preventDefault();
+    return;
+  }
+  // On the story page any other key turns to this chapter's briefing, and
+  // does nothing else — it is a page turn, not a step or an action.
+  if (!ev.repeat && !STORY_KEEPS.has(code) && hud.turnStory()) {
     ev.preventDefault();
     return;
   }

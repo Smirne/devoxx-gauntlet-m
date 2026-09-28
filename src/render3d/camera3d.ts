@@ -38,6 +38,8 @@ export class ThirdPersonCamera {
   private dist = 3.5;
   private kind: RobotKind | null = null;
   private snapNext = true;
+  /** Swinging round behind a robot just switched to; the mouse cancels it. */
+  private swing = false;
   /**
    * A pitch to ease back to once the robot is under way, then forgotten. The
    * opening hands over looking down over the crates (from the usual pitch the
@@ -103,7 +105,19 @@ export class ThirdPersonCamera {
       return;
     }
     const switched = kind !== this.kind;
+    // Switching robot swings the camera round behind the new one (Michele, 28
+    // Sep: "the camera shouldn't reset to frontal when switching robot?"). It
+    // used to keep its yaw, so a robot facing the old camera came up face-on
+    // and W walked it the wrong way. Not the first robot of a chapter: that
+    // one is framed by whoever cut to it.
+    if (switched && this.kind !== null && !this.snapNext) this.swing = true;
     this.kind = kind;
+    if (this.swing) {
+      let d = Math.atan2(-Math.cos(heading), -Math.sin(heading)) - this.yaw;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      this.yaw += d * Math.min(1, dt * 4);
+      if (Math.abs(d) < 0.02 || this.time - this.lastUser < 0.05) this.swing = false;
+    }
     const target = new THREE.Vector3(robotPos.x, robotPos.y + ROBOT_HEIGHT_M[kind] * PIVOT[kind], robotPos.z);
     const k = this.snapNext ? 1 : 1 - Math.exp(-dt * (switched ? 3 : 9));
     this.pivot.lerp(target, k);

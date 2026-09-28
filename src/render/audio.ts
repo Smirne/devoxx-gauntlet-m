@@ -231,7 +231,7 @@ export function createAudio(): Audio {
   /** An ambient asked for before the first gesture, replayed once we have a context. */
   let pendingChapter: number | null = null;
   /** The chapter the score should be on, kept across a context that does not exist yet. */
-  let musicChapter = 0;
+  let musicChapter = -1;
   let muted = false;
   let musicMuted = false;
   let disposed = false;
@@ -298,7 +298,7 @@ export function createAudio(): Audio {
 
     music = startMusic(c, master, noiseBuf);
     music.mute(musicMuted);
-    if (musicChapter > 0) music.setChapter(musicChapter);
+    if (musicChapter >= 0) music.setChapter(musicChapter);
 
     if (c.state === 'suspended') void c.resume().catch(() => undefined);
     if (pendingChapter !== null) {

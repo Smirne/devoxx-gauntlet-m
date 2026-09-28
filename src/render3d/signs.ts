@@ -10,6 +10,7 @@
  */
 
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -855,4 +856,55 @@ export function menuBoard(): THREE.CanvasTexture {
     x.fillText(p, 736, 122 + i * 42);
   });
   return tex(c);
+}
+
+/* ------------------------------------------------------------ solid digit */
+
+/** 5x7 pixel digits, top row first. */
+const PIXEL_DIGITS: Record<string, readonly string[]> = {
+  '0': ['01110', '10001', '10011', '10101', '11001', '10001', '01110'],
+  '1': ['00100', '01100', '00100', '00100', '00100', '00100', '01110'],
+  '2': ['01110', '10001', '00001', '00010', '00100', '01000', '11111'],
+  '3': ['11110', '00001', '00001', '01110', '00001', '00001', '11110'],
+  '4': ['00010', '00110', '01010', '10010', '11111', '00010', '00010'],
+  '5': ['11111', '10000', '11110', '00001', '00001', '10001', '01110'],
+  '6': ['00110', '01000', '10000', '11110', '10001', '10001', '01110'],
+  '7': ['11111', '00001', '00010', '00100', '01000', '01000', '01000'],
+  '8': ['01110', '10001', '10001', '01110', '10001', '10001', '01110'],
+  '9': ['01110', '10001', '10001', '01111', '00001', '00010', '01100'],
+};
+
+/**
+ * A found clue's digit as a solid: pixel blocks, extruded, centred on the
+ * origin, `h` tall. It spins in the scene, so it reads from any side of the
+ * ring — the flat billboard it replaced was edge-on or out of frame from a
+ * close, steep camera (Michele, 28 Sep: "make it 3d and slowly rotating").
+ */
+export function solidDigit(d: string, h: number, color: THREE.ColorRepresentation, intensity: number): THREE.Mesh {
+  const rows = PIXEL_DIGITS[d] ?? PIXEL_DIGITS['0'];
+  const px = h / rows.length;
+  const parts: THREE.BufferGeometry[] = [];
+  rows.forEach((row, r) => {
+    for (let c = 0; c < row.length; c++) {
+      if (row[c] !== '1') continue;
+      const g = new THREE.BoxGeometry(px * 0.92, px * 0.92, px * 1.4);
+      g.translate((c - (row.length - 1) / 2) * px, ((rows.length - 1) / 2 - r) * px, 0);
+      parts.push(g);
+    }
+  });
+  const geo = mergeGeometries(parts, false);
+  for (const g of parts) g.dispose();
+  // Faces full bright, sides dimmer: unlit emissive blocks would otherwise
+  // melt into one flat shape and the depth would not read.
+  const n = geo.getAttribute('normal');
+  const shade = new Float32Array(n.count * 3);
+  for (let i = 0; i < n.count; i++) {
+    const k = Math.abs(n.getZ(i)) > 0.5 ? 1 : Math.abs(n.getY(i)) > 0.5 ? 0.55 : 0.38;
+    shade[i * 3] = shade[i * 3 + 1] = shade[i * 3 + 2] = k;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(shade, 3));
+  const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(intensity), vertexColors: true, toneMapped: false, fog: false });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.castShadow = false;
+  return mesh;
 }

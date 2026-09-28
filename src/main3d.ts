@@ -109,23 +109,22 @@ const withOpening = !shotMode || flag('cards');
 const game: DebugGame = createGame({ seed: int('seed'), chapter: withOpening ? undefined : (int('chapter') ?? 1), cards: withOpening, clueSpot: CLUE_SPOT_3D });
 
 /*
- * The old 3D title (a dolly down the corridor under "press any key") is
- * retired: the sim's opening has its own title card, drawn by the shared HUD,
- * and the crates are the establishing shot. Kept as a switch, off.
+ * A black "press any key" gate before the opening. Browsers hold audio until a
+ * key or click, and the opening now has a score (Michele: "there should be
+ * music also in the animation") — without the gate the first key both started
+ * the music and skipped the scene. The gate eats that key; the opening then
+ * plays from its first frame. The full splash comes back later (Michele,
+ * 28 Sep: "the splash should come back, but we'll work on that later").
  */
-let titleUp = false;
+let titleUp = withOpening && !shotMode;
 const titleEl = document.createElement('div');
-titleEl.className = 'ad3d-title';
-titleEl.innerHTML =
-  '<h1>AFTER DARK</h1><p class="ad3d-sub">Kinepolis Antwerp, the night before Devoxx. Stephan lost the keys; the humans are locked out until morning. ' +
-  'Three robots are already inside, and the power is out in the closed cinema section.</p>' +
-  '<p class="ad3d-poc">Full-3D proof of concept · chapter 1</p><p class="ad3d-press">Press any key</p>';
+titleEl.className = 'ad3d-title ad3d-gate';
+titleEl.innerHTML = '<h1>AFTER DARK</h1><p class="ad3d-press">Press any key</p>';
 if (titleUp) app.appendChild(titleEl);
 function dismissTitle(): void {
   if (!titleUp) return;
   titleUp = false;
   titleEl.remove();
-  world.cam.cut();
 }
 const world: World3D = createWorld3D(canvas, { quality, preserveDrawingBuffer: shotMode });
 const hud: Hud = createHud(app, {
@@ -194,17 +193,17 @@ function pushStick(dt: number): void {
     return;
   }
   spinning = false;
-  // S is an about-face (Michele: "going straight with W, then reversing with S,
-  // the camera still faces W"). The first S frame locks the direction away from
-  // the camera's back; while S is held the robot walks THAT way as if it were
-  // W, and the camera swings round behind it. Locked, so the swinging camera
-  // cannot turn "back" round again under the player's thumb.
+  // S walks backwards (Michele, 28 Sep: "pressing down arrow could cause the
+  // robot to walk backwards, keeping the camera and orientation"). It replaced
+  // the about-face of 24 Sep, where S turned the robot and swung the camera
+  // round. The heading locked on the first S frame is kept while S is held, so
+  // the lamp stays on its mark while she backs off; A/D with S slide her back
+  // at a diagonal, still facing the same way. The camera stays behind her, where
+  // it was.
   if (fwd < 0) {
-    if (aboutYaw === null) aboutYaw = world.cam.yaw + Math.PI;
-    let d = aboutYaw - world.cam.yaw;
-    d = Math.atan2(Math.sin(d), Math.cos(d));
-    world.cam.yaw += d * Math.min(1, dt * 3.5);
-    game.setStick(...stickAt(aboutYaw, 1, strafe));
+    if (aboutYaw === null) aboutYaw = b.face;
+    const [sx, sy] = world.cam.stick(fwd, strafe);
+    game.setStick(sx, sy, aboutYaw);
     return;
   }
   aboutYaw = null;
@@ -212,13 +211,8 @@ function pushStick(dt: number): void {
   game.setStick(sx, sy);
 }
 
-/** Held-S heading (camera yaw it is driven as), locked for the whole press. */
+/** Held-S heading (sim radians), locked for the whole press. */
 let aboutYaw: number | null = null;
-
-/** `ThirdPersonCamera.stick` for a given yaw rather than the camera's own. */
-function stickAt(yaw: number, fwd: number, strafe: number): [number, number] {
-  return [-Math.sin(yaw) * fwd + Math.cos(yaw) * strafe, -Math.cos(yaw) * fwd - Math.sin(yaw) * strafe];
-}
 
 function codeOf(ev: KeyboardEvent): string {
   if (ev.code && /^Numpad[0-9]$/.test(ev.code)) return `Digit${ev.code.slice(6)}`;
@@ -245,6 +239,12 @@ window.addEventListener('keydown', (ev) => {
   // With the run sheet open, left/right turn its page (the night / this
   // chapter) instead of steering.
   if ((code === 'ArrowLeft' || code === 'ArrowRight') && hud.pageTasks(code === 'ArrowLeft' ? -1 : 1)) {
+    ev.preventDefault();
+    return;
+  }
+  // On the story page any other key turns to this chapter's briefing, and
+  // does nothing else — it is a page turn, not a step or an action.
+  if (!ev.repeat && !SHEET_KEEPS.has(code) && hud.turnStory()) {
     ev.preventDefault();
     return;
   }
@@ -359,11 +359,20 @@ let lastFade = -1;
 
 function frame(dt: number): void {
   if (titleUp) {
-    world.render(game.snapshot(), dt, true);
+    // The sim waits behind the gate; nothing is drawn under the black.
     return;
   }
-  pushStick(dt);
-  game.update(dt);
+  // The sim steps at most DT_MAX at a time; a slower frame takes several
+  // steps. It used to take one clamped step, so below 30 fps the whole game ran
+  // in slow motion — the intro most visibly (Michele: "the intro is slow, looks
+  // like a performance issue").
+  let left = dt;
+  while (left > 1e-6) {
+    const h = Math.min(DT_MAX, left);
+    pushStick(h);
+    game.update(h);
+    left -= h;
+  }
   const snap = game.snapshot();
   if (snap.chapter > 3) {
     showEnd();
@@ -385,10 +394,13 @@ function frame(dt: number): void {
   }
 }
 
+/** The longest frame the game catches up on, s; beyond it, it slows down. */
+const MAX_FRAME = 0.1;
 let last = performance.now();
 function loop(now: number): void {
   requestAnimationFrame(loop);
-  const dt = Math.min(Math.max((now - last) / 1000, 0), DT_MAX);
+  // Real elapsed time, capped so a tab switch does not fast-forward the game.
+  const dt = Math.min(Math.max((now - last) / 1000, 0), MAX_FRAME);
   last = now;
   frame(dt);
 }

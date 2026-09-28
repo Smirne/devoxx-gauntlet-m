@@ -30,7 +30,7 @@ import { m } from '../sim/units';
 import type { Materials } from './materials';
 import { box } from './materials';
 import type { VolumePoint } from './pipeline';
-import { clueStencil, digitMask, emitter, exitSign, haloFrame, lcd, notice, parkStencil } from './signs';
+import { clueStencil, digitMask, emitter, solidDigit, exitSign, haloFrame, lcd, notice, parkStencil } from './signs';
 import { HEIGHTS, addSeats } from './venue';
 
 export interface Props3D {
@@ -39,6 +39,12 @@ export interface Props3D {
   colliders: THREE.Object3D[];
   /** Emitters that change: found clues. */
   volumePoints: VolumePoint[];
+  /**
+   * Height of a walkable prop lying at (x, z), 0 for bare floor: the fallen
+   * jammed door. Robots stand on it rather than in it (Michele, 28 Sep: "the
+   * door eats the foot in some places").
+   */
+  floorAt(x: number, z: number): number;
 }
 
 const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z);
@@ -228,7 +234,7 @@ export function createProps(parent: THREE.Object3D, mats: Materials, floor: 'fir
   let lcdText = '';
   let jamLast = 0;
   const panelLed = new THREE.MeshBasicMaterial({ color: 0xff0000, toneMapped: false });
-  type ClueObj = { root: THREE.Group; digit: THREE.Mesh; leds: THREE.Mesh[]; light: THREE.PointLight; mix: THREE.Color; decal: THREE.Mesh; digitText: string; solved: boolean };
+  type ClueObj = { root: THREE.Group; digit: THREE.Mesh; tag: THREE.Mesh; leds: THREE.Mesh[]; light: THREE.PointLight; mix: THREE.Color; decal: THREE.Mesh; digitText: string; solved: boolean };
   const clueObjs = new Map<number, ClueObj>();
   const stencil = clueStencil();
 
@@ -437,10 +443,15 @@ export function createProps(parent: THREE.Object3D, mats: Materials, floor: 'fir
       leds.push(led);
     });
     mix.multiplyScalar(1 / Math.max(...mix.toArray(), 1e-3));
-    const digit = emitter(digitMask(String(c.digit), `POSITION ${c.slot}`), 0.9, 1.12, 12, mix);
-    digit.position.y = 1.35;
+    const digit = solidDigit(String(c.digit), 0.62, mix, 6);
+    digit.position.y = 1.2;
     digit.visible = false;
     root.add(digit);
+    // The slot, which the keypad order needs, stays a billboard under it.
+    const tag = emitter(digitMask('', `POSITION ${c.slot}`), 0.9, 1.12, 12, mix);
+    tag.position.y = 0.75 + 1.12 * (290 / 320 - 0.5); // the text line at 0.75 m
+    tag.visible = false;
+    root.add(tag);
     // Invisible until the clue is found: an invisible light costs nothing in
     // the forward shader, a zero-intensity one still costs a loop iteration.
     const light = new THREE.PointLight(mix, 30, 5, 2);
@@ -448,14 +459,23 @@ export function createProps(parent: THREE.Object3D, mats: Materials, floor: 'fir
     light.position.y = 1.2;
     root.add(light);
     parent.add(root);
-    return { root, digit, leds, light, mix, decal, digitText: String(c.digit), solved: false };
+    return { root, digit, tag, leds, light, mix, decal, digitText: String(c.digit), solved: false };
   }
 
   const _cam = new THREE.Vector3();
+  /** Fallen doors, for `floorAt`. */
+  const lying: THREE.Object3D[] = [];
+  const down = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0), 0, 1.5);
 
   return {
     colliders,
     volumePoints,
+    floorAt(x: number, z: number): number {
+      if (lying.length === 0) return 0;
+      down.ray.origin.set(x, 1.2, z);
+      const hit = down.intersectObjects(lying, true)[0];
+      return hit && hit.point.y < 0.4 ? hit.point.y : 0;
+    },
     update(snap: GameSnapshot, t: number, dt: number): void {
       // The ground floor's props are chapter 2's, drawn by props-ground.ts.
       if (groundProps) {
@@ -567,6 +587,8 @@ export function createProps(parent: THREE.Object3D, mats: Materials, floor: 'fir
             o.rotation.x = e * (Math.PI / 2 - 0.04);
             o.position.y = e * 0.05;
             syncCollider(o, prog <= 0);
+            if (prog > 0.5 && !lying.includes(o)) lying.push(o);
+            else if (prog <= 0.5 && lying.includes(o)) lying.splice(lying.indexOf(o), 1);
             break;
           }
           default:
@@ -590,6 +612,7 @@ export function createProps(parent: THREE.Object3D, mats: Materials, floor: 'fir
           (led.material as THREE.MeshBasicMaterial).color.copy(base).multiplyScalar(c.found ? 10 : lit ? 16 : 0.6 + 0.3 * Math.sin(t * 3 + c.slot));
         }
         co.digit.visible = c.found;
+        co.tag.visible = c.found;
         if (!c.found) (co.decal.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.4 + 0.3 * (0.5 + 0.5 * Math.sin(t * 1.6 + c.slot));
         if (!c.found && co.solved) {
           // A restarted chapter: the same clue, unfound again (the chapter
@@ -618,14 +641,15 @@ export function createProps(parent: THREE.Object3D, mats: Materials, floor: 'fir
           const cam = (parent as THREE.Scene).userData.camera as THREE.Camera | undefined;
           if (cam) {
             cam.getWorldPosition(_cam);
-            co.digit.rotation.y = Math.atan2(_cam.x - co.root.position.x, _cam.z - co.root.position.z);
+            co.tag.rotation.y = Math.atan2(_cam.x - co.root.position.x, _cam.z - co.root.position.z);
             // The painted digit on the floor turns to read upright from the
             // camera (it lay sideways from most angles).
             const dx = co.root.position.x - _cam.x;
             const dz = co.root.position.z - _cam.z;
             co.decal.rotation.set(-Math.PI / 2, 0, Math.atan2(-dx, -dz));
           }
-          co.digit.position.y = 1.35 + Math.sin(t * 1.5 + c.slot) * 0.05;
+          co.digit.position.y = 1.2 + Math.sin(t * 1.5 + c.slot) * 0.05;
+          co.digit.rotation.y = t * 0.9 + c.slot;
           volumePoints.push({ position: co.root.position.clone().setY(1.3), color: co.mix.clone().multiplyScalar(1.2), range: 3.5 });
         }
       }

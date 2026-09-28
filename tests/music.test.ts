@@ -33,12 +33,13 @@ import {
 /** `MASTER_GAIN` in `src/render/audio.ts` — the headroom the score is mixed under. */
 const MASTER_GAIN = 0.55;
 
-const CHAPTERS = [1, 2, 3, 4] as const;
+/** 0 is the opening cinematic — scored since 28 Sep 2026 ("there should be music also in the animation"). */
+const CHAPTERS = [0, 1, 2, 3, 4] as const;
 const entries = CHAPTERS.map((c) => [c, SCORES[c]] as const);
 
 describe('the score', () => {
   it('has one for every chapter and nothing else', () => {
-    expect(Object.keys(SCORES).map(Number).sort()).toEqual([1, 2, 3, 4]);
+    expect(Object.keys(SCORES).map(Number).sort()).toEqual([0, 1, 2, 3, 4]);
     for (const [, s] of entries) expect(s).toBeDefined();
   });
 
@@ -233,7 +234,8 @@ describe('the player', () => {
     vi.useFakeTimers();
     const { ctx, made, advance } = stubCtx();
     const m = startMusic(ctx, ctx.createGain(), fakeBuffer);
-    m.setChapter(0);
+    // 0 used to be the unscored one; the opening has a score now.
+    m.setChapter(9);
     advance(2);
     vi.advanceTimersByTime(1200);
     expect(made.oscs.length).toBe(0);

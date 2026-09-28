@@ -223,8 +223,40 @@ const KEYNOTE: Score = {
   ],
 };
 
-/** The score for each chapter. Anything else — the title card, the outro — is silence. */
-export const SCORES: Readonly<Record<number, Score>> = { 1: NIGHT, 2: HALL, 3: BREAKFAST, 4: KEYNOTE };
+/**
+ * The opening — three crates in a dark corridor, and the robots in them.
+ *
+ * Michele, 28 Sep 2026: *"There should be music also in the animation. Cool
+ * music."* Synthwave in the night's own key, 92 bpm, built to the opening's
+ * length (five bars is about thirteen seconds): a pad and a pulsing octave bass
+ * from the first bar, an arpeggio over it, the kick joining as the first crate
+ * lights, hats and a rim on the second robot, a bell lead for the third. Am, F,
+ * C, G — the chapter 2 climb reordered to fall back to the tonic every loop, so
+ * it hands over to chapter 1's unresolved night without a jolt.
+ */
+const OPENING: Score = {
+  bpm: 92,
+  tonic: 9,
+  scale: A_MINOR,
+  chords: [
+    [45, 57, 60, 64], // Am
+    [41, 57, 60, 65], // F
+    [48, 55, 60, 64], // C
+    [43, 55, 59, 62], // G
+  ],
+  parts: [
+    { voice: 'pad', gain: 0.075, steps: on([0], 2), len: 15 },
+    { voice: 'bass', gain: 0.15, steps: on([0, 2, 4, 6, 8, 10, 12, 14], 0), len: 1, shift: -12 },
+    { voice: 'pluck', gain: 0.075, steps: seq([0, 1, 2, 3, 2, 1, 0, 2], 2, 0), len: 2 },
+    { voice: 'kick', gain: 0.42, steps: on([0, 4, 8, 12], 1), len: 1, from: 1 },
+    { voice: 'hat', gain: 0.1, steps: on([2, 6, 10, 14], 1), len: 1, from: 2 },
+    { voice: 'rim', gain: 0.14, steps: on([4, 12], 1), len: 1, from: 2 },
+    { voice: 'bell', gain: 0.07, steps: seq([3, 4, 3, 2], 4, 2), len: 3, from: 3 },
+  ],
+};
+
+/** The score for each chapter, and the opening as chapter 0. The outro is silence. */
+export const SCORES: Readonly<Record<number, Score>> = { 0: OPENING, 1: NIGHT, 2: HALL, 3: BREAKFAST, 4: KEYNOTE };
 
 /** Seconds in one bar of `s`. Four beats, four sixteenths each. */
 export const barSeconds = (s: Score): number => (60 / s.bpm) * 4;
@@ -318,7 +350,7 @@ export function startMusic(ctx: AudioContext, out: AudioNode, noise: AudioBuffer
   const fading: GainNode[] = [];
   /** Where the voice builders connect. Set by `pump()` before it schedules anything. */
   let dest: GainNode | null = null;
-  let chapter = 0;
+  let chapter = -1;
   let muted = false;
   let disposed = false;
   let timer: ReturnType<typeof setInterval> | null = null;

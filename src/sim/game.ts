@@ -29,6 +29,7 @@ import { CRATE_AT, STAND_AT, STAND_FACE, openingAt, openingView } from './openin
 import {
   botsCollide,
   circleRect,
+  holdHeading,
   mkBot,
   partyTrick as showOff,
   pushBiggy as leanOnBiggy,
@@ -256,6 +257,8 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   let objective = TITLE_OBJECTIVE;
   let keysLine = TITLE_KEYS;
   let stickX = 0;
+  /** `setStick`'s held heading, or null to face the stick. */
+  let stickFace: number | null = null;
   let stickY = 0;
   let runtime: ChapterRuntime | null = null;
   /** The tow bar, when somebody has hold of Biggy. See `tow.ts`. */
@@ -327,6 +330,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
         b.ix = 0;
         b.iy = 0;
       }
+      holdHeading(b, i === cur ? stickFace : null);
     });
     // The bar reads the holder's stick and spends it on Biggy, so it has to run
     // BEFORE the step — the velocity it sets is the one Biggy carries through his
@@ -1244,5 +1248,5 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     b.face = Math.atan2(Math.sin(b.face + rad), Math.cos(b.face + rad));
   }
 
-  return { snapshot, update, key, setStick: (x, y) => { stickX = x; stickY = y; }, turn, skipChapter, startChapter, debug };
+  return { snapshot, update, key, setStick: (x, y, face) => { stickX = x; stickY = y; stickFace = face ?? null; }, turn, skipChapter, startChapter, debug };
 }

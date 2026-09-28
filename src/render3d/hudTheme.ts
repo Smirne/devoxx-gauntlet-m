@@ -70,6 +70,7 @@ body.ad3d .ad-card b{color:${YELLOW}}
 .ad3d-title .ad3d-sub{margin:0;max-width:62ch;font-size:15px;line-height:1.55;color:#d8cfc9}
 .ad3d-title .ad3d-poc{margin:0;color:${CYAN};text-transform:uppercase;letter-spacing:.2em;font-size:12px}
 .ad3d-title .ad3d-press{margin:0;color:${RED};text-transform:uppercase;letter-spacing:.3em;font-size:13px;animation:ad3d-blink 1.4s steps(2) infinite}
+.ad3d-title.ad3d-gate{background:#000;justify-content:center;align-items:center;padding:0 16px;gap:28px}
 @keyframes ad3d-blink{50%{opacity:.25}}
 @media (prefers-reduced-motion: reduce){.ad3d-title .ad3d-press{animation:none}}
 .ad3d-help{position:fixed;right:16px;bottom:16px;z-index:6;pointer-events:none;color:#b79c96;font:11px/1.6 "Bahnschrift","Arial Narrow",sans-serif;

@@ -57,6 +57,12 @@ export interface Hud {
    */
   pageTasks(dir: number): boolean;
   /**
+   * Any key on the story page: turn to this chapter's briefing instead of
+   * closing or acting (Michele, 28 Sep: "any key or -> move to current
+   * briefing"). True when it did, so the shell swallows the key.
+   */
+  turnStory(): boolean;
+  /**
    * `H` — one more step of help on the task in hand.
    *
    * Escalating, and never past what the chapter published: whose job it is, then
@@ -325,6 +331,14 @@ const CSS = `
 .ad-brief b{color:${ACCENT};font-weight:600}
 .ad-shead{margin:0 0 5px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:${MUTED}}
 .ad-story{max-height:none;color:#b9b4ac}
+/* The story page stands alone, bigger: just the night (Michele, 28 Sep: "make
+   the main briefing bigger and just the story"). */
+.ad-sheet.ad-tale{width:min(720px,92vw);padding:28px 32px 20px}
+.ad-sheet.ad-tale .ad-sub,.ad-sheet.ad-tale .ad-skeys{display:none}
+.ad-sheet.ad-tale .ad-story{font-size:18px;line-height:1.6;border-bottom:0;margin-bottom:6px}
+.ad-sheet.ad-tale .ad-story .ad-shead{display:none}
+.ad-sheet.ad-tale .ad-goal{margin-top:14px}
+.ad-sheet.ad-tale .ad-peek{font-size:12px;color:${MUTED};justify-content:flex-end}
 .ad-goal{margin-top:6px;color:#f2efe9}
 .ad-peek{display:flex;align-items:center;justify-content:space-between;gap:12px;
   font-size:13px;color:#cdc9c2}
@@ -972,6 +986,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     setText(sheetSub, `${CHAPTER_TITLES[snap.chapter] ?? ''} — ${done} of ${snap.tasks.length} done`, textCache);
     setHtml(sheetBrief, snap.objective, htmlCache);
     const story = sheetPage === 0;
+    sheet.classList.toggle('ad-tale', story);
     sheetStory.classList.toggle('ad-hide', !story);
     chapterHead.classList.toggle('ad-hide', story);
     sheetBrief.classList.toggle('ad-hide', story);
@@ -983,7 +998,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     sheetPeek.classList.toggle('ad-hide', sheetFull && !story);
     sheetRows.classList.toggle('ad-hide', !sheetFull || story);
     if (story) {
-      setHtml(sheetPeek, `<span>\u2192 this chapter</span><span class="ad-key">\u2190 \u2192 turn the page</span>`, htmlCache);
+      setHtml(sheetPeek, `<span class="ad-key">any key \u2192 this chapter</span>`, htmlCache);
       return;
     }
     if (!sheetFull) {
@@ -1426,6 +1441,11 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     sheetPage = dir < 0 ? 0 : 1;
     return true;
   }
+  function turnStory(): boolean {
+    if (!sheetOpen || sheetPage !== 0) return false;
+    sheetPage = 1;
+    return true;
+  }
   function toggleTasks(): void {
     if (sheetOpen && sheetPage === 0) {
       sheetPage = 1;
@@ -1505,5 +1525,5 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     }
   }
 
-  return { update, toggleTasks, closeTasks, pageTasks, nudge, dispose, root };
+  return { update, toggleTasks, closeTasks, pageTasks, turnStory, nudge, dispose, root };
 }

@@ -530,8 +530,11 @@ export interface Game {
   update(dt: number): void;
   /** A KeyboardEvent.code, on keydown, non-repeating. */
   key(code: string): void;
-  /** Movement stick, each axis -1..1. */
-  setStick(x: number, y: number): void;
+  /**
+   * Movement stick, each axis -1..1. `face`, when given, is a heading the driven
+   * robot keeps while it moves (walking backwards); omitted, it faces the stick.
+   */
+  setStick(x: number, y: number, face?: number): void;
   /**
    * Turn the driven robot on the spot by `rad` (sim radians, +clockwise on
    * screen), without moving it. Only while it is standing: a robot under way
