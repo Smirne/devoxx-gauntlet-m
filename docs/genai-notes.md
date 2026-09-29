@@ -5859,3 +5859,76 @@ video still stops dead, because the act was skipped with it.
 `tests/curtain-call.test.ts` +1 — the card lands on the same shot, the tower is still up, the room
 is still clapping, somebody is still moving and Voxxy is still jumping, and the card is not
 rewritten behind itself. Suite **791 green**, `tsc --noEmit` clean.
+
+## 29 Sep 2026 — the two who built it, at breakfast and at the keynote
+
+**What the human decided.** Michele, with two photographs: *"I'd like to add a couple character to
+the game (3D version, 2D optional). They are you and me. For me here's a couple photo's. As a normal
+attendee, propose some clever phrase. For you, let's find some idea. No logo, but one should be able
+to understand that's you."*
+
+**What the agent proposed and built** (`src/sim/cameos.ts`, `src/render3d/people3d.ts`).
+
+- *Michele, as a normal attendee*, from the more recent photograph (Pena): brown buzz cut, fair skin,
+  a light brown goatee under the faintest moustache, a small closed smile; the grey hoodie open over a
+  black tee, its sleeves and sides banded in red that has half worn away, the hood down; mirrored
+  sunglasses hooked on the tee's collar by one arm. The tee's wordmark is a brand's, so it was not
+  copied (CLAUDE.md, "nothing that needs permission"): the photograph's colourful blocks spell
+  **VOTE FUNNY** instead — Michele's own standing call. Attendee ribbon. The line: *"Just an attendee,
+  promise. I would make you three faster, but somebody froze the physics constants. …Right. That was
+  me."* — the frozen-constants rule, and the one time it was broken (GAUNTLET.md).
+- *Claude, without a logo* — which rules out the mark and the name set in its type, and leaves what
+  people actually know it by: a terminal for a face, dark glass in a cream case with a terracotta
+  prompt and a cursor blinking after it (the only body it has really had); the terracotta-and-cream
+  palette on a hoodie; cream hands. It says the rest itself: *"You're absolutely right! …Sorry,
+  reflex. I can't carry the soup — I'm made of words. Six thousand lines of them are notes on how
+  Biggy should."* No laptop: in this game a laptop is the one silhouette that marks the hidden
+  keynote speaker, and a second one in the hall would be a false clue.
+- *Where.* Chapter 3, pair-programming either side of the last high table on the hall's south strip,
+  each turned half to the other and half to the hall; chapter 4, Room 8's second row, right behind the
+  five speakers, so they applaud at the curtain call with everybody else.
+- *And in 2.5D* (the optional half): at thirty pixels a face is four, so Michele is the grey hoodie
+  with a red collar band, and Claude is the one mark that still reads at that size — the screen head,
+  a cream box with the prompt on its front (`Person.screen`), which replaces the head and hair rather
+  than sitting on them. Without it, Claude in the 2.5D build was a man in an orange hoodie.
+  What the 2.5D build does *not* show is breakfast: its hall's south wall stands at full shell height
+  between the fixed diorama camera and the south strip, so the high tables (since they went in on
+  28 Sep) and the pair at one of them are behind it — Voxxy there is her through-wall silhouette.
+  In 2.5D they are seen in Room 8. Left as is and put to Michele: the one spot in view is north of
+  the table, which is the visitor lane.
+
+**What it found.**
+
+- *A cameo can soft-lock the chapter.* The first spot was the sixth table, under Regex Racing — a
+  built booth the keynote speaker can hide behind — and chapter 3 asked the people in the hall before
+  it asked the speaker, so on the seed where the speaker hid there, Voxxy asking them to come out got
+  Michele instead. Two tests caught it. The cameos moved to the last table (86 px from any speaker
+  spot), and the speaker is now asked FIRST, so no bystander, present or future, can answer for the
+  chapter's objective — the Sticker Mine soft-lock of 25 Sep, one bystander along.
+- *Two people within `TALK_REACH` of each other.* Voxxy asked "the first one in the list", which at a
+  shared table is not the one she is facing. She asks the nearest now.
+- *Every portrait's hands were the crowd's.* `placeNeck` gives each hand the skin tone the figure's
+  seed draws from the crowd palette, so Venkat's hands were a crowd tone rather than the portrait's.
+  Portraits now dress the hands in their own skin (Claude's are cream).
+- *Claude had no head* in the first 3D render: a cream neck, cream hands, and nothing above them. The
+  builder made the screen and never added it to the portrait, and no sim test can see that — the
+  screenshot did. Probing the scene graph for `portrait-Claude` confirmed it was missing before the
+  one-line fix, and present after.
+- *The lanyard hid the joke.* The crowd's badge ribbon runs the whole height of the chest, so on
+  Michele it covered the middle of VOTE FUNNY and the sunglasses covered the rest. The ribbon now
+  stops at mid-chest on Michele (`Portrait.badge`, the same ribbon from the same collar, shorter),
+  the print sits under it, and the sunglasses hang to one side of it.
+
+**Rejected.** Claude as a floating logo or in the brand's typeface (asked for no logo); a laptop under
+Claude's arm (the keynote speaker's silhouette); copying the Rollerblade wordmark on Michele's tee
+(a brand).
+
+**Tests.** `tests/cameos.test.ts` (4, new): both at the table on attendee ribbons, facing the hall;
+each answers Voxxy in their own words; the nearer one answers when both are in reach; both seated in
+the second row and the room still fills to 84; Claude, and only Claude, has a screen for a head in
+both chapters. `tests/extras.test.ts`'s front-row test extended, not loosened: the five speakers still
+fill the front row alone, the two cameos sit one row behind, and nobody takes any of the seven seats.
+`tests/people.test.ts`: the screen head replaces the head and hair, sits where the head was, is wider
+and shorter than a head, and comes off when the pooled figure is somebody else. The figure's mesh
+budget went from seventeen to eighteen, and the test names the one, as it names the five before it —
+a budget raised with a reason on the record, not loosened.

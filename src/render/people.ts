@@ -43,6 +43,7 @@
 
 import * as THREE from 'three';
 
+import { CLAUDE_CLAY, CLAUDE_CREAM } from '../sim/cameos';
 import { LANYARD } from '../sim/lanyards';
 import { m } from '../sim/units';
 import type { Person } from '../sim/types';
@@ -158,6 +159,8 @@ interface Shared {
   boom: THREE.MeshStandardMaterial;
   screen: THREE.MeshStandardMaterial;
   shell: THREE.MeshStandardMaterial;
+  /** A screen for a head (`Person.screen`): the case on five faces, the glass on the front. Built the first time anybody wears it. */
+  monitor: THREE.MeshStandardMaterial[] | null;
   refs: number;
 }
 
@@ -191,6 +194,7 @@ function acquire(): Shared {
       emissiveIntensity: 0.8,
     }),
     shell: std('#9aa3ad', 0.5),
+    monitor: null,
     refs: 1,
   };
   return shared;
@@ -214,6 +218,10 @@ function release(): void {
   shared.boom.dispose();
   shared.screen.dispose();
   shared.shell.dispose();
+  for (const mm of new Set(shared.monitor ?? [])) {
+    mm.map?.dispose();
+    mm.dispose();
+  }
   shared = null;
 }
 
@@ -314,6 +322,12 @@ export function buildPerson(): PersonModel {
   lapLid.name = 'laptop-lid';
   lapLid.visible = false;
   yaw.add(lapLid);
+  // Claude's head (`Person.screen`), which replaces the head and the hair rather than wearing them.
+  const monitor = new THREE.Mesh<THREE.BoxGeometry, THREE.Material | THREE.Material[]>(s.box, s.shell);
+  monitor.name = 'screen-head';
+  monitor.castShadow = true;
+  monitor.visible = false;
+  yaw.add(monitor);
   /** The collar's own colour, so a striped polo is not the shirt's material. */
   const collarMat = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0.02 });
   collar.material = collarMat;
@@ -500,6 +514,17 @@ export function buildPerson(): PersonModel {
       boom.position.set(headR * 0.78, H - headR * 1.25, headR * 0.5);
       boom.rotation.set(0, -0.5, 0.35);
     }
+    const screen = p.screen === true;
+    monitor.visible = screen;
+    head.visible = !screen;
+    hair.visible = !screen;
+    if (screen) {
+      s.monitor ??= monitorMaterials();
+      monitor.material = s.monitor;
+      // A little wider than a head and not as tall, on the neck where the head was.
+      monitor.scale.set(headR * 2.3, headR * 1.75, headR * 1.15);
+      monitor.position.set(0, H - headR * 1.1, 0);
+    }
     const lap = p.laptop === true && !seated;
     lapBase.visible = lap;
     lapLid.visible = lap;
@@ -554,6 +579,41 @@ export function buildPerson(): PersonModel {
       release();
     },
   };
+}
+
+/**
+ * The screen head's materials, in `BoxGeometry` face order (+x, -x, +y, -y, +z,
+ * -z): cream case all round, and on the front (+Z, the way a figure faces) dark
+ * glass with the prompt glowing on it — a chevron and a cursor, `>_`.
+ */
+function monitorMaterials(): THREE.MeshStandardMaterial[] {
+  const shell = new THREE.MeshStandardMaterial({ color: new THREE.Color(CLAUDE_CREAM), roughness: 0.45, metalness: 0.02 });
+  const glass = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25, metalness: 0.05, emissive: 0xffffff, emissiveIntensity: 0.9 });
+  const c = typeof document === 'undefined' ? null : document.createElement('canvas');
+  const x = c?.getContext('2d');
+  if (!c || !x) {
+    glass.color.set('#1f1e1d');
+    glass.emissive.set(0x000000);
+  } else {
+    c.width = 32;
+    c.height = 24;
+    x.fillStyle = '#1f1e1d';
+    x.fillRect(0, 0, 32, 24);
+    x.strokeStyle = CLAUDE_CLAY;
+    x.fillStyle = CLAUDE_CLAY;
+    x.lineWidth = 3;
+    x.beginPath();
+    x.moveTo(6, 7);
+    x.lineTo(12, 12);
+    x.lineTo(6, 17);
+    x.stroke();
+    x.fillRect(16, 15, 9, 3);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    glass.map = t;
+    glass.emissiveMap = t;
+  }
+  return [shell, shell, shell, shell, glass, shell];
 }
 
 /**

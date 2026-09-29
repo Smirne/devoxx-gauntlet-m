@@ -14,7 +14,9 @@
  *  - the people the player has to know on sight — Stephan, who runs the whole
  *    chapter, Celestino on the badge desk, and Mario, Venkat and Josh out on
  *    the hall floor — get a sculpted head and their own clothes, from the
- *    photographs Michele sent (28 Sep 2026);
+ *    photographs Michele sent (28 Sep 2026); so, since 29 Sep, do the two who
+ *    built the game — Michele, from a photograph, and Claude, a terminal for a
+ *    face (`src/sim/cameos.ts`);
  *  - everybody wears shoes, because the one person who does not is the joke.
  */
 
@@ -22,6 +24,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 import { buildPerson, type PersonModel } from '../render/people';
+import { CLAUDE_CLAY, CLAUDE_CREAM } from '../sim/cameos';
 import { riseAt } from '../sim/surface';
 import type { GameSnapshot } from '../sim/types';
 
@@ -346,6 +349,15 @@ interface Portrait {
    * over the top of each arm. Built onto the arm pivots, so it swings with them.
    */
   sleeve?: { cloth: THREE.Material; cuff: THREE.Material };
+  /** Long sleeves in a cloth of their own (Michele's striped hoodie), on the figure's own arms. */
+  arms?: THREE.Material;
+  /** Anything in the portrait that moves on its own clock — Claude's cursor. */
+  tick?: (t: number) => void;
+  /**
+   * How far the badge hangs, as a fraction of the crowd's drop: the same ribbon
+   * from the same collar, shorter, when the shirt under it has something to show.
+   */
+  badge?: number;
 }
 
 function canvasTex(w: number, h: number, draw: (x: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
@@ -1058,6 +1070,211 @@ function buildJosh(torso: THREE.Mesh, H: number): Portrait {
 }
 
 /**
+ * A goatee: a rounded tuft on the chin, from under the lower lip to below the
+ * jaw, and the thin moustache that runs round to it.
+ */
+function goatee(head: THREE.Mesh, colour: string): void {
+  const tuft = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), std(colour, 0.95));
+  tuft.scale.set(0.36, 0.62, 0.24);
+  const y = -0.8;
+  tuft.position.set(0, y, surf0(head, 0, y) + 0.015);
+  head.add(tuft);
+  moustache(head, colour, 0.44, 0.055);
+}
+
+/**
+ * MICHELE — the photograph at Pena, 29 Sep 2026 (`src/sim/cameos.ts`): a brown
+ * buzz cut, fair skin, a light brown goatee and the faintest moustache, a small
+ * closed smile. The grey hoodie is open over a black tee, its sleeves and sides
+ * banded in red that has half worn away, the hood down behind the neck; the
+ * mirrored sunglasses hang from the tee's collar by one arm.
+ *
+ * The tee's colourful blocks are the photograph's, the word on them is not: the
+ * real one is a brand's wordmark (CLAUDE.md, nothing that needs permission), so
+ * they spell the standing call instead — VOTE FUNNY.
+ */
+function buildMichele(torso: THREE.Mesh, H: number): Portrait {
+  const g = new THREE.Group();
+  const skinC = '#e7b99b';
+  const head = sculptHead({
+    skin: skinC,
+    hairTop: '#5c4533',
+    hairSide: '#6a503c',
+    line: [0.6, 0.44, 0.16, -0.36],
+    // A buzz cut: the hair is barely off the skull, top or sides.
+    thickTop: 0.03,
+    thickSide: 0.018,
+    salt: 0,
+    stubble: 0.2,
+    narrow: 0.9,
+    long: 1.16,
+    beard: '#8a6a4e',
+    face: { brow: 0.06, socket: 0.06, cheek: 0.05, jawTaper: 0.3, jawWidth: 0.02, chin: 0.06, nose: 0.2, noseW: 0.12, crownFlat: 0.1, blush: 0.12, lip: 0.25, ears: 1.1 },
+  });
+  eyes(head, 0.1, '#5a4634', 0.9);
+  brows(head, '#6a503c', 0.05, 0.05, 0.3);
+  smile(head, 0.4, false, 0.03, 0.035);
+  goatee(head, '#8a6a4e');
+  g.add(head);
+
+  const halfW = torso.scale.x / 2;
+  const front = torso.scale.z / 2;
+  const shoulder = torso.position.y + torso.scale.y / 2;
+  const hip = torso.position.y - torso.scale.y / 2;
+  const R = H * 0.135;
+  /** The hoodie's cloth: grey, banded in red with flecks of the grey back through it. */
+  const hoodie = (repeat: number): THREE.MeshStandardMaterial => {
+    const tex = canvasTex(64, 64, (x) => {
+      x.fillStyle = '#8d9095';
+      x.fillRect(0, 0, 64, 64);
+      x.fillStyle = '#b8323c';
+      x.fillRect(0, 22, 64, 20);
+      x.fillStyle = 'rgba(141,144,149,0.85)';
+      for (let i = 0; i < 110; i++) x.fillRect(hash(i, 1, 3) * 64, 22 + hash(i, 2, 5) * 20, 1 + hash(i, 4, 1) * 4, 1);
+    });
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(1, repeat);
+    return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 });
+  };
+  const body = hoodie(2.5);
+  const arms = hoodie(4);
+  const grey = std('#8d9095', 0.9);
+
+  // The black tee between the open hoodie fronts, and its print.
+  const teeW = halfW * 1.2;
+  const tee = new THREE.Mesh(
+    new THREE.PlaneGeometry(teeW, shoulder - hip),
+    new THREE.MeshStandardMaterial({
+      roughness: 0.9,
+      map: canvasTex(128, 256, (x) => {
+        x.fillStyle = '#151517';
+        x.fillRect(0, 0, 128, 256);
+        const ink = ['#ff4fa3', '#2fb5ff', '#ffd23f', '#3ee07a', '#ff8a3d'];
+        x.font = 'bold 30px "Arial Black", "Helvetica Neue", Arial, sans-serif';
+        x.textAlign = 'center';
+        x.textBaseline = 'middle';
+        const row = (word: string, y: number, off: number): void => {
+          const step = 23;
+          const x0 = 64 - ((word.length - 1) * step) / 2;
+          [...word].forEach((ch, i) => {
+            x.fillStyle = ink[(i + off) % ink.length];
+            x.fillText(ch, x0 + i * step, y);
+          });
+        };
+        // Low on the tee, under the badge and the sunglasses (`badge` below).
+        row('VOTE', 180, 0);
+        row('FUNNY', 214, 2);
+      }),
+    }),
+  );
+  tee.position.set(0, (shoulder + hip) / 2, front + 0.003);
+  g.add(tee);
+  // The open zip: a grey edge down each side of the tee.
+  for (const sx of [-1, 1]) {
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(0.012 * H, shoulder - hip, 0.006), std('#5f6267', 0.8));
+    edge.position.set(sx * teeW * 0.5, (shoulder + hip) / 2, front + 0.004);
+    g.add(edge);
+  }
+  // The hood, down: a grey roll round the back of the neck.
+  const hood = new THREE.Mesh(new THREE.TorusGeometry(R * 0.62, R * 0.2, 8, 18, Math.PI), grey);
+  hood.rotation.set(Math.PI / 2, 0, Math.PI);
+  hood.position.set(0, shoulder + H * 0.01, -front * 0.15);
+  g.add(hood);
+  // The sunglasses, hooked on the collar by one arm, hanging lens over lens —
+  // to one side, where the lanyard is not.
+  const mirror = new THREE.MeshStandardMaterial({ color: new THREE.Color('#2cc3b0'), metalness: 0.9, roughness: 0.12, emissive: new THREE.Color('#0a3834') });
+  const rim = std('#4a5560', 0.4);
+  for (const k of [0, 1]) {
+    const lens = new THREE.Mesh(new THREE.SphereGeometry(0.5, 14, 10), mirror);
+    const y = shoulder - H * (0.045 + k * 0.05);
+    lens.scale.set(H * 0.045, H * 0.036, H * 0.008);
+    lens.position.set(teeW * 0.3, y, front + 0.012);
+    g.add(lens);
+    const frame = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.08, 6, 16), rim);
+    frame.scale.set(H * 0.047, H * 0.038, H * 0.02);
+    frame.position.copy(lens.position);
+    g.add(frame);
+  }
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.006 * H, H * 0.05, 0.004 * H), rim);
+  arm.position.set(teeW * 0.3 + H * 0.02, shoulder - H * 0.015, front + 0.01);
+  g.add(arm);
+  // The badge rides high, so the print shows under it.
+  return { group: g, head, body, arms, skin: std(skinC, 0.8), hides: ['glasses', 'mic', 'collar', 'head', 'hair'], badge: 0.5 };
+}
+
+/**
+ * CLAUDE — no photograph, and no logo (Michele: *"No logo, but one should be able
+ * to understand that's you"*). So not the mark, and not the name set in its
+ * type: what people know it by. A terminal for a face — the only body it has
+ * ever really had — dark glass in a cream case, on the neck like a monitor on its
+ * stand, a terracotta prompt glowing on it with the cursor blinking after it;
+ * terracotta and cream on the hoodie; cream hands. It says the rest itself
+ * (`src/sim/cameos.ts`).
+ */
+function buildClaude(torso: THREE.Mesh, H: number): Portrait {
+  const g = new THREE.Group();
+  const cream = std(CLAUDE_CREAM, 0.45);
+  // In head radii, like every head here: a little wider than a head, not as tall.
+  const head = new THREE.Mesh(new RoundedBoxGeometry(2.3, 1.75, 1.15, 4, 0.3), cream);
+  head.castShadow = true;
+  g.add(head);
+  const glass = new THREE.Mesh(new RoundedBoxGeometry(2.0, 1.45, 0.06, 2, 0.14), new THREE.MeshStandardMaterial({ color: new THREE.Color('#1f1e1d'), roughness: 0.22, metalness: 0.1 }));
+  glass.position.set(0, 0, 0.56);
+  head.add(glass);
+  const glow = new THREE.MeshBasicMaterial({ color: new THREE.Color(CLAUDE_CLAY).multiplyScalar(2.2), toneMapped: false });
+  // The prompt: a chevron, two strokes meeting at a point...
+  for (const sy of [1, -1]) {
+    const stroke = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.13, 0.03), glow);
+    stroke.position.set(-0.42, sy * 0.13, 0.6);
+    stroke.rotation.z = -sy * 0.62;
+    head.add(stroke);
+  }
+  // ...and the cursor after it, which blinks.
+  const cursor = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.14, 0.03), glow);
+  cursor.position.set(0.28, -0.26, 0.6);
+  head.add(cursor);
+
+  const halfW = torso.scale.x / 2;
+  const front = torso.scale.z / 2;
+  const shoulder = torso.position.y + torso.scale.y / 2;
+  const hip = torso.position.y - torso.scale.y / 2;
+  const R = H * 0.135;
+  const clay = std(CLAUDE_CLAY, 0.85);
+  // The hood down behind the neck, lined in cream; two cream drawstrings.
+  const hood = new THREE.Mesh(new THREE.TorusGeometry(R * 0.62, R * 0.2, 8, 18, Math.PI), clay);
+  hood.rotation.set(Math.PI / 2, 0, Math.PI);
+  hood.position.set(0, shoulder + H * 0.01, -front * 0.15);
+  g.add(hood);
+  const lining = new THREE.Mesh(new THREE.TorusGeometry(R * 0.5, R * 0.06, 6, 18, Math.PI), cream);
+  lining.rotation.copy(hood.rotation);
+  lining.position.set(0, shoulder + H * 0.022, -front * 0.15);
+  g.add(lining);
+  for (const sx of [-1, 1]) {
+    const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.004 * H, 0.004 * H, H * 0.09, 6), cream);
+    cord.position.set(sx * halfW * 0.16, shoulder - H * 0.045, front + 0.008);
+    g.add(cord);
+  }
+  // A kangaroo pocket, a shade deeper than the hoodie.
+  const pocket = new THREE.Mesh(new THREE.BoxGeometry(halfW * 1.3, (shoulder - hip) * 0.3, 0.006), std('#c4674a', 0.85));
+  pocket.position.set(0, hip + (shoulder - hip) * 0.2, front + 0.004);
+  g.add(pocket);
+  return {
+    group: g,
+    head,
+    body: clay,
+    arms: clay,
+    skin: cream,
+    // ...and the crowd figure's own screen head (`Person.screen`), which this one replaces up close.
+    hides: ['glasses', 'mic', 'collar', 'head', 'hair', 'screen-head'],
+    // A terminal's cursor: on for half a second, off for half a second.
+    tick: (t: number): void => {
+      cursor.visible = t % 1 < 0.55;
+    },
+  };
+}
+
+/**
  * Short sleeves on the figure's own arms: the arm goes to skin, and a sleeve
  * with a tipped cuff is hung on each arm's pivot over its top third.
  */
@@ -1256,7 +1473,17 @@ function buildAurelie(torso: THREE.Mesh, _H: number): Portrait {
 
 type Builder = (torso: THREE.Mesh, H: number) => Portrait;
 /** Who gets a portrait: Stephan by role, the rest by name on a named NPC. */
-const BY_NAME: Readonly<Record<string, Builder>> = { Celestino: buildCelestino, Mario: buildMario, Venkat: buildVenkat, Josh: buildJosh, Lize: buildLize, 'Aurélie': buildAurelie };
+const BY_NAME: Readonly<Record<string, Builder>> = {
+  Celestino: buildCelestino,
+  Mario: buildMario,
+  Venkat: buildVenkat,
+  Josh: buildJosh,
+  Lize: buildLize,
+  'Aurélie': buildAurelie,
+  // The two who built it (`src/sim/cameos.ts`).
+  Michele: buildMichele,
+  Claude: buildClaude,
+};
 
 /* --------------------------------------------------------------------- pool */
 
@@ -1323,7 +1550,19 @@ export function createPeople(parent: THREE.Object3D): People3D {
         pt.head.scale.setScalar(R);
         pt.head.position.copy(head.position);
         neck.material = pt.skin;
+        // Hands in the portrait's own skin, not the pooled figure's: `placeNeck`
+        // hands them the figure's random one every frame.
+        for (const n of ['hand-l', 'hand-r']) (yaw.getObjectByName(n) as THREE.Mesh).material = pt.skin;
         if (pt.body) torso.material = pt.body;
+        if (pt.arms) for (const n of ['arm-l', 'arm-r']) (yaw.getObjectByName(n) as THREE.Mesh).material = pt.arms;
+        pt.tick?.(t);
+        if (pt.badge) {
+          // Shortened from the bottom: the ribbon still starts at the collar.
+          const badge = yaw.getObjectByName('lanyard') as THREE.Mesh;
+          const top = badge.position.y + badge.scale.y / 2;
+          badge.scale.y *= pt.badge;
+          badge.position.y = top - badge.scale.y / 2;
+        }
         if (pt.barefoot) placeFeet(yaw, H, pt.skin);
         if (pt.sleeve) dressSleeves(yaw, pt);
         // A skirt drawn for standing goes straight down through the seat.

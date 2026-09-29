@@ -14,6 +14,7 @@ export * from './contacts';
 export * from './reel';
 export * from './crates';
 export * from './letters';
+export * from './cameos';
 export * from './lights';
 export * from './game';
 export * from './chapters';

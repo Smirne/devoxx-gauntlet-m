@@ -74,7 +74,8 @@ import {
   crateRescueSpot,
   loadBiggy,
 } from '../crates';
-import { BAR_RECT, GF, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
+import { BAR_RECT, GF, HIGH_TABLES, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
+import { CAMEO_LINES, CAMEO_LOOKS } from '../cameos';
 import { SPEAKER_LOOKS } from '../speakers';
 import { LANYARD } from '../lanyards';
 import { beltUp, nastriRun } from '../nastri';
@@ -1146,6 +1147,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     mic?: boolean;
     barefoot?: boolean;
     lanyard?: string;
+    screen?: boolean;
   }
   const npcs: Npc[] = [
     {
@@ -1254,6 +1256,35 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       ...SPEAKER_LOOKS['Aurélie'],
       face: -Math.PI / 2,
     },
+    /*
+     * THE TWO WHO BUILT IT, AT A HIGH TABLE (`src/sim/cameos.ts`).
+     *
+     * Michele, 29 Sep 2026: *"They are you and me."* Either side of the last table
+     * in the row along the south strip, by the drinks fridge — clear of the
+     * visitor lane at y 645 — pair-programming over breakfast, each turned half
+     * to the other and half to the hall, so a robot coming down the lane sees
+     * both faces. Attendee ribbons, both: the one thing neither of them is here
+     * as is crew.
+     *
+     * The LAST table and not the one before it, measured: the sixth stands under
+     * Regex Racing, a built booth the keynote speaker can hide behind, and a
+     * cameo 23 px from where Voxxy asks the speaker to come out is a cameo that
+     * answers instead. The seventh's nearest booth is The Coffee Sponsor, a table
+     * the speaker never hides at, and the nearest speaker spot is 86 px away.
+     */
+    ...(['Michele', 'Claude'] as const).map((name, i) => {
+      const table = HIGH_TABLES[6];
+      const side = i === 0 ? -1 : 1;
+      return {
+        x: table.x + table.w / 2 + side * 17,
+        y: table.y + table.h / 2,
+        r: 8,
+        name,
+        line: CAMEO_LINES[name],
+        ...CAMEO_LOOKS[name],
+        face: side < 0 ? -Math.PI / 4 : (-3 * Math.PI) / 4,
+      };
+    }),
   ];
 
   /*
@@ -2304,14 +2335,25 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       return false;
     }
 
-    const n = npcs.find((o) => dist(o, v) < TALK_REACH);
-    if (n) {
-      ctx.flash(`${n.name}: "${n.line}"`, 4500);
-      return true;
-    }
+    /*
+     * THE KEYNOTE SPEAKER FIRST. They are the chapter's objective and everybody
+     * else in the hall is conversation, so nobody standing near their booth may
+     * answer for them — that would be the Sticker Mine soft-lock again, one
+     * bystander along (see `SPEAKER_CLEAR`).
+     */
     if (!speaker.following && dist(speaker, v) < TALK_REACH) {
       speaker.following = true;
       ctx.flash('Keynote speaker: "Oh! Is it time? Lead the way."');
+      return true;
+    }
+    // Then the NEAREST person in reach: at the high table two of them stand
+    // closer together than `TALK_REACH`, and "whoever is first in the list" would
+    // answer for whoever Voxxy is actually facing.
+    const n = npcs
+      .filter((o) => dist(o, v) < TALK_REACH)
+      .sort((a, b) => dist(a, v) - dist(b, v))[0];
+    if (n) {
+      ctx.flash(`${n.name}: "${n.line}"`, 4500);
       return true;
     }
     const vc = crateInReach(v);
@@ -2887,6 +2929,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         glasses: n.glasses,
         mic: n.mic,
         barefoot: n.barefoot,
+        screen: n.screen,
         seed: 900 + i,
       });
     }

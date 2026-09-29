@@ -331,6 +331,12 @@ export interface Person {
    * about slide 34.
    */
   laptop?: boolean;
+  /**
+   * A screen for a head: a cream case, dark glass, a terracotta prompt. Claude
+   * (`src/sim/cameos.ts`), who has no face to draw and is known by a terminal
+   * instead — the one mark on a thirty-pixel figure that says so without a logo.
+   */
+  screen?: boolean;
   /** 'visitor' | 'queue' | 'seated' | 'stephan' | 'speaker' | 'staff' */
   role: string;
   /**

@@ -167,6 +167,33 @@ describe('a person', () => {
     expect(Math.abs((l.min.z + l.max.z) / 2 - (r.min.z + r.max.z) / 2)).toBeLessThan(1e-9);
   });
 
+  /**
+   * Claude (`src/sim/cameos.ts`): a screen for a head, which REPLACES the head
+   * rather than sitting on it — a skull poking out of a monitor is not a
+   * character, it is a costume. And it comes off again: figures are pooled, and
+   * whoever wears this one next has a head.
+   */
+  it('wears a screen for a head when the sim says so, instead of the head and hair', () => {
+    const pm = mk();
+    const shown = (n: string): boolean => (pm.root.getObjectByName(n) as THREE.Object3D).visible;
+    pm.pose(person({ screen: true }), 0, 0);
+    expect(shown('screen-head')).toBe(true);
+    expect(shown('head')).toBe(false);
+    expect(shown('hair')).toBe(false);
+    // Where the head was: the same height to within a head's radius.
+    const box = part(pm, 'screen-head');
+    pm.pose(person(), 0, 0);
+    expect(shown('screen-head')).toBe(false);
+    expect(shown('head')).toBe(true);
+    expect(shown('hair')).toBe(true);
+    const skull = part(pm, 'head');
+    const r = (skull.max.y - skull.min.y) / 2;
+    expect(Math.abs((box.max.y + box.min.y) / 2 - (skull.max.y + skull.min.y) / 2)).toBeLessThan(r);
+    // Wider than a head, and not as tall: a screen, not a cube.
+    expect(box.max.x - box.min.x).toBeGreaterThan(skull.max.x - skull.min.x);
+    expect(box.max.y - box.min.y).toBeLessThan(skull.max.y - skull.min.y);
+  });
+
   it('wears the colour the chapter gives it', () => {
     const pm = mk();
     pm.pose(person({ colour: '#ff0000' }), 0, 0);
@@ -181,7 +208,7 @@ describe('a person', () => {
    * and the geometries and every material but the clothes are shared between
    * every figure ever built.
    */
-  it('costs seventeen meshes and two materials of its own', () => {
+  it('costs eighteen meshes and two materials of its own', () => {
     const a = mk();
     const b = mk();
     a.pose(person(), 0, 0);
@@ -199,8 +226,13 @@ describe('a person', () => {
      * to fix the slides?"* They are hidden on everybody who is not one of those
      * two, and they cost geometries the crowd already shares — the budget this
      * test guards is the per-figure one, and it is five boxes.
+     *
+     * Seventeen became eighteen on 29 Sep 2026, and the one is named too: Claude's
+     * screen head (`Person.screen`). Michele: *"They are you and me... one should
+     * be able to understand that's you."* One more shared box, hidden on everybody
+     * else, its materials built the first time somebody wears it.
      */
-    expect(meshes).toBeLessThanOrEqual(17);
+    expect(meshes).toBeLessThanOrEqual(18);
     const geo = (pm: PersonModel, n: string): THREE.BufferGeometry => (pm.root.getObjectByName(n) as THREE.Mesh).geometry;
     for (const n of ['head', 'torso', 'leg-l', 'contact']) expect(geo(a, n)).toBe(geo(b, n));
     const mat = (pm: PersonModel, n: string): THREE.Material => (pm.root.getObjectByName(n) as THREE.Mesh).material as THREE.Material;

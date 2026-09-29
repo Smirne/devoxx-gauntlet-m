@@ -34,6 +34,7 @@ import {
   loadDroid,
   signText,
 } from '../letters';
+import { CAMEO_LOOKS, SECOND_ROW } from '../cameos';
 import { FRONT_ROW, SPEAKER_LOOKS } from '../speakers';
 import { buildReel, reelAt, reelLength } from '../reel';
 import type { Bot, Person, Plate, Prop, Rect, ReelCard, ReelView, RobotKind, Task, Vec2, Wall } from '../types';
@@ -413,6 +414,19 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     .slice(0, FRONT_ROW.length)
     .sort((a, b) => a.x - b.x);
   for (const q of reserved) q.taken = true;
+  /*
+   * ...and right behind them, Michele and Claude (`src/sim/cameos.ts`): two
+   * attendees who have been up all night on this building and are not missing
+   * the keynote. The second row of the same block, the two seats nearest its
+   * middle, taken before the crowd's order is dealt for the same reason.
+   */
+  const secondY = Math.min(...seats.filter((q) => q.y > frontY).map((q) => q.y));
+  const cameoSeats = seats
+    .filter((q) => q.y === secondY && q.x > aisles[0][1] && q.x < aisles[1][0])
+    .sort((a, b) => Math.abs(a.x - midX) - Math.abs(b.x - midX))
+    .slice(0, SECOND_ROW.length)
+    .sort((a, b) => a.x - b.x);
+  for (const q of cameoSeats) q.taken = true;
 
   const crowd: Attendee[] = [];
   /** Hands out `Person.seed` — monotonic, never reused. See `Person.seed`. */
@@ -1180,6 +1194,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     reserved.forEach((q, i) => {
       const name = FRONT_ROW[i];
       out.push({ x: q.x, y: q.y, r: 4, name, ...SPEAKER_LOOKS[name], role: 'seated', seed: 920 + i, face: -Math.PI / 2, speed: 0, cheer });
+    });
+    cameoSeats.forEach((q, i) => {
+      const name = SECOND_ROW[i];
+      out.push({ x: q.x, y: q.y, r: 4, name, ...CAMEO_LOOKS[name], role: 'seated', seed: 930 + i, face: -Math.PI / 2, speed: 0, cheer });
     });
   // Both of them are on the stage looking back up the room at the audience.
     out.push({

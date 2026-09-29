@@ -19,6 +19,7 @@ import { DT_MAX, createGame, type DebugGame, type BreakfastState } from '../src/
 import { DEMO_CHAPTER, GF, type ExpoState } from '../src/sim';
 import { CFP_WALL } from '../src/sim/geometry';
 import { LANYARD, lanyardFor } from '../src/sim/lanyards';
+import { SECOND_ROW } from '../src/sim/cameos';
 import { FRONT_ROW } from '../src/sim/speakers';
 import type { Person } from '../src/sim/types';
 import { walkTo } from './pilot';
@@ -285,9 +286,15 @@ describe('the keynote front row', () => {
     const g = mk(4);
     const seatedNamed = (): Person[] => g.snapshot().people.filter((p) => p.role === 'seated' && p.name !== undefined);
     const at0 = seatedNamed();
-    expect(at0.map((p) => p.name)).toEqual([...FRONT_ROW]);
+    const front = at0.filter((p) => FRONT_ROW.includes(p.name as string));
+    expect(front.map((p) => p.name)).toEqual([...FRONT_ROW]);
     // One row, all of them.
-    expect(new Set(at0.map((p) => p.y)).size).toBe(1);
+    expect(new Set(front.map((p) => p.y)).size).toBe(1);
+    // The only other named seats are the two cameos (`src/sim/cameos.ts`), and
+    // they are a row BEHIND the speakers, never beside them.
+    const rest = at0.filter((p) => !FRONT_ROW.includes(p.name as string));
+    expect(rest.map((p) => p.name)).toEqual([...SECOND_ROW]);
+    for (const p of rest) expect(p.y, `${p.name} is in the speakers' row`).toBeGreaterThan(front[0].y);
     // Let the room fill: nobody else is ever seated on a speaker's seat.
     for (let i = 0; i < 60 * 240; i++) g.update(DT_MAX);
     const people = g.snapshot().people;
