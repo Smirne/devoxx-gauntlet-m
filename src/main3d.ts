@@ -442,7 +442,10 @@ function showEnd(): void {
  */
 const DOWN: Readonly<Record<QualityName, QualityName>> = { ultra: 'high', high: 'medium', medium: 'low', low: 'high' };
 function cycleQuality(): void {
-  const next = DOWN[quality];
+  reloadAt(DOWN[quality]);
+}
+/** Reload at quality `next`, remembered, back into the chapter being played. */
+function reloadAt(next: QualityName): void {
   try {
     window.localStorage.setItem(Q_KEY, next);
   } catch {
@@ -481,6 +484,26 @@ function checkSlow(): void {
   qBtn.style.borderColor = '#ff7a1a';
   qBtn.style.color = '#ff9a4a';
 }
+
+/*
+ * THE GPU GAVE UP. A lost WebGL context — a driver reset, or video memory run
+ * out at a quality the machine cannot hold — used to leave the page black for
+ * good, which is a crash as far as anyone playing can tell. Now it says so, and
+ * one click reloads a level lower, straight back into the same chapter.
+ */
+canvas.addEventListener('webglcontextlost', (ev) => {
+  ev.preventDefault();
+  recordError('webglcontextlost');
+  if (document.querySelector('.ad3d-lost')) return;
+  const lower: QualityName = quality === 'low' ? 'low' : DOWN[quality];
+  const card = document.createElement('div');
+  card.className = 'ad3d-end ad3d-lost';
+  card.innerHTML =
+    '<h1>THE GRAPHICS CARD GAVE UP</h1><p>The browser lost the 3D view — usually the GPU running out of memory.</p>' +
+    `<p><button type="button">Reload at ${lower.toUpperCase()} quality</button></p>`;
+  card.querySelector('button')?.addEventListener('click', () => reloadAt(lower));
+  app.appendChild(card);
+});
 
 /* ================================================================= loop ==== */
 

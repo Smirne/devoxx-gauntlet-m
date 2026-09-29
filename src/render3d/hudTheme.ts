@@ -62,6 +62,7 @@ body.ad3d .ad-card b{color:${YELLOW}}
 .ad3d-end h1{color:${YELLOW};letter-spacing:.28em;font-size:24px;text-shadow:0 0 18px rgba(243,230,0,.5)}
 .ad3d-end button{font:inherit;letter-spacing:.16em;text-transform:uppercase;color:${CYAN};background:transparent;border:1px solid ${CYAN};padding:8px 18px;cursor:pointer}
 .ad3d-end button:focus-visible{outline:2px solid ${YELLOW};outline-offset:3px}
+.ad3d-lost{background:radial-gradient(ellipse at center,#28060c,#000)}
 
 .ad3d-title{position:fixed;inset:0;z-index:8;display:flex;flex-direction:column;justify-content:flex-end;gap:12px;padding:0 max(16px,6vw) 12vh;
   background:linear-gradient(0deg,rgba(0,0,0,.78),rgba(0,0,0,0) 55%);color:#eee;pointer-events:auto;cursor:pointer;
