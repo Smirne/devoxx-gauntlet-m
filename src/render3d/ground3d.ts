@@ -332,7 +332,9 @@ function shafts(group: THREE.Group, mats: Materials, concrete: THREE.Material): 
       group.add(sign);
       // Its green, washed down the wall under it.
       const wash = glowDecal(0x2bdc6a, 0.55, 2.4, 2.6);
-      wash.position.set(sign.position.x, DOOR_H + 0.1, sign.position.z + out1 * 0.01);
+      // Between the wall and the sign, not over it: 1 cm IN FRONT of the plate the
+      // two fought for the same pixels and the sign flickered (29 Sep).
+      wash.position.set(sign.position.x, DOOR_H + 0.1, sign.position.z - out1 * 0.015);
       wash.rotation.y = sign.rotation.y;
       group.add(wash);
     }
@@ -423,7 +425,9 @@ function facade(group: THREE.Group, mats: Materials, updaters: Array<(t: number,
   const signMat = new THREE.MeshBasicMaterial({ map: exitSign(), toneMapped: false, color: new THREE.Color(2, 2, 2) });
   for (const f of [0.2, 0.5, 0.8]) {
     const sg = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.23), signMat);
-    sg.position.set(ex - 0.12, base + TRANSOM + 0.35, m(e.y + e.h * f));
+    // 3 cm proud of the backing box, whose face is at ex - 0.12: coplanar, they
+    // flickered, and at the hall's depth range 1 cm is not enough either (29 Sep).
+    sg.position.set(ex - 0.15, base + TRANSOM + 0.35, m(e.y + e.h * f));
     sg.rotation.y = -Math.PI / 2;
     group.add(sg);
     b.add(mats.darkMetal, box(0.08, 0.28, 0.68, V(ex - 0.08, base + TRANSOM + 0.35, m(e.y + e.h * f))));
