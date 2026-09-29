@@ -45,8 +45,14 @@ export const CREDIT_ROLES: readonly CreditRole[] = [
   {
     who: 'Claude \u2014 Opus 5, Opus 5.5 and Sonnet, in Claude Code',
     what:
-      'Wrote the simulation, the renderer, the venue, the three robots, the music and the tests. ' +
+      'Wrote the simulation, the renderer, the venue, the three robots, the chapter scores and the tests. ' +
       'Proposed a great deal that was rejected, which is the half of this that took the time.',
+  },
+  {
+    who: 'Ronny Shamano',
+    what:
+      'Music help — “Heroic Motif”, the track the three robots step out of their crates to, ' +
+      'made with AI and given to the game.',
   },
   {
     who: 'WellD',
