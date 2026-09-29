@@ -21,6 +21,7 @@
 
 import { createAudio, type Audio } from '../../src/render/audio';
 import { createCues } from '../../src/render/cues';
+import { openingTrackReady } from '../../src/render/music';
 import { DT_MAX } from '../../src/sim/constants';
 import { createGame } from '../../src/sim/game';
 import { OVER_AT } from '../../src/sim/opening';
@@ -183,6 +184,9 @@ async function renderOpening(opts: RenderOpts = {}): Promise<RenderResult> {
   const cues = createCues(heard);
   // The page's gate: a key is what lets a browser make sound at all.
   window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
+  // The opening's track decodes in real time and this render does not wait for
+  // real time; a player's decode is done long before the band is due.
+  await openingTrackReady();
 
   const log: string[] = [];
   let playing = -2;

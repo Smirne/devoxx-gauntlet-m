@@ -36,7 +36,8 @@ pnpm preview    # serve the production bundle
 ```
 
 No API keys, no asset downloads, no native build step: everything — geometry, robots, lighting and
-audio, music included — is generated in code at startup.
+audio — is generated in code at startup, apart from the opening's music, one short track inlined
+into the bundle.
 
 ## Controls (3D build)
 
@@ -119,11 +120,13 @@ wayfinding signs are the venue's own.
 ## Technologies
 
 TypeScript (strict), Vite, Three.js r186 and vitest — and nothing else. No game engine, no physics
-library, no 3D models, no texture or audio files. `src/sim` is a headless, tested 2D simulation and
+library, no 3D models, no textures, and one audio file (below). `src/sim` is a headless, tested 2D simulation and
 is the only source of truth for game state; `src/render` is Three.js and only ever reads it. The
 robots are procedural primitives on a bone rig with a procedurally animated gait, the venue is built
 from the floor plans, and every sound is synthesised with the Web Audio API at runtime — including
-the music, which is a four-bar score per chapter played by oscillators rather than a file.
+the music, which is a four-bar score per chapter played by oscillators rather than a file. The one
+file is the opening's: "Heroic Motif" by Ronny Shamano, AI-generated and given to the game, cut to
+the crates (`src/render/opening-track.mp3`); the synthesised opening score is its fallback.
 
 Built with generative AI, deliberately and with the process written down:
 **[docs/genai-notes.md](docs/genai-notes.md)**. How the build itself is run — builder, then a critic
@@ -185,7 +188,9 @@ mascot (artwork released by Sun under a BSD licence), stands inflated in the lob
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE). It covers the code and the generated content, which is all of the game:
-no third-party art, models, textures or audio ship in the build. The robot model sheets (`robots/`),
+MIT — see [LICENSE](LICENSE). It covers the code and the generated content, which is all of the game
+but one file: no third-party art, models or textures ship in the build, and the only audio file is
+the opening's track, "Heroic Motif" by Ronny Shamano, AI-generated and given to this game with
+permission — credited on the credits screen (`C`). The robot model sheets (`robots/`),
 floor plans (`plans/`) and venue photographs (`media/`) are the organisers' own reference material
 from <https://game.devoxx.be/references.html>, kept here only as build references.

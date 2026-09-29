@@ -5,6 +5,12 @@
  * track to load: there is a four-bar score per chapter, and a look-ahead scheduler
  * that turns it into notes on the same `AudioContext` the sound effects use.
  *
+ * ONE EXCEPTION, and it is his: the opening plays a real track, "Heroic Motif"
+ * by Ronny Shamano, AI-generated and given to the game (29 Sep 2026: *"this is
+ * good. open MR"*). It is cut to the crates and inlined into the bundle, so the
+ * published page stays one file — see `OPENING_TRACK` below. The synthesised
+ * opening score stays as the fallback wherever the track cannot be decoded.
+ *
  * The split matters more than the synthesis. Everything above `startMusic()` is
  * pure data and pure functions — chords, patterns, `barNotes()` — so the score can
  * be asserted in a test that has no Web Audio at all: that every pitched note is
@@ -25,6 +31,8 @@
  */
 
 import { FLICKER_TIME, LEAD, PANEL_DELAY, PANEL_EACH, SLOT, STRIKES, WALK_AT } from '../sim/opening';
+
+import OPENING_TRACK_URL from './opening-track.mp3?inline';
 
 /* ============================================================ the score ===== */
 
@@ -455,6 +463,44 @@ const OPENING: Score = {
   ],
 };
 
+/* ------------------------------------------------------ the opening's track
+ *
+ * "Heroic Motif", Ronny Shamano — a 24 s AI-generated track, cut to the opening
+ * rather than the opening re-timed to it (it runs at 150 bpm, the crates at 96):
+ *
+ *  - it starts on its own build, under the title;
+ *  - its full band comes in on Voxxy's crate, which is the one landing it is
+ *    placed by (`OPENING_TRACK_BAND`);
+ *  - 12.78 s of its middle are cut out at the join after Biggy's crate — exactly
+ *    eight bars, the lag at which the track repeats itself most closely, so the
+ *    join does not jump — and it plays its own last bars;
+ *  - its last chord is time-stretched into a held tone and faded over 3 s, into
+ *    the dark: the file stops at full level, and Michele's word for that was
+ *    *"a bit abrupt"*.
+ *
+ * All of that is baked into `opening-track.mp3`; this file only knows when it
+ * starts and how loud it is.
+ */
+/** Seconds into the file where the full band comes in. */
+export const OPENING_TRACK_BAND = 2.2;
+/** Seconds from the opening's cue to the file's first sample: the band lands with Voxxy's crate. */
+export const OPENING_TRACK_AT = LEAD + PANEL_DELAY + PANEL_EACH - OPENING_TRACK_BAND;
+/**
+ * The file's level under `MUSIC_GAIN`, so it sits where the synth score did —
+ * matched by rendering both through the game's own graph (tools/render-audio).
+ */
+const OPENING_TRACK_GAIN = 1.8;
+/** The track, as a data URL: inlined, so `tools/inline-build.mjs` has no file to fold. */
+const OPENING_TRACK: string = OPENING_TRACK_URL;
+
+/** Settles once the last `startMusic` has the track decoded, or has given up on it. */
+let trackDecoded: Promise<unknown> = Promise.resolve();
+/**
+ * For `tools/render-audio`, whose offline render outruns any real decode: it waits
+ * on this before rendering, so the file it writes is what a player hears.
+ */
+export const openingTrackReady = (): Promise<unknown> => trackDecoded;
+
 /** The score for each chapter, and the opening as chapter 0. The outro is silence. */
 export const SCORES: Readonly<Record<number, Score>> = { 0: OPENING, 1: NIGHT, 2: HALL, 3: BREAKFAST, 4: KEYNOTE };
 
@@ -553,6 +599,11 @@ export function startMusic(ctx: AudioContext, out: AudioNode, noise: AudioBuffer
     bar: number;
     /** When the next unscheduled bar starts, in context time. */
     nextBar: number;
+    /**
+     * A deck that plays the opening's track instead of the score: context time
+     * its first sample is due. The pump schedules no notes on it.
+     */
+    trackAt?: number;
   }
 
   let deck: Deck | null = null;
@@ -587,6 +638,13 @@ export function startMusic(ctx: AudioContext, out: AudioNode, noise: AudioBuffer
 
   function unplug(d: Deck): void {
     for (const n of [d.gain, ...d.nodes]) {
+      try {
+        // The opening's track would otherwise play on, unheard, to its end.
+        const src = n as Partial<AudioScheduledSourceNode>;
+        if (typeof src.stop === 'function') src.stop();
+      } catch {
+        /* never started, or already stopped */
+      }
       try {
         n.disconnect();
       } catch {
@@ -1139,7 +1197,7 @@ export function startMusic(ctx: AudioContext, out: AudioNode, noise: AudioBuffer
    * carrying on behind the page.
    */
   function pump(): void {
-    if (disposed || !deck) return;
+    if (disposed || !deck || deck.trackAt !== undefined) return;
     if (ctx.state === 'suspended') return;
     const now = ctx.currentTime;
     if (deck.nextBar < now) deck.nextBar = now + 0.05;
@@ -1160,12 +1218,65 @@ export function startMusic(ctx: AudioContext, out: AudioNode, noise: AudioBuffer
     send = null;
   }
 
+  /*
+   * THE OPENING'S TRACK, decoded once, as soon as there is a context to decode
+   * on. `null` while it is on its way; `false` when it cannot be had — a context
+   * without `decodeAudioData` (the tests' stub) or a codec that refuses the file
+   * — and the opening then plays its synthesised score, as it always has.
+   */
+  let track: AudioBuffer | null | false = typeof ctx.decodeAudioData === 'function' ? null : false;
+  if (track === null) {
+    trackDecoded = fetch(OPENING_TRACK)
+      .then((r) => r.arrayBuffer())
+      .then((bytes) => ctx.decodeAudioData(bytes))
+      .then((buf) => {
+        track = buf;
+        if (deck?.trackAt !== undefined) playTrack(deck, buf);
+      })
+      .catch(() => {
+        track = false;
+        // The track was asked for and will never come: the score takes the opening.
+        if (deck?.trackAt !== undefined && chapter === 0) {
+          chapter = -1;
+          setChapter(0);
+        }
+      });
+  }
+
+  /**
+   * Start the track on its deck, on the opening's clock. If decoding finished
+   * after the cue, it starts where it should already be rather than late, so the
+   * band still lands on Voxxy's crate.
+   */
+  function playTrack(d: Deck, buf: AudioBuffer): void {
+    if (d.trackAt === undefined || disposed) return;
+    const now = ctx.currentTime;
+    const offset = Math.max(0, now - d.trackAt);
+    if (offset >= buf.duration) return;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const level = ctx.createGain();
+    level.gain.value = OPENING_TRACK_GAIN;
+    src.connect(level).connect(d.gain);
+    d.nodes.push(src, level);
+    src.start(Math.max(now, d.trackAt), offset);
+  }
+
   function setChapter(next: number): void {
     if (disposed || next === chapter) return;
     chapter = next;
     if (deck) {
       drop(deck);
       deck = null;
+    }
+    if (next === 0 && track !== false) {
+      const gain = ctx.createGain();
+      gain.gain.value = 0.0001;
+      gain.connect(out);
+      deck = { gain, score: OPENING, verb: null, nodes: [], bar: 0, nextBar: Infinity, trackAt: ctx.currentTime + OPENING_TRACK_AT };
+      ramp(gain, muted ? 0 : MUSIC_GAIN, 0.05);
+      if (track) playTrack(deck, track);
+      return;
     }
     const score = SCORES[next] ?? null;
     if (!score) return;
