@@ -81,6 +81,8 @@ import { KEYNOTE_LOOK, SPEAKER_LOOKS } from '../speakers';
 import { LANYARD } from '../lanyards';
 import { beltUp, nastriRun } from '../nastri';
 import { botsCollide, circleRect, dist, inRect, mkBody, speed, standOff, stepBot } from '../bot';
+import { WALK_SLACK, clearWalk, detour } from '../detour';
+import { PX_PER_M } from '../units';
 import type { Bot, CameraShot, CutRoute, Person, Prop, Rect, Task, Vec2, Wall } from '../types';
 
 import type { ChapterCtx, ChapterDef, ChapterRuntime, PrevVel } from './index';
@@ -331,6 +333,61 @@ const TRAIL_STEP = 12;
 const TRAIL_REACH = 9;
 /** How much of Voxxy's route the speaker remembers — 120 crumbs is ~14 m. */
 const TRAIL_MAX = 120;
+/** How far short of Voxxy herself the speaker stops, px: they follow her, they do not tread on her. */
+const SPEAKER_BEHIND = 22;
+/**
+ * ...EXCEPT WHERE NO PERSON CAN WALK IT.
+ *
+ * Michele, 29 Sep 2026, chapter 3, with a screenshot of the masked speaker stood
+ * against a white block and Voxxy out beyond it: *"the keynote speaker is blocked
+ * on this block. I went under the table I think."* She fits under the sponsor
+ * half tables and nobody else does, so the crumb guard in `update` drops nothing
+ * under the cloth — which is right, and which left the last crumb before the
+ * table and the first one after it as two good places to stand with a table
+ * between them. The speaker walked the straight line from one to the other into
+ * the tablecloth, and nothing ever moved them again: measured, Regex Racing's
+ * hiding place with Voxxy driven through the middle of The Coffee Sponsor left
+ * them pinned at the table's west face for as long as the test would wait.
+ *
+ * So before every leg the speaker asks whether a PERSON can walk it
+ * (`clearWalk`, `src/sim/detour.ts`), and when not, finds their own way round to
+ * the first crumb of her route they can reach — or to her, if none — and rejoins
+ * it there (`detour`). While her route is walkable it is never asked, so an
+ * ordinary errand is the follow it always was: same crumbs, same pace, same stop
+ * short of her.
+ *
+ * A way round a table is found in about a millisecond. Proving that she is
+ * somewhere no person can reach at all means searching the whole floor, three or
+ * four milliseconds, and a speaker waiting beside a table for Voxxy to come out
+ * has no reason to do that every frame: after a search that found no way to her
+ * they look again only once she has moved, and at most every `SPEAKER_REPLAN`
+ * seconds.
+ */
+const SPEAKER_REPLAN = 0.5;
+/**
+ * A second of pressing on and getting nowhere, and the straight line is not
+ * believed any more: they plan from where they stand. Nothing above should ever
+ * leave them there; this is what lets "never" be said with a straight face. It is
+ * also how long Voxxy gets to come straight back out from under something before
+ * the speaker says they will wait.
+ */
+const SPEAKER_STALL = 1;
+/**
+ * How much further the way round has to be than the straight line before the
+ * speaker says why they are not walking her route: a metre. Less than that is a
+ * corner Voxxy cut closer than a person would, and nobody announces a corner.
+ */
+const SPEAKER_NOTICE = PX_PER_M;
+/*
+ * ...and what they say when they do. A table that stops the keynote speaker is a
+ * gate, and every gate says why, in the voice of whoever it stopped (CLAUDE.md).
+ * Once a time round, not once a frame — see `said`.
+ */
+const SPEAKER_ROUND_TABLE =
+  'Keynote speaker: "Under the tablecloth? In this cape? I am going round — keep going, I can see you."';
+const SPEAKER_ROUND = 'Keynote speaker: "You fit through there and I do not. I am going round — keep going, I can see you."';
+const SPEAKER_WAITS =
+  'Keynote speaker: "I cannot get to you in there. I will wait right here — come back out and lead me round."';
 /** Stephan's polo: the dark olive one, off the photograph he sent. */
 const STEPHAN_POLO = '#434a3c';
 /** ...and its collar stripe, which is the half of it that reads at this size. */
@@ -1398,6 +1455,31 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const speaker = { ...inFrontOf(hideBooth), r: 7, following: false, withStephan: false, sp: 0, face: Math.PI / 2 };
   /** Voxxy's route, dropped behind her for the speaker to walk — see `TRAIL_STEP`. */
   const trail: Vec2[] = [];
+  /**
+   * The speaker's own way round a stretch of that route no person can walk, and
+   * where it comes out — see `SPEAKER_REPLAN`. Empty while they are on her route.
+   */
+  let way: Vec2[] = [];
+  let wayTo: Vec2 = { x: speaker.x, y: speaker.y };
+  /**
+   * True when the last plan could reach none of her route and not her either:
+   * they are standing where they wait, and there is nothing to plan again until
+   * she moves or drops a crumb somewhere new. `waitSince` is when that started.
+   */
+  let waiting = false;
+  let waitSince = 0;
+  /** After a plan that found no way to her: sim time before which they do not look again. */
+  let replanAt = 0;
+  /** Seconds spent pressing on and getting nowhere — see `SPEAKER_STALL`. */
+  let stalled = 0;
+  /**
+   * What they have said since they were last on her route — nothing, that they
+   * will wait, or that they are going round — and when they last said anything.
+   * Each at most once a time round: "I will wait" can still be followed by "I am
+   * going round" when she comes out the far side, but neither is ever said twice.
+   */
+  let said: '' | 'wait' | 'round' = '';
+  let saidAt = -Infinity;
 
   /*
    * Stephan, and the spot the soup has to reach him.
@@ -2708,6 +2790,48 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     };
   }
 
+  /**
+   * The keynote speaker's way round, from where they stand, when the straight line
+   * to `tgt` — the next crumb of Voxxy's route, or Voxxy — is not one a person can
+   * walk (`SPEAKER_REPLAN`).
+   *
+   * To the FIRST crumb of her route they can reach, then her route again from
+   * there; the crumbs before it are dropped, because a crumb with no way in for a
+   * person is one nobody is ever going to walk. If none can be reached, nor Voxxy
+   * herself — she is under a tablecloth, or somewhere else only she fits — to the
+   * floor nearest her, and they wait there for her to come out (`update` says so,
+   * if she does not come straight back out).
+   *
+   * And when they go round, they say so: once a time round (`said`), and not for
+   * a corner.
+   */
+  function goRound(tgt: Vec2, lead: Vec2): void {
+    stalled = 0;
+    const d = detour(ctx.walls, speaker, [...trail, lead], speaker.r, SPEAKER_BEHIND);
+    trail.splice(0, d.goal < 0 ? trail.length : d.goal);
+    way = d.path;
+    wayTo = trail[0] ?? lead;
+    if (d.goal < 0) {
+      if (!waiting) waitSince = ctx.t;
+      replanAt = ctx.t + SPEAKER_REPLAN;
+    }
+    waiting = d.goal < 0;
+    if (waiting || said === 'round' || ctx.t - saidAt < BLOCKED_THROTTLE) return;
+    // How much further round it is than straight to where it comes out.
+    let len = 0;
+    let at: Vec2 = speaker;
+    for (const p of way) {
+      len += dist(at, p);
+      at = p;
+    }
+    if (len < dist(speaker, at) + SPEAKER_NOTICE) return;
+    // The line names the tablecloth when it is a tablecloth that is in the way.
+    const cloth = ctx.walls.some((w) => w.booth?.table && !clearWalk([w], speaker, tgt, 0));
+    said = 'round';
+    saidAt = ctx.t;
+    ctx.flash(cloth ? SPEAKER_ROUND_TABLE : SPEAKER_ROUND, 4000);
+  }
+
   function update(dt: number): void {
     ctx.pushBiggy(dt);
     mg.update(dt);
@@ -2842,18 +2966,59 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       // The next crumb if there is one; otherwise Voxxy herself, unless she is
       // already standing on the spot — then the spot, so the speaker settles next
       // to Stephan instead of orbiting the robot.
+      const lead = inRect(v, speakerSpot) ? speakerAt : { x: v.x, y: v.y };
       const head = trail[0];
-      const tgt = head ?? (inRect(v, speakerSpot) ? speakerAt : { x: v.x, y: v.y });
-      const dx = tgt.x - speaker.x;
-      const dy = tgt.y - speaker.y;
-      const dd = Math.hypot(dx, dy);
+      const tgt = head ?? lead;
       // A crumb is walked onto; a person is stopped short of.
-      const stop = head ? 0 : 22;
-      speaker.sp = dd > stop ? SPEAKER_WALK : 0;
-      if (dd > stop) {
+      const stop = head ? 0 : SPEAKER_BEHIND;
+      /*
+       * ...and whether a person can get there — see `SPEAKER_REPLAN`. Her route
+       * first, in a straight line, exactly as it always was; the way round only
+       * when that line would walk them into something she went under or through.
+       */
+      let aim: Vec2 | null = null;
+      if (dist(tgt, speaker) <= stop) {
+        way = [];
+        waiting = false;
+      } else {
+        // A way planned to somewhere they are no longer going is no way at all.
+        if (dist(wayTo, tgt) > TRAIL_STEP) {
+          way = [];
+          waiting = false;
+        }
+        const onRoute = way.length === 0 && !waiting && stalled < SPEAKER_STALL;
+        if (onRoute && clearWalk(ctx.walls, speaker, tgt, speaker.r - WALK_SLACK)) {
+          aim = tgt;
+          said = '';
+        } else {
+          if ((onRoute || stalled >= SPEAKER_STALL) && ctx.t >= replanAt) goRound(tgt, lead);
+          while (way.length > 0 && dist(way[0], speaker) < 1) way.shift();
+          aim = way[0] ?? null;
+        }
+      }
+      /*
+       * Waiting for her, and they say so — but only once she has had a second to
+       * come straight out again. Voxxy crossing a table takes about that long,
+       * and "I will wait here" followed at once by walking off round it is a
+       * person who did not mean it.
+       */
+      if (waiting && said === '' && ctx.t - waitSince >= SPEAKER_STALL && ctx.t - saidAt >= BLOCKED_THROTTLE) {
+        said = 'wait';
+        saidAt = ctx.t;
+        ctx.flash(SPEAKER_WAITS, 4000);
+      }
+      speaker.sp = aim ? SPEAKER_WALK : 0;
+      if (!aim) stalled = 0;
+      else {
+        const dx = aim.x - speaker.x;
+        const dy = aim.y - speaker.y;
+        const dd = Math.hypot(dx, dy);
+        const was: Vec2 = { x: speaker.x, y: speaker.y };
+        // Onto a waypoint, not past it: a corner of the way round is a corner.
+        const step = Math.min(dd, SPEAKER_WALK * dt);
         speaker.face = Math.atan2(dy, dx);
-        speaker.x += (dx / dd) * SPEAKER_WALK * dt;
-        speaker.y += (dy / dd) * SPEAKER_WALK * dt;
+        speaker.x += (dx / dd) * step;
+        speaker.y += (dy / dd) * step;
         /*
          * ...and a tablecloth stops them, which it did not used to.
          *
@@ -2871,6 +3036,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
             speaker.y += hit.ny * hit.pen;
           }
         }
+        // A quarter of a step or less, and they are pressing on for nothing.
+        stalled = dist(was, speaker) < step / 4 ? stalled + dt : 0;
       }
       /*
        * ...and Stephan will step over for them, the way he takes the soup out of
