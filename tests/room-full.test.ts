@@ -76,8 +76,8 @@ describe('chapter 4 · the room fills before the stage is ready', () => {
   it('puts the wait on the opening video', () => {
     const clean = { soup: 100, temp: 92, spare: 0, complaints: 0, keynoteComplaints: 0, oom: 0, cable: 0 };
     const titles = buildReel({ ...clean, lateT: 96 }, [], 700).map((c) => c.title);
-    expect(titles).toContain('96s of three thousand people waiting');
+    expect(titles).toContain('96s of 746 people waiting');
     // A run that was never late says nothing about it.
-    expect(buildReel(clean, [], 700).map((c) => c.title)).not.toContain('0s of three thousand people waiting');
+    expect(buildReel(clean, [], 700).map((c) => c.title)).not.toContain('0s of 746 people waiting');
   });
 });

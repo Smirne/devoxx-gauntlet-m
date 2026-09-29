@@ -1474,7 +1474,7 @@ function stairShaftWalls(s: Rect, to: string): Wall[] {
       stair: to === 'top' ? -1 : 1,
       why: (b) =>
         b.kind === 'voxxy'
-          ? 'Voxxy: back up? Twelve risers and every one of them is taller than I am. We came DOWN these for a reason'
+          ? 'Voxxy: back up? Twelve risers and I would hop every one of them. We came DOWN these for a reason'
           : b.kind === 'droid'
             ? 'Droid: I could take that flight. Slowly. And then I would be alone on a floor with nothing on it'
             : 'Biggy: stairs. Down, once, loudly. Up, never',

@@ -136,7 +136,7 @@ export function buildReel(
    */
   if (lateT > 0) {
     add(
-      `${lateT}s of three thousand people waiting`,
+      `${lateT}s of 746 people waiting`,
       'The stage was still being built. They were extremely polite about it.',
     );
   }
