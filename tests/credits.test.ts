@@ -71,11 +71,24 @@ describe('the credits', () => {
   it('carries the WellD mark and the site, and does not recolour either', () => {
     expect(WELLD_SITE).toBe('welld.ch');
     // The real artwork, inlined — not a hand-traced wordmark, and not a fetch.
-    expect(WELLD_LOGO.startsWith('data:image/png;base64,')).toBe(true);
+    // It is the vector Michele sent on 29 Sep 2026, so it is markup, not a raster.
+    expect(WELLD_LOGO.startsWith('<svg viewBox="0 0 900 343"')).toBe(true);
+    expect(WELLD_LOGO.trimEnd().endsWith('</svg>')).toBe(true);
+    expect(WELLD_LOGO).not.toContain('data:image');
     // Small enough that the published build stays one self-contained file.
     expect(WELLD_LOGO.length).toBeLessThan(20000);
-    // The brand red, off the artwork itself (201, 16, 46).
-    expect(WELLD_RED.toLowerCase()).toBe('#c9102e');
+
+    /*
+     * THE ONE COLOUR IT IS ALLOWED TO BE. The brand red is declared once and the
+     * artwork carries it on the root, where all 18 paths inherit it — so if any
+     * path ever grows a fill of its own, or the constant drifts away from the
+     * file, this fails rather than quietly shipping a recoloured logo.
+     */
+    expect(WELLD_RED).toBe('#E50339');
+    expect(WELLD_LOGO).toContain(`fill="${WELLD_RED}"`);
+    expect(WELLD_LOGO.match(/fill="/g) ?? [], 'a path grew a fill of its own').toHaveLength(1);
+    // ...and the old mark's white plate went with it: the new one needs no ground.
+    expect(WELLD_LOGO).not.toContain('#fff');
   });
 
   /**

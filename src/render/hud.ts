@@ -385,11 +385,12 @@ const CSS = `
 .ad-cstat .ad-cnote{margin-top:2px;font-size:11px;line-height:1.4;color:${MUTED}}
 .ad-cfoot{margin-top:16px;padding-top:14px;border-top:1px solid rgba(242,239,233,.12);
   display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap}
-/* The mark keeps its own white ground: the tagline is black and the panel is not.
-   Recolouring somebody's logo to suit a palette is not a liberty to take. */
+/* No plate. The old lockup needed one — a black tagline on a transparent ground
+   would have vanished into this panel — but the new mark is one flat red over
+   the whole thing, so it sits straight on the dark and keeps its own colour.
+   Recolouring somebody's logo to suit a palette is still not a liberty to take. */
 .ad-cwd{display:flex;align-items:center;gap:12px}
-.ad-cwd img{display:block;width:120px;height:auto;padding:7px 10px;border-radius:8px;
-  background:#fff}
+.ad-cwd svg{display:block;width:132px;height:auto}
 .ad-cwd .ad-csite{font-size:13px;color:${WELLD_RED};font-weight:600;letter-spacing:.02em}
 .ad-cnote2{flex:1 1 280px;min-width:0;font-size:11px;line-height:1.45;color:${MUTED}}
 .ad-ckey{margin-top:10px;font-size:11px;letter-spacing:.06em;color:${MUTED};text-align:right}
@@ -800,9 +801,12 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     }
     const foot = el('div', 'ad-cfoot', box);
     const wd = el('div', 'ad-cwd', foot);
-    const mark = el('img', '', wd);
-    mark.src = WELLD_LOGO;
-    mark.alt = 'WellD';
+    // Inline vector, not an <img src="data:...">: the markup is ours, it is a
+    // constant in this build, and nothing reaches it from the page or the sim.
+    const mark = el('span', '', wd);
+    mark.innerHTML = WELLD_LOGO;
+    mark.setAttribute('role', 'img');
+    mark.setAttribute('aria-label', 'WellD');
     el('span', 'ad-csite', wd).textContent = WELLD_SITE;
     el('div', 'ad-cnote2', foot).textContent = CREDIT_FOOTNOTE;
     el('div', 'ad-ckey', box).textContent = CREDIT_CLOSE;
