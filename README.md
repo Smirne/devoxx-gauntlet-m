@@ -143,9 +143,12 @@ kept compiling, and both read the same simulation.
   simulation (movement, collisions, pushes, the door and cable thresholds), the light and shadow
   model, the venue geometry for both floors, the three robot models, the HUD and the synthesised
   audio — with the test suite green (`pnpm test`) and zero console errors on a full run.
-- **The ending is in:** the keynote opens with a video cut from how you actually played — the soup
-  you spilled, the cable you dragged, the scenes you skipped — and the three robots take a curtain
-  call in front of it while the room applauds. `C` on the final card opens the credits.
+- **The ending is in:** when the last robot reaches the stage, the three regroup, the camera goes up
+  to the house screen and the keynote's opening film plays — the title as the splash screen draws
+  it, the byline, a cut of how you actually played (the soup you spilled, the cable you dragged, the
+  scenes you skipped), then the credits, with the game's two makers there as their own characters.
+  The camera comes back down for the curtain call, which the room applauds behind the final card;
+  `C` on that card opens the credits screen.
 - **Pacing is measured, not felt:** `tests/chapter4-length.test.ts` drives chapter 4 on one stick,
   through the one door and along the real aisles, with nothing teleported; it prints where the time
   goes and fails if the chapter outgrows its budget.
@@ -200,7 +203,10 @@ so "no console errors" can be read straight out of `--dump-dom`.
 Stephan (who runs Devoxx) at the stairs, Celestino on the badge desk, and — on the hall floor, then in
 Room 8's front row for the keynote — Mario, Venkat, Josh, Lize and Aurélie: first names and friendly
 caricatures, drawn from photographs, with nothing that needs anybody's permission. Duke, the Java
-mascot (artwork released by Sun under a BSD licence), stands inflated in the lobby.
+mascot (artwork released by Sun under a BSD licence), stands inflated in the lobby. The two who made
+the game are in it too — Michele, and Claude with a terminal for a face — at a high table at
+breakfast and in Room 8's second row for the keynote. `E` beside anyone with a name, with any of the
+three robots, starts a conversation.
 
 ## Licence
 
