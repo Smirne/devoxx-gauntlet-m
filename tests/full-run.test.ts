@@ -33,14 +33,18 @@ import {
 } from '../src/sim';
 import { bot, playToStairGate, raiseSign, walkTo } from './pilot';
 
-const SEED = 20260930;
+/**
+ * The run's seed. The chapter routines are exported so the same run can be driven
+ * through the real build, frame by frame (`tools/playthrough/`).
+ */
+export const SEED = 20260930;
 
 const steps = (g: DebugGame, n: number): void => {
   for (let i = 0; i < n; i++) g.update(DT_MAX);
 };
 
 /** Run until `done()`, or fail loudly with what was being waited for. */
-function until(g: DebugGame, what: string, done: () => boolean, budget = 900): void {
+export function until(g: DebugGame, what: string, done: () => boolean, budget = 900): void {
   for (let i = 0; i < budget && !done(); i++) g.update(DT_MAX);
   expect(done(), `the run never got to: ${what}`).toBe(true);
 }
@@ -48,7 +52,7 @@ function until(g: DebugGame, what: string, done: () => boolean, budget = 900): v
 /* ------------------------------------------------------------- chapter 1 --- */
 
 /** Voxxy at the fire-door keypad, the chapter's own code, and the stairs down. */
-function playChapter1(g: DebugGame): void {
+export function playChapter1(g: DebugGame): void {
   const code = (g.debug.chapter() as NightState).code;
   g.debug.select('voxxy');
   g.debug.place('voxxy', 585, 330);
@@ -66,7 +70,7 @@ const HUB: Vec2 = { x: GF.cabinet.x + GF.cabinet.w / 2, y: GF.cabinet.y + GF.cab
 const PANEL: Vec2 = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
 
 /** Breakers, cabinet, the label read off Biggy's shoulders, the cable, the door. */
-function playChapter2(g: DebugGame): void {
+export function playChapter2(g: DebugGame): void {
   const expo = (): ExpoState => g.debug.chapter() as ExpoState;
 
   g.debug.select('droid');
@@ -118,7 +122,7 @@ function playChapter2(g: DebugGame): void {
 /* ------------------------------------------------------------- chapter 4 --- */
 
 /** Cake, the #DEVOXX sign, spotlights, everyone on the boards, and the opening video out. */
-function playChapter4(g: DebugGame): void {
+export function playChapter4(g: DebugGame): void {
   const key = (): KeynoteState => g.debug.chapter() as KeynoteState;
   const prop = (kind: string): { x: number; y: number; w?: number; h?: number } => {
     const p = g.snapshot().props.find((o) => o.kind === kind);

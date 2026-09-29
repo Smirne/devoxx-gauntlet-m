@@ -5801,3 +5801,26 @@ while the room applauded; `tests/curtain-call.test.ts` caught it and they clap n
       fill light and exposure changes are in.
     - Voxxy's ears and visor, and the chapter 1 door texture, are left for a model-sheet pass.
     - Scripted chapter-opening framings are on the backlog.
+
+## 29 Sep 2026 — belts, and a full playthrough in the real 3D build
+
+- **Human decisions (Michele).**
+  - The red belt barriers across the stand fronts stay in chapter 2 and are open in chapter 3.
+  - The raked Room 8 is still his call: a before/after comparison has been sent, and the rake
+    stays off by default (`?rake=1` shows it).
+- **Agent work.**
+  - The #DEVOXX letters now stand on the rake's own floor height when the rake is on.
+  - New tool `tools/playthrough/run.mjs` plays the same choreography as `tests/full-run.test.ts`
+    inside the real 3D page. That test now exports its chapter legs, and a small `vitest` shim
+    lets the page import them.
+  - The tool renders a frame every few sim seconds and fails on any page error.
+  - Result: all four chapters and the opening video in about 108 s of sim clock, final card
+    "Keynote starts. 8/9", no page errors.
+- **Caught and rejected.**
+  - In the first contact sheet, chapter 2 was mostly black and there was a flat grey frame in
+    chapter 3. That was the tool, not the game: the page only renders when it shoots, so the
+    easing follow camera lagged seconds behind the robot. The tool now snaps the camera before
+    each shot.
+  - "Night 0s" on the card is also an artifact. The choreography teleports Voxxy to the keypad
+    at t = 0, so it scores the night leg as instant. A real player's time is recorded where the
+    fire door opens.
