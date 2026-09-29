@@ -78,7 +78,9 @@ describe('the cake goes where Biggy pushes it', () => {
     // 6 px is a third of the board's own radius: a normal, human miss. This is the
     // measurement in Michele's note — "especially west-east".
     for (const off of [-6, 6]) {
-      const t = push([-1, 0], off);
+      // 2.2 s: the ~92 px of push that 3 s gave before Biggy's accel went 0.6 ->
+      // 1.5 (Michele, 29 Sep). The same shove, measured over the same floor.
+      const t = push([-1, 0], off, 2.2);
       expect(t.along, `off ${off}: the cake barely moved`).toBeGreaterThan(40);
       expect(t.across, `off ${off}: the cake wandered ${t.across.toFixed(0)} px off the line`).toBeLessThan(14);
     }

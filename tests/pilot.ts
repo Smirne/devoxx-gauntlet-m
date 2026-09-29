@@ -19,10 +19,14 @@ import {
   CRATE_STACK_LIMIT,
   DT_MAX,
   GF,
+  R,
   circleRect,
+  roomDoor,
   type Bot,
   type BreakfastState,
   type DebugGame,
+  type ExpoState,
+  type KeynoteState,
   type Prop,
   type RobotKind,
   type Vec2,
@@ -243,10 +247,10 @@ export function walkTo(g: DebugGame, kind: RobotKind, target: Vec2, tol = 7, avo
  *
  * Soup, speaker, beer: his three conditions, in the order a player meets them, and
  * every address read off a prop or a person the sim itself publishes rather than
- * typed in. It stops while the chapter is still holding the hall for the gate's
- * swing (`GATE_SWING_TIME + GATE_CUT_DELAY` in `ch3-breakfast.ts`) — once
- * `startChapter(4)` has run, the props are chapter 4's and there is nothing left of
- * chapter 3 to measure.
+ * typed in. It stops on the frame the last belt has wound in, inside the stair
+ * beat and before the climb (`STAIR_BEAT`, `GATE_CUT_DELAY` in `ch3-breakfast.ts`)
+ * — once `startChapter(4)` has run, the props are chapter 4's and there is nothing
+ * left of chapter 3 to measure.
  *
  * Shared, because two files need it: `tests/colliders.test.ts` sweeps what the
  * chapter draws with its gate open — the half of the chapter that was written off
@@ -347,16 +351,20 @@ export function playToStairGate(g: DebugGame, onOpen?: (g: DebugGame) => void): 
   // The frame the barrier starts moving on, for a caller that wants to watch it.
   onOpen?.(g);
   /*
-   * Let the barrier finish its swing and stop there.
+   * Let the belts finish winding in and stop there.
    *
-   * The chapter holds the hall for `GATE_SWING_TIME + GATE_CUT_DELAY` after
-   * `done()`, so stopping on the swing leaves half a second of `play` in hand —
-   * which is what callers need, because once `startChapter(4)` has run these are
-   * chapter 4's props and chapter 3 is gone.
+   * `done()` hands the chapter to the stair beat (`STAIR_BEAT` in
+   * `ch3-breakfast.ts`): the cast is placed at the belt line, Stephan steps to his
+   * post and presses the button, and only then do the belts go — so the wave is
+   * finished well inside the cutscene, with the three of them still standing on
+   * their marks for `GATE_CUT_DELAY` before the climb. Stopping there leaves the
+   * callers chapter 3's props and walls, which is what they need: once
+   * `startChapter(4)` has run these are chapter 4's and chapter 3 is gone.
    */
-  for (let i = 0; i < 200 && st().gateSwing < 1; i++) g.update(DT_MAX);
-  expect(st().gateSwing, 'the gate never finished swinging').toBe(1);
-  expect(g.snapshot().phase, 'the chapter handed over before its gate had opened on screen').toBe('play');
+  for (let i = 0; i < 400 && st().gateSwing < 1; i++) g.update(DT_MAX);
+  expect(st().gateSwing, 'the belts never finished winding in').toBe(1);
+  expect(g.snapshot().chapter, 'the chapter handed over before its belts had wound in on screen').toBe(3);
+  expect(g.snapshot().shot?.name, 'the climb started before the belts were home').toBe('stair-gate');
 }
 
 /**
@@ -412,4 +420,347 @@ export function raiseSign(g: DebugGame, walk = false): void {
     go(front, { x: front.x, y: front.y + 10 });
     g.key('KeyE');
   }
+}
+
+/* ----------------------------------------------------------- chapter 4, driven
+ *
+ * The whole of chapter 4 on one stick, the way a player plays it: select a robot
+ * (keys 1/2/3 — `g.debug.select`), hold the stick, switch, hold the stick. No
+ * robot and no prop is ever put anywhere; the only other debug call is the
+ * read-only `g.debug.chapter()`.
+ *
+ * It was written for `tests/chapter4-length.test.ts`, which measures the
+ * chapter's pacing, and it lives here because `tests/full-run.test.ts` — and the
+ * filmed playthrough that replays it in the 3D page — need the same drive. Two
+ * copies of it would be the drift this file exists to prevent.
+ */
+
+/** A frame counter with a hard stop, so a stuck drive fails loudly and finitely. */
+class Ch4Clock {
+  frames = 0;
+  constructor(private readonly limit: number) {}
+  get t(): number {
+    return this.frames * DT_MAX;
+  }
+  step(g: DebugGame): void {
+    g.update(DT_MAX);
+    this.frames++;
+    if (this.t > this.limit) throw new Error(`chapter 4 never finished in ${this.limit}s — a drive is stuck`);
+  }
+}
+
+/**
+ * Select a robot and walk it to a point on its own stick.
+ *
+ * The stick steers at the velocity error rather than flat at the target, which is
+ * what stops a heavy robot orbiting its mark — the same servo the curtain call
+ * uses. Walls are NOT ignored: a route that walks into a seat block stalls, and a
+ * stall fails the run rather than flattering it.
+ */
+function steerTo(g: DebugGame, clock: Ch4Clock, kind: RobotKind, to: Vec2, reach = 12): void {
+  g.debug.select(kind);
+  let stall = 0;
+  let best = Infinity;
+  for (;;) {
+    // The last robot onto the stage ends the chapter under its own feet: the
+    // curtain call takes the sticks, and there is nothing left to drive.
+    if (g.snapshot().reel !== null) return;
+    const b = bot(g, kind);
+    const dx = to.x - b.x;
+    const dy = to.y - b.y;
+    const d = Math.hypot(dx, dy);
+    if (d < reach) break;
+    if (d < best - 0.05) {
+      best = d;
+      stall = 0;
+    } else stall += DT_MAX;
+    if (stall > 4) {
+      g.setStick(0, 0);
+      throw new Error(
+        `${kind} is stuck at (${b.x.toFixed(0)},${b.y.toFixed(0)}), ` +
+          `${d.toFixed(0)}px from (${Math.round(to.x)},${Math.round(to.y)})`,
+      );
+    }
+    const want = Math.min(1, d / 18) * b.max;
+    const ex = (dx / d) * want - b.vx;
+    const ey = (dy / d) * want - b.vy;
+    const el = Math.hypot(ex, ey) || 1;
+    g.setStick(ex / el, ey / el);
+    clock.step(g);
+  }
+  g.setStick(0, 0);
+}
+
+/**
+ * Play chapter 4 from its first frame to the opening video, driving every robot.
+ *
+ * `onLeg` hears each leg's name and its seconds of sim clock as it finishes;
+ * `limit` is the whole chapter's allowance in seconds, generous but finite.
+ */
+export function driveChapter4(g: DebugGame, onLeg?: (name: string, seconds: number) => void, limit = 600): void {
+  const clock = new Ch4Clock(limit);
+  const key = (): KeynoteState => g.debug.chapter() as KeynoteState;
+  const props = (kind: string): Prop[] => g.snapshot().props.filter((p) => p.kind === kind);
+  const mid = (p: Prop): Vec2 => ({ x: p.x + (p.w ?? 0) / 2, y: p.y + (p.h ?? 0) / 2 });
+  let t0 = 0;
+  const done = (name: string): void => {
+    onLeg?.(name, clock.t - t0);
+    t0 = clock.t;
+  };
+
+  /*
+   * The room, read off what the chapter publishes rather than typed in: the four
+   * spotlights give both aisle centres and both ends of the seating, so the
+   * routes below re-derive themselves if the room is ever re-laid.
+   */
+  const spots = props('spotlight').map(mid);
+  const aisleX = [...new Set(spots.map((p) => Math.round(p.x)))].sort((a, b) => a - b);
+  /** The strip behind the seating, between the last row and the door. */
+  const backY = Math.max(...spots.map((p) => p.y)) + 42;
+  /** The strip in front of it, between the first row and the stage. */
+  const frontY = Math.min(...spots.map((p) => p.y)) - 42;
+
+  const d8 = roomDoor(R(8));
+  const doorOut: Vec2 = { x: d8.cx, y: d8.cy + 18 };
+  const doorIn: Vec2 = { x: d8.cx, y: d8.cy - 18 };
+
+  /** Out of whatever aisle you are in, round the back, and up the one you want. */
+  const viaBack = (k: RobotKind, to: Vec2): void => {
+    const b = bot(g, k);
+    if (Math.abs(b.x - to.x) > 6) {
+      if (Math.abs(b.y - backY) > 10) steerTo(g, clock, k, { x: b.x, y: backY }, 10);
+      steerTo(g, clock, k, { x: to.x, y: backY }, 10);
+    }
+    steerTo(g, clock, k, to, 10);
+  };
+
+  /*
+   * IN THROUGH THE ONE DOOR. They start at the head of the main staircase, out in
+   * the corridor; room 8 has a single doorway. Biggy stays outside on purpose —
+   * the cake is in the corridor with him.
+   */
+  for (const k of ['voxxy', 'droid'] as const) {
+    steerTo(g, clock, k, doorOut, 10);
+    steerTo(g, clock, k, doorIn, 10);
+  }
+  done('Voxxy and Droid in through the one door');
+
+  /*
+   * VOXXY lights the four spotlights, in the order the chapter demands: one aisle
+   * end to end, across the back, and the other.
+   */
+  for (const sp of spots) {
+    viaBack('voxxy', sp);
+    clock.step(g);
+  }
+  expect(key().spots, 'the spotlights did not all light').toBe(4);
+  done('Voxxy · four spotlights, two aisles');
+
+  /*
+   * DROID finishes the #DEVOXX sign (`src/sim/letters.ts`): the O and both X's lean
+   * in the east wing, each goes into its own gap at the back of the stage. Up the
+   * east aisle, across the front strip into the wing, then three carries — round
+   * the FRONT of Stephan and the speaker, who are bodies, not scenery.
+   */
+  const droidR = bot(g, 'droid').r;
+  const hosts = g.snapshot().people.filter((p) => p.role === 'stephan' || p.role === 'speaker');
+  /** The lane in front of the two of them, clear of both. */
+  const laneY = Math.max(...hosts.map((p) => p.y + p.r)) + droidR + 8;
+  const hostX0 = Math.min(...hosts.map((p) => p.x - p.r)) - droidR - 8;
+  const hostX1 = Math.max(...hosts.map((p) => p.x + p.r)) + droidR + 8;
+  steerTo(g, clock, 'droid', { x: aisleX[1], y: backY }, 10);
+  steerTo(g, clock, 'droid', { x: aisleX[1], y: frontY }, 10);
+  for (let n = 0; n < 3; n++) {
+    const d = bot(g, 'droid');
+    const l = props('letter')
+      .filter((p) => p.state === 'idle')
+      .sort((a, b) => Math.hypot(mid(a).x - d.x, mid(a).y - d.y) - Math.hypot(mid(b).x - d.x, mid(b).y - d.y))[0];
+    expect(l, 'no letter left leaning in the wing').toBeDefined();
+    // They lean face out, so he lifts from in front of it.
+    steerTo(g, clock, 'droid', { x: hostX1, y: laneY }, 10);
+    steerTo(g, clock, 'droid', { x: mid(l).x, y: l.y + (l.h ?? 0) + droidR + 3 }, 5);
+    g.key('KeyE');
+    clock.step(g);
+    expect(key().carrying, `Droid did not lift the ${l.label}`).toBe(l.v);
+    const gap = props('letter-slot').find((p) => p.v === l.v);
+    expect(gap, `no gap for the ${l.label}`).toBeDefined();
+    steerTo(g, clock, 'droid', { x: hostX1, y: laneY }, 10);
+    steerTo(g, clock, 'droid', { x: Math.min(mid(gap!).x, hostX0), y: laneY }, 10);
+    steerTo(g, clock, 'droid', { x: mid(gap!).x, y: gap!.y + (gap!.h ?? 0) + droidR + 3 }, 6);
+    g.key('KeyE');
+    clock.step(g);
+    expect(key().carrying, `the ${l.label} did not go into its gap`).toBe(-1);
+  }
+  expect(key().sign, 'the #DEVOXX sign did not go up').toBe('#DEVOXX');
+  done("Droid · the O and both X's, wing to sign");
+
+  /*
+   * BIGGY shoves the cake in from the corridor and up the west aisle onto its
+   * mark. He has to get BEHIND it for every leg, and the board is slow on purpose.
+   */
+  const mark = mid(props('cake-mark')[0]);
+  const cakeRoute: Vec2[] = [
+    { x: d8.cx, y: d8.cy + 26 },
+    { x: d8.cx, y: d8.cy - 26 },
+    { x: aisleX[0], y: backY },
+    { x: aisleX[0], y: frontY },
+    mark,
+  ];
+  // Round behind the crate first, out in the corridor where he already is.
+  const cake0 = mid(props('cake')[0]);
+  steerTo(g, clock, 'biggy', { x: cake0.x + 40, y: cake0.y + 16 }, 14);
+  g.debug.select('biggy');
+  for (const wp of cakeRoute) {
+    let stall = 0;
+    let best = Infinity;
+    for (;;) {
+      if (key().cake) break;
+      const c = mid(props('cake')[0]);
+      const b = bot(g, 'biggy');
+      const ax = wp.x - c.x;
+      const ay = wp.y - c.y;
+      const al = Math.hypot(ax, ay);
+      if (al < 16) break;
+      if (al < best - 0.05) {
+        best = al;
+        stall = 0;
+      } else stall += DT_MAX;
+      if (stall > 8) {
+        g.setStick(0, 0);
+        throw new Error(`the cake is stuck ${al.toFixed(0)}px from (${Math.round(wp.x)},${Math.round(wp.y)})`);
+      }
+      /*
+       * Stand behind the crate on the line to the waypoint, then lean. The
+       * standing point is the two radii plus a little — aimed any closer it is
+       * inside the crate, and a naive driver walks at a point it cannot reach.
+       */
+      const back = b.r + 17 + 8;
+      const behind = { x: c.x - (ax / al) * back, y: c.y - (ay / al) * back };
+      const gx = behind.x - b.x;
+      const gy = behind.y - b.y;
+      const gd = Math.hypot(gx, gy);
+      if (gd > 16) g.setStick(gx / gd, gy / gd);
+      else g.setStick(ax / al, ay / al);
+      clock.step(g);
+    }
+    g.setStick(0, 0);
+    if (key().cake) break;
+  }
+  expect(key().cake, 'the cake never reached its mark').toBe(true);
+  expect(key().ready, 'the stage never came ready').toBe(true);
+  done('Biggy · the cake in from the corridor');
+
+  /*
+   * ...and whoever is not already on the stage walks onto it: three marks in the
+   * clear band of the apron, between the cake at the west end and Stephan and the
+   * speaker at the east. Each robot comes up to the front strip first and crosses
+   * along it; westmost first, so nobody walks round somebody already standing.
+   */
+  const stage = props('stage')[0];
+  const sy = stage.y + (stage.h ?? 0) / 2;
+  const onStage = (b: Bot): boolean =>
+    b.x >= stage.x && b.x <= stage.x + (stage.w ?? 0) && b.y >= stage.y && b.y <= stage.y + (stage.h ?? 0);
+  const marks: Array<[RobotKind, Vec2]> = [
+    ['biggy', { x: stage.x + 68, y: sy }],
+    ['voxxy', { x: stage.x + 98, y: sy }],
+    ['droid', { x: stage.x + 124, y: sy }],
+  ];
+  for (const [k, to] of marks) {
+    if (onStage(bot(g, k))) continue;
+    const b = bot(g, k);
+    if (b.y > frontY + 4) steerTo(g, clock, k, { x: b.x, y: frontY }, 10);
+    steerTo(g, clock, k, { x: to.x, y: frontY }, 10);
+    steerTo(g, clock, k, to, 8);
+  }
+  clock.step(g);
+  expect(g.snapshot().reel, 'the chapter never reached its ending').not.toBeNull();
+  done('everyone onto the stage');
+}
+
+/**
+ * Chapter 2's last job (29 Sep): once the printer and the store are both done,
+ * the front doors. Waits for them to become the job, walks `kind` to the main
+ * entrance, presses E and waits out the walk into chapter 3. `walk = false`
+ * places the robot at the doors instead, for the tests that are about something
+ * else and only need the chapter to hand over.
+ */
+export function openFrontDoors(g: DebugGame, kind: RobotKind = 'voxxy', walk = true, finish = true): boolean {
+  const due = (): boolean => g.snapshot().chapter === 2 && (g.debug.chapter() as { doorsDue?: boolean }).doorsDue === true;
+  for (let i = 0; i < Math.ceil(15 / DT_MAX) && g.snapshot().chapter === 2 && !due(); i++) g.update(DT_MAX);
+  if (!due()) return false;
+  const e = GF.entrance;
+  const at = { x: e.x - 24, y: e.y + e.h / 2 };
+  g.debug.select(kind);
+  if (walk) {
+    if (!walkTo(g, kind, at, 10)) return false;
+  } else {
+    g.debug.place(kind, at.x, at.y);
+    g.update(DT_MAX);
+  }
+  g.key('KeyE');
+  // `finish = false` stops on the E, for a caller that wants to watch the walk.
+  if (!finish) return (g.debug.chapter() as { doorsOpen?: boolean }).doorsOpen === true;
+  for (let i = 0; i < Math.ceil(15 / DT_MAX) && g.snapshot().chapter === 2; i++) g.update(DT_MAX);
+  return g.snapshot().chapter === 3;
+}
+
+/**
+ * Chapter 2 up to its last job: breakers, cabinet, password, router, the cable to
+ * the printer and Biggy through the roller door. The front doors are left for
+ * `openFrontDoors`. (Moved here from full-run.test.ts so the cutscene measurement
+ * can reach the chapter-2 walk without running the whole game.)
+ */
+export function finishChapter2(g: DebugGame): void {
+  const HUB: Vec2 = { x: GF.cabinet.x + GF.cabinet.w / 2, y: GF.cabinet.y + GF.cabinet.h + 2 };
+  const PANEL: Vec2 = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
+  const steps = (gg: DebugGame, n: number): void => {
+    for (let i = 0; i < n; i++) gg.update(DT_MAX);
+  };
+  const expo = (): ExpoState => g.debug.chapter() as ExpoState;
+
+  g.debug.select('droid');
+  g.debug.place('droid', PANEL.x + 20, PANEL.y + 30);
+  for (let i = 0; i < 3; i++) g.key('KeyE');
+  expect(expo().power, 'the breakers never went in').toBe(true);
+
+  g.debug.select('biggy');
+  g.debug.place('biggy', HUB.x, HUB.y + 30);
+  g.key('KeyE');
+  expect(expo().router.cabinetOpen, 'the cabinet stayed shut').toBe(true);
+
+  // Droid up on Biggy for the label inside the lid, then down to type it in.
+  g.debug.place('biggy', 300, 640);
+  g.debug.place('droid', 284, 640);
+  g.debug.select('droid');
+  g.key('KeyE');
+  expect(bot(g, 'droid').mounted, 'Droid never got up on Biggy').toBe(true);
+  g.debug.place('biggy', HUB.x, HUB.y + 20);
+  steps(g, 1);
+  g.key('KeyE');
+  expect(expo().router.known, 'the password was never read').toBe(true);
+  g.key('KeyE');
+  expect(bot(g, 'droid').mounted, 'Droid never got back down').toBe(false);
+  g.debug.select('droid');
+  g.debug.place('droid', HUB.x, HUB.y + 20);
+  g.key('KeyE');
+  expect(expo().router.online, 'the router never came up').toBe(true);
+
+  // The cable, run the signposted way — the long way round is a blooper and this
+  // is meant to be the clean run.
+  const rack = { x: GF.rack.x + 10, y: GF.rack.y + 12 };
+  const printer = { x: GF.printer.x + 10, y: GF.printer.y + 6 };
+  expect(walkTo(g, 'voxxy', { x: rack.x, y: rack.y - 24 }), 'Voxxy never reached the rack').toBe(true);
+  g.key('KeyE');
+  expect(walkTo(g, 'voxxy', { x: printer.x, y: printer.y + 34 }), 'the cable never reached the printer').toBe(true);
+  g.key('KeyE');
+  expect(expo().printerOnline, 'the badge printer stayed offline').toBe(true);
+
+  // ...and Voxxy shoves Biggy through the roller door, which ends the chapter.
+  g.debug.select('voxxy');
+  g.debug.place('biggy', 400, 160);
+  g.debug.place('voxxy', 372, 160);
+  g.setStick(1, 0);
+  for (let i = 0; i < 600 && !expo().rollerBroken; i++) g.update(DT_MAX);
+  g.setStick(0, 0);
+  expect(expo().rollerBroken, 'the roller door never went').toBe(true);
 }

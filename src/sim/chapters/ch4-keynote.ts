@@ -35,7 +35,7 @@ import {
   signText,
 } from '../letters';
 import { CAMEO_LOOKS, SECOND_ROW } from '../cameos';
-import { FRONT_ROW, SPEAKER_LOOKS } from '../speakers';
+import { FRONT_ROW, KEYNOTE_LOOK, SPEAKER_LOOKS } from '../speakers';
 import { buildReel, reelAt, reelLength } from '../reel';
 import type { Bot, Person, Plate, Prop, Rect, ReelCard, ReelView, RobotKind, Task, Vec2, Wall } from '../types';
 
@@ -235,7 +235,7 @@ const MURMURS: readonly string[] = [
   'Two rows have started a conversation about the parking. You are losing them.',
 ];
 
-const KEYS = '1/2/3/Tab: switch · WASD · E: use / hold Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics';
+const KEYS = '1/2/3/Tab: switch · WASD · E: use / hold Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics \u00b7 C: credits';
 const READY_OBJECTIVE =
   'Chapter 4 · <b>Keynote</b>. Stage ready. <b>Get all three robots on the stage</b> — Stephan and the speaker are waiting.';
 
@@ -1223,11 +1223,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       y: speakerAt.y,
       r: speakerAt.r,
       name: 'speaker',
-      // Chapter 3's teal hoodie and cap: the person the player walked here.
-      colour: '#1f9e9b',
-      hat: true,
+      // Chapter 3's hoodie, cap, mask, cape and badge: the person the player walked here.
+      ...KEYNOTE_LOOK,
       role: 'speaker',
-      lanyard: LANYARD.keynote,
       seed: 911,
       face: Math.PI / 2,
       cheer,

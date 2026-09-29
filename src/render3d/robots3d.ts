@@ -25,10 +25,16 @@ import { riseAt } from '../sim/surface';
 import { BIGGY_ROLL_DUR, DEFS, DROID_STRETCH_DUR, JUMP_AIR, JUMP_RISE_M } from '../sim/constants';
 import { LEAD, SLOT, STAND_FACE, STEP_DELAY, STEP_TIME } from '../sim/opening';
 import type { Bot, GameSnapshot, RobotKind } from '../sim/types';
+import { GF } from '../sim/geometry';
 import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
 import { createRobot, updateRobot, type RobotRig } from '../render/robots';
 import { WORLD_NOISE_GLSL } from './materials';
 import { mergeUnderAnchors } from './merge';
+import { CLICK_U, counterLip, plugHand, printerPort } from './plug';
+import { registerGrip, activeReach, armReach, palmWorld, reachBody, reachPath, stepAt, stepFor, cancelReach, gripOf, pullAt, reachWeights, solveArmR, startReach, tickReach, type Grip } from './reach3d';
+
+/** The ladle's two reach targets in chapter 3 (shelf rail, pot): see the ladle below. */
+const ladleGrips = [new THREE.Object3D(), new THREE.Object3D()];
 
 export interface Robot3D {
   kind: RobotKind;
@@ -230,36 +236,82 @@ const climbFrom = new THREE.Vector3();
 let wasMounted = false;
 const CLIMB_TIME = 0.55;
 
-/** A gesture per robot, seconds left: the rig's own `reach` pose. */
+/** A gesture per robot, seconds left: the rig's own `reach` pose (the keypad's). */
 const gesture = new Map<RobotKind, number>();
-/** What a reach is aimed at, world metres — the lever or the breaker handle. */
-const reachAt = new Map<RobotKind, THREE.Vector3>();
-/** Length of the 'reach' pose, s (`POSE_DURATION.reach` in gait.ts). */
-const REACH = 1.15;
 let lastBreakers: number | undefined;
-const _sh = new THREE.Vector3();
+const _grip = new THREE.Vector3();
+const _look = new THREE.Vector3();
+const _rest = new THREE.Vector3();
 
 /**
- * Point a reach at its target (Michele, 28 Sep: "the arm should reach the
- * lever"). The pose raises Droid's right arm up and forward at a fixed angle, so
- * the rest is aiming: the body turns to face the target and the shoulder pitches
- * to its height, eased in and out with the pose.
+ * Droid's hand on a lever or a breaker handle — see `reach3d.ts` for the whole
+ * timeline and why the arm and the handle share one clock (Michele, 29 Sep: "He
+ * should reach the lever and pull it, with more natural movements").
+ *
+ * Called after the gait has posed him for the frame, so everything here is on
+ * top of his idle: the body turns to face the handle, the torso leans in as far
+ * as the handle is out of plain reach and then into the pull, the head looks at
+ * it, and the right arm is solved onto the handle's grip in world space. The
+ * handle is posed FIRST, from the same clock, so the hand closes on where the
+ * handle is this frame, not where it was the last.
  */
-function aimReach(rig: RobotRig, target: THREE.Vector3, left: number): void {
-  const p = 1 - left / REACH;
-  const e = THREE.MathUtils.smoothstep(p, 0, 0.3) * (1 - THREE.MathUtils.smoothstep(p, 0.78, 1));
+function driveReach(rig: RobotRig, grip: Grip, s: number, mounted: boolean): void {
+  const w = reachWeights(s);
+  grip.set(pullAt(s));
   const root = rig.root;
-  const want = Math.atan2(target.x - root.position.x, target.z - root.position.z);
+  const b = rig.bones;
+  grip.point.updateWorldMatrix(true, false);
+  grip.point.getWorldPosition(_grip);
+  // Face it: the whole body, eased in and back out with the reach.
+  const want = Math.atan2(_grip.x - root.position.x, _grip.z - root.position.z);
   let d = want - root.rotation.y;
   d = Math.atan2(Math.sin(d), Math.cos(d));
-  root.rotation.y += d * e;
+  // Square to it with the right shoulder a little ahead: a reach is one-handed.
+  root.rotation.y += (d - 0.12) * w.face;
   root.updateMatrixWorld(true);
-  rig.bones.shoulderR.getWorldPosition(_sh);
-  const elev = Math.atan2(target.y - _sh.y, Math.hypot(target.x - _sh.x, target.z - _sh.z));
-  const angle = THREE.MathUtils.clamp(Math.PI / 2 + elev, 0.9, 2.9);
-  rig.bones.shoulderR.rotation.x += (2.25 - angle) * e;
+  // Lean in by as much as the handle is past a comfortable reach (about a fifth
+  // of a radian per 10 cm short, capped), then into the pull itself: down and
+  // forward when the handle comes down, up and back when it goes up.
+  b.upperArmR.getWorldPosition(_look);
+  const short = _look.distanceTo(_grip) - armReach(rig) * 0.92;
+  const lean = THREE.MathUtils.clamp(short * 1.6, 0, 0.42);
+  const down = grip.throw === 'down';
+  b.torso.rotation.x += lean * w.body + (down ? 0.16 : -0.1) * w.effort;
+  b.torso.rotation.y += 0.22 * w.body;
+  b.torso.rotation.z -= 0.05 * w.body;
+  if (mounted) b.torso.position.y += (0.07 * w.body - (down ? 0.05 : 0) * w.effort) * (rig.height / 1.45);
+  // The free arm goes out for balance (on Biggy it keeps its hold on the crown).
+  if (!mounted) {
+    b.shoulderL.rotation.z += 0.28 * w.body;
+    b.shoulderL.rotation.x += 0.22 * w.body;
+    b.forearmL.rotation.x -= 0.3 * w.body;
+  }
+  // Eyes on the handle: the head turns and tips up toward it.
+  root.updateMatrixWorld(true);
+  b.head.getWorldPosition(_look);
+  const dx = _grip.x - _look.x;
+  const dz = _grip.z - _look.z;
+  const lookUp = Math.atan2(_grip.y - _look.y, Math.hypot(dx, dz));
+  let yaw = Math.atan2(dx, dz) - root.rotation.y - b.torso.rotation.y;
+  yaw = Math.atan2(Math.sin(yaw), Math.cos(yaw));
+  b.head.rotation.y += THREE.MathUtils.clamp(yaw, -0.6, 0.6) * 0.8 * w.face;
+  b.head.rotation.x -= THREE.MathUtils.clamp(lookUp, -0.5, 0.7) * 0.7 * w.body;
+  // The arm: the palm travels its arc from where the gait holds it onto the
+  // handle, and the IK carries the shoulder and elbow with it.
+  palmWorld(rig, _rest);
+  reachPath(rig, _rest, _grip, w.travel, _look);
+  solveArmR(rig, _look, w.arm, w.arm, w.fold);
+  // The wrist carries on the forearm's line and cocks back a little as it takes
+  // the weight; the fingers close round the grip.
+  b.handR.rotation.x += 0.25 * w.grip * (down ? 1 : -1) * (1 - 0.5 * w.pull);
+  for (let i = 0; i < 4; i++) {
+    const f = b[`fingerR${i}`];
+    if (f) f.rotation.x -= 1.25 * w.grip;
+  }
 }
+
 let lastPanel: string | undefined;
+let lastLadle: string | undefined;
 let lastPad: string | undefined;
 
 /**
@@ -382,21 +434,53 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
   // The sim's state changes that a hand makes: Droid throwing the projector
   // panel, a digit going into the keypad. Read off the props, drawn as a reach.
   const panel = snap.props.find((q) => q.kind === 'projector-panel')?.state;
-  if (lastPanel !== undefined && panel !== lastPanel && panel === 'done') {
-    gesture.set('droid', REACH);
-    const pp = snap.props.find((q) => q.kind === 'projector-panel');
-    // The lever: left of the panel's centre, 3.35 m up (props3d.ts).
-    if (pp) reachAt.set('droid', new THREE.Vector3(m(pp.x + (pp.w ?? 30) / 2) - 0.2, 3.35, m(pp.y)));
-  }
+  // One clock for the hand and the handle (reach3d.ts), advanced here, before
+  // either reads it; the props read the same clock after the robots.
+  tickReach(dt);
+  if (lastPanel !== undefined && panel !== lastPanel && panel === 'done') startReach('lever');
+  if (panel !== undefined && panel !== 'done' && activeReach()?.id === 'lever') cancelReach();
   lastPanel = panel;
-  // Chapter 2's breakers, one handle at a time.
+  // Chapter 2's breakers, one handle at a time: the newest one up is his.
   const br = snap.props.find((q) => q.kind === 'breaker');
   const up = br?.v;
   if (br && lastBreakers !== undefined && up !== undefined && up > lastBreakers) {
-    gesture.set('droid', REACH);
-    reachAt.set('droid', new THREE.Vector3(m(br.x + (br.w ?? 26) / 2) + (up - 2) * 0.42, 2.33, m(br.y) - 0.28));
+    // Standing, from wherever E was pressed: he walks up to the handle first.
+    const d = snap.bots.find((o) => o.kind === 'droid');
+    const g = gripOf(`breaker${up - 1}`);
+    if (d && g && !d.mounted) {
+      g.point.getWorldPosition(_grip);
+      const w = stepFor({ x: m(d.x), z: m(d.y) }, _grip);
+      startReach(`breaker${up - 1}`, w.lead, w.step);
+    } else startReach(`breaker${up - 1}`);
   }
   lastBreakers = up;
+  // Driven off mid-reach: the hand lets go of the idea.
+  const dr = snap.bots.find((o) => o.kind === 'droid');
+  if (dr && activeReach() && Math.hypot(dr.vx, dr.vy) / PX_PER_M > 0.3) cancelReach();
+  // ...and so does a cutscene: it puts the cast on its own marks, and a drawn
+  // walk-up to a handle would carry on from there, metres off where the sim has
+  // him (chapter 3's stair beat opened with Droid standing on the flight).
+  if (snap.phase === 'cut' && activeReach()) cancelReach();
+  // Chapter 3's ladle: up to the shelf's rail for it, down to the pot with it.
+  const lad = snap.props.find((q) => q.kind === 'ladle');
+  if (lad && lastLadle !== undefined && lad.state !== lastLadle && (lad.state === 'active' || lad.state === 'done') && lastLadle !== 'done') {
+    const sh = GF.food.shelf;
+    const st = snap.props.find((q) => q.kind === 'soup-station');
+    // Through the same reach as the levers (reach3d.ts): a grip point with no
+    // handle to move, at the shelf's rail or over the pot.
+    const id = lad.state === 'active' ? 'ladle-shelf' : 'ladle-pot';
+    const pt = ladleGrips[id === 'ladle-shelf' ? 0 : 1];
+    if (id === 'ladle-shelf') pt.position.set(m(sh.x + sh.w / 2) - 0.35, 2.3, m(sh.y + sh.h));
+    else if (st) pt.position.set(m(st.x + (st.w ?? 22) / 2), 1.6, m(st.y + (st.h ?? 22) / 2));
+    pt.updateMatrixWorld(true);
+    registerGrip(id, { point: pt, throw: id === 'ladle-shelf' ? 'up' : 'down', set: () => {} });
+    const d = snap.bots.find((o) => o.kind === 'droid');
+    if (d && !d.mounted) {
+      const w = stepFor({ x: m(d.x), z: m(d.y) }, pt.position);
+      startReach(id, w.lead, w.step);
+    } else startReach(id);
+  }
+  lastLadle = lad?.state;
   const pad = snap.props.find((q) => q.kind === 'keypad')?.label;
   const active = snap.bots[snap.active]?.kind;
   if (lastPad !== undefined && pad !== lastPad && active) gesture.set(active, 0.7);
@@ -451,21 +535,143 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
         lift = top.y;
       }
     }
+    // The walk up to a handle and back (reach3d.ts `stepFor`): drawn only, the
+    // sim has not moved him, and the legs step it at the speed it is drawn at.
+    // Voxxy turns to the printer for the plug-in beat (plug.ts).
+    let face = snap.opening ? STAND_FACE : b.kind === 'voxxy' ? plugFace(snap, b.face, x, z) : b.face;
+    let speed = Math.hypot(b.vx, b.vy) / PX_PER_M;
+    let backward = b.vx * Math.cos(face) + b.vy * Math.sin(face) < -8;
+    const walk = b.kind === 'droid' && !mounted ? activeReach() : null;
+    if (walk && walk.lead > 0) {
+      const k = stepAt(walk.s, walk.lead);
+      x += walk.step.x * k;
+      z += walk.step.z * k;
+      const v = dt > 0 ? (k - stepAt(walk.s - dt, walk.lead)) / dt : 0;
+      speed = Math.abs(v) * Math.hypot(walk.step.x, walk.step.z);
+      face = Math.atan2(walk.step.z, walk.step.x);
+      backward = v < 0;
+    }
     r.rig.root.position.set(x, lift, z);
     // In the crates the sim turns them south, to the 2.5D diorama's camera; the
     // 3D intro looks at them from the east, so they stood side-on and turned on
     // the step (Michele: "I'd keep them frontal"). Facing east throughout.
-    const face = snap.opening ? STAND_FACE : b.face;
-    updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: face, dt, mounted, backward: b.vx * Math.cos(face) + b.vy * Math.sin(face) < -8, laden: b.kind === 'biggy' && snap.bots.some((o) => o.mounted), carrying: (b.kind === 'biggy' && snap.props.some((q) => q.kind === 'pot')) || (b.kind === 'droid' && snap.props.some((q) => q.kind === 'letter-held')), hop: u, flair: trick ? trick.flair : flairPhase(b), shoved: worldMoved(b) ? 1 : 0, pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null });
+    updateRobot(r.rig, { speedMps: speed, heading: face, dt, mounted, backward, laden: b.kind === 'biggy' && snap.bots.some((o) => o.mounted), carrying: (b.kind === 'biggy' && snap.props.some((q) => q.kind === 'pot')) || (b.kind === 'droid' && snap.props.some((q) => q.kind === 'letter-held')), hop: u, flair: trick ? trick.flair : flairPhase(b), shoved: worldMoved(b) ? 1 : 0, pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null, body: walk ? reachBody(walk.s, gripOf(walk.id)?.throw ?? 'down') : undefined });
     if (b.kind === 'droid' && snap.opening) glance(r.rig, snap.opening.t);
-    const left = gesture.get(b.kind) ?? 0;
-    const target = reachAt.get(b.kind);
-    if (left > 0 && target) aimReach(r.rig, target, left);
-    else if (left <= 0) reachAt.delete(b.kind);
+    const reach = b.kind === 'droid' ? activeReach() : null;
+    const grip = reach ? gripOf(reach.id) : undefined;
+    if (reach && grip && !snap.opening) driveReach(r.rig, grip, reach.s, mounted);
     // Solved at the final riding height, not wherever the climb has got to.
     if (b.kind === 'droid' && mounted) gripBiggy(r.rig, mountLift(r.rig));
+    if (b.kind === 'voxxy') plugReach(r.rig, snap, x, lift, z);
     aimLamp(r, b, face);
   }
+}
+
+/* ------------------------------------------------- Voxxy plugs in the cable */
+
+const _port = new THREE.Vector3();
+const _lip = new THREE.Vector3();
+const _apex = new THREE.Vector3();
+const _aim = new THREE.Vector3();
+const _arm = new THREE.Vector3();
+const _q = new THREE.Quaternion();
+const _qp = new THREE.Quaternion();
+const _DOWN = new THREE.Vector3(0, -1, 0);
+/** From the wrist to the plug's tip, held out past the three fingers so it shows, m. */
+const GRIP = 0.13;
+
+/** Chapter 2's plug-in beat, 0..1 off the sim's clock (the cable prop's `progress`), or -1. */
+function plugClock(snap: GameSnapshot): number {
+  const c = snap.props.find((q) => q.kind === 'cable');
+  return c?.progress ?? -1;
+}
+
+/** While she plugs in she faces the printer's socket, then turns back to her own heading. */
+function plugFace(snap: GameSnapshot, face: number, x: number, z: number): number {
+  const u = plugClock(snap);
+  const pr = snap.props.find((q) => q.kind === 'printer');
+  if (u < 0 || u > 0.86 || !pr) return face;
+  printerPort(pr, _port);
+  return Math.atan2(_port.z - z, _port.x - x);
+}
+
+/** Swing one straight arm, from its shoulder, toward a world point, by `k`. */
+function aimArm(rig: RobotRig, L: 'L' | 'R', at: THREE.Vector3, k: number): void {
+  const sh = rig.bones[`shoulder${L}`];
+  rig.root.updateMatrixWorld(true);
+  sh.getWorldPosition(_arm);
+  _arm.subVectors(at, _arm).normalize();
+  (sh.parent as THREE.Object3D).getWorldQuaternion(_qp).invert();
+  _q.setFromUnitVectors(_DOWN, _arm).premultiply(_qp);
+  sh.quaternion.slerp(_q, k);
+  for (const bone of [rig.bones[`upperArm${L}`], rig.bones[`forearm${L}`]]) {
+    bone.rotation.x *= 1 - k;
+    bone.rotation.y *= 1 - k;
+    bone.rotation.z *= 1 - k;
+  }
+}
+
+/**
+ * THE PLUG GOING IN (Michele, 29 Sep: *"could Voxxy connect it to the printer
+ * with an animation when she reaches here?"*).
+ *
+ * The printer stands on a 1.1 m counter and she is 1.15 m of robot, a third of it
+ * head, so she does what the small fast one does: a hop up the counter's face,
+ * her left hand catching the lip, her right carrying the plug over it into the
+ * socket on the printer's flank — a push, the click (`CLICK_U`), and she drops
+ * back onto the pad with a bounce. The sim holds her on the pad for the beat;
+ * everything here is an offset from that spot, and at the end she is back on it.
+ *
+ * The right hand is put ON the socket, not near it: after the arm is aimed, what
+ * is left between fingers and socket moves the whole body, so the plug meets the
+ * port at any pad position the sim leaves her in. `plugHand` is where the plug is,
+ * for the cable to end at.
+ */
+function plugReach(rig: RobotRig, snap: GameSnapshot, x: number, lift: number, z: number): void {
+  const u = plugClock(snap);
+  const pr = snap.props.find((q) => q.kind === 'printer');
+  plugHand.u = u;
+  if (u < 0 || !pr) {
+    plugHand.live = false;
+    return;
+  }
+  const ss = THREE.MathUtils.smoothstep;
+  printerPort(pr, _port);
+  counterLip(pr, _lip);
+  // Up: a crouch, the hop to the lip, the hang; down: the drop and one bounce.
+  const up = ss(u, 0.1, 0.34) * (1 - ss(u, 0.68, 0.86));
+  const arm = ss(u, 0.04, 0.3) * (1 - ss(u, 0.66, 0.84));
+  const crouch = Math.max(0, Math.sin(Math.PI * THREE.MathUtils.clamp(u / 0.14, 0, 1)));
+  const bounce = u > 0.86 ? Math.sin((Math.PI * (u - 0.86)) / 0.14) : 0;
+  // Hanging off the lip: chest just over the counter, right shoulder beside the socket.
+  _apex.set(_port.x + 0.02, _lip.y - 0.36, _lip.z + 0.24);
+  const root = rig.root;
+  root.position.set(
+    THREE.MathUtils.lerp(x, _apex.x, up),
+    THREE.MathUtils.lerp(lift, _apex.y, up) - 0.05 * crouch + 0.08 * bounce + 0.12 * Math.sin(Math.PI * up) * (1 - up),
+    THREE.MathUtils.lerp(z, _apex.z, up),
+  );
+  // Leaning over the counter, and the head tipped down to watch the socket.
+  rig.bones.torso.rotation.x += 0.28 * up;
+  rig.bones.head.rotation.x += 0.2 * arm;
+  // Pushed home over the tenth before the click: from 7 cm out of the socket, in.
+  const push = 1 - ss(u, CLICK_U - 0.12, CLICK_U);
+  _aim.copy(_port);
+  _aim.x += 0.07 * push;
+  aimArm(rig, 'R', _aim, arm);
+  _lip.x = root.position.x - 0.2;
+  aimArm(rig, 'L', _lip, arm * up);
+  // Fingers onto the socket: what is left is taken up by the body, while she is up there.
+  root.updateMatrixWorld(true);
+  const grip = plugHand.at;
+  rig.bones.handR.getWorldPosition(grip);
+  rig.bones.forearmR.getWorldPosition(_apex);
+  grip.add(_apex.subVectors(grip, _apex).setLength(GRIP));
+  _apex.subVectors(_aim, grip).multiplyScalar(Math.min(arm, up));
+  root.position.add(_apex);
+  grip.add(_apex);
+  root.updateMatrixWorld(true);
+  plugHand.live = true;
 }
 
 function aimLamp(r: Robot3D, b: Bot, face: number): void {

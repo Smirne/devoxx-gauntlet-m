@@ -900,7 +900,10 @@ describe('ground floor — the lobby, where Michele plotted it', () => {
      * until the collider sweep of 2026-09-23; now they are `low` walls, and the
      * rule this test guards is narrower and truer than "nothing is out there".
      */
-    const outside = walls.filter((w) => w.x > GF.entrance.x + GF.entrance.w && w.x < W - T);
+    // ...and the entrance's own glass doors, which since 29 Sep swing OUT and
+    // stand open against the facade's outer face (`entranceLeaves`).
+    const outside = walls.filter((w) => w.x > GF.entrance.x + GF.entrance.w && w.x < W - T && w.kind !== 'door-leaf');
+    expect(walls.filter((w) => w.kind === 'door-leaf').every((w) => w.x === GF.entrance.x + GF.entrance.w + 1)).toBe(true);
     expect(outside.every((w) => w.kind === 'bollard' || w.kind === 'forecourt-planter')).toBe(true);
     expect(outside.every((w) => w.low === true)).toBe(true);
     expect(outside).toHaveLength(9);

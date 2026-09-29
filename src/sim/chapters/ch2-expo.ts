@@ -106,7 +106,7 @@ import {
   TRAVEL_TIME_SCALE,
 } from '../constants';
 import { m } from '../units';
-import { CFP_WALL, CFP_WALL_W, GF, VIEW_GROUND, WIFI_TAG, WIFI_TAG_W, groundWallsFor, stairLanding } from '../geometry';
+import { CFP_WALL, CFP_WALL_W, GF, VIEW_GROUND, WIFI_TAG, WIFI_TAG_W, entranceBayGaps, entranceBayOpenings, groundWallsFor, stairLanding } from '../geometry';
 import { dist, inRect, speed } from '../bot';
 import { buildLights, litBy } from '../lights';
 import type { Bot, LightSource, Mirror, Prop, Task, TextPrompt, Vec2, Wall } from '../types';
@@ -132,6 +132,19 @@ const CABLE_PULL_RELAX = 3;
 const CABLE_PULL_LEAN = 0.45;
 /** Seconds between "the cable goes tight" readouts. */
 const CABLE_TALK_COOLDOWN = 4;
+/**
+ * The plug going in, seconds: Voxxy turns to the counter, hops up, seats the plug
+ * in the printer's side and drops back down.
+ *
+ * Michele, 29 Sep 2026: *"could Voxxy connect it to the printer with an animation
+ * when she reaches here?"* The run is made on arrival (`cable.connected` flips on
+ * that frame, so nothing downstream waits on a cartoon), but the PRINTER is not
+ * DRAWN waking until the plug is seated (the renderer reads the cable prop's
+ * `progress`), and she is held on the spot for the beat so the hand the renderer
+ * draws is where the robot is. A clock for a
+ * gesture, not a travel time, so it does not carry `TRAVEL_TIME_SCALE`.
+ */
+export const PLUG_TIME = 1.3;
 /** Below this, "Biggy: 0.8 m/s, needs 5.4" would fire on every nudge. px/s. */
 const ROLLER_MIN_TALK = 40 * SPEED_SCALE;
 /** Seconds between the roller door's "not fast enough" readouts. */
@@ -162,6 +175,23 @@ const ROLLER_RISE_TIME = 0.42;
  * away: this is a curtain, not a cutscene.
  */
 const CURTAIN = 3;
+/*
+ * THE FRONT DOORS — the chapter's last step.
+ *
+ * Michele, 29 Sep: *"Chap 2 can finish at different moments, and the transition
+ * is a bit abrupt ... Or opening the door as the last step? Only when everything
+ * is ready?"* So the hall no longer cuts away on whichever of printer and store
+ * came last. When both are done (and the store and the badge have had their
+ * moment), the task list gains one line: open the main entrance. Any robot, E at
+ * the doors. They swing out onto the morning, and the three walk towards the
+ * daylight while the black comes down — the same ending however the chapter went.
+ */
+/** How close to the entrance's inner face a robot must be for E to open it, px. */
+const DOORS_REACH = 46;
+/** The leaves swing open over this long, s. */
+const DOORS_SWING = 1.1;
+/** From the bolts going back to the walk out, s: long enough to see them swing. */
+const DOORS_CUT_DELAY = 1.5;
 /**
  * How long Biggy takes to walk the router cabinet's doors open, seconds.
  *
@@ -348,8 +378,20 @@ export interface ExpoState {
    */
   power: boolean;
   breakersLeft: number;
-  cable: { carrying: boolean; connected: boolean; len: number; snapped: boolean; taut: boolean };
+  cable: {
+    carrying: boolean;
+    connected: boolean;
+    len: number;
+    snapped: boolean;
+    taut: boolean;
+    /** 0..1 through the plug-in beat (`PLUG_TIME`); 1 once the plug is seated, 0 before. */
+    seat: number;
+  };
   rollerBroken: boolean;
+  /** Printer and store both done: the front doors are the last job. */
+  doorsDue?: boolean;
+  /** The front doors have been opened; the walk out follows. */
+  doorsOpen?: boolean;
   /** 0..1, how far the smashed shutter has torn up into its housing. */
   rollerRise: number;
   /** The router cabinet, its terminal, and the WiFi password. */
@@ -407,7 +449,7 @@ const OBJECTIVE =
   'the <b>store</b> open. <b>Droid</b> reaches what is too high, <b>Biggy</b> moves what is too ' +
   'heavy, <b>Voxxy</b> goes where nothing else fits.';
 const KEYS =
-  '1/2/3/Tab: switch · WASD · E: use / climb / terminal / hold Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics';
+  '1/2/3/Tab: switch · WASD · E: use / climb / terminal / hold Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics \u00b7 C: credits';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');
@@ -466,6 +508,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /** Sim time the badge drops, set when the printer comes up. -1 until then. */
   let badgeAt = -1;
   let curtainAt: number | null = null;
+  /** Everything is ready and the front doors are the last job. */
+  let doorsDue = false;
+  /** When the bolts went back (chapter clock), or null while shut. */
+  let doorsOpenAt: number | null = null;
+  let doorsCut = false;
   /** Whether the shutter was the LAST of the two, so the curtain line names it. */
   let rollerLast = false;
   /** 0..1, how far the smashed shutter has torn up. See `ROLLER_RISE_TIME`. */
@@ -485,6 +532,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     /** Seconds she has spent leaning AGAINST the taut cable. See `CABLE_PULL_OUT`. */
     pull: 0,
     pts: [] as Vec2[],
+    /** Seconds of the plug-in beat still to run. See `PLUG_TIME`. */
+    plugLeft: 0,
+    /** Where Voxxy is held while she plugs in. */
+    plugHold: null as Vec2 | null,
   };
   let tautTalk = -9;
 
@@ -499,6 +550,28 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           : 'Biggy: gate. Steel. Down. Registration opens it, not me',
   };
   ctx.walls.push(gate);
+
+  // The front doors: shut and bolted all night, one leaf across each bay's
+  // clear opening, glass (they stop a robot and pass the forecourt's light).
+  const e = GF.entrance;
+  const doorsAt = { x: e.x - 20, y: e.y + e.h / 2 };
+  const shutDoors: Wall[] = entranceBayOpenings().map(([y0, y1]) => ({
+    x: e.x + e.w / 2 - 3,
+    y: y0,
+    w: 6,
+    h: y1 - y0,
+    glass: true,
+    kind: 'entrance-shut',
+    why: (b: Bot) =>
+      doorsDue
+        ? `${b.name}: the front doors. Everything is ready — E, and let them in`
+        : b.kind === 'voxxy'
+          ? 'Voxxy: front doors, bolted till eight. Badges and shirts first, then we let them in'
+          : b.kind === 'droid'
+            ? 'Droid: the main entrance, locked for the night. It opens when registration is ready, and it is not'
+            : 'Biggy: locked. I could lean on it. It is glass. I will not lean on it',
+  }));
+  for (const w of shutDoors) ctx.walls.push(w);
 
   const roller: Wall = {
     ...GF.roller,
@@ -564,6 +637,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   }
 
   const printerAt: Vec2 = { x: GF.printer.x + 10, y: GF.printer.y + 6 };
+  /** The lit pad in front of the counter: standing on it plugs the cable in. */
+  const plugPad = { x: GF.printer.x - 6, y: GF.printer.y + GF.printer.h + 2, w: GF.printer.w + 12, h: 14 };
   const rackAt: Vec2 = { x: GF.rack.x + 10, y: GF.rack.y + 12 };
   const panelAt: Vec2 = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
   /** The middle of the roller door, on its hall side — what the halo is drawn around. */
@@ -918,6 +993,13 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     ctx.switchKey(code);
     if (code !== 'KeyE') return true;
 
+    if (doorsDue && doorsOpenAt === null && b.x > e.x - DOORS_REACH && b.x < e.x + e.w && b.y > e.y - 8 && b.y < e.y + e.h + 8) {
+      doorsOpenAt = ctx.t;
+      for (const w of shutDoors) ctx.removeWall(w);
+      ctx.flash(`${b.name} throws the bolts. The doors swing out onto Antwerp in the morning — and there is already a queue`, 4000);
+      return true;
+    }
+
     const atCabinet = dist(b, cabinetAt) < CABINET_REACH;
     const atTerminal = router.cabinetOpen && dist(b, cabinetAt) < TERMINAL_REACH;
 
@@ -1162,9 +1244,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * ends in the printer rather than wherever Voxxy stopped.
    */
   function plugIn(): void {
+    const v = ctx.byKind('voxxy');
     cable.carrying = false;
     cable.taut = false;
     cable.connected = true;
+    cable.plugLeft = PLUG_TIME;
+    cable.plugHold = { x: v.x, y: v.y };
     cable.pts = [...cable.pts, { x: printerAt.x, y: printerAt.y }];
     ctx.flash(
       `Cable in — the run is made (${Math.trunc(cable.len)} of ${CABLE_MAX} px used). ` +
@@ -1351,7 +1436,29 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
     const v = ctx.byKind('voxxy');
     if (cable.carrying) stepCable(v, dt);
-    if (cable.carrying && dist(v, printerAt) < PLUG_REACH) plugIn();
+    /*
+     * Automatic on the lit pad (Michele, 28 Sep: *"when reaching the dropzone"*),
+     * not anywhere within `PLUG_REACH`: that caught her three metres short, and
+     * the plug-in beat has to start where she can reach the counter — so her
+     * centre, on the pad. `E` still plugs in from `PLUG_REACH`.
+     */
+    if (cable.carrying && inRect(v, plugPad)) plugIn();
+    // Held while she plugs in — unless something else has put her somewhere else.
+    if (cable.plugLeft > 0) {
+      cable.plugLeft = Math.max(0, cable.plugLeft - dt);
+      const hold = cable.plugHold;
+      if (hold && dist(v, hold) < PLUG_REACH) {
+        v.x = hold.x;
+        v.y = hold.y;
+        v.vx = 0;
+        v.vy = 0;
+      } else {
+        // Moved off the spot (a debug place, a cutscene): the beat is cut short
+        // and the plug counts as seated, so no printer waits on a hand that left.
+        cable.plugHold = null;
+        cable.plugLeft = 0;
+      }
+    }
 
     /*
      * Walking away from the terminal puts the keyboard back. There is no other way
@@ -1527,10 +1634,33 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
          * curtain is still a curtain.
          */
       } else if (ctx.t - curtainAt >= CURTAIN && badgeSaid && ctx.t >= badgeAt + BADGE_HOLD) {
-        ctx.score.expoT = Math.round(curtainAt);
-        ctx.score.cable = Math.trunc(cable.len);
-        ctx.startChapter(3);
+        if (!doorsDue) {
+          doorsDue = true;
+          ctx.score.expoT = Math.round(curtainAt);
+          ctx.score.cable = Math.trunc(cable.len);
+          ctx.flash('Registration is ready: badges printing, shirts on the racks. One job left — the front doors. Any of you, E at the main entrance', 6000);
+        }
       }
+    }
+    if (doorsOpenAt !== null && !doorsCut && ctx.t - doorsOpenAt >= DOORS_CUT_DELAY) {
+      doorsCut = true;
+      // Out through the three bays, towards the daylight. Each robot's route ends
+      // just inside its bay and the walk carries on past it into the fade.
+      const gaps = entranceBayGaps();
+      const lane = (k: number): number => (gaps[k][0] + gaps[k][1]) / 2;
+      const route = (k: number, back: number): Vec2[] => [
+        { x: e.x - 150 - back, y: lane(k) },
+        { x: e.x - 24, y: lane(k) },
+      ];
+      ctx.startCut(
+        [
+          { kind: 'voxxy', pts: route(0, 0) },
+          { kind: 'droid', pts: route(1, 14) },
+          { kind: 'biggy', pts: route(2, 28) },
+        ],
+        () => ctx.startChapter(3),
+        VIEW_GROUND,
+      );
     }
   }
 
@@ -1538,6 +1668,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   function props(): Prop[] {
     const out: Prop[] = [
+      // The front doors: bolted until the chapter's last job, then swinging out.
+      {
+        kind: 'entrance-doors',
+        x: e.x,
+        y: e.y,
+        w: e.w,
+        h: e.h,
+        state: doorsOpenAt !== null ? 'open' : doorsDue ? 'active' : 'idle',
+        progress: doorsOpenAt === null ? 0 : Math.min(1, (ctx.t - doorsOpenAt) / DOORS_SWING),
+        label: doorsDue ? 'front doors — E to open' : 'front doors — locked for the night',
+      },
       /*
        * THE BREAKER PANEL, AND HOW THE RENDERER LEARNS THE HALL IS LIT.
        *
@@ -1694,10 +1835,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       },
       {
         kind: 'dropzone',
-        x: GF.printer.x - 6,
-        y: GF.printer.y + GF.printer.h + 2,
-        w: GF.printer.w + 12,
-        h: 14,
+        ...plugPad,
         state: cable.connected ? 'done' : cable.carrying ? 'active' : 'idle',
         label: cable.connected ? 'cable in' : 'cable ends here (Voxxy, E)',
       },
@@ -1839,6 +1977,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         // drawn cable and the metered length agree to within one sample step.
         pts: cable.carrying ? [...cable.pts, { x: ctx.byKind('voxxy').x, y: ctx.byKind('voxxy').y }] : cable.pts,
         v: cable.len,
+        // The plug-in beat's clock, 0..1, for the renderer's hop and hand.
+        progress: cable.plugLeft > 0 ? 1 - cable.plugLeft / PLUG_TIME : undefined,
         state: cable.connected ? 'done' : cable.taut ? 'taut' : cable.carrying ? 'active' : cable.snapped ? 'broken' : 'idle',
         // The HUD's reel meter takes its label from here (`collectMeters`), so the
         // distance still to run is sim state rather than a number the overlay works
@@ -2101,6 +2241,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         at: storeStand,
         hint: 'Voxxy: he cannot get up to what that shutter wants on his own. I take hold of him at the far end of the top lane and we run the whole length of it',
       },
+      ...(doorsDue
+        ? [
+            {
+              id: 'doors',
+              text: 'open the front doors',
+              done: doorsOpenAt !== null,
+              at: doorsAt,
+              hint: 'Droid: the main entrance, at the far end of the lobby past reception. Any of us — E at the doors',
+            },
+          ]
+        : []),
     ];
   }
 
@@ -2149,6 +2300,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         len: cable.len,
         snapped: cable.snapped,
         taut: cable.taut,
+        seat: !cable.connected ? 0 : 1 - cable.plugLeft / PLUG_TIME,
       },
       rollerBroken,
       rollerRise,
@@ -2165,6 +2317,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       hallLit: hallLit(),
       printerOnline: printerOnline(),
       badgePrinted: badgeSaid,
+      doorsDue,
+      doorsOpen: doorsOpenAt !== null,
     }),
   };
 }

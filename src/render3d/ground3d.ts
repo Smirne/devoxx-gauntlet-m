@@ -16,7 +16,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-import { DRINK_FRIDGES, DUKE, GF, HIGH_TABLES, LOBBY_RISE_M, MAIN_STAIR_TOP_M, WIFI_TAG, groundPlates, groundRiseM, groundWallsFor, stairDoors, stairMidLanding, stairRamps } from '../sim/geometry';
+import { DRINK_FRIDGES, DUKE, GF, HIGH_TABLES, LOBBY_RISE_M, MAIN_STAIR_TOP_M, WIFI_TAG, entranceBayOpenings, groundPlates, groundRiseM, groundWallsFor, stairDoors, stairMidLanding, stairRamps } from '../sim/geometry';
 import { DOOR_H, stairFlight } from '../render/venue/props';
 import type { Plate, Wall } from '../sim/types';
 import { m } from '../sim/units';
@@ -118,8 +118,11 @@ function styleOf(w: Wall, mats: Materials, concrete: THREE.Material): { h: numbe
       return { h: 3.4, mat: mats.plaster };
     case 'bof-slats':
       return { h: 2.6, mat: mats.acoustic };
+    // The red enamel panels are gone from the 3D hall (Michele, 29 Sep: "i don't
+    // like those panels"): the curtain runs unbroken. The sim keeps them as 2 px
+    // slabs flush on the wall, so nothing a robot can touch has changed.
     case 'accent-panel':
-      return { h: 3.0, mat: mats.enamel };
+      return null;
     // The main flight's sides are drawn by `mainStairSides`, off the photos.
     case 'mainstair':
     // Duke is his own model (duke.ts); the entrance's frames and doors are `facade`.
@@ -329,7 +332,9 @@ function shafts(group: THREE.Group, mats: Materials, concrete: THREE.Material): 
       group.add(sign);
       // Its green, washed down the wall under it.
       const wash = glowDecal(0x2bdc6a, 0.55, 2.4, 2.6);
-      wash.position.set(sign.position.x, DOOR_H + 0.1, sign.position.z + out1 * 0.01);
+      // Between the wall and the sign, not over it: 1 cm IN FRONT of the plate the
+      // two fought for the same pixels and the sign flickered (29 Sep).
+      wash.position.set(sign.position.x, DOOR_H + 0.1, sign.position.z - out1 * 0.015);
       wash.rotation.y = sign.rotation.y;
       group.add(wash);
     }
@@ -352,6 +357,18 @@ let outsideMorning = false;
 export function setOutsideMorning(on: boolean): void {
   outsideMorning = on;
 }
+/**
+ * The front doors' double leaves, one pair per bay: shut across the opening all
+ * of chapter 2's night, swinging OUT onto the forecourt when a robot opens them
+ * (the sim's `entrance-doors` prop, 29 Sep), and standing open from then on —
+ * where the sim's `entranceLeaves()` colliders are. Each pivot's `userData.side`
+ * is the way it swings.
+ */
+const frontLeaves: THREE.Object3D[] = [];
+export function setFrontDoors(open: number): void {
+  const e = THREE.MathUtils.smoothstep(open, 0, 1);
+  for (const p of frontLeaves) p.rotation.y = (p.userData.side as number) * e * (Math.PI / 2);
+}
 function facade(group: THREE.Group, mats: Materials, updaters: Array<(t: number, dt: number) => void>): THREE.Object3D[] {
   const out: THREE.Object3D[] = [];
   const frame = new THREE.MeshStandardMaterial({ color: 0xe8e8e4, roughness: 0.35, metalness: 0.4 });
@@ -363,6 +380,35 @@ function facade(group: THREE.Group, mats: Materials, updaters: Array<(t: number,
   const TRANSOM = 2.7;
   const walls = groundWallsFor(2);
   const base = LOBBY_RISE_M;
+  {
+    // The double doors in each bay's opening, hinged on the facade's outer face.
+    frontLeaves.length = 0;
+    const ex = m(GF.entrance.x + GF.entrance.w) + 0.02;
+    const DH = TRANSOM - 0.1;
+    for (const [y0, y1] of entranceBayOpenings()) {
+      const half = m(y1 - y0) / 2;
+      for (const [hz, dir] of [
+        [m(y0), 1],
+        [m(y1), -1],
+      ] as const) {
+        const pivot = new THREE.Group();
+        pivot.position.set(ex, base, hz);
+        const leaf = new THREE.Mesh(new THREE.PlaneGeometry(half - 0.02, DH), leafGlass);
+        leaf.rotation.y = Math.PI / 2;
+        leaf.position.set(0, DH / 2, (dir * half) / 2);
+        leaf.renderOrder = 2;
+        pivot.add(leaf);
+        for (const y of [0.04, DH]) pivot.add(new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, half - 0.02), frame).translateY(y).translateZ((dir * half) / 2));
+        for (const z of [0.03, half - 0.05]) pivot.add(new THREE.Mesh(new THREE.BoxGeometry(0.06, DH, 0.06), frame).translateY(DH / 2).translateZ(dir * z));
+        // A push bar on the lobby side, so a shut door reads as a door.
+        pivot.add(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, half * 0.7), mats.steel).translateY(1.05).translateZ((dir * half) / 2).translateX(-0.06));
+        // Out onto the forecourt (+x): turning by +y takes +z to +x, and -z by -y.
+        pivot.userData.side = dir;
+        group.add(pivot);
+        frontLeaves.push(pivot);
+      }
+    }
+  }
   for (const w of walls) {
     if (w.kind === 'facade') {
       const x = m(w.x + w.w / 2);
@@ -390,23 +436,8 @@ function facade(group: THREE.Group, mats: Materials, updaters: Array<(t: number,
       for (const y of [0.04, TRANSOM, GLASS_H]) b.add(frame, box(L, 0.08, 0.08, V(cx, base + y, cz)));
       for (const s of [-1, 1]) b.add(frame, box(0.08, GLASS_H, 0.08, V(cx + (s * L) / 2, base + GLASS_H / 2, cz)));
     } else if (w.kind === 'door-leaf') {
-      // A glass leaf, standing open, in its white frame.
-      const cx = m(w.x + w.w / 2);
-      const cz = m(w.y + w.h / 2);
-      const L = m(Math.max(w.w, w.h));
-      const along = w.w >= w.h;
-      const DH = TRANSOM - 0.1;
-      const leaf = new THREE.Mesh(new THREE.PlaneGeometry(L, DH), leafGlass);
-      leaf.position.set(cx, base + DH / 2, cz);
-      if (!along) leaf.rotation.y = Math.PI / 2;
-      leaf.renderOrder = 2;
-      group.add(leaf);
-      const fw = along ? L : 0.06;
-      const fd = along ? 0.06 : L;
-      for (const y of [0.04, DH]) b.add(frame, box(fw, 0.08, fd, V(cx, base + y, cz)));
-      for (const s of [-1, 1]) b.add(frame, box(along ? 0.06 : 0.06, DH, along ? 0.06 : 0.06, V(cx + (along ? (s * L) / 2 : 0), base + DH / 2, cz + (along ? 0 : (s * L) / 2))));
-      // The push bar.
-      b.add(mats.steel, box(along ? L * 0.8 : 0.04, 0.04, along ? 0.04 : L * 0.8, V(cx, base + 1.05, cz)));
+      // Drawn as the swinging double doors above (\`frontLeaves\`): the wall is
+      // where each leaf ends up, standing open.
     }
   }
   // Across the entrance gap: a transom over the open bays, and the exit signs.
@@ -420,7 +451,9 @@ function facade(group: THREE.Group, mats: Materials, updaters: Array<(t: number,
   const signMat = new THREE.MeshBasicMaterial({ map: exitSign(), toneMapped: false, color: new THREE.Color(2, 2, 2) });
   for (const f of [0.2, 0.5, 0.8]) {
     const sg = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.23), signMat);
-    sg.position.set(ex - 0.12, base + TRANSOM + 0.35, m(e.y + e.h * f));
+    // 3 cm proud of the backing box, whose face is at ex - 0.12: coplanar, they
+    // flickered, and at the hall's depth range 1 cm is not enough either (29 Sep).
+    sg.position.set(ex - 0.15, base + TRANSOM + 0.35, m(e.y + e.h * f));
     sg.rotation.y = -Math.PI / 2;
     group.add(sg);
     b.add(mats.darkMetal, box(0.08, 0.28, 0.68, V(ex - 0.08, base + TRANSOM + 0.35, m(e.y + e.h * f))));
@@ -535,6 +568,21 @@ function mainStairSides(group: THREE.Group, mats: Materials): THREE.Object3D[] {
   }
   // The top end: white, floor to the landing.
   b.add(white, box(m(6), hTop, m(ms.h), V(xTop + m(3), hTop / 2, m(ms.y + ms.h / 2))));
+  /*
+   * ...and a light at the head of the flight: the first floor's own lighting
+   * spilling down it. There was nothing over the top of this staircase, so the
+   * last metres of chapter 3's climb went up into an unlit void under the hall
+   * ceiling (Michele, 29 Sep: "the scene ends in dark"). Warm, like the corridor
+   * it leads to; a point light, so the pool (`lightpool.ts`) only pays for it
+   * while the camera is near.
+   */
+  const head = new THREE.PointLight(0xffd6a0, 60, 14, 2);
+  head.position.set(xTop + 0.9, hTop + 1.5, m(ms.y + ms.h / 2));
+  // And one over the middle of the flight, so the treads read as treads on the
+  // way up rather than as a dark slope between two lit ends.
+  const mid = new THREE.PointLight(0xfff0dc, 40, 12, 2);
+  mid.position.set((xTop + xFoot) / 2, (hTop + hFoot) / 2 + 3.0, m(ms.y + ms.h / 2));
+  group.add(head, mid);
   out.push(...b.build(group));
   return out;
 }
@@ -1375,12 +1423,15 @@ export function buildGround(mats: Materials): Ground3D {
         // Booth by booth: each bay strikes 0.25 s after the one nearer the lobby.
         const k = poweredAt === null ? 0 : THREE.MathUtils.clamp((t - poweredAt - b.at * 2.2) / 0.5, 0, 1);
         const flick = k > 0 && k < 1 ? (Math.sin(t * 60 + b.at * 40) > 0 ? 1 : 0.2) : 1;
-        b.light.intensity = 1700 * k * flick;
+        // Morning is daylight plus the fittings, so the bays drop back and the even
+        // fill below carries the hall: at 1700 each bay burnt a white pool round
+        // whoever stood under it (Michele, 29 Sep: "chap 3 lighting seems a bit too much").
+        b.light.intensity = (morning ? 750 : 1700) * k * flick;
         (b.lamp.material as THREE.MeshBasicMaterial).color.setRGB(1, 0.95, 0.85).multiplyScalar(6 * k * flick);
         b.ring.color.setRGB(1, 0.45, 0.12).multiplyScalar(5 * k * flick);
       }
       const lit = poweredAt === null ? 0 : THREE.MathUtils.clamp((t - poweredAt - 1.2) / 1.2, 0, 1);
-      fill.intensity = (morning ? 1.7 : 1.1) * lit;
+      fill.intensity = (morning ? 2.1 : 1.1) * lit;
       // Reception is on the same circuit: dark until the breaker, lit after.
       for (const g of receptionGlows) g.mat.color.copy(g.base).multiplyScalar(0.02 + 0.98 * lit);
       if (receptionLight) receptionLight.intensity = 18 * lit;

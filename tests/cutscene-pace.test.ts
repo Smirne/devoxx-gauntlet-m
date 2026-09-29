@@ -30,7 +30,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { DT_MAX, createGame, type DebugGame, type NightState, type RobotKind } from '../src/sim';
-import { playToStairGate } from './pilot';
+import { finishChapter2, openFrontDoors, playToStairGate } from './pilot';
 // Vite's own `?raw`, not `node:fs`: the repo has no `@types/node` and
 // `tsconfig.json` pins `types` to `vite/client` (see `tests/clue-plate.test.ts`).
 import CH1_SRC from '../src/sim/chapters/ch1-night.ts?raw';
@@ -47,6 +47,8 @@ interface Measured {
   walked: Map<RobotKind, number>;
   max: Map<RobotKind, number>;
   reached: number | null;
+  /** How far each robot walked while the closing fade came down. */
+  inFade: Map<RobotKind, number>;
 }
 
 /**
@@ -66,6 +68,8 @@ function measureCut(g: DebugGame, budget = 1200): Measured {
   let prev = new Map(g.snapshot().bots.map((b) => [b.kind, { x: b.x, y: b.y }]));
   let frames = 0;
   let reached: number | null = null;
+  const inFade = new Map<RobotKind, number>();
+  let clear = false;
   for (let i = 0; i < budget; i++) {
     g.update(DT_MAX);
     const s = g.snapshot();
@@ -77,11 +81,17 @@ function measureCut(g: DebugGame, budget = 1200): Measured {
         const d = Math.hypot(b.x - p.x, b.y - p.y);
         max.set(b.kind, b.max);
         // A teleport, not a step: `CUT_PLACE_AT` moves the cast to the head of its
-        // route under the black. Anything under 60 px in a 33 ms frame is a walk.
-        if (d > 60) continue;
+        // route under the black. Anything under 60 px in a 33 ms frame is a walk —
+        // except under a full black, where the placing is, however short the jump:
+        // chapter 3 lines the cast up at the belt line, and a robot that was already
+        // standing near Stephan is moved a few px, which is not a walk either.
+        if (d > 60 || s.fade >= 0.99) continue;
         top.set(b.kind, Math.max(top.get(b.kind) ?? 0, d / DT_MAX));
         walked.set(b.kind, (walked.get(b.kind) ?? 0) + d);
+        if (clear && s.fade > 0) inFade.set(b.kind, (inFade.get(b.kind) ?? 0) + d);
       }
+      // The walk's own fade-in has lifted: any black from here on is the closing one.
+      if (s.fade === 0) clear = true;
     }
     prev = new Map(s.bots.map((b) => [b.kind, { x: b.x, y: b.y }]));
     if (s.chapter !== from) {
@@ -89,7 +99,7 @@ function measureCut(g: DebugGame, budget = 1200): Measured {
       break;
     }
   }
-  return { frames, top, walked, max, reached };
+  return { frames, top, walked, max, reached, inFade };
 }
 
 function expectAWalk(m: Measured, label: string): void {
@@ -147,7 +157,18 @@ describe('no robot is ever run faster than it can walk', () => {
       walks,
       'a chapter has gained (or lost) a cutscene walk. Every walk in the game is measured in this ' +
         'file, per robot, against that robot\'s own `max` — add the new one rather than editing this list',
-    ).toEqual(['ch1-night.ts', 'ch3-breakfast.ts']);
+    ).toEqual(['ch1-night.ts', 'ch2-expo.ts', 'ch3-breakfast.ts']);
+  });
+
+  it('chapter 2 to 3 — out through the front doors', { timeout: 30000 }, () => {
+    const g = createGame({ seed: 20260930, chapter: 2, cards: false });
+    g.update(DT_MAX);
+    finishChapter2(g);
+    // Up to the E at the doors; the measurement watches the walk that follows.
+    expect(openFrontDoors(g, 'voxxy', false, false)).toBe(true);
+    const m = measureCut(g, 2000);
+    expect(m.reached, 'chapter 2 never handed over').toBe(3);
+    expectAWalk(m, 'chapter 2 to 3');
   });
 
   it('chapter 3 to 4 — up the main staircase', { timeout: 30000 }, () => {
@@ -174,5 +195,23 @@ describe('no robot is ever run faster than it can walk', () => {
     // arriving — `CUT_WALK_TIME` is 4.6 s and `CUT_WALK_MAX` is 9 s, so a leg that
     // timed out would be half as long again as one that finished.
     expect(m.frames * DT_MAX, 'the walk ran out of time instead of arriving').toBeLessThan(8);
+  });
+
+  /*
+   * Michele, 29 Sep: *"the robots stop walking before the transition. They should
+   * keep walking with a fade out effect."* So nobody stands still for the black:
+   * each robot is still on the move while the closing fade comes down, unless the
+   * room itself stops it (a wall, the robot in front).
+   */
+  it('keeps them walking while the black comes down', { timeout: 30000 }, () => {
+    const one = measureCut(runChapter1());
+    const g = createGame({ seed: 20260930, chapter: 3, cards: false });
+    for (let i = 0; i < 4; i++) g.update(DT_MAX);
+    playToStairGate(g);
+    const three = measureCut(g, 2000);
+    for (const [label, m] of [['chapter 1 to 2', one], ['chapter 3 to 4', three]] as const) {
+      const moved = [...m.inFade.values()].filter((d) => d > 5).length;
+      expect(moved, `${label}: ${JSON.stringify([...m.inFade])} — the cast stopped before the fade`).toBeGreaterThanOrEqual(2);
+    }
   });
 });

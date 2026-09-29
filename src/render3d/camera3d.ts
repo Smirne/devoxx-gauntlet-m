@@ -27,6 +27,8 @@ const NEAR: Record<RobotKind, number> = { voxxy: 0.9, droid: 1.0, biggy: 1.3 };
 const CLEAR = 0.6;
 /** The steepest the boxed-in search may look down, rad: the floor ahead stays in frame. */
 const MAX_PITCH = 0.8;
+/** The camera's ordinary near plane, m. */
+const BASE_NEAR = 0.05;
 /** The nearest the camera comes when boxed in, m: far enough to see the whole robot. */
 const MIN_VIEW: Record<RobotKind, number> = { voxxy: 1.9, droid: 2.6, biggy: 2.6 };
 
@@ -46,6 +48,8 @@ export class ThirdPersonCamera {
   private dist = 3.5;
   private kind: RobotKind | null = null;
   private snapNext = true;
+  /** The near plane that cuts away a wall behind the camera; see `update`. */
+  private wallNear = BASE_NEAR;
   /** Swinging round behind a robot just switched to; the mouse cancels it. */
   private swing = false;
   /** Extra pitch while boxed in (see `update`), eased. */
@@ -62,7 +66,7 @@ export class ThirdPersonCamera {
   settlePitch: number | null = null;
 
   constructor(aspect: number) {
-    this.camera = new THREE.PerspectiveCamera(58, aspect, 0.05, 420);
+    this.camera = new THREE.PerspectiveCamera(58, aspect, BASE_NEAR, 420);
   }
 
   onMouse(dx: number, dy: number): void {
@@ -201,8 +205,24 @@ export class ThirdPersonCamera {
     const hits = this.ray.intersectObjects(colliders, true);
     // Never nearer than a view that still shows the robot whole.
     if (hits.length) d = Math.max(Math.max(NEAR[kind], MIN_VIEW[kind]), Math.min(d, hits[0].distance - 0.3));
+    /*
+     * ...and when that playable distance puts the camera BEHIND the wall, cut the
+     * wall away with the near plane. "A wall seen from inside is invisible" was
+     * only true inside the wall's thickness: past it, the camera looked at the
+     * back of a stand (Michele, 29 Sep, a screenshot two-thirds black: "you really
+     * can't fix this, eh?"). The near plane goes just on the robot's side of the
+     * nearest thing the ray hits, so everything between is not drawn.
+     */
+    this.wallNear = hits.length && hits[0].distance < d ? Math.max(BASE_NEAR, d - hits[0].distance + 0.03) : BASE_NEAR;
     const kd = this.snapNext ? 1 : d < this.dist ? 1 - Math.exp(-dt * 25) : 1 - Math.exp(-dt * 3);
     this.dist += (d - this.dist) * kd;
+    // The cut follows the eased distance, not the target one, so it never clips
+    // the robot while the camera is still on its way back out.
+    const near = this.wallNear > BASE_NEAR ? Math.max(BASE_NEAR, this.wallNear - (d - this.dist)) : BASE_NEAR;
+    if (Math.abs(near - cam.near) > 1e-3) {
+      cam.near = near;
+      cam.updateProjectionMatrix();
+    }
     this.want.copy(this.pivot).addScaledVector(dir, this.dist);
     cam.position.copy(this.want);
     cam.lookAt(this.pivot);

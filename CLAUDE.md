@@ -20,7 +20,9 @@
   pushing Biggy just by coming close, with no contacts". He authorised a full rescale of speeds and
   radii — one factor `SPEED_SCALE = 0.25` on every px/s quantity, and radii measured off the rigs
   instead of guessed (`docs/scale-and-units.md`). The rule did not change: they are frozen again,
-  and the next change is another human decision, not a builder's.
+  and the next change is another human decision, not a builder's. A second, narrow change came on
+  29 Sep 2026, also Michele's ("ok for biggy inertia"): Biggy's accel 0.6 → 1.5 and a driven-only
+  brake of 1.2 s⁻¹, drag unchanged — see GAUNTLET.md.
 - Robots: Voxxy small/fast (orange beam), Droid tall/deliberate (green pool, climbs Biggy), Biggy
   heavy/inertial (blue flood). Every gate says *why* a robot is blocked, in that robot's voice.
   Appearance must match `robots/*.png` model sheets — non-negotiable, see GAUNTLET.md Stage 1.

@@ -79,10 +79,11 @@ describe('acceleration — three robots, three personalities', () => {
     expect(timeToTopSpeed('voxxy')).toBeLessThan(1);
 
     const bg = mkBot('biggy', 0, 0);
-    drive(bg, 1, 1, 0);
-    // After a full second Biggy is not even at half his top speed.
+    drive(bg, 0.4, 1, 0);
+    // Heavy still, but steerable (Michele, 29 Sep): under half his top speed
+    // after 0.4 s, and three seconds and more to reach it.
     expect(bg.vx).toBeLessThan(DEFS.biggy.max / 2);
-    expect(timeToTopSpeed('biggy')).toBeGreaterThan(5);
+    expect(timeToTopSpeed('biggy')).toBeGreaterThan(3);
     // ...and Droid sits between the two, deliberate but not ponderous.
     expect(timeToTopSpeed('droid')).toBeGreaterThan(timeToTopSpeed('voxxy'));
     expect(timeToTopSpeed('droid')).toBeLessThan(timeToTopSpeed('biggy'));
@@ -313,7 +314,8 @@ describe('walls', () => {
     walls.push(jam);
 
     // Nudged from close up, Biggy arrives under the threshold and is turned away.
-    const slow = mkBot('biggy', 270, 200);
+    // (Two pixels of floor: at accel 1.5 anything more is already over 17.5 px/s.)
+    const slow = mkBot('biggy', 289, 200);
     drive(slow, 0.25 * TRAVEL_TIME_SCALE, 1, 0, walls);
     expect(broken).toBe(false);
     expect(slow.x).toBeLessThan(300);

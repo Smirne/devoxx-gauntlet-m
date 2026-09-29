@@ -42,6 +42,7 @@ import { canGrab, grab as takeHold, stepTow, towPlace, type TowState } from './t
 import type {
   Bot,
   Clue,
+  CutOptions,
   CutRoute,
   Game,
   GameSnapshot,
@@ -92,7 +93,7 @@ const ORDER: readonly RobotKind[] = ['voxxy', 'droid', 'biggy'];
  *   - a cutscene is direction, not physics. The shot is as long as the shot needs
  *     to be, and each robot's pace falls out of "cover your route in that time".
  *
- * The whole thing is gather + walk + hold + leave, about seven seconds.
+ * The whole thing is gather + walk + leave, about six and a half seconds.
  */
 
 /** After the gather fade, the robots are teleported to the head of their route. */
@@ -143,12 +144,16 @@ const CUT_WALK_TIME = 4.6;
  * itself instead of turning into a sprint.
  */
 const CUT_WALK_FRACTION = 0.7;
-/** They stand on their mark for this long before the black comes back. */
-const CUT_HOLD = 0.5;
+/*
+ * No hold on the mark. Michele, 29 Sep: *"the robots stop walking before the
+ * transition. They should keep walking with a fade out effect."* Once a robot has
+ * walked its route it carries on along its last heading, at the same pace, while
+ * the closing fade comes down: they walk out of the shot instead of posing in it.
+ */
 /**
  * A cutscene walk never holds the game hostage: after this the leg ends wherever it
  * has got to. It is a safety hatch, not a pace — it has to sit comfortably above
- * `CUT_WALK_TIME + CUT_HOLD` or it truncates the scene it is meant to protect.
+ * `CUT_WALK_TIME` or it truncates the scene it is meant to protect.
  */
 const CUT_WALK_MAX = 9;
 /** The closing fade, and when it hands over to the next chapter. */
@@ -296,10 +301,19 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     view: ViewRect;
     routes: Map<RobotKind, Array<{ x: number; y: number }>>;
     next: () => void;
-    stage: 'gather' | 'walk' | 'hold' | 'leave';
+    /**
+     * `hold` is the chapter's scripted beat between the placing and the walk
+     * (`CutOptions.hold`); a cut without one goes straight from gather to walk.
+     */
+    stage: 'gather' | 'hold' | 'walk' | 'leave';
     st: number;
+    opts: CutOptions;
+    /** Seconds each robot waits on its first mark once the walk starts. */
+    delay: Map<RobotKind, number>;
     /** px/s per robot, derived at the top of the walk from route length / `CUT_WALK_TIME`. */
     pace: Map<RobotKind, number>;
+    /** Each robot's last heading on its route, which it keeps walking once the route runs out. */
+    heading: Map<RobotKind, number>;
   }
   let cut: CutState | null = null;
 
@@ -348,6 +362,9 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     bots.forEach((b, i) => {
       // Only the robot being driven gets the stick. The other two keep their
       // momentum — which is the whole point of Biggy.
+      // Driven, and so braking when the stick is let go: not while he is on the
+      // tow bar, where the holder's run is what moves him.
+      b.driven = i === cur && !(tow && b.kind === 'biggy');
       if (i === cur) {
         b.ix = stickX;
         b.iy = stickY;
@@ -546,10 +563,10 @@ export function createGame(opts: GameOptions = {}): DebugGame {
    * physics, the two cutscene numbers are durations and fractions, and no px/s
    * constant is typed anywhere. A rescale of the speeds re-sizes the shot.
    */
-  function cutReach(): number {
+  function cutReach(time = CUT_WALK_TIME): number {
     let slowest = Infinity;
     for (const b of bots) if (b.max < slowest) slowest = b.max;
-    return slowest * CUT_WALK_FRACTION * CUT_WALK_TIME;
+    return slowest * CUT_WALK_FRACTION * time;
   }
 
   /**
@@ -579,12 +596,19 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     return pts;
   }
 
-  function startCut(routes: CutRoute[], next: () => void, v: ViewRect): void {
+  function startCut(routes: CutRoute[], next: () => void, v: ViewRect, opts: CutOptions = {}): void {
     phase = 'cut';
     const map = new Map<RobotKind, Array<{ x: number; y: number }>>();
-    const budget = cutReach();
-    for (const r of routes) map.set(r.kind, trimRoute(r.pts.map((p) => ({ x: p.x, y: p.y })), budget));
-    cut = { view: v, routes: map, next, stage: 'gather', st: 0, pace: new Map() };
+    const delay = new Map<RobotKind, number>();
+    const time = opts.walkTime ?? CUT_WALK_TIME;
+    for (const r of routes) {
+      const wait = Math.max(0, Math.min(r.delay ?? 0, time / 2));
+      delay.set(r.kind, wait);
+      // A robot that sets off late has less of the shot to walk its route in, so
+      // its budget is what is LEFT: the pace stays a walk however late it starts.
+      map.set(r.kind, trimRoute(r.pts.map((p) => ({ x: p.x, y: p.y })), cutReach(time - wait)));
+    }
+    cut = { view: v, routes: map, next, stage: 'gather', st: 0, opts, delay, pace: new Map(), heading: new Map() };
     for (const b of bots) {
       b.ix = 0;
       b.iy = 0;
@@ -594,6 +618,35 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     }
     if (byKind('droid').mounted) toggleMount();
     dropTow();
+  }
+
+  /** A robot past the end of its route keeps walking the way it was going. */
+  function walkOn(b: Bot, dt: number): void {
+    const h = cut?.heading.get(b.kind);
+    const sp = cut?.pace.get(b.kind) ?? 0;
+    if (h === undefined || sp <= 0) {
+      b.vx = 0;
+      b.vy = 0;
+      return;
+    }
+    const next = { x: b.x + Math.cos(h) * sp * dt, y: b.y + Math.sin(h) * sp * dt, r: b.r };
+    // Unlike the route, this stretch was never directed, so it respects the room:
+    // a robot that would walk into a wall or a friend stops there instead of
+    // walking through the handrail (the complaint `stairExitRoutes` answers).
+    const blocked =
+      walls.some((w) => !(w.skipFor && w.skipFor(b)) && circleRect(next, w)) ||
+      bots.some((o) => o !== b && Math.hypot(o.x - next.x, o.y - next.y) < o.r + b.r && Math.hypot(o.x - b.x, o.y - b.y) > Math.hypot(o.x - next.x, o.y - next.y));
+    if (blocked) {
+      b.vx = 0;
+      b.vy = 0;
+      return;
+    }
+    b.vx = Math.cos(h) * sp;
+    b.vy = Math.sin(h) * sp;
+    b.x = next.x;
+    b.y = next.y;
+    b.face = h;
+    b.anim += (sp * dt) / CUT_ANIM_DIV;
   }
 
   function cutUpdate(dt: number): void {
@@ -613,48 +666,49 @@ export function createGame(opts: GameOptions = {}): DebugGame {
           }
         }
         view = cut.view;
-        // Each robot's pace, fixed here and held for the whole leg: how far it
-        // still has to walk, divided by how long the shot lasts. Nothing in this
-        // file is a px/s constant any more.
         for (const b of bots) {
+          // Standing on the mark, facing down the route, until the walk starts.
           const r = cut.routes.get(b.kind);
-          let len = 0;
-          let px = b.x;
-          let py = b.y;
-          if (r) {
-            for (const pt of r) {
-              len += Math.hypot(pt.x - px, pt.y - py);
-              px = pt.x;
-              py = pt.y;
-            }
-          }
-          /*
-           * The clamp is a GUARD, not the pace.
-           *
-           * `trimRoute` has already made every leg short enough that
-           * `len / CUT_WALK_TIME` is under a walking pace, so this line never bites
-           * on a route the chapters actually write — and `tests/cutscene-pace.test.ts`
-           * asserts that, by measuring every robot through every transition against
-           * its own `max`. It is here so that a route nobody trimmed (a chapter
-           * added later, a waypoint moved) degrades into a slow walk that runs out
-           * of time rather than into Droid sprinting at 2.6x his top speed, which
-           * is what this cost last round.
-           */
-          cut.pace.set(b.kind, Math.min(len / CUT_WALK_TIME, b.max));
+          if (r && r.length) b.face = Math.atan2(r[0].y - b.y, r[0].x - b.x);
+          b.vx = 0;
+          b.vy = 0;
         }
-        cut.stage = 'walk';
-        cut.st = 0;
+        runtime?.relight?.();
+        if (cut.opts.hold) {
+          cut.stage = 'hold';
+          cut.st = 0;
+          return;
+        }
+        beginWalk(cut);
       }
       return;
     }
-    if (cut.stage === 'walk') {
+    if (cut.stage === 'hold') {
+      // The reveal: the black lifts on the cast standing on its marks while the
+      // chapter plays its beat. Nobody walks until the chapter says so.
       fade = Math.max(0, 1 - cut.st / CUT_WALK_FADE);
+      cut.opts.tick?.(dt);
+      runtime?.relight?.();
+      if (!(cut.opts.hold?.() ?? false)) beginWalk(cut);
+      return;
+    }
+    cut.opts.tick?.(dt);
+    if (cut.stage === 'walk') {
+      // Straight from the gather this is the fade-in; after a hold the black has
+      // already lifted and this leaves it at 0.
+      fade = Math.min(fade, Math.max(0, 1 - cut.st / CUT_WALK_FADE));
       let done = true;
       for (const b of bots) {
         const r = cut.routes.get(b.kind);
         if (!r || !r.length) {
+          walkOn(b, dt);
+          continue;
+        }
+        if (cut.st < (cut.delay.get(b.kind) ?? 0)) {
+          // Waiting its turn on the first mark.
           b.vx = 0;
           b.vy = 0;
+          done = false;
           continue;
         }
         const target = r[0];
@@ -679,30 +733,24 @@ export function createGame(opts: GameOptions = {}): DebugGame {
         b.y += b.vy * dt;
         b.face = Math.atan2(dy, dx);
         b.anim += (sp * dt) / CUT_ANIM_DIV;
+        cut.heading.set(b.kind, b.face);
       }
       // The robots have moved; anything the chapter derives from that has to move
       // with them, or the cutscene is lit from wherever the chapter left off.
       runtime?.relight?.();
-      if (done || cut.st > CUT_WALK_MAX) {
-        // They have arrived: hold the picture for a beat before the black returns,
-        // so the shot lands on a pose instead of cutting on the last footfall.
-        cut.stage = 'hold';
-        cut.st = 0;
-      }
-      return;
-    }
-    if (cut.stage === 'hold') {
-      fade = 0;
-      for (const b of bots) {
-        b.vx = 0;
-        b.vy = 0;
-      }
-      if (cut.st > CUT_HOLD) {
+      const time = cut.opts.walkTime ?? CUT_WALK_TIME;
+      let late = 0;
+      for (const w of cut.delay.values()) late = Math.max(late, w);
+      if (done || cut.st > Math.max(CUT_WALK_MAX, time + late + 3)) {
+        // They have arrived, and they do not stop: the black comes down on them
+        // still walking. See the note where `CUT_HOLD` used to be.
         cut.stage = 'leave';
         cut.st = 0;
       }
       return;
     }
+    for (const b of bots) walkOn(b, dt);
+    runtime?.relight?.();
     fade = Math.min(1, cut.st / CUT_LEAVE_FADE);
     if (cut.st > CUT_LEAVE_AT) {
       fade = 1;
@@ -710,6 +758,44 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       cut = null;
       next();
     }
+  }
+
+  /**
+   * The top of the walk: each robot's pace, fixed here and held for the whole leg —
+   * how far it still has to walk, divided by how long it has to walk it. Nothing
+   * in this file is a px/s constant any more.
+   */
+  function beginWalk(c: CutState): void {
+    const time = c.opts.walkTime ?? CUT_WALK_TIME;
+    for (const b of bots) {
+      const r = c.routes.get(b.kind);
+      let len = 0;
+      let px = b.x;
+      let py = b.y;
+      if (r) {
+        for (const pt of r) {
+          len += Math.hypot(pt.x - px, pt.y - py);
+          px = pt.x;
+          py = pt.y;
+        }
+      }
+      /*
+       * The clamp is a GUARD, not the pace.
+       *
+       * `trimRoute` has already made every leg short enough that
+       * `len / CUT_WALK_TIME` is under a walking pace, so this line never bites
+       * on a route the chapters actually write — and `tests/cutscene-pace.test.ts`
+       * asserts that, by measuring every robot through every transition against
+       * its own `max`. It is here so that a route nobody trimmed (a chapter
+       * added later, a waypoint moved) degrades into a slow walk that runs out
+       * of time rather than into Droid sprinting at 2.6x his top speed, which
+       * is what this cost last round.
+       */
+      const left = Math.max(0.5, time - (c.delay.get(b.kind) ?? 0));
+      c.pace.set(b.kind, Math.min(len / left, b.max));
+    }
+    c.stage = 'walk';
+    c.st = 0;
   }
 
   /* ------------------------------------------------------------- end cards */
@@ -743,7 +829,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       `<span class="sub">Night ${nightT}s · Expo ${Math.max(0, expoT - nightT)}s (cable ${score.cable ?? 0} px) · ` +
       `Soup ${soup}% at ${temp}° (${score.complaints ?? 0} complaint${(score.complaints ?? 0) === 1 ? '' : 's'}) · ` +
       `Stage ready with ${spare}s to spare (${score.keynoteComplaints ?? 0} complaint${(score.keynoteComplaints ?? 0) === 1 ? '' : 's'}) · ` +
-      `Swag ${swag.length}/3 · Total ${Math.round(t)}s${sk}</span><small>R to play again</small>`;
+      `Swag ${swag.length}/3 · Total ${Math.round(t)}s${sk}</span><small>R to play again \u00b7 C for credits</small>`;
   }
 
   function finish(): void {
@@ -1300,6 +1386,9 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       contacts: contacts(),
       // The opening video, while chapter 4 is running it. See `src/sim/reel.ts`.
       reel: r?.reel?.() ?? null,
+      // Only while the story has the camera: a chapter's shot never outlives the
+      // phase it was directed for.
+      shot: phase === 'play' || phase === 'cut' ? (r?.shot?.() ?? null) : null,
     };
   }
 

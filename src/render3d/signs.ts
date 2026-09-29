@@ -155,7 +155,18 @@ export function wayfinding(lines: Array<[string, string]>): THREE.CanvasTexture 
     const y = 70 + i * 110;
     x.textAlign = 'left';
     x.fillText(arrow, 30, y);
-    x.fillText(label, 110, y);
+    // No arrow, no gutter for one; and a label too long for the panel shrinks to
+    // fit rather than running off the edge ("The Finally Bloc", 29 Sep).
+    const left = arrow ? 110 : 34;
+    const room = 512 - left - 30;
+    let px = 54;
+    x.font = `bold ${px}px "Helvetica Neue", Arial, sans-serif`;
+    while (px > 24 && x.measureText(label).width > room) {
+      px -= 2;
+      x.font = `bold ${px}px "Helvetica Neue", Arial, sans-serif`;
+    }
+    x.fillText(label, left, y);
+    x.font = 'bold 54px "Helvetica Neue", Arial, sans-serif';
   });
   return tex(c);
 }

@@ -76,6 +76,15 @@ export interface RobotDef {
   max: number;
   /** Velocity decay rate with no input, s^-1. */
   drag: number;
+  /**
+   * Decay rate, s^-1, when this is the robot being driven and the stick is let
+   * go: the robot braking itself, as opposed to `drag`, which is how far it rolls
+   * when something else set it moving (a shove, the tow bar). Absent means the
+   * same as `drag`. Only Biggy has one: Michele, 29 Sep, *"If he's walking and I
+   * want him to stop / turn, it takes some seconds"* — and a Biggy that rolls a
+   * hall's length when Voxxy shoves him is still the game.
+   */
+  brake?: number;
   /** Relative mass for robot-robot impulses. */
   mass: number;
   color: string;
@@ -104,6 +113,8 @@ export interface Bot extends RobotDef {
   mounted: boolean;
   /** Planted: infinite effective mass, ignores input. */
   braced: boolean;
+  /** This is the robot the player is driving (set each step); see `RobotDef.brake`. */
+  driven?: boolean;
   /** Transient speed cap above `max`, granted by a push; decays at 1.5 s^-1. */
   boostCap?: number;
   /**
@@ -282,6 +293,58 @@ export interface Toast {
 export interface CutRoute {
   kind: RobotKind;
   pts: Vec2[];
+  /**
+   * Seconds this robot stands on its first mark after the walk starts, before it
+   * sets off. Its pace is worked out over what is left of the walk, so it still
+   * arrives with the others — later onto the route, not later off it. Chapter 3's
+   * climb sends Biggy up last this way.
+   */
+  delay?: number;
+}
+
+/**
+ * How a chapter directs a cutscene beyond "walk these routes": see `startCut`.
+ */
+export interface CutOptions {
+  /**
+   * A scripted beat between the robots being placed and the walk starting.
+   *
+   * Asked once a frame from the moment the cast stands on its marks (under the
+   * black of the gather fade): the cast stands still and the player has no stick
+   * while it answers `true`, and the walk starts on the first frame it answers
+   * `false`.
+   */
+  hold?: () => boolean;
+  /**
+   * The chapter's own clock through the cutscene, called with the frame's `dt`
+   * every frame from the placing to the hand-over (hold, walk and closing fade).
+   * The cutscene runner does not call the chapter's `update`, so anything that
+   * has to keep living on screen while the robots walk — Stephan at his button,
+   * the belts winding in, the crowd behind them — is ticked here.
+   */
+  tick?: (dt: number) => void;
+  /**
+   * How long the walk takes, seconds, instead of the shared `CUT_WALK_TIME` — for a
+   * walk whose route is set by the building (a whole flight of stairs) rather than
+   * by the shot. The route budget scales with it, so it is still a walk.
+   */
+  walkTime?: number;
+}
+
+/**
+ * A camera shot the SIM directs: where the eye is and what it looks at.
+ *
+ * Positions are sim px on the plan and heights are metres above the storey's
+ * datum, the same units `Plate` uses. A chapter publishes one while it is telling
+ * the story rather than the player driving — the renderer eases its camera to it
+ * and decides nothing about where to look. `null` is "no opinion": the follow
+ * camera, or the generic cutscene framing.
+ */
+export interface CameraShot {
+  /** A name for tests and debugging: `stair-gate`, `stair-climb`. */
+  name: string;
+  eye: { x: number; y: number; h: number };
+  look: { x: number; y: number; h: number };
 }
 
 export type Phase = 'intro' | 'play' | 'cut' | 'done';
@@ -292,6 +355,14 @@ export type Phase = 'intro' | 'play' | 'cut' | 'done';
  * not contain game logic (CLAUDE.md). Everything the diorama needs to draw a frame
  * is reachable from here.
  */
+
+/** What the keynote speaker wears to stay TBA — see `Person.disguise`. */
+export interface Disguise {
+  /** The cape's lining, the colour that shows when it swings. The shell is always near-black. */
+  lining: string;
+  /** What the oversized badge says, one entry per line, biggest first. */
+  badge: readonly string[];
+}
 
 /** A conference-goer, catering worker, Stephan, or the hiding keynote speaker. */
 export interface Person {
@@ -322,15 +393,19 @@ export interface Person {
   /** Bare feet under the trousers: Venkat, who talks barefoot. */
   barefoot?: boolean;
   /**
-   * An open laptop, held in both hands in front of them.
+   * The keynote speaker's disguise: a black domino mask, a short cape, a
+   * presentation clicker in one hand and an oversized badge on a long ribbon.
    *
-   * Michele, on the keynote speaker nobody could find: *"He could have a laptop in
-   * hand to fix the slides? In order to find him."* Nobody else in the hall
-   * carries one, so it is a silhouette you can pick out of a crowd — and it says
-   * what they are doing behind that booth, which is not hiding, it is panicking
-   * about slide 34.
+   * It replaced a laptop. Michele, 29 Sep 2026, on a playtest screenshot of a
+   * teal figure holding a grey slab: *"the lanyard is not showing, the laptop is
+   * a bit awkward. Alternatives to make it recognizable? A mask since it's yet
+   * mysterious? a cape?"* The laptop was held square across the chest, which is
+   * exactly where the ribbon hangs, so it hid the one thing the hint told you to
+   * look for. A speaker nobody has announced dressing as a masked mystery guest
+   * is the joke "TBA" was always setting up, and a cape swings, which is a
+   * silhouette nobody else in the crowd has.
    */
-  laptop?: boolean;
+  disguise?: Disguise;
   /**
    * A screen for a head: a cream case, dark glass, a terracotta prompt. Claude
    * (`src/sim/cameos.ts`), who has no face to draw and is known by a terminal
@@ -386,6 +461,12 @@ export interface Person {
    * fact about the chapter and the shape of a clap is the renderer's business.
    */
   cheer?: number;
+  /**
+   * How far the right arm is up and forward, 0 to 1: a hand going out to press
+   * something. Stephan's button at the foot of the main staircase (chapter 3).
+   * Like `cheer`, WHEN is the sim's; the shape of the reach is the renderer's.
+   */
+  reach?: number;
 }
 
 /**
@@ -660,6 +741,8 @@ export interface GameSnapshot {
    * every other frame of the game.
    */
   reel: ReelView | null;
+  /** The shot the sim is directing this frame, or `null` — see `CameraShot`. */
+  shot: CameraShot | null;
 }
 
 /** The headless game. `src/render` holds one of these and only reads its snapshot. */

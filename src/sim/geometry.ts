@@ -1680,11 +1680,31 @@ export function entranceMullions(): Rect[] {
   out.push({ x: e.x - 1, y: e.y + e.h - 6, w: e.w + 2, h: 6 });
   return out;
 }
-/** The door leaves standing open against the reveals, on the lobby side. */
+/** Each bay's full opening between its two mullions, where its doors hang. */
+export function entranceBayOpenings(): Array<[number, number]> {
+  const mus = entranceMullions();
+  const out: Array<[number, number]> = [];
+  for (let k = 0; k + 1 < mus.length; k++) out.push([mus[k].y + mus[k].h, mus[k + 1].y]);
+  return out;
+}
+/** How thick a door leaf is, px. */
+const LEAF_T = 4;
+/**
+ * The door leaves, standing open: a DOUBLE door in each bay, both leaves swung
+ * OUT onto the forecourt against the bay's two ends. They used to be one leaf per
+ * bay folded into the lobby; since chapter 2 ends with a robot opening these
+ * doors (29 Sep) the 3D draws them hinged there and swinging out, and the
+ * collider is where the picture is.
+ */
 export function entranceLeaves(): Rect[] {
   const e = GF.entrance;
-  const bayH = e.h / ENTRANCE_BAYS;
-  return [0, 1, 2].map((k): Rect => ({ x: e.x - 17, y: e.y + k * bayH + 8, w: 16, h: 5 }));
+  return entranceBayOpenings().flatMap(([y0, y1]): Rect[] => {
+    const half = (y1 - y0) / 2;
+    return [
+      { x: e.x + e.w + 1, y: y0, w: half, h: LEAF_T },
+      { x: e.x + e.w + 1, y: y1 - LEAF_T, w: half, h: LEAF_T },
+    ];
+  });
 }
 /**
  * The clear opening of each bay: between two mullions, past the leaf standing
@@ -1693,14 +1713,7 @@ export function entranceLeaves(): Rect[] {
  * were scenery and is not fine now that they stop people.
  */
 export function entranceBayGaps(): Array<[number, number]> {
-  const mus = entranceMullions();
-  const leaves = entranceLeaves();
-  const out: Array<[number, number]> = [];
-  for (let k = 0; k + 1 < mus.length; k++) {
-    const lf = leaves[k];
-    out.push([Math.max(mus[k].y + mus[k].h, lf.y + lf.h), mus[k + 1].y]);
-  }
-  return out;
+  return entranceBayOpenings().map(([y0, y1]): [number, number] => [y0 + LEAF_T, y1 - LEAF_T]);
 }
 
 /**
@@ -1866,7 +1879,7 @@ export function groundWalls(): Wall[] {
   });
   w.push({ ...STORE_WALL, kind: 'store-wall', why: (b) => `${b.name}: the back wall of the store` });
   for (const p of HALL_PANELS) {
-    w.push({ ...p, kind: 'accent-panel', why: (b) => `${b.name}: a wall panel. Kinepolis red, and solid` });
+    w.push({ ...p, kind: 'accent-panel', why: (b) => `${b.name}: the hall wall, behind the curtain` });
   }
 
   /* ------------------------------------------------------------------ the lobby

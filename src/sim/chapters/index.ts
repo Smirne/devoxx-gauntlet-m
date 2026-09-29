@@ -15,7 +15,9 @@
 
 import type {
   Bot,
+  CameraShot,
   Clue,
+  CutOptions,
   CutRoute,
   LightSource,
   Mirror,
@@ -85,7 +87,12 @@ export interface ChapterCtx {
   toggleMount(): void;
   /** 1/2/3 switch the driven robot (suppressed while typing at a keypad). */
   switchKey(code: string): void;
-  startCut(routes: CutRoute[], next: () => void, view: ViewRect): void;
+  /**
+   * The exit walk: gather fade, the cast placed on the heads of `routes`, then the
+   * walk and the closing fade into `next`. `opts` adds a scripted beat between the
+   * placing and the walk, and a walk length of its own — see `CutOptions`.
+   */
+  startCut(routes: CutRoute[], next: () => void, view: ViewRect, opts?: CutOptions): void;
   startChapter(n: number): void;
   /** A losing end state: the card explains it, `R` or Skip chapter moves on. */
   fail(text: string): void;
@@ -177,6 +184,11 @@ export interface ChapterRuntime {
    * once a frame while a cutscene is walking, and by nothing else.
    */
   relight?(): void;
+  /**
+   * The camera shot this chapter is directing right now, or `null` for none —
+   * `GameSnapshot.shot`. Asked every frame of `play` and of a cutscene.
+   */
+  shot?(): CameraShot | null;
   /**
    * Keep playing BEHIND the run's last card.
    *

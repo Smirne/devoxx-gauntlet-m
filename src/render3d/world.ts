@@ -16,9 +16,10 @@ import { buildDetails } from './details';
 import { LightPool } from './lightpool';
 import { createMaterials } from './materials';
 import { Pipeline, QUALITY, type QualityName, type VolumeSpot } from './pipeline';
-import { buildGround, type Ground3D } from './ground3d';
+import { buildGround, setFrontDoors, type Ground3D } from './ground3d';
 import { buildKeynote, type Keynote3D } from './keynote3d';
 import { createPeople } from './people3d';
+import { LADLE_REACH } from './props-ground';
 import { createProps, type Props3D } from './props3d';
 import { createRobots, dimLamps, handsOf, updateGlare, updateRobots, type Robot3D } from './robots3d';
 import { CORRIDOR_END, HEIGHTS, SIGN_SPANS, buildVenue, type Venue3D } from './venue';
@@ -57,6 +58,14 @@ export interface WorldOptions {
   quality?: QualityName;
   preserveDrawingBuffer?: boolean;
 }
+
+/**
+ * How fast the camera closes on a shot the sim directs (`GameSnapshot.shot`), per
+ * second: most of a move in about a second — a camera operator, not a cut.
+ */
+const SHOT_EASE = 2.2;
+/** The robot fill while a directed shot has the camera: wider and brighter than in play. */
+const SHOT_FILL = { distance: 12, intensity: 20 } as const;
 
 export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}): World3D {
   const quality = QUALITY[opts.quality ?? 'high'];
@@ -463,6 +472,80 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     }
   }
 
+  /**
+   * THE LADLE, wherever the sim says it is (Michele, 29 Sep: "droid should take
+   * the ladle, not the shelf" and "keep it in hand and drop it on the pot").
+   *
+   * `idle` hangs it on the shelf's rail; `active` puts its grip in Droid's right
+   * hand — the bone, so it swings with his walk — held up like a torch; `done`
+   * stands it in a pot with the handle out over the rim: Biggy's, while he carries
+   * one, the counter's vat otherwise. The hand-overs are timed to his reach (the
+   * sim changes state on the key; his arm gets to the shelf or the pot ~0.4 s
+   * later), so the ladle does not jump before his hand is there.
+   */
+  let ladleState = '';
+  let ladleSince = 0;
+  const _grip = new THREE.Vector3();
+  const _fore = new THREE.Vector3();
+  const _dir = new THREE.Vector3();
+  const _bowl = new THREE.Vector3();
+  const Z = new THREE.Vector3(0, 0, 1);
+  function standIn(tool: THREE.Object3D, bowlAt: THREE.Vector3, lean: THREE.Vector3): void {
+    // Grip up and out over the rim, bowl down in the soup.
+    _dir.copy(lean).normalize();
+    tool.quaternion.setFromUnitVectors(Z, _dir);
+    tool.position.copy(bowlAt).addScaledVector(_dir, -(LADLE_REACH + 0.1));
+  }
+  function holdLadle(snap: GameSnapshot): void {
+    const lp = snap.props.find((q) => q.kind === 'ladle');
+    const lo = props.object('ladle');
+    if (!lp || !lo || !lo.visible) return;
+    const tool = lo.userData.tool as THREE.Object3D;
+    const state = lp.state ?? 'idle';
+    if (state !== ladleState) {
+      ladleSince = time;
+      ladleState = state;
+    }
+    const late = time - ladleSince;
+    const dr = robots.get('droid');
+    const inHand = (state === 'active' && late > 0.4) || (state === 'done' && late < 0.4);
+    if (state === 'idle' || (state === 'active' && !inHand)) {
+      // On the hook, hanging handle-up with the bowl open to the hall.
+      tool.position.copy(lo.userData.hook as THREE.Vector3);
+      tool.rotation.set(Math.PI / 2, 0, 0);
+      return;
+    }
+    if (inHand && dr) {
+      const b = dr.rig.bones;
+      b.handR.getWorldPosition(_grip);
+      b.forearmR.getWorldPosition(_fore);
+      // Out past the wrist to where the fingers close.
+      _grip.addScaledVector(_dir.subVectors(_grip, _fore).normalize(), 0.07);
+      const bot = snap.bots.find((q) => q.kind === 'droid');
+      const face = bot ? bot.face : 0;
+      // Held out in front and a little to his right, bowl up, like a torch he
+      // is very proud of: it leads him to the pot, and it clears his own body
+      // from a camera behind him.
+      const fx = Math.cos(face);
+      const fz = Math.sin(face);
+      _dir.set(fx * 0.72 - fz * 0.32, 0.6, fz * 0.72 + fx * 0.32).normalize();
+      tool.quaternion.setFromUnitVectors(Z, _dir);
+      tool.position.copy(_grip);
+      return;
+    }
+    const pot = props.object('pot');
+    if (pot && pot.visible) {
+      _bowl.set(pot.position.x + 0.06, pot.position.y + 0.2, pot.position.z - 0.04);
+      standIn(tool, _bowl, _fore.set(0.35, -0.85, -0.3));
+      return;
+    }
+    const st = snap.props.find((q) => q.kind === 'soup-station');
+    if (!st) return;
+    // The counter's vat: `props-ground` stands it on a 1 m counter, 0.5 m tall.
+    _bowl.set(m(st.x + (st.w ?? 22) / 2) + 0.08, 1.33, m(st.y + (st.h ?? 22) / 2) - 0.06);
+    standIn(tool, _bowl, _fore.set(0.4, -0.8, -0.35));
+  }
+
   /** The chapter the follow camera last framed; see the reset below. */
   let camChapter = -1;
   function render(snap: GameSnapshot, dt: number, intro = false): void {
@@ -477,8 +560,16 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       // morning, doors open, and the hall is lit from the start.
       const lit = world.debugPower || snap.chapter >= 3 || snap.props.some((q) => q.kind === 'breaker' && q.state === 'done');
       ground.setPower(lit ? 1 : 0, time, snap.chapter >= 3);
-      dimLamps(robots, lit ? 0.25 : 1, dt);
+      // Morning (chapter 3) is daylight: the lamps are a glint, not a pool. At
+      // 0.25 their spill washed the floor round the robots out to white
+      // (Michele, 29 Sep: "chap 3 lighting seems a bit too much").
+      dimLamps(robots, snap.chapter >= 3 ? 0.06 : lit ? 0.25 : 1, dt);
       ground.setChapter(snap.chapter);
+      // The front doors: shut through chapter 2 until a robot opens them, open after.
+      {
+        const fd = snap.props.find((q) => q.kind === 'entrance-doors');
+        setFrontDoors(snap.chapter >= 3 ? 1 : (fd?.progress ?? 0));
+      }
       {
         const act = robots.get((snap.bots[snap.active] ?? snap.bots[0]).kind);
         if (act) ground.setFocus(act.rig.root.position.x, act.rig.root.position.z);
@@ -506,6 +597,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     if (keynoteOn && keynote) keynote.update(snap, time, dt, (kind) => handsOf(robots, kind));
     else props.update(snap, time, dt);
     seatOnBiggy(snap);
+    holdLadle(snap);
     peopleRoot.visible = onGround || snap.chapter === 4;
     if (peopleRoot.visible) people.update(snap, time);
     // Props are built lazily from the first snapshots; patch whatever exists.
@@ -541,6 +633,36 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       grade.dofAmount = 0.85;
       grade.dofFocus = 6 + 10 * Math.max(0, 1 - introT / 14);
       grade.dofRange = 7;
+    } else if (snap.shot && !cam.pose) {
+      // A shot the sim is directing (chapter 3's stair beat): eased to from
+      // wherever the camera was, and snapped under a full black. Heights are off
+      // the storey datum, like everything else the sim says about height.
+      grade.dofAmount = 0;
+      const c = cam.camera;
+      const sh = snap.shot;
+      _cutT.set(m(sh.eye.x), sh.eye.h, m(sh.eye.y));
+      if (!inCut) {
+        _cutPos.copy(c.position);
+        _cutLook.copy(c.position).add(c.getWorldDirection(new THREE.Vector3()).multiplyScalar(4));
+        inCut = true;
+      }
+      const k = snap.fade > 0.9 ? 1 : 1 - Math.exp(-dt * SHOT_EASE);
+      _cutPos.lerp(_cutT, k);
+      _cutLook.lerp(_cutT.set(m(sh.look.x), sh.look.h, m(sh.look.y)), k);
+      c.position.copy(_cutPos);
+      c.lookAt(_cutLook);
+      c.updateMatrixWorld();
+      cam.cut();
+      // The fill that follows the player's robot follows the cast instead: a
+      // staircase has no fitting over it, and the morning's lamps are a glint
+      // (`dimLamps`), so without it the climb went up into the dark.
+      _cutC.set(0, 0, 0);
+      for (const r of robots.values()) _cutC.add(r.rig.root.position);
+      _cutC.divideScalar(Math.max(1, robots.size));
+      robotFill.position.copy(c.position).lerp(_cutC, 0.55);
+      robotFill.position.y += 1.4;
+      robotFill.distance = SHOT_FILL.distance;
+      robotFill.intensity = SHOT_FILL.intensity;
     } else if (snap.phase === 'cut' && !cam.pose) {
       // The exit walk: the three of them from above and behind, eased in from
       // wherever the camera was (Michele: "it should show the 3 characters
@@ -602,7 +724,8 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       cam.update(dt, active.kind, _pos, active.face, speed, [...solid, ...props.colliders, ...(keynote && keynote.group.visible ? keynote.colliders : []), ...(crates.root.visible ? [crates.root] : [])]);
       robotFill.position.copy(cam.camera.position).lerp(rob.rig.root.position, 0.45);
       robotFill.position.y += 0.6;
-      robotFill.intensity = onGround && ground && snap.chapter >= 3 ? 1.5 : 4;
+      robotFill.distance = 5;
+      robotFill.intensity = onGround && ground && snap.chapter >= 3 ? 0.8 : 4;
     }
 
     // Mirror bounces from the sim.

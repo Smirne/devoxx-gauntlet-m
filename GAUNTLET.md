@@ -67,14 +67,24 @@ screen and a 1.36 m radius in the sim. He authorised a **full rescale of speeds 
 `docs/scale-and-units.md` for the decision and the measurements. They are frozen again behind it,
 and the rule is unchanged: the next change is another human decision.
 
+**A second, narrow change — 29 Sep 2026, by Michele.** After a full-run playtest: *"Biggy has
+really a lot of inertia this run. If he's walking and I want him to stop / turn, it takes some
+seconds"* (measured: 6.6 s and 11.7 m to stop, 3.1 s to turn 80°). He approved *"ok for biggy
+inertia"* on the proposal: Biggy's accel 0.6 → 1.5 s⁻¹, and a new **brake** of 1.2 s⁻¹ that applies
+only while he is the robot being driven and the stick is released. His **drag stays 0.35**: a Biggy
+someone else set rolling (a shove, the tow bar) still coasts a hall's length, which is what the
+jammed door, the roller door and the cake are built on. Top speed and mass are unchanged. Frozen
+again; the next change is another human decision.
+
 | | Voxxy | Droid | Biggy |
 |---|---|---|---|
 | radius (sim px) | 4.75 | 6.25 | 9 |
 | radius (m) — measured off the rig | 0.38 | 0.50 | 0.72 |
-| accel (s⁻¹) — unscaled | 12 | 4 | 0.6 |
+| accel (s⁻¹) | 12 | 4 | 1.5 (was 0.6; Michele, 29 Sep) |
 | top speed (px/s) | 72.5 | 28.75 | 58.75 |
 | top speed (m/s) | 5.8 | 2.3 | 4.7 |
 | drag (s⁻¹) — unscaled | 9 | 7 | 0.35 |
+| brake (s⁻¹), driven and stick released | = drag | = drag | 1.2 (new; Michele, 29 Sep) |
 | mass — unscaled | 1 | 3 | 7 |
 | lamp — unscaled | cone 0.38 rad, range 280, orange | pool range 95, green | cone 1.0 rad, range 300, blue |
 

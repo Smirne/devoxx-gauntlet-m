@@ -29,5 +29,22 @@ export const SPEAKER_LOOKS: Readonly<Record<string, SpeakerLook>> = Object.freez
   'Aurélie': { colour: '#1e2a44', glasses: true, lanyard: LANYARD.speaker },
 });
 
+/**
+ * The keynote speaker, still TBA: teal hoodie and cap, the multicolour ribbon,
+ * and the disguise (`Person.disguise`). Chapter 3 hides them behind a booth and
+ * chapter 4 puts them on the stage, and both spread this, so the person the
+ * player walked to Stephan is the person who walks on.
+ *
+ * Teal worn head to foot is what Michele asked for when he could not find them
+ * (*"therse should also be something recognizable about thim"*): nothing else in
+ * the hall wears the hoodie, and the ribbon is the only multicolour one.
+ */
+export const KEYNOTE_LOOK = Object.freeze({
+  colour: '#1f9e9b',
+  hat: true,
+  lanyard: LANYARD.keynote,
+  disguise: Object.freeze({ lining: '#e8a01c', badge: Object.freeze(['KEYNOTE', '?']) }),
+});
+
 /** Front-row order in Room 8, left to right as the audience sees them. */
 export const FRONT_ROW: readonly string[] = ['Aurélie', 'Josh', 'Venkat', 'Mario', 'Lize'];

@@ -246,31 +246,33 @@ describe('chapter 3 · Stephan opens the stairs instead of the gate blinking out
     }
   });
 
-  it('opens over a swing the player can watch, and only then starts the cutscene', () => {
+  it('opens inside the stair beat, in shot and with the black lifted, and only then climbs', () => {
     const g = mk(3);
     steps(g, 2);
     playToStairGate(g);
     const st = g.debug.chapter() as BreakfastState;
     expect(st.gateOpen).toBe(true);
     /*
-     * THE TRAP THIS CHAPTER WALKED STRAIGHT INTO.
+     * THE TRAP THIS CHAPTER WALKED STRAIGHT INTO, and where the fix moved to.
      *
      * `done()` used to open the gate and start the exit cutscene in the same
      * statement, and `CUT_FADE` is 0.35 s — so the screen would be black before the
-     * barrier had moved a degree, and the animation would exist with nobody able to
-     * see it. Chapter 1's fire door had the same bug and `FIRE_CUT_DELAY` is what
-     * fixed it; `GATE_SWING_TIME + GATE_CUT_DELAY` is the same hold here.
+     * barrier had moved a degree. The first fix held the hall in `play` for the
+     * swing. Michele's storyboard (29 Sep) put the swing INSIDE the cutscene
+     * instead: the black comes and goes first, the cast is at the belt line, and
+     * the wave runs in the stair beat's own framing.
      *
-     * `playToStairGate` stops while that hold is still running, so this is the
-     * assertion that the hold exists at all: the swing is FINISHED and the chapter
-     * is still in `play`, with the fade still down.
+     * `playToStairGate` stops on the frame the last belt is home, so this is the
+     * assertion that it happened on screen: the wave is FINISHED, the black has
+     * lifted, and the camera is still on the barrier rather than on the climb.
      */
     expect(st.gateSwing, 'the wave never got through all eight belts').toBe(1);
-    expect(g.snapshot().phase, 'the cutscene started before the gate had opened on screen').toBe('play');
-    expect(g.snapshot().fade, 'the hall faded out during the swing').toBeLessThan(0.01);
-    // ...and it does hand over once the hold is up, rather than hanging on the hall.
-    for (let i = 0; i < 200 && g.snapshot().phase === 'play'; i++) g.update(DT_MAX);
-    expect(g.snapshot().phase).toBe('cut');
+    expect(g.snapshot().phase, 'the player still has the stick during the stair beat').toBe('cut');
+    expect(g.snapshot().fade, 'the belts wound in under a black screen').toBeLessThan(0.01);
+    expect(g.snapshot().shot?.name, 'the camera left the barrier before the belts were home').toBe('stair-gate');
+    // ...and it does go on to the climb, rather than hanging on the barrier.
+    for (let i = 0; i < 60 && g.snapshot().shot?.name === 'stair-gate'; i++) g.update(DT_MAX);
+    expect(g.snapshot().shot?.name).toBe('stair-climb');
   });
 
   it('runs its clock from 0 to 1 rather than cutting between two stills', () => {
@@ -281,7 +283,9 @@ describe('chapter 3 · Stephan opens the stairs instead of the gate blinking out
 
     const seen: number[] = [];
     playToStairGate(g, (h) => {
-      // From the frame `done()` fires, watch the clock rather than the end state.
+      // From the frame the first belt lets go — after Stephan's walk to his button
+      // and the press — watch the clock rather than the end state.
+      for (let i = 0; i < 200 && (h.snapshot().props.find((o) => o.kind === 'gate')?.progress ?? 0) === 0; i++) h.update(DT_MAX);
       for (let i = 0; i < 12; i++) {
         const p = h.snapshot().props.find((o) => o.kind === 'gate');
         seen.push(p?.progress ?? -1);
@@ -291,7 +295,7 @@ describe('chapter 3 · Stephan opens the stairs instead of the gate blinking out
     // A dozen frames is 0.4 s of a 1.5 s swing, so every one of them is a pose
     // between the two ends — which is the whole difference between an animation
     // and a cut between two stills.
-    expect(seen[0], 'the barrier is already part-open on the frame it is unhooked').toBe(0);
+    expect(seen[0], 'the barrier jumped open on the frame it started').toBeLessThan(0.05);
     expect(seen[seen.length - 1], 'the whole swing happened inside half a second').toBeLessThan(1);
     for (let i = 1; i < seen.length; i++) {
       expect(seen[i], `frame ${i} did not advance`).toBeGreaterThan(seen[i - 1]);

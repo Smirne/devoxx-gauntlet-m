@@ -156,9 +156,10 @@ export const DEFS: Readonly<Record<RobotKind, RobotDef>> = Object.freeze({
   biggy: Object.freeze({
     name: 'Biggy',
     r: 9,
-    accel: 0.6,
+    accel: 1.5,
     max: 235 * BIGGY_SPEED_SCALE,
     drag: 0.35,
+    brake: 1.2,
     mass: 7,
     color: '#5f7387',
     eye: '#ffe9b0',

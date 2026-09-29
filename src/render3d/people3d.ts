@@ -962,7 +962,7 @@ function buildMario(torso: THREE.Mesh, H: number): Portrait {
   const jacket = std('#1c1c20', 0.7);
   const skin = std(skinC, 0.8);
   foldedArms(g, torso, H, jacket, jacket, skin, red);
-  return { group: g, head, body: jacket, skin, hides: ['glasses', 'mic', 'collar', 'head', 'hair', 'arm-l', 'arm-r', 'hand-l', 'hand-r', 'cup', 'laptop-deck', 'laptop-lid'] };
+  return { group: g, head, body: jacket, skin, hides: ['glasses', 'mic', 'collar', 'head', 'hair', 'arm-l', 'arm-r', 'hand-l', 'hand-r', 'cup'] };
 }
 
 /**
@@ -1083,7 +1083,7 @@ function buildJosh(torso: THREE.Mesh, H: number): Portrait {
   g.add(print);
   const skin = std(skinC, 0.8);
   foldedArms(g, torso, H, tee, skin, skin);
-  return { group: g, head, body: tee, skin, hides: ['glasses', 'mic', 'collar', 'head', 'hair', 'arm-l', 'arm-r', 'hand-l', 'hand-r', 'cup', 'laptop-deck', 'laptop-lid'] };
+  return { group: g, head, body: tee, skin, hides: ['glasses', 'mic', 'collar', 'head', 'hair', 'arm-l', 'arm-r', 'hand-l', 'hand-r', 'cup'] };
 }
 
 /**

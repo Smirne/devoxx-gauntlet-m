@@ -341,7 +341,7 @@ export function stepBot(b: Bot, dt: number, walls: Wall[], onBlocked?: (b: Bot, 
     b.vx += (tx - b.vx) * k;
     b.vy += (ty - b.vy) * k;
   } else {
-    const k = Math.exp(-b.drag * dt);
+    const k = Math.exp(-(b.driven && b.brake !== undefined ? b.brake : b.drag) * dt);
     b.vx *= k;
     b.vy *= k;
   }
