@@ -159,7 +159,7 @@ const LOCK_SWING_TIME = 0.7;
  * had moved (Michele, 28 Sep: "the door should start opening only after the
  * lever is pulled"). The renderers draw the reach over the same time.
  */
-const LEVER_REACH_TIME = 0.75;
+export const LEVER_REACH_TIME = 0.75;
 /** Cinema B's leaf, drawn and collided at its own thickness rather than the band's. */
 const LOCK_LEAF_T = 4;
 

@@ -23,6 +23,7 @@ import type { Materials } from './materials';
 import { box } from './materials';
 import { poseShutter, rollerShutter } from './shutter';
 import { cfpBoard, emitter, wayfinding } from './signs';
+import { PULL_END, pullAt, reachClock, registerGrip } from './reach3d';
 
 const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z);
 
@@ -210,9 +211,14 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
           pivot.position.set(hx, Y - 0.38, back + 0.36);
           const arm = new THREE.Mesh(box(0.05, 0.26, 0.05, V(0, 0.13, 0)), new THREE.MeshStandardMaterial({ color: 0xc1261c, roughness: 0.4 }));
           const grip = new THREE.Mesh(box(0.14, 0.05, 0.06, V(0, 0.26, 0)), new THREE.MeshStandardMaterial({ color: 0xc1261c, roughness: 0.4 }));
-          pivot.add(arm, grip);
+          // Where the palm closes: the middle of the grip. Droid's arm and this
+          // handle turn on one clock (reach3d.ts), so the hand goes up with it.
+          const gripAt = new THREE.Object3D();
+          gripAt.position.y = 0.26;
+          pivot.add(arm, grip, gripAt);
           g.add(pivot);
           handles.push(pivot);
+          registerGrip(`breaker${i}`, { point: gripAt, throw: 'up', set: (k) => (pivot.rotation.x = Math.PI - k * Math.PI) });
         }
         const led = new THREE.Mesh(new THREE.BoxGeometry(bw * 0.8, 0.04, 0.03), glowMat());
         led.position.set(0, Y + 0.56, back + 0.27);
@@ -231,7 +237,7 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         const tubeLight = new THREE.PointLight(0xdfe8ff, 0, 9, 2);
         tubeLight.position.set(m(GF.tech.x + GF.tech.w / 2) - cx, 2.95, m(GF.tech.y + GF.tech.h / 2) - cz);
         g.add(tube, tubeLight);
-        g.userData = { handles, led, lamp, flash, back, tubeMat, tubeLight, onAt: -1, lastUp: 0, changedAt: -1e9 };
+        g.userData = { handles, led, lamp, flash, back, tubeMat, tubeLight, onAt: -1 };
         return g;
       }
       case 'rack-lights':
@@ -932,21 +938,18 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
     switch (p.kind) {
       case 'breaker': {
         const up = p.v ?? 0;
-        if (up !== u.lastUp) {
-          if (up > (u.lastUp as number)) u.changedAt = t;
-          u.lastUp = up;
-        }
-        // Handles already up stay up; the newest one is thrown when Droid's hand
-        // gets there (his reach takes ~0.6 s), over a fifth of a second, and
-        // flashes as it lands.
-        const since = t - (u.changedAt as number);
-        const throwK = THREE.MathUtils.smoothstep(since, 0.55, 0.75);
+        // Handles already up stay up; the newest one goes up in Droid's hand,
+        // on the one clock his arm runs on (reach3d.ts), and flashes as it lands.
+        // No reach running (nobody drew one): it is simply up.
+        const clock = reachClock(`breaker${up - 1}`);
+        const throwK = clock === null ? 1 : pullAt(clock);
         (u.handles as THREE.Object3D[]).forEach((h, i) => {
           const k = i < up - 1 ? 1 : i === up - 1 ? throwK : 0;
           h.rotation.x = Math.PI - k * Math.PI;
         });
         const fl = u.flash as THREE.Mesh;
-        const spark = since > 0.72 && since < 0.95 ? 1 - (since - 0.72) / 0.23 : 0;
+        const since = clock === null ? 1e9 : clock - PULL_END;
+        const spark = since >= 0 && since < 0.23 ? 1 - since / 0.23 : 0;
         fl.visible = spark > 0;
         if (spark > 0) {
           fl.position.set((up - 2) * 0.42, 2.07 + 0.26, (u.back as number) + 0.36);
@@ -961,7 +964,9 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         const tubeK = ton < 0 ? 0 : ton > 1.1 ? 1 : Math.sin(ton * 47) > 0.2 ? 0.9 : 0.05;
         (u.tubeMat as THREE.MeshBasicMaterial).color.setRGB(0.9, 0.95, 1).multiplyScalar(6 * tubeK);
         (u.tubeLight as THREE.PointLight).intensity = 35 * tubeK;
-        const strike = p.progress ?? 0;
+        // The board strikes when the handle lands in his hand, not on the key
+        // press 0.75 s before it; with no reach drawn, on the sim's own clock.
+        const strike = clock === null ? (p.progress ?? 0) : since >= 0 && since < 0.45 ? 1 - since / 0.45 : 0;
         stateColour(p.state === 'idle' && up > 0 ? 'active' : p.state, tmp, 6 + 20 * strike);
         (u.led.material as THREE.MeshBasicMaterial).color.copy(tmp);
         const L = u.lamp as THREE.PointLight;
