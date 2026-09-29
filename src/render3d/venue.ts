@@ -372,7 +372,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
 
   /* --------------------------------------------------------------- floors */
 
-  const floorMat = mats.terrazzo;
+  const floorMat = mats.terrazzoFloor;
   withReflection(floorMat, refl, 0.8, 0.035);
   const floorGeo: THREE.BufferGeometry[] = [];
   const addFloor = (r: Rect): void => {

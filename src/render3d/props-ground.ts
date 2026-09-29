@@ -24,12 +24,187 @@ import { box } from './materials';
 import { CLICK_U, PORT_LOCAL, counterLip, plugHand, printerPort } from './plug';
 import { poseShutter, rollerShutter } from './shutter';
 import { cfpBoard, emitter, wayfinding } from './signs';
-import { PULL_END, pullAt, reachClock, registerGrip } from './reach3d';
+import { GRIP_AT, LET_GO, PULL_END, REACH_END, pullAt, reachClock, registerGrip } from './reach3d';
 
 const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z);
 
 /** The ladle's grip-to-bowl length, metres (`makeLadle`); `world.ts` stands it in a pot by it. */
 export const LADLE_REACH = 0.62;
+
+/* ------------------------------------------------------------ the ladle ---- */
+
+/*
+ * CHAPTER 3'S LADLE, AS POSES — and the rule for which one it is in.
+ *
+ * Michele, 29 Sep 2026: *"droid soup animation: some enhancements needed. When
+ * taking the ladle, it goes through the shelf, and when dropping it, it appears
+ * in the pot before the movement."* Both were one fault. `world.ts` moved the
+ * ladle on a timer of its own — into his hand 0.4 s after the sim's key press,
+ * into the pot 0.4 s after the next — while his arm ran on the reach clock
+ * (`reach3d.ts`), behind a walk of up to three seconds. So the ladle left the
+ * hook while he was still walking up, rode up to the rail in a hand already
+ * holding it out like a torch, handle through the shelf's front lip, and stood
+ * in the pot while he was still crossing the floor to it.
+ *
+ * Now it is where his hand has got it to, on that one clock, as the breakers are:
+ *
+ *   - ON THE HOOK until his palm closes on it (`GRIP_AT` of the 'ladle-shelf'
+ *     reach). The reach's target IS the ladle's sleeve on the hook, so on the
+ *     frame it goes into his hand it has not moved.
+ *   - LIFTED off the rail by the pull (`LADLE_LIFT`), then swung — hanging, out
+ *     level to his right, up — into the way he carries it as his arm comes down:
+ *     round his side, never forward into the shelf.
+ *   - CARRIED upright at his right hand, bowl open towards his back.
+ *   - TURNED over round the same side above the pot and DIPPED in (the
+ *     'ladle-pot' reach, whose target is the sleeve of its pose in the pot,
+ *     `LADLE_DIP` above), and let go at `LET_GO` — standing in the pot exactly
+ *     where his hand left it.
+ *
+ * Everything here is poses from numbers, so `tests/ladle3d.test.ts` can walk
+ * every frame of a take and a put against the shelf, the pots, the counter and
+ * the neon board without a renderer.
+ */
+
+/** How far along the handle his palm closes, m from the hooked end: low on the black sleeve. */
+export const LADLE_HOLD = 0.12;
+/** The bowl's centre in the ladle's own frame (`makeLadle`: grip at the origin, handle along +z, bowl opening +y). */
+const LADLE_BOWL = V(0, -0.09, LADLE_REACH + 0.13);
+/** The shelf slab's middle, m up; it is 5 cm thick. */
+export const SHELF_SLAB_Y = 2.35;
+/**
+ * The rail the ladle hangs from, m up. It was 2.3, 2.5 cm under the slab, which
+ * left no room for the hand that takes it: fingers closing on the handle from
+ * below came up through the steel. A hand's width under it now, on two drops.
+ */
+export const LADLE_RAIL_Y = 2.2;
+/** What the pull does with it: lifts it clear of the rail, m... */
+export const LADLE_LIFT = 0.04;
+/** ...or lowers it into the soup, m: the reach arrives this far above its place in the pot. */
+export const LADLE_DIP = 0.35;
+/** The counter's two soup pots, m: on a 1 m counter, 0.5 m tall, 0.42 across the rim, `apart` either side of the station. */
+export const SOUP_POT = Object.freeze({ counter: 1.0, h: 0.5, rTop: 0.42, rBottom: 0.38, apart: 0.48 });
+
+/** The high shelf in world metres, as `build` makes it from `GF.food.shelf`. */
+export function ladleShelf(): { cx: number; back: number; front: number; w: number; hook: THREE.Vector3 } {
+  const sh = GF.food.shelf;
+  const cx = m(sh.x + sh.w / 2);
+  const front = m(sh.y + sh.h);
+  return { cx, back: m(sh.y), front, w: m(sh.w), hook: V(cx - 0.35, LADLE_RAIL_Y, front - 0.03) };
+}
+
+/** The counter's two pots' centres, world metres, from the soup station's rect: the one Biggy takes, and the crowd's. */
+export function soupPots(st: { x: number; y: number; w?: number; h?: number }): { takeable: { x: number; z: number }; crowd: { x: number; z: number } } {
+  const cx = m(st.x + (st.w ?? 22) / 2);
+  const cz = m(st.y + (st.h ?? 22) / 2);
+  return { takeable: { x: cx + SOUP_POT.apart, z: cz }, crowd: { x: cx - SOUP_POT.apart, z: cz } };
+}
+
+/** Where the ladle is and which way it points: `pos` is its hooked end, `quat` its frame. */
+export interface LadlePose {
+  pos: THREE.Vector3;
+  quat: THREE.Quaternion;
+}
+export const ladlePose = (): LadlePose => ({ pos: new THREE.Vector3(), quat: new THREE.Quaternion() });
+
+const _lx = new THREE.Vector3();
+const _lv = new THREE.Vector3();
+const _lm = new THREE.Matrix4();
+const _lq = new THREE.Quaternion();
+/** A frame from where the handle runs (grip to bowl, `d`) and where the bowl opens (`u`, square to it). */
+function ladleFrame(d: THREE.Vector3, u: THREE.Vector3, out: THREE.Quaternion): THREE.Quaternion {
+  _lx.crossVectors(u, d);
+  return out.setFromRotationMatrix(_lm.makeBasis(_lx, u, d));
+}
+const DOWN = V(0, -1, 0);
+const UP = V(0, 1, 0);
+const HALLWARD = V(0, 0, 1);
+/**
+ * In the pot: handle leaning out over the front rim, towards the hall and the
+ * hand that put it there, bowl down in the soup. The bowl's opening is tipped
+ * towards the hall too, which is invisible in a pot of soup and is what makes
+ * the turn from his carry a roll round his side rather than a somersault
+ * forward through the TOMATO SOUP sign above the pots.
+ */
+const IN_POT_D = V(0, -0.862, -0.507).normalize();
+const IN_POT_U = V(0, -0.507, 0.862).normalize();
+
+/** On the hook: hanging from its crook, bowl down and open to the hall. */
+export function hookPose(out: LadlePose): LadlePose {
+  out.pos.copy(ladleShelf().hook);
+  ladleFrame(DOWN, HALLWARD, out.quat);
+  return out;
+}
+
+/**
+ * Standing in the pot centred at `pot`, whose floor is `floor` m up: bowl in the
+ * soup `deep` m above that floor, a little in front of the middle, handle up and
+ * out over the front rim. A counter pot by default; Biggy's smaller one says so.
+ */
+export function potPose(pot: { x: number; z: number }, out: LadlePose, floor: number = SOUP_POT.counter, deep = 0.28): LadlePose {
+  ladleFrame(IN_POT_D, IN_POT_U, out.quat);
+  out.pos.set(pot.x, floor + deep, pot.z + 0.05).sub(_lv.copy(LADLE_BOWL).applyQuaternion(out.quat));
+  return out;
+}
+
+/**
+ * How he carries it: upright at his right hand, tipped a little out to that side,
+ * bowl open towards his back — and so towards the camera behind him. Upright
+ * because it keeps the ladle inside his own footprint: held out in front, as it
+ * was, it went into whatever he walked up to, the soup counter first of all.
+ * `fwd` is the way his body is drawn facing, level.
+ */
+export function carryFrame(fwd: THREE.Vector3, out: THREE.Quaternion): THREE.Quaternion {
+  _cu.set(-fwd.x, 0, -fwd.z).normalize();
+  _cd.crossVectors(UP, _cu).multiplyScalar(0.3).addScaledVector(UP, 0.95).normalize();
+  return ladleFrame(_cd, _cu, out);
+}
+const _cu = new THREE.Vector3();
+const _cd = new THREE.Vector3();
+
+/** Where his palm is when it holds the ladle in `pose`: `LADLE_HOLD` along the handle from the hooked end. */
+export function sleeveOf(pose: LadlePose, out: THREE.Vector3): THREE.Vector3 {
+  return out.set(0, 0, LADLE_HOLD).applyQuaternion(pose.quat).add(pose.pos);
+}
+
+/** What `poseLadle` needs to know about this frame. */
+export interface LadleFrame {
+  /** The sim's ladle: 'idle' on the shelf, 'active' in Droid's hand, 'done' in the pot. */
+  state: string | undefined;
+  /** `reachClock('ladle-shelf')` and `reachClock('ladle-pot')`. */
+  take: number | null;
+  put: number | null;
+  /** Droid's palm (`palmWorld`), or null with no Droid to hold it. */
+  palm: THREE.Vector3 | null;
+  /** `carryFrame` for the way he is drawn facing. */
+  carry: THREE.Quaternion;
+  hook: LadlePose;
+  /** Where it stands once it is in: `potPose`, of whichever pot it is in. */
+  rest: LadlePose;
+}
+
+/**
+ * Where the ladle is this frame, into `out`; true while it is in his hand. See
+ * the block above for the journey; the two rules that make it one clock are that
+ * it leaves the hook only once his palm is on it (`take` past `GRIP_AT`) and
+ * leaves his hand only once his fingers open over the pot (`put` past `LET_GO`).
+ */
+export function poseLadle(out: LadlePose, f: LadleFrame): boolean {
+  const inHand = (q: THREE.Quaternion): boolean => {
+    out.quat.copy(q);
+    out.pos.set(0, 0, -LADLE_HOLD).applyQuaternion(q).add(f.palm as THREE.Vector3);
+    return true;
+  };
+  if (f.state === 'active' && f.palm && (f.take === null || f.take >= GRIP_AT)) {
+    return inHand(_lq.slerpQuaternions(f.hook.quat, f.carry, f.take === null ? 1 : THREE.MathUtils.smoothstep(f.take, LET_GO, REACH_END)));
+  }
+  if (f.state === 'done' && f.palm && f.put !== null && f.put < LET_GO) {
+    return inHand(_lq.slerpQuaternions(f.carry, f.rest.quat, THREE.MathUtils.smoothstep(f.put, GRIP_AT - 0.2, PULL_END)));
+  }
+  const at = f.state === 'done' ? f.rest : f.hook;
+  out.pos.copy(at.pos);
+  out.quat.copy(at.quat);
+  return false;
+}
 
 /**
  * The breaker board's three main isolators, as `build` lays them out, metres:
@@ -1134,23 +1309,32 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
          * with its twin (Michele, 29 Sep: "double pot. Maybe put 2 on the counter,
          * so the crowd does not remain without soup").
          */
-        g.position.set(m(p.x + pw / 2), 1.0, m(p.y + ph / 2));
+        g.position.set(m(p.x + pw / 2), SOUP_POT.counter, m(p.y + ph / 2));
         const soupMat = new THREE.MeshStandardMaterial({ color: 0xb3261e, emissive: new THREE.Color(0.5, 0.08, 0.04), emissiveIntensity: 0.8, roughness: 0.3 });
+        // Open at the top, so the soup shows and the ladle stands IN it: they were
+        // closed drums, a steel lid 4 cm over the soup, and a ladle "in the pot"
+        // went through the lid. The wall is drawn both sides, so the inside shows.
+        const potMat = mats.steel.clone();
+        potMat.side = THREE.DoubleSide;
+        const P = SOUP_POT;
         const potAt = (x: number): THREE.Group => {
           const one = new THREE.Group();
-          const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.38, 0.5, 24), mats.steel);
-          pot.position.y = 0.25;
+          const pot = new THREE.Mesh(new THREE.CylinderGeometry(P.rTop, P.rBottom, P.h, 24, 1, true), potMat);
+          pot.position.y = P.h / 2;
+          const floor = new THREE.Mesh(new THREE.CircleGeometry(P.rBottom, 24), potMat);
+          floor.rotation.x = -Math.PI / 2;
+          floor.position.y = 0.01;
           const soup = new THREE.Mesh(new THREE.CircleGeometry(0.39, 24), soupMat);
           soup.rotation.x = -Math.PI / 2;
-          soup.position.y = 0.46;
-          one.add(pot, soup);
+          soup.position.y = P.h - 0.04;
+          one.add(pot, floor, soup);
           one.position.x = x;
           return one;
         };
-        const takeable = potAt(0.48);
+        const takeable = potAt(P.apart);
         const board = neonBoard('TOMATO SOUP', 2.2, '#ff3b2f');
         board.position.set(0, 1.9, -0.2);
-        g.add(potAt(-0.48), takeable, board);
+        g.add(potAt(-P.apart), takeable, board);
         g.userData = { takeable };
         return g;
       }
@@ -1182,12 +1366,15 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
           brace.rotation.x = -0.72;
           rack.add(brace);
         }
-        rack.add(new THREE.Mesh(box(sw, 0.05, front - back, V(cx, 2.35, (back + front) / 2)), mats.steel));
-        // The hanging rail along its front lip, and a row of stacked soup bowls on top.
+        rack.add(new THREE.Mesh(box(sw, 0.05, front - back, V(cx, SHELF_SLAB_Y, (back + front) / 2)), mats.steel));
+        // The hanging rail along its front lip, a hand's width under it on two
+        // drops (`LADLE_RAIL_Y`), and a row of stacked soup bowls on top.
         const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, sw - 0.1, 8), mats.steel);
         rail.rotation.z = Math.PI / 2;
-        rail.position.set(cx, 2.3, front - 0.03);
+        rail.position.set(cx, LADLE_RAIL_Y, front - 0.03);
         rack.add(rail);
+        const drop = SHELF_SLAB_Y - 0.025 - LADLE_RAIL_Y;
+        for (const sx of [-1, 1]) rack.add(new THREE.Mesh(box(0.012, drop, 0.012, V(cx + sx * (sw / 2 - 0.08), LADLE_RAIL_Y + drop / 2, front - 0.03)), mats.steel));
         const bowls = new THREE.Mesh(
           new THREE.LatheGeometry([[0.001, 0], [0.07, 0], [0.1, 0.05], [0.11, 0.2]].map(([r0, y]) => new THREE.Vector2(r0, y)), 16),
           new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: 0.4 }),
@@ -1198,11 +1385,13 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
           rack.add(b);
         }
         const tool = makeLadle();
-        tool.position.set(cx, 2.3, front - 0.03);
+        const onHook = hookPose(ladlePose());
+        tool.position.copy(onHook.pos);
+        tool.quaternion.copy(onHook.quat);
         const glow = new THREE.PointLight(0xffb05a, 6, 2.5, 2);
         glow.position.set(cx, 2.6, front + 0.4);
         g.add(rack, tool, glow);
-        g.userData = { tool, glow, hook: V(cx - 0.35, 2.3, front - 0.03) };
+        g.userData = { tool, glow, hook: onHook.pos.clone() };
         return g;
       }
       case 'crab': {

@@ -309,6 +309,11 @@ interface GaitState {
    * nudge tips him, a real shove rolls him. See `applyShove`.
    */
   roll: number;
+  /**
+   * Steps taken since somebody else started running him along, counted off the
+   * step cycle itself. The roll waits for `ROLL_AFTER_STEPS` of them.
+   */
+  pushedSteps: number;
   /** 0 arms down .. 1 both hands on chapter 3's soup pot. See `applyCarry`. */
   hold: number;
   base: Map<THREE.Object3D, BoneBase>;
@@ -418,6 +423,7 @@ function capture(rig: RobotRig): GaitState {
     shove: 0,
     rollA: 0,
     roll: 0,
+    pushedSteps: 0,
     hold: 0,
   };
 }
@@ -611,7 +617,31 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
   // one thing that errand is not.
   const rolling =
     rig.kind === 'biggy' && (params.shoved ?? 0) > 0.5 && !params.mounted && !params.carrying;
-  const wantRoll = rolling ? smoothstep(ROLL_MIN_MPS, ROLL_FULL_MPS, v) : 0;
+  /*
+   * INTO IT ON THE THIRD STEP, AND OUT OF IT ONLY AS HE STOPS.
+   *
+   * Michele, 29 Sep 2026: *"Biggy's roll: should not start straight away, make a
+   * couple of steps then roll. And when the door is smashed, Biggy should keep
+   * rolling for a couple of metres, then stand."*
+   *
+   * In: he is run along on his own feet for `ROLL_AFTER_STEPS` steps — counted
+   * off his own step cycle below, so it is steps and not a clock, at whatever
+   * pace the push sets — and tucks over the next one. He used to tuck on the
+   * frame the push passed 1.5 m/s, a third of a second in, which read as a ball
+   * that had never been a robot.
+   *
+   * Out: once tucked he stays tucked while he is still rolling on
+   * (`ROLL_KEEP_MPS`), and puts his legs down as he comes to rest. He used to
+   * untuck on the way back down through 1.5 m/s — and the roller door takes 60%
+   * of his speed on the way through, so he was half out of the roll in the
+   * doorway and walked the rest of the way in.
+   */
+  if (!rolling) st.pushedSteps = 0;
+  const wantRoll = !rolling
+    ? 0
+    : st.roll > 0.5
+      ? smoothstep(ROLL_STAND_MPS, ROLL_KEEP_MPS, v)
+      : smoothstep(ROLL_MIN_MPS, ROLL_FULL_MPS, v) * smoothstep(ROLL_AFTER_STEPS, ROLL_AFTER_STEPS + 1, st.pushedSteps);
   st.roll += (wantRoll - st.roll) * (1 - Math.exp(-(wantRoll > st.roll ? ROLL_ON : ROLL_OFF) * dt));
   // The legs go away as he balls up. `tuckLegs` is called here rather than inside
   // `applyShove` because it writes a SCALE, and a scale that is not written every
@@ -678,6 +708,8 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
   const swingFrac = stepDur / cycle;
   const half = (v * stance) / 2;
   st.phase = (st.phase + dt / cycle) % 1;
+  // Two steps to a cycle: the run-up the roll waits for (`ROLL_AFTER_STEPS`).
+  if (rolling && v > PUSHED_STEP_MPS) st.pushedSteps += (2 * dt) / cycle;
 
   /* ------------------------------------------------------------ pose */
   const req = params.pose ?? null;
@@ -1149,6 +1181,19 @@ const SHOVE_ON = 9;
  */
 const ROLL_MIN_MPS = 1.5;
 const ROLL_FULL_MPS = 3;
+/**
+ * ...and the rest of the roll's timing (see "into it on the third step" in
+ * `applyGait`): the steps he takes on his own feet once somebody is running him
+ * along — a step counts while he is being moved faster than a shuffle — and,
+ * once he is tucked, the speed he stays balled up above and the speed his legs
+ * are all the way out by. Through chapter 2's roller door, braking on his own
+ * 1.2 s⁻¹ from the 2.2 m/s the door leaves him, that is a metre of ball and then
+ * a robot standing up over the last half metre.
+ */
+const ROLL_AFTER_STEPS = 2;
+const PUSHED_STEP_MPS = 0.3;
+const ROLL_KEEP_MPS = 0.9;
+const ROLL_STAND_MPS = 0.35;
 /**
  * HOW FAR THE LEGS GO AWAY when he balls up, as a fraction of their own length.
  *

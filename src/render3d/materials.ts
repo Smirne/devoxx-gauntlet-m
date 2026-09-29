@@ -215,6 +215,14 @@ export function withReflection(mat: THREE.MeshStandardMaterial, refl: PlanarRefl
 
 export interface Materials {
   terrazzo: THREE.MeshPhysicalMaterial;
+  /**
+   * The first-floor corridor's own terrazzo, the one that carries the planar
+   * reflection (`withReflection`, venue.ts). The stair treads are terrazzo too,
+   * and when they shared this material they sampled the reflection texture while
+   * it was being drawn — a WebGL feedback loop every frame they were in the
+   * reflection's view, and the corridor floor's mirror image on every step.
+   */
+  terrazzoFloor: THREE.MeshPhysicalMaterial;
   carpet: THREE.MeshPhysicalMaterial;
   carpetRed: THREE.MeshPhysicalMaterial;
   plaster: THREE.MeshPhysicalMaterial;
@@ -266,6 +274,7 @@ export function createMaterials(renderer: THREE.WebGLRenderer): Materials {
   const m: Materials = {
     // One terrazzo texture repeat = 2.4 m (four 60 cm slabs), set by worldUV tile.
     terrazzo: fromSet(sets.terrazzo, { normalScale: new THREE.Vector2(0.6, 0.6) }),
+    terrazzoFloor: fromSet(sets.terrazzo, { normalScale: new THREE.Vector2(0.6, 0.6) }),
     carpet: fromSet(sets.carpet),
     carpetRed: fromSet(sets.carpetRed),
     plaster: fromSet(sets.plaster, { normalScale: new THREE.Vector2(0.35, 0.35) }),
@@ -294,6 +303,7 @@ export function createMaterials(renderer: THREE.WebGLRenderer): Materials {
   };
   withGrime(m.plaster, 0.6, 0.3);
   withGrime(m.terrazzo, 0.45, 0.22);
+  withGrime(m.terrazzoFloor, 0.45, 0.22);
   withGrime(m.carpet, 0.4, 0.5);
   withGrime(m.ceiling, 0.5, 0.25);
   return m;
