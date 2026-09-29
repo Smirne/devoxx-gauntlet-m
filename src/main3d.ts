@@ -281,6 +281,15 @@ window.addEventListener('keydown', (ev) => {
     ev.preventDefault();
     return;
   }
+  // The credits (C), before the sim hears the key — the same guard as the 2.5D
+  // page (see `onKeyDown` in main.ts). They are most often opened on the final
+  // card, where `game.key` dismisses the card whatever the key, so a `C` that
+  // got through would throw the score away behind them. While they are up they
+  // swallow every key; Escape or a click outside closes them.
+  if (!game.snapshot().typing && hud.creditsKey(code)) {
+    ev.preventDefault();
+    return;
+  }
   // With the run sheet open, left/right turn its page (the night / this
   // chapter) instead of steering.
   if ((code === 'ArrowLeft' || code === 'ArrowRight') && hud.pageTasks(code === 'ArrowLeft' ? -1 : 1)) {
