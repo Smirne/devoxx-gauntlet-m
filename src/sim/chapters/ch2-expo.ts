@@ -132,6 +132,19 @@ const CABLE_PULL_RELAX = 3;
 const CABLE_PULL_LEAN = 0.45;
 /** Seconds between "the cable goes tight" readouts. */
 const CABLE_TALK_COOLDOWN = 4;
+/**
+ * The plug going in, seconds: Voxxy turns to the counter, hops up, seats the plug
+ * in the printer's side and drops back down.
+ *
+ * Michele, 29 Sep 2026: *"could Voxxy connect it to the printer with an animation
+ * when she reaches here?"* The run is made on arrival (`cable.connected` flips on
+ * that frame, so nothing downstream waits on a cartoon), but the PRINTER is not
+ * DRAWN waking until the plug is seated (the renderer reads the cable prop's
+ * `progress`), and she is held on the spot for the beat so the hand the renderer
+ * draws is where the robot is. A clock for a
+ * gesture, not a travel time, so it does not carry `TRAVEL_TIME_SCALE`.
+ */
+export const PLUG_TIME = 1.3;
 /** Below this, "Biggy: 0.8 m/s, needs 5.4" would fire on every nudge. px/s. */
 const ROLLER_MIN_TALK = 40 * SPEED_SCALE;
 /** Seconds between the roller door's "not fast enough" readouts. */
@@ -348,7 +361,15 @@ export interface ExpoState {
    */
   power: boolean;
   breakersLeft: number;
-  cable: { carrying: boolean; connected: boolean; len: number; snapped: boolean; taut: boolean };
+  cable: {
+    carrying: boolean;
+    connected: boolean;
+    len: number;
+    snapped: boolean;
+    taut: boolean;
+    /** 0..1 through the plug-in beat (`PLUG_TIME`); 1 once the plug is seated, 0 before. */
+    seat: number;
+  };
   rollerBroken: boolean;
   /** 0..1, how far the smashed shutter has torn up into its housing. */
   rollerRise: number;
@@ -485,6 +506,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     /** Seconds she has spent leaning AGAINST the taut cable. See `CABLE_PULL_OUT`. */
     pull: 0,
     pts: [] as Vec2[],
+    /** Seconds of the plug-in beat still to run. See `PLUG_TIME`. */
+    plugLeft: 0,
+    /** Where Voxxy is held while she plugs in. */
+    plugHold: null as Vec2 | null,
   };
   let tautTalk = -9;
 
@@ -564,6 +589,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   }
 
   const printerAt: Vec2 = { x: GF.printer.x + 10, y: GF.printer.y + 6 };
+  /** The lit pad in front of the counter: standing on it plugs the cable in. */
+  const plugPad = { x: GF.printer.x - 6, y: GF.printer.y + GF.printer.h + 2, w: GF.printer.w + 12, h: 14 };
   const rackAt: Vec2 = { x: GF.rack.x + 10, y: GF.rack.y + 12 };
   const panelAt: Vec2 = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
   /** The middle of the roller door, on its hall side — what the halo is drawn around. */
@@ -1162,9 +1189,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * ends in the printer rather than wherever Voxxy stopped.
    */
   function plugIn(): void {
+    const v = ctx.byKind('voxxy');
     cable.carrying = false;
     cable.taut = false;
     cable.connected = true;
+    cable.plugLeft = PLUG_TIME;
+    cable.plugHold = { x: v.x, y: v.y };
     cable.pts = [...cable.pts, { x: printerAt.x, y: printerAt.y }];
     ctx.flash(
       `Cable in — the run is made (${Math.trunc(cable.len)} of ${CABLE_MAX} px used). ` +
@@ -1351,7 +1381,29 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
     const v = ctx.byKind('voxxy');
     if (cable.carrying) stepCable(v, dt);
-    if (cable.carrying && dist(v, printerAt) < PLUG_REACH) plugIn();
+    /*
+     * Automatic on the lit pad (Michele, 28 Sep: *"when reaching the dropzone"*),
+     * not anywhere within `PLUG_REACH`: that caught her three metres short, and
+     * the plug-in beat has to start where she can reach the counter — so her
+     * centre, on the pad. `E` still plugs in from `PLUG_REACH`.
+     */
+    if (cable.carrying && inRect(v, plugPad)) plugIn();
+    // Held while she plugs in — unless something else has put her somewhere else.
+    if (cable.plugLeft > 0) {
+      cable.plugLeft = Math.max(0, cable.plugLeft - dt);
+      const hold = cable.plugHold;
+      if (hold && dist(v, hold) < PLUG_REACH) {
+        v.x = hold.x;
+        v.y = hold.y;
+        v.vx = 0;
+        v.vy = 0;
+      } else {
+        // Moved off the spot (a debug place, a cutscene): the beat is cut short
+        // and the plug counts as seated, so no printer waits on a hand that left.
+        cable.plugHold = null;
+        cable.plugLeft = 0;
+      }
+    }
 
     /*
      * Walking away from the terminal puts the keyboard back. There is no other way
@@ -1694,10 +1746,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       },
       {
         kind: 'dropzone',
-        x: GF.printer.x - 6,
-        y: GF.printer.y + GF.printer.h + 2,
-        w: GF.printer.w + 12,
-        h: 14,
+        ...plugPad,
         state: cable.connected ? 'done' : cable.carrying ? 'active' : 'idle',
         label: cable.connected ? 'cable in' : 'cable ends here (Voxxy, E)',
       },
@@ -1839,6 +1888,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         // drawn cable and the metered length agree to within one sample step.
         pts: cable.carrying ? [...cable.pts, { x: ctx.byKind('voxxy').x, y: ctx.byKind('voxxy').y }] : cable.pts,
         v: cable.len,
+        // The plug-in beat's clock, 0..1, for the renderer's hop and hand.
+        progress: cable.plugLeft > 0 ? 1 - cable.plugLeft / PLUG_TIME : undefined,
         state: cable.connected ? 'done' : cable.taut ? 'taut' : cable.carrying ? 'active' : cable.snapped ? 'broken' : 'idle',
         // The HUD's reel meter takes its label from here (`collectMeters`), so the
         // distance still to run is sim state rather than a number the overlay works
@@ -2149,6 +2200,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         len: cable.len,
         snapped: cable.snapped,
         taut: cable.taut,
+        seat: !cable.connected ? 0 : 1 - cable.plugLeft / PLUG_TIME,
       },
       rollerBroken,
       rollerRise,
