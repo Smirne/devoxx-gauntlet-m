@@ -16,8 +16,8 @@ import * as THREE from 'three';
 
 import { CFP_WALL, GF, WIFI_TAG, groundPlates, groundRiseM, groundWallsFor } from '../sim/geometry';
 import { BELT_H, GATE_H, beltU, nastriRun } from '../sim/nastri';
-import type { Prop } from '../sim/types';
-import { ROBOT_HEIGHT_M, m } from '../sim/units';
+import type { Prop, Wall } from '../sim/types';
+import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
 
 import type { Materials } from './materials';
 import { box } from './materials';
@@ -48,6 +48,101 @@ function stateColour(state: string | undefined, out: THREE.Color, k = 1): THREE.
 
 function glowMat(): THREE.MeshBasicMaterial {
   return new THREE.MeshBasicMaterial({ color: 0x000000, toneMapped: false });
+}
+
+/*
+ * SIGNS ARE PLANKS ON WALLS — no posts. Michele, 29 Sep, on the technical room's
+ * sign, sunk half into the curtain beside its door: *"no more signs with a post,
+ * put a plank on the wall or something.. We tried to fix this like 4 time."*
+ *
+ * The four tries each guessed where the wall was from the sign's own rect. This
+ * one asks the walls: every face of every wall the hall draws solid and full
+ * height is a candidate, the sim's sign picks the nearest face on its own side
+ * (it may stand inside the wall's thickness, which is how the technical room's
+ * sign missed its wall every time), and the plank slides along that face until
+ * all of it is on solid wall, never across a doorway, and nothing else stands
+ * in front of it. A sign out in the open, with no wall in reach, keeps its
+ * post (Michele: "you can keep the post sign in other parts of the game, but
+ * check that they read correctly").
+ */
+/** The plank's face, m. */
+const PLANK_L = 1.6;
+const PLANK_H = 0.8;
+/** Centre height of a plank, on a wall or on a post, m. */
+const PLANK_Y = 2.3;
+/**
+ * How far, px, a sign may move to reach its wall, across the face or along it:
+ * two metres. Further, and a queue's sign ends up on the far side of the aisle.
+ */
+const PLANK_REACH = 25;
+/**
+ * Wall kinds with no face to hang a plank on: short (`totem`, `crate`, `rack`,
+ * `bof-slats`), or not drawn as a wall at all in the 3D hall (see `styleOf` in
+ * ground3d.ts — the red accent panels, the desk, the facade and the rest).
+ */
+const NO_FACE = new Set(['totem', 'crate', 'rack', 'bof-slats', 'stair-foot', 'accent-panel', 'mainstair', 'duke', 'high-table', 'fridge', 'desk', 'facade', 'mullion', 'door-leaf']);
+const hasFace = (wl: Wall): boolean => !wl.low && !wl.hidden && !wl.glass && !wl.booth && !NO_FACE.has(wl.kind ?? '');
+
+/** Where a sign's plank goes: its centre on the wall face, px, and the face's outward normal. */
+export interface PlankMount {
+  x: number;
+  y: number;
+  nx: number;
+  ny: number;
+}
+
+/** The wall face a sign hangs on, or null when there is none within `PLANK_REACH`. */
+export function plankMount(p: Prop, walls: readonly Wall[]): PlankMount | null {
+  const pw = p.w ?? 10;
+  const ph = p.h ?? 10;
+  const sx = p.x + pw / 2;
+  const sy = p.y + ph / 2;
+  // The sim draws a sign thin across the way it faces; a sign set into a wall's
+  // thickness, which could face either side, says which with `face`.
+  const facesX = pw < ph;
+  const want = p.face === undefined ? null : ([Math.round(Math.cos(p.face)), Math.round(Math.sin(p.face))] as const);
+  const half = (PLANK_L / 2) * PX_PER_M + 1;
+  const solid = walls.filter(hasFace);
+  // Anything drawn, short or glass included, can stand in front of a face.
+  const blockers = walls.filter((o) => !o.hidden && !o.low && o.kind !== 'accent-panel');
+  let best: PlankMount | null = null;
+  let bestScore = Infinity;
+  for (const wl of solid) {
+    for (const [nx, ny] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      if (want && (want[0] !== nx || want[1] !== ny)) continue;
+      const alongX = ny !== 0;
+      // The plank reads the way the sim drew the sign, or it is not this face.
+      if (alongX === facesX) continue;
+      // The face's plane, and the span along it.
+      const plane = nx > 0 ? wl.x + wl.w : nx < 0 ? wl.x : ny > 0 ? wl.y + wl.h : wl.y;
+      const lo = alongX ? wl.x : wl.y;
+      const hi = alongX ? wl.x + wl.w : wl.y + wl.h;
+      if (hi - lo < 2 * half) continue;
+      // The sign must be on this face's side of the wall's centre line...
+      const mid = alongX ? wl.y + wl.h / 2 : wl.x + wl.w / 2;
+      const s = alongX ? sy : sx;
+      if (!want && (s - mid) * (nx + ny) <= 0) continue;
+      // ...no further out than the reach, and no further in than this wall's
+      // own thickness: a sign set into the wall is fine, one behind it is not.
+      const out = (s - plane) * (nx + ny);
+      if (out > PLANK_REACH || out < -(alongX ? wl.h : wl.w) - 1) continue;
+      const a0 = alongX ? sx : sy;
+      const a = Math.min(Math.max(a0, lo + half), hi - half);
+      if (Math.abs(a - a0) > PLANK_REACH) continue;
+      // Nothing drawn may stand in the 2 px in front of the plank.
+      const fx0 = alongX ? a - half : nx > 0 ? plane : plane - 2;
+      const fx1 = alongX ? a + half : nx > 0 ? plane + 2 : plane;
+      const fy0 = alongX ? (ny > 0 ? plane : plane - 2) : a - half;
+      const fy1 = alongX ? (ny > 0 ? plane + 2 : plane) : a + half;
+      if (blockers.some((o) => o !== wl && o.x < fx1 && o.x + o.w > fx0 && o.y < fy1 && o.y + o.h > fy0)) continue;
+      const score = Math.max(0, out) + Math.abs(a - a0);
+      if (score < bestScore) {
+        bestScore = score;
+        best = alongX ? { x: a, y: plane, nx, ny } : { x: plane, y: a, nx, ny };
+      }
+    }
+  }
+  return best;
 }
 
 function canvasText(lines: string[], opts: { w?: number; h?: number; bg?: string; fg?: string; font?: string } = {}): THREE.CanvasTexture {
@@ -401,53 +496,51 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         return g;
       }
       case 'sign': {
-        // A blue wayfinding panel on a post, in the venue's own signage.
+        // A blue wayfinding plank in the venue's own signage, flat on the wall
+        // the sim's sign stands at (`plankMount`), or on a post out in the open.
         const label = p.label ?? '';
         const [a, b] = label.includes('·') ? label.split('·').map((s) => s.trim()) : [label, ''];
         const tex = wayfinding(b ? [['', a], ['', b]] : [['', a]]);
-        const base = p.x > 1045 ? 0.5 : 0;
-        const along = pw >= ph;
-        // Two faces back to back, each reading the right way round: a sign in
-        // the middle of a hall is approached from either side.
-        const panel = new THREE.Group();
         const face = new THREE.MeshStandardMaterial({ map: tex, emissive: new THREE.Color(1, 1, 1), emissiveMap: tex, emissiveIntensity: 0.6 });
-        for (const yaw of [0, Math.PI]) {
-          const f = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.8), face);
-          f.rotation.y = yaw;
-          f.position.z = yaw === 0 ? 0.01 : -0.01;
-          panel.add(f);
-        }
-        // Against a wall, the sign is mounted ON the wall: flat on the face of
-        // the wall rect the sim has there, 3 cm proud, and no post. A free-standing
-        // panel sank into the wall's thickness, and a blade guessed at the face
-        // and still clipped it (Michele, 28 Sep: "sign is hidden in the wall",
-        // "still in the wall").
-        const near = (dx: number, dz: number) =>
-          groundWallsFor(2).find((wl) => !wl.low && !wl.hidden && p.x + dx * 22 < wl.x + wl.w && p.x + pw + dx * 22 > wl.x && p.y + dz * 22 < wl.y + wl.h && p.y + ph + dz * 22 > wl.y);
-        let sx = cx;
-        let sz = cz;
-        let sideways = !along;
-        let mounted = false;
-        if (!along) {
-          const wl = near(-1, 0) ?? near(1, 0);
-          if (wl) {
-            mounted = true;
-            sx = wl.x + wl.w / 2 < p.x ? m(wl.x + wl.w) + 0.03 : m(wl.x) - 0.03;
-          }
+        const rim = new THREE.Mesh(new THREE.BoxGeometry(PLANK_L + 0.06, 0.05, 0.05), glowMat());
+        const plank = new THREE.Group();
+        const mount = plankMount(p, groundWallsFor(2));
+        if (mount) {
+          // Its back 2 cm off the face, turned to look out along the face's normal
+          // — or on the reception's timber slats, which stand 10 cm proud of the
+          // wardrobe wall they hang on (`reception` in ground3d.ts).
+          const base = p.x > 1045 ? 0.5 : 0;
+          const co = GF.coatroom;
+          const rc = GF.reception;
+          const onSlats = mount.ny > 0 && Math.abs(mount.y - (co.y + co.h)) < 0.5 && mount.x > rc.x && mount.x < rc.x + rc.w;
+          const off = onSlats ? 0.11 : 0.02;
+          plank.position.set(m(mount.x) + mount.nx * off, base + PLANK_Y, m(mount.y) + mount.ny * off);
+          plank.rotation.y = Math.atan2(mount.nx, mount.ny);
+          plank.add(new THREE.Mesh(box(PLANK_L + 0.06, PLANK_H + 0.06, 0.04, V(0, 0, 0.02)), mats.darkMetal));
+          const f = new THREE.Mesh(new THREE.PlaneGeometry(PLANK_L, PLANK_H), face);
+          f.position.z = 0.041;
+          plank.add(f);
+          rim.position.set(0, PLANK_H / 2 + 0.06, 0.025);
         } else {
-          const wl = near(0, -1) ?? near(0, 1);
-          if (wl) {
-            mounted = true;
-            sz = wl.y + wl.h / 2 < p.y ? m(wl.y + wl.h) + 0.03 : m(wl.y) - 0.03;
+          // Out in the open, with no wall to take it: a panel on a post, two
+          // faces back to back so it reads the right way round from either side.
+          const base = p.x > 1045 ? 0.5 : 0;
+          const pw = p.w ?? 10;
+          const ph = p.h ?? 10;
+          plank.position.set(cx, base + PLANK_Y, cz);
+          if (pw < ph) plank.rotation.y = Math.PI / 2;
+          plank.add(new THREE.Mesh(box(PLANK_L + 0.06, PLANK_H + 0.06, 0.03, V(0, 0, 0)), mats.darkMetal));
+          for (const yaw of [0, Math.PI]) {
+            const f = new THREE.Mesh(new THREE.PlaneGeometry(PLANK_L, PLANK_H), face);
+            f.rotation.y = yaw;
+            f.position.z = yaw === 0 ? 0.016 : -0.016;
+            plank.add(f);
           }
+          plank.add(new THREE.Mesh(box(0.06, PLANK_Y - PLANK_H / 2, 0.06, V(0, -(PLANK_Y + PLANK_H / 2) / 2, 0)), mats.steel));
+          rim.position.set(0, PLANK_H / 2 + 0.06, 0);
         }
-        panel.position.set(sx, base + 2.3, sz);
-        if (sideways) panel.rotation.y = Math.PI / 2;
-        const post = new THREE.Mesh(box(0.06, 1.9, 0.06, V(sx, base + 0.95, sz)), mats.steel);
-        post.visible = !mounted;
-        const rim = new THREE.Mesh(new THREE.BoxGeometry(!sideways ? 1.66 : 0.04, 0.05, !sideways ? 0.04 : 1.66), glowMat());
-        rim.position.set(sx, base + 2.73, sz);
-        g.add(panel, post, rim);
+        plank.add(rim);
+        g.add(plank);
         g.userData = { rim, face, label };
         return g;
       }

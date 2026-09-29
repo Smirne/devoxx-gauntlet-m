@@ -1817,8 +1817,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       },
       {
         kind: 'sign',
+        // Just south of the Async Airlines stand. It stood inside the stand's
+        // footprint (x 880..940, y 390..460), where the 3D hall drew it inside
+        // the booth and nobody could read it.
         x: GF.smallStairs.x - 26,
-        y: GF.smallStairs.y + GF.smallStairs.h / 2,
+        y: GF.smallStairs.y + GF.smallStairs.h / 2 + 54,
         w: 6,
         h: 40,
         state: cable.connected ? 'done' : cable.carrying ? 'active' : 'idle',
@@ -1826,12 +1829,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       },
       {
         kind: 'sign',
-        x: GF.reception.x + GF.reception.w / 2,
+        // Centred on the desk: `x` is the rect's left edge, like every prop's.
+        x: GF.reception.x + GF.reception.w / 2 - 35,
         y: GF.reception.y - 12,
         w: 70,
         h: 5,
         state: cable.connected ? 'done' : cable.carrying ? 'active' : 'idle',
         label: 'RECEPTIE · RECEPTION',
+        // It stands in the coatroom wall behind the desk, which has a face on
+        // both sides: it reads towards the desk and the hall (+y), not into the
+        // coatroom.
+        face: Math.PI / 2,
       },
       {
         kind: 'dropzone',
