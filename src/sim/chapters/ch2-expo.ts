@@ -98,6 +98,7 @@
 
 import {
   CABLE_MAX,
+  JUMP_AIR,
   MOUNT_BIGGY_MAX_SPEED,
   MOUNT_REACH,
   ROLLER_DOOR_SPEED,
@@ -105,11 +106,12 @@ import {
   T,
   TRAVEL_TIME_SCALE,
 } from '../constants';
-import { m } from '../units';
-import { CFP_WALL, CFP_WALL_W, GF, VIEW_GROUND, WIFI_TAG, WIFI_TAG_W, entranceBayGaps, entranceBayOpenings, groundWallsFor, stairLanding } from '../geometry';
+import { PX_PER_M, m } from '../units';
+import { CFP_WALL, CFP_WALL_W, GF, LOBBY_RISE_M, VIEW_GROUND, WIFI_TAG, WIFI_TAG_W, entranceBayGaps, entranceBayOpenings, groundWallsFor, stairLanding } from '../geometry';
 import { dist, inRect, speed } from '../bot';
 import { buildLights, litBy } from '../lights';
-import type { Bot, LightSource, Mirror, Prop, Task, TextPrompt, Vec2, Wall } from '../types';
+import { LANYARD } from '../lanyards';
+import type { Bot, CameraShot, CutRoute, LightSource, Mirror, Person, Prop, Task, TextPrompt, Vec2, Wall } from '../types';
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 
 /* ---------------------------------------------------------------- reach distances */
@@ -213,15 +215,96 @@ const CURTAIN = 3;
  * is ready?"* So the hall no longer cuts away on whichever of printer and store
  * came last. When both are done (and the store and the badge have had their
  * moment), the task list gains one line: open the main entrance. Any robot, E at
- * the doors. They swing out onto the morning, and the three walk towards the
- * daylight while the black comes down — the same ending however the chapter went.
+ * the doors — the same ending however the chapter went.
  */
 /** How close to the entrance's inner face a robot must be for E to open it, px. */
 const DOORS_REACH = 46;
 /** The leaves swing open over this long, s. */
 const DOORS_SWING = 1.1;
-/** From the bolts going back to the walk out, s: long enough to see them swing. */
-const DOORS_CUT_DELAY = 1.5;
+/** From the bolts going back to the black, s: a beat, so the E lands before the cut. */
+const DOORS_CUT_DELAY = 0.4;
+/*
+ * ...AND WHO IS STANDING ON THE OTHER SIDE OF THEM: the 2 → 3 transition.
+ *
+ * Michele, 29 Sep: *"Transition between chap2 and 3 needs to change. Robots exit
+ * the doors, but next chapter is inside. Let them regroup before the door, then
+ * they open, Stephan is outside and enters (pats voxxy?)"*. The E used to swing
+ * the doors on the spot and walk the three of them out through the bays onto the
+ * forecourt, and chapter 3 then opened with them back in the hall — an exit, into
+ * a chapter that happens indoors.
+ *
+ * So nobody goes out. The E throws the bolts. The black comes down and lifts on the
+ * three of them regrouped in front of the doors, on marks that do not touch
+ * (`letInMarks`), with the leaves still shut. Then the doors swing out, and Stephan
+ * — who lost the keys (`STORY`), and has been standing on the forecourt ever since —
+ * walks in through the top bay, stops beside Voxxy, pats her on the head, and goes
+ * on up the strip between the stair gate and the glazing to the foot of the main
+ * staircase, which is where chapter 3 has him. The three follow him, and the black
+ * comes down on them still walking; chapter 3 then starts on its own marks under it.
+ *
+ * One cutscene, in the shape chapter 3's stair beat set (`ctx.startCut` with a
+ * `hold`): the regroup is the walker's placing, the doors and Stephan are the
+ * hold's beat (`letIn`), the follow is the walk, and a directed shot (`letInShot`)
+ * keeps the doors and the three of them in frame from the first frame to the last.
+ * Every time in it is measured from the frame the cast is placed.
+ */
+const LET_IN = {
+  /** The leaves start to swing: the black has all but lifted off the three of them. */
+  swing: 0.8,
+  /** Stephan steps into the doorway this long after the leaves come to rest. */
+  settle: 0.1,
+  /** At Voxxy, his hand goes out to her head over this long... */
+  reach: 0.3,
+  /** ...pats for this long... */
+  pat: 1.2,
+  /** ...at this many pats a second — three of them... */
+  patHz: 2.5,
+  /** ...and comes back down over this long. */
+  lower: 0.3,
+  /** The three set off after him this long after he does. */
+  follow: 0.9,
+} as const;
+/**
+ * Stephan's walk, px/s — 1.8 m/s: a brisk walk, and he has earned it. He has been
+ * locked out since last night and the queue is already behind him. It is a man
+ * walking, in metres, not one of the prototype's arcade speeds: under
+ * `src/render/people.ts`'s `WALK_REF`, so his legs swing at a walking stride.
+ */
+const STEPHAN_WALK = 1.8 * PX_PER_M;
+/**
+ * How far Stephan stands from Voxxy to pat her, centre to centre, px — 0.8 m.
+ *
+ * His hand at full reach (`Person.reach` = 1, `src/render/people.ts`) is 0.48 m
+ * ahead of his centre and 0.32 m out to his side, at 0.98 m: 0.58 m from his
+ * centre. Her head is an ellipsoid round 0.89 m (`src/render/robots/voxxy.ts`),
+ * 1.15 m tall with the ears, and about 0.22 m deep at the height his hand is at.
+ * So he stands a hand's length plus the depth of her head from her, turned so the
+ * arm points at her (`PAT_TURN`) — and the hand lands ON her head rather than in
+ * it or in the air in front of it. That is nearer than his own `r` and hers add up
+ * to, which is what a pat is: nothing collides in a cutscene, and the two bodies
+ * are still 0.4 m apart at the shoulder.
+ */
+const PAT_REACH = 10;
+/** The angle between where he faces and where his reaching hand is, rad: atan2(0.32, 0.48). */
+const PAT_TURN = Math.atan2(0.32, 0.48);
+/** How fast Stephan turns, rad/s: a man turning round, not a turret. */
+const STEPHAN_TURN = 8;
+/** How fast the three turn to watch him, rad/s. */
+const WATCH_TURN = 4;
+/** How far his hand comes up and down on each pat, as a share of the reach. */
+const PAT_DIP = 0.18;
+/**
+ * The let-in's three framings (`letInShot`), eye and target: sim px on the plan,
+ * heights in metres over the lobby floor, which is `LOBBY_RISE_M` over the datum.
+ */
+const LET_IN_SHOT = {
+  /** The doors, the three in front of them, and the forecourt through the glass. */
+  doors: { eye: { x: 1404, y: 548, h: LOBBY_RISE_M + 2.4 }, look: { x: 1480, y: 452, h: LOBBY_RISE_M + 0.6 } },
+  /** In on Stephan and Voxxy for the pat. */
+  pat: { eye: { x: 1422, y: 506, h: LOBBY_RISE_M + 1.9 }, look: { x: 1462, y: 449, h: LOBBY_RISE_M + 0.6 } },
+  /** Round after him, up the strip to the foot of the stairs, with the three following. */
+  stairs: { eye: { x: 1462, y: 522, h: LOBBY_RISE_M + 3.0 }, look: { x: 1444, y: 392, h: LOBBY_RISE_M + 0.8 } },
+} as const;
 /**
  * How long Biggy takes to walk the router cabinet's doors open, seconds.
  *
@@ -423,7 +506,7 @@ export interface ExpoState {
   rollerBroken: boolean;
   /** Printer and store both done: the front doors are the last job. */
   doorsDue?: boolean;
-  /** The front doors have been opened; the walk out follows. */
+  /** The bolts are back (E at the doors); the let-in follows, and the doors swing in it. */
   doorsOpen?: boolean;
   /** 0..1, how far the smashed shutter has torn up into its housing. */
   rollerRise: number;
@@ -546,6 +629,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /** When the bolts went back (chapter clock), or null while shut. */
   let doorsOpenAt: number | null = null;
   let doorsCut = false;
+  /** The leaves have started to swing: inside the let-in, once the three of them are at the doors. */
+  let swung = false;
+  /** The let-in's own clock, s since the cutscene placed the cast (`LET_IN`). -1 until then. */
+  let scene = -1;
   /** Whether the shutter was the LAST of the two, so the curtain line names it. */
   let rollerLast = false;
   /** 0..1, how far the smashed shutter has torn up. See `ROLLER_RISE_TIME`. */
@@ -605,6 +692,68 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
             : 'Biggy: locked. I could lean on it. It is glass. I will not lean on it',
   }));
   for (const w of shutDoors) ctx.walls.push(w);
+
+  /*
+   * WHERE EVERYBODY STANDS IN THE LET-IN (`LET_IN`), read off the entrance and the
+   * staircase rather than typed in.
+   *
+   * Stephan comes in through the TOP bay, the one nearest the stairs, down the
+   * middle of its clear gap between the two leaves standing open
+   * (`entranceBayGaps`). He waits beyond the leaves' swing — a leaf is half its bay
+   * long and swings out through that much of the forecourt (`entranceLeaves`) — so
+   * the doors never open into him, and clear of the bollard beside the bay. His mark
+   * at the far end is chapter 3's own (`stephan` in `ch3-breakfast.ts`): in front of
+   * the gate at the foot of the main staircase, facing the doors he has just come
+   * through, which is how chapter 3 finds him.
+   *
+   * The three stand just inside, facing the doors, a body's width apart at least:
+   * Voxxy at the top bay's lower half, where he will stop; Droid up the strip beside
+   * the stair gate, off the line he walks on; Biggy in front of the middle bay. The
+   * walk after him is up that strip in their own lanes, never across one another —
+   * the walker moves bodies without colliding them, so the lanes are what keeps them
+   * apart (`tests/cutscene-pace.test.ts`).
+   */
+  const topBay = entranceBayGaps()[0];
+  const laneY = (topBay[0] + topBay[1]) / 2;
+  const [bayTop, bayBottom] = entranceBayOpenings()[0];
+  /** How far out onto the forecourt the open leaves reach, x: `entranceLeaves`. */
+  const leafReach = e.x + e.w + 1 + (bayBottom - bayTop) / 2;
+  const STEPHAN_R = 8;
+  const stephanFrom: Vec2 = { x: leafReach + STEPHAN_R + 2, y: laneY };
+  const stephanMark: Vec2 = { x: GF.mainStair.x + GF.mainStair.w + 26, y: GF.gate.y + GF.gate.h / 2 };
+  const doorsFace = Math.atan2(e.y + e.h / 2 - stephanMark.y, e.x + e.w / 2 - stephanMark.x);
+  const letInMarks: Record<'voxxy' | 'droid' | 'biggy', { at: Vec2; to: Vec2 }> = {
+    voxxy: { at: { x: e.x - 17, y: laneY + 7 }, to: { x: e.x - 20, y: laneY - 30 } },
+    droid: { at: { x: e.x - 35, y: laneY - 8 }, to: { x: e.x - 35, y: laneY - 50 } },
+    biggy: { at: { x: e.x - 20, y: laneY + 42 }, to: { x: e.x - 22, y: laneY + 4 } },
+  };
+  // He stops facing straight in from the doors, with Voxxy where his reaching hand
+  // is (`PAT_REACH`, `PAT_TURN`): ahead of him and off to that side.
+  const patAt: Vec2 = {
+    x: letInMarks.voxxy.at.x + PAT_REACH * Math.cos(PAT_TURN),
+    y: letInMarks.voxxy.at.y - PAT_REACH * Math.sin(PAT_TURN),
+  };
+  const patFace = Math.PI;
+  /** The beat's clock, s from the placing — all of it falls out of the distances and `LET_IN`. */
+  const beat = (() => {
+    const swing = LET_IN.swing;
+    // He steps into the leaves' sweep once they have come to rest, not before: a
+    // man walking into a glass door that is still swinging is the one thing about
+    // this scene anybody would remember.
+    const go = swing + DOORS_SWING + LET_IN.settle - (stephanFrom.x - STEPHAN_R - leafReach) / STEPHAN_WALK;
+    const arrive = go + dist(stephanFrom, patAt) / STEPHAN_WALK;
+    const on = arrive + LET_IN.reach + LET_IN.pat + LET_IN.lower;
+    const mark = on + dist(patAt, stephanMark) / STEPHAN_WALK;
+    const follow = on + LET_IN.follow;
+    // The three walk for as long as he still has to go once they set off, so the
+    // four of them arrive together and the black comes down on them all walking in.
+    return { swing, go, arrive, on, mark, follow, walk: mark - follow };
+  })();
+  /** Stephan in the let-in: where he is, which way he faces, how fast he walks, his hand. */
+  const stephan = { x: stephanFrom.x, y: stephanFrom.y, face: Math.PI, sp: 0, reach: 0 };
+  let patSaid = false;
+  let soupSaid = false;
+  let hopped = false;
 
   const roller: Wall = {
     ...GF.roller,
@@ -1027,9 +1176,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     if (code !== 'KeyE') return true;
 
     if (doorsDue && doorsOpenAt === null && b.x > e.x - DOORS_REACH && b.x < e.x + e.w && b.y > e.y - 8 && b.y < e.y + e.h + 8) {
+      // The bolts, not the doors: they swing in the let-in, once the three of them
+      // are standing in front of them (`LET_IN`), and the shut leaves stay walls
+      // until they do.
       doorsOpenAt = ctx.t;
-      for (const w of shutDoors) ctx.removeWall(w);
-      ctx.flash(`${b.name} throws the bolts. The doors swing out onto Antwerp in the morning — and there is already a queue`, 4000);
+      ctx.flash(`${b.name} throws the bolts. Everybody to the doors — somebody has been out on that forecourt all night`, 4000);
       return true;
     }
 
@@ -1698,39 +1849,183 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     }
     if (doorsOpenAt !== null && !doorsCut && ctx.t - doorsOpenAt >= DOORS_CUT_DELAY) {
       doorsCut = true;
-      // Out through the three bays, towards the daylight. Each robot's route ends
-      // just inside its bay and the walk carries on past it into the fade.
-      const gaps = entranceBayGaps();
-      const lane = (k: number): number => (gaps[k][0] + gaps[k][1]) / 2;
-      const route = (k: number, back: number): Vec2[] => [
-        { x: e.x - 150 - back, y: lane(k) },
-        { x: e.x - 24, y: lane(k) },
-      ];
-      ctx.startCut(
-        [
-          { kind: 'voxxy', pts: route(0, 0) },
-          { kind: 'droid', pts: route(1, 14) },
-          { kind: 'biggy', pts: route(2, 28) },
-        ],
-        () => ctx.startChapter(3),
-        VIEW_GROUND,
-      );
+      scene = -1;
+      // In, not out (`LET_IN`): the three regroup in front of the doors — the
+      // placing, under the black — Stephan comes in through them in the hold, and
+      // the walk is theirs, after him, up to the stairs.
+      const routes: CutRoute[] = (['voxxy', 'droid', 'biggy'] as const).map((kind) => ({
+        kind,
+        pts: [letInMarks[kind].at, letInMarks[kind].to],
+      }));
+      ctx.startCut(routes, () => ctx.startChapter(3), VIEW_GROUND, {
+        walkTime: beat.walk,
+        hold: () => scene < beat.follow,
+        tick: letIn,
+      });
     }
+  }
+
+  /* ------------------------------------------------------------------ the let-in */
+
+  const smooth = (u: number): number => {
+    const k = u < 0 ? 0 : u > 1 ? 1 : u;
+    return k * k * (3 - 2 * k);
+  };
+  /** `from` turned towards `to` by at most `step` rad, the short way round. */
+  const turnTo = (from: number, to: number, step: number): number => {
+    const d = Math.atan2(Math.sin(to - from), Math.cos(to - from));
+    return Math.abs(d) <= step ? to : from + Math.sign(d) * step;
+  };
+  /** `dist` px along the straight line from `a` to `b`, and no further. */
+  const along = (a: Vec2, b: Vec2, d: number): Vec2 => {
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const u = len > 0 ? Math.min(1, Math.max(0, d / len)) : 1;
+    return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u };
+  };
+
+  /**
+   * One frame of the let-in (`LET_IN`): the doors, Stephan, the pat, and the three
+   * of them watching him. `ctx.startCut`'s `tick`, from the frame the cast is placed
+   * to the hand-over — the runner does not call `update` in a cutscene.
+   */
+  function letIn(dt: number): void {
+    if (scene < 0) {
+      scene = 0;
+      // Still under the full black: they look at the doors they have come to open,
+      // and he is on the far side of them, looking in.
+      for (const b of ctx.bots) b.face = Math.atan2(laneY - b.y, e.x + e.w / 2 - b.x);
+      Object.assign(stephan, { x: stephanFrom.x, y: stephanFrom.y, face: Math.PI, sp: 0, reach: 0 });
+    }
+    scene += dt;
+    if (!swung && scene >= beat.swing) {
+      // The leaves go, and so do the walls across the bays.
+      swung = true;
+      for (const w of shutDoors) ctx.removeWall(w);
+    }
+
+    // Stephan: outside, then in down the middle of the top bay to Voxxy, then on
+    // up the strip to the foot of the stairs — at a walk, and stopping where he stops.
+    let at: Vec2 = stephanFrom;
+    let want = Math.PI;
+    if (scene >= beat.mark) {
+      at = stephanMark;
+      want = doorsFace;
+    } else if (scene >= beat.on) {
+      at = along(patAt, stephanMark, (scene - beat.on) * STEPHAN_WALK);
+      want = Math.atan2(stephanMark.y - patAt.y, stephanMark.x - patAt.x);
+    } else if (scene >= beat.arrive) {
+      at = patAt;
+      want = patFace;
+    } else if (scene >= beat.go) {
+      at = along(stephanFrom, patAt, (scene - beat.go) * STEPHAN_WALK);
+      want = Math.atan2(patAt.y - stephanFrom.y, patAt.x - stephanFrom.x);
+    }
+    stephan.sp = dt > 0 ? Math.hypot(at.x - stephan.x, at.y - stephan.y) / dt : 0;
+    stephan.x = at.x;
+    stephan.y = at.y;
+    stephan.face = turnTo(stephan.face, want, STEPHAN_TURN * dt);
+
+    // The pat: the hand out to her head, three pats, and back down.
+    const k = scene - beat.arrive;
+    const up = smooth(k / LET_IN.reach);
+    const down = smooth((k - LET_IN.reach - LET_IN.pat) / LET_IN.lower);
+    const patting = k >= LET_IN.reach && k < LET_IN.reach + LET_IN.pat;
+    const bob = patting ? PAT_DIP * (0.5 - 0.5 * Math.cos(2 * Math.PI * LET_IN.patHz * (k - LET_IN.reach))) : 0;
+    stephan.reach = Math.max(0, up - down) * (1 - bob);
+    if (!patSaid && patting) {
+      patSaid = true;
+      ctx.flash('Stephan pats Voxxy on the head: "Good robot. The keys were in my other jacket. All night. Not a word."', 4200);
+    }
+    // ...and she does what she does when she is pleased with herself.
+    const voxxy = ctx.byKind('voxxy');
+    if (!hopped && scene >= beat.on - 0.15) {
+      hopped = true;
+      voxxy.air = JUMP_AIR;
+    }
+    // The runner does not step the robots, so her airtime runs out here.
+    for (const b of ctx.bots) if (b.air) b.air = Math.max(0, b.air - dt);
+    if (!soupSaid && scene >= beat.follow) {
+      soupSaid = true;
+      ctx.flash('Stephan, on his way to the stairs: "Three thousand people behind me, and nobody goes up until I have had my soup."', 5000);
+    }
+
+    // Until they set off after him, the three of them watch the doors — and then him.
+    if (scene < beat.follow && scene >= beat.swing) {
+      for (const b of ctx.bots) b.face = turnTo(b.face, Math.atan2(stephan.y - b.y, stephan.x - b.x), WATCH_TURN * dt);
+    }
+  }
+
+  /** Stephan, while the let-in has him on screen. */
+  function people(): Person[] {
+    if (scene < 0) return [];
+    return [
+      {
+        x: stephan.x,
+        y: stephan.y,
+        r: STEPHAN_R,
+        name: 'Stephan',
+        // The polo, the glasses and the headset chapter 3 has him in
+        // (`ch3-breakfast.ts`): the same man, a minute earlier, and the one face the
+        // player is about to spend a chapter with.
+        colour: '#434a3c',
+        collar: '#e8a01c',
+        glasses: true,
+        mic: true,
+        role: 'stephan',
+        lanyard: LANYARD.chair,
+        seed: 910,
+        face: stephan.face,
+        speed: stephan.sp,
+        reach: stephan.reach,
+      },
+    ];
+  }
+
+  /**
+   * The let-in's shot (`GameSnapshot.shot`): sim px on the plan, metres off the
+   * storey datum, which the lobby floor stands `LOBBY_RISE_M` above.
+   *
+   * From inside the lobby, south-west of the three and above head height, looking
+   * past them at the doors — the regroup, the leaves swinging and the man outside
+   * them in one frame. It closes in on the pat as he reaches her, and then turns
+   * with him up the strip to the foot of the stairs, the three following into it.
+   * Published from the moment the cutscene starts, so the camera sets off towards
+   * the doors rather than towards wherever the other two robots were in the hall.
+   */
+  function letInShot(): CameraShot | null {
+    if (!doorsCut) return null;
+    const t = Math.max(0, scene);
+    const inOn = smooth((t - (beat.arrive - 1.2)) / 1.4);
+    const upTo = smooth((t - beat.on) / 2.4);
+    const mix = (a: { x: number; y: number; h: number }, b: { x: number; y: number; h: number }, u: number) => ({
+      x: a.x + (b.x - a.x) * u,
+      y: a.y + (b.y - a.y) * u,
+      h: a.h + (b.h - a.h) * u,
+    });
+    const S = LET_IN_SHOT;
+    return {
+      name: t < beat.on ? 'let-in' : 'let-in-follow',
+      eye: mix(mix(S.doors.eye, S.pat.eye, inOn), S.stairs.eye, upTo),
+      look: mix(mix(S.doors.look, S.pat.look, inOn), S.stairs.look, upTo),
+    };
   }
 
   /* -------------------------------------------------------------------- props */
 
   function props(): Prop[] {
     const out: Prop[] = [
-      // The front doors: bolted until the chapter's last job, then swinging out.
+      // The front doors: bolted until the chapter's last job, then swinging out in
+      // the let-in, once the three of them are standing in front of them.
       {
         kind: 'entrance-doors',
         x: e.x,
         y: e.y,
         w: e.w,
         h: e.h,
-        state: doorsOpenAt !== null ? 'open' : doorsDue ? 'active' : 'idle',
-        progress: doorsOpenAt === null ? 0 : Math.min(1, (ctx.t - doorsOpenAt) / DOORS_SWING),
+        state: swung ? 'open' : doorsDue ? 'active' : 'idle',
+        // On the let-in's own clock, the one Stephan walks to, so the two cannot
+        // drift a frame apart: he steps into the leaves' sweep once they are home.
+        progress: swung ? Math.min(1, (scene - beat.swing) / DOORS_SWING) : 0,
         label: doorsDue ? 'front doors — E to open' : 'front doors — locked for the night',
       },
       /*
@@ -2354,6 +2649,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     key,
     update,
     props,
+    people,
+    shot: letInShot,
     progress,
     tasks,
     typing,
