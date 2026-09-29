@@ -5783,3 +5783,75 @@ name the Olympics. Suite **826 green**, `tsc --noEmit` clean.
 reached this container — no attachment from three consecutive messages landed on disk, and
 `welld.ch` is refused by this environment's egress policy, so the agent cannot go and get it
 either. SVG is text, so pasting the source into the conversation is the route that works.
+
+### The new WellD mark: three delivery attempts, and a rounding that was measured
+
+**What the human decided.** Michele: *"why don't you just ask? text version incoming."* Fair. The
+agent had spent three replies describing what it needed instead of asking for it, which is the
+slower way to be blocked.
+
+**The delivery problem, and what actually solved it.** He sent the new logo twice as an image.
+Neither reached this container: a full-disk sweep found only the *old* mark from earlier the same
+morning. The agent also tried to fetch the artwork from `welld.ch` directly, and this environment's
+egress policy refused the CONNECT. The third attempt was the SVG source pasted into the
+conversation as text, and that arrived intact. Worth remembering: in this setup **text is the
+reliable channel and attachments are not**, so a vector asset can always get through and a raster
+one may not.
+
+**The artwork decided a design change.** The old lockup was two colours — a white wordmark on a red
+plate, and a black *DREAM. DO. DEVELOP.* on transparent — which is why the panel had put it on a
+white plate: a dark screen would have eaten the tagline. The new mark is a single flat `#E50339`
+across the wordmark and the tagline both, so **the plate is gone** and the logo sits straight on the
+panel. `WELLD_RED` moved with it, `#c9102e` → `#E50339`, read out of the file rather than sampled
+off a screenshot.
+
+**One discrepancy, flagged rather than resolved silently.** The image he sent is near-black
+(`20,19,24` on transparent); the SVG is red. They are different versions of the same mark. The SVG
+was used, because black on this panel would have required the plate back — and he was told, so the
+choice is his to reverse.
+
+**Inline markup, not a data URI.** The panel builds the mark as inline SVG. A `data:` URI would
+have to percent-encode every `<`, `"` and `#` in 18 KB of path data for no gain, and inline vector
+is what lets the panel scale it without a resample.
+
+**The rounding was verified, not assumed.** Two liberties were taken with the *file*, neither with
+the artwork: the eighteen identical `fill="#E50339"` attributes were hoisted onto the root, where
+they inherit, and the path coordinates were rounded to two decimals. Rather than assert that this
+is lossless, both versions were rasterised in Chromium at 480px — four times the 120px the panel
+shows — and diffed pixel by pixel:
+
+| rounding | bytes | pixels differing by >8/255 | largest delta |
+| --- | --- | --- | --- |
+| original | 21,348 | — | — |
+| 2 decimals | 18,181 | 6 of 96,000 | 15 |
+| 1 decimal | 15,339 | 117 of 96,000 | 62 |
+
+Two decimals shipped; one was rejected on that evidence. The first attempt at the minifier is also
+worth recording as a caution: rounding every number *in the document* rather than only inside
+`d="..."` turned `www.w3.org` into `www.w3org`, which silently broke the namespace and rendered
+nothing. The blank render is what caught it — a size check alone would have passed.
+
+**Tests.** Four assertions guard the colour: `WELLD_RED` is `#E50339`, the markup carries that exact
+fill, the markup carries **exactly one** `fill="` attribute — so a path that grows its own can never
+ship quietly — and it carries no white. Suite **826 green** in 60 files, `tsc --noEmit` clean,
+`ERRORS:0` in the browser.
+
+---
+
+## Freeze — 29 September 2026
+
+This branch (`claude/blissful-faraday-3ymwwa`) is frozen here for the merge to `main`. It is step 1
+of 3: the 3D session merges this branch into theirs next, and an integration session takes the
+result to `main`. Nothing further is committed or pushed from this session, and `main` is not
+touched from here.
+
+**State at the freeze.** `pnpm typecheck`, `pnpm test` and `pnpm build` all green — 826 tests in 60
+files, no physics engine, no external asset files. The full-run gate (`tests/full-run.test.ts`)
+drives chapter 1 through the final card on one seed with no chapter skips, which is the ship
+criterion from GAUNTLET.md Stage 3.
+
+**Known and deliberately left.** The HUD overlaps chapter 2's rack at some window sizes. The
+`git filter-repo` purge of `tools/progress/shots` and the superseded measurement overlays is not
+done — the reference archive was delivered to Michele first so nothing in it can be lost, and a
+history rewrite is not something to hand a merge that has not happened yet. Both are notes for
+after `main`, not blockers for it.
