@@ -5761,3 +5761,43 @@ while the room applauded; `tests/curtain-call.test.ts` caught it and they clap n
     - Black velvet, white power trunking, laptops, bottles, folding chairs.
     - Behind them, the wall of raised film quotes from his photograph.
 
+- **Letters merged, open stands, and a critic round on fresh context** (28–29 Sep 2026).
+  - *Merge.* `claude/nice-wright-ms1qmg` (the #DEVOXX letters as Droid's chapter 4 job, the
+    curtain call, the full-run ship gate) merged into the 3D line. Three files conflicted:
+    - the chapter 4 imports: both branches' names kept;
+    - keynote3d's `update`: the letters' hands-provider signature kept, with the rake's plates
+      read first;
+    - the notes: both branches' entries kept.
+    820 tests pass, including the letters branch's full run from chapter 1 to the card.
+  - *Open stands* (approved by Michele, "keep in mind the booths Voxxy can walk under"). Built
+    booths are drawn as open three-wall stands from his photographs:
+    - a raised floor edged in white, and printed back and side walls with arm spots;
+    - a screen, a high table with stools, and a plant;
+    - one crowd-puller per stand in turn: a claw machine, a humanoid robot, a racing seat or a
+      swag counter;
+    - a belt barrier across the open front, because in the sim the whole footprint is still
+      solid (the keynote speaker hides in front of one).
+    Half-table booths are untouched.
+  - *The critic round.* Per GAUNTLET.md, a critic agent on fresh context judged only the running
+    build: 33 screenshots across all four chapters, never the diff. It returned 13 ranked
+    findings. Fixed:
+    1. The follow camera collapsed to a top-down view of the robot's scalp beside any stand. Its
+       boxed-in search had climbed to a 1.25 rad pitch. It now also swings sideways, caps the
+       pitch at 0.8, and keeps a whole-robot minimum distance, letting the wall behind go.
+    2. Robots vanished in chapter 1's dark. A short-reach fill light now follows the driven
+       robot from just behind the camera.
+    3. The lit ground floor was overexposed: the carpet albedo came down, and so did the hall
+       bays and fill.
+    4. HUD overlaps: the help text now sits above the chapter meters, and the task pips have a
+       backing plate.
+    5. The cake is a camera obstacle.
+    6. Duke read as a bullet or bowling pin. He is now a squat taper with a domed head, black on
+       the top third, with the nose centred on his front, half-turned towards the lane.
+    7. The entrance's open leaves get tinted glass instead of reading as skewed wire.
+    8. A built stand's name is now a fascia on its back wall, not a board floating mid-air.
+
+    Not fixed, and why:
+    - Droid's colour drift did not reproduce in the recheck: he is on-sheet gunmetal once the
+      fill light and exposure changes are in.
+    - Voxxy's ears and visor, and the chapter 1 door texture, are left for a model-sheet pass.
+    - Scripted chapter-opening framings are on the backlog.

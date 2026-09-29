@@ -355,6 +355,9 @@ export function setOutsideMorning(on: boolean): void {
 function facade(group: THREE.Group, mats: Materials, updaters: Array<(t: number, dt: number) => void>): THREE.Object3D[] {
   const out: THREE.Object3D[] = [];
   const frame = new THREE.MeshStandardMaterial({ color: 0xe8e8e4, roughness: 0.35, metalness: 0.4 });
+  // The open leaves get a visible tint: clear glass left only their frames,
+  // which read as skewed wire (critic round, 29 Sep).
+  const leafGlass = new THREE.MeshStandardMaterial({ color: 0x9fb8c4, roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false });
   const b = new Buckets();
   const GLASS_H = 4.2;
   const TRANSOM = 2.7;
@@ -393,7 +396,7 @@ function facade(group: THREE.Group, mats: Materials, updaters: Array<(t: number,
       const L = m(Math.max(w.w, w.h));
       const along = w.w >= w.h;
       const DH = TRANSOM - 0.1;
-      const leaf = new THREE.Mesh(new THREE.PlaneGeometry(L, DH), mats.glass);
+      const leaf = new THREE.Mesh(new THREE.PlaneGeometry(L, DH), leafGlass);
       leaf.position.set(cx, base + DH / 2, cz);
       if (!along) leaf.rotation.y = Math.PI / 2;
       leaf.renderOrder = 2;
@@ -783,16 +786,16 @@ export function buildGround(mats: Materials): Ground3D {
     let seed = 3;
     const rnd = (): number => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     for (const [ox, oy, tone] of [
-      [0, 0, 150],
-      [128, 0, 142],
-      [0, 128, 142],
-      [128, 128, 150],
+      [0, 0, 104],
+      [128, 0, 98],
+      [0, 128, 98],
+      [128, 128, 104],
     ]) {
       x.fillStyle = `rgb(${tone},${tone - 3},${tone - 8})`;
       x.fillRect(ox, oy, 128, 128);
     }
     for (let i = 0; i < 9000; i++) {
-      const v = 110 + rnd() * 80;
+      const v = 75 + rnd() * 60;
       x.fillStyle = `rgba(${v | 0},${(v - 4) | 0},${(v - 10) | 0},0.5)`;
       x.fillRect(rnd() * 256, rnd() * 256, 1.5, 1.5);
     }
@@ -852,7 +855,9 @@ export function buildGround(mats: Materials): Ground3D {
     // Duke, on his sim footprint, facing the doors.
     const duke = buildDuke();
     duke.root.position.set(m(DUKE.x), groundRiseM(DUKE.x), m(DUKE.y));
-    duke.root.rotation.y = Math.PI / 2;
+    // Half-turned: towards the doors and towards the lane the robots walk,
+    // so his nose is what both see first (critic round, 29 Sep).
+    duke.root.rotation.y = Math.PI / 4;
     group.add(duke.root);
     // A display spot on him, as a sponsor would light an inflatable: black
     // vinyl in a dark lobby otherwise vanishes and leaves a white bell.
@@ -1000,17 +1005,24 @@ export function buildGround(mats: Materials): Ground3D {
       const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0x000000, toneMapped: false });
       boothBoards.push(mat);
       const bw = Math.min(m(b.w) * 0.9, 5);
+      // A built stand wears its name as a fascia on top of its back wall (the
+      // critic round, 29 Sep: boards hung mid-air read as floating text); a
+      // table stand keeps a board hung from the trusses over it.
+      const built = !b.table;
+      const by = built ? 2.6 + bw / 8 + 0.02 : 3.6;
+      const bz = built ? m(b.y) + 0.05 : m(b.y + b.h / 2);
       for (const yaw of [0, Math.PI]) {
         const board = new THREE.Mesh(new THREE.PlaneGeometry(bw, bw / 4), mat);
-        board.position.set(m(b.x + b.w / 2), 3.6, m(b.y + b.h / 2) + (yaw === 0 ? 0.03 : -0.03));
+        board.position.set(m(b.x + b.w / 2), by, bz + (yaw === 0 ? 0.03 : -0.03));
         board.rotation.y = yaw;
         group.add(board);
       }
-      const frame = new THREE.Mesh(box(bw + 0.1, bw / 4 + 0.1, 0.05, V(m(b.x + b.w / 2), 3.6, m(b.y + b.h / 2))), mats.darkMetal);
-      group.add(frame);
-      // Hangers to the trusses.
-      group.add(new THREE.Mesh(box(0.02, HALL_H - 3.6 - bw / 8, 0.02, V(m(b.x + b.w / 2) - bw / 3, (HALL_H + 3.6 + bw / 8) / 2, m(b.y + b.h / 2))), mats.steel));
-      group.add(new THREE.Mesh(box(0.02, HALL_H - 3.6 - bw / 8, 0.02, V(m(b.x + b.w / 2) + bw / 3, (HALL_H + 3.6 + bw / 8) / 2, m(b.y + b.h / 2))), mats.steel));
+      group.add(new THREE.Mesh(box(bw + 0.1, bw / 4 + 0.1, 0.05, V(m(b.x + b.w / 2), by, bz)), mats.darkMetal));
+      if (!built) {
+        // Hangers to the trusses.
+        group.add(new THREE.Mesh(box(0.02, HALL_H - 3.6 - bw / 8, 0.02, V(m(b.x + b.w / 2) - bw / 3, (HALL_H + 3.6 + bw / 8) / 2, bz)), mats.steel));
+        group.add(new THREE.Mesh(box(0.02, HALL_H - 3.6 - bw / 8, 0.02, V(m(b.x + b.w / 2) + bw / 3, (HALL_H + 3.6 + bw / 8) / 2, bz)), mats.steel));
+      }
     });
     tiles.build(group, false);
   }
@@ -1356,12 +1368,12 @@ export function buildGround(mats: Materials): Ground3D {
         // Booth by booth: each bay strikes 0.25 s after the one nearer the lobby.
         const k = poweredAt === null ? 0 : THREE.MathUtils.clamp((t - poweredAt - b.at * 2.2) / 0.5, 0, 1);
         const flick = k > 0 && k < 1 ? (Math.sin(t * 60 + b.at * 40) > 0 ? 1 : 0.2) : 1;
-        b.light.intensity = 2400 * k * flick;
+        b.light.intensity = 1700 * k * flick;
         (b.lamp.material as THREE.MeshBasicMaterial).color.setRGB(1, 0.95, 0.85).multiplyScalar(6 * k * flick);
         b.ring.color.setRGB(1, 0.45, 0.12).multiplyScalar(5 * k * flick);
       }
       const lit = poweredAt === null ? 0 : THREE.MathUtils.clamp((t - poweredAt - 1.2) / 1.2, 0, 1);
-      fill.intensity = (morning ? 2.4 : 1.1) * lit;
+      fill.intensity = (morning ? 1.7 : 1.1) * lit;
       // Reception is on the same circuit: dark until the breaker, lit after.
       for (const g of receptionGlows) g.mat.color.copy(g.base).multiplyScalar(0.02 + 0.98 * lit);
       if (receptionLight) receptionLight.intensity = 18 * lit;

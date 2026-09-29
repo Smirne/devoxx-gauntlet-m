@@ -79,8 +79,12 @@ body.ad3d .ad-card b{color:${YELLOW}}
 .ad3d-gate .ad3d-sub{text-align:center;color:#cbb89a;letter-spacing:.12em;text-transform:uppercase;font-size:13px}
 @keyframes ad3d-blink{50%{opacity:.25}}
 @media (prefers-reduced-motion: reduce){.ad3d-title .ad3d-press{animation:none}}
-.ad3d-help{position:fixed;right:16px;bottom:16px;z-index:6;pointer-events:none;color:#b79c96;font:11px/1.6 "Bahnschrift","Arial Narrow",sans-serif;
-  text-transform:uppercase;letter-spacing:.14em;text-align:right;opacity:.8}
+/* Bottom-right, ABOVE the chapter meters (bottom-left is the robot panel):
+   and the critic round (29 Sep) found the two printed over each other. */
+.ad3d-help{position:fixed;right:16px;bottom:118px;z-index:6;pointer-events:none;color:#b79c96;font:11px/1.6 "Bahnschrift","Arial Narrow",sans-serif;
+  text-transform:uppercase;letter-spacing:.14em;text-align:right;opacity:.8;text-shadow:0 1px 3px #000}
+/* The task pips and count sit on a dark plate: on a lit carpet they vanished. */
+body.ad3d .ad-tasks{background:rgba(8,8,12,.55);border-radius:6px;padding:4px 10px;width:max-content;margin-left:auto;margin-right:auto}
 .ad-nohud .ad3d-help{display:none}
 `;
 

@@ -104,6 +104,14 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   const props1: Props3D = createProps(propsRoot1, mats);
   let props: Props3D = props1;
   // Point lights beyond the robots' own spills go through a fixed pool.
+  /*
+   * A soft fill on the robot being driven, from just behind the camera: in the
+   * dark sections the player's own robot went to a silhouette — Biggy a black
+   * blob against a screen, Droid a floating torso (critic round, 29 Sep). Short
+   * reach, so it lights the robot and the floor at its feet, not the room.
+   */
+  const robotFill = new THREE.PointLight(0xdde4ff, 0, 5, 2);
+  scene.add(robotFill);
   const pool = new LightPool(scene, 14, [...robots.values()].map((r) => r.spill));
   pool.collect(scene);
   for (const L of venue.volumeSpots) L.light.shadow.mapSize.set(quality.shadowSize, quality.shadowSize);
@@ -591,7 +599,10 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       const speed = Math.hypot(active.vx, active.vy) / PX_PER_M;
       // The crates are walls to the camera too, so it can never end up inside one.
       const solid = onGround && ground ? ground.colliders : keynoteOn && keynote ? [...venue.colliders, ...keynote.colliders] : venue.colliders;
-      cam.update(dt, active.kind, _pos, active.face, speed, [...solid, ...props.colliders, ...(crates.root.visible ? [crates.root] : [])]);
+      cam.update(dt, active.kind, _pos, active.face, speed, [...solid, ...props.colliders, ...(keynote && keynote.group.visible ? keynote.colliders : []), ...(crates.root.visible ? [crates.root] : [])]);
+      robotFill.position.copy(cam.camera.position).lerp(rob.rig.root.position, 0.45);
+      robotFill.position.y += 0.6;
+      robotFill.intensity = onGround && ground && snap.chapter >= 3 ? 1.5 : 4;
     }
 
     // Mirror bounces from the sim.

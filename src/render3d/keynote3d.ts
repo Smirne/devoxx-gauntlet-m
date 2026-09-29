@@ -592,8 +592,13 @@ export function buildKeynote(mats: Materials): Keynote3D {
         return stage(p);
       case 'cake-mark':
         return cakeMark(p);
-      case 'cake':
-        return cake(p);
+      case 'cake': {
+        // The camera treats it as an obstacle: it filled the frame in front of
+        // Voxxy at the lab tables (critic round, 29 Sep).
+        const c = cake(p);
+        colliders.push(c);
+        return c;
+      }
       case 'spotlight':
         return spotlight(p);
       default:

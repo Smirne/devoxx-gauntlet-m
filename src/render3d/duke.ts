@@ -20,7 +20,19 @@ export interface Duke3D {
 }
 
 /** Height of the whole balloon, m. */
-const HEIGHT = 2.9;
+const HEIGHT = 2.3;
+/** Where the black top meets the white body, as a share of the height. */
+const LINE = 0.64;
+/** Radius of the profile at height share `u`: a squat rounded triangle. */
+const profile = (u: number): number => {
+  if (u < 0.06) return 0.8 + (u / 0.06) * 0.18;
+  // A straight taper to a ROUND head: the top quarter is a dome, not a point.
+  const cone = (v: number): number => 0.98 - 0.62 * ((v - 0.06) / 0.72);
+  if (u < 0.78) return cone(u);
+  const top = cone(0.78);
+  const k = (u - 0.78) / 0.22;
+  return top * Math.sqrt(Math.max(0, 1 - k * k));
+};
 
 export function buildDuke(): Duke3D {
   const root = new THREE.Group();
@@ -34,12 +46,13 @@ export function buildDuke(): Duke3D {
   for (let i = 0; i <= N; i++) {
     const u = i / N;
     // Width: full at the bottom, bellied at a third, tapering to a rounded tip.
-    // A rounded wedge, not a cone: full through the body, domed at the top.
-    const r = u < 0.08 ? 0.55 + (u / 0.08) * 0.28 : 0.83 * Math.pow(Math.max(0, 1 - Math.pow((u - 0.08) / 0.92, 2.2)), 0.55);
+    // Squat, wide at the base, a soft point on top (critic round, 29 Sep: the
+    // taller version read as a bullet or a bowling pin).
+    const r = profile(u);
     pts.push(new THREE.Vector2(Math.max(0.02, r), u * HEIGHT));
   }
   const geo = new THREE.LatheGeometry(pts, 36);
-  geo.scale(1, 1, 0.72);
+  geo.scale(1, 1, 0.8);
   const pos = geo.getAttribute('position');
   const col = new Float32Array(pos.count * 3);
   const black = new THREE.Color('#1a1b1f');
@@ -49,7 +62,7 @@ export function buildDuke(): Duke3D {
     const y = pos.getY(i);
     const z = pos.getZ(i);
     // The white face-and-belly on the front, rising a little toward the nose.
-    const line = HEIGHT * (0.42 + 0.06 * Math.max(0, z));
+    const line = HEIGHT * (LINE - 0.04 * Math.max(0, z));
     c.copy(y < line ? white : black);
     col[i * 3] = c.r;
     col[i * 3 + 1] = c.g;
@@ -69,7 +82,7 @@ export function buildDuke(): Duke3D {
     new THREE.SphereGeometry(0.34, 28, 20),
     new THREE.MeshPhysicalMaterial({ color: 0xd8231c, roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.15 }),
   );
-  nose.position.set(0, HEIGHT * 0.46, 0.5);
+  nose.position.set(0, HEIGHT * (LINE - 0.05), profile(LINE - 0.05) * 0.8 + 0.12);
   nose.castShadow = true;
   body.add(nose);
 
@@ -78,7 +91,7 @@ export function buildDuke(): Duke3D {
   const arms: THREE.Group[] = [];
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
-    pivot.position.set(sx * 0.72, HEIGHT * 0.36, 0.05);
+    pivot.position.set(sx * profile(0.34) * 0.98, HEIGHT * 0.34, 0.05);
     const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 0.55, 6, 12), armMat);
     arm.position.y = 0.36;
     arm.castShadow = true;
