@@ -16,7 +16,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { createGame, type DebugGame, type Task } from '../src/sim';
+import { createGame, type DebugGame, type GameSnapshot, type Task } from '../src/sim';
 import { hintLines, markLevel, nudgeStep } from '../src/render/hud';
 
 const CHAPTERS = [1, 2, 3, 4] as const;
@@ -178,5 +178,38 @@ describe('chapter 1 hints at the door before it hints at the mix', () => {
       const t = ch1().find((o) => o.id === id) as Task;
       expect(hintLines(t), `${id} invented a gate`).toHaveLength(1);
     }
+  });
+});
+
+/**
+ * THE TOP BAR IS A GLANCE; THE RUN SHEET HAS THE REST.
+ *
+ * Michele, 29 Sep 2026: *"Trim the on screen hints, they are already in the info
+ * panel. Keep: 1/2/3 switch, E to act, I for Info, R to restart"*, then *"H for
+ * hint"*, then *"put restart last"*. The trim is only fair while its premise
+ * holds, so both halves are asserted: the bar names those five keys in that
+ * order and no others, and the sheet's recap names every key the bar let go.
+ */
+describe('the top bar keeps five keys, and the run sheet keeps them all', () => {
+  /** `'1/2/3: switch · E: act'` -> `['1/2/3', 'E']`: the key half of every entry. */
+  const named = (line: string): string[] => line.split(' · ').map((part) => part.split(':')[0]);
+  const snapOf = (n: number): GameSnapshot =>
+    (createGame({ seed: 20260930, chapter: n, cards: false }) as DebugGame).snapshot();
+
+  // ...and the shadow rig, chapter 5, which publishes a run sheet of its own.
+  for (const n of [...CHAPTERS, 5]) {
+    it(`chapter ${n}: the bar is switch, act, info, hint and, last, restart`, () => {
+      const snap = snapOf(n);
+      expect(named(snap.topKeys)).toEqual(['1/2/3', 'E', 'I', 'H', 'R']);
+      for (const key of ['1/2/3/Tab', 'WASD', 'E', 'R', 'I', 'H', 'P', 'C']) {
+        expect(named(snap.keys), `the run sheet lost ${key}`).toContain(key);
+      }
+    });
+  }
+
+  it('leaves the opening its own line, because nobody is driving yet', () => {
+    const snap = createGame({ seed: 20260930 }).snapshot();
+    expect(snap.opening, 'the run no longer opens on the crates').not.toBeNull();
+    expect(snap.topKeys, 'the opening offers keys that do nothing until it ends').toBe(snap.keys);
   });
 });
