@@ -318,6 +318,13 @@ window.addEventListener('keydown', (ev) => {
     ev.preventDefault();
     return;
   }
+  // The credits, as on the 2.5D page (`src/main.ts`): a modal, taken before the
+  // sim hears the key. This page never wired them, so the final card's own
+  // "C for credits" opened nothing and only took the card down (29 Sep).
+  if (!game.snapshot().typing && hud.creditsKey(code)) {
+    ev.preventDefault();
+    return;
+  }
   if (game.snapshot().opening && (ev.repeat || performance.now() - gateOffAt < GATE_GRACE)) {
     ev.preventDefault();
     return;
