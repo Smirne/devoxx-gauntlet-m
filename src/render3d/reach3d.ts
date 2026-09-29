@@ -144,6 +144,27 @@ export interface Grip {
   throw: 'down' | 'up';
   /** The furthest a standing Droid walks to this one, m. `STEP_MAX` unless the prop says otherwise. */
   walk?: number;
+  /**
+   * The side of it he stands on, a level unit vector: he walks to `STAND_OFF` out
+   * along it rather than wherever the line he came in on ends. For a handle on
+   * the far side of furniture — chapter 3's pot is behind the counter's front
+   * edge, and walked at from along the counter the line stood him in it.
+   */
+  out?: Spot;
+  /**
+   * What his fingers do. By default they close on the handle and open again on
+   * the let-go. 'take': they close and stay closed — he walks off with it (the
+   * ladle off its hook). 'give': closed from the start, open on the let-go — he
+   * came holding it (the ladle, into the pot).
+   */
+  hold?: 'take' | 'give';
+  /**
+   * How fast the reach plays once the pull is done, 1 as a lever's. Letting go of
+   * a lever the empty hand drops back to his side in half a second; bringing a
+   * 0.8 m ladle down off a shelf that fast is a flick. Below 1 the clock itself
+   * runs slower from `PULL_END`, so everything keyed on it keeps in step.
+   */
+  tempo?: number;
 }
 
 const grips = new Map<string, Grip>();
@@ -178,6 +199,8 @@ export interface Reach {
   to: Spot | null;
   /** Where the sim had him when this run of handles began; see `slipped`. */
   anchor: Spot | null;
+  /** `Grip.tempo`: how fast the clock runs from `PULL_END` on. */
+  tempo: number;
 }
 let active: Reach | null = null;
 /**
@@ -227,15 +250,24 @@ export const REACH_SLIP = 0.6;
 /**
  * Where a standing robot at `from` stands to take a grip at `grip` (world metres),
  * and how long the walk there takes: `STAND_OFF` short of it, along the line he
- * approaches on — so the walk heads at the handle and he arrives facing it. Null
- * when he is near enough already.
+ * approaches on — so the walk heads at the handle and he arrives facing it — or,
+ * for a grip that says which side of it to stand on (`out`), `STAND_OFF` out on
+ * that side. Null when he is near enough already.
  */
-export function stepFor(from: Spot, grip: Spot, max = STEP_MAX): { lead: number; to: Spot | null } {
+export function stepFor(from: Spot, grip: Spot, max = STEP_MAX, out?: Spot): { lead: number; to: Spot | null } {
   const dx = grip.x - from.x;
   const dz = grip.z - from.z;
   const d = Math.hypot(dx, dz);
+  if (d - STAND_OFF < 0.15) return { lead: 0, to: null };
+  if (out) {
+    const wx = grip.x + out.x * STAND_OFF - from.x;
+    const wz = grip.z + out.z * STAND_OFF - from.z;
+    const w = Math.hypot(wx, wz);
+    if (w < 0.15) return { lead: 0, to: null };
+    const go = Math.min(max, w);
+    return { lead: go / STEP_SPEED, to: { x: from.x + (wx / w) * go, z: from.z + (wz / w) * go } };
+  }
   const need = Math.min(max, d - STAND_OFF);
-  if (need < 0.15) return { lead: 0, to: null };
   return { lead: need / STEP_SPEED, to: { x: from.x + (dx / d) * need, z: from.z + (dz / d) * need } };
 }
 
@@ -297,15 +329,17 @@ function begin(id: string, at: Spot | null, walk: boolean, from: Spot | null, an
   let to: Spot | null = from;
   if (walk && start && g) {
     g.point.getWorldPosition(_g);
-    const w = stepFor(start, { x: _g.x, z: _g.z }, g.walk);
+    const w = stepFor(start, { x: _g.x, z: _g.z }, g.walk, g.out);
     if (w.to) {
       lead = w.lead;
       to = w.to;
     }
   }
   const home = at ?? start;
-  const back = to && home ? Math.hypot(to.x - home.x, to.z - home.z) / STEP_SPEED : 0;
-  active = { id, s: -lead, lead, back, from, to, anchor };
+  const tempo = g?.tempo ?? 1;
+  // The walk back is on the clock too, which runs at `tempo` by then: in its units, so it still takes the time it takes.
+  const back = to && home ? (Math.hypot(to.x - home.x, to.z - home.z) / STEP_SPEED) * tempo : 0;
+  active = { id, s: -lead, lead, back, from, to, anchor, tempo };
 }
 
 /**
@@ -338,7 +372,7 @@ export function tickReach(dt: number, at: Spot | null = null): void {
   const r = active;
   if (!r) return;
   if (queue.length > 0 && r.s < WALK_BACK) r.back = 0;
-  r.s += dt;
+  r.s += r.s < PULL_END ? dt : dt * r.tempo;
   if (r.s < reachEnd(r.back)) return;
   active = null;
   const next = queue.shift();

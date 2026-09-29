@@ -25,18 +25,23 @@ import { riseAt } from '../sim/surface';
 import { BIGGY_ROLL_DUR, DEFS, DROID_STRETCH_DUR, JUMP_AIR, JUMP_RISE_M } from '../sim/constants';
 import { LEAD, SLOT, STAND_FACE, STEP_DELAY, STEP_TIME } from '../sim/opening';
 import type { Bot, GameSnapshot, RobotKind } from '../sim/types';
-import { GF } from '../sim/geometry';
 import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
 import { createRobot, updateRobot, type RobotRig } from '../render/robots';
 import { WORLD_NOISE_GLSL } from './materials';
 import { mergeUnderAnchors } from './merge';
 import { CLICK_U, counterLip, plugHand, printerPort } from './plug';
-import { registerGrip, activeReach, armReach, holdLetter, palmWorld, reachBody, reachPath, cancelReach, gripOf, pullAt, queueReach, reachWeights, slipped, solveArmR, startReach, tickReach, walkAt, WALK_BACK, type Grip, type Spot } from './reach3d';
+import { registerGrip, activeReach, armReach, holdLetter, palmWorld, reachBody, reachPath, cancelReach, gripOf, pullAt, queueReach, reachWeights, slipped, solveArmR, startReach, tickReach, walkAt, GRIP_AT, LET_GO, WALK_BACK, type Grip, type Spot } from './reach3d';
+import { LADLE_DIP, LADLE_LIFT, hookPose, ladlePose, potPose, sleeveOf, soupPots } from './props-ground';
 
 /** The ladle's two reach targets in chapter 3 (shelf rail, pot): see the ladle below. */
 const ladleGrips = [new THREE.Object3D(), new THREE.Object3D()];
 /** How far Droid walks to either of them, m: the 3.5 m every reach had until 29 Sep. */
 const LADLE_WALK = 3.5;
+/** The hall side of the shelf and of the soup counter: where he stands to reach either. */
+const HALL_SIDE: Spot = { x: 0, z: 1 };
+const _ladle = ladlePose();
+/** How far his fingers curl round a handle, radians — the same curl the reach has always closed with. */
+export const FINGERS_SHUT = 1.25;
 
 export interface Robot3D {
   kind: RobotKind;
@@ -320,11 +325,13 @@ function driveReach(rig: RobotRig, grip: Grip, s: number, mounted: boolean): voi
   reachPath(rig, _rest, _grip, w.travel, _look);
   solveArmR(rig, _look, w.arm, w.arm, w.fold);
   // The wrist carries on the forearm's line and cocks back a little as it takes
-  // the weight; the fingers close round the grip.
+  // the weight; the fingers close round the grip — and stay closed on something
+  // he is taking away, or were closed all along on something he brought.
   b.handR.rotation.x += 0.25 * w.grip * (down ? 1 : -1) * (1 - 0.5 * w.pull);
+  const shut = (grip.hold === 'take' && s >= GRIP_AT) || (grip.hold === 'give' && s < LET_GO) ? 1 : w.grip;
   for (let i = 0; i < 4; i++) {
     const f = b[`fingerR${i}`];
-    if (f) f.rotation.x -= 1.25 * w.grip;
+    if (f) f.rotation.x -= FINGERS_SHUT * shut;
   }
 }
 
@@ -532,19 +539,38 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
   // Chapter 3's ladle: up to the shelf's rail for it, down to the pot with it.
   const lad = snap.props.find((q) => q.kind === 'ladle');
   if (lad && lastLadle !== undefined && lad.state !== lastLadle && (lad.state === 'active' || lad.state === 'done') && lastLadle !== 'done') {
-    const sh = GF.food.shelf;
     const st = snap.props.find((q) => q.kind === 'soup-station');
-    // Through the same reach as the levers (reach3d.ts): a grip point with no
-    // handle to move, at the shelf's rail or over the pot.
+    /*
+     * Through the same reach as the levers (reach3d.ts), and his hand goes where
+     * the LADLE is (props-ground.ts, "the ladle"): its sleeve on the hook, or
+     * `LADLE_DIP` above its sleeve as it will stand in the pot. The pull lifts it
+     * clear of the rail, or lowers it into the soup — so the ladle leaves the
+     * hook, and arrives in the pot, from his hand and nowhere else. He stands on
+     * the hall side of either: the pot is behind the counter's front edge, and
+     * walked at along the counter the line he came in on stood him in it.
+     */
     const id = lad.state === 'active' ? 'ladle-shelf' : 'ladle-pot';
-    const pt = ladleGrips[id === 'ladle-shelf' ? 0 : 1];
-    if (id === 'ladle-shelf') pt.position.set(m(sh.x + sh.w / 2) - 0.35, 2.3, m(sh.y + sh.h));
-    else if (st) pt.position.set(m(st.x + (st.w ?? 22) / 2), 1.6, m(st.y + (st.h ?? 22) / 2));
+    const take = id === 'ladle-shelf';
+    const pt = ladleGrips[take ? 0 : 1];
+    if (take) sleeveOf(hookPose(_ladle), pt.position);
+    else if (st) sleeveOf(potPose(soupPots(st).takeable, _ladle), pt.position).y += LADLE_DIP;
+    const base = pt.position.y;
     pt.updateMatrixWorld(true);
     // The sim hands him the ladle from further off than the breakers (`SHELF_REACH`,
     // `POT_REACH` in ch3-breakfast.ts), so these keep the longer walk they had
     // before `STEP_MAX` came down to the breakers' two metres.
-    registerGrip(id, { point: pt, throw: id === 'ladle-shelf' ? 'up' : 'down', set: () => {}, walk: LADLE_WALK });
+    registerGrip(id, {
+      point: pt,
+      throw: take ? 'up' : 'down',
+      set: (k) => {
+        pt.position.y = take ? base + LADLE_LIFT * k : base - LADLE_DIP * k;
+      },
+      walk: LADLE_WALK,
+      out: HALL_SIDE,
+      hold: take ? 'take' : 'give',
+      // Brought down off the shelf with it, not flicked: a lever's let-go at 0.6.
+      tempo: take ? 0.6 : 1,
+    });
     startReach(id, drAt, dr ? !dr.mounted : false);
   }
   lastLadle = lad?.state;

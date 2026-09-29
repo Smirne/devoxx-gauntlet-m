@@ -630,6 +630,28 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           3500,
         );
         b.vx *= 0.4;
+        /*
+         * THROUGH, ON A COUPLE OF METRES, AND STOPPED — AND THE PUSHER STAYS OUT.
+         *
+         * Michele, 29 Sep 2026: *"when the door is smashed, Biggy should keep
+         * rolling for a couple of metres, then stand. Voxxy stays at the door."*
+         * The stick was still pushing Voxxy into him, so she followed him through
+         * the doorway and shoved him on into the first pallet of shirts, 2.6 m in,
+         * where he stopped dead and bounced; on the tow bar she was dragged in on
+         * the end of it.
+         *
+         * So the crash hands the stick to Biggy, as the tow bar and the tower hand
+         * it over, and holds it off until the player lets go (`handOver`). Nobody
+         * is pushing any more: Voxxy, no longer driven, comes to rest on her own
+         * drag within half a metre — at the door — and Biggy, driven now with the
+         * stick let go, comes to rest on his own brake about two metres in, short
+         * of the pallet. No speed is set here and no constant is new; what changes
+         * is who is being driven, which is an input. The follow camera goes with
+         * him into the store, which is also the look inside it that Michele asked
+         * the curtain for. The rolling on, and the standing up as he stops, are
+         * the gait's (`src/render/robots/gait.ts`), off this same motion.
+         */
+        ctx.handOver('biggy');
         return true;
       }
       if (b.vx > ROLLER_MIN_TALK && ctx.t - rollerTalk > ROLLER_TALK_COOLDOWN) {

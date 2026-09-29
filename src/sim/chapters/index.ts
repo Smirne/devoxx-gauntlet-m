@@ -85,6 +85,13 @@ export interface ChapterCtx {
   pushBiggy(dt: number): void;
   /** E next to a standing Biggy: Droid climbs on or off, control follows the tower. */
   toggleMount(): void;
+  /**
+   * Give the stick to `kind` and hold it off until the player lets go of it, so
+   * the robot that was being steered stops where it stands and the one taking
+   * over is not driven off by a push meant for somebody else. Drops the tow bar.
+   * No speed is set: it only decides who is driven — and so who brakes.
+   */
+  handOver(kind: RobotKind): void;
   /** 1/2/3 switch the driven robot (suppressed while typing at a keypad). */
   switchKey(code: string): void;
   /**
