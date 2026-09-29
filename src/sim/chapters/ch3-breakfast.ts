@@ -55,7 +55,7 @@
  * is how the rest of this game works.
  */
 
-import { BIGGY_ROLL_DUR, FACE_MIN_SPEED, PUSH_LEAN_MIN, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
+import { BIGGY_ROLL_DUR, BLOCKED_THROTTLE, FACE_MIN_SPEED, PUSH_LEAN_MIN, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
 import {
   CRATE_DELIVERY,
   CRATE_DRAG,
@@ -87,7 +87,15 @@ import type { ChapterCtx, ChapterDef, ChapterRuntime, PrevVel } from './index';
 
 const SHELF_REACH = 45;
 const POT_REACH = 70;
+/**
+ * How close Voxxy or Droid has to be to the soup pot for `E` to mean "the pot" —
+ * standing at the counter in front of it, not anywhere in the court. Tighter than
+ * `POT_REACH` so it does not swallow the key from a queue a step behind them.
+ */
+const POT_NAG = 40;
 const TALK_REACH = 40;
+/** How fast Stephan turns to somebody, rad/s: a man turning round, not a turret. */
+const STEPHAN_TURN = 5;
 /**
  * The crab sandwich, on the sandwich counter's hall-facing edge.
  *
@@ -1045,6 +1053,34 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * always for.
    */
   let ladle: 'shelf' | 'carried' | 'in' = 'shelf';
+  /*
+   * THE POT IS BIGGY'S, AND THE OTHER TWO SAY SO.
+   *
+   * Michele, 29 Sep 2026: *"when other chars try to reach the soup there should be
+   * a message"*. Voxxy and Droid walked up to the pot, pressed `E` and got a hop,
+   * or leant on the counter and got nothing — a thing that silently does not work
+   * is the one thing a gate in this game may not be (CLAUDE.md). Each says why,
+   * in their own voice, at the key and when they walk into the counter; the
+   * counter's line is throttled by `game.ts` like every other wall's.
+   */
+  const potRefusal = (who: Bot): string =>
+    who.kind === 'voxxy'
+      ? 'Voxxy: "That pot is taller than I am and full of boiling tomato. I would not be carrying the soup, I would be IN it. BIGGY!"'
+      : ladle === 'shelf'
+        ? 'Droid: "A full pot, two metres up, on legs like mine? Every step would be a tidal wave. The pot is Biggy\'s. The ladle, on the other hand, is on the high shelf — that part is mine."'
+        : 'Droid: "I did the ladle. The pot is Biggy\'s: at my height every step is a tidal event, and Stephan asked for soup, not a weather report."';
+  const soupCounter = ctx.walls.find((w) => w.x === food.soup.x && w.y === food.soup.y && w.w === food.soup.w && w.h === food.soup.h);
+  if (soupCounter) {
+    soupCounter.kind = 'soup-counter';
+    soupCounter.why = (b) =>
+      b.kind === 'voxxy'
+        ? 'Voxxy: "The soup counter. From down here it is a white wall with steam coming off the top. The pot is Biggy\'s job."'
+        : b.kind === 'droid'
+          ? `Droid: "The soup counter. I could lift that pot. I could not walk with it: two metres of wobble over a full pot is soup on the ceiling. ${ladle === 'shelf' ? 'Mine is the ladle, on the high shelf.' : 'That is Biggy\'s.'}"`
+          : // Biggy walks up to it to pick the pot up: a line every time he arrives
+            // would be noise, and `E` is already where his answer is.
+            null;
+  }
   /**
    * WHERE THE SOUP WENT — one stain on the floor per splash, and they stay.
    *
@@ -1094,6 +1130,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /* --------------------------------------------------------------- the queues */
 
   const queues: Queue[] = [];
+  /** Biggy's answer to a queue, at `E` and when he leans on one. */
+  const BIGGY_QUEUE_LINE =
+    'Biggy: "When I say excuse me to a queue, a queue hears a fridge falling over. They are not moving for me and I am not moving them. Voxxy asks; I wait for the gap."';
+  /** Sim time Biggy last said so, for the throttle. */
+  let leanAt = -Infinity;
   /**
    * One queue: a FRONT RANK across the doorway, and a tail of singles behind it.
    *
@@ -1300,6 +1341,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const stair = GF.mainStair;
   const gateMidY = GF.gate.y + GF.gate.h / 2;
   const stephan = { x: stair.x + stair.w + 26, y: gateMidY, r: 8 };
+  /*
+   * WHICH WAY HE IS LOOKING. Michele, 29 Sep 2026: Stephan stood with his face
+   * to the staircase — to the barrier and the flight behind it — so everybody
+   * coming in through the doors met the back of his polo. The man holding the one
+   * way up watches the way IN: `GF.entrance`, south-east of him. When a robot
+   * walks up to him he turns to it, and back to the doors once it has gone. The
+   * sim owns the heading (`Person.face`) so both renderers agree.
+   */
+  const doors: Vec2 = { x: GF.entrance.x + GF.entrance.w / 2, y: GF.entrance.y + GF.entrance.h / 2 };
+  const doorsFace = Math.atan2(doors.y - stephan.y, doors.x - stephan.x);
+  let stephanFace = doorsFace;
   /*
    * THE SPEAKER GOES TO STEPHAN TOO. Michele, 28 Sep 2026: *"the speaker should
    * also go to stephan."*
@@ -2201,6 +2253,18 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     const askQueue = (who: Bot): boolean => {
       const q = queues.find((o) => o.people.some((pp) => Math.hypot(pp.x - who.x, pp.y - who.y) < QUEUE_ASK));
       if (!q || q.open > 0) return false;
+      /*
+       * ...EXCEPT BIGGY. Michele, 29 Sep 2026: *"Biggy should not be able to move
+       * the queue on its own."* The queue in the soup doorway is the one gate the
+       * soup errand has, and Biggy asking it aside made it no gate at all: he
+       * walked up with an empty pot, pressed `E` and walked in. So he asks and
+       * nothing happens, and he knows why. Voxxy and Droid still can (his 28 Sep
+       * call, above, was about them being stopped by the crowd).
+       */
+      if (who.kind === 'biggy') {
+        ctx.flash(BIGGY_QUEUE_LINE, 4200);
+        return true;
+      }
       q.open = QUEUE_OPEN;
       const said =
         who.kind === 'voxxy'
@@ -2240,6 +2304,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       if (ladle === 'carried' && dist(d, station) < POT_REACH) {
         ladle = 'in';
         ctx.flash('Droid drops the ladle in the pot: "It is a long arm. That is the whole of my contribution to breakfast."', 3600);
+        return true;
+      }
+      if (dist(d, station) < POT_NAG) {
+        ctx.flash(potRefusal(d), 4200);
         return true;
       }
       const dc = crateInReach(d);
@@ -2312,6 +2380,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     if (!speaker.following && dist(speaker, v) < TALK_REACH) {
       speaker.following = true;
       ctx.flash('Keynote speaker: "Oh! Is it time? Lead the way."');
+      return true;
+    }
+    if (dist(v, station) < POT_NAG) {
+      ctx.flash(potRefusal(v), 4200);
       return true;
     }
     const vc = crateInReach(v);
@@ -2464,7 +2536,13 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
               p.cd = 1;
               complaints++;
               if (carrying && !delivered) spill(4, 'bumped into the queue');
-              else ctx.flash(`Biggy shoved the ${q.label} (${complaints})`);
+              else ctx.flash(`Biggy walked into the ${q.label} (${complaints}) \u2014 they do not move for him. Voxxy asks.`);
+              leanAt = ctx.t;
+            } else if (b.kind === 'biggy' && ctx.t - leanAt >= BLOCKED_THROTTLE) {
+              // Leaning on them, slowly: the queue stays exactly where it is, and
+              // he says so — at the throttle every other blocked line uses.
+              leanAt = ctx.t;
+              ctx.flash(BIGGY_QUEUE_LINE, 4200);
             }
           }
         }
@@ -2488,6 +2566,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      * A speaker who is FOLLOWING is exempt — she is walking with Voxxy, and a
      * follower who shoulder-charges the robot she is following cannot keep up.
      */
+    {
+      // The nearest robot close enough to talk to, or the doors; a turn, not a snap.
+      let near: Bot | null = null;
+      for (const b of ctx.bots) {
+        if (dist(b, stephan) < TALK_REACH + b.r + 8 && (!near || dist(b, stephan) < dist(near, stephan))) near = b;
+      }
+      const want = near ? Math.atan2(near.y - stephan.y, near.x - stephan.x) : doorsFace;
+      const d = Math.atan2(Math.sin(want - stephanFace), Math.cos(want - stephanFace));
+      const turn = STEPHAN_TURN * dt;
+      stephanFace = Math.abs(d) <= turn ? want : stephanFace + Math.sign(d) * turn;
+    }
     for (const b of ctx.bots) {
       for (const n of npcs) standOff(b, n);
       standOff(b, stephan);
@@ -2594,6 +2683,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
        * the shelf slab, at Droid's hand, standing in the pot), and a player who
        * cannot find it can follow it. The rect while it is carried is a small box
        * on Droid's own centre, exactly as the soup pot rides on Biggy's.
+       *
+       * Once the soup is handed over there is no pot on Biggy any more, so the
+       * ladle is back in the counter's vat rather than riding on a robot with
+       * nothing to stand in (the 3D build stands it in whichever pot this says).
        */
       {
         kind: 'ladle',
@@ -2601,7 +2694,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           ? GF.food.shelf
           : ladle === 'carried'
             ? { x: droidNow().x - 8, y: droidNow().y - 8, w: 16, h: 16 }
-            : carrying
+            : carrying && !delivered
               ? { x: bg.x - 8, y: bg.y - 8, w: 16, h: 16 }
               : { x: station.x - 8, y: station.y - 8, w: 16, h: 16 }),
         state: ladle === 'in' ? 'done' : ladle === 'carried' ? 'active' : 'idle',
@@ -2903,9 +2996,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       role: 'stephan',
       lanyard: LANYARD.chair,
       seed: 910,
-      // He stands at the gate with his back to the stairs, looking at whoever is
-      // coming up the concourse — which since the staircase was turned is west.
-      face: Math.PI,
+      // His back to the gate and the stairs, his eyes on the doors — or on whoever
+      // has walked up to talk to him (`stephanFace`).
+      face: stephanFace,
     });
     /*
      * THE KEYNOTE SPEAKER IS ALWAYS DRAWN, AND THEY LOOK LIKE SOMETHING.

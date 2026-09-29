@@ -5888,3 +5888,33 @@ while the room applauded; `tests/curtain-call.test.ts` caught it and they clap n
     handle through the pull, no snapping, and the IK landing the palm within 5 mm.
 - **Not changed.** Sim timing and all physics constants are unchanged. The keypad's short
   reach still uses the old pose.
+
+## 29 Sep 2026 — chapter 3 playtest fixes: ladle, soup, Stephan, the bar, breakfast, queues
+
+- **Human decisions (Michele, playing chapter 3).**
+  - "droid should take the ladle, not the shelf" / "keep it in hand and drop it on the pot" /
+    "why is biggy taking the shelf with him?"
+  - "when other chars try to reach the soup there should be a message".
+  - Stephan should face the main entrance; "the animation when beer is completed can be better";
+    "put on some breakfast, coffee, and a stack of crab sandwiches".
+  - "Biggy should not be able to move the queue on its own."
+- **Agent work.**
+  - Ladle: the shelf-and-ladle group was keyed by position, so a new shelf was built wherever
+    the ladle's rect went (over Droid, then over Biggy). The rack is now static and only the
+    ladle moves: on the rail, in Droid's right hand bone, in Biggy's pot, in the counter vat.
+    Droid reaches for both hand-overs. After delivery the sim puts the ladle back in the vat.
+  - Soup: Voxxy and Droid answer at `E` and when they walk into the soup counter, in their own
+    voices; the counter line goes through the usual blocked throttle.
+  - Stephan: `Person.face` is now the sim's heading towards `GF.entrance`, turning to whoever
+    is within talking reach.
+  - Bar: pendant lamps, warm pools and a back-bar band come on; taps light and pour into glasses;
+    every glass fills and grows a foam head. All of it runs off the existing pour clock.
+  - Catering: instanced croissants, fruit, juice, a five-layer broodje krab pyramid, urns,
+    airpots and paper cups.
+  - Queues: Biggy's `E` no longer moves a queue, and leaning on one is answered. Tests cover
+    each sim change.
+- **Caught and rejected.**
+  - Michele's 28 Sep call let all robots ask a queue aside. Only Biggy has been taken out: his
+    new note names Biggy alone, so Droid can still ask. That is flagged for him to confirm.
+  - The crates were not moved "behind the bar". The bar's back face sits 6 px off the hall
+    wall, so the sim's stack stays at the cellar end, where the bar's new warm light reaches it.

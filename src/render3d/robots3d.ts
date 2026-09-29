@@ -25,12 +25,16 @@ import { riseAt } from '../sim/surface';
 import { BIGGY_ROLL_DUR, DEFS, DROID_STRETCH_DUR, JUMP_AIR, JUMP_RISE_M } from '../sim/constants';
 import { LEAD, SLOT, STAND_FACE, STEP_DELAY, STEP_TIME } from '../sim/opening';
 import type { Bot, GameSnapshot, RobotKind } from '../sim/types';
+import { GF } from '../sim/geometry';
 import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
 import { createRobot, updateRobot, type RobotRig } from '../render/robots';
 import { WORLD_NOISE_GLSL } from './materials';
 import { mergeUnderAnchors } from './merge';
 import { CLICK_U, counterLip, plugHand, printerPort } from './plug';
-import { activeReach, armReach, palmWorld, reachBody, reachPath, stepAt, stepFor, cancelReach, gripOf, pullAt, reachWeights, solveArmR, startReach, tickReach, type Grip } from './reach3d';
+import { registerGrip, activeReach, armReach, palmWorld, reachBody, reachPath, stepAt, stepFor, cancelReach, gripOf, pullAt, reachWeights, solveArmR, startReach, tickReach, type Grip } from './reach3d';
+
+/** The ladle's two reach targets in chapter 3 (shelf rail, pot): see the ladle below. */
+const ladleGrips = [new THREE.Object3D(), new THREE.Object3D()];
 
 export interface Robot3D {
   kind: RobotKind;
@@ -307,6 +311,7 @@ function driveReach(rig: RobotRig, grip: Grip, s: number, mounted: boolean): voi
 }
 
 let lastPanel: string | undefined;
+let lastLadle: string | undefined;
 let lastPad: string | undefined;
 
 /**
@@ -452,6 +457,26 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
   // Driven off mid-reach: the hand lets go of the idea.
   const dr = snap.bots.find((o) => o.kind === 'droid');
   if (dr && activeReach() && Math.hypot(dr.vx, dr.vy) / PX_PER_M > 0.3) cancelReach();
+  // Chapter 3's ladle: up to the shelf's rail for it, down to the pot with it.
+  const lad = snap.props.find((q) => q.kind === 'ladle');
+  if (lad && lastLadle !== undefined && lad.state !== lastLadle && (lad.state === 'active' || lad.state === 'done') && lastLadle !== 'done') {
+    const sh = GF.food.shelf;
+    const st = snap.props.find((q) => q.kind === 'soup-station');
+    // Through the same reach as the levers (reach3d.ts): a grip point with no
+    // handle to move, at the shelf's rail or over the pot.
+    const id = lad.state === 'active' ? 'ladle-shelf' : 'ladle-pot';
+    const pt = ladleGrips[id === 'ladle-shelf' ? 0 : 1];
+    if (id === 'ladle-shelf') pt.position.set(m(sh.x + sh.w / 2) - 0.35, 2.3, m(sh.y + sh.h));
+    else if (st) pt.position.set(m(st.x + (st.w ?? 22) / 2), 1.6, m(st.y + (st.h ?? 22) / 2));
+    pt.updateMatrixWorld(true);
+    registerGrip(id, { point: pt, throw: id === 'ladle-shelf' ? 'up' : 'down', set: () => {} });
+    const d = snap.bots.find((o) => o.kind === 'droid');
+    if (d && !d.mounted) {
+      const w = stepFor({ x: m(d.x), z: m(d.y) }, pt.position);
+      startReach(id, w.lead, w.step);
+    } else startReach(id);
+  }
+  lastLadle = lad?.state;
   const pad = snap.props.find((q) => q.kind === 'keypad')?.label;
   const active = snap.bots[snap.active]?.kind;
   if (lastPad !== undefined && pad !== lastPad && active) gesture.set(active, 0.7);

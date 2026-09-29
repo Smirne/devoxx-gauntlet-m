@@ -28,6 +28,9 @@ import { PULL_END, pullAt, reachClock, registerGrip } from './reach3d';
 
 const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z);
 
+/** The ladle's grip-to-bowl length, metres (`makeLadle`); `world.ts` stands it in a pot by it. */
+export const LADLE_REACH = 0.62;
+
 /** The state palette, linear RGB before intensity. */
 const STATE_RGB: Record<string, [number, number, number]> = {
   idle: [0.25, 0.28, 0.32],
@@ -663,6 +666,7 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
       case 'duck':
       case 'cable':
       case 'toast':
+      case 'ladle':
         return p.kind;
       case 'race-marker':
         return `race:${p.v ?? 0}`;
@@ -701,6 +705,282 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
   const beerMat = new THREE.MeshPhysicalMaterial({ color: 0xc88a1a, roughness: 0.15, emissive: new THREE.Color(0.35, 0.18, 0.02), emissiveIntensity: 0.6 });
   const crateMats = [0x2f5d2f, 0x7a1f1f, 0x1f3f7a, 0x6a4a1a, 0x444444, 0x5a2a6a].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7 }));
 
+  /*
+   * THE POUR, DRAWN. Michele, 29 Sep 2026: *"the animation when beer is completed
+   * can be better."* It was a thread of beer under each tap and four solid gold
+   * glasses. Now it is a beat: the bar's pendant lamps come on warm over the
+   * counter, the taps light up, each tap pours into a glass standing under it,
+   * every glass on the bar fills from the bottom and gets a foam head that rises
+   * proud of the rim, and each one glints as it tops out. All of it off ONE sim
+   * number — the taps' `v`, the pour clock — plus the counter's `done`.
+   */
+  const glassShell = new THREE.MeshStandardMaterial({ color: 0xe8f0ff, transparent: true, opacity: 0.1, roughness: 0.05, metalness: 0, depthWrite: false, side: THREE.DoubleSide });
+  const foamMat = new THREE.MeshStandardMaterial({ color: 0xfff4dc, emissive: new THREE.Color(0.35, 0.3, 0.22), roughness: 0.95 });
+  const glintMat = new THREE.MeshBasicMaterial({ color: 0x000000, toneMapped: false, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+  const glintGeo = new THREE.PlaneGeometry(0.16, 0.16);
+  /** A soft falloff for light drawn as a surface: radial for a lamp's pool, vertical for a band. */
+  function softMask(radial: boolean): THREE.CanvasTexture {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const x = c.getContext('2d')!;
+    const gr = radial ? x.createRadialGradient(64, 64, 0, 64, 64, 64) : x.createLinearGradient(0, 0, 0, 128);
+    if (radial) {
+      gr.addColorStop(0, '#fff');
+      gr.addColorStop(0.5, 'rgba(255,255,255,0.55)');
+      gr.addColorStop(1, 'rgba(255,255,255,0)');
+    } else {
+      gr.addColorStop(0, 'rgba(255,255,255,0)');
+      gr.addColorStop(0.45, '#fff');
+      gr.addColorStop(1, 'rgba(255,255,255,0.1)');
+    }
+    x.fillStyle = gr;
+    x.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(c);
+  }
+  const poolMask = softMask(true);
+  const bandMask = softMask(false);
+  const GLASS_PROFILES: Array<Array<[number, number]>> = [
+    // tulip, goblet, flute, chalice
+    [[0.001, 0], [0.028, 0], [0.024, 0.02], [0.05, 0.09], [0.052, 0.14], [0.042, 0.2]],
+    [[0.001, 0], [0.035, 0], [0.012, 0.02], [0.012, 0.07], [0.055, 0.1], [0.065, 0.17]],
+    [[0.001, 0], [0.026, 0], [0.012, 0.02], [0.012, 0.05], [0.028, 0.08], [0.03, 0.25]],
+    [[0.001, 0], [0.034, 0], [0.012, 0.02], [0.012, 0.07], [0.07, 0.1], [0.064, 0.16]],
+  ];
+  /**
+   * One Belgian glass: a clear shell, the beer inside it (scaled up from the
+   * bottom by how full it is) and a foam head that sits on the beer and grows
+   * proud of the rim at the very end. `fill` 0..1.
+   */
+  function beerGlass(kind: number): THREE.Group {
+    const prof = GLASS_PROFILES[kind % 4];
+    const top = prof[prof.length - 1];
+    // Where the bowl starts: the beer is only in the bowl, never in the stem.
+    const floorY = prof[2][1] + (kind === 0 ? 0 : prof[3][1] - prof[2][1]);
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), 18), glassShell));
+    const inner = prof.filter(([, y]) => y >= floorY).map(([r, y]) => new THREE.Vector2(Math.max(0.001, r * 0.9), y - floorY));
+    inner.unshift(new THREE.Vector2(0.001, 0));
+    const beerGeo = new THREE.LatheGeometry(inner, 18);
+    const beer = new THREE.Mesh(beerGeo, pintMat);
+    beer.position.y = floorY;
+    const foam = new THREE.Mesh(new THREE.SphereGeometry(top[0] * 0.95, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), foamMat);
+    foam.scale.y = 0.35;
+    const glint = new THREE.Mesh(glintGeo, glintMat.clone());
+    glint.position.set(top[0] * 0.6, top[1] * 0.8, top[0]);
+    g.add(beer, foam, glint);
+    g.userData = { beer, foam, glint, floorY, height: top[1] - floorY };
+    return g;
+  }
+  function fillGlass(glass: THREE.Object3D, fill: number, since: number): void {
+    const u = glass.userData as { beer: THREE.Mesh; foam: THREE.Mesh; glint: THREE.Mesh; floorY: number; height: number };
+    const f = THREE.MathUtils.clamp(fill, 0, 1);
+    u.beer.visible = f > 0.01;
+    u.beer.scale.set(1, Math.max(0.01, f), 1);
+    // The head: a thin white line on the rising beer, then a proud dome at the top.
+    const head = THREE.MathUtils.smoothstep(f, 0.55, 1);
+    u.foam.visible = f > 0.05;
+    u.foam.position.y = u.floorY + u.height * f;
+    u.foam.scale.set(0.9 + 0.1 * head, 0.12 + 0.45 * head, 0.9 + 0.1 * head);
+    // A glint as it tops out, for half a second.
+    const gl = since >= 0 && since < 0.6 ? Math.sin((since / 0.6) * Math.PI) : 0;
+    u.glint.visible = gl > 0.01;
+    (u.glint.material as THREE.MeshBasicMaterial).color.setRGB(3 * gl, 2.6 * gl, 1.6 * gl);
+    u.glint.rotation.z = since * 3;
+  }
+  /** Glassware is drawn half as big again: at the follow camera's distance a true 20 cm glass is a pixel. */
+  const GLASS_SCALE = 1.5;
+  /** Beer in a glass: deep amber that glows a little, so it reads as beer and not as the glass. */
+  const pintMat = new THREE.MeshStandardMaterial({ color: 0x6a3202, roughness: 0.45, emissive: new THREE.Color(0.7, 0.28, 0.0), emissiveIntensity: 1 });
+  /** The pour clock this frame, off the taps (published before the glassware). */
+  let pourNow = 0;
+  /** Scene time the pour topped out, -1 while it has not. */
+  let pouredAt = -1;
+
+  /**
+   * A soup ladle, recognisable at a glance: a long handle with a hook at the grip
+   * end, a crook where it drops into a deep round bowl. Caricatured a little —
+   * 0.7 m of handle and a 0.1 m bowl — because it has to read in a robot's hand
+   * from the follow camera. Built with its GRIP at the origin and the handle
+   * running along +z to the bowl, which opens towards +y.
+   */
+  const ladleMat = new THREE.MeshStandardMaterial({ color: 0xe4e8ee, metalness: 0.85, roughness: 0.22, emissive: new THREE.Color(0.1, 0.1, 0.11), side: THREE.DoubleSide });
+  function makeLadle(): THREE.Group {
+    const g = new THREE.Group();
+    const L = LADLE_REACH;
+    const path = new THREE.CatmullRomCurve3([V(0, 0.07, -0.12), V(0, 0.03, -0.07), V(0, 0, 0), V(0, 0, L * 0.85), V(0, -0.03, L), V(0, -0.09, L + 0.03)]);
+    g.add(new THREE.Mesh(new THREE.TubeGeometry(path, 28, 0.013, 6), ladleMat));
+    const r = 0.1;
+    const bowl = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 9, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), ladleMat);
+    bowl.position.set(0, -0.09, L + 0.03 + r);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(r, 0.009, 6, 22), ladleMat);
+    rim.rotation.x = Math.PI / 2;
+    rim.position.copy(bowl.position);
+    // A black grip sleeve, the part a hand closes on.
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.2, 10), mats.darkMetal);
+    grip.rotation.x = Math.PI / 2;
+    grip.position.z = 0.08;
+    g.add(bowl, rim, grip);
+    g.traverse((o) => {
+      o.castShadow = true;
+    });
+    return g;
+  }
+
+  /*
+   * BREAKFAST ON THE COUNTERS. Michele, 29 Sep 2026: *"put on some breakfast,
+   * coffee, and a stack of crab sandwiches"*. The catering counters were three
+   * bare white blocks and one sandwich. Now: the soup counter carries the
+   * breakfast either side of the vat (croissants on trays, a bowl of fruit, jugs
+   * and glasses of orange juice), the sandwich counter a pyramid of broodjes krab
+   * under their sign, and the coffee counter urns, airpots and stacked cups under
+   * a COFFEE board. Procedural and instanced: one draw call per kind of thing.
+   * Chapter 3 only — it hangs off the crab prop, so the dark hall of chapter 2
+   * has nothing set out.
+   */
+  function cateringSpread(): THREE.Group {
+    const out = new THREE.Group();
+    const TOP = 1.05;
+    const M4 = new THREE.Matrix4();
+    const Q = new THREE.Quaternion();
+    const E = new THREE.Euler();
+    const S = new THREE.Vector3();
+    const P = new THREE.Vector3();
+    const put = (list: THREE.Matrix4[], x: number, y: number, z: number, ry = 0, sx = 1, sy = 1, sz = 1, rx = 0, rz = 0): void => {
+      list.push(M4.clone().compose(P.set(x, y, z), Q.setFromEuler(E.set(rx, ry, rz)), S.set(sx, sy, sz)));
+    };
+    const inst = (geo: THREE.BufferGeometry, mat: THREE.Material, list: THREE.Matrix4[], colours?: THREE.Color[], shadow = false): void => {
+      if (list.length === 0) return;
+      const im = new THREE.InstancedMesh(geo, mat, list.length);
+      list.forEach((mm, i) => im.setMatrixAt(i, mm));
+      colours?.forEach((c, i) => im.setColorAt(i, c));
+      im.castShadow = shadow;
+      im.receiveShadow = true;
+      out.add(im);
+    };
+    const rnd = (i: number): number => {
+      const h = Math.sin(i * 12.9898 + 78.233) * 43758.5453;
+      return h - Math.floor(h);
+    };
+    const f = GF.food;
+    const front = (r: { y: number; h: number }): number => m(r.y + r.h);
+    const trays: THREE.Matrix4[] = [];
+
+    /* ---- the soup counter: breakfast either side of the vat */
+    const soupZ = front(f.soup) - 0.45;
+    const croissants: THREE.Matrix4[] = [];
+    for (const [tx, tz] of [
+      [m(f.soup.x) + 0.55, soupZ],
+      [m(f.soup.x) + 1.35, soupZ - 0.15],
+      [m(f.soup.x + f.soup.w) - 0.55, soupZ],
+    ]) {
+      put(trays, tx, TOP + 0.012, tz, 0, 0.62, 0.024, 0.44);
+      for (let i = 0; i < 12; i++) {
+        const k = croissants.length;
+        put(croissants, tx - 0.22 + (i % 4) * 0.145, TOP + 0.05 + (i >= 8 ? 0.045 : 0), tz - 0.12 + (Math.floor(i / 4) % 3) * 0.12, rnd(k) * Math.PI * 2, 1, 1, 1, -Math.PI / 2);
+      }
+    }
+    const croissant = new THREE.TorusGeometry(0.052, 0.03, 6, 12, Math.PI * 1.25);
+    croissant.scale(1, 1, 0.8);
+    inst(croissant, new THREE.MeshStandardMaterial({ color: 0xc98032, roughness: 0.55, emissive: new THREE.Color(0.08, 0.035, 0) }), croissants, undefined, true);
+    // A bowl of fruit, piled.
+    const fx = m(f.soup.x + f.soup.w) - 1.45;
+    const bowl = new THREE.Mesh(
+      new THREE.LatheGeometry([[0.001, 0], [0.12, 0], [0.24, 0.1], [0.27, 0.13]].map(([r0, y]) => new THREE.Vector2(r0, y)), 20),
+      new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 0.6, side: THREE.DoubleSide }),
+    );
+    bowl.position.set(fx, TOP, soupZ - 0.05);
+    out.add(bowl);
+    const fruit: THREE.Matrix4[] = [];
+    const fruitCol: THREE.Color[] = [];
+    const FRUIT = [0xff8a1a, 0xd8261e, 0x8cc63a, 0xff8a1a, 0xf2d43a];
+    for (let i = 0; i < 16; i++) {
+      const a = i * 2.4;
+      const ring = i < 8 ? 0.15 : i < 13 ? 0.08 : 0;
+      put(fruit, fx + Math.cos(a) * ring, TOP + 0.1 + (i < 8 ? 0 : i < 13 ? 0.06 : 0.12), soupZ - 0.05 + Math.sin(a) * ring);
+      fruitCol.push(new THREE.Color(FRUIT[i % FRUIT.length]));
+    }
+    inst(new THREE.SphereGeometry(0.05, 10, 8), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45 }), fruit, fruitCol);
+    // Orange juice: two jugs and a row of poured glasses.
+    const juiceMat = new THREE.MeshStandardMaterial({ color: 0xff9a14, roughness: 0.25, emissive: new THREE.Color(0.35, 0.15, 0) });
+    const jugs: THREE.Matrix4[] = [];
+    const juice: THREE.Matrix4[] = [];
+    for (const jx of [m(f.soup.x) + 2.1, m(f.soup.x) + 2.4]) {
+      put(jugs, jx, TOP + 0.13, soupZ - 0.3);
+      put(juice, jx, TOP + 0.1, soupZ - 0.3, 0, 0.9, 0.75, 0.9);
+    }
+    for (let i = 0; i < 8; i++) put(juice, m(f.soup.x) + 1.95 + (i % 4) * 0.13, TOP + 0.05, soupZ + 0.05 + Math.floor(i / 4) * 0.13, 0, 0.42, 0.38, 0.42);
+    inst(new THREE.CylinderGeometry(0.08, 0.09, 0.26, 14), glassShell, jugs);
+    inst(new THREE.CylinderGeometry(0.075, 0.085, 0.26, 14), juiceMat, juice);
+
+    /* ---- the sandwich counter: a pyramid of broodjes krab */
+    const cx = m(f.sandwich.x + f.sandwich.w / 2);
+    const cz = front(f.sandwich) - 1.0;
+    const rolls: THREE.Matrix4[] = [];
+    const crab: THREE.Matrix4[] = [];
+    // Five long rolls across at the bottom, three deep, a layer less each time up:
+    // a pyramid you can read from the queue, pink along the top of every roll.
+    const LAYERS = 5;
+    put(trays, cx, TOP + 0.012, cz, 0, 1.95, 0.024, 0.5);
+    for (let L = 0; L < LAYERS; L++) {
+      const n = LAYERS - L;
+      for (let i = 0; i < n; i++) {
+        for (const row of [-1, 0, 1]) {
+          const x = cx + (i - (n - 1) / 2) * 0.37;
+          const z = cz + row * 0.125 + (L % 2) * 0.03;
+          const y = TOP + 0.055 + L * 0.092;
+          const wob = (rnd(L * 13 + i * 3 + row) - 0.5) * 0.1;
+          put(rolls, x, y, z, wob, 1, 0.82, 1, 0, Math.PI / 2);
+          put(crab, x, y + 0.045, z, wob, 1, 0.6, 1.1, 0, Math.PI / 2);
+        }
+      }
+    }
+    // ...and a flat row of them along the front, for the queue.
+    for (let i = 0; i < 7; i++) {
+      const x = m(f.sandwich.x) + 0.6 + i * 0.36;
+      if (Math.abs(x - cx) < 0.7) continue;
+      put(trays, x, TOP + 0.012, front(f.sandwich) - 0.4, 0, 0.34, 0.024, 0.3);
+      put(rolls, x, TOP + 0.06, front(f.sandwich) - 0.4, Math.PI / 2, 1, 0.82, 1, 0, Math.PI / 2);
+      put(crab, x, TOP + 0.1, front(f.sandwich) - 0.4, Math.PI / 2, 1, 0.55, 1, 0, Math.PI / 2);
+    }
+    inst(new THREE.CapsuleGeometry(0.052, 0.24, 4, 10), new THREE.MeshStandardMaterial({ color: 0xe9c58c, roughness: 0.75, emissive: new THREE.Color(0.06, 0.04, 0.02) }), rolls, undefined, true);
+    inst(new THREE.CapsuleGeometry(0.036, 0.21, 3, 8), new THREE.MeshStandardMaterial({ color: 0xff6f78, roughness: 0.7, emissive: new THREE.Color(0.25, 0.05, 0.06) }), crab);
+
+    /* ---- the coffee counter: urns, airpots, cups */
+    const kx = m(f.coffee.x);
+    const kw = m(f.coffee.w);
+    const back = m(f.coffee.y) + 0.5;
+    const urns: THREE.Matrix4[] = [];
+    const lids: THREE.Matrix4[] = [];
+    const taps: THREE.Matrix4[] = [];
+    for (let i = 0; i < 3; i++) {
+      const x = kx + 0.6 + i * 0.55;
+      put(urns, x, TOP + 0.3, back);
+      put(lids, x, TOP + 0.64, back);
+      put(taps, x, TOP + 0.12, back + 0.17);
+    }
+    inst(new THREE.CylinderGeometry(0.16, 0.17, 0.6, 18), new THREE.MeshStandardMaterial({ color: 0xd4d8de, metalness: 0.7, roughness: 0.28 }), urns, undefined, true);
+    inst(new THREE.ConeGeometry(0.17, 0.1, 18), mats.darkMetal, lids);
+    inst(new THREE.BoxGeometry(0.04, 0.05, 0.07), mats.darkMetal, taps);
+    const pots: THREE.Matrix4[] = [];
+    for (let i = 0; i < 4; i++) put(pots, kx + kw - 0.45 - i * 0.2, TOP + 0.18, back + 0.05);
+    inst(new THREE.CylinderGeometry(0.07, 0.07, 0.36, 12), new THREE.MeshStandardMaterial({ color: 0x1a1a1c, roughness: 0.3, metalness: 0.4 }), pots, undefined, true);
+    const cups: THREE.Matrix4[] = [];
+    for (let st = 0; st < 6; st++) {
+      const x = kx + 0.45 + (st % 3) * 0.2;
+      const z = front(f.coffee) - 0.45 - Math.floor(st / 3) * 0.2;
+      for (let k = 0; k < 7; k++) put(cups, x, TOP + 0.045 + k * 0.035, z);
+    }
+    for (let i = 0; i < 6; i++) put(cups, kx + 1.3 + (i % 3) * 0.16, TOP + 0.045, front(f.coffee) - 0.35 - Math.floor(i / 3) * 0.16);
+    // Paper cups, kraft brown: a conference pours coffee into a thousand of them.
+    inst(new THREE.CylinderGeometry(0.048, 0.034, 0.09, 12, 1, true), new THREE.MeshStandardMaterial({ color: 0xa8743f, roughness: 0.8, side: THREE.DoubleSide }), cups);
+    const koffie = neonBoard('COFFEE', 1.1, '#ffd08a');
+    koffie.position.set(kx + kw / 2, TOP + 1.05, m(f.coffee.y) + 0.12);
+    out.add(koffie);
+
+    inst(new THREE.BoxGeometry(1, 1, 1), mats.darkMetal, trays);
+    return out;
+  }
+
   function buildCh3(p: Prop, pw: number, ph: number): THREE.Object3D | null {
     const g = new THREE.Group();
     const w = m(pw);
@@ -720,20 +1000,54 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         return g;
       }
       case 'ladle': {
-        // The high shelf, and the ladle on it until Droid takes it down.
-        g.position.set(m(p.x + pw / 2), 0, m(p.y + ph / 2));
-        const shelf = new THREE.Mesh(box(w, 0.05, d * 0.8, V(0, 2.35, 0)), mats.steel);
-        const ladle = new THREE.Group();
-        const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.09, 14, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), mats.steel);
-        bowl.position.set(0, 2.47, 0);
-        const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.5, 8), mats.steel);
-        handle.rotation.z = 1.1;
-        handle.position.set(0.22, 2.55, 0);
-        ladle.add(bowl, handle);
+        /*
+         * The high shelf, and the ladle — two things, and only one of them moves.
+         *
+         * The group is built ONCE (`key` gives it a stable name) at the world
+         * origin: the rack is placed from `GF.food.shelf` and never moves again,
+         * and `tool` — the ladle alone — is posed every frame by `world.ts`, from
+         * the prop's state: on the hook, in Droid's hand, standing in a pot. It was
+         * one group placed at the prop's rect, and the rect follows whoever has the
+         * ladle — so Droid walked off carrying the whole shelf on his head, and
+         * Biggy after him (Michele, 29 Sep: "droid should take the ladle, not the
+         * shelf", and "why is biggy taking the shelf with him?").
+         */
+        const sh = GF.food.shelf;
+        const cx = m(sh.x + sh.w / 2);
+        const back = m(sh.y);
+        const sw = m(sh.w);
+        // The rect's front edge, where the rail and the ladle are: the side the hall is on.
+        const front = m(sh.y + sh.h);
+        const rack = new THREE.Group();
+        for (const sx of [-1, 1]) {
+          // Two uprights on the wall, a bracket under each end of the slab.
+          rack.add(new THREE.Mesh(box(0.05, 2.7, 0.05, V(cx + sx * (sw / 2 - 0.1), 1.35, back + 0.03)), mats.darkMetal));
+          const brace = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.62, 0.03), mats.darkMetal);
+          brace.position.set(cx + sx * (sw / 2 - 0.1), 2.08, back + 0.3);
+          brace.rotation.x = -0.72;
+          rack.add(brace);
+        }
+        rack.add(new THREE.Mesh(box(sw, 0.05, front - back, V(cx, 2.35, (back + front) / 2)), mats.steel));
+        // The hanging rail along its front lip, and a row of stacked soup bowls on top.
+        const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, sw - 0.1, 8), mats.steel);
+        rail.rotation.z = Math.PI / 2;
+        rail.position.set(cx, 2.3, front - 0.03);
+        rack.add(rail);
+        const bowls = new THREE.Mesh(
+          new THREE.LatheGeometry([[0.001, 0], [0.07, 0], [0.1, 0.05], [0.11, 0.2]].map(([r0, y]) => new THREE.Vector2(r0, y)), 16),
+          new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: 0.4 }),
+        );
+        for (const k of [-1, 0, 1]) {
+          const b = bowls.clone();
+          b.position.set(cx + k * 0.42, 2.375, (back + front) / 2);
+          rack.add(b);
+        }
+        const tool = makeLadle();
+        tool.position.set(cx, 2.3, front - 0.03);
         const glow = new THREE.PointLight(0xffb05a, 6, 2.5, 2);
-        glow.position.set(0, 2.7, 0.4);
-        g.add(shelf, ladle, glow);
-        g.userData = { ladle, glow };
+        glow.position.set(cx, 2.6, front + 0.4);
+        g.add(rack, tool, glow);
+        g.userData = { tool, glow, hook: V(cx - 0.35, 2.3, front - 0.03) };
         return g;
       }
       case 'crab': {
@@ -744,8 +1058,12 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         const fill = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 0.1), new THREE.MeshStandardMaterial({ color: 0xff8a6a, roughness: 0.6 }));
         fill.position.y = 0.1;
         const board = neonBoard('BROODJE KRAB', 1.2, '#ff8a3d');
-        board.position.set(0, 0.7, -0.15);
+        board.position.set(0, 0.95, -0.15);
         g.add(bread, fill, board);
+        // The rest of breakfast, on all three counters, in world coordinates.
+        const spread = cateringSpread();
+        spread.position.copy(g.position).multiplyScalar(-1);
+        g.add(spread);
         return g;
       }
       case 'bar-counter': {
@@ -758,21 +1076,69 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         const board = neonBoard((p.label ?? 'THE BAR').split('—')[0].trim().toUpperCase(), Math.min(4, w * 0.8), '#ffcc33');
         board.position.set(0, 3.0, 0);
         g.add(counter, strip, board);
-        g.userData = { strip };
+        // Three pendant lamps over the counter, dark until the beer is in, and one
+        // warm light for the whole bar under them. Built now and only turned up,
+        // so the scene's light count never changes mid-chapter.
+        const bulbs: THREE.Mesh[] = [];
+        const pools: THREE.Mesh[] = [];
+        for (const k of [-1, 0, 1]) {
+          const x = k * w * 0.32;
+          const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 1.6, 4), mats.darkMetal);
+          wire.position.set(x, 3.4, d / 2 - 0.1);
+          const shade = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.24, 16, 1, true), mats.darkMetal);
+          shade.position.set(x, 2.56, d / 2 - 0.1);
+          const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 8), glowMat());
+          bulb.position.set(x, 2.42, d / 2 - 0.1);
+          // The pool each lamp throws on the bar top: what reads as "the lights
+          // are on" from the follow camera, however the exposure is sitting.
+          const poolMat = glintMat.clone();
+          poolMat.map = poolMask;
+          const pool = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.8), poolMat);
+          pool.rotation.x = -Math.PI / 2;
+          pool.position.set(x, 1.105, 0);
+          g.add(wire, shade, bulb, pool);
+          bulbs.push(bulb);
+          pools.push(pool);
+        }
+        // The back bar: a warm band of light on the wall behind the counter.
+        const bandMat = glintMat.clone();
+        bandMat.map = bandMask;
+        const backbar = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.96, 1.1), bandMat);
+        backbar.position.set(0, 1.75, -d / 2 + 0.02);
+        g.add(backbar);
+        const warm = new THREE.PointLight(0xffa850, 0, 10, 1.4);
+        warm.position.set(m(20), 2.4, d / 2 + 0.8);
+        g.add(warm);
+        g.userData = { strip, bulbs, pools, backbar, warm };
         return g;
       }
       case 'beer-tap': {
         g.position.set(m(p.x), 1.1, m(p.y));
-        const col = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.35, 12), mats.steel);
-        col.position.y = 0.17;
-        const handle = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.16, 0.04), new THREE.MeshStandardMaterial({ color: 0xf0c040, emissive: new THREE.Color(0.4, 0.3, 0.05), emissiveIntensity: 1 }));
-        handle.position.set(0, 0.42, 0.03);
-        // While it pours: the handle pulled forward and a thread of beer.
-        const stream = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.22, 6), beerMat);
-        stream.position.set(0, 0.05, 0.06);
+        const col = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.44, 12), mats.steel);
+        col.position.y = 0.22;
+        const handleMat = new THREE.MeshStandardMaterial({ color: 0xf0c040, emissive: new THREE.Color(0.4, 0.3, 0.05), emissiveIntensity: 0.4 });
+        // The handle pivots at the top of the column, so pulling it is a lean.
+        const pivot = new THREE.Group();
+        pivot.position.set(0, 0.44, 0.02);
+        const handle = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.18, 0.04), handleMat);
+        handle.position.y = 0.09;
+        pivot.add(handle);
+        // The spout: out over the drip tray, where the glass stands.
+        const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.12, 8), mats.steel);
+        spout.rotation.x = Math.PI / 2;
+        spout.position.set(0, 0.4, 0.07);
+        // A ring on the column that lights with the tap: the "taps ready" signal.
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.012, 6, 16), glowMat());
+        ring.rotation.x = Math.PI / 2;
+        ring.position.y = 0.2;
+        const glass = beerGlass(0);
+        glass.scale.setScalar(GLASS_SCALE);
+        glass.position.set(0, 0.01, 0.13);
+        // The pour itself, from the spout down to the beer in the glass.
+        const stream = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.007, 1, 6), beerMat);
         stream.visible = false;
-        g.add(col, handle, stream);
-        g.userData = { handle, stream };
+        g.add(col, pivot, spout, ring, glass, stream);
+        g.userData = { handle: pivot, handleMat, stream, ring, glass };
         return g;
       }
       case 'keg': {
@@ -821,10 +1187,10 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
       case 'beer-glass': {
         // Four Belgian shapes by `v`: tulip, goblet, flute, chalice.
         g.position.set(m(p.x), 1.1, m(p.y));
-        const k = (p.v ?? 0) % 4;
-        const prof: Array<[number, number]> =
-          k === 0 ? [[0.02, 0], [0.02, 0.06], [0.05, 0.1], [0.04, 0.2]] : k === 1 ? [[0.03, 0], [0.01, 0.08], [0.06, 0.12], [0.06, 0.18]] : k === 2 ? [[0.02, 0], [0.025, 0.25]] : [[0.03, 0], [0.01, 0.07], [0.07, 0.1], [0.06, 0.16]];
-        g.add(new THREE.Mesh(new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), 14), beerMat));
+        const glass = beerGlass(p.v ?? 0);
+        glass.scale.setScalar(GLASS_SCALE);
+        g.add(glass);
+        g.userData = { glass };
         return g;
       }
       case 'duck': {
@@ -1228,16 +1594,66 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
       }
       case 'beer-tap': {
         const pour = p.v ?? 0;
+        pourNow = pour;
+        if (pour >= 1 && pouredAt < 0) pouredAt = t;
+        if (pour < 1) pouredAt = -1;
         const pouring = pour > 0 && pour < 1;
-        if (u.handle) (u.handle as THREE.Object3D).rotation.x = pouring ? 0.7 : 0;
-        if (u.stream) (u.stream as THREE.Object3D).visible = pouring;
+        const ready = p.state === 'done';
+        // Pulled forward for the pour, and eased back when it is done.
+        const pull = pouring ? Math.min(1, pour * 8) : 0;
+        (u.handle as THREE.Object3D).rotation.x = 0.8 * pull;
+        (u.handleMat as THREE.MeshStandardMaterial).emissiveIntensity = ready ? 1.6 + 0.4 * Math.sin(t * 4 + p.x) : 0.4;
+        (u.ring.material as THREE.MeshBasicMaterial).color.setRGB(1, 0.62, 0.15).multiplyScalar(ready ? 4 + (pouring ? 2 * Math.sin(t * 9) : 0) : 0.15);
+        const glass = u.glass as THREE.Object3D;
+        // The tap's own glass fills a little ahead of the bar's, it is under the beer.
+        const fill = Math.min(1, pour * 1.15);
+        fillGlass(glass, fill, pouredAt < 0 ? -1 : t - pouredAt);
+        const stream = u.stream as THREE.Mesh;
+        stream.visible = pouring && fill < 1;
+        if (stream.visible) {
+          const topY = 0.39;
+          const bottomY = 0.01 + GLASS_SCALE * ((glass.userData.floorY as number) + (glass.userData.height as number) * fill);
+          const len = Math.max(0.02, topY - bottomY);
+          stream.scale.set(1 + 0.15 * Math.sin(t * 40), len, 1);
+          stream.position.set(0, bottomY + len / 2, 0.13);
+        }
+        break;
+      }
+      case 'beer-glass': {
+        // Every glass on the bar fills with the same pour, staggered along the row.
+        const k = p.v ?? 0;
+        const fill = p.state === 'done' ? THREE.MathUtils.clamp(pourNow * 1.3 - k * 0.08, 0, 1) : 0;
+        const full = fill >= 1 && pouredAt >= 0 ? t - pouredAt - k * 0.12 : -1;
+        fillGlass(u.glass as THREE.Object3D, fill, full);
         break;
       }
       case 'ladle':
-        (u.ladle as THREE.Object3D).visible = p.state !== 'done';
-        (u.glow as THREE.PointLight).intensity = p.state === 'done' ? 0 : 5 + 3 * Math.sin(t * 3);
+        // Lit while it is still waiting on the hook; where it IS is world.ts's job.
+        (u.glow as THREE.PointLight).intensity = p.state === 'idle' ? 5 + 3 * Math.sin(t * 3) : 0;
         break;
-      case 'bar-counter':
+      case 'bar-counter': {
+        if (p.state === 'done' && u.doneAt === undefined) u.doneAt = t;
+        if (p.state !== 'done') u.doneAt = undefined;
+        // The lamps come on one after another over the first second, warm, with
+        // a flicker as each one strikes, and stay on.
+        const since = u.doneAt === undefined ? -1 : t - (u.doneAt as number);
+        (u.bulbs as THREE.Mesh[]).forEach((b, i) => {
+          const s0 = since - 0.25 * i;
+          const on = s0 < 0 ? 0 : s0 > 0.35 ? 1 : Math.sin(s0 * 60) > 0 ? 0.9 : 0.1;
+          (b.material as THREE.MeshBasicMaterial).color.setRGB(1, 0.7, 0.35).multiplyScalar(0.08 + 9 * on);
+          const pool = (u.pools as THREE.Mesh[])[i];
+          pool.visible = on > 0;
+          (pool.material as THREE.MeshBasicMaterial).color.setRGB(0.8, 0.5, 0.2).multiplyScalar(on);
+        });
+        const up = since < 0 ? 0 : THREE.MathUtils.smoothstep(since, 0, 1.2);
+        const bb = u.backbar as THREE.Mesh;
+        bb.visible = up > 0;
+        (bb.material as THREE.MeshBasicMaterial).color.setRGB(0.9, 0.5, 0.16).multiplyScalar(up);
+        (u.warm as THREE.PointLight).intensity = 40 * up;
+        const mat = (u.strip as THREE.Mesh).material as THREE.MeshBasicMaterial;
+        mat.color.copy(stateColour(p.state, tmp, p.state === 'idle' ? 0.8 : 3 * (p.state === 'active' ? 0.7 + 0.3 * Math.sin(t * 4) : 1)));
+        break;
+      }
       case 'duck-target':
       case 'race-marker': {
         const mat = ((u.strip ?? u.ring) as THREE.Mesh).material as THREE.MeshBasicMaterial;
