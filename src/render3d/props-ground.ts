@@ -797,6 +797,161 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
     return g;
   }
 
+  /*
+   * BREAKFAST ON THE COUNTERS. Michele, 29 Sep 2026: *"put on some breakfast,
+   * coffee, and a stack of crab sandwiches"*. The catering counters were three
+   * bare white blocks and one sandwich. Now: the soup counter carries the
+   * breakfast either side of the vat (croissants on trays, a bowl of fruit, jugs
+   * and glasses of orange juice), the sandwich counter a pyramid of broodjes krab
+   * under their sign, and the coffee counter urns, airpots and stacked cups under
+   * a COFFEE board. Procedural and instanced: one draw call per kind of thing.
+   * Chapter 3 only — it hangs off the crab prop, so the dark hall of chapter 2
+   * has nothing set out.
+   */
+  function cateringSpread(): THREE.Group {
+    const out = new THREE.Group();
+    const TOP = 1.05;
+    const M4 = new THREE.Matrix4();
+    const Q = new THREE.Quaternion();
+    const E = new THREE.Euler();
+    const S = new THREE.Vector3();
+    const P = new THREE.Vector3();
+    const put = (list: THREE.Matrix4[], x: number, y: number, z: number, ry = 0, sx = 1, sy = 1, sz = 1, rx = 0, rz = 0): void => {
+      list.push(M4.clone().compose(P.set(x, y, z), Q.setFromEuler(E.set(rx, ry, rz)), S.set(sx, sy, sz)));
+    };
+    const inst = (geo: THREE.BufferGeometry, mat: THREE.Material, list: THREE.Matrix4[], colours?: THREE.Color[], shadow = false): void => {
+      if (list.length === 0) return;
+      const im = new THREE.InstancedMesh(geo, mat, list.length);
+      list.forEach((mm, i) => im.setMatrixAt(i, mm));
+      colours?.forEach((c, i) => im.setColorAt(i, c));
+      im.castShadow = shadow;
+      im.receiveShadow = true;
+      out.add(im);
+    };
+    const rnd = (i: number): number => {
+      const h = Math.sin(i * 12.9898 + 78.233) * 43758.5453;
+      return h - Math.floor(h);
+    };
+    const f = GF.food;
+    const front = (r: { y: number; h: number }): number => m(r.y + r.h);
+    const trays: THREE.Matrix4[] = [];
+
+    /* ---- the soup counter: breakfast either side of the vat */
+    const soupZ = front(f.soup) - 0.45;
+    const croissants: THREE.Matrix4[] = [];
+    for (const [tx, tz] of [
+      [m(f.soup.x) + 0.55, soupZ],
+      [m(f.soup.x) + 1.35, soupZ - 0.15],
+      [m(f.soup.x + f.soup.w) - 0.55, soupZ],
+    ]) {
+      put(trays, tx, TOP + 0.012, tz, 0, 0.62, 0.024, 0.44);
+      for (let i = 0; i < 12; i++) {
+        const k = croissants.length;
+        put(croissants, tx - 0.22 + (i % 4) * 0.145, TOP + 0.05 + (i >= 8 ? 0.045 : 0), tz - 0.12 + (Math.floor(i / 4) % 3) * 0.12, rnd(k) * Math.PI * 2, 1, 1, 1, -Math.PI / 2);
+      }
+    }
+    const croissant = new THREE.TorusGeometry(0.052, 0.03, 6, 12, Math.PI * 1.25);
+    croissant.scale(1, 1, 0.8);
+    inst(croissant, new THREE.MeshStandardMaterial({ color: 0xc98032, roughness: 0.55, emissive: new THREE.Color(0.08, 0.035, 0) }), croissants, undefined, true);
+    // A bowl of fruit, piled.
+    const fx = m(f.soup.x + f.soup.w) - 1.45;
+    const bowl = new THREE.Mesh(
+      new THREE.LatheGeometry([[0.001, 0], [0.12, 0], [0.24, 0.1], [0.27, 0.13]].map(([r0, y]) => new THREE.Vector2(r0, y)), 20),
+      new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 0.6, side: THREE.DoubleSide }),
+    );
+    bowl.position.set(fx, TOP, soupZ - 0.05);
+    out.add(bowl);
+    const fruit: THREE.Matrix4[] = [];
+    const fruitCol: THREE.Color[] = [];
+    const FRUIT = [0xff8a1a, 0xd8261e, 0x8cc63a, 0xff8a1a, 0xf2d43a];
+    for (let i = 0; i < 16; i++) {
+      const a = i * 2.4;
+      const ring = i < 8 ? 0.15 : i < 13 ? 0.08 : 0;
+      put(fruit, fx + Math.cos(a) * ring, TOP + 0.1 + (i < 8 ? 0 : i < 13 ? 0.06 : 0.12), soupZ - 0.05 + Math.sin(a) * ring);
+      fruitCol.push(new THREE.Color(FRUIT[i % FRUIT.length]));
+    }
+    inst(new THREE.SphereGeometry(0.05, 10, 8), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45 }), fruit, fruitCol);
+    // Orange juice: two jugs and a row of poured glasses.
+    const juiceMat = new THREE.MeshStandardMaterial({ color: 0xff9a14, roughness: 0.25, emissive: new THREE.Color(0.35, 0.15, 0) });
+    const jugs: THREE.Matrix4[] = [];
+    const juice: THREE.Matrix4[] = [];
+    for (const jx of [m(f.soup.x) + 2.1, m(f.soup.x) + 2.4]) {
+      put(jugs, jx, TOP + 0.13, soupZ - 0.3);
+      put(juice, jx, TOP + 0.1, soupZ - 0.3, 0, 0.9, 0.75, 0.9);
+    }
+    for (let i = 0; i < 8; i++) put(juice, m(f.soup.x) + 1.95 + (i % 4) * 0.13, TOP + 0.05, soupZ + 0.05 + Math.floor(i / 4) * 0.13, 0, 0.42, 0.38, 0.42);
+    inst(new THREE.CylinderGeometry(0.08, 0.09, 0.26, 14), glassShell, jugs);
+    inst(new THREE.CylinderGeometry(0.075, 0.085, 0.26, 14), juiceMat, juice);
+
+    /* ---- the sandwich counter: a pyramid of broodjes krab */
+    const cx = m(f.sandwich.x + f.sandwich.w / 2);
+    const cz = front(f.sandwich) - 1.0;
+    const rolls: THREE.Matrix4[] = [];
+    const crab: THREE.Matrix4[] = [];
+    // Five long rolls across at the bottom, three deep, a layer less each time up:
+    // a pyramid you can read from the queue, pink along the top of every roll.
+    const LAYERS = 5;
+    put(trays, cx, TOP + 0.012, cz, 0, 1.95, 0.024, 0.5);
+    for (let L = 0; L < LAYERS; L++) {
+      const n = LAYERS - L;
+      for (let i = 0; i < n; i++) {
+        for (const row of [-1, 0, 1]) {
+          const x = cx + (i - (n - 1) / 2) * 0.37;
+          const z = cz + row * 0.125 + (L % 2) * 0.03;
+          const y = TOP + 0.055 + L * 0.092;
+          const wob = (rnd(L * 13 + i * 3 + row) - 0.5) * 0.1;
+          put(rolls, x, y, z, wob, 1, 0.82, 1, 0, Math.PI / 2);
+          put(crab, x, y + 0.045, z, wob, 1, 0.6, 1.1, 0, Math.PI / 2);
+        }
+      }
+    }
+    // ...and a flat row of them along the front, for the queue.
+    for (let i = 0; i < 7; i++) {
+      const x = m(f.sandwich.x) + 0.6 + i * 0.36;
+      if (Math.abs(x - cx) < 0.7) continue;
+      put(trays, x, TOP + 0.012, front(f.sandwich) - 0.4, 0, 0.34, 0.024, 0.3);
+      put(rolls, x, TOP + 0.06, front(f.sandwich) - 0.4, Math.PI / 2, 1, 0.82, 1, 0, Math.PI / 2);
+      put(crab, x, TOP + 0.1, front(f.sandwich) - 0.4, Math.PI / 2, 1, 0.55, 1, 0, Math.PI / 2);
+    }
+    inst(new THREE.CapsuleGeometry(0.052, 0.24, 4, 10), new THREE.MeshStandardMaterial({ color: 0xe9c58c, roughness: 0.75, emissive: new THREE.Color(0.06, 0.04, 0.02) }), rolls, undefined, true);
+    inst(new THREE.CapsuleGeometry(0.036, 0.21, 3, 8), new THREE.MeshStandardMaterial({ color: 0xff6f78, roughness: 0.7, emissive: new THREE.Color(0.25, 0.05, 0.06) }), crab);
+
+    /* ---- the coffee counter: urns, airpots, cups */
+    const kx = m(f.coffee.x);
+    const kw = m(f.coffee.w);
+    const back = m(f.coffee.y) + 0.5;
+    const urns: THREE.Matrix4[] = [];
+    const lids: THREE.Matrix4[] = [];
+    const taps: THREE.Matrix4[] = [];
+    for (let i = 0; i < 3; i++) {
+      const x = kx + 0.6 + i * 0.55;
+      put(urns, x, TOP + 0.3, back);
+      put(lids, x, TOP + 0.64, back);
+      put(taps, x, TOP + 0.12, back + 0.17);
+    }
+    inst(new THREE.CylinderGeometry(0.16, 0.17, 0.6, 18), new THREE.MeshStandardMaterial({ color: 0xd4d8de, metalness: 0.7, roughness: 0.28 }), urns, undefined, true);
+    inst(new THREE.ConeGeometry(0.17, 0.1, 18), mats.darkMetal, lids);
+    inst(new THREE.BoxGeometry(0.04, 0.05, 0.07), mats.darkMetal, taps);
+    const pots: THREE.Matrix4[] = [];
+    for (let i = 0; i < 4; i++) put(pots, kx + kw - 0.45 - i * 0.2, TOP + 0.18, back + 0.05);
+    inst(new THREE.CylinderGeometry(0.07, 0.07, 0.36, 12), new THREE.MeshStandardMaterial({ color: 0x1a1a1c, roughness: 0.3, metalness: 0.4 }), pots, undefined, true);
+    const cups: THREE.Matrix4[] = [];
+    for (let st = 0; st < 6; st++) {
+      const x = kx + 0.45 + (st % 3) * 0.2;
+      const z = front(f.coffee) - 0.45 - Math.floor(st / 3) * 0.2;
+      for (let k = 0; k < 7; k++) put(cups, x, TOP + 0.045 + k * 0.035, z);
+    }
+    for (let i = 0; i < 6; i++) put(cups, kx + 1.3 + (i % 3) * 0.16, TOP + 0.045, front(f.coffee) - 0.35 - Math.floor(i / 3) * 0.16);
+    // Paper cups, kraft brown: a conference pours coffee into a thousand of them.
+    inst(new THREE.CylinderGeometry(0.048, 0.034, 0.09, 12, 1, true), new THREE.MeshStandardMaterial({ color: 0xa8743f, roughness: 0.8, side: THREE.DoubleSide }), cups);
+    const koffie = neonBoard('COFFEE', 1.1, '#ffd08a');
+    koffie.position.set(kx + kw / 2, TOP + 1.05, m(f.coffee.y) + 0.12);
+    out.add(koffie);
+
+    inst(new THREE.BoxGeometry(1, 1, 1), mats.darkMetal, trays);
+    return out;
+  }
+
   function buildCh3(p: Prop, pw: number, ph: number): THREE.Object3D | null {
     const g = new THREE.Group();
     const w = m(pw);
@@ -874,8 +1029,12 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         const fill = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 0.1), new THREE.MeshStandardMaterial({ color: 0xff8a6a, roughness: 0.6 }));
         fill.position.y = 0.1;
         const board = neonBoard('BROODJE KRAB', 1.2, '#ff8a3d');
-        board.position.set(0, 0.7, -0.15);
+        board.position.set(0, 0.95, -0.15);
         g.add(bread, fill, board);
+        // The rest of breakfast, on all three counters, in world coordinates.
+        const spread = cateringSpread();
+        spread.position.copy(g.position).multiplyScalar(-1);
+        g.add(spread);
         return g;
       }
       case 'bar-counter': {
