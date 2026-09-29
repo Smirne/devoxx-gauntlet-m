@@ -366,6 +366,62 @@ describe('the ball has no feet, and nobody rolls it but a shove', () => {
     expect(rig.bones.thighL.scale.y).toBeCloseTo(1, 2);
   });
 
+  /**
+   * Michele, 29 Sep 2026: *"Biggy's roll: should not start straight away, make a
+   * couple of steps then roll."* It used to tuck on the frame a shove passed
+   * 1.5 m/s. Counted off the rig: each step swaps which thigh is forward, and
+   * there have to be two of those on his own feet before the legs start to go.
+   */
+  it('takes a couple of steps on his own feet before he tucks, however hard the shove', () => {
+    for (const v of [3, 5]) {
+      const rig = createRobot('biggy');
+      for (let i = 0; i < 30; i++) updateRobot(rig, { speedMps: 0, heading: 0, dt: DT, shoved: 0 });
+      let side = 0;
+      let steps = 0;
+      let tucking = false;
+      for (let i = 0; i * DT < 1.5; i++) {
+        updateRobot(rig, { speedMps: v, heading: 0, dt: DT, shoved: 1 });
+        const s = Math.sign(rig.bones.thighL.rotation.x - rig.bones.thighR.rotation.x);
+        tucking ||= rig.bones.thighL.scale.y < 0.9;
+        if (!tucking && s !== 0 && side !== 0 && s !== side) steps++;
+        if (s !== 0) side = s;
+      }
+      expect(steps, `shoved at ${v} m/s, he tucked after ${steps} steps`).toBeGreaterThanOrEqual(2);
+      // ...and then he does roll: this is a delay, not a refusal.
+      expect(rig.bones.thighL.scale.y, `shoved at ${v} m/s, he never tucked`).toBeLessThan(0.3);
+    }
+  });
+
+  /**
+   * *"...when the door is smashed, Biggy should keep rolling for a couple of
+   * metres, then stand."* The roller door keeps 40% of his speed and his own
+   * brake takes him from there (`handOver` in `src/sim/game.ts`): 2.2 m/s at
+   * 1.2 s⁻¹. He used to start untucking on the way through 1.5 m/s, which was
+   * the doorway itself; now the ball rolls on while he is still really moving
+   * and the legs come back as he comes to rest.
+   */
+  it('rolls on through a doorway that takes his speed, and stands up as he stops', () => {
+    const rig = createRobot('biggy');
+    for (let i = 0; i * DT < 2; i++) updateRobot(rig, { speedMps: 5.4, heading: 0, dt: DT, shoved: 1 });
+    expect(rig.bones.thighL.scale.y).toBeLessThan(0.3);
+    let v = 2.2;
+    let rolled = 0;
+    for (let i = 0; i * DT < 4; i++) {
+      updateRobot(rig, { speedMps: v, heading: 0, dt: DT, shoved: 1 });
+      if (v > 0.9) {
+        expect(rig.bones.thighL.scale.y, `legs out at ${v.toFixed(2)} m/s, still rolling`).toBeLessThan(0.3);
+        rolled += v * DT;
+      }
+      v *= Math.exp(-1.2 * DT);
+      if (v < 0.05) v = 0;
+    }
+    // About a metre of it as a ball...
+    expect(rolled).toBeGreaterThan(1);
+    // ...and standing on his own two feet once he is at rest.
+    expect(rig.bones.thighL.scale.y).toBeCloseTo(1, 2);
+    expect(rig.bones.thighL.rotation.x).toBeGreaterThan(-1.3);
+  });
+
   it('never rolls with the soup pot in his hands, shove or no shove', () => {
     const t = run(4, { drive: false, carrying: true });
     expect(t.v).toBeGreaterThan(1.5);

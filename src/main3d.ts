@@ -80,6 +80,9 @@ const Q_KEY = 'afterdark3d.quality';
 function storedQuality(): QualityName | null {
   try {
     const v = window.localStorage.getItem(Q_KEY) as QualityName | null;
+    // A remembered `ultra` came from the old upward cycle (see `cycleQuality`),
+    // not from a choice: it is the setting that crashed, so it is not honoured.
+    if (v === 'ultra') return 'high';
     return v && Q.includes(v) ? v : null;
   } catch {
     return null;
@@ -89,7 +92,11 @@ function storedQuality(): QualityName | null {
  * The first-run quality, from the GPU the browser reports: a software renderer
  * or a phone gets `low`, an integrated laptop GPU `medium`, anything else
  * `high`. A safety net for the judges' machines — the quality button (and Q)
- * still move it, and the adaptive resolution trims it further at run time.
+ * still move it, and the frame governor (`src/render3d/governor.ts`) trims it
+ * further at run time.
+ *
+ * AMD's laptop APUs ("AMD Radeon(TM) Graphics", the Vegas) and NVIDIA's MX
+ * parts are integrated-class too, and used to be read as `high` (29 Sep).
  */
 function autoQuality(): QualityName {
   try {
@@ -101,6 +108,7 @@ function autoQuality(): QualityName {
     gl.getExtension('WEBGL_lose_context')?.loseContext();
     if (/swiftshader|llvmpipe|software|basic render/i.test(r)) return 'low';
     if (/intel|mali|adreno|powervr|vivante/i.test(r)) return 'medium';
+    if (/radeon\(tm\) graphics|radeon graphics|radeon vega|vega \d+ graphics|geforce mx/i.test(r)) return 'medium';
     return 'high';
   } catch {
     return 'medium';
@@ -108,13 +116,54 @@ function autoQuality(): QualityName {
 }
 const qParam = params.get('q') as QualityName | null;
 const quality: QualityName = qParam && Q.includes(qParam) ? qParam : storedQuality() ?? autoQuality();
+/*
+ * `#rake` / `#flat` on the link: the published artifact's viewer drops the
+ * query string but passes a bare #token down to the page, so this is how the
+ * two Room 8s can be compared from the shared link (Michele, 29 Sep: "How to
+ * test the rake room? does the param works?"). Both start at chapter 4's
+ * briefing, the only chapter the rake is in.
+ */
+const hash = window.location.hash;
 /** Set by a quality change: the chapter to come back to after the reload. */
-const resumeAt = int('resume');
+const resumeAt = int('resume') ?? (hash === '#rake' || hash === '#flat' ? 4 : undefined);
 const shotMode = flag('shot');
-// Room 8 as a raked cinema — a proposal, off by default (`KEYNOTE_RAKE`).
-KEYNOTE_RAKE.on = flag('rake');
+/*
+ * Room 8 as a raked cinema (`KEYNOTE_RAKE`), ON in this build since Michele
+ * tried it (29 Sep: "rake room looks good"); `?rake=0` or `#flat` for the
+ * flat room. The sim's own default stays off, so the tests and the 2.5D page
+ * play the room they always did.
+ */
+KEYNOTE_RAKE.on = params.get('rake') !== null ? flag('rake') : hash !== '#flat';
 const hideHud = flag('nohud') || (shotMode && !flag('hud'));
 const warm = Math.max(0, Math.min(int('warm') ?? 0, 20000));
+
+/* ======================================================= loading screen ==== */
+
+/*
+ * The loading screen is in `3d.html`, on screen before this script runs a line:
+ * building the venue below keeps the main thread busy for seconds, and so does
+ * compiling its shaders. This names the phase and, during the compile, fills
+ * the bar with its real progress. Screenshot runs have no use for it.
+ */
+const loadingEl = document.getElementById('ad3d-loading');
+let loadingUp = loadingEl !== null && !shotMode;
+function loading(what: string, share: number | null): void {
+  if (!loadingEl) return;
+  const label = loadingEl.querySelector('.ld-what');
+  if (label) label.textContent = what;
+  loadingEl.classList.toggle('ld-known', share !== null);
+  if (share !== null) loadingEl.style.setProperty('--p', share.toFixed(3));
+}
+function loaded(): void {
+  loadingUp = false;
+  if (!loadingEl) return;
+  loadingEl.classList.add('ld-done');
+  window.setTimeout(() => loadingEl.remove(), 450);
+}
+/** Two frames: what the page shows now is painted before the next long job. */
+const nextPaint = (): Promise<void> => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())));
+if (shotMode) loadingEl?.remove();
+else await nextPaint();
 
 /* =============================================================== the app === */
 
@@ -177,6 +226,9 @@ const hud: Hud = createHud(app, {
   // The hint's ring and off-screen arrow are drawn at a sim point, which only
   // the renderer can put on the canvas (same hook as the 2.5D page).
   project: (x, y, h) => world.projectHint(x, y, h ?? 0),
+  // P is photo mode here; the physics view is the 2.5D page's (Michele, 29 Sep:
+  // "is P photo or physics? the effect is photo").
+  keys: (line) => line.replace('P: physics', 'P: photo'),
 });
 const audio: Audio = createAudio();
 
@@ -272,12 +324,33 @@ let photo = false;
 
 window.addEventListener('keydown', (ev) => {
   const code = codeOf(ev);
+  // Nothing is playable until the loading screen has gone.
+  if (loadingUp) {
+    ev.preventDefault();
+    return;
+  }
   if (titleUp) {
     dismissTitle();
     ev.preventDefault();
     return;
   }
+  // The credits, as on the 2.5D page (`src/main.ts`): a modal, taken before the
+  // sim hears the key. This page never wired them, so the final card's own
+  // "C for credits" opened nothing and only took the card down (29 Sep).
+  if (!game.snapshot().typing && hud.creditsKey(code)) {
+    ev.preventDefault();
+    return;
+  }
   if (game.snapshot().opening && (ev.repeat || performance.now() - gateOffAt < GATE_GRACE)) {
+    ev.preventDefault();
+    return;
+  }
+  // The credits (C), before the sim hears the key — the same guard as the 2.5D
+  // page (see `onKeyDown` in main.ts). They are most often opened on the final
+  // card, where `game.key` dismisses the card whatever the key, so a `C` that
+  // got through would throw the score away behind them. While they are up they
+  // swallow every key; Escape or a click outside closes them.
+  if (!game.snapshot().typing && hud.creditsKey(code)) {
     ev.preventDefault();
     return;
   }
@@ -349,6 +422,7 @@ window.addEventListener('blur', () => {
 // Mouse look: pointer lock on click, or a plain drag where lock is refused.
 let dragging = false;
 canvas.addEventListener('mousedown', (ev) => {
+  if (loadingUp) return;
   if (titleUp) {
     dismissTitle();
     return;
@@ -388,9 +462,22 @@ function showEnd(): void {
 
 /* ======================================================= quality control === */
 
-/** Next quality, remembered, and back into the same chapter after the reload. */
+/**
+ * One step DOWN, remembered, and back into the same chapter after the reload.
+ *
+ * It used to cycle upward (low → medium → high → ultra → low), so the button's
+ * own "Running slow — click for lower quality" took a struggling `high` to
+ * ULTRA — more pixels, 2048 shadow maps, 64 fog steps — and on a laptop to a
+ * lost GPU context, which players reported as the game crashing when they
+ * pressed Q (29 Sep). It steps down now, and from `low` back up to `high`;
+ * `ultra` is only for asking by name (`?q=ultra`).
+ */
+const DOWN: Readonly<Record<QualityName, QualityName>> = { ultra: 'high', high: 'medium', medium: 'low', low: 'high' };
 function cycleQuality(): void {
-  const next = Q[(Q.indexOf(quality) + 1) % Q.length];
+  reloadAt(DOWN[quality]);
+}
+/** Reload at quality `next`, remembered, back into the chapter being played. */
+function reloadAt(next: QualityName): void {
   try {
     window.localStorage.setItem(Q_KEY, next);
   } catch {
@@ -405,30 +492,51 @@ function cycleQuality(): void {
 }
 
 /*
- * The quality button, bottom-left: what it is set to, and a click moves it on.
- * When the frame rate stays low even after the resolution has been trimmed as
- * far as it goes (`world.struggling`), it says so once, in words.
+ * The quality button: what it is set to, and a click moves it on. It stands in
+ * the HUD's top bar, just before Skip chapter, so it is laid out WITH the bar
+ * and can never be printed over another panel — it used to be fixed
+ * bottom-left, on top of the speed readout (Michele, 29 Sep: "move the quality
+ * info somewhere so it's not over other infos"). When the frame rate stays low
+ * even after the resolution has been trimmed as far as it goes
+ * (`world.struggling`), it says so once, in words.
  */
 const qBtn = document.createElement('button');
 qBtn.type = 'button';
 qBtn.className = 'ad3d-quality';
 qBtn.textContent = `Quality: ${quality.toUpperCase()} (Q)`;
-qBtn.title = 'Change render quality (reloads into the same chapter)';
-qBtn.style.cssText =
-  'position:fixed;left:12px;bottom:12px;z-index:30;font:600 12px system-ui,sans-serif;color:#ffd27a;background:rgba(10,10,14,.6);border:1px solid rgba(255,210,122,.45);border-radius:6px;padding:5px 9px;cursor:pointer';
+qBtn.title = `Q: ${quality === 'low' ? 'back up to high' : `down to ${DOWN[quality]}`} (reloads into the same chapter)`;
 qBtn.addEventListener('click', (e) => {
   e.preventDefault();
   cycleQuality();
 });
-if (!shotMode && !hideHud) app.appendChild(qBtn);
+if (!shotMode) hud.root.querySelector('.ad-skip')?.before(qBtn);
 let warnedSlow = false;
 function checkSlow(): void {
   if (warnedSlow || !world.struggling || quality === 'low') return;
   warnedSlow = true;
-  qBtn.textContent = `Running slow — click for lower quality (now ${quality.toUpperCase()})`;
-  qBtn.style.borderColor = '#ff7a1a';
-  qBtn.style.color = '#ff9a4a';
+  qBtn.textContent = `Running slow — click for lower quality (now ${quality})`;
+  qBtn.classList.add('ad3d-slow');
 }
+
+/*
+ * THE GPU GAVE UP. A lost WebGL context — a driver reset, or video memory run
+ * out at a quality the machine cannot hold — used to leave the page black for
+ * good, which is a crash as far as anyone playing can tell. Now it says so, and
+ * one click reloads a level lower, straight back into the same chapter.
+ */
+canvas.addEventListener('webglcontextlost', (ev) => {
+  ev.preventDefault();
+  recordError('webglcontextlost');
+  if (document.querySelector('.ad3d-lost')) return;
+  const lower: QualityName = quality === 'low' ? 'low' : DOWN[quality];
+  const card = document.createElement('div');
+  card.className = 'ad3d-end ad3d-lost';
+  card.innerHTML =
+    '<h1>THE GRAPHICS CARD GAVE UP</h1><p>The browser lost the 3D view — usually the GPU running out of memory.</p>' +
+    `<p><button type="button">Reload at ${lower.toUpperCase()} quality</button></p>`;
+  card.querySelector('button')?.addEventListener('click', () => reloadAt(lower));
+  app.appendChild(card);
+});
 
 /* ================================================================= loop ==== */
 
@@ -440,9 +548,12 @@ for (let i = 0; i < warm; i++) {
 const anchors: SpeakerAnchors = {};
 let lastFade = -1;
 
+/** Chapter 4's film is playing (`GameSnapshot.reel`): the body carries `ad3d-film`. */
+let filmOn = false;
 function frame(dt: number): void {
   if (titleUp) {
-    // The sim waits behind the gate; nothing is drawn under the black.
+    // The sim waits behind the gate; nothing is drawn under the black (the
+    // shaders compiled behind the loading screen, below).
     return;
   }
   // The sim steps at most DT_MAX at a time; a slower frame takes several
@@ -462,6 +573,13 @@ function frame(dt: number): void {
     return;
   }
   world.render(snap, dt);
+  // The film at the end of chapter 4 plays with the HUD's chrome faded away — a
+  // cinema, not a dashboard. Its toasts ("any key to skip") and cards stay.
+  const film = snap.reel != null;
+  if (film !== filmOn) {
+    filmOn = film;
+    document.body.classList.toggle('ad3d-film', film);
+  }
   if (!hideHud) {
     for (const key of Object.keys(anchors) as RobotKind[]) delete anchors[key];
     for (const b of snap.bots) {
@@ -488,6 +606,23 @@ function loop(now: number): void {
   last = now;
   frame(dt);
 }
+/*
+ * Behind the loading screen: every floor's materials compile (`World3D.prewarm`,
+ * with its real progress on the bar), then one frame is drawn — the
+ * environment capture, the first shadow maps, whatever a driver still does at
+ * first use — so the first frame anyone sees, at the gate or straight back into
+ * a chapter after a quality change, is not a long stall. Those stalls were a
+ * blank screen for seconds, which players took for a crash (29 Sep).
+ */
+if (loadingUp) {
+  loading('Compiling shaders', 0);
+  await world.prewarm(game.snapshot(), (share) => loading('Compiling shaders', share));
+  loading('Lighting the venue', null);
+  await nextPaint();
+  world.render(game.snapshot(), 0);
+  loaded();
+}
+last = performance.now();
 if (!shotMode) requestAnimationFrame(loop);
 
 /* ========================================================= debug handle ==== */

@@ -149,8 +149,11 @@ export function withGrime(mat: THREE.MeshStandardMaterial, amount = 0.5, scale =
         float gBlot = smoothstep(.45, .8, gN);
         diffuseColor.rgb *= 1. - grimeAmt * (.45 * gBlot + .25 * (gN - .5));
       `,
+      // The same blotches, not a second fbm: `gN` is the colour chunk's, which
+      // three places before the roughness map in the same scope — and this was
+      // 32 more hashes on every wall, floor and ceiling fragment.
       fragRough: /* glsl */ `
-        roughnessFactor = clamp(roughnessFactor + grimeAmt * .35 * smoothstep(.45, .8, wFbm(vWorldP * grimeScale)), 0., 1.);
+        roughnessFactor = clamp(roughnessFactor + grimeAmt * .35 * smoothstep(.45, .8, gN), 0., 1.);
       `,
     },
     'grime',
@@ -215,6 +218,15 @@ export function withReflection(mat: THREE.MeshStandardMaterial, refl: PlanarRefl
 
 export interface Materials {
   terrazzo: THREE.MeshPhysicalMaterial;
+  /**
+   * The same stone for steps and landings, without the floor's planar mirror.
+   * `venue.ts` makes `terrazzo` reflective, and a tread drawn with it sampled the
+   * reflection while being drawn INTO it — a framebuffer feedback loop the GPU
+   * refuses, so every stair tread vanished from the reflection pass with a
+   * GL_INVALID_OPERATION each frame (chapters 3 and 4, 29 Sep). A mirror of the
+   * y = 0 plane on a raised tread was misplaced anyway.
+   */
+  terrazzoMatte: THREE.MeshPhysicalMaterial;
   carpet: THREE.MeshPhysicalMaterial;
   carpetRed: THREE.MeshPhysicalMaterial;
   plaster: THREE.MeshPhysicalMaterial;
@@ -266,6 +278,7 @@ export function createMaterials(renderer: THREE.WebGLRenderer): Materials {
   const m: Materials = {
     // One terrazzo texture repeat = 2.4 m (four 60 cm slabs), set by worldUV tile.
     terrazzo: fromSet(sets.terrazzo, { normalScale: new THREE.Vector2(0.6, 0.6) }),
+    terrazzoMatte: fromSet(sets.terrazzo, { normalScale: new THREE.Vector2(0.6, 0.6) }),
     carpet: fromSet(sets.carpet),
     carpetRed: fromSet(sets.carpetRed),
     plaster: fromSet(sets.plaster, { normalScale: new THREE.Vector2(0.35, 0.35) }),
@@ -294,6 +307,7 @@ export function createMaterials(renderer: THREE.WebGLRenderer): Materials {
   };
   withGrime(m.plaster, 0.6, 0.3);
   withGrime(m.terrazzo, 0.45, 0.22);
+  withGrime(m.terrazzoMatte, 0.45, 0.22);
   withGrime(m.carpet, 0.4, 0.5);
   withGrime(m.ceiling, 0.5, 0.25);
   return m;

@@ -25,9 +25,12 @@ isometric camera per room — is still at `http://localhost:5173/`, and is where
 (`P`) lives.
 
 The first time it runs, the 3D build picks a render quality from the GPU the browser reports (low
-for software renderers and phones, medium for integrated graphics, high otherwise). The **Quality**
-button bottom-left, or `Q`, changes it; the page reloads straight back into the chapter you were in.
-If the frame rate stays low, the button says so.
+for software renderers and phones, medium for integrated graphics, high otherwise), and while it runs
+it trims resolution, ambient occlusion, fog detail and reflections by itself if the frame rate drops.
+The **Quality** button top right, beside **Skip chapter**, or `Q`, steps it one level down (from low
+it goes back to high); the page reloads straight back into the chapter you were in. If the frame rate
+stays low even after the trimming, the button says so. `?q=ultra` in the address asks for the top
+level, which is for big desktop GPUs.
 
 ```bash
 pnpm test       # vitest — the sim's acceptance tests, including the frozen physics constants
@@ -47,14 +50,16 @@ into the bundle.
 | Mouse (click to lock the pointer) | Look around; the camera drifts back behind the robot while you drive |
 | Mouse wheel | Zoom the camera |
 | `1` `2` `3` / `Tab` | Switch to Voxxy / Droid / Biggy / the next robot |
-| `E` | Act — fix, carry, take, talk, and mount Biggy when Droid stands beside him |
+| `E` | Act — fix, carry, take, talk, and mount Biggy when Droid stands beside him. With nothing to act on, the robot's party trick |
+| `Space` | Take hold of Biggy with the robot standing beside him, or let go of him |
 | number keys | Type the code, **standing at the fire-door keypad** |
 | `I` | The run sheet: every job in the chapter, who does it, what is done |
 | `H` | A hint, and an arrow to where it points |
-| `Q` / **Quality** button | Change render quality (reloads into the same chapter) |
+| `Q` / **Quality** button (top right) | One quality level down (reloads into the same chapter) |
 | `P` | Photo mode: hide the HUD, depth of field on the robot |
 | `M` / `N` | Mute everything / music on or off |
 | `R` | Restart the chapter |
+| `C` | The credits; `C` or `Esc` closes them |
 | **Skip chapter ▸** (top right) | Jump to the next chapter |
 
 ## Controls (2.5D diorama build)
@@ -65,11 +70,13 @@ into the bundle.
 | `1` `2` `3` | Switch to Voxxy / Droid / Biggy |
 | `Tab` | Cycle to the next robot |
 | `E` | Act — fix, carry, take, and mount Biggy when Droid stands beside him |
+| `Space` | Take hold of Biggy with the robot standing beside him, or let go of him |
 | number keys | Type the code, **standing at the fire-door keypad**. Away from the pad, `1` `2` `3` still switch robot |
 | `M` | Mute everything |
 | `N` | Music on / off, leaving the sound effects alone |
 | `P` | **The physics view** — collision circles at each robot's real radius, velocity arrows to scale, and every contact the solver resolved this frame drawn on its own normal and sized by the impulse, with the numbers beside them. It reads the simulation; it does not re-derive it |
 | `R` | Restart the run |
+| `C` | The credits; `C` or `Esc` closes them |
 | **Skip chapter ▸** (button, top right) | Jump to the next chapter if you are stuck, or to see the later ones |
 | **the briefing** (top of the screen) | Folds itself to one line a few seconds in, so it is not sitting over the diorama all chapter. Click it to unfold or refold |
 
@@ -135,21 +142,25 @@ is in [docs/after-dark-full-design.md](docs/after-dark-full-design.md).
 
 ## Status
 
-In active development for the 30 September 2026 deadline; this README describes the game as designed
-and built so far.
+Built for the 30 September 2026 deadline. The 3D build is the entry; the 2.5D build is frozen and
+kept compiling, and both read the same simulation.
 
-- **Playable now, end to end, in both builds:** all four chapters, both cutscenes, the optional booth mini-games, the
+- **Playable end to end, in both builds:** all four chapters, both cutscenes, the optional booth mini-games, the
   simulation (movement, collisions, pushes, the door and cable thresholds), the light and shadow
   model, the venue geometry for both floors, the three robot models, the HUD and the synthesised
   audio — with the test suite green (`pnpm test`) and zero console errors on a full run.
-- **The ending is in:** the keynote opens with a video cut from how you actually played — the soup
-  you spilled, the cable you dragged, the scenes you skipped — and the three robots take a curtain
-  call in front of it while the room applauds.
+- **The ending is in:** when the last robot reaches the stage, the three regroup, the camera goes up
+  to the house screen and the keynote's opening film plays — the title as the splash screen draws
+  it, the byline, a cut of how you actually played (the soup you spilled, the cable you dragged, the
+  scenes you skipped), then the credits, with the game's two makers there as their own characters.
+  The camera comes back down for the curtain call, which the room applauds behind the final card;
+  `C` on that card opens the credits screen.
 - **Pacing is measured, not felt:** `tests/chapter4-length.test.ts` drives chapter 4 on one stick,
   through the one door and along the real aisles, with nothing teleported; it prints where the time
   goes and fails if the chapter outgrows its budget.
-- **Still being gauntleted:** craft polish on the dark chapters' lighting, per-robot idle
-  personality, and the auditorium width spread on the first floor (see the notes below).
+- **It needs a keyboard and WebGL2** (the mouse only looks around), so it will not play on a phone.
+- Every playtest note Michele filed, and what happened to it, is in
+  [docs/playtest-notes.md](docs/playtest-notes.md).
 - Progress per piece, with critic verdicts and screenshots, is regenerated by `pnpm progress` into
   `public/progress.html`.
 
@@ -160,9 +171,22 @@ screenshot is deterministic and needs no automation client.
 
 **They only work when the game is served from its own origin** — a clone (`pnpm dev`, `pnpm preview`)
 or any plain static host. A build embedded in a viewer that does not pass the outer page's query
-string down to the page ignores every switch below and simply starts at the title card. The one
-switch with a keyboard equivalent is the shadow rig: **`Shift+D`** starts it from anywhere,
-including the title screen.
+string down to the page ignores every switch below and simply starts at the title card. In the 2.5D
+build the one switch with a keyboard equivalent is the shadow rig: **`Shift+D`** starts it from
+anywhere, including the title screen.
+
+**The 3D build** (`3d.html`):
+
+| Query | What it does |
+|---|---|
+| `?resume=N` | Start in chapter 1..4 with its briefing, skipping the title and the opening |
+| `?q=low\|medium\|high\|ultra` | Force a render quality instead of the one picked from the GPU |
+| `?seed=N` | Seed the sim RNG, so clue digits and crowds replay exactly |
+| `?nohud=1` | Hide the DOM overlay |
+| `?rake=0` or `#flat` | Room 8 flat instead of raked (`#rake` / `#flat` also work on the published link, and start at chapter 4) |
+| `?shot=1` | No animation loop: `window.__ad3d.step(n)` drives frames, for deterministic screenshots (`?chapter=N` applies only here) |
+
+**The 2.5D build** (`index.html`):
 
 | Query | What it does |
 |---|---|
@@ -176,15 +200,19 @@ including the title screen.
 | `?nohud=1` | Hide the DOM overlay |
 | `?physics=1` | Start with the physics view up (`P` toggles it in play) |
 
-`document.title` always reads `After Dark · ERRORS:<count>` and `<pre id="console-log">` carries the
-lines, so "no console errors" can be read straight out of `--dump-dom`.
+`document.title` always reads `After Dark 3D · ERRORS:<count>` in the 3D build and
+`After Dark · ERRORS:<count>` in the 2.5D one, where `<pre id="console-log">` also carries the lines,
+so "no console errors" can be read straight out of `--dump-dom`.
 
 ## Who you will meet
 
 Stephan (who runs Devoxx) at the stairs, Celestino on the badge desk, and — on the hall floor, then in
 Room 8's front row for the keynote — Mario, Venkat, Josh, Lize and Aurélie: first names and friendly
 caricatures, drawn from photographs, with nothing that needs anybody's permission. Duke, the Java
-mascot (artwork released by Sun under a BSD licence), stands inflated in the lobby.
+mascot (artwork released by Sun under a BSD licence), stands inflated in the lobby. The two who made
+the game are in it too — Michele, and Claude with a terminal for a face — at a high table at
+breakfast and in Room 8's second row for the keynote. `E` beside anyone with a name, with any of the
+three robots, starts a conversation.
 
 ## Licence
 

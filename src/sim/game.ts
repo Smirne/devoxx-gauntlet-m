@@ -293,6 +293,12 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   /** `setStick`'s held heading, or null to face the stick. */
   let stickFace: number | null = null;
   let stickY = 0;
+  /**
+   * The stick is held off the driven robot until the player lets go of it. Only
+   * `handOver` sets it: the robot the stick moved to must not be driven off by a
+   * push that was meant for the one it was taken from.
+   */
+  let stickHeld = false;
   let runtime: ChapterRuntime | null = null;
   /** The tow bar, when somebody has hold of Biggy. See `tow.ts`. */
   let tow: TowState | null = null;
@@ -367,13 +373,15 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   /* ---------------------------------------------------------------- the step */
 
   function stepAll(dt: number, afterStep?: (b: Bot, before: PrevVel) => void): void {
+    // A hand-over's hold ends the moment the player lets go (`handOver`).
+    if (stickHeld && stickX === 0 && stickY === 0) stickHeld = false;
     bots.forEach((b, i) => {
       // Only the robot being driven gets the stick. The other two keep their
       // momentum — which is the whole point of Biggy.
       // Driven, and so braking when the stick is let go: not while he is on the
       // tow bar, where the holder's run is what moves him.
       b.driven = i === cur && !(tow && b.kind === 'biggy');
-      if (i === cur) {
+      if (i === cur && !stickHeld) {
         b.ix = stickX;
         b.iy = stickY;
       } else {
@@ -437,12 +445,16 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   }
 
   /**
-   * `E` with nothing else on it: take hold of Biggy, let go of him, or show off.
+   * `E` with nothing else on it: take hold of Biggy, let go of him, talk to
+   * whoever is standing there, or show off.
    *
    * The order is intent, not convenience. A robot already on the bar means to let
    * go; one standing against Biggy means to take hold, because that is the reason
-   * to be standing there; anything else is that robot's party trick — Voxxy's hop,
-   * Biggy's roll, Droid's stretch. A robot can always step away from Biggy to
+   * to be standing there; one standing at a person means to talk to them
+   * (`ChapterRuntime.talk` — Michele, 29 Sep 2026: *"is this Josh? how do I talk
+   * to him? with E I get my action"*, and *"I'd prefer all robots to talk"*);
+   * anything else is that robot's party trick — Voxxy's hop, Biggy's roll,
+   * Droid's stretch. A robot can always step away from Biggy or from a person to
    * perform, and there is nothing any of them could want to hop over, rock on or
    * stretch out of while touching him.
    *
@@ -456,6 +468,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       towToggle();
       return;
     }
+    if (runtime?.talk?.(b)) return;
     showOff(bots, b, aside);
   }
 
@@ -469,6 +482,21 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   /** Quietly drop the bar — chapter change, cutscene, teleport. No toast. */
   function dropTow(): void {
     tow = null;
+  }
+
+  /**
+   * Give the stick to `kind`, the way the tow bar and the tower hand it over, and
+   * hold it off until the player has let go (`stickHeld`). Drops the bar.
+   *
+   * Nothing moves because of it: no speed is set and no constant read. What it
+   * decides is who is being DRIVEN — and so who brakes, since the driven-only brake
+   * is a frozen constant and applies to whoever the stick has with the stick let
+   * go — and that the push which was going on stops where it is.
+   */
+  function handOver(kind: RobotKind): void {
+    dropTow();
+    cur = ORDER.indexOf(kind);
+    stickHeld = true;
   }
 
   function stepTowBar(dt: number): void {
@@ -945,6 +973,14 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     // used to push chapter 4 onto `skipped` a second time, so the final card read
     // "skipped: 1, 2, 3, 4, 4".
     if (phase === 'done') return;
+    // Skipping the OPENING skips the opening, as any key does — not chapter 1
+    // with it. It skipped both, so a player who used the button to get past the
+    // crates was one chapter ahead of their own count, and the press that was
+    // meant to reach chapter 4 put the final card up instead (29 Sep).
+    if (opening !== null) {
+      endOpening();
+      return;
+    }
     card = null;
     if (chapter === 0) {
       startChapter(1);
@@ -1122,6 +1158,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       leanOnBiggy(bots, dt, t, aside);
     },
     toggleMount,
+    handOver,
     switchKey,
     startCut,
     startChapter,
@@ -1248,8 +1285,8 @@ export function createGame(opts: GameOptions = {}): DebugGame {
    *
    * So the card is dismissed and the key then goes on to mean whatever it means.
    * Keys that only ever dismissed (Space, Enter) still just dismiss — they reach a
-   * runtime that ignores them — and a card shown by `fail()` or `finish()` leaves
-   * `phase` at 'done', where everything below but `R` falls through harmlessly.
+   * runtime that ignores them — and a card shown by `fail()` or `finish()` is not
+   * dismissed at all: `phase` is 'done', and only `R` means anything there.
    */
   function key(code: string): void {
     /*
@@ -1262,7 +1299,12 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       endOpening();
       return;
     }
-    if (card !== null) {
+    /*
+     * ...except the card that ends the run. Dismissed, it left the last room on
+     * screen with nobody to drive and nothing saying why — players took it for a
+     * frozen chapter 4 (29 Sep). It stays up, and `R` below plays again.
+     */
+    if (card !== null && phase !== 'done') {
       card = null;
       if (chapter === 0) startChapter(1);
     }

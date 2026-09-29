@@ -43,6 +43,7 @@ import {
   ROLLER_DOOR_SPEED,
   nicheMouth,
   roomDoor,
+  rooms,
   createGame,
   type DebugGame,
   type ExpoState,
@@ -74,7 +75,9 @@ function until(g: DebugGame, done: () => boolean, budget = 600): boolean {
   return done();
 }
 
-import { bot, driveTo, openFrontDoors, raiseSign, walkTo } from './pilot';
+import { REEL_PREROLL } from '../src/sim/reel';
+import { BREAKFAST } from '../src/sim/chapters/ch4-keynote';
+import { bot, driveChapter4, driveTo, openFrontDoors, raiseSign, walkTo } from './pilot';
 
 
 /* --------------------------------------------- the chapter-2 network closet
@@ -126,7 +129,7 @@ function openCabinet(g: DebugGame): boolean {
  */
 function powerUp(g: DebugGame): boolean {
   g.debug.select('droid');
-  g.debug.place('droid', PANEL.x + 20, PANEL.y + 30);
+  g.debug.place('droid', PANEL.x, PANEL.y + 8);
   for (let i = 0; i < 3; i++) g.key('KeyE');
   return expo(g).power;
 }
@@ -452,7 +455,7 @@ describe('chapter 2 — expo', () => {
     expect((g.debug.chapter() as ExpoState).breakersLeft).toBe(3);
 
     g.debug.select('droid');
-    g.debug.place('droid', panel.x + 20, panel.y + 30);
+    g.debug.place('droid', panel.x, panel.y + 8);
     g.key('KeyE');
     g.key('KeyE');
     expect((g.debug.chapter() as ExpoState).breakersLeft).toBe(1);
@@ -813,7 +816,7 @@ describe('chapter 2 — expo', () => {
 
     // Power and cable, but no router: the printer is still dark.
     g.debug.select('droid');
-    g.debug.place('droid', panel.x + 20, panel.y + 30);
+    g.debug.place('droid', panel.x, panel.y + 8);
     for (let i = 0; i < 3; i++) g.key('KeyE');
     expect(expo(g).power).toBe(true);
 
@@ -860,7 +863,7 @@ describe('chapter 2 — expo', () => {
      *    exercises the route with the most moving parts rather than the shortest.
      */
     g.debug.select('droid');
-    g.debug.place('droid', panel.x + 20, panel.y + 30);
+    g.debug.place('droid', panel.x, panel.y + 8);
     for (let i = 0; i < 3; i++) g.key('KeyE');
     expect(expo(g).power).toBe(true);
     expect(expo(g).hallLit, 'the breakers lit the hall on their own').toBe(false);
@@ -1658,7 +1661,10 @@ describe('chapter 4 — keynote', () => {
     const reel = g.snapshot().reel;
     expect(reel, 'no opening video').not.toBeNull();
     expect(g.snapshot().phase).toBe('play');
-    expect(reel!.card?.title).toBe('DEVOXX BELGIUM');
+    // A dark beat first (the three regroup, the camera goes up), then the title.
+    expect(reel!.card, 'the film started without its dark beat').toBeNull();
+    for (let i = 0; i < Math.ceil((REEL_PREROLL + 0.8) / DT_MAX); i++) g.update(DT_MAX);
+    expect(g.snapshot().reel!.card?.title).toBe('AFTER DARK');
     // It ends on the running joke, and it is a real length rather than a frame.
     expect(reel!.len).toBeGreaterThan(8);
     let sawEnd = false;
@@ -1723,6 +1729,170 @@ describe('chapter 4 — keynote', () => {
     // Low walls stop robots but not light, which is what makes the room readable.
     expect(seats.every((w) => w.low)).toBe(true);
     expect(seats[0].why?.(bot(g, 'biggy'))).toContain('aisles');
+  });
+
+  /*
+   * ...AND ITS CROWD FACES THE WAY IT WALKS, in the corridor and in the room.
+   *
+   * Michele, 29 Sep 2026, on a screenshot of the first-floor corridor: *"people
+   * are walking backward (i think chap4 only)"* — and of Room 8, *"in the room
+   * people walk sidewise"*. One fault with two looks, and it is chapter 3's (the
+   * crowd test above): `stepAttendee` never set `face`, so every attendee kept
+   * `mkBot`'s 0, due east, for the whole walk. Down the corridor from the main
+   * staircase that is walking WEST facing east — backwards; through the door and
+   * up an aisle it is walking north facing east — sideways.
+   *
+   * Chapter 3 lets 15% of its crowd off, because that crowd shoves itself apart
+   * and a body pushed sideways travels off its own nose. This one does not shove:
+   * it waits behind the person in front. So with the robots parked west of the
+   * door, where nobody walks, and the cake on its mark rather than in the corridor
+   * the crowd comes up — nothing moves an attendee but their own legs, and EVERY
+   * walking sample is held to it: the frame's own step against the heading the sim
+   * published for that frame, from the first arrival until the room is full.
+   */
+  it('faces every walking attendee the way it walks, down the corridor and up the aisles', () => {
+    const g = mk(4);
+    const key = (): KeynoteState => g.debug.chapter() as KeynoteState;
+    const d8 = roomDoor(R(8));
+    const mark = g.snapshot().props.find((p) => p.kind === 'cake-mark')!;
+    expect(g.debug.placeProp('cake', mark.x + (mark.w ?? 0) / 2, mark.y + (mark.h ?? 0) / 2)).toBe(true);
+    const mid = (CY0 + CY1) / 2;
+    g.debug.place('voxxy', d8.cx - 150, mid);
+    g.debug.place('droid', d8.cx - 120, mid);
+    g.debug.place('biggy', d8.cx - 90, mid);
+
+    /** Faster than this is walking, px/s (8 cm/s); slower is waiting for the door. */
+    const WALKING = 1;
+    const seen = { corridor: 0, room: 0 };
+    const off: string[] = [];
+    const headings = new Set<number>();
+    let prev = new Map<number, Vec2>();
+    for (let i = 0; i < 20000 && key().restless === 0; i++) {
+      g.update(DT_MAX);
+      const now = new Map<number, Vec2>();
+      for (const p of g.snapshot().people) {
+        // Walking to a seat; sat down they are 'seated', and face the stage.
+        if (p.role !== 'visitor') continue;
+        now.set(p.seed, { x: p.x, y: p.y });
+        const was = prev.get(p.seed);
+        if (!was || (p.speed ?? 0) <= WALKING) continue;
+        const where = p.y < CY0 ? 'room' : 'corridor';
+        seen[where]++;
+        const step = Math.atan2(p.y - was.y, p.x - was.x);
+        const err = p.face === undefined ? Math.PI : step - p.face;
+        if (Math.abs(Math.atan2(Math.sin(err), Math.cos(err))) > Math.PI / 4) {
+          off.push(`#${p.seed} in the ${where} at (${Math.round(p.x)},${Math.round(p.y)}): walking ${Math.round((step * 180) / Math.PI)}°, facing ${p.face === undefined ? 'nowhere' : `${Math.round((p.face * 180) / Math.PI)}°`}`);
+        }
+        headings.add(Math.round((p.face ?? 0) * 4));
+      }
+      prev = now;
+    }
+    // The whole walk, every attendee in it, not the first few.
+    expect(key().restless, 'the room never filled').toBeGreaterThan(0);
+    expect(seen.corridor, 'nobody was caught walking the corridor').toBeGreaterThan(5000);
+    expect(seen.room, 'nobody was caught walking to a seat').toBeGreaterThan(5000);
+    expect(off.slice(0, 8), `${off.length} of ${seen.corridor + seen.room} walking samples face more than 45° off their own step`).toEqual([]);
+    // Corridor west, door and aisles north, rows both ways: the bug pointed every one of them at 0.
+    expect(headings.size, 'the whole crowd shares one heading').toBeGreaterThan(4);
+  });
+
+  /*
+   * ...AND THE MORNING STOPS AT THE SECONDARY STAIRS.
+   *
+   * Michele, 29 Sep 2026 (#21): *"Chap 4: not all corridor should be walkable.
+   * Robots should stop at the secondary stairs. Add some tables with breakfast or
+   * other things if you want a reason."* The speakers' breakfast closes the lane
+   * between the two flights' west ends and the flights close the rest. Driven west
+   * at it — down the middle and hard along either flight, with Voxxy hopping, since
+   * her hop clears low furniture — every robot stops on the Room 8 side, and says
+   * why in its own voice.
+   */
+  it('stops every robot at the secondary stairs, and each says why in its own voice', () => {
+    const line = BREAKFAST.x + BREAKFAST.w;
+    const said = new Map<RobotKind, string>();
+    for (const k of ['voxxy', 'droid', 'biggy'] as const) {
+      for (const y of [BREAKFAST.y + 10, (CY0 + CY1) / 2, BREAKFAST.y + BREAKFAST.h - 10]) {
+        const g = mk(4);
+        g.debug.select(k);
+        g.debug.place(k, line + 60, y);
+        g.update(DT_MAX);
+        g.setStick(-1, 0);
+        let west = Infinity;
+        for (let i = 0; i < 240; i++) {
+          g.update(DT_MAX);
+          if (k === 'voxxy' && i % 30 === 15) g.key('KeyE');
+          west = Math.min(west, bot(g, k).x);
+          const t = g.snapshot().toast?.t ?? '';
+          if (t.includes('breakfast') || t.includes('croissant')) said.set(k, t);
+        }
+        expect(west, `${k} got past the breakfast at y ${y}`).toBeGreaterThanOrEqual(line + bot(g, k).r - 0.5);
+      }
+    }
+    expect([...said.keys()].sort(), 'somebody hit it and was not told why').toEqual(['biggy', 'droid', 'voxxy']);
+    for (const [k, t] of said) expect(t.startsWith(`${bot(mk(4), k).name}:`), `${k} is not the one speaking: ${t}`).toBe(true);
+    // Not one script with the name swapped.
+    expect(new Set([...said.values()].map((t) => t.replace(/^(Voxxy|Droid|Biggy):\s*/, ''))).size).toBe(3);
+  });
+
+  /*
+   * ...AND ONLY ROOM 8'S DOOR OPENS.
+   *
+   * Michele, 29 Sep 2026 (#18): *"room door is closed (but walkable)"*. The 3D build
+   * draws every Devoxx room's doorway with its leaves shut and opens only Room 8's
+   * for this chapter; the sim left them all open, and rooms 7 and 6 open right
+   * where the robots come up the stairs. Walked straight at each doorway, Voxxy —
+   * the smallest of them — gets through Room 8's and no other, and every other
+   * one tells her which room it is and why not.
+   */
+  it('lets a robot into Room 8 and into no other room, and says why at every shut door', () => {
+    for (const r of rooms) {
+      if (r.closed) continue;
+      const g = mk(4);
+      const d = roomDoor(r);
+      g.debug.select('voxxy');
+      g.debug.place('voxxy', d.cx, r.side < 0 ? CY0 + 25 : CY1 - 25);
+      g.update(DT_MAX);
+      g.setStick(0, r.side < 0 ? -1 : 1);
+      let heard = '';
+      for (let i = 0; i < 90; i++) {
+        g.update(DT_MAX);
+        heard = g.snapshot().toast?.t ?? heard;
+      }
+      const v = bot(g, 'voxxy');
+      const inside = r.side < 0 ? v.y < CY0 - 6 : v.y > CY1 + 6;
+      if (r.n === 8) {
+        expect(inside, 'Voxxy could not get into Room 8').toBe(true);
+      } else {
+        expect(inside, `Voxxy walked into Zaal ${r.n} through its shut doors`).toBe(false);
+        expect(heard, `nothing said why Zaal ${r.n} is shut`).toContain(`Zaal ${r.n}`);
+      }
+    }
+  });
+
+  it('keeps the whole chapter on the Room 8 side of it: the start, the pilot’s run and the crowd', () => {
+    const g = mk(4);
+    const line = BREAKFAST.x + BREAKFAST.w;
+    let robots = Math.min(...g.snapshot().bots.map((b) => b.x));
+    let crowd = Infinity;
+    let walkers = 0;
+    const watched: DebugGame = {
+      ...g,
+      update: (dt: number) => {
+        g.update(dt);
+        const s = g.snapshot();
+        for (const b of s.bots) robots = Math.min(robots, b.x);
+        for (const p of s.people) {
+          if (p.role !== 'visitor') continue;
+          walkers++;
+          crowd = Math.min(crowd, p.x);
+        }
+      },
+    };
+    driveChapter4(watched);
+    expect(g.snapshot().reel, 'the chapter never reached its ending').not.toBeNull();
+    expect(robots, 'a robot started or was driven west of the breakfast').toBeGreaterThan(line);
+    expect(walkers, 'the crowd never came up the stairs').toBeGreaterThan(0);
+    expect(crowd, 'the crowd walked west of the breakfast').toBeGreaterThan(line);
   });
 });
 
@@ -1807,6 +1977,39 @@ describe('the game rig', () => {
     g.key('KeyR');
     expect(g.snapshot().chapter).toBe(0);
     expect(g.snapshot().phase).toBe('intro');
+  });
+
+  /**
+   * Players on the 3D build, 29 Sep: *"trouble on chap 4, after skipping
+   * chapters ... no way to move / switch robot"*. Two traps, one after the
+   * other: Skip chapter pressed during the opening skipped chapter 1 as well,
+   * so the third press — the one meant to reach chapter 4 — put the final card
+   * up; and any key took that card down, leaving the last room on screen with
+   * nothing to drive and nothing saying the run was over.
+   */
+  it('skips just the opening when Skip chapter is pressed during it', () => {
+    const g = createGame({ seed: SEED });
+    expect(g.snapshot().opening).not.toBe(null);
+    g.skipChapter();
+    expect(g.snapshot().opening, 'the opening survived the skip').toBe(null);
+    expect(g.snapshot().chapter, 'the skip took chapter 1 with the opening').toBe(1);
+    for (const n of [2, 3, 4]) {
+      g.skipChapter();
+      expect(g.snapshot().chapter).toBe(n);
+    }
+    expect(g.snapshot().phase, 'three skips from the opening ended the run').not.toBe('done');
+  });
+
+  it('keeps the final card up until R, whatever else is pressed', () => {
+    const g = createGame({ seed: SEED, chapter: 4, cards: false });
+    g.skipChapter();
+    expect(g.snapshot().phase).toBe('done');
+    for (const code of ['Space', 'KeyC', 'Digit2', 'KeyW', 'Enter', 'KeyE']) {
+      g.key(code);
+      expect(g.snapshot().card, `${code} took the final card down`).toContain('R to play again');
+    }
+    g.key('KeyR');
+    expect(g.snapshot().phase).not.toBe('done');
   });
 
   it('starts on a card, dismisses it with any key, and restarts THE CHAPTER on R', () => {

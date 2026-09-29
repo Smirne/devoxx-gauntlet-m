@@ -25,16 +25,23 @@ import { riseAt } from '../sim/surface';
 import { BIGGY_ROLL_DUR, DEFS, DROID_STRETCH_DUR, JUMP_AIR, JUMP_RISE_M } from '../sim/constants';
 import { LEAD, SLOT, STAND_FACE, STEP_DELAY, STEP_TIME } from '../sim/opening';
 import type { Bot, GameSnapshot, RobotKind } from '../sim/types';
-import { GF } from '../sim/geometry';
 import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
 import { createRobot, updateRobot, type RobotRig } from '../render/robots';
 import { WORLD_NOISE_GLSL } from './materials';
 import { mergeUnderAnchors } from './merge';
 import { CLICK_U, counterLip, plugHand, printerPort } from './plug';
-import { registerGrip, activeReach, armReach, palmWorld, reachBody, reachPath, stepAt, stepFor, cancelReach, gripOf, pullAt, reachWeights, solveArmR, startReach, tickReach, type Grip } from './reach3d';
+import { registerGrip, activeReach, armReach, holdLetter, palmWorld, reachBody, reachPath, cancelReach, gripOf, pullAt, queueReach, reachWeights, slipped, solveArmR, startReach, tickReach, walkAt, GRIP_AT, LET_GO, WALK_BACK, type Grip, type Spot } from './reach3d';
+import { LADLE_DIP, LADLE_LIFT, hookPose, ladlePose, potPose, sleeveOf, soupPots } from './props-ground';
 
 /** The ladle's two reach targets in chapter 3 (shelf rail, pot): see the ladle below. */
 const ladleGrips = [new THREE.Object3D(), new THREE.Object3D()];
+/** How far Droid walks to either of them, m: the 3.5 m every reach had until 29 Sep. */
+const LADLE_WALK = 3.5;
+/** The hall side of the shelf and of the soup counter: where he stands to reach either. */
+const HALL_SIDE: Spot = { x: 0, z: 1 };
+const _ladle = ladlePose();
+/** How far his fingers curl round a handle, radians — the same curl the reach has always closed with. */
+export const FINGERS_SHUT = 1.25;
 
 export interface Robot3D {
   kind: RobotKind;
@@ -242,6 +249,22 @@ let lastBreakers: number | undefined;
 const _grip = new THREE.Vector3();
 const _look = new THREE.Vector3();
 const _rest = new THREE.Vector3();
+const _sim: Spot = { x: 0, z: 0 };
+const _walk: Spot = { x: 0, z: 0 };
+const _walkWas: Spot = { x: 0, z: 0 };
+/**
+ * Where the drawn Droid was when a reach was dropped because the sim walked him
+ * off (`slipped`), how far through easing back onto the sim he is, and how long
+ * that takes, s. The walk up to a handle is drawn only, so by then the body on
+ * screen can be two metres from the robot the sim is moving; it hurries back at
+ * `SETTLE_SPEED` instead of jumping there.
+ */
+let settle: { x: number; z: number; t: number; dur: number } | null = null;
+/**
+ * m/s on average, on top of wherever the sim is driving him: brisk, but not so
+ * fast that the follow camera, which rides the body on screen, whips after it.
+ */
+const SETTLE_SPEED = 2.5;
 
 /**
  * Droid's hand on a lever or a breaker handle — see `reach3d.ts` for the whole
@@ -302,17 +325,43 @@ function driveReach(rig: RobotRig, grip: Grip, s: number, mounted: boolean): voi
   reachPath(rig, _rest, _grip, w.travel, _look);
   solveArmR(rig, _look, w.arm, w.arm, w.fold);
   // The wrist carries on the forearm's line and cocks back a little as it takes
-  // the weight; the fingers close round the grip.
+  // the weight; the fingers close round the grip — and stay closed on something
+  // he is taking away, or were closed all along on something he brought.
   b.handR.rotation.x += 0.25 * w.grip * (down ? 1 : -1) * (1 - 0.5 * w.pull);
+  const shut = (grip.hold === 'take' && s >= GRIP_AT) || (grip.hold === 'give' && s < LET_GO) ? 1 : w.grip;
   for (let i = 0; i < 4; i++) {
     const f = b[`fingerR${i}`];
-    if (f) f.rotation.x -= 1.25 * w.grip;
+    if (f) f.rotation.x -= FINGERS_SHUT * shut;
   }
 }
 
 let lastPanel: string | undefined;
 let lastLadle: string | undefined;
 let lastPad: string | undefined;
+
+/**
+ * How far into holding a #DEVOXX letter Droid's arms are, 0..1, eased at the
+ * gait's own carry rates (`CARRY_ON` 8 / `CARRY_OFF` 5 s⁻¹ in gait.ts) so the IK
+ * comes in with the canned carry instead of snapping over it.
+ */
+let letterHold = 0;
+const _letterAt = new THREE.Vector3();
+
+/**
+ * Chapter 4: his hands on the letter he is carrying, where the sim has it.
+ *
+ * The sim publishes the carried letter at its own centre, out in front of him and
+ * never inside a wall (`carryPoint`, src/sim/letters.ts); keynote3d.ts draws it
+ * there. Here the arms are brought to it (`holdLetter`) — the gait's canned carry
+ * alone reached 0.89–1.03 m whatever was in front of him, which is the arm half of
+ * Michele's *"letters (and droid's arm) through the wall"* (29 Sep).
+ */
+function holdCarried(rig: RobotRig, snap: GameSnapshot, b: Bot, mounted: boolean, dt: number): void {
+  const held = snap.props.find((q) => q.kind === 'letter-held');
+  letterHold += ((held ? 1 : 0) - letterHold) * (1 - Math.exp(-(held ? 8 : 5) * dt));
+  if (!held || mounted || letterHold < 0.01) return;
+  holdLetter(rig, _letterAt.set(m(held.x), 0, m(held.y)), held.face ?? b.face, letterHold);
+}
 
 /**
  * The intro's party tricks, as `hopPhase`/`flairPhase` values off the opening's
@@ -431,54 +480,98 @@ function gripBiggy(rig: RobotRig, lift: number): void {
 export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot, dt: number, surface?: (x: number, z: number) => number): void {
   const droid = robots.get('droid');
   const bg = snap.bots.find((o) => o.kind === 'biggy');
+  const dr = snap.bots.find((o) => o.kind === 'droid');
+  // Where the sim has Droid, world metres: where a walk up to a handle starts,
+  // where the walk back ends, and what "driven off" is measured against.
+  const drAt: Spot | null = dr ? { x: m(dr.x), z: m(dr.y) } : null;
   // The sim's state changes that a hand makes: Droid throwing the projector
   // panel, a digit going into the keypad. Read off the props, drawn as a reach.
   const panel = snap.props.find((q) => q.kind === 'projector-panel')?.state;
   // One clock for the hand and the handle (reach3d.ts), advanced here, before
   // either reads it; the props read the same clock after the robots.
-  tickReach(dt);
+  tickReach(dt, drAt);
+  // From Biggy's shoulders, where he does not walk; and not held to where the run
+  // began either — the tower is carrying him, and the lever is his wherever it goes.
   if (lastPanel !== undefined && panel !== lastPanel && panel === 'done') startReach('lever');
   if (panel !== undefined && panel !== 'done' && activeReach()?.id === 'lever') cancelReach();
   lastPanel = panel;
-  // Chapter 2's breakers, one handle at a time: the newest one up is his.
+  /*
+   * Chapter 2's breakers: every handle the sim puts up is a pull of its own.
+   *
+   * Michele, 29 Sep 2026: *"breakers scene: i see no animation."* A press used to
+   * start a reach on the newest handle and throw away the one running, so three
+   * presses in a row drew one pull and two handles that snapped up untouched,
+   * with the drawn Droid jumping back to where the sim had him in between. Now
+   * each handle queues behind the last (`queueReach`), and a count that went up
+   * by two in one frame queues both.
+   */
   const br = snap.props.find((q) => q.kind === 'breaker');
   const up = br?.v;
-  if (br && lastBreakers !== undefined && up !== undefined && up > lastBreakers) {
-    // Standing, from wherever E was pressed: he walks up to the handle first.
-    const d = snap.bots.find((o) => o.kind === 'droid');
-    const g = gripOf(`breaker${up - 1}`);
-    if (d && g && !d.mounted) {
-      g.point.getWorldPosition(_grip);
-      const w = stepFor({ x: m(d.x), z: m(d.y) }, _grip);
-      startReach(`breaker${up - 1}`, w.lead, w.step);
-    } else startReach(`breaker${up - 1}`);
+  if (up !== undefined && lastBreakers !== undefined) {
+    // Fewer up than last frame: the chapter restarted under him.
+    if (up < lastBreakers) cancelReach();
+    for (let i = lastBreakers; i < up; i++) queueReach(`breaker${i}`, drAt, dr ? !dr.mounted : false);
   }
   lastBreakers = up;
-  // Driven off mid-reach: the hand lets go of the idea.
-  const dr = snap.bots.find((o) => o.kind === 'droid');
-  if (dr && activeReach() && Math.hypot(dr.vx, dr.vy) / PX_PER_M > 0.3) cancelReach();
+  /*
+   * Driven off mid-reach: the hand lets go of the idea (`slipped`, REACH_SLIP) —
+   * measured as distance from where the run began, not as speed, which dropped
+   * every reach a still-coasting Droid started. The body on screen can be at the
+   * handle, two metres from the robot the sim is now driving, so it glides back
+   * onto him (`settle`) rather than jumping.
+   */
+  const run = activeReach();
+  if (run && drAt && slipped(run, drAt)) {
+    if (droid && dr && !dr.mounted) {
+      const { x, z } = droid.rig.root.position;
+      settle = { x, z, t: 0, dur: THREE.MathUtils.clamp(Math.hypot(drAt.x - x, drAt.z - z) / SETTLE_SPEED, 0.25, 1) };
+    }
+    cancelReach();
+  }
   // ...and so does a cutscene: it puts the cast on its own marks, and a drawn
   // walk-up to a handle would carry on from there, metres off where the sim has
-  // him (chapter 3's stair beat opened with Droid standing on the flight).
-  if (snap.phase === 'cut' && activeReach()) cancelReach();
+  // him (chapter 3's stair beat opened with Droid standing on the flight). A cut
+  // is a cut: no glide back either.
+  if (snap.phase === 'cut') {
+    if (activeReach()) cancelReach();
+    settle = null;
+  }
   // Chapter 3's ladle: up to the shelf's rail for it, down to the pot with it.
   const lad = snap.props.find((q) => q.kind === 'ladle');
   if (lad && lastLadle !== undefined && lad.state !== lastLadle && (lad.state === 'active' || lad.state === 'done') && lastLadle !== 'done') {
-    const sh = GF.food.shelf;
     const st = snap.props.find((q) => q.kind === 'soup-station');
-    // Through the same reach as the levers (reach3d.ts): a grip point with no
-    // handle to move, at the shelf's rail or over the pot.
+    /*
+     * Through the same reach as the levers (reach3d.ts), and his hand goes where
+     * the LADLE is (props-ground.ts, "the ladle"): its sleeve on the hook, or
+     * `LADLE_DIP` above its sleeve as it will stand in the pot. The pull lifts it
+     * clear of the rail, or lowers it into the soup — so the ladle leaves the
+     * hook, and arrives in the pot, from his hand and nowhere else. He stands on
+     * the hall side of either: the pot is behind the counter's front edge, and
+     * walked at along the counter the line he came in on stood him in it.
+     */
     const id = lad.state === 'active' ? 'ladle-shelf' : 'ladle-pot';
-    const pt = ladleGrips[id === 'ladle-shelf' ? 0 : 1];
-    if (id === 'ladle-shelf') pt.position.set(m(sh.x + sh.w / 2) - 0.35, 2.3, m(sh.y + sh.h));
-    else if (st) pt.position.set(m(st.x + (st.w ?? 22) / 2), 1.6, m(st.y + (st.h ?? 22) / 2));
+    const take = id === 'ladle-shelf';
+    const pt = ladleGrips[take ? 0 : 1];
+    if (take) sleeveOf(hookPose(_ladle), pt.position);
+    else if (st) sleeveOf(potPose(soupPots(st).takeable, _ladle), pt.position).y += LADLE_DIP;
+    const base = pt.position.y;
     pt.updateMatrixWorld(true);
-    registerGrip(id, { point: pt, throw: id === 'ladle-shelf' ? 'up' : 'down', set: () => {} });
-    const d = snap.bots.find((o) => o.kind === 'droid');
-    if (d && !d.mounted) {
-      const w = stepFor({ x: m(d.x), z: m(d.y) }, pt.position);
-      startReach(id, w.lead, w.step);
-    } else startReach(id);
+    // The sim hands him the ladle from further off than the breakers (`SHELF_REACH`,
+    // `POT_REACH` in ch3-breakfast.ts), so these keep the longer walk they had
+    // before `STEP_MAX` came down to the breakers' two metres.
+    registerGrip(id, {
+      point: pt,
+      throw: take ? 'up' : 'down',
+      set: (k) => {
+        pt.position.y = take ? base + LADLE_LIFT * k : base - LADLE_DIP * k;
+      },
+      walk: LADLE_WALK,
+      out: HALL_SIDE,
+      hold: take ? 'take' : 'give',
+      // Brought down off the shelf with it, not flicked: a lever's let-go at 0.6.
+      tempo: take ? 0.6 : 1,
+    });
+    startReach(id, drAt, dr ? !dr.mounted : false);
   }
   lastLadle = lad?.state;
   const pad = snap.props.find((q) => q.kind === 'keypad')?.label;
@@ -486,6 +579,7 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
   if (lastPad !== undefined && pad !== lastPad && active) gesture.set(active, 0.7);
   lastPad = pad;
   for (const [k, v] of gesture) gesture.set(k, v - dt);
+  const floor = (snap.plates ?? []).filter((q) => q.kind !== 'jammed-leaf');
   for (const b of snap.bots) {
     const r = robots.get(b.kind);
     if (!r) continue;
@@ -503,7 +597,7 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
     // and the 3D leaf falls straight and thin, so the plate lifted robots off it
     // in places and let the leaf "eat the foot" in others (Michele, 28 Sep). The
     // 3D leaf is a surface of its own, through `surface` below.
-    const rise = riseAt(b.x, b.y, (snap.plates ?? []).filter((q) => q.kind !== 'jammed-leaf'));
+    const rise = riseAt(b.x, b.y, floor);
     // Plus any renderer-only surface under them: the crates' floors and their
     // fallen fronts, which the sim does not model as plates, and the fallen door.
     let lift = hop + rise + (surface ? surface(x, z) : 0);
@@ -517,7 +611,13 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
         wasMounted = b.mounted;
       }
       climb = THREE.MathUtils.clamp(climb + (b.mounted ? dt : -dt) / CLIMB_TIME, 0, 1);
-      const top = b.mounted && bg ? new THREE.Vector3(m(bg.x), mountLift(droid.rig), m(bg.y)) : new THREE.Vector3(x, 0, z);
+      // Both ends stand on the floor under them. Biggy's top used to be measured
+      // from zero, and on the raked Room 8's stage — 1.8 m down in the pit — the
+      // tower's top half stood in the air over its bottom half.
+      const bgFloor = bg ? riseAt(bg.x, bg.y, floor) + (surface ? surface(m(bg.x), m(bg.y)) : 0) : 0;
+      const top = b.mounted && bg
+        ? new THREE.Vector3(m(bg.x), bgFloor + mountLift(droid.rig), m(bg.y))
+        : new THREE.Vector3(x, rise + (surface ? surface(x, z) : 0), z);
       const e = climb * climb * (3 - 2 * climb);
       const k = b.mounted ? e : 1 - e;
       if (climb > 0 && climb < 1) {
@@ -535,21 +635,40 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
         lift = top.y;
       }
     }
-    // The walk up to a handle and back (reach3d.ts `stepFor`): drawn only, the
+    // The walk up to a handle and back (reach3d.ts `walkAt`): drawn only, the
     // sim has not moved him, and the legs step it at the speed it is drawn at.
     // Voxxy turns to the printer for the plug-in beat (plug.ts).
     let face = snap.opening ? STAND_FACE : b.kind === 'voxxy' ? plugFace(snap, b.face, x, z) : b.face;
     let speed = Math.hypot(b.vx, b.vy) / PX_PER_M;
     let backward = b.vx * Math.cos(face) + b.vy * Math.sin(face) < -8;
     const walk = b.kind === 'droid' && !mounted ? activeReach() : null;
-    if (walk && walk.lead > 0) {
-      const k = stepAt(walk.s, walk.lead);
-      x += walk.step.x * k;
-      z += walk.step.z * k;
-      const v = dt > 0 ? (k - stepAt(walk.s - dt, walk.lead)) / dt : 0;
-      speed = Math.abs(v) * Math.hypot(walk.step.x, walk.step.z);
-      face = Math.atan2(walk.step.z, walk.step.x);
-      backward = v < 0;
+    if (walk && walk.to) {
+      _sim.x = x;
+      _sim.z = z;
+      walkAt(walk, _sim, _walk);
+      walkAt(walk, _sim, _walkWas, walk.s - dt);
+      x = _walk.x;
+      z = _walk.z;
+      speed = dt > 0 ? Math.hypot(_walk.x - _walkWas.x, _walk.z - _walkWas.z) / dt : 0;
+      // Facing the handle the whole way — up to it, at it, and backing off it —
+      // which is also the way he walks up: `stepFor` stands him on the line to it.
+      const g = gripOf(walk.id);
+      if (g) {
+        g.point.getWorldPosition(_grip);
+        face = Math.atan2(_grip.z - z, _grip.x - x);
+      }
+      backward = walk.s >= WALK_BACK;
+    }
+    // Let go of mid-reach: glide from where he was drawn back onto the sim.
+    if (b.kind === 'droid' && settle) {
+      settle.t += dt;
+      const k = THREE.MathUtils.smoothstep(settle.t, 0, settle.dur);
+      const was = r.rig.root.position;
+      x = settle.x + (x - settle.x) * k;
+      z = settle.z + (z - settle.z) * k;
+      speed = dt > 0 ? Math.hypot(x - was.x, z - was.z) / dt : speed;
+      backward = (x - was.x) * Math.cos(face) + (z - was.z) * Math.sin(face) < 0;
+      if (settle.t >= settle.dur) settle = null;
     }
     r.rig.root.position.set(x, lift, z);
     // In the crates the sim turns them south, to the 2.5D diorama's camera; the
@@ -557,6 +676,7 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
     // the step (Michele: "I'd keep them frontal"). Facing east throughout.
     updateRobot(r.rig, { speedMps: speed, heading: face, dt, mounted, backward, laden: b.kind === 'biggy' && snap.bots.some((o) => o.mounted), carrying: (b.kind === 'biggy' && snap.props.some((q) => q.kind === 'pot')) || (b.kind === 'droid' && snap.props.some((q) => q.kind === 'letter-held')), hop: u, flair: trick ? trick.flair : flairPhase(b), shoved: worldMoved(b) ? 1 : 0, pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null, body: walk ? reachBody(walk.s, gripOf(walk.id)?.throw ?? 'down') : undefined });
     if (b.kind === 'droid' && snap.opening) glance(r.rig, snap.opening.t);
+    if (b.kind === 'droid') holdCarried(r.rig, snap, b, mounted, dt);
     const reach = b.kind === 'droid' ? activeReach() : null;
     const grip = reach ? gripOf(reach.id) : undefined;
     if (reach && grip && !snap.opening) driveReach(r.rig, grip, reach.s, mounted);

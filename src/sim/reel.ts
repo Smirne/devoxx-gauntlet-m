@@ -31,6 +31,13 @@ import { m } from './units';
 
 /** Fade in and out at each end of a card, seconds. */
 const FADE = 0.4;
+/**
+ * A dark beat before the first card, seconds: the house lights go down, the
+ * three regroup on their marks and the camera goes up to the screen. Michele,
+ * 29 Sep: *"After the last robot reaches the stage, they should regroup, camera
+ * zooms on the screen, and the movie should start."*
+ */
+export const REEL_PREROLL = 2.2;
 /** Black between cards — the beat that makes it read as a cut and not a crossfade. */
 const GAP = 0.22;
 /** At most this many blooper cards, so the reel stays a reel and not a report. */
@@ -134,9 +141,16 @@ export function buildReel(
     );
   }
 
+  /*
+   * THE FILM OPENS LIKE THE GAME: the title as the splash screen draws it, then
+   * whose game it is — Michele, 29 Sep: *"I'd start with Devoxx After Dark (like
+   * in the splash screen), A game by Michele Giacobazzi (pic of my char?). Then
+   * the bloopers / notes? Or credits in film version?"* Both, in that order: the
+   * night's numbers and bloopers, then the credits, and the running joke last.
+   */
   const cards: ReelCard[] = [
-    { title: 'DEVOXX BELGIUM', sub: 'Kinepolis Antwerpen · the opening video', hold: 2.6, kind: 'title' },
-    { title: 'AFTER DARK', sub: 'One night shift. Three robots. Four chapters.', hold: 2.4, kind: 'title' },
+    { title: 'AFTER DARK', sub: 'Devoxx Belgium · Kinepolis Antwerpen', hold: 3.4, kind: 'splash' },
+    { title: 'A game by Michele Giacobazzi', sub: 'Starring Voxxy, Droid and Biggy', hold: 3.2, kind: 'byline' },
     { title: `${Math.round(total)} seconds`, sub: 'From lights-out to the keynote.', hold: 2.2, kind: 'stat' },
   ];
   if (bloopers.length === 0) {
@@ -153,13 +167,25 @@ export function buildReel(
       kind: 'stat',
     });
   }
+  cards.push(...FILM_CREDITS);
   cards.push({ title: 'KEYNOTE SPEAKER', sub: 'TBA', hold: 3, kind: 'end' });
   return cards;
 }
 
+/**
+ * The credits as the film runs them: the three the credits screen names (`C`,
+ * `src/render/credits.ts`), a line each, and the robots' own makers last.
+ */
+const FILM_CREDITS: readonly ReelCard[] = [
+  { title: 'Michele Giacobazzi', sub: 'Direction, design, and every playtest', hold: 2.4, kind: 'credit' },
+  { title: 'Claude, in Claude Code', sub: 'The simulation, the venue, the robots, the music and the tests', hold: 2.4, kind: 'credit' },
+  { title: 'WellD', sub: 'Sponsor', hold: 2.0, kind: 'credit' },
+  { title: 'Voxxy, Droid and Biggy', sub: 'Courtesy of the Devoxx Robot Games', hold: 2.4, kind: 'credit' },
+];
+
 /** How long the whole reel runs, seconds. */
 export const reelLength = (cards: readonly ReelCard[]): number =>
-  cards.reduce((a, c) => a + c.hold + GAP, 0);
+  cards.reduce((a, c) => a + c.hold + GAP, REEL_PREROLL);
 
 /**
  * Which card is on screen at `t`, and how far up it is faded.
@@ -169,7 +195,8 @@ export const reelLength = (cards: readonly ReelCard[]): number =>
  */
 export function reelAt(cards: readonly ReelCard[], t: number): ReelView {
   const len = reelLength(cards);
-  let at = t;
+  let at = t - REEL_PREROLL;
+  if (at < 0) return { t, len, index: 0, card: null, alpha: 0 };
   for (let i = 0; i < cards.length; i++) {
     const c = cards[i];
     if (at < c.hold) {

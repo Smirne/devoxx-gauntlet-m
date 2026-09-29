@@ -60,7 +60,9 @@ export function onPlate(p: Plate, x: number, y: number): boolean {
 export function plateRiseM(p: Plate, x: number, y: number): number {
   if (p.hi === undefined || p.hi === p.lo) return p.lo;
   const along = p.axis === 'y' ? (y - p.y) / p.h : (x - p.x) / p.w;
-  const u = along < 0 ? 0 : along > 1 ? 1 : along;
+  let u = along < 0 ? 0 : along > 1 ? 1 : along;
+  // Treads: the high edge of the one the point is on (see `Plate.steps`).
+  if (p.steps !== undefined && p.steps > 0) u = Math.min(Math.floor(u * p.steps) + 1, p.steps) / p.steps;
   return p.lo + (p.hi - p.lo) * u;
 }
 

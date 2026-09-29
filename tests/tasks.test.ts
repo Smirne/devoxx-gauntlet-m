@@ -281,7 +281,7 @@ const PANEL: Vec2 = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
  */
 function chainRun(g: DebugGame, lines: string[]): void {
   g.debug.select('droid');
-  g.debug.place('droid', PANEL.x + 20, PANEL.y + 30);
+  g.debug.place('droid', PANEL.x, PANEL.y + 8);
   g.key('KeyE');
   expect(row(g, 'power').n, 'the power row does not count the handles').toBe(1);
   expect(row(g, 'power').done).toBe(false);
@@ -398,7 +398,7 @@ describe('chapter 2 — expo', () => {
   it('takes the arrow away while the terminal has the keyboard', () => {
     const g = mk(2);
     g.debug.select('droid');
-    g.debug.place('droid', PANEL.x + 20, PANEL.y + 30);
+    g.debug.place('droid', PANEL.x, PANEL.y + 8);
     for (let i = 0; i < 3; i++) g.key('KeyE');
     g.debug.select('biggy');
     g.debug.place('biggy', HUB.x, HUB.y + 30);

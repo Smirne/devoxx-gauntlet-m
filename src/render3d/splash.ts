@@ -81,9 +81,12 @@ function letter(x: CanvasRenderingContext2D, ch: string, ox: number, second = fa
 /** Where the O starts, in letter units — the robot head is drawn round it. */
 const O_AT = 122 + 112 + 122;
 
-/** The wordmark, `w` css px wide: hot strokes, a gold mosaic in the D and the XX. */
-function wordmark(w: number): HTMLCanvasElement {
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
+/**
+ * The wordmark, `w` css px wide: hot strokes, a gold mosaic in the D and the XX.
+ * `dpr` is the canvas's pixels per css px: the page's own for the splash, 1 for
+ * the house screen at the end of the film (`keynote3d.ts`), which draws it again.
+ */
+export function wordmark(w: number, dpr = Math.min(2, window.devicePixelRatio || 1)): HTMLCanvasElement {
   const word = 'DEVOXX';
   const units = 122 + 112 + 122 + 134 + 58 + 100 + 70;
   const k = w / units;
@@ -180,9 +183,8 @@ function wordmark(w: number): HTMLCanvasElement {
   return c;
 }
 
-/** Antwerp by night, north to the port, over the Scheldt. */
-function skyline(w: number, h: number): HTMLCanvasElement {
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
+/** Antwerp by night, north to the port, over the Scheldt. `dpr` as for `wordmark`. */
+export function skyline(w: number, h: number, dpr = Math.min(2, window.devicePixelRatio || 1)): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = Math.round(w * dpr);
   c.height = Math.round(h * dpr);

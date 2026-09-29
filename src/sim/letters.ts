@@ -42,7 +42,7 @@
 
 import { DEFS } from './constants';
 import { PX_PER_M } from './units';
-import type { Bot } from './types';
+import type { Bot, Rect, Vec2 } from './types';
 
 /** The sign, one glyph per slot, left to right as the room reads it. */
 export const SIGN = '#DEVOXX';
@@ -131,3 +131,93 @@ export const letterName = (slot: number): string => (slot === SIGN_ORANGE ? 'ora
  */
 export const signText = (up: (slot: number) => boolean): string =>
   [...SIGN].map((ch, i) => (up(i) ? ch : '_')).join('');
+
+/* ------------------------------------------------------------ the carry ---- */
+
+/**
+ * How far in front of Droid's centre a letter rides in his hands, sim px (0.89 m).
+ *
+ * Measured off the rig, the way the robots' radii are (`docs/scale-and-units.md`):
+ * in the two-handed carry (`applyCarry`, `src/render/robots/gait.ts`) the midpoint
+ * of his hands stands 0.889 m out along his heading. That is 0.39 m past the
+ * 0.50 m of him the sim collides with, which is the whole of the bug below.
+ */
+export const LETTER_CARRY_REACH = 0.89 * PX_PER_M;
+
+/** Daylight kept between a carried letter and the wall it has been stopped by, sim px (2.5 cm). */
+const CARRY_CLEAR = 0.3;
+
+/**
+ * WHERE THE LETTER IN DROID'S HANDS IS — and it is never inside a wall.
+ *
+ * Michele, 29 Sep 2026: *"letters (and droid's arm) through the wall"*. The sim
+ * published a carried letter at Droid's CENTRE, where it can never be in a wall,
+ * and left the rest to the renderer, which hung it off his hands 0.89 m out — past
+ * everything the sim knows about. So wherever he stood at a wall, the letter and
+ * his arms went into it. In the wing that was every single pick-up: he is stopped
+ * 0.86 m short of the wall by the very letter he is lifting, so on the frame it
+ * came off the wall his hands were in the plaster and its face 17 cm into it —
+ * more once he walked, which swings the hands out to 1.03 m.
+ *
+ * So the sim says where the letter is, as it says where everything else is: out
+ * along his heading by `LETTER_CARRY_REACH`, swept out from his centre and stopped
+ * `CARRY_CLEAR` short of the first wall its footprint would touch. Nose to a wall,
+ * he hugs it to his chest instead of pushing it through the plaster; the renderer
+ * puts it here and his hands on it (`holdLetter`, `src/render3d/reach3d.ts`).
+ * `tests/letters.test.ts` holds it out of every wall for the whole chapter.
+ *
+ * At his centre the footprint is inside him (5.5 px against his 6.25), so pulled
+ * all the way in it is still clear of any wall he is clear of.
+ */
+export function carryPoint(d: { x: number; y: number; face: number }, walls: readonly Rect[]): Vec2 {
+  const ux = Math.cos(d.face);
+  const uy = Math.sin(d.face);
+  let hit = Infinity;
+  for (const w of walls) hit = Math.min(hit, sweepTo(d.x, d.y, ux, uy, w, LETTER_CARRY_REACH));
+  const s = hit >= LETTER_CARRY_REACH ? LETTER_CARRY_REACH : Math.max(0, hit - CARRY_CLEAR);
+  return { x: d.x + ux * s, y: d.y + uy * s };
+}
+
+/**
+ * How far out along `u` from `c` a letter's footprint — `LETTER_D` deep along `u`,
+ * `LETTER_W` wide across it — can go before it touches `w`: the first `s` in
+ * `0..max` where they meet, or `max` if they never do.
+ *
+ * A moving box against a still one. On each axis that could separate them (the
+ * wall's two, the letter's two) they overlap over an interval of `s`, and they meet
+ * only where all four intervals do; the first touch is where that begins. Already
+ * overlapping at his centre, it is 0.
+ */
+function sweepTo(cx: number, cy: number, ux: number, uy: number, w: Rect, max: number): number {
+  const nx = -uy;
+  const ny = ux;
+  let lo = -Infinity;
+  let hi = Infinity;
+  for (const [ax, ay] of [
+    [1, 0],
+    [0, 1],
+    [ux, uy],
+    [nx, ny],
+  ] as const) {
+    const wx0 = Math.min(w.x * ax, (w.x + w.w) * ax);
+    const wx1 = Math.max(w.x * ax, (w.x + w.w) * ax);
+    const wy0 = Math.min(w.y * ay, (w.y + w.h) * ay);
+    const wy1 = Math.max(w.y * ay, (w.y + w.h) * ay);
+    const half = (LETTER_D / 2) * Math.abs(ux * ax + uy * ay) + (LETTER_W / 2) * Math.abs(nx * ax + ny * ay);
+    const c0 = cx * ax + cy * ay;
+    const du = ux * ax + uy * ay;
+    if (Math.abs(du) < 1e-9) {
+      // Moving along this axis's perpendicular: apart on it for every s, or never.
+      if (c0 + half <= wx0 + wy0 || c0 - half >= wx1 + wy1) return max;
+      continue;
+    }
+    let s0 = (wx0 + wy0 - half - c0) / du;
+    let s1 = (wx1 + wy1 + half - c0) / du;
+    if (s0 > s1) [s0, s1] = [s1, s0];
+    lo = Math.max(lo, s0);
+    hi = Math.min(hi, s1);
+    if (lo >= hi) return max;
+  }
+  if (hi <= 0 || lo >= max) return max;
+  return Math.max(0, lo);
+}

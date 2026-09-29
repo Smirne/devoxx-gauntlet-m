@@ -41,10 +41,10 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { DT_MAX, GF, R, circleRect, createGame, roomDoor, type BreakfastState, type DebugGame, type ExpoState, type NightState } from '../src/sim';
-import type { Bot, Prop, Rect, Wall } from '../src/sim/types';
+import { DT_MAX, GF, R, circleRect, createGame, entranceBayGaps, entranceLeaves, roomDoor, type BreakfastState, type DebugGame, type ExpoState, type NightState } from '../src/sim';
+import type { Bot, Person, Prop, Rect, Wall } from '../src/sim/types';
 import { cabinetDoorDraw, gateSolids, lockDoorSolids } from '../src/render/doors';
-import { playToStairGate } from './pilot';
+import { finishChapter2, openFrontDoors, playToStairGate } from './pilot';
 
 const mk = (chapter: number): DebugGame => createGame({ seed: 20260930, chapter, cards: false });
 /** Frames for Droid's reach to the projector panel's lever, before cinema B's leaf moves. */
@@ -343,5 +343,152 @@ describe('chapter 3 · Stephan opens the stairs instead of the gate blinking out
       (r) => r.x < GF.gate.x + GF.gate.w - 20 && r.x + r.w > GF.gate.x + 20 && r.h < 20,
     );
     expect(across, 'the open gate is still drawn lying across the stair foot').toEqual([]);
+  });
+});
+
+/* ============================================= chapter 2 · the front doors */
+
+/** Chapter 2 with every job done, up to the E at the front doors. */
+function toTheFrontDoors(): DebugGame {
+  const g = mk(2);
+  steps(g, 1);
+  finishChapter2(g);
+  expect(openFrontDoors(g, 'voxxy', false, false), 'the bolts never went back').toBe(true);
+  return g;
+}
+
+/**
+ * THE FRONT DOORS OPEN FROM THE INSIDE, ON STEPHAN.
+ *
+ * Michele, 29 Sep 2026: *"Transition between chap2 and 3 needs to change. Robots
+ * exit the doors, but next chapter is inside. Let them regroup before the door,
+ * then they open, Stephan is outside and enters (pats voxxy?)"*. So the order is
+ * the thing under test: the three of them in front of the doors first, THEN the
+ * leaves, THEN him — and nobody going out.
+ */
+describe('chapter 2 · the front doors open on Stephan', () => {
+  it('keeps the leaves shut until the three of them are regrouped inside, then swings them to 1', { timeout: 30000 }, () => {
+    const g = toTheFrontDoors();
+    const e = GF.entrance;
+    const door = (): Prop => propOf(g, 'entrance-doors');
+    const shutWalls = (): number => g.debug.walls().filter((w) => w.kind === 'entrance-shut').length;
+    // The E throws the bolts. It does not open the doors: nobody is at them yet.
+    expect(door().progress, 'the doors swung on the E, before anyone was in front of them').toBe(0);
+    expect(shutWalls(), 'the shut leaves stopped being walls before they moved').toBe(3);
+
+    let last = 0;
+    let first: { fade: number; phase: string; bots: Array<{ kind: string; x: number; y: number; r: number }> } | null = null;
+    let underBlack = -1;
+    const between: number[] = [];
+    for (let i = 0; i < Math.ceil(15 / DT_MAX) && g.snapshot().chapter === 2; i++) {
+      g.update(DT_MAX);
+      const s = g.snapshot();
+      if (s.chapter !== 2) break;
+      const p = door().progress ?? 0;
+      expect(p, 'the doors swung back').toBeGreaterThanOrEqual(last);
+      last = p;
+      if (p > 0 && !first) first = { fade: s.fade, phase: s.phase, bots: s.bots.map((b) => ({ kind: b.kind, x: b.x, y: b.y, r: b.r })) };
+      if (p > 0 && p < 1) between.push(p);
+      // A leaf that has moved is not a wall across its bay any more — and one that
+      // has not is, all the way through the black the cast is regrouped under.
+      if (p > 0) expect(shutWalls(), `a wall still stands across a bay with the leaves at ${p.toFixed(2)}`).toBe(0);
+      if (underBlack < 0 && s.fade >= 0.99) underBlack = shutWalls();
+      // ...and chapter 3 happens indoors: nobody walks out through them.
+      if (s.phase === 'cut' && s.fade < 0.99) {
+        for (const b of s.bots) expect(b.x + b.r, `${b.kind} went out through the front doors`).toBeLessThanOrEqual(e.x);
+      }
+    }
+    expect(underBlack, 'the shut leaves stopped being walls before the regroup').toBe(3);
+    expect(first, 'the doors never swung').not.toBeNull();
+    expect(first!.phase, 'the doors swung in play, not in the let-in').toBe('cut');
+    expect(first!.fade, 'the doors swung under the black, where nobody could see them regroup first').toBeLessThan(0.2);
+    // Regrouped: all three in the hall, within 3.2 m of the doors' inner face.
+    for (const b of first!.bots) {
+      expect(b.x + b.r, `${b.kind} was not inside when the doors opened`).toBeLessThanOrEqual(e.x);
+      expect(b.x, `${b.kind} was not at the doors when they opened`).toBeGreaterThan(e.x - 40);
+      expect(b.y, `${b.kind} was not in front of the doors when they opened`).toBeGreaterThan(e.y - 40);
+      expect(b.y, `${b.kind} was not in front of the doors when they opened`).toBeLessThan(e.y + e.h);
+    }
+    // A swing, not a cut between two stills — and it lands open.
+    expect(between.length, 'the leaves jumped open').toBeGreaterThan(10);
+    expect(last, 'the doors never finished opening').toBe(1);
+    expect(g.snapshot().chapter, 'chapter 2 never handed over').toBe(3);
+  });
+
+  it('walks Stephan in from the forecourt through a bay, pats Voxxy, and leaves him on his chapter-3 mark', { timeout: 30000 }, () => {
+    const g = toTheFrontDoors();
+    const e = GF.entrance;
+    expect(g.snapshot().people, 'Stephan is in the hall before anybody has let him in').toEqual([]);
+    const gaps = entranceBayGaps();
+    // As far out onto the forecourt as a leaf reaches, swinging or open.
+    const reach = Math.max(...entranceLeaves().map((l) => l.x + l.w));
+
+    let firstAt: { x: number; y: number; r: number } | null = null;
+    let last: Person | null = null;
+    let crossed = false;
+    let patted = false;
+    let said = '';
+    const nearest = { voxxy: Infinity, droid: Infinity, biggy: Infinity };
+    for (let i = 0; i < Math.ceil(15 / DT_MAX) && g.snapshot().chapter === 2; i++) {
+      g.update(DT_MAX);
+      const s = g.snapshot();
+      if (s.chapter !== 2) break;
+      said = s.toast?.t.includes('pats Voxxy') ? s.toast.t : said;
+      const st = s.people.find((p) => p.role === 'stephan');
+      if (!st) continue;
+      firstAt ??= { x: st.x, y: st.y, r: st.r };
+      last = st;
+      // Through the doorway — the facade's depth and the leaves standing open
+      // outside it — he is inside one bay's clear gap, and the doors are open.
+      if (st.x + st.r > e.x && st.x - st.r < reach) {
+        crossed ||= st.x < e.x;
+        const bay = gaps.find(([y0, y1]) => st.y - st.r >= y0 && st.y + st.r <= y1);
+        expect(bay, `Stephan walked into the glazing at ${st.x.toFixed(1)},${st.y.toFixed(1)}`).toBeDefined();
+        expect(propOf(g, 'entrance-doors').progress, 'Stephan walked through a door that was still swinging').toBe(1);
+      }
+      for (const b of s.bots) {
+        // Centre to centre for Voxxy, whom he pats; body to body for the other two.
+        const k = b.kind as keyof typeof nearest;
+        const d = Math.hypot(b.x - st.x, b.y - st.y);
+        nearest[k] = Math.min(nearest[k], b.kind === 'voxxy' ? d : d - st.r - b.r);
+        // The pat: standing still beside her, his hand out, and she is looking at him.
+        if (b.kind === 'voxxy' && (st.reach ?? 0) > 0.5) {
+          expect(st.speed ?? 0, 'Stephan patted her on the move').toBe(0);
+          expect(Math.hypot(b.x - st.x, b.y - st.y), 'Stephan reached for Voxxy from across the room').toBeLessThan(12);
+          const look = Math.atan2(st.y - b.y, st.x - b.x);
+          expect(Math.abs(Math.atan2(Math.sin(look - b.face), Math.cos(look - b.face))), 'Voxxy was not looking at him').toBeLessThan(0.35);
+          patted = true;
+        }
+      }
+    }
+    expect(firstAt, 'Stephan never came').not.toBeNull();
+    expect(firstAt!.x - firstAt!.r, 'Stephan started inside, not out on the forecourt').toBeGreaterThan(e.x + e.w);
+    expect(crossed, 'Stephan never came in through the doors').toBe(true);
+    expect(patted, 'Stephan never patted Voxxy').toBe(true);
+    expect(said, 'the pat went unsaid').toContain('Stephan');
+    // Nearer than arm's length only to pat her, and no nearer than the pat: 0.76 m.
+    expect(nearest.voxxy, 'Stephan walked through Voxxy').toBeGreaterThan(9.5);
+    expect(nearest.droid, 'Stephan walked through Droid').toBeGreaterThan(0);
+    expect(nearest.biggy, 'Stephan walked through Biggy').toBeGreaterThan(0);
+
+    // ...and chapter 3 finds him where the let-in left him, as the same man.
+    expect(g.snapshot().chapter, 'chapter 2 never handed over').toBe(3);
+    const his = g.snapshot().people.find((p) => p.role === 'stephan');
+    expect(his, 'chapter 3 has no Stephan').toBeDefined();
+    expect(Math.hypot(last!.x - his!.x, last!.y - his!.y), 'Stephan jumped between the chapters').toBeLessThan(0.5);
+    expect(Math.abs(Math.atan2(Math.sin((last!.face ?? 0) - (his!.face ?? 0)), Math.cos((last!.face ?? 0) - (his!.face ?? 0)))), 'Stephan turned between the chapters').toBeLessThan(0.05);
+    for (const k of ['colour', 'collar', 'glasses', 'mic', 'lanyard', 'seed', 'name'] as const) {
+      expect(last![k], `Stephan's ${k} changed between the chapters`).toEqual(his![k]);
+    }
+    // The three, though, start chapter 3 on its own marks — placed under the black —
+    // and facing its own way, not whichever way the let-in left them walking: the
+    // same opening as a chapter 3 started cold.
+    const cold = mk(3).snapshot().bots;
+    for (const b of g.snapshot().bots) {
+      const c = cold.find((o) => o.kind === b.kind)!;
+      expect(Math.hypot(b.x - c.x, b.y - c.y), `${b.kind} opened chapter 3 off its mark`).toBeLessThan(0.5);
+      expect(Math.abs(Math.atan2(Math.sin(b.face - c.face), Math.cos(b.face - c.face))), `${b.kind} opened chapter 3 facing the let-in's way`).toBeLessThan(0.01);
+    }
+    expect(g.snapshot().fade, 'chapter 3 was placed with the picture up').toBeGreaterThan(0.9);
   });
 });

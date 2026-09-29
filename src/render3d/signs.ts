@@ -149,24 +149,53 @@ export function wayfinding(lines: Array<[string, string]>): THREE.CanvasTexture 
   x.lineWidth = 4;
   x.strokeRect(8, 8, 496, 240);
   x.fillStyle = '#fff';
-  x.font = 'bold 54px "Helvetica Neue", Arial, sans-serif';
   x.textBaseline = 'middle';
-  lines.forEach(([arrow, label], i) => {
-    const y = 70 + i * 110;
-    x.textAlign = 'left';
-    x.fillText(arrow, 30, y);
-    // No arrow, no gutter for one; and a label too long for the panel shrinks to
-    // fit rather than running off the edge ("The Finally Bloc", 29 Sep).
-    const left = arrow ? 110 : 34;
-    const room = 512 - left - 30;
-    let px = 54;
-    x.font = `bold ${px}px "Helvetica Neue", Arial, sans-serif`;
-    while (px > 24 && x.measureText(label).width > room) {
-      px -= 2;
-      x.font = `bold ${px}px "Helvetica Neue", Arial, sans-serif`;
+  x.textAlign = 'left';
+  const font = (px: number): string => `bold ${px}px "Helvetica Neue", Arial, sans-serif`;
+  // No arrow, no gutter for one.
+  const left = lines.some(([arrow]) => arrow) ? 110 : 34;
+  const room = 512 - left - 30;
+  /*
+   * ONE SIZE FOR THE WHOLE PANEL, the largest at which every label fits across
+   * it — wrapped onto as many lines as it needs — and the lines fit down it.
+   * A long label used to shrink on its one line to 24 px and then run off the
+   * edge anyway (Michele, 29 Sep, on the beer pallet's sign: "unreadable ...
+   * chars should not be so small, split on more lines").
+   */
+  let px = 54;
+  let rows: Array<[string, string]> = [];
+  for (; px >= 30; px -= 2) {
+    x.font = font(px);
+    rows = [];
+    let fits = true;
+    for (const [arrow, label] of lines) {
+      const out: string[] = [];
+      let cur = '';
+      for (const word of label.split(/\s+/).filter(Boolean)) {
+        const t = cur ? `${cur} ${word}` : word;
+        if (x.measureText(t).width <= room) cur = t;
+        else {
+          if (cur) out.push(cur);
+          cur = word;
+          if (x.measureText(word).width > room) fits = false;
+        }
+      }
+      if (cur) out.push(cur);
+      out.forEach((l, k) => rows.push([k === 0 ? arrow : '', l]));
     }
+    if (fits && rows.length * px * 1.2 <= 220) break;
+  }
+  // Two lines keep the panel's old spacing; more close up to the type.
+  const lh = rows.length <= 2 ? 110 : px * 1.2;
+  const top = 128 - ((rows.length - 1) * lh) / 2;
+  rows.forEach(([arrow, label], i) => {
+    const y = top + i * lh;
+    if (arrow) {
+      x.font = font(54);
+      x.fillText(arrow, 30, y);
+    }
+    x.font = font(px);
     x.fillText(label, left, y);
-    x.font = 'bold 54px "Helvetica Neue", Arial, sans-serif';
   });
   return tex(c);
 }

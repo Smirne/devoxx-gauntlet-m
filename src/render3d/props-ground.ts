@@ -16,20 +16,204 @@ import * as THREE from 'three';
 
 import { CFP_WALL, GF, WIFI_TAG, groundPlates, groundRiseM, groundWallsFor } from '../sim/geometry';
 import { BELT_H, GATE_H, beltU, nastriRun } from '../sim/nastri';
-import type { Prop } from '../sim/types';
-import { ROBOT_HEIGHT_M, m } from '../sim/units';
+import type { Prop, Wall } from '../sim/types';
+import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
 
 import type { Materials } from './materials';
 import { box } from './materials';
 import { CLICK_U, PORT_LOCAL, counterLip, plugHand, printerPort } from './plug';
 import { poseShutter, rollerShutter } from './shutter';
 import { cfpBoard, emitter, wayfinding } from './signs';
-import { PULL_END, pullAt, reachClock, registerGrip } from './reach3d';
+import { GRIP_AT, LET_GO, PULL_END, REACH_END, pullAt, reachClock, registerGrip } from './reach3d';
 
 const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z);
 
 /** The ladle's grip-to-bowl length, metres (`makeLadle`); `world.ts` stands it in a pot by it. */
 export const LADLE_REACH = 0.62;
+
+/* ------------------------------------------------------------ the ladle ---- */
+
+/*
+ * CHAPTER 3'S LADLE, AS POSES — and the rule for which one it is in.
+ *
+ * Michele, 29 Sep 2026: *"droid soup animation: some enhancements needed. When
+ * taking the ladle, it goes through the shelf, and when dropping it, it appears
+ * in the pot before the movement."* Both were one fault. `world.ts` moved the
+ * ladle on a timer of its own — into his hand 0.4 s after the sim's key press,
+ * into the pot 0.4 s after the next — while his arm ran on the reach clock
+ * (`reach3d.ts`), behind a walk of up to three seconds. So the ladle left the
+ * hook while he was still walking up, rode up to the rail in a hand already
+ * holding it out like a torch, handle through the shelf's front lip, and stood
+ * in the pot while he was still crossing the floor to it.
+ *
+ * Now it is where his hand has got it to, on that one clock, as the breakers are:
+ *
+ *   - ON THE HOOK until his palm closes on it (`GRIP_AT` of the 'ladle-shelf'
+ *     reach). The reach's target IS the ladle's sleeve on the hook, so on the
+ *     frame it goes into his hand it has not moved.
+ *   - LIFTED off the rail by the pull (`LADLE_LIFT`), then swung — hanging, out
+ *     level to his right, up — into the way he carries it as his arm comes down:
+ *     round his side, never forward into the shelf.
+ *   - CARRIED upright at his right hand, bowl open towards his back.
+ *   - TURNED over round the same side above the pot and DIPPED in (the
+ *     'ladle-pot' reach, whose target is the sleeve of its pose in the pot,
+ *     `LADLE_DIP` above), and let go at `LET_GO` — standing in the pot exactly
+ *     where his hand left it.
+ *
+ * Everything here is poses from numbers, so `tests/ladle3d.test.ts` can walk
+ * every frame of a take and a put against the shelf, the pots, the counter and
+ * the neon board without a renderer.
+ */
+
+/** How far along the handle his palm closes, m from the hooked end: low on the black sleeve. */
+export const LADLE_HOLD = 0.12;
+/** The bowl's centre in the ladle's own frame (`makeLadle`: grip at the origin, handle along +z, bowl opening +y). */
+const LADLE_BOWL = V(0, -0.09, LADLE_REACH + 0.13);
+/** The shelf slab's middle, m up; it is 5 cm thick. */
+export const SHELF_SLAB_Y = 2.35;
+/**
+ * The rail the ladle hangs from, m up. It was 2.3, 2.5 cm under the slab, which
+ * left no room for the hand that takes it: fingers closing on the handle from
+ * below came up through the steel. A hand's width under it now, on two drops.
+ */
+export const LADLE_RAIL_Y = 2.2;
+/** What the pull does with it: lifts it clear of the rail, m... */
+export const LADLE_LIFT = 0.04;
+/** ...or lowers it into the soup, m: the reach arrives this far above its place in the pot. */
+export const LADLE_DIP = 0.35;
+/** The counter's two soup pots, m: on a 1 m counter, 0.5 m tall, 0.42 across the rim, `apart` either side of the station. */
+export const SOUP_POT = Object.freeze({ counter: 1.0, h: 0.5, rTop: 0.42, rBottom: 0.38, apart: 0.48 });
+
+/** The high shelf in world metres, as `build` makes it from `GF.food.shelf`. */
+export function ladleShelf(): { cx: number; back: number; front: number; w: number; hook: THREE.Vector3 } {
+  const sh = GF.food.shelf;
+  const cx = m(sh.x + sh.w / 2);
+  const front = m(sh.y + sh.h);
+  return { cx, back: m(sh.y), front, w: m(sh.w), hook: V(cx - 0.35, LADLE_RAIL_Y, front - 0.03) };
+}
+
+/** The counter's two pots' centres, world metres, from the soup station's rect: the one Biggy takes, and the crowd's. */
+export function soupPots(st: { x: number; y: number; w?: number; h?: number }): { takeable: { x: number; z: number }; crowd: { x: number; z: number } } {
+  const cx = m(st.x + (st.w ?? 22) / 2);
+  const cz = m(st.y + (st.h ?? 22) / 2);
+  return { takeable: { x: cx + SOUP_POT.apart, z: cz }, crowd: { x: cx - SOUP_POT.apart, z: cz } };
+}
+
+/** Where the ladle is and which way it points: `pos` is its hooked end, `quat` its frame. */
+export interface LadlePose {
+  pos: THREE.Vector3;
+  quat: THREE.Quaternion;
+}
+export const ladlePose = (): LadlePose => ({ pos: new THREE.Vector3(), quat: new THREE.Quaternion() });
+
+const _lx = new THREE.Vector3();
+const _lv = new THREE.Vector3();
+const _lm = new THREE.Matrix4();
+const _lq = new THREE.Quaternion();
+/** A frame from where the handle runs (grip to bowl, `d`) and where the bowl opens (`u`, square to it). */
+function ladleFrame(d: THREE.Vector3, u: THREE.Vector3, out: THREE.Quaternion): THREE.Quaternion {
+  _lx.crossVectors(u, d);
+  return out.setFromRotationMatrix(_lm.makeBasis(_lx, u, d));
+}
+const DOWN = V(0, -1, 0);
+const UP = V(0, 1, 0);
+const HALLWARD = V(0, 0, 1);
+/**
+ * In the pot: handle leaning out over the front rim, towards the hall and the
+ * hand that put it there, bowl down in the soup. The bowl's opening is tipped
+ * towards the hall too, which is invisible in a pot of soup and is what makes
+ * the turn from his carry a roll round his side rather than a somersault
+ * forward through the TOMATO SOUP sign above the pots.
+ */
+const IN_POT_D = V(0, -0.862, -0.507).normalize();
+const IN_POT_U = V(0, -0.507, 0.862).normalize();
+
+/** On the hook: hanging from its crook, bowl down and open to the hall. */
+export function hookPose(out: LadlePose): LadlePose {
+  out.pos.copy(ladleShelf().hook);
+  ladleFrame(DOWN, HALLWARD, out.quat);
+  return out;
+}
+
+/**
+ * Standing in the pot centred at `pot`, whose floor is `floor` m up: bowl in the
+ * soup `deep` m above that floor, a little in front of the middle, handle up and
+ * out over the front rim. A counter pot by default; Biggy's smaller one says so.
+ */
+export function potPose(pot: { x: number; z: number }, out: LadlePose, floor: number = SOUP_POT.counter, deep = 0.28): LadlePose {
+  ladleFrame(IN_POT_D, IN_POT_U, out.quat);
+  out.pos.set(pot.x, floor + deep, pot.z + 0.05).sub(_lv.copy(LADLE_BOWL).applyQuaternion(out.quat));
+  return out;
+}
+
+/**
+ * How he carries it: upright at his right hand, tipped a little out to that side,
+ * bowl open towards his back — and so towards the camera behind him. Upright
+ * because it keeps the ladle inside his own footprint: held out in front, as it
+ * was, it went into whatever he walked up to, the soup counter first of all.
+ * `fwd` is the way his body is drawn facing, level.
+ */
+export function carryFrame(fwd: THREE.Vector3, out: THREE.Quaternion): THREE.Quaternion {
+  _cu.set(-fwd.x, 0, -fwd.z).normalize();
+  _cd.crossVectors(UP, _cu).multiplyScalar(0.3).addScaledVector(UP, 0.95).normalize();
+  return ladleFrame(_cd, _cu, out);
+}
+const _cu = new THREE.Vector3();
+const _cd = new THREE.Vector3();
+
+/** Where his palm is when it holds the ladle in `pose`: `LADLE_HOLD` along the handle from the hooked end. */
+export function sleeveOf(pose: LadlePose, out: THREE.Vector3): THREE.Vector3 {
+  return out.set(0, 0, LADLE_HOLD).applyQuaternion(pose.quat).add(pose.pos);
+}
+
+/** What `poseLadle` needs to know about this frame. */
+export interface LadleFrame {
+  /** The sim's ladle: 'idle' on the shelf, 'active' in Droid's hand, 'done' in the pot. */
+  state: string | undefined;
+  /** `reachClock('ladle-shelf')` and `reachClock('ladle-pot')`. */
+  take: number | null;
+  put: number | null;
+  /** Droid's palm (`palmWorld`), or null with no Droid to hold it. */
+  palm: THREE.Vector3 | null;
+  /** `carryFrame` for the way he is drawn facing. */
+  carry: THREE.Quaternion;
+  hook: LadlePose;
+  /** Where it stands once it is in: `potPose`, of whichever pot it is in. */
+  rest: LadlePose;
+}
+
+/**
+ * Where the ladle is this frame, into `out`; true while it is in his hand. See
+ * the block above for the journey; the two rules that make it one clock are that
+ * it leaves the hook only once his palm is on it (`take` past `GRIP_AT`) and
+ * leaves his hand only once his fingers open over the pot (`put` past `LET_GO`).
+ */
+export function poseLadle(out: LadlePose, f: LadleFrame): boolean {
+  const inHand = (q: THREE.Quaternion): boolean => {
+    out.quat.copy(q);
+    out.pos.set(0, 0, -LADLE_HOLD).applyQuaternion(q).add(f.palm as THREE.Vector3);
+    return true;
+  };
+  if (f.state === 'active' && f.palm && (f.take === null || f.take >= GRIP_AT)) {
+    return inHand(_lq.slerpQuaternions(f.hook.quat, f.carry, f.take === null ? 1 : THREE.MathUtils.smoothstep(f.take, LET_GO, REACH_END)));
+  }
+  if (f.state === 'done' && f.palm && f.put !== null && f.put < LET_GO) {
+    return inHand(_lq.slerpQuaternions(f.carry, f.rest.quat, THREE.MathUtils.smoothstep(f.put, GRIP_AT - 0.2, PULL_END)));
+  }
+  const at = f.state === 'done' ? f.rest : f.hook;
+  out.pos.copy(at.pos);
+  out.quat.copy(at.quat);
+  return false;
+}
+
+/**
+ * The breaker board's three main isolators, as `build` lays them out, metres:
+ * `pitch` apart across the middle of the board, pivoting `pivotY` up and `out`
+ * proud of the technical room's north wall, with the palm's grip `grip` along the
+ * handle. Exported so `tests/reach3d.test.ts` can walk Droid to them from
+ * everywhere the sim lets him throw one, without building the board.
+ */
+export const BREAKER_HANDLES = Object.freeze({ pitch: 0.42, pivotY: 2.07, out: 0.36, grip: 0.26 });
 
 /** The state palette, linear RGB before intensity. */
 const STATE_RGB: Record<string, [number, number, number]> = {
@@ -48,6 +232,101 @@ function stateColour(state: string | undefined, out: THREE.Color, k = 1): THREE.
 
 function glowMat(): THREE.MeshBasicMaterial {
   return new THREE.MeshBasicMaterial({ color: 0x000000, toneMapped: false });
+}
+
+/*
+ * SIGNS ARE PLANKS ON WALLS — no posts. Michele, 29 Sep, on the technical room's
+ * sign, sunk half into the curtain beside its door: *"no more signs with a post,
+ * put a plank on the wall or something.. We tried to fix this like 4 time."*
+ *
+ * The four tries each guessed where the wall was from the sign's own rect. This
+ * one asks the walls: every face of every wall the hall draws solid and full
+ * height is a candidate, the sim's sign picks the nearest face on its own side
+ * (it may stand inside the wall's thickness, which is how the technical room's
+ * sign missed its wall every time), and the plank slides along that face until
+ * all of it is on solid wall, never across a doorway, and nothing else stands
+ * in front of it. A sign out in the open, with no wall in reach, keeps its
+ * post (Michele: "you can keep the post sign in other parts of the game, but
+ * check that they read correctly").
+ */
+/** The plank's face, m. */
+const PLANK_L = 1.6;
+const PLANK_H = 0.8;
+/** Centre height of a plank, on a wall or on a post, m. */
+const PLANK_Y = 2.3;
+/**
+ * How far, px, a sign may move to reach its wall, across the face or along it:
+ * two metres. Further, and a queue's sign ends up on the far side of the aisle.
+ */
+const PLANK_REACH = 25;
+/**
+ * Wall kinds with no face to hang a plank on: short (`totem`, `crate`, `rack`,
+ * `bof-slats`), or not drawn as a wall at all in the 3D hall (see `styleOf` in
+ * ground3d.ts — the red accent panels, the desk, the facade and the rest).
+ */
+const NO_FACE = new Set(['totem', 'crate', 'rack', 'bof-slats', 'stair-foot', 'accent-panel', 'mainstair', 'duke', 'high-table', 'fridge', 'desk', 'facade', 'mullion', 'door-leaf']);
+const hasFace = (wl: Wall): boolean => !wl.low && !wl.hidden && !wl.glass && !wl.booth && !NO_FACE.has(wl.kind ?? '');
+
+/** Where a sign's plank goes: its centre on the wall face, px, and the face's outward normal. */
+export interface PlankMount {
+  x: number;
+  y: number;
+  nx: number;
+  ny: number;
+}
+
+/** The wall face a sign hangs on, or null when there is none within `PLANK_REACH`. */
+export function plankMount(p: Prop, walls: readonly Wall[]): PlankMount | null {
+  const pw = p.w ?? 10;
+  const ph = p.h ?? 10;
+  const sx = p.x + pw / 2;
+  const sy = p.y + ph / 2;
+  // The sim draws a sign thin across the way it faces; a sign set into a wall's
+  // thickness, which could face either side, says which with `face`.
+  const facesX = pw < ph;
+  const want = p.face === undefined ? null : ([Math.round(Math.cos(p.face)), Math.round(Math.sin(p.face))] as const);
+  const half = (PLANK_L / 2) * PX_PER_M + 1;
+  const solid = walls.filter(hasFace);
+  // Anything drawn, short or glass included, can stand in front of a face.
+  const blockers = walls.filter((o) => !o.hidden && !o.low && o.kind !== 'accent-panel');
+  let best: PlankMount | null = null;
+  let bestScore = Infinity;
+  for (const wl of solid) {
+    for (const [nx, ny] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      if (want && (want[0] !== nx || want[1] !== ny)) continue;
+      const alongX = ny !== 0;
+      // The plank reads the way the sim drew the sign, or it is not this face.
+      if (alongX === facesX) continue;
+      // The face's plane, and the span along it.
+      const plane = nx > 0 ? wl.x + wl.w : nx < 0 ? wl.x : ny > 0 ? wl.y + wl.h : wl.y;
+      const lo = alongX ? wl.x : wl.y;
+      const hi = alongX ? wl.x + wl.w : wl.y + wl.h;
+      if (hi - lo < 2 * half) continue;
+      // The sign must be on this face's side of the wall's centre line...
+      const mid = alongX ? wl.y + wl.h / 2 : wl.x + wl.w / 2;
+      const s = alongX ? sy : sx;
+      if (!want && (s - mid) * (nx + ny) <= 0) continue;
+      // ...no further out than the reach, and no further in than this wall's
+      // own thickness: a sign set into the wall is fine, one behind it is not.
+      const out = (s - plane) * (nx + ny);
+      if (out > PLANK_REACH || out < -(alongX ? wl.h : wl.w) - 1) continue;
+      const a0 = alongX ? sx : sy;
+      const a = Math.min(Math.max(a0, lo + half), hi - half);
+      if (Math.abs(a - a0) > PLANK_REACH) continue;
+      // Nothing drawn may stand in the 2 px in front of the plank.
+      const fx0 = alongX ? a - half : nx > 0 ? plane : plane - 2;
+      const fx1 = alongX ? a + half : nx > 0 ? plane + 2 : plane;
+      const fy0 = alongX ? (ny > 0 ? plane : plane - 2) : a - half;
+      const fy1 = alongX ? (ny > 0 ? plane + 2 : plane) : a + half;
+      if (blockers.some((o) => o !== wl && o.x < fx1 && o.x + o.w > fx0 && o.y < fy1 && o.y + o.h > fy0)) continue;
+      const score = Math.max(0, out) + Math.abs(a - a0);
+      if (score < bestScore) {
+        bestScore = score;
+        best = alongX ? { x: a, y: plane, nx, ny } : { x: plane, y: a, nx, ny };
+      }
+    }
+  }
+  return best;
 }
 
 function canvasText(lines: string[], opts: { w?: number; h?: number; bg?: string; fg?: string; font?: string } = {}): THREE.CanvasTexture {
@@ -207,18 +486,19 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
           g.add(c);
         }
         // The three main isolators: a housing each and a red handle on a pivot.
+        const H = BREAKER_HANDLES;
         const handles: THREE.Object3D[] = [];
         for (let i = 0; i < 3; i++) {
-          const hx = (i - 1) * 0.42;
-          g.add(new THREE.Mesh(box(0.2, 0.3, 0.1, V(hx, Y - 0.38, back + 0.3)), din));
+          const hx = (i - 1) * H.pitch;
+          g.add(new THREE.Mesh(box(0.2, 0.3, 0.1, V(hx, H.pivotY, back + H.out - 0.06)), din));
           const pivot = new THREE.Group();
-          pivot.position.set(hx, Y - 0.38, back + 0.36);
-          const arm = new THREE.Mesh(box(0.05, 0.26, 0.05, V(0, 0.13, 0)), new THREE.MeshStandardMaterial({ color: 0xc1261c, roughness: 0.4 }));
-          const grip = new THREE.Mesh(box(0.14, 0.05, 0.06, V(0, 0.26, 0)), new THREE.MeshStandardMaterial({ color: 0xc1261c, roughness: 0.4 }));
+          pivot.position.set(hx, H.pivotY, back + H.out);
+          const arm = new THREE.Mesh(box(0.05, H.grip, 0.05, V(0, H.grip / 2, 0)), new THREE.MeshStandardMaterial({ color: 0xc1261c, roughness: 0.4 }));
+          const grip = new THREE.Mesh(box(0.14, 0.05, 0.06, V(0, H.grip, 0)), new THREE.MeshStandardMaterial({ color: 0xc1261c, roughness: 0.4 }));
           // Where the palm closes: the middle of the grip. Droid's arm and this
           // handle turn on one clock (reach3d.ts), so the hand goes up with it.
           const gripAt = new THREE.Object3D();
-          gripAt.position.y = 0.26;
+          gripAt.position.y = H.grip;
           pivot.add(arm, grip, gripAt);
           g.add(pivot);
           handles.push(pivot);
@@ -401,53 +681,51 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         return g;
       }
       case 'sign': {
-        // A blue wayfinding panel on a post, in the venue's own signage.
+        // A blue wayfinding plank in the venue's own signage, flat on the wall
+        // the sim's sign stands at (`plankMount`), or on a post out in the open.
         const label = p.label ?? '';
         const [a, b] = label.includes('·') ? label.split('·').map((s) => s.trim()) : [label, ''];
         const tex = wayfinding(b ? [['', a], ['', b]] : [['', a]]);
-        const base = p.x > 1045 ? 0.5 : 0;
-        const along = pw >= ph;
-        // Two faces back to back, each reading the right way round: a sign in
-        // the middle of a hall is approached from either side.
-        const panel = new THREE.Group();
         const face = new THREE.MeshStandardMaterial({ map: tex, emissive: new THREE.Color(1, 1, 1), emissiveMap: tex, emissiveIntensity: 0.6 });
-        for (const yaw of [0, Math.PI]) {
-          const f = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.8), face);
-          f.rotation.y = yaw;
-          f.position.z = yaw === 0 ? 0.01 : -0.01;
-          panel.add(f);
-        }
-        // Against a wall, the sign is mounted ON the wall: flat on the face of
-        // the wall rect the sim has there, 3 cm proud, and no post. A free-standing
-        // panel sank into the wall's thickness, and a blade guessed at the face
-        // and still clipped it (Michele, 28 Sep: "sign is hidden in the wall",
-        // "still in the wall").
-        const near = (dx: number, dz: number) =>
-          groundWallsFor(2).find((wl) => !wl.low && !wl.hidden && p.x + dx * 22 < wl.x + wl.w && p.x + pw + dx * 22 > wl.x && p.y + dz * 22 < wl.y + wl.h && p.y + ph + dz * 22 > wl.y);
-        let sx = cx;
-        let sz = cz;
-        let sideways = !along;
-        let mounted = false;
-        if (!along) {
-          const wl = near(-1, 0) ?? near(1, 0);
-          if (wl) {
-            mounted = true;
-            sx = wl.x + wl.w / 2 < p.x ? m(wl.x + wl.w) + 0.03 : m(wl.x) - 0.03;
-          }
+        const rim = new THREE.Mesh(new THREE.BoxGeometry(PLANK_L + 0.06, 0.05, 0.05), glowMat());
+        const plank = new THREE.Group();
+        const mount = plankMount(p, groundWallsFor(2));
+        if (mount) {
+          // Its back 2 cm off the face, turned to look out along the face's normal
+          // — or on the reception's timber slats, which stand 10 cm proud of the
+          // wardrobe wall they hang on (`reception` in ground3d.ts).
+          const base = p.x > 1045 ? 0.5 : 0;
+          const co = GF.coatroom;
+          const rc = GF.reception;
+          const onSlats = mount.ny > 0 && Math.abs(mount.y - (co.y + co.h)) < 0.5 && mount.x > rc.x && mount.x < rc.x + rc.w;
+          const off = onSlats ? 0.11 : 0.02;
+          plank.position.set(m(mount.x) + mount.nx * off, base + PLANK_Y, m(mount.y) + mount.ny * off);
+          plank.rotation.y = Math.atan2(mount.nx, mount.ny);
+          plank.add(new THREE.Mesh(box(PLANK_L + 0.06, PLANK_H + 0.06, 0.04, V(0, 0, 0.02)), mats.darkMetal));
+          const f = new THREE.Mesh(new THREE.PlaneGeometry(PLANK_L, PLANK_H), face);
+          f.position.z = 0.041;
+          plank.add(f);
+          rim.position.set(0, PLANK_H / 2 + 0.06, 0.025);
         } else {
-          const wl = near(0, -1) ?? near(0, 1);
-          if (wl) {
-            mounted = true;
-            sz = wl.y + wl.h / 2 < p.y ? m(wl.y + wl.h) + 0.03 : m(wl.y) - 0.03;
+          // Out in the open, with no wall to take it: a panel on a post, two
+          // faces back to back so it reads the right way round from either side.
+          const base = p.x > 1045 ? 0.5 : 0;
+          const pw = p.w ?? 10;
+          const ph = p.h ?? 10;
+          plank.position.set(cx, base + PLANK_Y, cz);
+          if (pw < ph) plank.rotation.y = Math.PI / 2;
+          plank.add(new THREE.Mesh(box(PLANK_L + 0.06, PLANK_H + 0.06, 0.03, V(0, 0, 0)), mats.darkMetal));
+          for (const yaw of [0, Math.PI]) {
+            const f = new THREE.Mesh(new THREE.PlaneGeometry(PLANK_L, PLANK_H), face);
+            f.rotation.y = yaw;
+            f.position.z = yaw === 0 ? 0.016 : -0.016;
+            plank.add(f);
           }
+          plank.add(new THREE.Mesh(box(0.06, PLANK_Y - PLANK_H / 2, 0.06, V(0, -(PLANK_Y + PLANK_H / 2) / 2, 0)), mats.steel));
+          rim.position.set(0, PLANK_H / 2 + 0.06, 0);
         }
-        panel.position.set(sx, base + 2.3, sz);
-        if (sideways) panel.rotation.y = Math.PI / 2;
-        const post = new THREE.Mesh(box(0.06, 1.9, 0.06, V(sx, base + 0.95, sz)), mats.steel);
-        post.visible = !mounted;
-        const rim = new THREE.Mesh(new THREE.BoxGeometry(!sideways ? 1.66 : 0.04, 0.05, !sideways ? 0.04 : 1.66), glowMat());
-        rim.position.set(sx, base + 2.73, sz);
-        g.add(panel, post, rim);
+        plank.add(rim);
+        g.add(plank);
         g.userData = { rim, face, label };
         return g;
       }
@@ -728,6 +1006,17 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
 
   const beerMat = new THREE.MeshPhysicalMaterial({ color: 0xc88a1a, roughness: 0.15, emissive: new THREE.Color(0.35, 0.18, 0.02), emissiveIntensity: 0.6 });
   const crateMats = [0x2f5d2f, 0x7a1f1f, 0x1f3f7a, 0x6a4a1a, 0x444444, 0x5a2a6a].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7 }));
+  // A beer crate's fittings, shared by all six: its hand holes, paper label,
+  // brown glass and crown caps (see `case 'crate'` in buildCh3).
+  const crateHole = new THREE.MeshBasicMaterial({ color: 0x050505 });
+  const crateLabel = new THREE.MeshStandardMaterial({
+    map: canvasText(['BELGIAN BEER', '24 × 33 cl'], { w: 256, h: 64, bg: '#efe6cf', fg: '#3a2a12' }),
+    roughness: 0.8,
+  });
+  const bottleGlass = new THREE.MeshStandardMaterial({ color: 0x3b2107, roughness: 0.15, metalness: 0.1 });
+  const bottleCapMat = new THREE.MeshStandardMaterial({ color: 0xc9a23a, roughness: 0.35, metalness: 0.8 });
+  const bottleNeck = new THREE.CylinderGeometry(0.013, 0.02, 0.09, 8);
+  const bottleCap = new THREE.CylinderGeometry(0.016, 0.016, 0.014, 8);
 
   /*
    * THE POUR, DRAWN. Michele, 29 Sep 2026: *"the animation when beer is completed
@@ -1011,16 +1300,42 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
     const d = m(ph);
     switch (p.kind) {
       case 'soup-station': {
-        // The tomato soup: a big pot on the catering counter and a neon word over it.
-        g.position.set(m(p.x + pw / 2), 1.0, m(p.y + ph / 2));
-        const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.38, 0.5, 24), mats.steel);
-        pot.position.y = 0.25;
-        const soup = new THREE.Mesh(new THREE.CircleGeometry(0.39, 24), new THREE.MeshStandardMaterial({ color: 0xb3261e, emissive: new THREE.Color(0.5, 0.08, 0.04), emissiveIntensity: 0.8, roughness: 0.3 }));
-        soup.rotation.x = -Math.PI / 2;
-        soup.position.y = 0.46;
+        /*
+         * The tomato soup: TWO big pots on the catering counter, and a neon word
+         * over them. One is the crowd's and never moves; the other is the one
+         * Biggy takes, hidden while it is out (the station reads 'done' from the
+         * moment he lifts it, and 'idle' again when a spilled pot is refilled).
+         * There used to be one, which stayed on the counter while Biggy walked off
+         * with its twin (Michele, 29 Sep: "double pot. Maybe put 2 on the counter,
+         * so the crowd does not remain without soup").
+         */
+        g.position.set(m(p.x + pw / 2), SOUP_POT.counter, m(p.y + ph / 2));
+        const soupMat = new THREE.MeshStandardMaterial({ color: 0xb3261e, emissive: new THREE.Color(0.5, 0.08, 0.04), emissiveIntensity: 0.8, roughness: 0.3 });
+        // Open at the top, so the soup shows and the ladle stands IN it: they were
+        // closed drums, a steel lid 4 cm over the soup, and a ladle "in the pot"
+        // went through the lid. The wall is drawn both sides, so the inside shows.
+        const potMat = mats.steel.clone();
+        potMat.side = THREE.DoubleSide;
+        const P = SOUP_POT;
+        const potAt = (x: number): THREE.Group => {
+          const one = new THREE.Group();
+          const pot = new THREE.Mesh(new THREE.CylinderGeometry(P.rTop, P.rBottom, P.h, 24, 1, true), potMat);
+          pot.position.y = P.h / 2;
+          const floor = new THREE.Mesh(new THREE.CircleGeometry(P.rBottom, 24), potMat);
+          floor.rotation.x = -Math.PI / 2;
+          floor.position.y = 0.01;
+          const soup = new THREE.Mesh(new THREE.CircleGeometry(0.39, 24), soupMat);
+          soup.rotation.x = -Math.PI / 2;
+          soup.position.y = P.h - 0.04;
+          one.add(pot, floor, soup);
+          one.position.x = x;
+          return one;
+        };
+        const takeable = potAt(P.apart);
         const board = neonBoard('TOMATO SOUP', 2.2, '#ff3b2f');
         board.position.set(0, 1.9, -0.2);
-        g.add(pot, soup, board);
+        g.add(potAt(-P.apart), takeable, board);
+        g.userData = { takeable };
         return g;
       }
       case 'ladle': {
@@ -1051,12 +1366,15 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
           brace.rotation.x = -0.72;
           rack.add(brace);
         }
-        rack.add(new THREE.Mesh(box(sw, 0.05, front - back, V(cx, 2.35, (back + front) / 2)), mats.steel));
-        // The hanging rail along its front lip, and a row of stacked soup bowls on top.
+        rack.add(new THREE.Mesh(box(sw, 0.05, front - back, V(cx, SHELF_SLAB_Y, (back + front) / 2)), mats.steel));
+        // The hanging rail along its front lip, a hand's width under it on two
+        // drops (`LADLE_RAIL_Y`), and a row of stacked soup bowls on top.
         const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, sw - 0.1, 8), mats.steel);
         rail.rotation.z = Math.PI / 2;
-        rail.position.set(cx, 2.3, front - 0.03);
+        rail.position.set(cx, LADLE_RAIL_Y, front - 0.03);
         rack.add(rail);
+        const drop = SHELF_SLAB_Y - 0.025 - LADLE_RAIL_Y;
+        for (const sx of [-1, 1]) rack.add(new THREE.Mesh(box(0.012, drop, 0.012, V(cx + sx * (sw / 2 - 0.08), LADLE_RAIL_Y + drop / 2, front - 0.03)), mats.steel));
         const bowls = new THREE.Mesh(
           new THREE.LatheGeometry([[0.001, 0], [0.07, 0], [0.1, 0.05], [0.11, 0.2]].map(([r0, y]) => new THREE.Vector2(r0, y)), 16),
           new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: 0.4 }),
@@ -1067,11 +1385,13 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
           rack.add(b);
         }
         const tool = makeLadle();
-        tool.position.set(cx, 2.3, front - 0.03);
+        const onHook = hookPose(ladlePose());
+        tool.position.copy(onHook.pos);
+        tool.quaternion.copy(onHook.quat);
         const glow = new THREE.PointLight(0xffb05a, 6, 2.5, 2);
         glow.position.set(cx, 2.6, front + 0.4);
         g.add(rack, tool, glow);
-        g.userData = { tool, glow, hook: V(cx - 0.35, 2.3, front - 0.03) };
+        g.userData = { tool, glow, hook: onHook.pos.clone() };
         return g;
       }
       case 'crab': {
@@ -1267,12 +1587,53 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
       }
       case 'crate': {
         if (!p.label?.startsWith('beer')) return null;
-        // A beer crate, centre coordinates, stacked by `v`.
+        /*
+         * A beer crate, centre coordinates, stacked by `v`: an open plastic
+         * crate in a brewery colour — four walls on a floor, hand holes in the
+         * ends, a paper label — full of bottles whose necks and caps show at the
+         * rim. It was a coloured block with a brown slab on it (Michele, 29 Sep:
+         * "Beer crates still look like boxes"). The caps stop just under the
+         * rim, so a crate stacked 0.34 m up (`update`) sits on the one below.
+         */
         const i = Array.from(p.label).reduce((a, ch) => a + ch.charCodeAt(0), 0) % crateMats.length;
-        const body = new THREE.Mesh(box(w, 0.32, d, V(0, 0.16, 0)), crateMats[i]);
-        body.castShadow = true;
-        const bottles = new THREE.Mesh(box(w * 0.85, 0.1, d * 0.85, V(0, 0.36, 0)), new THREE.MeshStandardMaterial({ color: 0x3a2208, roughness: 0.2 }));
-        g.add(body, bottles);
+        const shell = crateMats[i];
+        const H = 0.32;
+        const t = 0.022;
+        const parts = [
+          box(w, t, d, V(0, t / 2, 0)),
+          box(w, H, t, V(0, H / 2, d / 2 - t / 2)),
+          box(w, H, t, V(0, H / 2, -d / 2 + t / 2)),
+          box(t, H, d - 2 * t, V(w / 2 - t / 2, H / 2, 0)),
+          box(t, H, d - 2 * t, V(-w / 2 + t / 2, H / 2, 0)),
+        ];
+        for (const geo of parts) {
+          const wall = new THREE.Mesh(geo, shell);
+          wall.castShadow = true;
+          g.add(wall);
+        }
+        for (const sx of [-1, 1]) g.add(new THREE.Mesh(box(0.004, 0.05, 0.14, V(sx * (w / 2 + 0.002), H - 0.06, 0)), crateHole));
+        const label = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.56, 0.11), crateLabel);
+        label.position.set(0, H * 0.52, d / 2 + 0.002);
+        g.add(label);
+        // Shadowed shoulders under the necks, then the necks and their caps.
+        g.add(new THREE.Mesh(box(w - 2 * t, 0.01, d - 2 * t, V(0, 0.2, 0)), bottleGlass));
+        // Six by four: the 24 the label says.
+        const nx = 6;
+        const nz = 4;
+        const necks = new THREE.InstancedMesh(bottleNeck, bottleGlass, nx * nz);
+        const caps = new THREE.InstancedMesh(bottleCap, bottleCapMat, nx * nz);
+        const pitchX = (w - 2 * t) / nx;
+        const pitchZ = (d - 2 * t) / nz;
+        const mtx = new THREE.Matrix4();
+        for (let a = 0; a < nx; a++) {
+          for (let b = 0; b < nz; b++) {
+            const bx = -w / 2 + t + pitchX * (a + 0.5);
+            const bz = -d / 2 + t + pitchZ * (b + 0.5);
+            necks.setMatrixAt(a * nz + b, mtx.makeTranslation(bx, 0.255, bz));
+            caps.setMatrixAt(a * nz + b, mtx.makeTranslation(bx, 0.306, bz));
+          }
+        }
+        g.add(necks, caps);
         return g;
       }
       default:
@@ -1393,42 +1754,63 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
     const u = o.userData;
     void dt;
     switch (p.kind) {
+      case 'soup-station':
+        (u.takeable as THREE.Object3D).visible = p.state !== 'done';
+        break;
       case 'breaker': {
         const up = p.v ?? 0;
-        // Handles already up stay up; the newest one goes up in Droid's hand,
-        // on the one clock his arm runs on (reach3d.ts), and flashes as it lands.
-        // No reach running (nobody drew one): it is simply up.
-        const clock = reachClock(`breaker${up - 1}`);
-        const throwK = clock === null ? 1 : pullAt(clock);
+        /*
+         * EVERY HANDLE ON ITS OWN CLOCK. Michele, 29 Sep 2026: *"breakers scene:
+         * i see no animation."* Only the newest handle used to be read off the
+         * reach clock, and every older one was drawn up — so a second press while
+         * the first was still in Droid's hand snapped the first up untouched. Now
+         * each handle the sim has up is where his hand has got it to: thrown if
+         * its pull is over (or none was drawn), in his hand if it is running, and
+         * still down if its turn has not come (`reachClock` reads -Infinity for a
+         * handle queued behind another, so its pull has not started).
+         */
+        let shown = 0;
+        let landed = -1;
+        let since = Infinity;
         (u.handles as THREE.Object3D[]).forEach((h, i) => {
-          const k = i < up - 1 ? 1 : i === up - 1 ? throwK : 0;
+          const clock = i < up ? reachClock(`breaker${i}`) : null;
+          const k = i >= up ? 0 : clock === null ? 1 : pullAt(clock);
           h.rotation.x = Math.PI - k * Math.PI;
+          if (i < up && (clock === null || clock >= PULL_END)) shown++;
+          if (clock !== null && clock >= PULL_END && clock - PULL_END < since) {
+            since = clock - PULL_END;
+            landed = i;
+          }
         });
         const fl = u.flash as THREE.Mesh;
-        const since = clock === null ? 1e9 : clock - PULL_END;
-        const spark = since >= 0 && since < 0.23 ? 1 - since / 0.23 : 0;
+        const spark = landed >= 0 && since < 0.23 ? 1 - since / 0.23 : 0;
         fl.visible = spark > 0;
         if (spark > 0) {
-          fl.position.set((up - 2) * 0.42, 2.07 + 0.26, (u.back as number) + 0.36);
+          const H = BREAKER_HANDLES;
+          fl.position.set((landed - 1) * H.pitch, H.pivotY + H.grip, (u.back as number) + H.out);
           (fl.material as THREE.MeshBasicMaterial).color.setRGB(1, 0.85, 0.5).multiplyScalar(30 * spark);
           fl.scale.setScalar(0.6 + spark);
         }
+        // The board as the picture has it: the supply is on when the LAST handle
+        // is home in his hand, not on the key press a queue of pulls ago.
+        const live = shown === up ? p.state : 'idle';
         // The tube: struck when the supply is on (the board's state leaves idle).
-        const on = p.state !== 'idle';
+        const on = live !== 'idle';
         if (on && (u.onAt as number) < 0) u.onAt = t;
         if (!on) u.onAt = -1;
         const ton = on ? t - (u.onAt as number) : -1;
         const tubeK = ton < 0 ? 0 : ton > 1.1 ? 1 : Math.sin(ton * 47) > 0.2 ? 0.9 : 0.05;
         (u.tubeMat as THREE.MeshBasicMaterial).color.setRGB(0.9, 0.95, 1).multiplyScalar(6 * tubeK);
         (u.tubeLight as THREE.PointLight).intensity = 35 * tubeK;
-        // The board strikes when the handle lands in his hand, not on the key
-        // press 0.75 s before it; with no reach drawn, on the sim's own clock.
-        const strike = clock === null ? (p.progress ?? 0) : since >= 0 && since < 0.45 ? 1 - since / 0.45 : 0;
-        stateColour(p.state === 'idle' && up > 0 ? 'active' : p.state, tmp, 6 + 20 * strike);
+        // The board strikes when a handle lands in his hand, not on the key press
+        // before it; with no hand drawn on the newest handle, on the sim's own clock.
+        const drawn = up > 0 && reachClock(`breaker${up - 1}`) !== null;
+        const strike = !drawn ? (p.progress ?? 0) : since < 0.45 ? 1 - since / 0.45 : 0;
+        stateColour(live === 'idle' && shown > 0 ? 'active' : live, tmp, 6 + 20 * strike);
         (u.led.material as THREE.MeshBasicMaterial).color.copy(tmp);
         const L = u.lamp as THREE.PointLight;
-        L.color.copy(stateColour(p.state === 'idle' ? 'broken' : p.state, tmp));
-        L.intensity = (p.state === 'idle' ? 2 : 8) + 40 * strike;
+        L.color.copy(stateColour(live === 'idle' ? 'broken' : live, tmp));
+        L.intensity = (live === 'idle' ? 2 : 8) + 40 * strike;
         break;
       }
       case 'rack-lights':

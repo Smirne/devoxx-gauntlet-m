@@ -85,6 +85,13 @@ export interface ChapterCtx {
   pushBiggy(dt: number): void;
   /** E next to a standing Biggy: Droid climbs on or off, control follows the tower. */
   toggleMount(): void;
+  /**
+   * Give the stick to `kind` and hold it off until the player lets go of it, so
+   * the robot that was being steered stops where it stands and the one taking
+   * over is not driven off by a push meant for somebody else. Drops the tow bar.
+   * No speed is set: it only decides who is driven — and so who brakes.
+   */
+  handOver(kind: RobotKind): void;
   /** 1/2/3 switch the driven robot (suppressed while typing at a keypad). */
   switchKey(code: string): void;
   /**
@@ -134,6 +141,17 @@ export interface ChapterRuntime {
    * and complain in the same frame. So each chapter opts in as it is taught to.
    */
   key(code: string): boolean | void;
+  /**
+   * `E` at somebody with something to say, for whichever robot is being driven.
+   *
+   * Michele, 29 Sep 2026: *"I'd prefer all robots to talk."* Asked by `game.ts`
+   * only after `key` has handed `E` back and the tow bar has had its turn, so the
+   * order is the same in every room and written down once: a job at hand first
+   * (the soup, a crate, the keynote speaker), then taking hold of Biggy, then
+   * conversation, and the party trick only with nobody near. True when somebody
+   * answered. A chapter with nobody in it to talk to leaves it out.
+   */
+  talk?(b: Bot): boolean;
   update(dt: number): void;
   props?(): Prop[];
   people?(): Person[];
