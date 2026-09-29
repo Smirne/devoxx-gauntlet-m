@@ -870,12 +870,26 @@ describe('E at a person is a conversation, whichever robot is driven', () => {
     expect((g.debug.chapter() as BreakfastState).speaker.following, 'the speaker followed Droid').toBe(false);
   });
 
+  for (const kind of kinds) {
+    it(`chapter 4: ${kind} talks to Stephan on the stage, and he answers`, () => {
+      const g = createGame({ seed: 11, chapter: 4, cards: false });
+      g.update(DT_MAX);
+      const st = person(g, (p) => p.role === 'stephan');
+      const b = stand(g, kind, st.x, st.y + st.r + bot(g, kind).r + 5);
+      expect(Math.hypot(b.x - st.x, b.y - st.y), 'not standing at Stephan').toBeLessThan(40);
+      g.key('KeyE');
+      expect(toast(g)).toMatch(new RegExp(`^${b.name}: "`));
+      expect(toast(g)).toContain('— Stephan: "The cake on its mark');
+      expect(performing(bot(g, kind)), `${kind} did a party trick at Stephan`).toBe(false);
+    });
+  }
+
   /*
    * THE HUD SAYS SO. There is no pop-up "E: talk" over a person — the key line is
    * the chapter's (`GameSnapshot.keys`, drawn by the HUD for whoever is driven),
    * and in chapter 3 it said "ask", which read as the queues.
    */
-  for (const ch of [3]) {
+  for (const ch of [3, 4]) {
     it(`chapter ${ch}: the key line says E talks, whichever robot is selected`, () => {
       const g = createGame({ seed: 11, chapter: ch, cards: false });
       for (const kind of kinds) {

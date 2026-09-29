@@ -19,7 +19,7 @@
 
 import { CY0, CY1, F1, R, VIEW_DEVOXX, VIEW_REEL, floor1Walls, roomDoor } from '../geometry';
 import { FACE_MIN_SPEED, MOUNT_REACH, PUSH_REACH, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
-import { botsCollide, circleRect, dist, inRect, mkBody, partyTrick, speed, standOff, stepBot, syncMount } from '../bot';
+import { botsCollide, circleRect, dist, inRect, mkBody, partyTrick, smallTalk, speed, standOff, stepBot, syncMount } from '../bot';
 import { LANYARD, lanyardFor } from '../lanyards';
 import {
   LETTER_D,
@@ -258,9 +258,30 @@ const MURMURS: readonly string[] = [
   'Two rows have started a conversation about the parking. You are losing them.',
 ];
 
-const KEYS = '1/2/3/Tab: switch · WASD · E: use / hold Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics \u00b7 C: credits';
+const KEYS = '1/2/3/Tab: switch · WASD · E: use / talk / hold Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics \u00b7 C: credits';
 const READY_OBJECTIVE =
   'Chapter 4 · <b>Keynote</b>. Stage ready. <b>Get all three robots on the stage</b> — Stephan and the speaker are waiting.';
+
+/*
+ * THE TWO ON THE STAGE, WHEN A ROBOT STOPS TO TALK (`talk`).
+ *
+ * Michele, 29 Sep 2026: *"I'd prefer all robots to talk."* In this room nobody
+ * answered anybody — `E` beside Stephan was a hop — so the two people the three of
+ * them end the chapter standing next to say something, to whichever robot asks,
+ * and what they say follows the room: the jobs, then the stage waiting for them.
+ *
+ * Only those two. The rows are an audience in their seats, and the front one is
+ * real people with lines of their own at breakfast (`src/sim/speakers.ts`); a new
+ * line for any of them is Michele's to approve, not a builder's to write.
+ */
+/** Talking distance from a robot's edge, sim px — chapter 3's, one arm's length of conversation. */
+const TALK_REACH = 40;
+const STEPHAN_WAITING =
+  'The cake on its mark, the sign up, all four spotlights. The doors open whether we are ready or not.';
+const STEPHAN_READY = 'It is ready. Now the three of you, up here with us — they should see who did it.';
+const SPEAKER_WAITING =
+  'The mask stays on until Stephan says my name. The slides were finished at four this morning, which is on time.';
+const SPEAKER_READY = 'Up you come. I am not walking out there alone in a cape.';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('up');
@@ -628,6 +649,31 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         ? "Voxxy: it's as big as I am. I can carry it or see where I'm going, not both — Droid can see over it"
         : `Biggy: these hands are for pots. An ${SIGN[l.slot]} has no handle — Droid has the arms for it`,
     );
+    return true;
+  }
+
+  /**
+   * Stephan or the keynote speaker, to whichever robot asks (`ChapterRuntime.talk`)
+   * — the nearer of the two, within `TALK_REACH` of the robot's edge. Asked only
+   * once `key` has handed `E` back and nobody has taken hold of Biggy, so a letter
+   * in Droid's hands still goes in its gap first.
+   */
+  function talk(b: Bot): boolean {
+    const hosts = [
+      { at: stephan, name: 'Stephan', line: ready ? STEPHAN_READY : STEPHAN_WAITING },
+      { at: speakerAt, name: 'Keynote speaker', line: ready ? SPEAKER_READY : SPEAKER_WAITING },
+    ];
+    let who: (typeof hosts)[number] | null = null;
+    let nearest = TALK_REACH + b.r;
+    for (const h of hosts) {
+      const d = dist(h.at, b);
+      if (d < nearest) {
+        nearest = d;
+        who = h;
+      }
+    }
+    if (!who) return false;
+    ctx.flash(smallTalk(b, who.name, who.line), 4500);
     return true;
   }
 
@@ -1398,6 +1444,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   return {
     key,
+    talk,
     update,
     plates: (): Plate[] => (KEYNOTE_RAKE.on ? rakePlates : []),
     props,
