@@ -1809,6 +1809,39 @@ describe('the game rig', () => {
     expect(g.snapshot().phase).toBe('intro');
   });
 
+  /**
+   * Players on the 3D build, 29 Sep: *"trouble on chap 4, after skipping
+   * chapters ... no way to move / switch robot"*. Two traps, one after the
+   * other: Skip chapter pressed during the opening skipped chapter 1 as well,
+   * so the third press — the one meant to reach chapter 4 — put the final card
+   * up; and any key took that card down, leaving the last room on screen with
+   * nothing to drive and nothing saying the run was over.
+   */
+  it('skips just the opening when Skip chapter is pressed during it', () => {
+    const g = createGame({ seed: SEED });
+    expect(g.snapshot().opening).not.toBe(null);
+    g.skipChapter();
+    expect(g.snapshot().opening, 'the opening survived the skip').toBe(null);
+    expect(g.snapshot().chapter, 'the skip took chapter 1 with the opening').toBe(1);
+    for (const n of [2, 3, 4]) {
+      g.skipChapter();
+      expect(g.snapshot().chapter).toBe(n);
+    }
+    expect(g.snapshot().phase, 'three skips from the opening ended the run').not.toBe('done');
+  });
+
+  it('keeps the final card up until R, whatever else is pressed', () => {
+    const g = createGame({ seed: SEED, chapter: 4, cards: false });
+    g.skipChapter();
+    expect(g.snapshot().phase).toBe('done');
+    for (const code of ['Space', 'KeyC', 'Digit2', 'KeyW', 'Enter', 'KeyE']) {
+      g.key(code);
+      expect(g.snapshot().card, `${code} took the final card down`).toContain('R to play again');
+    }
+    g.key('KeyR');
+    expect(g.snapshot().phase).not.toBe('done');
+  });
+
   it('starts on a card, dismisses it with any key, and restarts THE CHAPTER on R', () => {
     /*
      * `R` used to mean "start the whole game again", and this test asserted it.
