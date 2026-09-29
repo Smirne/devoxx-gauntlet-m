@@ -480,5 +480,15 @@ describe('chapter 2 · the front doors open on Stephan', () => {
     for (const k of ['colour', 'collar', 'glasses', 'mic', 'lanyard', 'seed', 'name'] as const) {
       expect(last![k], `Stephan's ${k} changed between the chapters`).toEqual(his![k]);
     }
+    // The three, though, start chapter 3 on its own marks — placed under the black —
+    // and facing its own way, not whichever way the let-in left them walking: the
+    // same opening as a chapter 3 started cold.
+    const cold = mk(3).snapshot().bots;
+    for (const b of g.snapshot().bots) {
+      const c = cold.find((o) => o.kind === b.kind)!;
+      expect(Math.hypot(b.x - c.x, b.y - c.y), `${b.kind} opened chapter 3 off its mark`).toBeLessThan(0.5);
+      expect(Math.abs(Math.atan2(Math.sin(b.face - c.face), Math.cos(b.face - c.face))), `${b.kind} opened chapter 3 facing the let-in's way`).toBeLessThan(0.01);
+    }
+    expect(g.snapshot().fade, 'chapter 3 was placed with the picture up').toBeGreaterThan(0.9);
   });
 });
