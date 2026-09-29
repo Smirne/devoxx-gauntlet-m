@@ -442,7 +442,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     for (let i = 0; i < n; i++) {
       const top = -((i + 1) / n) * STOREY_H_M;
       const x0 = ms.x + (ms.w * i) / n;
-      steps.add(mats.terrazzo, box(m(ms.w / n), 0.18, m(CY1 - CY0), V(m(x0 + ms.w / n / 2), top - 0.09 + STOREY_H_M / n, m((CY0 + CY1) / 2)), 2));
+      steps.add(mats.terrazzoMatte, box(m(ms.w / n), 0.18, m(CY1 - CY0), V(m(x0 + ms.w / n / 2), top - 0.09 + STOREY_H_M / n, m((CY0 + CY1) / 2)), 2));
     }
     steps.add(mats.darkMetal, box(m(CORRIDOR_END - ms.x), 0.1, m(CY1 - CY0), V(m((ms.x + CORRIDOR_END) / 2), -STOREY_H_M - 0.05, m((CY0 + CY1) / 2)), 2));
     for (const z of [CY0 - T / 2, CY1 + T / 2]) {

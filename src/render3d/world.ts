@@ -472,7 +472,11 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       probeBox.min.set(0, 0, m(CY0));
       probeBox.max.set(m(F1.fireX), HEIGHTS.corridor, m(CY1));
     }
-    for (const r of robots.values()) if (r.glare) pipeline.reflectors.push(r.glare);
+    // The lamps' flares are hidden from the floor mirror. Downstairs nothing
+    // samples a mirror (the stairs' stone is matte, `terrazzoMatte`), and with
+    // nothing to hide the pipeline skips the reflection pass: a whole scene
+    // render a frame, in the two heaviest chapters.
+    if (pipeline.reflectors.length) for (const r of robots.values()) if (r.glare) pipeline.reflectors.push(r.glare);
     collectLights();
     envBaked = false;
     patchedFrames = 0;
