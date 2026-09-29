@@ -1104,16 +1104,33 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
     const d = m(ph);
     switch (p.kind) {
       case 'soup-station': {
-        // The tomato soup: a big pot on the catering counter and a neon word over it.
+        /*
+         * The tomato soup: TWO big pots on the catering counter, and a neon word
+         * over them. One is the crowd's and never moves; the other is the one
+         * Biggy takes, hidden while it is out (the station reads 'done' from the
+         * moment he lifts it, and 'idle' again when a spilled pot is refilled).
+         * There used to be one, which stayed on the counter while Biggy walked off
+         * with its twin (Michele, 29 Sep: "double pot. Maybe put 2 on the counter,
+         * so the crowd does not remain without soup").
+         */
         g.position.set(m(p.x + pw / 2), 1.0, m(p.y + ph / 2));
-        const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.38, 0.5, 24), mats.steel);
-        pot.position.y = 0.25;
-        const soup = new THREE.Mesh(new THREE.CircleGeometry(0.39, 24), new THREE.MeshStandardMaterial({ color: 0xb3261e, emissive: new THREE.Color(0.5, 0.08, 0.04), emissiveIntensity: 0.8, roughness: 0.3 }));
-        soup.rotation.x = -Math.PI / 2;
-        soup.position.y = 0.46;
+        const soupMat = new THREE.MeshStandardMaterial({ color: 0xb3261e, emissive: new THREE.Color(0.5, 0.08, 0.04), emissiveIntensity: 0.8, roughness: 0.3 });
+        const potAt = (x: number): THREE.Group => {
+          const one = new THREE.Group();
+          const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.38, 0.5, 24), mats.steel);
+          pot.position.y = 0.25;
+          const soup = new THREE.Mesh(new THREE.CircleGeometry(0.39, 24), soupMat);
+          soup.rotation.x = -Math.PI / 2;
+          soup.position.y = 0.46;
+          one.add(pot, soup);
+          one.position.x = x;
+          return one;
+        };
+        const takeable = potAt(0.48);
         const board = neonBoard('TOMATO SOUP', 2.2, '#ff3b2f');
         board.position.set(0, 1.9, -0.2);
-        g.add(pot, soup, board);
+        g.add(potAt(-0.48), takeable, board);
+        g.userData = { takeable };
         return g;
       }
       case 'ladle': {
@@ -1486,6 +1503,9 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
     const u = o.userData;
     void dt;
     switch (p.kind) {
+      case 'soup-station':
+        (u.takeable as THREE.Object3D).visible = p.state !== 'done';
+        break;
       case 'breaker': {
         const up = p.v ?? 0;
         // Handles already up stay up; the newest one goes up in Droid's hand,
