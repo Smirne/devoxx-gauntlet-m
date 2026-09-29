@@ -198,6 +198,34 @@ describe('no robot is ever run faster than it can walk', () => {
   });
 
   /*
+   * Michele, 29 Sep: *"in the cutscene after chapter 1 droid walks through biggy"*.
+   * The walker moves bodies without colliding them (walls and robots alike are
+   * ignored on a route), so the ROUTES have to keep them apart: on no frame of
+   * the walk may two robots stand inside one another. Biggy's lane used to cross
+   * Droid's on the way down to the stairs, and they overlapped for 45 frames.
+   */
+  it('never walks one robot through another (chapter 1 to 2)', () => {
+    const g = runChapter1();
+    let n = 0;
+    for (let i = 0; i < 1200 && g.snapshot().chapter === 1; i++) {
+      g.update(DT_MAX);
+      const s = g.snapshot();
+      if (s.phase !== 'cut' || s.fade >= 0.99) continue;
+      n++;
+      for (let a = 0; a < s.bots.length; a++) {
+        for (let b = a + 1; b < s.bots.length; b++) {
+          const A = s.bots[a];
+          const B = s.bots[b];
+          const gap = Math.hypot(A.x - B.x, A.y - B.y) - A.r - B.r;
+          expect(gap, `${A.kind} inside ${B.kind} on cutscene frame ${n}`).toBeGreaterThanOrEqual(-0.5);
+        }
+      }
+    }
+    expect(g.snapshot().chapter, 'chapter 1 never handed over').toBe(2);
+    expect(n, 'no cutscene frames were seen').toBeGreaterThan(20);
+  });
+
+  /*
    * Michele, 29 Sep: *"the robots stop walking before the transition. They should
    * keep walking with a fade out effect."* So nobody stands still for the black:
    * each robot is still on the move while the closing fade comes down, unless the
