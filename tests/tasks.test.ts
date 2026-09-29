@@ -374,6 +374,27 @@ describe('chapter 2 — expo', () => {
     wellFormed(g, 'chapter 2 with the store open');
   });
 
+  /**
+   * THE ROLL NAMES ITS KEY, AND BOTH ROBOTS. Michele, 29 Sep 2026: *"Pressing E
+   * to roll Biggy should be suggested in the roll."* The shutter wants Voxxy's
+   * tow (`tests/tow.test.ts` drives it on `E`), so the row names her as well as
+   * Biggy, and every line that tells you to take hold of him says which key.
+   */
+  it('names Voxxy, Biggy and the E that takes hold of him, on the store row and at the shutter', () => {
+    const g = mk(2);
+    const store = row(g, 'store');
+    expect(store.who, 'the row sends a stuck player to Biggy alone').toEqual(['voxxy', 'biggy']);
+    expect(hintLines(store).join(' '), 'the store hint names no key').toMatch(/\bE\b/);
+    const shutter = g.debug.walls().find((w) => w.kind === 'roller');
+    if (!shutter?.why) throw new Error('chapter 2 has no roller door that speaks');
+    for (const kind of ['voxxy', 'biggy'] as const) {
+      expect(shutter.why(bot(g, kind)), `${kind} at the shutter names no key`).toMatch(/\bE\b/);
+    }
+    for (const kind of ['voxxy', 'droid', 'biggy'] as const) {
+      expect(shutter.why(bot(g, kind)), `${kind} still says Space, which is not the key any more`).not.toMatch(/space/i);
+    }
+  });
+
   it('takes the arrow away while the terminal has the keyboard', () => {
     const g = mk(2);
     g.debug.select('droid');
