@@ -356,6 +356,8 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     probe: PROBE,
   };
   let patchedFrames = 0;
+  /** How many props were built, last frame; see the patch in `render`. */
+  let lastPropCount = 0;
   let introT = 0;
   const INTRO = {
     from: new THREE.Vector3(m(560), 1.1, m(350) + 1.5),
@@ -735,6 +737,15 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     peopleRoot.visible = onGround || snap.chapter === 4;
     if (peopleRoot.visible) people.update(snap, time);
     // Props are built lazily from the first snapshots; patch whatever exists.
+    // A floor's new props count too: chapter 3's arrive on chapter 2's floor,
+    // with no floor change to trigger this, and their glows stayed real lights
+    // all chapter — 14 point lights in every lit shader instead of 11, and
+    // every lit material compiled again on chapter 3's first frame (29 Sep).
+    const propCount = propsRoot1.children.length + propsRoot2.children.length;
+    if (propCount !== lastPropCount) {
+      lastPropCount = propCount;
+      patchedFrames = 0;
+    }
     if (patchedFrames < 3) {
       applyBoxProjection(scene, probeBox);
       collectLights();
