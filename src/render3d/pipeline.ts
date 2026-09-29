@@ -50,6 +50,13 @@ export interface Quality {
   maxPixels: number;
   msaa: number;
   ao: boolean;
+  /**
+   * Real lights in the forward shader's loop (`lightpool.ts`): unshadowed spot
+   * slots, and point slots on top of the robots' three spills. Every lit
+   * fragment pays for each one, twice (the reflection and the frame).
+   */
+  spots: number;
+  points: number;
   volScale: number;
   volSteps: number;
   reflScale: number;
@@ -58,10 +65,10 @@ export interface Quality {
 }
 
 export const QUALITY: Readonly<Record<QualityName, Quality>> = {
-  low: { name: 'low', pixelRatio: 1, maxPixels: 1.3, msaa: 0, ao: false, volScale: 0.25, volSteps: 20, reflScale: 0.25, bloomLevels: 5, shadowSize: 512 },
-  medium: { name: 'medium', pixelRatio: 1, maxPixels: 2.1, msaa: 0, ao: true, volScale: 0.35, volSteps: 28, reflScale: 0.4, bloomLevels: 6, shadowSize: 1024 },
-  high: { name: 'high', pixelRatio: 1.5, maxPixels: 3.7, msaa: 4, ao: true, volScale: 0.5, volSteps: 40, reflScale: 0.5, bloomLevels: 7, shadowSize: 1024 },
-  ultra: { name: 'ultra', pixelRatio: 2, maxPixels: 8.3, msaa: 4, ao: true, volScale: 0.5, volSteps: 64, reflScale: 0.75, bloomLevels: 7, shadowSize: 2048 },
+  low: { name: 'low', pixelRatio: 1, maxPixels: 1.3, msaa: 0, ao: false, spots: 4, points: 8, volScale: 0.25, volSteps: 20, reflScale: 0.25, bloomLevels: 5, shadowSize: 512 },
+  medium: { name: 'medium', pixelRatio: 1, maxPixels: 2.1, msaa: 0, ao: true, spots: 6, points: 10, volScale: 0.35, volSteps: 28, reflScale: 0.4, bloomLevels: 6, shadowSize: 1024 },
+  high: { name: 'high', pixelRatio: 1.5, maxPixels: 3.7, msaa: 4, ao: true, spots: 10, points: 14, volScale: 0.5, volSteps: 40, reflScale: 0.5, bloomLevels: 7, shadowSize: 1024 },
+  ultra: { name: 'ultra', pixelRatio: 2, maxPixels: 8.3, msaa: 4, ao: true, spots: 12, points: 14, volScale: 0.5, volSteps: 64, reflScale: 0.75, bloomLevels: 7, shadowSize: 2048 },
 };
 
 /** The look. Public so the debug URL and the photo-mode keys can poke at it. */

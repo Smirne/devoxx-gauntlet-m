@@ -13,7 +13,7 @@ import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
 import { DIST, PIVOT, ThirdPersonCamera } from './camera3d';
 import { applyBoxProjection, type ProbeBox } from './boxproj';
 import { buildDetails } from './details';
-import { LightPool } from './lightpool';
+import { LightPool, SpotPool } from './lightpool';
 import { createMaterials } from './materials';
 import { Pipeline, QUALITY, type QualityName, type VolumeSpot } from './pipeline';
 import { buildGround, setFrontDoors, type Ground3D } from './ground3d';
@@ -122,8 +122,14 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
    */
   const robotFill = new THREE.PointLight(0xdde4ff, 0, 5, 2);
   scene.add(robotFill);
-  const pool = new LightPool(scene, 14, [...robots.values()].map((r) => r.spill));
-  pool.collect(scene);
+  const pool = new LightPool(scene, quality.points, [...robots.values()].map((r) => r.spill));
+  // ...and so do the spot lights that cast no shadow (`SpotPool`). Built after
+  // the opening's and the mirror's own spots exist, so it takes those too.
+  const spots = new SpotPool(scene, quality.spots);
+  const collectLights = (): void => {
+    pool.collect(scene);
+    spots.collect(scene);
+  };
   for (const L of venue.volumeSpots) L.light.shadow.mapSize.set(quality.shadowSize, quality.shadowSize);
 
   // THE OPENING: the three arrive in crates against the corridor's west wall
@@ -310,6 +316,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     scene.add(s, s.target);
     mirrorSpots.push(s);
   }
+  collectLights();
 
   // Image-based light from the venue itself: a cube capture of the corridor
   // with every robot and lamp off, so glossy shells and glass pick up the neon
@@ -335,6 +342,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
 
   function bakeEnv(): void {
     pool.update(PROBE);
+    spots.update(PROBE, null);
     const hidden: THREE.Object3D[] = [];
     for (const r of robots.values()) {
       if (r.rig.root.visible) hidden.push(r.rig.root);
@@ -438,7 +446,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       probeBox.max.set(m(F1.fireX), HEIGHTS.corridor, m(CY1));
     }
     for (const r of robots.values()) if (r.glare) pipeline.reflectors.push(r.glare);
-    pool.collect(scene);
+    collectLights();
     envBaked = false;
     patchedFrames = 0;
     cam.cut();
@@ -546,6 +554,15 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     standIn(tool, _bowl, _fore.set(0.4, -0.8, -0.35));
   }
 
+  const _viewProj = new THREE.Matrix4();
+  const _frustum = new THREE.Frustum();
+  /** In cinema E or at its door (world metres in, sim rect): where its mirror can be seen from. */
+  function inRoom(e: { x: number; y: number; w: number; h: number }, eye: THREE.Vector3): boolean {
+    const cx = eye.x * PX_PER_M;
+    const cz = eye.z * PX_PER_M;
+    return cx > e.x - 20 && cx < e.x + e.w + 20 && cz > e.y - 40 && cz < e.y + e.h + 10;
+  }
+
   /** The chapter the follow camera last framed; see the reset below. */
   let camChapter = -1;
   function render(snap: GameSnapshot, dt: number, intro = false): void {
@@ -586,7 +603,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     if (keynoteOn && !keynote) {
       keynote = buildKeynote(mats);
       scene.add(keynote.group);
-      pool.collect(scene);
+      collectLights();
       patchedFrames = 0;
       envBaked = false;
     }
@@ -604,7 +621,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     // Props are built lazily from the first snapshots; patch whatever exists.
     if (patchedFrames < 3) {
       applyBoxProjection(scene, probeBox);
-      pool.collect(scene);
+      collectLights();
       patchedFrames++;
     }
 
@@ -745,12 +762,19 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     for (; mi < mirrorSpots.length; mi++) mirrorSpots[mi].intensity = 0;
 
     pool.update(cam.camera.position);
+    // Cinema E's mirror is drawn from inside the room and shows what is behind
+    // the camera: there the spots are handed out nearest-first, not by view.
+    const eye = cam.camera.position;
+    const mir = venue.mirror;
+    const mirrored = mir !== null && world.mirrorOn && !onGround && inRoom(mir.room, eye);
+    _viewProj.multiplyMatrices(cam.camera.projectionMatrix, cam.camera.matrixWorldInverse);
+    _frustum.setFromProjectionMatrix(_viewProj);
+    spots.update(eye, mirrored ? null : _frustum, pipeline.reflection.planeY);
     updateGlare(robots, cam.camera);
 
     // The fog takes a fixed number of lights. The robots' lamps always, then
     // whatever else is nearest the camera — so the haze you can see is lit by
     // the lights you can see, wherever you are in the building.
-    const eye = cam.camera.position;
     volSpots.length = 0;
     for (const r of robots.values()) if (r.fog > 0) volSpots.push({ light: r.lamp, fog: r.fog });
     const others: VolumeSpot[] = [...(onGround && ground ? ground.volumeSpots : venue.volumeSpots)];
@@ -766,15 +790,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     // Cinema E's mirror: re-rendered only while the camera is in the room or
     // at its door, since that is the only place it can be seen from. After the
     // frame, so the shadow maps it samples exist and are this frame's.
-    const mir = venue.mirror;
-    if (mir && world.mirrorOn && !onGround) {
-      const e = mir.room;
-      const cx = eye.x * PX_PER_M;
-      const cz = eye.z * PX_PER_M;
-      if (cx > e.x - 20 && cx < e.x + e.w + 20 && cz > e.y - 40 && cz < e.y + e.h + 10) {
-        mir.render(renderer, scene, cam.camera);
-      }
-    }
+    if (mir && mirrored) mir.render(renderer, scene, cam.camera);
     timer.end();
   }
 
