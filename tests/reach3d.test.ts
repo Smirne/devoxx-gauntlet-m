@@ -225,7 +225,7 @@ describe("Droid's reach: chapter 2's breakers, one pull per handle", () => {
   it('walks from where he is to a place at the handle, and back to wherever the sim has him', () => {
     const at = (p: Spot, q: Spot): number => Math.hypot(p.x - q.x, p.z - q.z);
     const to: Spot = { x: 5, z: 45.8 };
-    const r: Reach = { id: 'breaker1', s: -1, lead: 1, back: 0.8, from: null, to, anchor: { x: 5, z: 47 } };
+    const r: Reach = { id: 'breaker1', s: -1, lead: 1, back: 0.8, from: null, to, anchor: { x: 5, z: 47 }, tempo: 1 };
     const sim: Spot = { x: 5, z: 47 };
     expect(at(walkAt(r, sim), sim)).toBeLessThan(1e-9);
     // Still coasting while he walks up: the walk starts where he is, and ends at
