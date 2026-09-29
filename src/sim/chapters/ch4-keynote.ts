@@ -18,7 +18,7 @@
  */
 
 import { CY0, CY1, F1, R, VIEW_DEVOXX, VIEW_REEL, floor1Walls, roomDoor } from '../geometry';
-import { FACE_MIN_SPEED, MOUNT_REACH, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
+import { FACE_MIN_SPEED, MOUNT_REACH, PUSH_REACH, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
 import { botsCollide, circleRect, dist, inRect, mkBody, partyTrick, speed, standOff, stepBot, syncMount } from '../bot';
 import { LANYARD, lanyardFor } from '../lanyards';
 import {
@@ -89,17 +89,40 @@ const SPOT_REACH = 22;
  */
 const CRATE_FORCE = 1500 * SPEED_SCALE;
 /**
- * How far past touching Biggy can be and still be pushing, sim px.
+ * How far past touching Biggy can be and still be pushing, sim px: a hand on it.
  *
  * Michele, 28 Sep 2026: *"Pushing should be a bit easier, i didn't manage."* The
  * window was 6 px on top of the two radii and the lean had to be within 72° of
  * dead on (`PUSH_LEAN_MIN`), so a shove that was a hair off-centre slid round the
- * board instead of moving it and there was no feedback saying why. This is 16,
- * the lean is `CAKE_LEAN`, and the force is two thirds up — a cake on a wheeled
- * board is not a crate of beer, and the chapter's first job should not be the
- * hardest thing in the game.
+ * board instead of moving it and there was no feedback saying why. The answer was
+ * a window of 16, the lean `CAKE_LEAN`, and the force two thirds up.
+ *
+ * Michele, 29 Sep 2026, with a screenshot of Biggy shoving it down the corridor
+ * with daylight between them: *"cake is pushed from too far"*. Sixteen pixels is
+ * 1.28 m, and it was not an easier push, it was a force field. A board shoved at
+ * `CRATE_FORCE` runs away from a robot who accelerates at 1.5 s⁻¹, and it ran
+ * as far as the push reached — so the cake led him by up to the whole window.
+ * Measured: a 3 s shove down the corridor from dead behind, starting in contact,
+ * was pushing it from 2.5 px of daylight at the median and 9.8 px (0.78 m) at the
+ * worst, and the test pilot's drive into Room 8 (`driveChapter4`, which aimed
+ * short) pushed it from 12.5–16 px the whole way in without ever touching it.
+ *
+ * So it is `PUSH_REACH`, the rule chapter 1 learned for the robots (Michele,
+ * 23 Sep: *"droid is pushing Biggy just by coming close, with no contacts"*),
+ * and the same number. What made the 28 Sep push hard was the lean and the knife
+ * edge between two discs, and those stay fixed — `CAKE_LEAN`, `CAKE_STEER` and
+ * `CAKE_SCRUB` — which `tests/cake-push.test.ts` holds to the same shoves as
+ * before, off-centre and corner included.
  */
-const CAKE_TOUCH = 16;
+const CAKE_TOUCH = PUSH_REACH;
+/**
+ * Where the cake's arrow stops pointing at the cake and moves on to its mark, sim
+ * px past touching: "he is on it", for the hint. Not the push's reach — an arrow
+ * that flipped back to the cake every time the board rolled a hand's breadth
+ * ahead of him would be worse than no arrow — so it keeps the 32 it had when it
+ * was written as twice the old window.
+ */
+const CAKE_NEAR = 32;
 /** ...and how square to it he has to be pushing. Wider than a robot-on-robot shove. */
 const CAKE_LEAN = 0.12;
 /**
@@ -1326,7 +1349,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
          * corridor, and chapter 4 is on a clock. So it points at the cake until
          * he is on it, and at the mark from the moment he is.
          */
-        at: dist(ctx.byKind('biggy'), crate) < ctx.byKind('biggy').r + crate.r + CAKE_TOUCH * 2
+        at: dist(ctx.byKind('biggy'), crate) < ctx.byKind('biggy').r + crate.r + CAKE_NEAR
           ? { x: crateMark.x + crateMark.w / 2, y: crateMark.y + crateMark.h / 2 }
           : { x: crate.x, y: crate.y },
         hint: 'Biggy: it only moves for me, and only if I lean into it rather than brush past it. Up an aisle — it does not go over the seats any more than I do',

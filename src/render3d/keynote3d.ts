@@ -20,7 +20,6 @@
  */
 
 import * as THREE from 'three';
-import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 import { CY0, CY1, F1, R } from '../sim/geometry';
 import { KEYNOTE_RAKE, LAB_DEPTH, LAB_X0, LAB_X1, RAKE_DEPTH, STAGE_RISE } from '../sim/chapters/ch4-keynote';
@@ -407,59 +406,6 @@ export function buildKeynote(mats: Materials): Keynote3D {
     return o;
   }
 
-  function cake(p: Prop): THREE.Object3D {
-    // A wheeled board with a three-tier Devoxx cake, and three candles in the
-    // robots' colours.
-    const o = new THREE.Group();
-    const R0 = m((p.w ?? 34) / 2);
-    const board = new THREE.Mesh(new RoundedBoxGeometry(R0 * 1.7, 0.12, R0 * 1.7, 2, 0.04), mats.darkMetal);
-    board.position.y = 0.22;
-    o.add(board);
-    for (const [sx, sz] of [
-      [-1, -1],
-      [1, -1],
-      [-1, 1],
-      [1, 1],
-    ]) {
-      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.06, 12), mats.rubber);
-      w.rotation.z = Math.PI / 2;
-      w.position.set(sx * R0 * 0.7, 0.08, sz * R0 * 0.7);
-      const fork = new THREE.Mesh(box(0.04, 0.14, 0.1, V(sx * R0 * 0.7, 0.16, sz * R0 * 0.7)), mats.steel);
-      o.add(w, fork);
-    }
-    const icing = new THREE.MeshStandardMaterial({ color: 0xf6efe4, roughness: 0.45 });
-    const drip = new THREE.MeshStandardMaterial({ color: 0xff7a1a, roughness: 0.35 });
-    let y = 0.28;
-    for (const [r, h] of [
-      [R0 * 0.72, 0.42],
-      [R0 * 0.52, 0.36],
-      [R0 * 0.32, 0.32],
-    ]) {
-      const tier = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 32), icing);
-      tier.position.y = y + h / 2;
-      tier.castShadow = true;
-      o.add(tier);
-      const band = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.01, r + 0.01, h * 0.22, 32, 1, true), drip);
-      band.position.y = y + h * 0.85;
-      o.add(band);
-      y += h;
-    }
-    const flames: THREE.Mesh[] = [];
-    ['#ff7a1a', '#39c96b', '#3a86ff'].forEach((c, i) => {
-      const a = (i / 3) * Math.PI * 2;
-      const cr = R0 * 0.16;
-      const candle = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.22, 8), new THREE.MeshStandardMaterial({ color: c, roughness: 0.5 }));
-      candle.position.set(Math.cos(a) * cr, y + 0.11, Math.sin(a) * cr);
-      const flame = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.7, 0.25).multiplyScalar(8), toneMapped: false }));
-      flame.scale.y = 1.8;
-      flame.position.set(candle.position.x, y + 0.27, candle.position.z);
-      o.add(candle, flame);
-      flames.push(flame);
-    });
-    o.userData.flames = flames;
-    return o;
-  }
-
   function spotlight(p: Prop): THREE.Object3D {
     // A floor PAR can on a yoke, aimed at the stage, with its number on the base.
     const o = new THREE.Group();
@@ -600,7 +546,7 @@ export function buildKeynote(mats: Materials): Keynote3D {
       case 'cake': {
         // The camera treats it as an obstacle: it filled the frame in front of
         // Voxxy at the lab tables (critic round, 29 Sep).
-        const c = cake(p);
+        const c = cakeTrolley(p, mats);
         colliders.push(c);
         return c;
       }
@@ -681,6 +627,81 @@ export function buildKeynote(mats: Materials): Keynote3D {
       }
     },
   };
+}
+
+/** How thick the trolley's rubber bumper is, m. Its OUTSIDE is the cake's radius. */
+const CAKE_BUMPER_M = 0.04;
+
+/**
+ * Chapter 4's cake on its trolley: a round wheeled board with a three-tier Devoxx
+ * cake on it and three candles in the robots' colours. `userData.flames` are the
+ * flames, for `update` to flicker.
+ *
+ * THE BOARD IS THE SIM'S DISC, EDGE FOR EDGE. Michele, 29 Sep 2026, with a
+ * screenshot of Biggy shoving it down the corridor with daylight between them:
+ * *"cake is pushed from too far"*. Most of that daylight was the sim — the push
+ * reached 1.28 m past touching (`CAKE_TOUCH`, ch4-keynote.ts) — but not all of
+ * it. The board was a square 1.7 radii across: its sides stood 2.55 px (20 cm)
+ * inside the circle the sim collides with, a gap even on a dead-square push, and
+ * its corners 3.2 px outside it, where a robot touching the circle was drawn
+ * standing in the board. Round, at the prop's own radius, is the one shape where
+ * touching the cake and touching the trolley are the same thing from every side
+ * — and a round dolly on four castors is what a cake this size is wheeled in on.
+ *
+ * The rubber bumper is the edge, with its outside exactly on that radius; the
+ * castors are tucked in under the deck, where the old square's corners had them
+ * poking out past it. `tests/cake-push.test.ts` measures the built mesh.
+ */
+export function cakeTrolley(p: Prop, mats: Pick<Materials, 'darkMetal' | 'rubber' | 'steel'>): THREE.Group {
+  const o = new THREE.Group();
+  const R0 = m((p.w ?? 34) / 2);
+  const deck = new THREE.Mesh(new THREE.CylinderGeometry(R0 - CAKE_BUMPER_M, R0 - CAKE_BUMPER_M, 0.12, 48), mats.darkMetal);
+  deck.position.y = 0.22;
+  const bumper = new THREE.Mesh(new THREE.TorusGeometry(R0 - CAKE_BUMPER_M, CAKE_BUMPER_M, 8, 64), mats.rubber);
+  bumper.rotation.x = Math.PI / 2;
+  bumper.position.y = 0.22;
+  o.add(deck, bumper);
+  for (let i = 0; i < 4; i++) {
+    const a = Math.PI / 4 + (i * Math.PI) / 2;
+    const wx = Math.cos(a) * R0 * 0.7;
+    const wz = Math.sin(a) * R0 * 0.7;
+    const w = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.06, 12), mats.rubber);
+    w.rotation.z = Math.PI / 2;
+    w.position.set(wx, 0.08, wz);
+    const fork = new THREE.Mesh(box(0.04, 0.14, 0.1, V(wx, 0.16, wz)), mats.steel);
+    o.add(w, fork);
+  }
+  const icing = new THREE.MeshStandardMaterial({ color: 0xf6efe4, roughness: 0.45 });
+  const drip = new THREE.MeshStandardMaterial({ color: 0xff7a1a, roughness: 0.35 });
+  let y = 0.28;
+  for (const [r, h] of [
+    [R0 * 0.72, 0.42],
+    [R0 * 0.52, 0.36],
+    [R0 * 0.32, 0.32],
+  ]) {
+    const tier = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 32), icing);
+    tier.position.y = y + h / 2;
+    tier.castShadow = true;
+    o.add(tier);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.01, r + 0.01, h * 0.22, 32, 1, true), drip);
+    band.position.y = y + h * 0.85;
+    o.add(band);
+    y += h;
+  }
+  const flames: THREE.Mesh[] = [];
+  ['#ff7a1a', '#39c96b', '#3a86ff'].forEach((c, i) => {
+    const a = (i / 3) * Math.PI * 2;
+    const cr = R0 * 0.16;
+    const candle = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.22, 8), new THREE.MeshStandardMaterial({ color: c, roughness: 0.5 }));
+    candle.position.set(Math.cos(a) * cr, y + 0.11, Math.sin(a) * cr);
+    const flame = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.7, 0.25).multiplyScalar(8), toneMapped: false }));
+    flame.scale.y = 1.8;
+    flame.position.set(candle.position.x, y + 0.27, candle.position.z);
+    o.add(candle, flame);
+    flames.push(flame);
+  });
+  o.userData.flames = flames;
+  return o;
 }
 
 /** A word on a transparent (or coloured) canvas, for tape, plates and cloth. */
