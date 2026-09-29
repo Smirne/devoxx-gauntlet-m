@@ -121,6 +121,12 @@ export const PROP_DRAW: Readonly<Record<string, PropDraw>> = Object.freeze({
    * nothing left in the robot band claims nothing.
    */
   gate: { h: GATE_H, tl: true },
+  /*
+   * Stephan's release post beside the belt line (chapter 3's stair beat): a 25 cm
+   * pillar with a button and a lamp on top, standing on the `stairbutton` wall of
+   * the same rect.
+   */
+  'stair-button': { h: 1.15, tl: true },
   lane: { h: 0.04, tl: true, flat: true },
   duck: { h: 0.3 },
   'duck-target': { h: 0.03, flat: true },

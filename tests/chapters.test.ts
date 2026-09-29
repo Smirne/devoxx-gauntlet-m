@@ -1088,17 +1088,17 @@ describe('chapter 3 — breakfast', () => {
     expect(breakfast().beer.oom).toBe(0);
     steps(g, 2);
 
-    // All three delivered: Stephan walks the barrier back, and the chapter STAYS on
-    // the hall while he does it — `GATE_SWING_TIME + GATE_CUT_DELAY` in
-    // `ch3-breakfast.ts`, the same hold chapter 1 keeps for its fire door. Starting
-    // the cutscene on this frame would take the screen to black in `CUT_FADE`
-    // (0.35 s) and the animation would exist with nobody able to see it.
+    // All three delivered: the player loses the stick and the stair beat takes the
+    // camera — `STAIR_BEAT` in `ch3-breakfast.ts`. Stephan's wall is gone at once,
+    // but the belts wait for his button: the wave runs inside the beat, in shot,
+    // and the chapter only hands over after the climb.
     expect(breakfast().gateOpen).toBe(true);
     expect(gateWall()).toBeUndefined();
-    expect(g.snapshot().phase).toBe('play');
-    expect(until(g, () => g.snapshot().phase === 'cut', 200)).toBe(true);
-    // ...and by the time it hands over, the barrier has finished swinging.
-    expect(breakfast().gateSwing).toBe(1);
+    expect(g.snapshot().phase).toBe('cut');
+    expect(g.snapshot().shot?.name).toBe('stair-gate');
+    expect(breakfast().gateSwing, 'the belts went before Stephan pressed anything').toBe(0);
+    expect(until(g, () => breakfast().gateSwing === 1, 300)).toBe(true);
+    expect(g.snapshot().chapter, 'the chapter handed over before its belts were home').toBe(3);
     expect(until(g, () => g.snapshot().chapter === 4, 600)).toBe(true);
     expect(g.snapshot().floor).toBe('up');
   });

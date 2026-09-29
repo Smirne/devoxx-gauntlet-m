@@ -534,7 +534,7 @@ function updateAudio(snap: GameSnapshot, dt: number): void {
   lastPilot = pilot;
 
   // Stephan opening the stairs for the day: a hook off an eye, and nothing hits.
-  // The chapter holds the hall for the whole swing before the exit cutscene, so
+  // The belts wind in inside the stair beat, in shot with the black lifted, so
   // this is heard over the thing it describes rather than under a fade.
   const opening = snap.props.find((p) => p.kind === 'gate')?.progress ?? 0;
   if (opening > 0 && lastGateSwing <= 0) audio.play('gate');

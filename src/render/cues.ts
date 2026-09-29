@@ -82,6 +82,8 @@ export function createCues(audio: Audio): (snap: GameSnapshot, dt: number) => vo
   let lastCabinetSwing = 0;
   /** Last frame's swing on chapter 3's registration gate, so the hook plays once. */
   let lastGateSwing = 0;
+  /** Stephan's button at the stair foot: '' outside chapter 3, then idle/done. */
+  let lastButton = '';
   /** Handles up on chapter 2's breaker panel, so each one gets its own cue. */
   let lastBreakerV = 0;
   /** The router cabinet's pilot lamp: '' outside chapter 2, then idle/active/done. */
@@ -244,9 +246,17 @@ export function createCues(audio: Audio): (snap: GameSnapshot, dt: number) => vo
     lastPilot = pilot;
 
     // Stephan opening the stairs for the day: a hook off an eye, and nothing hits.
-    // The chapter holds the hall for the whole swing before the exit cutscene, so
+    // The belts wind in inside the stair beat, in shot with the black lifted, so
     // this is heard over the thing it describes rather than under a fade.
     const opening = snap.props.find((p) => p.kind === 'gate')?.progress ?? 0;
+    // ...and before it, his button on the post: two keypad beeps, the second a
+    // fifth up, the sound a release panel makes when it takes a command.
+    const button = snap.props.find((p) => p.kind === 'stair-button')?.state ?? '';
+    if (button === 'done' && lastButton === 'idle') {
+      audio.play('keypad', { semitones: 0 });
+      audio.play('keypad', { semitones: 7, delay: 0.11 });
+    }
+    lastButton = button;
     if (opening > 0 && lastGateSwing <= 0) audio.play('gate');
     lastGateSwing = opening;
 

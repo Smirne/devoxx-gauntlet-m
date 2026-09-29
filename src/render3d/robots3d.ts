@@ -457,6 +457,10 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
   // Driven off mid-reach: the hand lets go of the idea.
   const dr = snap.bots.find((o) => o.kind === 'droid');
   if (dr && activeReach() && Math.hypot(dr.vx, dr.vy) / PX_PER_M > 0.3) cancelReach();
+  // ...and so does a cutscene: it puts the cast on its own marks, and a drawn
+  // walk-up to a handle would carry on from there, metres off where the sim has
+  // him (chapter 3's stair beat opened with Droid standing on the flight).
+  if (snap.phase === 'cut' && activeReach()) cancelReach();
   // Chapter 3's ladle: up to the shelf's rail for it, down to the pot with it.
   const lad = snap.props.find((q) => q.kind === 'ladle');
   if (lad && lastLadle !== undefined && lad.state !== lastLadle && (lad.state === 'active' || lad.state === 'done') && lastLadle !== 'done') {
