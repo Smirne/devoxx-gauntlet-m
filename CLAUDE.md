@@ -46,7 +46,10 @@
 - Devoxx flavour: Stephan (first name, caricature), keynote speaker "TBA" until announced, tomato
   soup, queues, "OutOfMemoryError" beer joke. Nothing that needs permission.
 - Tooling: pnpm, Vite, TypeScript strict, vitest, three. No physics engine, no external 3D/audio
-  asset files. Small PRs, one step each.
+  asset files. Small PRs, one step each. **One exception, Michele's, 29 Sep 2026:** the opening
+  plays "Heroic Motif" by Ronny Shamano (AI-generated, given to the game, credited on the credits
+  screen) — `src/render/opening-track.mp3`, inlined into the bundle. It is the only audio file; the
+  next one is another human decision.
 - After every session append to `docs/genai-notes.md` (what the agent did, what a human decided,
   what was rejected and why) — it is the 5-point GenAI section of the submission.
 - Tests are the acceptance criteria: port `reference/tests/*.js` choreographies rather than

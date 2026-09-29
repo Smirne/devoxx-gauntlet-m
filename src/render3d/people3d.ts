@@ -1708,10 +1708,45 @@ export function createPeople(parent: THREE.Object3D): People3D {
   const models: PersonModel[] = [];
   const necks = new Map<PersonModel, THREE.Mesh>();
   const portraits = new Map<PersonModel, Portrait>();
+  /*
+   * EVERY PORTRAIT IS BUILT ONCE, AND THEN HANDED FROM FIGURE TO FIGURE.
+   *
+   * The figures are pooled by their index in `snap.people`, and the sim lists
+   * the crowd first. So each visitor who walks in moves Stephan and every named
+   * crew member one figure along — and the portrait used to be torn off the old
+   * figure and sculpted again on the new one: a 72 x 54 head, ~3,900 rays
+   * against it to seat the eyes, glasses and hair, fresh canvas textures, none
+   * of it disposed. Chapter 3 lets a visitor in every 0.55 s for half a minute,
+   * which was a freeze of up to two seconds every 0.55 s on the software
+   * renderer, and a stutter on real machines — the chapter 3 slowdown players
+   * reported (29 Sep) as "slow, then fine". A portrait is the person's, not the
+   * figure's: kept here by name and moved, never rebuilt.
+   */
+  const built = new Map<string, Portrait[]>();
+  const wearer = new Map<Portrait, PersonModel>();
+  /** Portraits claimed this frame: two people of one name get one each. */
+  const claimed = new Set<Portrait>();
+  /** Take a portrait off the figure wearing it, and give the figure its own clothes back. */
+  function undress(pm: PersonModel, pt: Portrait): void {
+    const yaw = pm.root.children[0] as THREE.Group;
+    const cloth = pt.group.userData.cloth as THREE.Material;
+    (yaw.getObjectByName('torso') as THREE.Mesh).material = cloth;
+    for (const n of ['arm-l', 'arm-r']) (yaw.getObjectByName(n) as THREE.Mesh).material = cloth;
+    // Sleeves and shorts hang on that figure's own limb pivots; the next
+    // figure to wear the portrait gets its own.
+    for (const sl of (pt.group.userData.sleeves as THREE.Object3D[] | undefined) ?? []) sl.removeFromParent();
+    for (const sh of (pt.group.userData.shorts as THREE.Object3D[] | undefined) ?? []) sh.removeFromParent();
+    delete pt.group.userData.sleeves;
+    delete pt.group.userData.shorts;
+    yaw.remove(pt.group);
+    portraits.delete(pm);
+    wearer.delete(pt);
+  }
   return {
     update(snap: Pick<GameSnapshot, 'people' | 'plates'>, t: number): void {
       const people = snap.people ?? [];
       const plates = snap.plates ?? [];
+      claimed.clear();
       for (let i = 0; i < people.length; i++) {
         let pm = models[i];
         if (!pm) {
@@ -1743,23 +1778,30 @@ export function createPeople(parent: THREE.Object3D): People3D {
         placeFeet(yaw, H, null);
         if (pt && pt.group.userData.who !== who) {
           // A pooled figure that was one of them and is now somebody else.
-          torso.material = pt.group.userData.cloth as THREE.Material;
-          for (const n of ['arm-l', 'arm-r']) (yaw.getObjectByName(n) as THREE.Mesh).material = pt.group.userData.cloth as THREE.Material;
-          for (const sl of (pt.group.userData.sleeves as THREE.Object3D[] | undefined) ?? []) sl.removeFromParent();
-          for (const sh of (pt.group.userData.shorts as THREE.Object3D[] | undefined) ?? []) sh.removeFromParent();
-          yaw.remove(pt.group);
-          portraits.delete(pm);
+          undress(pm, pt);
           pt = undefined;
         }
         if (!who) continue;
         if (!pt) {
-          pt = who === 'Stephan' ? buildStephan(torso, H) : BY_NAME[who](torso, H);
-          pt.group.userData.who = who;
-          pt.head.name = `portrait-${who}`;
+          const mine = built.get(who) ?? [];
+          built.set(who, mine);
+          pt = mine.find((q) => !claimed.has(q));
+          if (pt) {
+            // Built already, and worn by another figure (or none): take it over.
+            const was = wearer.get(pt);
+            if (was) undress(was, pt);
+          } else {
+            pt = who === 'Stephan' ? buildStephan(torso, H) : BY_NAME[who](torso, H);
+            pt.group.userData.who = who;
+            pt.head.name = `portrait-${who}`;
+            mine.push(pt);
+          }
           pt.group.userData.cloth = torso.material;
           yaw.add(pt.group);
           portraits.set(pm, pt);
+          wearer.set(pt, pm);
         }
+        claimed.add(pt);
         for (const n of [...pt.hides, 'eye-l', 'eye-r']) (yaw.getObjectByName(n) as THREE.Object3D).visible = false;
         pt.head.scale.setScalar(R);
         pt.head.position.copy(head.position);

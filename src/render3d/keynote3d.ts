@@ -189,7 +189,7 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
   // trunking down the middle, laptops and bottles, people on both sides — and
   // behind them a white wall of film quotes in raised letters.
   {
-    const velvet = new THREE.MeshStandardMaterial({ color: 0x0c0c10, roughness: 1, sheen: 0 } as THREE.MeshStandardMaterialParameters);
+    const velvet = new THREE.MeshStandardMaterial({ color: 0x0c0c10, roughness: 1 });
     const trunk = new THREE.MeshStandardMaterial({ color: 0xeeeeea, roughness: 0.4 });
     const lap = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.3, metalness: 0.8 });
     const bottle = new THREE.MeshStandardMaterial({ color: 0xcfe6f0, roughness: 0.1, transparent: true, opacity: 0.7 });

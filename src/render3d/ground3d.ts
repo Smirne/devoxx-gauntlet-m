@@ -302,7 +302,7 @@ function shafts(group: THREE.Group, mats: Materials, concrete: THREE.Material): 
           bottomY: y1,
           dir: '-x',
           steps: Math.max(3, Math.round((r.w / (lower.w + upper.w)) * 26)),
-          tread: mats.terrazzo,
+          tread: mats.terrazzoMatte,
           nosing: mats.steel,
           runs: 2,
           rail: mats.steel,
@@ -312,7 +312,7 @@ function shafts(group: THREE.Group, mats: Materials, concrete: THREE.Material): 
     group.add(flight);
     out.push(flight);
     // The half-landing, and the floor above over the top of the upper ramp.
-    dress.add(mats.terrazzo, box(m(mid.w), 0.2, m(mid.h), V(m(mid.x + mid.w / 2), midY - 0.1, m(mid.y + mid.h / 2))));
+    dress.add(mats.terrazzoMatte, box(m(mid.w), 0.2, m(mid.h), V(m(mid.x + mid.w / 2), midY - 0.1, m(mid.y + mid.h / 2))));
     const over = upper.w * 0.55;
     dress.add(concrete, box(m(over), 0.4, m(upper.h), V(m(upper.x + upper.w - over / 2), rise + 2.1, m(upper.y + upper.h / 2))));
     for (const [d, out1] of stairDoors(rect).map((d, i) => [d, i === 0 ? -1 : 1] as const)) {
@@ -860,7 +860,7 @@ export function buildGround(mats: Materials): Ground3D {
     if (p.kind === 'lobby') continue;
     if (p.hi === undefined || p.axis === undefined) continue;
     const rise = Math.abs(p.hi - p.lo);
-    stepsFor(floors, p, p.kind === 'main-flight' ? mats.steel : mats.terrazzo, Math.max(3, Math.round(rise / 0.17)));
+    stepsFor(floors, p, p.kind === 'main-flight' ? mats.steel : mats.terrazzoMatte, Math.max(3, Math.round(rise / 0.17)));
   }
   const floorMeshes = floors.build(group, false);
   colliders.push(...floorMeshes);

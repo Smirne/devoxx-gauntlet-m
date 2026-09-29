@@ -5,8 +5,33 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>After Dark 3D</title>
   <link rel="icon" href="data:," />
+  <!--
+    The loading screen is here, in the page, so it is on screen before the game's
+    script has run a line: building the venue and compiling its shaders keeps the
+    main thread busy for seconds, and a blank page for seconds reads as a crash
+    (29 Sep). The sweep across the bar is a transform animation, which the
+    browser's compositor runs even while the main thread is busy; the fill is the
+    shader compile's real progress, set by `src/main3d.ts`.
+  -->
+  <style>
+    html, body { margin: 0; background: #000; }
+    #ad3d-loading { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 0 16px; background: radial-gradient(ellipse at 50% 38%, #1a0f05 0%, #000 70%); color: #d8cfc9; font: 600 12px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif; letter-spacing: .28em; text-transform: uppercase; transition: opacity .4s ease; }
+    #ad3d-loading .ld-name { color: #f3e600; font-size: clamp(28px, 6vw, 64px); letter-spacing: .3em; line-height: 1; text-shadow: 0 0 28px rgba(243, 230, 0, .45), 3px 0 0 rgba(255, 90, 78, .6), -3px 0 0 rgba(94, 246, 255, .45); }
+    #ad3d-loading .ld-bar { position: relative; width: min(420px, 70vw); height: 3px; background: rgba(245, 182, 56, .16); border-radius: 2px; overflow: hidden; }
+    #ad3d-loading .ld-fill { position: absolute; inset: 0; background: #f5b638; box-shadow: 0 0 10px rgba(245, 182, 56, .8); transform-origin: 0 50%; transform: scaleX(var(--p, 0)); transition: transform .3s ease; }
+    #ad3d-loading .ld-run { position: absolute; top: 0; bottom: 0; left: 0; width: 30%; background: linear-gradient(90deg, transparent, rgba(255, 244, 220, .95), transparent); animation: ld-run 1.2s ease-in-out infinite; }
+    #ad3d-loading.ld-known .ld-run { opacity: .45; }
+    #ad3d-loading.ld-done { opacity: 0; pointer-events: none; }
+    @keyframes ld-run { from { transform: translateX(-110%); } to { transform: translateX(340%); } }
+    @media (prefers-reduced-motion: reduce) { #ad3d-loading .ld-run { animation-duration: 3s; } }
+  </style>
 </head>
 <body>
+  <div id="ad3d-loading" role="status" aria-live="polite">
+    <div class="ld-name">AFTER DARK</div>
+    <div class="ld-bar"><div class="ld-fill"></div><div class="ld-run"></div></div>
+    <div class="ld-what">Building Kinepolis</div>
+  </div>
   <div id="app"></div>
   <script type="module" src="/src/main3d.ts"></script>
 </body>

@@ -42,9 +42,11 @@ import {
   type DebugGame,
   type Prop,
   type Rect,
+  type Task,
   type Vec2,
   type Wall,
 } from '../src/sim';
+import { hintLines } from '../src/render/hud';
 
 const SEED = 20260930;
 const mk = (): DebugGame => createGame({ seed: SEED, chapter: 3, cards: false });
@@ -604,5 +606,56 @@ describe('the bar pays off when the last crate lands', () => {
     const kegs = g.snapshot().props.filter((p) => p.kind === 'keg');
     expect(kegs.length).toBeGreaterThanOrEqual(2);
     for (const k of kegs) expect(inRectPt({ x: k.x, y: k.y }, bar)).toBe(true);
+  });
+});
+
+/* ======================================================= what H says about it */
+
+/**
+ * THE CRATES FIRST, THEN THE BAR. Michele, 29 Sep 2026: *"The beer hint points to
+ * the bar, but you need to take the crates first. Hint the crates if biggy is not
+ * porting any, the bar if he's already loaded."* The ring is drawn wherever the
+ * row's `at` is on the frame it is drawn, so the row is read after every change
+ * of load, and the line with it.
+ */
+describe('the beer hint follows the load', () => {
+  const beerRow = (g: DebugGame): Task => {
+    const t = g.snapshot().tasks.find((o) => o.id === 'beer');
+    if (!t) throw new Error('chapter 3 publishes no beer row');
+    return t;
+  };
+  /** The loose crate nearest Biggy: the one his `E` would take. */
+  const nearestCrate = (g: DebugGame): Vec2 => {
+    const bg = bot(g, 'biggy');
+    const far = (c: Vec2): number => Math.hypot(c.x - bg.x, c.y - bg.y);
+    const c = breakfastOf(g).beer.loose.reduce((a, o) => (far(o) < far(a) ? o : a));
+    return { x: c.x, y: c.y };
+  };
+
+  it('rings a crate while he carries none, the bar once he carries any, and a crate again after', () => {
+    const g = mk();
+    expect(beerRow(g).at, 'empty-handed, and the arrow is not on a crate').toEqual(nearestCrate(g));
+    expect(hintLines(beerRow(g))[0]).toMatch(/crates first/);
+
+    liftCrate(g);
+    expect(breakfastOf(g).beer.carried).toBe(1);
+    const bar = centre(barMark(g));
+    expect(beerRow(g).at?.x, 'loaded, and the arrow is still on the floor').toBeCloseTo(bar.x, 6);
+    expect(beerRow(g).at?.y).toBeCloseTo(bar.y, 6);
+    expect(hintLines(beerRow(g))[0]).toContain('1 up');
+
+    putCratesDown(g);
+    expect(breakfastOf(g).beer.stacked).toBe(1);
+    expect(beerRow(g).at, 'unloaded, and the arrow stayed on the bar').toEqual(nearestCrate(g));
+    expect(hintLines(beerRow(g))[0]).toMatch(/crates first/);
+  });
+
+  it('points at the crate nearest him, wherever it ended up, not at the pallet', () => {
+    const g = mk();
+    const bg = bot(g, 'biggy');
+    // One crate off the pallet and at his elbow: a shove, or a heap error's scatter.
+    const stray = { x: bg.x + bg.r + 12, y: bg.y };
+    expect(g.debug.placeProp('crate', stray.x, stray.y)).toBe(true);
+    expect(beerRow(g).at).toEqual(stray);
   });
 });
