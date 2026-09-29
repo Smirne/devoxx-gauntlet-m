@@ -17,7 +17,7 @@
  * the room over `ARRIVAL`. Miss it and the keynote starts with a half-built stage.
  */
 
-import { CY0, CY1, F1, R, VIEW_DEVOXX, VIEW_REEL, floor1Walls, roomDoor } from '../geometry';
+import { CY0, CY1, F1, R, VIEW_DEVOXX, VIEW_REEL, floor1Walls, roomDoor, rooms } from '../geometry';
 import { FACE_MIN_SPEED, MOUNT_REACH, PUSH_REACH, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
 import { botsCollide, circleRect, dist, inRect, mkBody, partyTrick, speed, standOff, stepBot, syncMount } from '../bot';
 import { LANYARD, lanyardFor } from '../lanyards';
@@ -180,6 +180,12 @@ export const BREAKFAST: Rect = {
   y: F1.nicheTop.y + F1.nicheTop.h,
   w: BREAKFAST_DEPTH,
   h: F1.nicheBot.y - (F1.nicheTop.y + F1.nicheTop.h),
+};
+/** Why a shut room stops each of them, in their own voices. `n` is the room. */
+const ROOM_SHUT_WHY: Record<RobotKind, (n: string) => string> = {
+  voxxy: (n) => `Voxxy: Zaal ${n} is locked. Everybody is going to Room 8 this morning, and so am I`,
+  droid: (n) => `Droid: the doors to Zaal ${n} are shut, and nothing in there needs us. The keynote is in Room 8`,
+  biggy: (n) => `Biggy: Zaal ${n}. Locked. I leaned on it to be sure. Room 8`,
 };
 /** Why the breakfast stops each of them, in their own voices. */
 const BREAKFAST_WHY: Record<RobotKind, string> = {
@@ -348,6 +354,24 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const d8 = roomDoor(r8);
   const cx = r8.x + r8.w / 2;
   const top = r8.y;
+
+  /*
+   * EVERY ROOM BUT ROOM 8 IS SHUT — in the sim as well as in the picture.
+   *
+   * Michele, 29 Sep 2026 (#18): *"room door is closed (but walkable)"*. It was the
+   * rooms right beside the robots' start. The 3D build draws every Devoxx room's
+   * doorway with its leaves shut and takes only Room 8's off for this chapter,
+   * but the sim left every doorway open: rooms 7 and 6 open off the corridor
+   * exactly where the three of them come up the main staircase, and a robot
+   * walked straight through their closed leaves into a room nobody has built.
+   * A door drawn shut is a wall now, the way chapter 1's are (`kind: 'shut'`),
+   * and it says so in each voice; the keynote is the only room open this morning.
+   */
+  for (const r of rooms) {
+    if (r.closed || r === r8) continue;
+    const d = roomDoor(r);
+    ctx.walls.push({ x: d.x, y: d.y, w: d.w, h: d.h, kind: 'shut', flavour: true, why: (b) => ROOM_SHUT_WHY[b.kind](String(r.n)) });
+  }
 
   /*
    * At the back of the stage, beside the sign's last letter — where presenters

@@ -43,6 +43,7 @@ import {
   ROLLER_DOOR_SPEED,
   nicheMouth,
   roomDoor,
+  rooms,
   createGame,
   type DebugGame,
   type ExpoState,
@@ -1831,6 +1832,41 @@ describe('chapter 4 — keynote', () => {
     for (const [k, t] of said) expect(t.startsWith(`${bot(mk(4), k).name}:`), `${k} is not the one speaking: ${t}`).toBe(true);
     // Not one script with the name swapped.
     expect(new Set([...said.values()].map((t) => t.replace(/^(Voxxy|Droid|Biggy):\s*/, ''))).size).toBe(3);
+  });
+
+  /*
+   * ...AND ONLY ROOM 8'S DOOR OPENS.
+   *
+   * Michele, 29 Sep 2026 (#18): *"room door is closed (but walkable)"*. The 3D build
+   * draws every Devoxx room's doorway with its leaves shut and opens only Room 8's
+   * for this chapter; the sim left them all open, and rooms 7 and 6 open right
+   * where the robots come up the stairs. Walked straight at each doorway, Voxxy —
+   * the smallest of them — gets through Room 8's and no other, and every other
+   * one tells her which room it is and why not.
+   */
+  it('lets a robot into Room 8 and into no other room, and says why at every shut door', () => {
+    for (const r of rooms) {
+      if (r.closed) continue;
+      const g = mk(4);
+      const d = roomDoor(r);
+      g.debug.select('voxxy');
+      g.debug.place('voxxy', d.cx, r.side < 0 ? CY0 + 25 : CY1 - 25);
+      g.update(DT_MAX);
+      g.setStick(0, r.side < 0 ? -1 : 1);
+      let heard = '';
+      for (let i = 0; i < 90; i++) {
+        g.update(DT_MAX);
+        heard = g.snapshot().toast?.t ?? heard;
+      }
+      const v = bot(g, 'voxxy');
+      const inside = r.side < 0 ? v.y < CY0 - 6 : v.y > CY1 + 6;
+      if (r.n === 8) {
+        expect(inside, 'Voxxy could not get into Room 8').toBe(true);
+      } else {
+        expect(inside, `Voxxy walked into Zaal ${r.n} through its shut doors`).toBe(false);
+        expect(heard, `nothing said why Zaal ${r.n} is shut`).toContain(`Zaal ${r.n}`);
+      }
+    }
   });
 
   it('keeps the whole chapter on the Room 8 side of it: the start, the pilot’s run and the crowd', () => {
