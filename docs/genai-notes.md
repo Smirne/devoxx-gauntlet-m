@@ -6428,3 +6428,94 @@ reaches `main`, it never needs one.
 **Checked before `main` moved.** Typecheck, the 857 tests and the production build on the purged
 tree, and the 3D page's four chapters without console errors; against the pre-purge tree, the only
 differences are the screenshots' history, the eleven hashes and this commit.
+
+## 29 Sep 2026 (night) — the 3D build's frame rate: measured, then fixed where it was spent
+
+**What a human asked.** Michele, the day before the deadline: *"I have feedback from other users. The
+game (3D version) is very slow, and in some case unusable. I had a similar experience but temporary.
+How can we improve performance?"* The whole integration was on `main`, so this worked from a clean
+tree on one branch (`claude/compassionate-darwin-vwcjmq`).
+
+**How it was measured.** No real GPU in the container, so no frame rates were believed. The production
+bundle ran in headless Chromium on SwiftShader, and three things that do not depend on the GPU were
+counted instead: draw calls and triangles per pass (every `renderer.render` and shadow-map render
+wrapped and timed with `gl.finish()` between them), the lights three puts in every lit shader, and a
+CPU profile of the real `requestAnimationFrame` loop. Then a frame-by-frame timeline of each chapter:
+wall time, time inside raycasts, and programs compiled per frame.
+
+**What it found, in order of what a player feels.**
+
+1. *Chapter 3 froze every half second while the hall filled.* The timeline showed a frame of
+   **3,896 raycasts and 1.5–2 s** every 17 frames — the visitor spawn rate. The sim lists the crowd
+   first, so each arrival moves Stephan and the named crew one pooled figure along, and the renderer
+   tore their portrait down and sculpted it again on the new figure: a 72 × 54 head, thousands of rays
+   to seat its features, new canvas textures, none of it disposed. This is Michele's "temporary": slow
+   until the last visitor is in, then fine. On a slower CPU it is unplayable for the first half minute.
+2. *Every lit pixel looped over 41–55 lights*, twice (the floor reflection and the frame): 22–36 spot
+   lights, most of them tens of metres away or switched off, 17 points, 1–2 hemispheres, 3–5 shadow
+   maps. This is the GPU cost at every resolution.
+3. *The first frame of each floor compiled every shader twice or three times*: the environment capture
+   ran with no environment (every material compiled without an env map, then again with one) and hid
+   the robots' shadow-casting lamps (every material compiled again for a different shadowed-light
+   count). And the opening's ~100 programs compiled on the first frame after "press any key", while
+   the score started.
+4. *The adaptive resolution could not rescue a slow machine.* It needed 45 slow frames per step —
+   half a minute to reach its floor at 10 fps — skipped every frame over 200 ms as a "hitch", so a
+   machine at 4 fps never adapted at all, and could only climb back on a display faster than 60 Hz.
+
+What it did **not** find: the camera's collision rays, which the first CPU profile pointed at, cost
+under 1 ms a frame. The raycasts in that profile were the portraits.
+
+**What the agent changed** — eight commits, each one step:
+
+- *Portraits are kept by name and moved between figures* (`people3d.ts`), never rebuilt. Chapter 3,
+  900 frames: raycast time **95 s → 1.6 s**. `tests/portraits.test.ts` holds it (the same head object
+  survives the crowd growing and shrinking in front of it; the first two cases fail on the old code).
+- *A frame governor* (`governor.ts`, `gputimer.ts`) replaces the stepper: half-second windows, slow
+  only when 70% of a window's frames are, a ladder of cheaper settings that needs no reload (render
+  scale, AO, the fog's steps and resolution, the floor mirror), and climbing back only when a GPU timer
+  query or a >90 Hz display shows room, with a hold that doubles after a bounce. Each tier also got a
+  pixel budget, so a big high-DPI window no longer renders 8 MP through every pass, and `autoQuality`
+  now reads AMD laptop APUs and NVIDIA MX parts as integrated. `tests/governor.test.ts` drives it with
+  synthetic frame times: it steps down within about a second at 10 fps, adapts a machine at 4 fps and
+  one at a frame a second, ignores compile stalls and tab switches, and does not bounce.
+- *Spot lights go through a pool* like the point lights already did (`SpotPool`): the unshadowed
+  spots move to a layer no camera renders and a fixed number of real spots is handed each frame to the
+  ones whose range reaches the view or its mirror in the floor. Slots per tier: high 10 spots and 14
+  points, medium 8 and 12, low 4 and 8 — so a lit pixel pays for 32–34 lights at high, 28–30 at
+  medium and 20–22 at low, against 41–55 before.
+- *Every shader compiles once*: a black capture of the same size stands in until the first real one,
+  the lamps go dark for the capture instead of hidden, and the gate's wait runs the first frame's
+  set-up and `renderer.compileAsync`. Programs at a chapter's start: 97/80/105 for chapters 1/3/4,
+  from 111/90/131. The first pre-warm compiled the wrong half: three keys a program on where it
+  draws, and `compileAsync` with no render target bound picks the canvas's sRGB variant, while the
+  frame draws into linear HDR targets. Bound to one, the frame after "press any key" went from
+  **23.4 s to 0.7 s** on SwiftShader, and the programs still compiled after the key from 90 to 15.
+- *Shadow maps take turns*: the driven lamp and any lamp that moved update every frame, the rest every
+  other frame — three shadow renders a frame upstairs instead of five.
+- *The grime noise is computed once*: the roughness read a second 4-octave fbm identical to the
+  colour's, on most of the pixels on screen.
+
+**How "no visible change" was checked.** Ten fixed camera poses across chapters 1, 3 and 4, rendered by
+the original `main` build and by this one, and diffed. At `high`: mean pixel difference 0.14–0.52 of
+255, mean luminance equal to within 0.1, and no more than 0.05% of pixels more than 24 levels apart.
+At `medium` the first slot counts (6 spots, 10 points) lost a warm floor glow in the hall and some
+light on the corridor's poster wall (up to 3.5% of pixels moved); raised to 8 and 12, the same two
+poses differ by a mean 0.18–0.20 with the same luminance. `medium` is what integrated laptop GPUs
+get, which may well be most of the judges: it should look like the game.
+
+**Found and deliberately not fixed.** The robot fill light added in the 29 Sep critic round ("a soft
+fill on the robot being driven") is a point light, so the point-light pool collects it and freezes its
+position where it was when collected — the world origin. It has never followed the robot. Making it
+work is a change to the look, not to the frame rate, so it is left for Michele to decide.
+
+**For Michele to judge on real hardware.** Everything here was measured on a software renderer, so the
+thing that matters — frames per second on the machines that were slow — is his to see. The GPU timer
+is only available in Chromium browsers; in Safari and Firefox the governor can still step down but
+climbs back only on a fast display.
+
+**Verification.** `pnpm typecheck` and `pnpm build` clean; `pnpm test` green, 873 tests in 67 files
+(`tests/portraits.test.ts` and `tests/governor.test.ts` new); and `tools/playthrough/run.mjs` drove all
+four chapters and the opening video through the real 3D page to the final card, 213 s of sim clock,
+with no console errors. The credits' counted lines were recounted: the commits (347, this one
+included, with the history unshallowed to count them), the code and the notes.
