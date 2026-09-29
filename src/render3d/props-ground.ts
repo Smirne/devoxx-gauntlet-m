@@ -526,7 +526,9 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
             new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, emissive: new THREE.Color(0.3, 0.29, 0.26), emissiveMap: tex }),
           );
           board.rotation.y = Math.atan2(CFP_WALL.nx, CFP_WALL.ny);
-          board.position.set(fx + CFP_WALL.nx * 0.045, base + 1.5, fz + CFP_WALL.ny * 0.045);
+          // Clear of the frame's front face (0.02 + 0.025 = 0.045 off the wall):
+          // at 0.045 the two were coplanar and the board flickered (Michele, 29 Sep).
+          board.position.set(fx + CFP_WALL.nx * 0.06, base + 1.5, fz + CFP_WALL.ny * 0.06);
           const frame = new THREE.Mesh(box(2.3, 1.3, 0.05, V(0, 0, 0)), mats.darkMetal);
           frame.rotation.y = board.rotation.y;
           frame.position.set(fx + CFP_WALL.nx * 0.02, base + 1.5, fz + CFP_WALL.ny * 0.02);

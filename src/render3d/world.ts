@@ -477,7 +477,10 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       // morning, doors open, and the hall is lit from the start.
       const lit = world.debugPower || snap.chapter >= 3 || snap.props.some((q) => q.kind === 'breaker' && q.state === 'done');
       ground.setPower(lit ? 1 : 0, time, snap.chapter >= 3);
-      dimLamps(robots, lit ? 0.25 : 1, dt);
+      // Morning (chapter 3) is daylight: the lamps are a glint, not a pool. At
+      // 0.25 their spill washed the floor round the robots out to white
+      // (Michele, 29 Sep: "chap 3 lighting seems a bit too much").
+      dimLamps(robots, snap.chapter >= 3 ? 0.06 : lit ? 0.25 : 1, dt);
       ground.setChapter(snap.chapter);
       {
         const act = robots.get((snap.bots[snap.active] ?? snap.bots[0]).kind);
@@ -602,7 +605,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       cam.update(dt, active.kind, _pos, active.face, speed, [...solid, ...props.colliders, ...(keynote && keynote.group.visible ? keynote.colliders : []), ...(crates.root.visible ? [crates.root] : [])]);
       robotFill.position.copy(cam.camera.position).lerp(rob.rig.root.position, 0.45);
       robotFill.position.y += 0.6;
-      robotFill.intensity = onGround && ground && snap.chapter >= 3 ? 1.5 : 4;
+      robotFill.intensity = onGround && ground && snap.chapter >= 3 ? 0.8 : 4;
     }
 
     // Mirror bounces from the sim.

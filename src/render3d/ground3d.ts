@@ -1375,12 +1375,15 @@ export function buildGround(mats: Materials): Ground3D {
         // Booth by booth: each bay strikes 0.25 s after the one nearer the lobby.
         const k = poweredAt === null ? 0 : THREE.MathUtils.clamp((t - poweredAt - b.at * 2.2) / 0.5, 0, 1);
         const flick = k > 0 && k < 1 ? (Math.sin(t * 60 + b.at * 40) > 0 ? 1 : 0.2) : 1;
-        b.light.intensity = 1700 * k * flick;
+        // Morning is daylight plus the fittings, so the bays drop back and the even
+        // fill below carries the hall: at 1700 each bay burnt a white pool round
+        // whoever stood under it (Michele, 29 Sep: "chap 3 lighting seems a bit too much").
+        b.light.intensity = (morning ? 750 : 1700) * k * flick;
         (b.lamp.material as THREE.MeshBasicMaterial).color.setRGB(1, 0.95, 0.85).multiplyScalar(6 * k * flick);
         b.ring.color.setRGB(1, 0.45, 0.12).multiplyScalar(5 * k * flick);
       }
       const lit = poweredAt === null ? 0 : THREE.MathUtils.clamp((t - poweredAt - 1.2) / 1.2, 0, 1);
-      fill.intensity = (morning ? 1.7 : 1.1) * lit;
+      fill.intensity = (morning ? 2.1 : 1.1) * lit;
       // Reception is on the same circuit: dark until the breaker, lit after.
       for (const g of receptionGlows) g.mat.color.copy(g.base).multiplyScalar(0.02 + 0.98 * lit);
       if (receptionLight) receptionLight.intensity = 18 * lit;
