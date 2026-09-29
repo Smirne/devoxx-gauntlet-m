@@ -21,6 +21,7 @@ import { ROBOT_HEIGHT_M, m } from '../sim/units';
 
 import type { Materials } from './materials';
 import { box } from './materials';
+import { CLICK_U, PORT_LOCAL, counterLip, plugHand, printerPort } from './plug';
 import { poseShutter, rollerShutter } from './shutter';
 import { cfpBoard, emitter, wayfinding } from './signs';
 
@@ -352,6 +353,17 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
           badges.push(bdg);
         }
         g.add(body, lid, hopper, blanks, slot, tray, led, lcd);
+        // The network socket on the east flank, where Voxxy's hand brings the plug
+        // (`PORT_LOCAL`), with its own link light that comes on with the click.
+        const socket = new THREE.Mesh(box(0.02, 0.055, 0.065, V(PORT_LOCAL.x - 0.012, PORT_LOCAL.y, PORT_LOCAL.z)), mats.darkMetal);
+        const linkLed = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 6), glowMat());
+        linkLed.position.set(PORT_LOCAL.x - 0.012, PORT_LOCAL.y + 0.05, PORT_LOCAL.z);
+        const spark = new THREE.Mesh(
+          new THREE.SphereGeometry(0.05, 10, 8),
+          new THREE.MeshBasicMaterial({ color: 0x000000, toneMapped: false, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }),
+        );
+        spark.position.set(PORT_LOCAL.x + 0.03, PORT_LOCAL.y, PORT_LOCAL.z);
+        g.add(socket, linkLed, spark);
         // A banner hung over the reception desk, so the goal of the cable run
         // reads from the hall: REGISTRATION, in Devoxx orange, double-faced.
         const rc = GF.reception;
@@ -366,7 +378,7 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
           const wire = new THREE.Mesh(box(0.01, 3, 0.01, V(bx + sx, banner.position.y + 2, bz)), trim);
           g.add(wire);
         }
-        g.userData = { led, badges, lcdCanvas, lcdTex, lcdText: '', bannerMat, onlineAt: undefined as number | undefined };
+        g.userData = { led, linkLed, spark, badges, lcdCanvas, lcdTex, lcdText: '', bannerMat, onlineAt: undefined as number | undefined };
         return g;
       }
       case 'lane':
@@ -553,7 +565,18 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         return g;
       }
       case 'cable': {
-        g.userData = { mesh: null as THREE.Mesh | null, key: '' };
+        // The plug on the end of the run: a clear RJ45 body on a blue boot, built
+        // along +z so it can be pointed down the lead's last tangent.
+        const plug = new THREE.Group();
+        const shell = new THREE.Mesh(box(0.034, 0.026, 0.05, V(0, 0, 0.025)), new THREE.MeshStandardMaterial({ color: 0xd8dde2, roughness: 0.25, metalness: 0.1 }));
+        const bootMesh = new THREE.Mesh(box(0.042, 0.034, 0.05, V(0, 0, -0.022)), new THREE.MeshStandardMaterial({ color: 0x1a4cff, roughness: 0.5 }));
+        const pins = new THREE.Mesh(box(0.026, 0.004, 0.012, V(0, 0.012, 0.042)), new THREE.MeshStandardMaterial({ color: 0xd4a53a, metalness: 0.8, roughness: 0.3 }));
+        plug.add(shell, bootMesh, pins);
+        // A size up, so it reads in her hand from the follow camera.
+        plug.scale.setScalar(1.5);
+        plug.visible = false;
+        g.add(plug);
+        g.userData = { mesh: null as THREE.Mesh | null, key: '', lead: null as THREE.Mesh | null, leadKey: '', plug };
         return g;
       }
       case 'roller': {
@@ -859,6 +882,48 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
     }
   }
 
+  const _le = new THREE.Vector3();
+  const _ll = new THREE.Vector3();
+  const _lt = new THREE.Vector3();
+
+  /**
+   * The last stretch of a plugged-in cable: from where Voxxy stood, across the
+   * floor to the counter's foot, up its face, over the lip and into the printer's
+   * socket. While her plug-in beat runs (`plugHand`) it ends in her hand, rebuilt
+   * every frame so there is never daylight between fingers and cable; after the
+   * click it ends in the socket, built once.
+   */
+  function drawLead(o: THREE.Object3D, u: Record<string, unknown>, start: THREE.Vector3): void {
+    const live = plugHand.live && plugHand.u >= 0 && plugHand.u < CLICK_U;
+    const key = live ? 'live' : `seated|${start.x.toFixed(2)}|${start.z.toFixed(2)}`;
+    if (!live && key === u.leadKey) return;
+    u.leadKey = key;
+    const end = live ? _le.copy(plugHand.at) : printerPort(GF.printer, _le);
+    counterLip(GF.printer, _ll);
+    // 0 while the plug is in front of the counter, 1 once it is over the top.
+    const behind = THREE.MathUtils.clamp((_ll.z - end.z) / 0.12 + 0.5, 0, 1);
+    const foot = V(end.x + 0.05, start.y, Math.max(end.z, _ll.z) + 0.12);
+    const sag = foot.clone().lerp(end, 0.5);
+    sag.y -= 0.06;
+    const over = V(end.x + 0.06, _ll.y + 0.035, _ll.z - 0.02);
+    const bend = sag.lerp(over, behind);
+    // The socket faces east, so the lead's last few centimetres come in along -x.
+    const into = V(end.x + 0.07, end.y, end.z);
+    const curve = new THREE.CatmullRomCurve3([start, foot, bend, into, end.clone()], false, 'centripetal');
+    if (u.lead) {
+      o.remove(u.lead as THREE.Mesh);
+      (u.lead as THREE.Mesh).geometry.dispose();
+    }
+    const lead = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.035, 6), (u.mat as THREE.Material) ?? undefined);
+    o.add(lead);
+    u.lead = lead;
+    const plug = u.plug as THREE.Object3D;
+    curve.getTangentAt(1, _lt);
+    plug.position.copy(end).addScaledVector(_lt, -0.075);
+    plug.lookAt(_lt.add(plug.position));
+    plug.visible = true;
+  }
+
   /** The cable's state this frame, for the rack's reel and ring. */
   let cableState = 'idle';
   /** Cable paid out, sim px — the reel turns by it. */
@@ -997,7 +1062,16 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         break;
       }
       case 'printer': {
-        (u.led.material as THREE.MeshBasicMaterial).color.copy(stateColour(p.state === 'idle' ? 'broken' : p.state, tmp, 8));
+        // Dark until the plug clicks home, partway through Voxxy's beat; then the
+        // lamps come up with a flash at the socket.
+        const pu = plugHand.u;
+        const state = pu >= 0 && pu < CLICK_U ? 'idle' : p.state;
+        const click = pu >= CLICK_U ? Math.max(0, 1 - (pu - CLICK_U) / 0.14) : 0;
+        (u.led.material as THREE.MeshBasicMaterial).color.copy(stateColour(state === 'idle' ? 'broken' : state, tmp, 8 + 30 * click));
+        (u.linkLed.material as THREE.MeshBasicMaterial).color.setRGB(0.25, 1, 0.45).multiplyScalar(state === 'idle' ? 0 : 6 + 30 * click);
+        (u.spark.material as THREE.MeshBasicMaterial).color.setRGB(1, 0.9, 0.6).multiplyScalar(4 * click);
+        (u.spark as THREE.Mesh).scale.setScalar(0.4 + click);
+        p = { ...p, state };
         const text = p.state === 'done' ? 'PRINTING' : p.state === 'active' ? 'LINK UP' : 'NO LINK';
         if (text !== u.lcdText) {
           u.lcdText = text;
@@ -1073,60 +1147,51 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
       case 'cable': {
         cableState = p.state ?? 'idle';
         cableLen = cableState === 'idle' || cableState === 'broken' ? 0 : (p.v ?? 0);
-        const pts = p.pts ?? [];
+        // Plugged in, the sim's last point is the socket itself. The floor run
+        // stops where Voxxy stood, and the LEAD — floor, up the counter's face,
+        // over the lip, into the socket — is drawn on its own, ending at her hand
+        // while she carries the plug up and at the socket once it clicks.
+        const plugged = p.state === 'done';
+        const pts = plugged ? (p.pts ?? []).slice(0, -1) : (p.pts ?? []);
         const last = pts[pts.length - 1];
-        // Plugging in: the last stretch of cable grows up onto the desk and into
-        // the printer's socket over 0.7 s (Michele: "animation would be welcome").
-        if (u.mesh && u.plugAt !== undefined) {
-          const k = Math.min(1, (t - (u.plugAt as number)) / 0.7);
-          const geo = (u.mesh as THREE.Mesh).geometry;
-          const total = geo.index ? geo.index.count : 0;
-          const from = u.growFrom as number;
-          geo.setDrawRange(0, Math.round(from + (total - from) * (k * k * (3 - 2 * k))));
-        }
         const key = `${pts.length}|${last ? Math.round(last.x / 2) : 0}|${last ? Math.round(last.y / 2) : 0}|${p.state}`;
-        if (key === u.key) break;
-        u.key = key;
-        if (u.mesh) {
-          o.remove(u.mesh);
-          (u.mesh as THREE.Mesh).geometry.dispose();
-          u.mesh = null;
-        }
-        if (pts.length < 2) break;
-        // Resampled every ~0.25 m so a tread edge between two recorded points
-        // still lifts the cable over it, instead of the curve cutting the step.
-        const dense: THREE.Vector3[] = [];
-        for (let i = 0; i < pts.length; i++) {
-          const a = pts[i];
-          const b2 = pts[i + 1];
-          const steps = b2 ? Math.max(1, Math.ceil(Math.hypot(b2.x - a.x, b2.y - a.y) / 3)) : 1;
-          for (let k = 0; k < steps; k++) {
-            const qx = b2 ? a.x + ((b2.x - a.x) * k) / steps : a.x;
-            const qy = b2 ? a.y + ((b2.y - a.y) * k) / steps : a.y;
-            dense.push(V(m(qx), floorTop(qx, qy) + 0.04, m(qy)));
+        if (key !== u.key) {
+          u.key = key;
+          if (u.mesh) {
+            o.remove(u.mesh);
+            (u.mesh as THREE.Mesh).geometry.dispose();
+            u.mesh = null;
+          }
+          if (pts.length >= 2) {
+            // Resampled every ~0.25 m so a tread edge between two recorded points
+            // still lifts the cable over it, instead of the curve cutting the step.
+            const dense: THREE.Vector3[] = [];
+            for (let i = 0; i < pts.length; i++) {
+              const a = pts[i];
+              const b2 = pts[i + 1];
+              const steps = b2 ? Math.max(1, Math.ceil(Math.hypot(b2.x - a.x, b2.y - a.y) / 3)) : 1;
+              for (let k = 0; k < steps; k++) {
+                const qx = b2 ? a.x + ((b2.x - a.x) * k) / steps : a.x;
+                const qy = b2 ? a.y + ((b2.y - a.y) * k) / steps : a.y;
+                dense.push(V(m(qx), floorTop(qx, qy) + 0.04, m(qy)));
+              }
+            }
+            const curve = new THREE.CatmullRomCurve3(dense, false, 'catmullrom', 0.1);
+            const geo = new THREE.TubeGeometry(curve, Math.min(1600, dense.length * 2), 0.035, 6);
+            u.mat ??= new THREE.MeshStandardMaterial({ color: 0x1a4cff, roughness: 0.5 });
+            (u.mat as THREE.MeshStandardMaterial).emissive = stateColour(p.state === 'idle' ? 'idle' : p.state, new THREE.Color(), 0.8);
+            u.mesh = new THREE.Mesh(geo, u.mat as THREE.MeshStandardMaterial);
+            o.add(u.mesh);
           }
         }
-        // Plugged in: the end climbs the desk to the printer's socket.
-        let tail = 0;
-        if (p.state === 'done' && dense.length > 3) {
-          const end = dense[dense.length - 1];
-          const lift = V(m(GF.printer.x + GF.printer.w / 2), groundRiseM(GF.printer.x) + 1.05 + 0.12, m(GF.printer.y + GF.printer.h / 2) - 0.28);
-          const mid = V((end.x + lift.x) / 2, lift.y * 0.55, (end.z + lift.z) / 2 + 0.3);
-          dense.push(mid, lift);
-          tail = 14;
+        if (plugged && last) drawLead(o, u, V(m(last.x), floorTop(last.x, last.y) + 0.04, m(last.y)));
+        else if (u.lead) {
+          o.remove(u.lead);
+          (u.lead as THREE.Mesh).geometry.dispose();
+          u.lead = null;
+          (u.plug as THREE.Object3D).visible = false;
+          u.leadKey = '';
         }
-        const curve = new THREE.CatmullRomCurve3(dense, false, 'catmullrom', 0.1);
-        const geo = new THREE.TubeGeometry(curve, Math.min(1600, dense.length * 2), 0.035, 6);
-        const mat = new THREE.MeshStandardMaterial({ color: 0x1a4cff, emissive: stateColour(p.state === 'idle' ? 'idle' : p.state, new THREE.Color(), 0.8), roughness: 0.5 });
-        u.mesh = new THREE.Mesh(geo, mat);
-        o.add(u.mesh);
-        if (p.state === 'done' && u.plugAt === undefined) {
-          u.plugAt = t;
-          const total = geo.index ? geo.index.count : 0;
-          u.growFrom = Math.max(0, total - Math.round((total * tail) / Math.max(1, dense.length)));
-          geo.setDrawRange(0, u.growFrom as number);
-        }
-        if (p.state !== 'done') u.plugAt = undefined;
         break;
       }
       case 'roller':

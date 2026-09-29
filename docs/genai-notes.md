@@ -5824,3 +5824,34 @@ while the room applauded; `tests/curtain-call.test.ts` caught it and they clap n
   - "Night 0s" on the card is also an artifact. The choreography teleports Voxxy to the keypad
     at t = 0, so it scores the night leg as instant. A real player's time is recorded where the
     fire door opens.
+
+## 29 Sep 2026 — Voxxy plugs the cable into the badge printer
+
+- **Human request (Michele).** "Could Voxxy connect it to the printer with an animation when she
+  reaches here?" Until now the cable just grew up the counter into the printer while she stood on
+  the pad.
+- **Agent work.**
+  - Sim (`ch2-expo.ts`): a `PLUG_TIME` (1.3 s) beat. The run is still made on the frame she
+    arrives, so nothing that waits on the cable changes. During the beat she is held on the spot,
+    the cable prop publishes the beat's clock as `progress`, and `ExpoState.cable.seat` goes
+    0 to 1. If anything moves her off the spot, the beat is cut short and the plug counts as
+    seated. No physics constant was touched.
+  - Auto-plug now fires only when her centre is on the lit pad (Michele's 28 Sep wording, "when
+    reaching the dropzone"). It used to fire anywhere within `PLUG_REACH`, which caught her 3 m
+    short of the counter. `E` still plugs in from `PLUG_REACH`.
+  - Renderer (`robots3d.ts`, `props-ground.ts`, new `plug.ts`): she turns to the printer, hops
+    up the counter's face, catches the lip with her left hand and carries the plug in her right
+    to a new socket on the printer's east side. Her hand is placed exactly on the socket: after
+    the arm is aimed, whatever gap is left moves her whole body. There is a push, a click, then
+    she drops back onto the pad with a bounce.
+  - The cable's last stretch is drawn as its own lead. During the beat it ends in her hand and is
+    rebuilt every frame, so there is no gap. After the click it runs up the counter's face, over
+    the lip and into the socket. A visible RJ45 plug sits on the end of it.
+  - The printer's LED and screen, and a new link light by the socket, stay dark until the click.
+  - A test in `tests/ch2-chain.test.ts` covers the pad trigger, the hold, the clock and the
+    release.
+- **Caught and rejected.**
+  - Delaying the printer prop's own `state` until the plug seats broke a ported expectation (all
+    three links in, printer 'done' on the same frame). The delay is drawn, not simulated.
+  - At the first try the plug was hidden inside her fat forearm cuff. It is now held out past her
+    fingers, a size up.

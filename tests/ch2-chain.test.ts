@@ -39,6 +39,7 @@ import {
   type RobotKind,
   type Vec2,
 } from '../src/sim';
+import { PLUG_TIME } from '../src/sim/chapters/ch2-expo';
 
 const SEED = 20260930;
 const mk = (): DebugGame => createGame({ seed: SEED, chapter: 2, cards: false });
@@ -684,4 +685,54 @@ describe('chapter 2 — the curtain before chapter 3', () => {
       expect(g.snapshot().chapter, 'the chapter never handed over').toBe(3);
     });
   }
+});
+
+/*
+ * THE PLUG GOING IN. Michele, 29 Sep 2026: *"could Voxxy connect it to the printer
+ * with an animation when she reaches here?"* Stepping onto the lit pad starts a
+ * `PLUG_TIME` beat: the run is made on that frame, she is held on the pad while
+ * the renderer draws her hopping up to the printer's port, and the cable prop
+ * carries the beat's clock so the renderer does not keep one of its own.
+ */
+describe('chapter 2 — Voxxy plugs the cable in', () => {
+  const voxxy = (g: DebugGame): Vec2 => {
+    const b = g.snapshot().bots.find((o) => o.kind === 'voxxy')!;
+    return { x: b.x, y: b.y };
+  };
+
+  it('plugs in on the pad, holds her for the beat, and publishes its clock', () => {
+    const g = mk();
+    g.debug.select('voxxy');
+    g.debug.place('voxxy', GF.rack.x + 10, GF.rack.y + 12 - 24);
+    steps(g, 2);
+    g.key('KeyE');
+    expect(expo(g).cable.carrying).toBe(true);
+    expect(expo(g).cable.seat).toBe(0);
+
+    // Onto the pad the way a player arrives: walking up to the counter, not pressing E.
+    g.debug.place('voxxy', GF.printer.x + GF.printer.w / 2, GF.printer.y + GF.printer.h + 34);
+    steps(g, 2);
+    expect(expo(g).cable.connected, 'plugged in short of the pad').toBe(false);
+    g.setStick(0, -1);
+    for (let i = 0; i < 90 && !expo(g).cable.connected; i++) g.update(DT_MAX);
+    expect(expo(g).cable.connected, 'the pad never took the cable').toBe(true);
+    const at = voxxy(g);
+
+    // Mid-beat: held, stick or no stick, and the clock is running.
+    steps(g, Math.round((PLUG_TIME * 0.5) / DT_MAX));
+    const mid = prop(g, 'cable');
+    expect(mid?.progress).toBeGreaterThan(0.3);
+    expect(mid?.progress).toBeLessThan(0.8);
+    expect(expo(g).cable.seat).toBeLessThan(1);
+    expect(Math.hypot(voxxy(g).x - at.x, voxxy(g).y - at.y)).toBeLessThan(0.01);
+
+    // Seated: the clock is gone, and she walks off under her own steam.
+    steps(g, Math.round((PLUG_TIME * 0.6) / DT_MAX) + 2);
+    expect(expo(g).cable.seat).toBe(1);
+    expect(prop(g, 'cable')?.progress).toBeUndefined();
+    g.setStick(0, 1);
+    steps(g, 20);
+    g.setStick(0, 0);
+    expect(voxxy(g).y).toBeGreaterThan(at.y + 3);
+  });
 });

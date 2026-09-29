@@ -29,6 +29,7 @@ import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
 import { createRobot, updateRobot, type RobotRig } from '../render/robots';
 import { WORLD_NOISE_GLSL } from './materials';
 import { mergeUnderAnchors } from './merge';
+import { CLICK_U, counterLip, plugHand, printerPort } from './plug';
 
 export interface Robot3D {
   kind: RobotKind;
@@ -455,7 +456,7 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
     // In the crates the sim turns them south, to the 2.5D diorama's camera; the
     // 3D intro looks at them from the east, so they stood side-on and turned on
     // the step (Michele: "I'd keep them frontal"). Facing east throughout.
-    const face = snap.opening ? STAND_FACE : b.face;
+    const face = snap.opening ? STAND_FACE : b.kind === 'voxxy' ? plugFace(snap, b.face, x, z) : b.face;
     updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: face, dt, mounted, backward: b.vx * Math.cos(face) + b.vy * Math.sin(face) < -8, laden: b.kind === 'biggy' && snap.bots.some((o) => o.mounted), carrying: (b.kind === 'biggy' && snap.props.some((q) => q.kind === 'pot')) || (b.kind === 'droid' && snap.props.some((q) => q.kind === 'letter-held')), hop: u, flair: trick ? trick.flair : flairPhase(b), shoved: worldMoved(b) ? 1 : 0, pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null });
     if (b.kind === 'droid' && snap.opening) glance(r.rig, snap.opening.t);
     const left = gesture.get(b.kind) ?? 0;
@@ -464,8 +465,116 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
     else if (left <= 0) reachAt.delete(b.kind);
     // Solved at the final riding height, not wherever the climb has got to.
     if (b.kind === 'droid' && mounted) gripBiggy(r.rig, mountLift(r.rig));
+    if (b.kind === 'voxxy') plugReach(r.rig, snap, x, lift, z);
     aimLamp(r, b, face);
   }
+}
+
+/* ------------------------------------------------- Voxxy plugs in the cable */
+
+const _port = new THREE.Vector3();
+const _lip = new THREE.Vector3();
+const _apex = new THREE.Vector3();
+const _aim = new THREE.Vector3();
+const _arm = new THREE.Vector3();
+const _q = new THREE.Quaternion();
+const _qp = new THREE.Quaternion();
+const _DOWN = new THREE.Vector3(0, -1, 0);
+/** From the wrist to the plug's tip, held out past the three fingers so it shows, m. */
+const GRIP = 0.13;
+
+/** Chapter 2's plug-in beat, 0..1 off the sim's clock (the cable prop's `progress`), or -1. */
+function plugClock(snap: GameSnapshot): number {
+  const c = snap.props.find((q) => q.kind === 'cable');
+  return c?.progress ?? -1;
+}
+
+/** While she plugs in she faces the printer's socket, then turns back to her own heading. */
+function plugFace(snap: GameSnapshot, face: number, x: number, z: number): number {
+  const u = plugClock(snap);
+  const pr = snap.props.find((q) => q.kind === 'printer');
+  if (u < 0 || u > 0.86 || !pr) return face;
+  printerPort(pr, _port);
+  return Math.atan2(_port.z - z, _port.x - x);
+}
+
+/** Swing one straight arm, from its shoulder, toward a world point, by `k`. */
+function aimArm(rig: RobotRig, L: 'L' | 'R', at: THREE.Vector3, k: number): void {
+  const sh = rig.bones[`shoulder${L}`];
+  rig.root.updateMatrixWorld(true);
+  sh.getWorldPosition(_arm);
+  _arm.subVectors(at, _arm).normalize();
+  (sh.parent as THREE.Object3D).getWorldQuaternion(_qp).invert();
+  _q.setFromUnitVectors(_DOWN, _arm).premultiply(_qp);
+  sh.quaternion.slerp(_q, k);
+  for (const bone of [rig.bones[`upperArm${L}`], rig.bones[`forearm${L}`]]) {
+    bone.rotation.x *= 1 - k;
+    bone.rotation.y *= 1 - k;
+    bone.rotation.z *= 1 - k;
+  }
+}
+
+/**
+ * THE PLUG GOING IN (Michele, 29 Sep: *"could Voxxy connect it to the printer
+ * with an animation when she reaches here?"*).
+ *
+ * The printer stands on a 1.1 m counter and she is 1.15 m of robot, a third of it
+ * head, so she does what the small fast one does: a hop up the counter's face,
+ * her left hand catching the lip, her right carrying the plug over it into the
+ * socket on the printer's flank — a push, the click (`CLICK_U`), and she drops
+ * back onto the pad with a bounce. The sim holds her on the pad for the beat;
+ * everything here is an offset from that spot, and at the end she is back on it.
+ *
+ * The right hand is put ON the socket, not near it: after the arm is aimed, what
+ * is left between fingers and socket moves the whole body, so the plug meets the
+ * port at any pad position the sim leaves her in. `plugHand` is where the plug is,
+ * for the cable to end at.
+ */
+function plugReach(rig: RobotRig, snap: GameSnapshot, x: number, lift: number, z: number): void {
+  const u = plugClock(snap);
+  const pr = snap.props.find((q) => q.kind === 'printer');
+  plugHand.u = u;
+  if (u < 0 || !pr) {
+    plugHand.live = false;
+    return;
+  }
+  const ss = THREE.MathUtils.smoothstep;
+  printerPort(pr, _port);
+  counterLip(pr, _lip);
+  // Up: a crouch, the hop to the lip, the hang; down: the drop and one bounce.
+  const up = ss(u, 0.1, 0.34) * (1 - ss(u, 0.68, 0.86));
+  const arm = ss(u, 0.04, 0.3) * (1 - ss(u, 0.66, 0.84));
+  const crouch = Math.max(0, Math.sin(Math.PI * THREE.MathUtils.clamp(u / 0.14, 0, 1)));
+  const bounce = u > 0.86 ? Math.sin((Math.PI * (u - 0.86)) / 0.14) : 0;
+  // Hanging off the lip: chest just over the counter, right shoulder beside the socket.
+  _apex.set(_port.x + 0.02, _lip.y - 0.36, _lip.z + 0.24);
+  const root = rig.root;
+  root.position.set(
+    THREE.MathUtils.lerp(x, _apex.x, up),
+    THREE.MathUtils.lerp(lift, _apex.y, up) - 0.05 * crouch + 0.08 * bounce + 0.12 * Math.sin(Math.PI * up) * (1 - up),
+    THREE.MathUtils.lerp(z, _apex.z, up),
+  );
+  // Leaning over the counter, and the head tipped down to watch the socket.
+  rig.bones.torso.rotation.x += 0.28 * up;
+  rig.bones.head.rotation.x += 0.2 * arm;
+  // Pushed home over the tenth before the click: from 7 cm out of the socket, in.
+  const push = 1 - ss(u, CLICK_U - 0.12, CLICK_U);
+  _aim.copy(_port);
+  _aim.x += 0.07 * push;
+  aimArm(rig, 'R', _aim, arm);
+  _lip.x = root.position.x - 0.2;
+  aimArm(rig, 'L', _lip, arm * up);
+  // Fingers onto the socket: what is left is taken up by the body, while she is up there.
+  root.updateMatrixWorld(true);
+  const grip = plugHand.at;
+  rig.bones.handR.getWorldPosition(grip);
+  rig.bones.forearmR.getWorldPosition(_apex);
+  grip.add(_apex.subVectors(grip, _apex).setLength(GRIP));
+  _apex.subVectors(_aim, grip).multiplyScalar(Math.min(arm, up));
+  root.position.add(_apex);
+  grip.add(_apex);
+  root.updateMatrixWorld(true);
+  plugHand.live = true;
 }
 
 function aimLamp(r: Robot3D, b: Bot, face: number): void {
