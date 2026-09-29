@@ -25,7 +25,7 @@ import { CY0, CY1, F1, R } from '../sim/geometry';
 import { KEYNOTE_RAKE, LAB_DEPTH, LAB_X0, LAB_X1, RAKE_DEPTH, STAGE_RISE } from '../sim/chapters/ch4-keynote';
 import { riseAt } from '../sim/surface';
 import { SIGN_ORANGE } from '../sim/letters';
-import type { GameSnapshot, Plate, Prop, ReelCard, RobotKind } from '../sim/types';
+import type { GameSnapshot, Plate, Prop, ReelCard } from '../sim/types';
 import { m } from '../sim/units';
 import { LEAN_RAD, LETTER_HELD_LIFT_M, LETTER_ORANGE, LETTER_WHITE, letterGeometry } from '../render/letters';
 import { yawFromSimHeading } from '../render/robots';
@@ -38,11 +38,7 @@ export interface Keynote3D {
   group: THREE.Group;
   /** For the camera's collision rays. */
   colliders: THREE.Object3D[];
-  /**
-   * `hands` is where a robot's hands are this frame (`handsOf` in robots3d.ts), for
-   * the #DEVOXX letter Droid is carrying; without it the letter rides in front of him.
-   */
-  update(snap: GameSnapshot, t: number, dt: number, hands?: (kind: RobotKind) => THREE.Vector3 | null): void;
+  update(snap: GameSnapshot, t: number, dt: number): void;
   /** Where the camera watches the opening video from: the back rows, looking at the screen. */
   reelView: { pos: THREE.Vector3; look: THREE.Vector3 };
 }
@@ -513,7 +509,7 @@ export function buildKeynote(mats: Materials): Keynote3D {
     return g;
   }
   /** One frame of the sign: every letter where the sim has it, every empty gap waiting. */
-  function poseSign(snap: GameSnapshot, t: number, hands?: (kind: RobotKind) => THREE.Vector3 | null): void {
+  function poseSign(snap: GameSnapshot, t: number): void {
     for (const o of letterObjs.values()) o.visible = false;
     for (const g of gapObjs.values()) g.o.visible = false;
     for (const p of snap.props) {
@@ -525,12 +521,20 @@ export function buildKeynote(mats: Materials): Keynote3D {
         const face = p.face ?? Math.PI / 2;
         o.rotation.set(0, yawFromSimHeading(face), 0);
         if (p.kind === 'letter-held') {
-          // In his hands, clear of the carpet, the way he is walking.
-          const at = hands?.('droid');
-          // Lifted off the floor Droid is standing on — the pit or the stage, raked.
-          const fy = hAt(p.x, p.y) + LETTER_HELD_LIFT_M;
-          if (at) o.position.set(at.x, fy, at.z);
-          else o.position.set(m(p.x) + Math.cos(face) * 0.6, fy, m(p.y) + Math.sin(face) * 0.6);
+          /*
+           * Where the SIM says it is — out in front of him and never inside a wall
+           * (`carryPoint`, src/sim/letters.ts) — and his hands are brought to it
+           * (`holdLetter`, reach3d.ts), not it to them. It used to ride wherever
+           * the canned carry put his hands, 0.89 m out whatever was there: Michele,
+           * 29 Sep, *"letters (and droid's arm) through the wall"*.
+           *
+           * Lifted clear of the carpet off the floor DROID is standing on (the pit,
+           * a tread or the stage, raked), not the floor under the letter, which can
+           * be a tread further down the rake than his feet.
+           */
+          const d = snap.bots.find((b) => b.kind === 'droid');
+          const fy = (d ? hAt(d.x, d.y) : hAt(p.x, p.y)) + LETTER_HELD_LIFT_M;
+          o.position.set(m(p.x), fy, m(p.y));
         } else {
           // In the sign it stands on the dais; in the wing, on the carpet, tipped
           // back against the wall from its bottom edge.
@@ -575,7 +579,7 @@ export function buildKeynote(mats: Materials): Keynote3D {
     group,
     colliders,
     reelView: { pos: V(cx, 2.4, z0 + 15), look: V(cx, SCREEN_BOTTOM + SCREEN_H * 0.45, z0) },
-    update(snap: GameSnapshot, t: number, _dt: number, hands?: (kind: RobotKind) => THREE.Vector3 | null): void {
+    update(snap: GameSnapshot, t: number, _dt: number): void {
       plates = snap.plates ?? [];
       if (rake && !rakeBuilt) buildRake(snap.props);
       if (!seatsBuilt && snap.props.some((p) => p.kind === 'seatrow')) {
@@ -583,7 +587,7 @@ export function buildKeynote(mats: Materials): Keynote3D {
         seatsBuilt = true;
       }
       let ready = false;
-      poseSign(snap, t, hands);
+      poseSign(snap, t);
       for (const p of snap.props) {
         if (p.kind === 'seatrow' || p.kind.startsWith('letter')) continue;
         const k = keyOf(p);

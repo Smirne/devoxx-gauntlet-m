@@ -20,6 +20,8 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
 import { LEVER_REACH_TIME } from '../src/sim/chapters/ch1-night';
+import { LETTER_CARRY_REACH, LETTER_D } from '../src/sim/letters';
+import { PX_PER_M } from '../src/sim/units';
 import { createRobot, updateRobot } from '../src/render/robots';
 import {
   GRIP_AT,
@@ -27,6 +29,8 @@ import {
   PULL_END,
   REACH_END,
   armReach,
+  holdLetter,
+  palmOf,
   palmWorld,
   pullAt,
   reachClock,
@@ -116,5 +120,57 @@ describe("Droid's reach: the palm lands on the handle", () => {
     const palm = palmWorld(rig).sub(shoulder);
     expect(palm.length()).toBeCloseTo(L * 0.999, 2);
     expect(palm.normalize().dot(dir)).toBeGreaterThan(0.999);
+  });
+});
+
+/*
+ * THE LETTER IN BOTH HANDS, WHEREVER THE SIM HAS IT.
+ *
+ * Michele, 29 Sep 2026: *"letters (and droid's arm) through the wall"*. The sim
+ * keeps a carried letter out of the walls (`carryPoint`, tests/letters.test.ts);
+ * this is the arm half. The gait's canned carry reached 1.03 m out whatever was in
+ * front of him, so pulled in against a wall the letter would have been clear and
+ * his hands still in the plaster. `holdLetter` brings both palms to the letter,
+ * and nothing of either arm may reach past its front face.
+ */
+describe("Droid's reach: a carried letter in both hands", () => {
+  /** Forward extent of everything hanging off the arm bones, along his heading (+x). */
+  const armFront = (rig: ReturnType<typeof createRobot>): number => {
+    rig.root.updateMatrixWorld(true);
+    let front = -Infinity;
+    const v = new THREE.Vector3();
+    for (const bone of ['upperArmL', 'upperArmR', 'forearmL', 'forearmR', 'handL', 'handR']) {
+      rig.bones[bone].traverse((n) => {
+        if (!(n instanceof THREE.Mesh)) return;
+        const pos = n.geometry.getAttribute('position');
+        for (let i = 0; i < pos.count; i++) front = Math.max(front, v.fromBufferAttribute(pos, i).applyMatrix4(n.matrixWorld).x);
+      });
+    }
+    return front;
+  };
+
+  it('puts both palms on the letter and keeps both arms behind its face, however far in it is', () => {
+    // From the sim's full reach down to hugged against his chest.
+    for (const reach of [LETTER_CARRY_REACH / PX_PER_M, 0.7, 0.5, 0.36, 0.25]) {
+      const rig = createRobot('droid');
+      // Heading 0: sim +x, which is world +x, so "in front" is +x.
+      for (let i = 0; i < 60; i++) updateRobot(rig, { speedMps: 0, heading: 0, dt: 1 / 30, carrying: true });
+      expect(holdLetter(rig, new THREE.Vector3(reach, 0, 0), 0, 1), `at ${reach} m the hands cannot get to it`).toBe(0);
+      for (const side of ['L', 'R'] as const) {
+        const palm = palmOf(rig, side);
+        expect(Math.abs(palm.x - reach), `${side} palm is ${(palm.x - reach).toFixed(3)} m off the letter at ${reach} m`).toBeLessThan(0.005);
+        // Either side of its middle, not crossed over it.
+        expect(Math.sign(palm.z), `${side} palm on the wrong side`).toBe(side === 'L' ? 1 : -1);
+      }
+      const face = reach + LETTER_D / PX_PER_M / 2;
+      expect(armFront(rig), `at ${reach} m an arm reaches past the letter's face`).toBeLessThan(face);
+    }
+  });
+
+  it('is the canned carry that reached through: without it the arms are out past a letter pulled in', () => {
+    const rig = createRobot('droid');
+    for (let i = 0; i < 60; i++) updateRobot(rig, { speedMps: 0, heading: 0, dt: 1 / 30, carrying: true });
+    // The number the sim's reach was measured from, and how far past it the hands went.
+    expect(armFront(rig)).toBeGreaterThan(LETTER_CARRY_REACH / PX_PER_M + LETTER_D / PX_PER_M / 2);
   });
 });

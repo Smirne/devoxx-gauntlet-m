@@ -31,7 +31,7 @@ import { createRobot, updateRobot, type RobotRig } from '../render/robots';
 import { WORLD_NOISE_GLSL } from './materials';
 import { mergeUnderAnchors } from './merge';
 import { CLICK_U, counterLip, plugHand, printerPort } from './plug';
-import { registerGrip, activeReach, armReach, palmWorld, reachBody, reachPath, stepAt, stepFor, cancelReach, gripOf, pullAt, reachWeights, solveArmR, startReach, tickReach, type Grip } from './reach3d';
+import { registerGrip, activeReach, armReach, holdLetter, palmWorld, reachBody, reachPath, stepAt, stepFor, cancelReach, gripOf, pullAt, reachWeights, solveArmR, startReach, tickReach, type Grip } from './reach3d';
 
 /** The ladle's two reach targets in chapter 3 (shelf rail, pot): see the ladle below. */
 const ladleGrips = [new THREE.Object3D(), new THREE.Object3D()];
@@ -315,6 +315,30 @@ let lastLadle: string | undefined;
 let lastPad: string | undefined;
 
 /**
+ * How far into holding a #DEVOXX letter Droid's arms are, 0..1, eased at the
+ * gait's own carry rates (`CARRY_ON` 8 / `CARRY_OFF` 5 s⁻¹ in gait.ts) so the IK
+ * comes in with the canned carry instead of snapping over it.
+ */
+let letterHold = 0;
+const _letterAt = new THREE.Vector3();
+
+/**
+ * Chapter 4: his hands on the letter he is carrying, where the sim has it.
+ *
+ * The sim publishes the carried letter at its own centre, out in front of him and
+ * never inside a wall (`carryPoint`, src/sim/letters.ts); keynote3d.ts draws it
+ * there. Here the arms are brought to it (`holdLetter`) — the gait's canned carry
+ * alone reached 0.89–1.03 m whatever was in front of him, which is the arm half of
+ * Michele's *"letters (and droid's arm) through the wall"* (29 Sep).
+ */
+function holdCarried(rig: RobotRig, snap: GameSnapshot, b: Bot, mounted: boolean, dt: number): void {
+  const held = snap.props.find((q) => q.kind === 'letter-held');
+  letterHold += ((held ? 1 : 0) - letterHold) * (1 - Math.exp(-(held ? 8 : 5) * dt));
+  if (!held || mounted || letterHold < 0.01) return;
+  holdLetter(rig, _letterAt.set(m(held.x), 0, m(held.y)), held.face ?? b.face, letterHold);
+}
+
+/**
  * The intro's party tricks, as `hopPhase`/`flairPhase` values off the opening's
  * clock: each robot does its own `E` trick the moment it is out of its crate.
  * Voxxy hops twice, Droid stretches, Biggy rolls (Michele: the start animation is
@@ -557,6 +581,7 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
     // the step (Michele: "I'd keep them frontal"). Facing east throughout.
     updateRobot(r.rig, { speedMps: speed, heading: face, dt, mounted, backward, laden: b.kind === 'biggy' && snap.bots.some((o) => o.mounted), carrying: (b.kind === 'biggy' && snap.props.some((q) => q.kind === 'pot')) || (b.kind === 'droid' && snap.props.some((q) => q.kind === 'letter-held')), hop: u, flair: trick ? trick.flair : flairPhase(b), shoved: worldMoved(b) ? 1 : 0, pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null, body: walk ? reachBody(walk.s, gripOf(walk.id)?.throw ?? 'down') : undefined });
     if (b.kind === 'droid' && snap.opening) glance(r.rig, snap.opening.t);
+    if (b.kind === 'droid') holdCarried(r.rig, snap, b, mounted, dt);
     const reach = b.kind === 'droid' ? activeReach() : null;
     const grip = reach ? gripOf(reach.id) : undefined;
     if (reach && grip && !snap.opening) driveReach(r.rig, grip, reach.s, mounted);

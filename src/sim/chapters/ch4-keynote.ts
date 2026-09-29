@@ -30,6 +30,7 @@ import {
   SIGN_MISSING,
   SIGN_STANDING,
   SLOT_REACH,
+  carryPoint,
   letterName,
   loadDroid,
   signText,
@@ -1165,13 +1166,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      *    Top-left rect, its own collider under it, `face` which way it reads.
      *  - `letter-slot`: an empty gap, taped on the stage floor, `active` while
      *    Droid is carrying the letter it is waiting for.
-     *  - `letter-held`: the one in Droid's hands, published at HIS centre with his
-     *    heading, the way the soup pot is published at Biggy's.
+     *  - `letter-held`: the one in Droid's hands, published where it IS — out in
+     *    front of him along his heading, and never inside a wall (`carryPoint`,
+     *    src/sim/letters.ts) — facing the way he does. It used to be published at
+     *    his centre and hung off his hands by the renderer, 0.89 m out, which is
+     *    how it went through walls (Michele, 29 Sep).
      */
     const dr = ctx.byKind('droid');
     for (const l of letters) {
       if (l.at === 'held') {
-        out.push({ kind: 'letter-held', x: dr.x, y: dr.y, w: LETTER_W, h: LETTER_D, v: l.slot, label: SIGN[l.slot], state: 'active', face: dr.face });
+        const at = carryPoint(dr, ctx.walls);
+        out.push({ kind: 'letter-held', x: at.x, y: at.y, w: LETTER_W, h: LETTER_D, v: l.slot, label: SIGN[l.slot], state: 'active', face: dr.face });
       } else {
         out.push({ kind: 'letter', ...l.rect, v: l.slot, label: SIGN[l.slot], state: l.at === 'sign' ? 'done' : 'idle', face: l.face });
       }
