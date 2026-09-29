@@ -884,13 +884,13 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
    */
   const sheetPeek = el('div', 'ad-peek', sheet);
   /*
-   * THE KEYS, AGAIN, AT THE BOTTOM OF THE SHEET. Michele: *"runsheet should also
-   * have the commands recap."*
+   * THE KEYS, ALL OF THEM, AT THE BOTTOM OF THE SHEET. Michele: *"runsheet should
+   * also have the commands recap."*
    *
-   * They are still along the top bar, where they are a glance. Here they are a
-   * read: the panel is already the one place a player goes when they do not know
-   * what to do, and having to close it to find out which key climbs is exactly
-   * the moment it should answer.
+   * The top bar keeps five of them, where they are a glance (`topKeys`). Here
+   * they are all of them, and a read: the panel is already the one place a
+   * player goes when they do not know what to do, and having to close it to find
+   * out which key climbs is exactly the moment it should answer.
    */
   const sheetKeys = el('div', 'ad-skeys', sheet);
   const mark = el('div', 'ad-mark ad-hide', root);
@@ -1481,7 +1481,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     }
 
     setText(chapterEl, CHAPTER_TITLES[snap.chapter] ?? CHAPTER_TITLES[0], textCache);
-    setText(keysEl, snap.keys, textCache);
+    setText(keysEl, snap.topKeys, textCache);
     setText(swagEl, snap.swag.length > 0 ? `swag ${snap.swag.length}/3` : '', textCache);
 
     /*

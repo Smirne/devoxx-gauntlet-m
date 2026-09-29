@@ -45,8 +45,14 @@ export const CREDIT_ROLES: readonly CreditRole[] = [
   {
     who: 'Claude \u2014 Opus 5, Opus 5.5 and Sonnet, in Claude Code',
     what:
-      'Wrote the simulation, the renderer, the venue, the three robots, the music and the tests. ' +
+      'Wrote the simulation, the renderer, the venue, the three robots, the chapter scores and the tests. ' +
       'Proposed a great deal that was rejected, which is the half of this that took the time.',
+  },
+  {
+    who: 'Ronny Shamano',
+    what:
+      'Music help — “Heroic Motif”, the track the three robots step out of their crates to, ' +
+      'made with AI and given to the game.',
   },
   {
     who: 'WellD',
@@ -87,19 +93,19 @@ export const CREDIT_STATS: readonly CreditStat[] = [
       'then a third-person camera reading the same sim, unchanged',
   },
   {
-    n: '361',
+    n: '367',
     label: 'commits in 7 days',
-    note: '359 of them written by the model, 2 by the human — 22 to 29 September 2026',
+    note: '363 of them written by the model, 4 by the human — 22 to 29 September 2026',
   },
   {
-    n: '85,914',
+    n: '86,099',
     label: 'lines of TypeScript',
-    note: '63,290 of game in 92 files, 22,624 of tests in 69 — 875 tests, no physics engine',
+    note: '63,428 of game in 92 files, 22,671 of tests in 69 — 882 tests, no physics engine',
   },
   {
-    n: '121,606',
+    n: '122,604',
     label: 'words of notes',
-    note: '84,559 of them the GenAI record: what was built, what a human decided, what was rejected',
+    note: '85,557 of them the GenAI record: what was built, what a human decided, what was rejected',
   },
   {
     n: '44',

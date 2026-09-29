@@ -185,6 +185,14 @@ const TITLE_OBJECTIVE =
 const TITLE_KEYS = 'Press any key to start · 1/2/3/Tab: switch · WASD: move · E: use · Skip chapter: top right';
 /** While the crates are opening: the one thing the player can do is not watch. */
 const OPENING_KEYS = 'Any key to skip';
+/**
+ * In play, the top bar carries these five and nothing else. Michele, 29 Sep 2026:
+ * *"Trim the on screen hints, they are already in the info panel. Keep: 1/2/3
+ * switch, E to act, I for Info, R to restart"*, then *"H for hint"*, then *"put
+ * restart last"*. Every other key a chapter binds is still in its own `keys`
+ * line, which the run sheet prints in full.
+ */
+const PLAY_KEYS = '1/2/3: switch · E: act · I: info · H: hint · R: restart';
 
 /* ---------------------------------------------------------------------- rng */
 
@@ -1377,6 +1385,9 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       plates: platesNow(r),
       objective,
       keys: keysLine,
+      // The title's line and the opening's are short already, and nobody is
+      // driving yet; once a chapter has the keyboard its line is the run sheet's.
+      topKeys: phase === 'intro' ? keysLine : PLAY_KEYS,
       progress: r?.progress?.() ?? '',
       // The opening's own clock, or null once the player is driving. The
       // renderer reads it to pose the crates; it decides nothing.

@@ -21,6 +21,8 @@ import type { Audio } from '../src/render/audio';
 import { createCues, scoreFor } from '../src/render/cues';
 import {
   MUSIC_GAIN,
+  OPENING_TRACK_AT,
+  OPENING_TRACK_BAND,
   PITCHED,
   SCORES,
   STEPS,
@@ -424,5 +426,17 @@ describe('the player', () => {
     expect(made.noises).toBe(0);
     expect(made.oscs.length).toBeGreaterThan(8);
     m.dispose();
+  });
+});
+
+/**
+ * The opening's track ("Heroic Motif", Ronny Shamano) is a file, so the only thing
+ * a test can hold is where it lands: its full band on Voxxy's crate, whatever the
+ * crate beats become.
+ */
+describe("the opening's track", () => {
+  it("brings its band in on Voxxy's crate, after the cue", () => {
+    expect(OPENING_TRACK_AT).toBeGreaterThan(0);
+    expect(OPENING_TRACK_AT + OPENING_TRACK_BAND).toBeCloseTo(LEAD + PANEL_DELAY + PANEL_EACH, 6);
   });
 });
