@@ -679,8 +679,18 @@ export interface GameSnapshot {
   plates: Plate[];
   /** HUD line: the current objective, may contain simple markup. */
   objective: string;
-  /** HUD line: the controls that matter right now. */
+  /**
+   * HUD line: every control that matters right now — in play, the chapter's own
+   * full list, which the run sheet prints at its foot.
+   */
   keys: string;
+  /**
+   * HUD line: the top bar's keys. On the title and through the opening it is
+   * `keys` itself; in play it is only the five worth a glance, because the run
+   * sheet already carries the rest. Michele, 29 Sep 2026: *"Trim the on screen
+   * hints, they are already in the info panel."*
+   */
+  topKeys: string;
   /**
    * HUD line: the live "what is left to do" readout, one short line, refreshed
    * every frame — `breakers 2/3 · cable 0/1480 px · roller door: shut`. Every
