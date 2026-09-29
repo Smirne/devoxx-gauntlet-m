@@ -501,7 +501,16 @@ export function driveChapter4(g: DebugGame, onLeg?: (name: string, seconds: numb
   const clock = new Ch4Clock(limit);
   const key = (): KeynoteState => g.debug.chapter() as KeynoteState;
   const props = (kind: string): Prop[] => g.snapshot().props.filter((p) => p.kind === kind);
+  /** The middle of a prop published as a top-left rect: the stage, the mark, a letter, a gap. */
   const mid = (p: Prop): Vec2 => ({ x: p.x + (p.w ?? 0) / 2, y: p.y + (p.h ?? 0) / 2 });
+  /**
+   * ...and of one published AT its centre, `w,h` its diameter: the cake and the
+   * spotlights (`props()` in ch4-keynote.ts, and the way both renderers and
+   * `tests/prop-geometry.ts` read them). Through `mid()` these came out 8 and
+   * 17 px south-east of where they are, and nothing noticed while Biggy could push
+   * the cake from 16 px past touching — see the cake's leg below.
+   */
+  const centreOf = (p: Prop): Vec2 => ({ x: p.x, y: p.y });
   let t0 = 0;
   const done = (name: string): void => {
     onLeg?.(name, clock.t - t0);
@@ -513,7 +522,7 @@ export function driveChapter4(g: DebugGame, onLeg?: (name: string, seconds: numb
    * spotlights give both aisle centres and both ends of the seating, so the
    * routes below re-derive themselves if the room is ever re-laid.
    */
-  const spots = props('spotlight').map(mid);
+  const spots = props('spotlight').map(centreOf);
   const aisleX = [...new Set(spots.map((p) => Math.round(p.x)))].sort((a, b) => a - b);
   /** The strip behind the seating, between the last row and the door. */
   const backY = Math.max(...spots.map((p) => p.y)) + 42;
@@ -597,30 +606,78 @@ export function driveChapter4(g: DebugGame, onLeg?: (name: string, seconds: numb
   /*
    * BIGGY shoves the cake in from the corridor and up the west aisle onto its
    * mark. He has to get BEHIND it for every leg, and the board is slow on purpose.
+   *
+   * The route hugs the seats. Behind the last row the strip is 54 px from the
+   * backs of the seats to the corridor wall, and a 34 px cake with an 18 px Biggy
+   * behind it is 52: the cake goes along the seats (`backY`), which leaves him a
+   * 20 px lane between it and the wall to get round it by. In the middle of the
+   * strip there is no way past it at all.
    */
   const mark = mid(props('cake-mark')[0]);
-  const cakeRoute: Vec2[] = [
-    { x: d8.cx, y: d8.cy + 26 },
-    { x: d8.cx, y: d8.cy - 26 },
-    { x: aisleX[0], y: backY },
-    { x: aisleX[0], y: frontY },
-    mark,
+  /** Each stop for the cake's centre, and how close counts as there. */
+  const cakeRoute: Array<[Vec2, number]> = [
+    // Lined up with the door, out in the corridor: 6 px either side of it.
+    [{ x: d8.cx, y: d8.cy + 26 }, 4],
+    // Through it and up against the backs of the seats.
+    [{ x: d8.cx, y: backY }, 6],
+    // Along the seats to the mouth of the west aisle, which leaves it 7 px a side.
+    [{ x: aisleX[0], y: backY }, 3],
+    [{ x: aisleX[0], y: frontY }, 8],
+    [mark, 4],
   ];
+  /*
+   * The cake's own centre — `centreOf`, NOT `mid()`.
+   *
+   * Through `mid()` this pilot aimed at a cake 17 px east and 17 px south of the
+   * real one and "stood behind" a phantom, fifteen pixels short of the board, and
+   * it read the spotlights 8 px off too, which put the back-of-the-room lane at
+   * 250 instead of 242 — the middle of the strip rather than hard against the
+   * seats. None of it showed while Biggy could push from 16 px past touching.
+   * When Michele's *"cake is pushed from too far"* (29 Sep) took the push down to
+   * a hand on it (`CAKE_TOUCH`), this drive was the first thing that could no
+   * longer reach the cake.
+   */
+  const cakeAt = (): Vec2 => centreOf(props('cake')[0]);
+  const cakeR = (props('cake')[0].w ?? 0) / 2;
   // Round behind the crate first, out in the corridor where he already is.
-  const cake0 = mid(props('cake')[0]);
+  const cake0 = cakeAt();
   steerTo(g, clock, 'biggy', { x: cake0.x + 40, y: cake0.y + 16 }, 14);
   g.debug.select('biggy');
-  for (const wp of cakeRoute) {
+  /*
+   * HOW A PLAYER PUSHES IT, now that a push is a hand on it.
+   *
+   * The old drive walked straight at a point behind the cake and leaned when it
+   * got there. With 16 px of reach that was harmless; with a hand's breadth, the
+   * straight line to the far side of the cake goes THROUGH the cake, and a stick
+   * pointing into it is a push — so it shoved the board away every time it tried
+   * to get behind it. A player walks round it instead. So:
+   *
+   *  - **Round it at arm's length** (`ORBIT`), a step at a time (`STEP`), towards
+   *    dead behind. The step is small enough that whenever he is touching the
+   *    board his stick points away from it (`ORBIT·cos STEP` is past touching),
+   *    so going round it never pushes it.
+   *  - **Lean from behind** — within `CONE` of dead behind and close — along the
+   *    line to the stop.
+   *  - **Ease off** as the stop comes up. A board let go of coasts `v / 2.2` px
+   *    (its drag), so it is leaned on only while it is slower than that would
+   *    carry it to the stop, and otherwise he backs off and lets it roll there.
+   */
+  const touch = bot(g, 'biggy').r + cakeR;
+  const ORBIT = touch + 10;
+  const STEP = 0.6;
+  const CONE = Math.cos((20 * Math.PI) / 180);
+  let prev = cakeAt();
+  for (const [wp, tol] of cakeRoute) {
     let stall = 0;
     let best = Infinity;
     for (;;) {
       if (key().cake) break;
-      const c = mid(props('cake')[0]);
+      const c = cakeAt();
       const b = bot(g, 'biggy');
       const ax = wp.x - c.x;
       const ay = wp.y - c.y;
       const al = Math.hypot(ax, ay);
-      if (al < 16) break;
+      if (al < tol) break;
       if (al < best - 0.05) {
         best = al;
         stall = 0;
@@ -629,18 +686,29 @@ export function driveChapter4(g: DebugGame, onLeg?: (name: string, seconds: numb
         g.setStick(0, 0);
         throw new Error(`the cake is stuck ${al.toFixed(0)}px from (${Math.round(wp.x)},${Math.round(wp.y)})`);
       }
-      /*
-       * Stand behind the crate on the line to the waypoint, then lean. The
-       * standing point is the two radii plus a little — aimed any closer it is
-       * inside the crate, and a naive driver walks at a point it cannot reach.
-       */
-      const back = b.r + 17 + 8;
-      const behind = { x: c.x - (ax / al) * back, y: c.y - (ay / al) * back };
-      const gx = behind.x - b.x;
-      const gy = behind.y - b.y;
-      const gd = Math.hypot(gx, gy);
-      if (gd > 16) g.setStick(gx / gd, gy / gd);
-      else g.setStick(ax / al, ay / al);
+      const ux = ax / al;
+      const uy = ay / al;
+      // Where he is round the board, and how square behind it that is.
+      const rx = b.x - c.x;
+      const ry = b.y - c.y;
+      const rl = Math.hypot(rx, ry) || 1;
+      const behind = -(rx * ux + ry * uy) / rl;
+      // How fast it is already going towards the stop, from the last frame.
+      const along = ((c.x - prev.x) * ux + (c.y - prev.y) * uy) / DT_MAX;
+      prev = c;
+      if (behind > CONE && rl < ORBIT + 4) {
+        if (along < 2 * Math.max(0, al - tol / 2)) g.setStick(ux, uy);
+        else g.setStick(-ux, -uy);
+      } else {
+        const from = Math.atan2(ry, rx);
+        let turn = Math.atan2(-uy, -ux) - from;
+        turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+        const a = from + Math.sign(turn) * Math.min(Math.abs(turn), STEP);
+        const gx = c.x + Math.cos(a) * ORBIT - b.x;
+        const gy = c.y + Math.sin(a) * ORBIT - b.y;
+        const gd = Math.hypot(gx, gy) || 1;
+        g.setStick(gx / gd, gy / gd);
+      }
       clock.step(g);
     }
     g.setStick(0, 0);
