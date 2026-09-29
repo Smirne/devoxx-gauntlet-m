@@ -25,6 +25,12 @@ export const POOLED_LAYER = 31;
 interface Virtual {
   src: THREE.PointLight;
   pos: THREE.Vector3;
+  /**
+   * The group it was taken out of. Its visibility is the light's: both floors
+   * stand at y = 0 over the same plan, so a light that forgot its floor lit
+   * the other one — upstairs neons glowed in the exhibition hall (29 Sep).
+   */
+  home: THREE.Object3D | null;
 }
 
 export class LightPool {
@@ -55,7 +61,7 @@ export class LightPool {
     });
     for (const l of found) {
       this.taken.add(l);
-      this.virtuals.push({ src: l, pos: l.getWorldPosition(new THREE.Vector3()) });
+      this.virtuals.push({ src: l, pos: l.getWorldPosition(new THREE.Vector3()), home: l.parent });
       l.parent?.remove(l);
     }
   }
@@ -66,7 +72,7 @@ export class LightPool {
     const sc = this.scored;
     sc.length = 0;
     for (const v of this.virtuals) {
-      if (!v.src.visible || v.src.intensity <= 0) continue;
+      if (!v.src.visible || v.src.intensity <= 0 || (v.home && !shown(v.home))) continue;
       const d = v.pos.distanceTo(eye) - (v.src.distance || 10);
       if (d < this.fadeTo) sc.push({ v, d });
     }
