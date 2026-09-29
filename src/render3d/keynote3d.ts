@@ -76,7 +76,7 @@ const INK: Record<ReelCard['kind'], string> = { splash: '#ff7a1a', byline: '#e8e
  * The curtain call's camera, m: `back` from the apron towards the house, `h` up
  * off the stage floor, looking at a point `look` up over the apron.
  */
-const STAGE_EYE = Object.freeze({ back: 9.5, h: 2.6, look: 2.4 });
+const STAGE_EYE = Object.freeze({ back: 7, h: 3.1, look: 1.9 });
 /** Seconds a floor can takes to swing up onto the stage once Voxxy has lit it. */
 const SPOT_SWING = 1.1;
 /** The screen's brightness at full strength: over 1, so the bloom finds it, and never tone-mapped. */
@@ -292,18 +292,19 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
     scrCtx.fillText('DEVOXX', w / 2, h * 0.38);
     scrCtx.fillStyle = '#e8e6e1';
     scrCtx.font = '600 52px system-ui, sans-serif';
-    scrCtx.fillText('BELGIUM 2026 · OPENING KEYNOTE', w / 2, h * 0.52);
+    scrCtx.fillText('BELGIUM 2026 · OPENING KEYNOTE', w / 2, h * 0.52, w * 0.8);
     scrCtx.fillStyle = '#9fb0c4';
     scrCtx.font = '400 46px system-ui, sans-serif';
     scrCtx.fillText('Speaker: TBA', w / 2, h * 0.64);
     scrCtx.fillStyle = '#ffd27a';
     scrCtx.font = '600 48px system-ui, sans-serif';
-    scrCtx.fillText(label, w / 2, h * 0.84, w * 0.92);
+    scrCtx.fillText(label, w / 2, h * 0.84, w * 0.66);
     scrCtx.fillStyle = '#ff7a1a';
     scrCtx.fillRect(w * 0.4, h * 0.44, w * 0.2, 4);
     // Duke, waving from the corner — the keynote screen had him in Michele's
-    // photograph (28 Sep). BSD-licensed artwork, drawn here in three shapes.
-    drawDuke(scrCtx, w * 0.1, h * 0.86, h * 0.5);
+    // photograph (28 Sep). BSD-licensed artwork, drawn here in three shapes. In
+    // the corner and under the lines, which he used to stand across.
+    drawDuke(scrCtx, w * 0.085, h * 0.95, h * 0.36);
     scrTex.needsUpdate = true;
   }
 
