@@ -354,6 +354,9 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     bots.forEach((b, i) => {
       // Only the robot being driven gets the stick. The other two keep their
       // momentum — which is the whole point of Biggy.
+      // Driven, and so braking when the stick is let go: not while he is on the
+      // tow bar, where the holder's run is what moves him.
+      b.driven = i === cur && !(tow && b.kind === 'biggy');
       if (i === cur) {
         b.ix = stickX;
         b.iy = stickY;

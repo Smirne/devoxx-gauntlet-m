@@ -116,10 +116,20 @@ describe('the robot table', () => {
     expect(DEFS.droid.r).toBeLessThan(DEFS.biggy.r);
   });
 
-  it('accel: 12 / 4 / 0.6 s^-1', () => {
+  /*
+   * Biggy's accel 0.6 -> 1.5 and his new brake 1.2 are Michele's, 29 Sep 2026,
+   * after a playtest: "Biggy has really a lot of inertia this run. If he's
+   * walking and I want him to stop / turn, it takes some seconds" — then "ok for
+   * biggy inertia" on the proposed numbers. His drag (the roll after a shove or
+   * the tow bar) stays the prototype's 0.35: that is the puzzle physics.
+   */
+  it('accel: 12 / 4 / 1.5 s^-1, and Biggy brakes at 1.2 s^-1 when driven', () => {
     expect(DEFS.voxxy.accel).toBe(12);
     expect(DEFS.droid.accel).toBe(4);
-    expect(DEFS.biggy.accel).toBe(0.6);
+    expect(DEFS.biggy.accel).toBe(1.5);
+    expect(DEFS.biggy.brake).toBe(1.2);
+    expect(DEFS.voxxy.brake).toBeUndefined();
+    expect(DEFS.droid.brake).toBeUndefined();
   });
 
   it('top speed: the prototype x each robot\'s own scale', () => {
@@ -431,7 +441,8 @@ describe('still the prototype\'s numbers, times one factor', () => {
         kind === 'droid' ? DROID_SPEED_SCALE : kind === 'biggy' ? BIGGY_SPEED_SCALE : SPEED_SCALE;
       expect(def.max).toBeCloseTo(num('max') * scale, 10);
       // s^-1 and ratios: dimensionless across a rescale, so untouched.
-      expect(num('accel')).toBe(def.accel);
+      // ...except Biggy's accel, which Michele changed on 29 Sep (see above).
+      expect(num('accel')).toBe(kind === 'biggy' ? 0.6 : def.accel);
       expect(num('drag')).toBe(def.drag);
       expect(num('mass')).toBe(def.mass);
       // Lengths: the lamp reaches as far into the room as it always did.

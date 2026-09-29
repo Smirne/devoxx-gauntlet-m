@@ -118,8 +118,11 @@ function styleOf(w: Wall, mats: Materials, concrete: THREE.Material): { h: numbe
       return { h: 3.4, mat: mats.plaster };
     case 'bof-slats':
       return { h: 2.6, mat: mats.acoustic };
+    // The red enamel panels are gone from the 3D hall (Michele, 29 Sep: "i don't
+    // like those panels"): the curtain runs unbroken. The sim keeps them as 2 px
+    // slabs flush on the wall, so nothing a robot can touch has changed.
     case 'accent-panel':
-      return { h: 3.0, mat: mats.enamel };
+      return null;
     // The main flight's sides are drawn by `mainStairSides`, off the photos.
     case 'mainstair':
     // Duke is his own model (duke.ts); the entrance's frames and doors are `facade`.

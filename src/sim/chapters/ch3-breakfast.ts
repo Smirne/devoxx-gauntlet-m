@@ -2676,7 +2676,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         w: 60,
         h: 8,
         state: beerDone ? 'done' : 'active',
-        label: `${BAR_NAME} · taps ready · doors 18:00`,
+        // Only true once the crates are on the bar (Michele, 29 Sep: it said
+        // "taps ready" while the beer was still on the pallet).
+        label: beerDone ? `${BAR_NAME} · taps ready` : `${BAR_NAME} · waiting for the crates`,
       },
       // Devoxx's own line, on a Devoxx-blue sign, standing at the pallet: it is
       // printed on the shrink-wrap, so it belongs where the shrink-wrap is.

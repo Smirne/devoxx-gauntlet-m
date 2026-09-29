@@ -1866,7 +1866,7 @@ export function groundWalls(): Wall[] {
   });
   w.push({ ...STORE_WALL, kind: 'store-wall', why: (b) => `${b.name}: the back wall of the store` });
   for (const p of HALL_PANELS) {
-    w.push({ ...p, kind: 'accent-panel', why: (b) => `${b.name}: a wall panel. Kinepolis red, and solid` });
+    w.push({ ...p, kind: 'accent-panel', why: (b) => `${b.name}: the hall wall, behind the curtain` });
   }
 
   /* ------------------------------------------------------------------ the lobby

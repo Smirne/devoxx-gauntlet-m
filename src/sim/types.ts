@@ -76,6 +76,15 @@ export interface RobotDef {
   max: number;
   /** Velocity decay rate with no input, s^-1. */
   drag: number;
+  /**
+   * Decay rate, s^-1, when this is the robot being driven and the stick is let
+   * go: the robot braking itself, as opposed to `drag`, which is how far it rolls
+   * when something else set it moving (a shove, the tow bar). Absent means the
+   * same as `drag`. Only Biggy has one: Michele, 29 Sep, *"If he's walking and I
+   * want him to stop / turn, it takes some seconds"* — and a Biggy that rolls a
+   * hall's length when Voxxy shoves him is still the game.
+   */
+  brake?: number;
   /** Relative mass for robot-robot impulses. */
   mass: number;
   color: string;
@@ -104,6 +113,8 @@ export interface Bot extends RobotDef {
   mounted: boolean;
   /** Planted: infinite effective mass, ignores input. */
   braced: boolean;
+  /** This is the robot the player is driving (set each step); see `RobotDef.brake`. */
+  driven?: boolean;
   /** Transient speed cap above `max`, granted by a push; decays at 1.5 s^-1. */
   boostCap?: number;
   /**

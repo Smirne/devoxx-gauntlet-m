@@ -106,15 +106,19 @@ describe('the GC pause', () => {
   function runAndStop(g: DebugGame): string {
     g.debug.select('biggy');
     g.setStick(1, 0);
-    steps(g, 200);
+    // 5 s: the same ~290 px of corridor the old 0.6 s^-1 Biggy covered in 6.6 s,
+    // short of the end wall (whose toast the joke would have to wait out).
+    steps(g, 150);
     g.setStick(0, 0);
     let heard = '';
+    let still = 0;
     for (let i = 0; i < 400; i++) {
       g.update(DT_MAX);
       const t = said(g);
       if (t !== '') heard = t;
       const b = g.snapshot().bots.find((o) => o.kind === 'biggy');
-      if (b && Math.hypot(b.vx, b.vy) === 0 && i > 20) break;
+      // A few frames past the stop: the line is said on the frame after it.
+      if (b && Math.hypot(b.vx, b.vy) === 0 && i > 20 && ++still > 5) break;
     }
     return heard;
   }

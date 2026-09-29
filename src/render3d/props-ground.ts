@@ -427,7 +427,7 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         const rim = new THREE.Mesh(new THREE.BoxGeometry(!sideways ? 1.66 : 0.04, 0.05, !sideways ? 0.04 : 1.66), glowMat());
         rim.position.set(sx, base + 2.73, sz);
         g.add(panel, post, rim);
-        g.userData = { rim };
+        g.userData = { rim, face, label };
         return g;
       }
       case 'cabinet': {
@@ -1037,9 +1037,21 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         (u.plate.material as THREE.MeshBasicMaterial).color.copy(stateColour(p.state, tmp, (p.state === 'idle' ? 0.5 : 1.6) * pulse));
         break;
       }
-      case 'sign':
+      case 'sign': {
         (u.rim.material as THREE.MeshBasicMaterial).color.copy(stateColour(p.state, tmp, p.state === 'idle' ? 1 : 6));
+        // A sign whose words change with the game (the bar's "taps ready" only
+        // once the beer is in) is repainted when the sim's label changes.
+        const label = p.label ?? '';
+        if (label !== u.label) {
+          u.label = label;
+          const [a, b] = label.includes('·') ? label.split('·').map((s) => s.trim()) : [label, ''];
+          const face = u.face as THREE.MeshStandardMaterial;
+          face.map?.dispose();
+          face.map = face.emissiveMap = wayfinding(b ? [['', a], ['', b]] : [['', a]]);
+          face.needsUpdate = true;
+        }
         break;
+      }
       case 'cabinet': {
         const e = THREE.MathUtils.smoothstep(p.progress ?? (p.state === 'open' ? 1 : 0), 0, 1);
         for (const l of u.leaves as THREE.Object3D[]) l.rotation.y = (l.userData.side as number) * e * 1.7;
