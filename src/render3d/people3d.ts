@@ -1700,7 +1700,8 @@ const BY_NAME: Readonly<Record<string, Builder>> = {
 /* --------------------------------------------------------------------- pool */
 
 export interface People3D {
-  update(snap: GameSnapshot, t: number): void;
+  /** Only the people and the floor under them are read (`portrait.ts` passes nothing else). */
+  update(snap: Pick<GameSnapshot, 'people' | 'plates'>, t: number): void;
 }
 
 export function createPeople(parent: THREE.Object3D): People3D {
@@ -1708,7 +1709,7 @@ export function createPeople(parent: THREE.Object3D): People3D {
   const necks = new Map<PersonModel, THREE.Mesh>();
   const portraits = new Map<PersonModel, Portrait>();
   return {
-    update(snap: GameSnapshot, t: number): void {
+    update(snap: Pick<GameSnapshot, 'people' | 'plates'>, t: number): void {
       const people = snap.people ?? [];
       const plates = snap.plates ?? [];
       for (let i = 0; i < people.length; i++) {
