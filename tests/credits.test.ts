@@ -156,14 +156,18 @@ describe('the credits', () => {
   });
 
   /**
-   * ...and it admits what it cannot count. The session figures are one session's
-   * and the game was built across several, which makes them a floor. Saying so on
-   * the screen costs nothing and is the difference between a statistic and a
-   * boast.
+   * ...and it admits what it cannot count. The session figures are what one
+   * session could count, and the game was built across several, which makes
+   * them a floor. Saying so on the screen costs nothing and is the difference
+   * between a statistic and a boast. They were labelled "one session" until
+   * Michele, 29 Sep 2026: *"many session is more honest, if we don't have a
+   * count."* — "one session" read as if one session had built the game.
    */
-  it('marks the per-session figures as one session, on the screen', () => {
-    const perSession = CREDIT_STATS.filter((s) => s.label.includes('one session'));
-    expect(perSession.length, 'no figure is scoped to the session it came from').toBeGreaterThan(1);
+  it('marks the per-session figures as a floor over many sessions, on the screen', () => {
+    const floors = CREDIT_STATS.filter((s) => s.label.includes('many sessions'));
+    expect(floors.length, 'no figure admits it is a floor').toBeGreaterThan(1);
+    for (const f of floors) expect(f.n, `${f.label} does not say it is a floor`).toMatch(/\+$/);
+    expect(CREDIT_STATS.filter((s) => s.label.includes('one session')), 'a figure went back to being one session').toEqual([]);
     expect(CREDIT_FOOTNOTE).toMatch(/floor, not a total/);
     // ...and the tokens are NOT one of them: that figure is all four sessions,
     // read off the account's own usage records rather than extrapolated.
