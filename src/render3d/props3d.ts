@@ -286,7 +286,7 @@ export function createProps(parent: THREE.Object3D, mats: Materials, floor: 'fir
       case 'keypad': {
         // Frontage to the corridor (south, +z): the sim turned the housing on
         // its side, 19 x 12 px, so the four digits face whoever walks up
-        // (a629e10). The 3D keys were still on its narrow west end, and in the
+        // (8174b6c). The 3D keys were still on its narrow west end, and in the
         // dark by the fire door the pad could not be found at all (Michele,
         // 25 Sep: "where's the keypad?"). A backlit bezel pulses until the code
         // is in, and a lamp in front lights whoever is typing.

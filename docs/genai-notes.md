@@ -127,15 +127,15 @@ This is the part worth copying.
 
 **What the agent did**
 
-- Scaffolded the project: pnpm, Vite, TypeScript strict, vitest, three (`f9f500c`), and wrote the
+- Scaffolded the project: pnpm, Vite, TypeScript strict, vitest, three (`8d31abd`), and wrote the
   contract every later piece codes against — `src/sim/types.ts` (state shapes), `src/sim/constants.ts`
   (the frozen physics numbers, ported verbatim from the prototype) and `src/sim/units.ts`
   (`PX_PER_M = 12.5`, the one place pixels become metres).
 - Ported the venue from the annotated plans into `src/sim/geometry.ts` — first-floor rooms 3–10 plus
   the closed cinema section, the exhibition hall and lobby, both secondary staircases and the main
-  staircase — and defined the facade the renderer reads (`4a83217`).
+  staircase — and defined the facade the renderer reads (`b9d70db`).
 - Captioned eighteen new venue stills into `media/other-images/CAPTIONS.md`, with the corrections
-  they force on corridor proportions and on the Zaal signage (`fdff2f5`).
+  they force on corridor proportions and on the Zaal signage (`cea9880`).
 - Ran the first parallel build wave: the per-robot sim step and light/visibility model
   (`src/sim/bot.ts`, `src/sim/lights.ts`), the procedural robot meshes and gait
   (`src/render/robots/`), the venue, prop and signage geometry (`src/render/venue/`), the diorama
@@ -3164,7 +3164,7 @@ mount buys 3.10 m and the controls sit at 3.10 m — the metre is rhetoric, the 
 shape. It did not. The note now says so and points at the new module.
 
 **Tests.** `tests/release-panel.test.ts`, 10 cases, green; 9 of the 10 fail against the pre-change
-renderer, reconstructed in a worktree at 82ca20b with the old `drawProp` box as a stand-in module.
+renderer, reconstructed in a worktree at a02ad29 with the old `drawProp` box as a stand-in module.
 Full suite at hand-off: **513 tests, 29 files, green**, `npx tsc --noEmit` clean. Mid-round it
 carried 4 reds in `geometry`, `staircase-clear`, `chapters` and `ch2-chain` from a parallel agent's
 in-flight staircase rewrite in `src/sim/geometry.ts` — they passed at committed HEAD throughout,
@@ -4040,7 +4040,7 @@ frame and a visitor who sits down takes everybody's index with them.
 
 **Cost, measured against the previous build rather than guessed.** Twelve meshes a figure, with
 every geometry and every material but the clothes shared. Headless Chromium on SwiftShader renders
-chapter 3 at 2 fps — and rendered it at 2 fps on `dbaee3e` too, with the old pawns, so the software
+chapter 3 at 2 fps — and rendered it at 2 fps on `f02fc39` too, with the old pawns, so the software
 rasteriser is the floor and the figures are not measurably on top of it.
 
 **Tests.** `tests/crate-rescue.test.ts` (4) and `tests/people.test.ts` (8) new. The people tests
@@ -6389,3 +6389,42 @@ criterion from GAUNTLET.md Stage 3.
 done — the reference archive was delivered to Michele first so nothing in it can be lost, and a
 history rewrite is not something to hand a merge that has not happened yet. Both are notes for
 after `main`, not blockers for it.
+
+## 29 Sep 2026 — one history for `main`: three lines merged, one logo, the screenshots purged
+
+**What the human decided.** The order: *"As soon as agent stop I'd: merge 2.5D on main, merge 3D on
+top of it, merge yours there."* Michele took the three changes the agent proposed to it: prove each
+merge on a branch before `main` moves; freeze the 2.5D line first, let the 3D line merge it on its own
+branch, and take this line last, since its conflicts are in its own code; retire the old branches
+afterwards. On history, keep it — *"I'm ok for keeping"* — rather than one squashed commit. On the
+screenshots, the agent advised against purging them: every hash changes, the ones quoted in the notes
+break, and `main` would need a force-push. Michele overruled it — *"reducing size is important, and
+now it's the moment to do it"* — and was right about the moment: done once, before the history
+reaches `main`, it never needs one.
+
+**What the agent did.**
+
+- *The last merge*, this line onto the 3D line's head. That head carried the 2.5D line minus its
+  final notes commit, which was merged separately so the freeze section is not lost. Six files
+  conflicted, and two needed a decision rather than a union: Claude's screen head was holding the
+  laptop's shared material, which the 3D line had deleted with the laptop (it holds the cup's now),
+  and the figure's mesh limit read 15 on one side and 18 on the other — it is 16, with both reasons in
+  the test. Voxxy's `E` keeps both lines' fixes: the keynote speaker first, then the nearest
+  bystander, then the 3D line's pot refusal. A 28 Sep section both sides carried is in here once.
+- *One logo.* The 2.5D line's credits carry the artwork itself, the vector Michele sent, inlined, on
+  the rule that a hand-traced wordmark is a wrong wordmark. The 3D backpack and the hidden sticker now
+  paint that artwork; the morning's traced paths are gone. One red in both builds: `#E50339`.
+- *The purge.* `git filter-repo --path tools/progress/shots --invert-paths` on a fresh clone of the
+  merged history took 298 screenshots — 53.6 MB — out of every commit: the packed repository went
+  from 83.4 MiB to 30.8 MiB, and 340 commits to 336, the four that only added screenshots having
+  emptied. `main`'s own two commits kept their hashes, so `main` fast-forwards. The ten screenshots
+  `tools/progress/pieces.json` still points at went back in one commit. `filter-repo` rewrote the
+  hashes quoted in commit messages; the eleven quoted in files — here, in the playtest notes and in
+  two code comments — were mapped through its commit map, and none of them named a dropped commit.
+- *The credits recounted* the way they were first counted: `git log` for the commits (this commit
+  included, since it is the last one `main` receives), a walk of `src` and `tests` for the code, and
+  `wc -w` over `docs/*.md` for the notes.
+
+**Checked before `main` moved.** Typecheck, the 857 tests and the production build on the purged
+tree, and the 3D page's four chapters without console errors; against the pre-purge tree, the only
+differences are the screenshots' history, the eleven hashes and this commit.
