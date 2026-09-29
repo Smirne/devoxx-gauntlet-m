@@ -44,6 +44,14 @@ export interface World3D {
    * does not start on a stall of a hundred shaders. Resolves when compiled.
    */
   prewarm(snap: GameSnapshot, progress?: (share: number) => void): Promise<void>;
+  /**
+   * Dress the cast of the chapters still to come, from those chapters' opening
+   * snapshots, before `prewarm`: their portraits are sculpted, their costumes
+   * built and their shaders compiled behind the loading screen, not on the
+   * chapter's first frame. The figures stay in the pool, hidden, for the
+   * chapter to take over.
+   */
+  rehearse(snaps: GameSnapshot[]): void;
   /** Photo mode: depth of field focused on the driven robot. */
   photo: boolean;
   /** Debug: refresh cinema E's mirror (on by default). */
@@ -990,6 +998,9 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     struggling: false,
     cam,
     render,
+    rehearse(snaps: GameSnapshot[]): void {
+      for (const s of snaps) people.update(s, 0);
+    },
     prewarm(snap: GameSnapshot, progress?: (share: number) => void): Promise<void> {
       // Three set-up frames: props are built from the first snapshots, and the
       // box-projection patch and the light pools take them over the first three.

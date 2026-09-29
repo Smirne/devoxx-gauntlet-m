@@ -580,6 +580,17 @@ function loop(now: number): void {
  * blank screen for seconds, which players took for a crash (29 Sep).
  */
 if (loadingUp) {
+  /*
+   * The cast first. Chapters 3 and 4 open with their named people on stage, and
+   * each one's portrait was sculpted, and its shaders compiled, on the chapter's
+   * first frame — the stall players felt "especially on chapter start" (29 Sep).
+   * Their opening snapshots, from throwaway games, dress them here instead, in
+   * the order play would (a portrait is built once, by name, and reused).
+   */
+  loading('Dressing the cast', null);
+  await nextPaint();
+  const from = game.snapshot().chapter;
+  world.rehearse([3, 4].filter((n) => n >= from).map((n) => createGame({ seed: int('seed'), chapter: n, cards: false }).snapshot()));
   loading('Compiling shaders', 0);
   await world.prewarm(game.snapshot(), (share) => loading('Compiling shaders', share));
   loading('Lighting the venue', null);
