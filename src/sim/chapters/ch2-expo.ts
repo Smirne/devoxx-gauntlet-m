@@ -2191,7 +2191,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         w: 5,
         h: 18,
         state: hallLit() ? 'done' : power ? 'active' : 'idle',
-        label: 'TECHNISCHE RUIMTE · TECHNICAL',
+        label: 'TECHNICAL ROOM',
       },
       {
         kind: 'sign',
