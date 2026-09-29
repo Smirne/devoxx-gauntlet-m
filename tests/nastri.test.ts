@@ -119,8 +119,10 @@ describe('the stair nastri · Stephan opens it', () => {
     g.update(DT_MAX);
     const seen: number[] = [];
     playToStairGate(g, (h) => {
-      // The whole wave, frame by frame, from the one `done()` fires on.
-      for (let i = 0; i < 80 && (h.debug.chapter() as BreakfastState).gateSwing < 1; i++) {
+      // The whole wave, frame by frame, from the one `done()` fires on — through
+      // the stair beat's placing and Stephan's walk to his button, when all eight
+      // are still across, and then the wave itself.
+      for (let i = 0; i < 240 && (h.debug.chapter() as BreakfastState).gateSwing < 1; i++) {
         const u = (h.debug.chapter() as BreakfastState).gateSwing;
         const walls = h.debug.walls();
         const drawn = gateDraw(propOf(h, 'gate'), walls).belts;

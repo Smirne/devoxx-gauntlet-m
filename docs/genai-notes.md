@@ -5918,3 +5918,41 @@ while the room applauded; `tests/curtain-call.test.ts` caught it and they clap n
     new note names Biggy alone, so Droid can still ask. That is flagged for him to confirm.
   - The crates were not moved "behind the bar". The bar's back face sits 6 px off the hall
     wall, so the sim's stack stays at the cellar end, where the bar's new warm light reaches it.
+
+## 29 Sep 2026 — chapter 3 → 4: the stair beat
+
+- **Human decision (Michele's storyboard).** "Camera moves to show the staircase, Stephan presses
+  a button, the nastri open, then the climb." He also reported that "the robots aren't climbing
+  correctly and the scene ends in dark".
+- **Root causes the agent found**, from a before/after frame strip of the real 3D build.
+  - The heights were right. The cut routes crossed the `main-flight` plate and the renderer
+    lifts robots by `riseAt`. The camera was the problem. The generic cut camera stood 4.6 m
+    west of the robots, which is up the flight, ahead of them. Its height was capped at 4.3 m, a
+    first-floor corridor number. So once the robots climbed, the upper treads came between the
+    lens and them, and they looked sunk into the steps. Near the top the camera went inside the
+    white head block and the dark hall behind it. That black frame came before the fade.
+  - The flight had no light over its upper half.
+  - The route was trimmed to the 4.6 s walk budget, so the robots appeared already on the
+    flight when the fade lifted.
+  - A drawn Droid walk-up to a handle (`reach3d`) could survive a cutscene's placing. It then
+    drew him metres from where the sim had him.
+- **Agent work.**
+  - `startCut` takes `CutOptions`: a `hold` between the placing and the walk, a `tick` for the
+    chapter's own clock, and a `walkTime` of its own. `CutRoute.delay` sends Biggy up last.
+  - `GameSnapshot.shot` is a camera the sim directs, and the 3D world eases to it.
+  - Chapter 3 now runs the beat in the sim. The robots queue in three belt gaps. Stephan
+    steps to a new button post, which is a wall with lines in all three voices. His arm reaches
+    out (`Person.reach`), the lamp turns green and two keypad beeps play, and then the
+    existing belt wave runs. After that the robots climb the whole flight in straight lanes
+    over 6.6 s, which is 70% of Droid's top speed, followed from behind and below.
+  - Two point lights now hang over the flight.
+  - Tests that encoded "the chapter stays in play during the swing" were updated. The new
+    `tests/stair-beat.test.ts` checks: the press comes before the belts, the belts come before
+    anyone climbs, Biggy goes last, render height only rises from 0.5 m to near the head, the
+    robots stay inside the balustrade, the climb camera is behind and below them, the fade
+    starts only near the top, and chapter 4 opens lit.
+- **Rejected.** The agent did not quantise the flight plate into treads. A per-tread snap
+  would pop the robot up 17 cm every quarter second, and the linear ramp keeps the feet
+  within half a riser of each tread. The gather fade stays, because the robots can be
+  anywhere in the hall when Stephan's third condition lands. The camera move happens as the
+  fade lifts, from close on Stephan up to the whole flight.

@@ -74,12 +74,13 @@ import {
   crateRescueSpot,
   loadBiggy,
 } from '../crates';
-import { BAR_RECT, GF, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
+import { BAR_RECT, GF, VIEW_GROUND, entranceBayGaps, groundPlates, groundWalls } from '../geometry';
+import { riseAt } from '../surface';
 import { SPEAKER_LOOKS } from '../speakers';
 import { LANYARD } from '../lanyards';
 import { beltUp, nastriRun } from '../nastri';
 import { botsCollide, circleRect, dist, inRect, mkBody, speed, standOff, stepBot } from '../bot';
-import type { Bot, Person, Prop, Rect, Task, Vec2, Wall } from '../types';
+import type { Bot, CameraShot, CutRoute, Person, Prop, Rect, Task, Vec2, Wall } from '../types';
 
 import type { ChapterCtx, ChapterDef, ChapterRuntime, PrevVel } from './index';
 
@@ -917,17 +918,56 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    */
   const GATE_SWING_TIME = 1.5;
   /**
-   * ...and how long the chapter stays on the hall afterwards before the exit
-   * cutscene fades it out.
+   * ...and how long the three of them stand looking at the open flight before the
+   * first one sets off.
    *
-   * Exactly the trap `FIRE_CUT_DELAY` exists for in `ch1-night.ts`, and chapter 3
-   * had it in its purest form: `done()` opened the gate and started the cutscene
-   * that ends the chapter in the same statement. `CUT_FADE` is 0.35 s, so the
-   * screen would be black before the barrier had moved a degree and the animation
-   * would exist with nobody able to see it. The chapter now holds — still in
-   * `play`, still driveable — for the swing plus this, and only then hands over.
+   * It used to be the hold on the hall between the last belt and the exit fade —
+   * the trap `FIRE_CUT_DELAY` exists for in `ch1-night.ts`, a cutscene that blacks
+   * the screen out before the barrier has moved. The barrier now opens INSIDE the
+   * cutscene, in its own framing (`STAIR_BEAT` below), so this is the beat between
+   * "the belts are home" and "the climb", and it is still why the swing is seen.
    */
-  const GATE_CUT_DELAY = 0.5;
+  const GATE_CUT_DELAY = 0.45;
+  /*
+   * THE STAIR BEAT — Michele's storyboard for the 3 → 4 transition, 29 Sep 2026:
+   * *"camera moves to show the staircase, Stephan presses a button, the nastri
+   * open, then the climb"*, and of the version before it: *"at the moment the
+   * robots aren't climbing correctly and the scene ends in dark."*
+   *
+   * So the moment his three conditions are met the player loses the stick and the
+   * chapter directs one continuous shot (`shot()`): the three robots line up in
+   * front of the belts, Stephan steps to the post beside them and presses its
+   * button, the light goes green, the eight belts wind in one after another, and
+   * then the three of them climb the actual flight — its own plate
+   * (`groundPlates`, `main-flight`) is what lifts them tread by tread — with the
+   * camera behind and below them, and the black comes down as they reach the head
+   * of it. Seconds from the frame the cast stands on its marks.
+   */
+  const STAIR_BEAT = {
+    /** He turns from the doors and steps to the post... */
+    stepAt: 0.55,
+    stepTime: 1.0,
+    /** ...his hand goes out over this long, and the button goes at `press`. */
+    reachTime: 0.4,
+    press: 2.0,
+    /** The first belt lets go this long after the press: a relay, not a hinge. */
+    belts: 2.25,
+  } as const;
+  /** When the walk starts — belts, the whole wave, and the pause. */
+  const CLIMB_AT = STAIR_BEAT.belts + GATE_SWING_TIME + GATE_CUT_DELAY;
+  /**
+   * How long the climb takes, seconds: the whole flight, 9 m of run and 4.5 m of
+   * rise, from the belt line to its head. Every robot's pace falls out of its route
+   * over this (`startCut`), and at this length the slowest of them, Droid, walks it
+   * at 70% of his own top speed — `tests/cutscene-pace.test.ts` holds that.
+   */
+  const CLIMB_TIME = 6.6;
+  /**
+   * The order they go up in, as a wait on the first mark: Voxxy first because she
+   * always is, Droid a step behind, and Biggy last — the heaviest thing on a
+   * staircase goes up after the others are clear of it.
+   */
+  const CLIMB_DELAY: Readonly<Record<'voxxy' | 'droid' | 'biggy', number>> = { voxxy: 0, droid: 0.35, biggy: 0.9 };
   /*
    * The barrier itself is `src/sim/nastri.ts` — nine belt posts and eight webbing
    * belts, with every position, the release order and each belt's own retraction in
@@ -951,10 +991,19 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   };
   ctx.walls.push(gate);
   let gateOpen = false;
-  /** 0..1, how far the barrier has swung back. Ticked in `update`. */
+  /** 0..1, how far the belts have wound in. Ticked by the stair beat (`stairBeat`). */
   let gateSwing = 0;
-  /** Sim time the exit cutscene starts, once Stephan has opened up. -1 until then. */
-  let leaveAt = -1;
+  /**
+   * The stair beat's own clock, seconds since the cast was placed at the belts
+   * (`STAIR_BEAT`). -1 until the exit cutscene has put them there.
+   */
+  let scene = -1;
+  /** Has Stephan pressed the button on the post. */
+  let pressed = false;
+  /** How far his right hand is out towards the button, 0..1 (`Person.reach`). */
+  let reach = 0;
+  /** His walking speed while he steps to the post, px/s, for the gait. */
+  let stephanSp = 0;
   /*
    * WHAT IS LEFT WHEN IT IS OPEN, and what goes away as it opens.
    *
@@ -1352,6 +1401,62 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const doors: Vec2 = { x: GF.entrance.x + GF.entrance.w / 2, y: GF.entrance.y + GF.entrance.h / 2 };
   const doorsFace = Math.atan2(doors.y - stephan.y, doors.x - stephan.x);
   let stephanFace = doorsFace;
+  /*
+   * HIS BUTTON, and where he stands to press it.
+   *
+   * Michele's storyboard for the stair beat has Stephan PRESS something, and a
+   * release button on a post beside the barrier is what a venue actually has for
+   * a run of retractable belts. It stands just east of the belt line on the north
+   * side of the centre post, a step from where Stephan waits: he walks to it
+   * without crossing a lane, and the three lanes the robots climb in (`climbRoutes`)
+   * are the gaps south of the centre, so the man and the queue never share floor.
+   * A 25 cm pillar, and solid — it is a wall with its own line, like every post.
+   */
+  const BUTTON: Vec2 = { x: GF.gate.x + GF.gate.w + 7, y: run.posts[3].y + 1 };
+  const STEPHAN_HOME: Vec2 = { x: stephan.x, y: stephan.y };
+  const STEPHAN_PRESS: Vec2 = { x: BUTTON.x + 7, y: BUTTON.y + 7 };
+  ctx.walls.push({
+    x: BUTTON.x - 1.5,
+    y: BUTTON.y - 1.5,
+    w: 3,
+    h: 3,
+    kind: 'stairbutton',
+    flavour: true,
+    why: (b) =>
+      b.kind === 'voxxy'
+        ? `${b.name}: Stephan's button. It is his, and it is the only thing in this hall I have been told in advance not to press`
+        : b.kind === 'droid'
+          ? `${b.name}: the release for the belts. It is keyed to one finger, and the finger is Stephan's`
+          : `${b.name}: a post with a button on it. I have a history with small buttons. I am leaving it`,
+  });
+  /*
+   * THE TWO SHOTS of the stair beat (`shot()`), in plan px and metres.
+   *
+   * The framing stands against the lobby glazing at the north end of the belt
+   * line and looks south-west down it: Stephan and his post nearest the lens, the
+   * three robots queued in their lanes beyond him, the belts running away along
+   * the foot of the flight and the flight itself climbing off to the right. It
+   * opens low and close on Stephan and the queue (`FRAME.from`) and, as the black
+   * lifts, rises and pulls back until the staircase is in (`FRAME.to`) — the
+   * camera move of the storyboard.
+   *
+   * The climb follows the three of them: `back` px behind (east of) their centre
+   * — but never out through the glazing, `GLASS_X` — and `side` px to the north,
+   * on Voxxy's side, so the small robot is nearest the lens and Biggy is seen past
+   * her rather than hiding everybody. Never lower than `clear` m over the flight
+   * under the lens nor than `h` m over the tread they stand on: behind them and
+   * below their heads, looking up the flight past them.
+   */
+  const FRAME = {
+    from: { eye: { x: 1464, y: 322, h: 3.0 }, look: { x: 1436, y: 372, h: 0.8 } },
+    to: { eye: { x: 1466, y: 290, h: 5.0 }, look: { x: 1404, y: 388, h: 1.3 } },
+    /** Seconds the move takes, from the frame the cast is placed. */
+    time: 2.8,
+  } as const;
+  const GLASS_X = 1464;
+  const CLIMB_EYE = { back: 60, side: 30, clear: 1.6, h: 0.8, lead: 18, lookH: 1.1 };
+  /** The hall's own raised floors — the flight among them — for the climb shot. */
+  const FLOOR_PLATES = groundPlates();
   /*
    * THE SPEAKER GOES TO STEPHAN TOO. Michele, 28 Sep 2026: *"the speaker should
    * also go to stephan."*
@@ -2403,9 +2508,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     ctx.removeWall(gate);
     /*
      * Stephan's own wall comes off and the barrier's does not — the posts for good,
-     * the belts until each has wound home (`update`). The line is not open on this
-     * frame and it is not meant to be: what opened on this frame is Stephan, and
-     * `gateSwing` is the eight belts letting go one after another behind him.
+     * the belts until each has wound home (`windBelts`). The line is not open on
+     * this frame and it is not meant to be: what happens now is Stephan walking to
+     * his button, in the stair beat's own shot, and only then the belts.
      */
     for (const w of gatePostWalls) ctx.walls.push(w);
     for (const b of gateBeltWalls) if (b.live) ctx.walls.push(b.live);
@@ -2413,69 +2518,163 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     ctx.score.temp = Math.trunc(temp);
     ctx.score.complaints = complaints;
     ctx.score.breakfastT = Math.round(ctx.t);
-    ctx.flash(
-      'Stephan takes the clip in front of him and lets go: "Soup. Speaker. Fine — the stairs are open." ' +
-        'Eight belts snap back into their posts, one after the other. Up you go',
-      4000,
-    );
-    // Watch him open it first. See `GATE_CUT_DELAY`.
-    leaveAt = ctx.t + GATE_SWING_TIME + GATE_CUT_DELAY;
+    ctx.flash('Stephan: "Soup. Speaker. Beer off my floor. Fine — line up at the belts."', 3600);
+    leave();
   }
 
-  /** The exit: up the main staircase Stephan has just opened. */
-  function leave(): void {
+  /** Each belt stops being a collider on the frame it finishes winding in. */
+  function windBelts(u: number): void {
+    gateSwing = u;
+    // The same frame the renderer stops drawing it: both ask `beltUp` of the same
+    // `gateSwing`, so a belt cannot be a picture without a wall or a wall without
+    // a picture.
+    for (const b of gateBeltWalls) {
+      if (b.live && !beltUp(gateSwing, b.rank)) {
+        ctx.removeWall(b.live);
+        b.live = null;
+      }
+    }
+  }
+
+  /** The lanes the three of them climb in, and the marks they wait on. */
+  function climbRoutes(): CutRoute[] {
     /*
-     * Up the flight, which climbs WEST from the line Stephan has just opened, and
-     * through the GAPS BETWEEN THE POSTS rather than through a post.
+     * Up the flight, which climbs WEST from the belt line, and through the GAPS
+     * BETWEEN THE POSTS rather than through a post.
      *
-     * The three lanes were 34 px either side of the centre line, which was right
-     * when the barrier was a run of steel with one 44 px gate cut in the middle of
-     * it and is wrong now for a reason the arithmetic will not forgive: eight belts
-     * means nine posts, and nine posts across a 15.76 m line puts a post EXACTLY on
-     * the centre. The old middle lane walked Droid straight through it.
+     * Nine posts across a 15.76 m line puts one EXACTLY on the centre, so the lanes
+     * are three of the run's own gaps, read off `run` rather than guessed: the
+     * three just south of the centre post, clear of the button post Stephan steps
+     * to on the north side. Each lane is a straight line up the flight — the same
+     * `y` from the mark to the head — so nobody drifts across the treads into the
+     * balustrade, and the walk ends a robot's length short of the head wall with
+     * Biggy, last up, a little further down than the other two.
      *
-     * So the lanes are three of the run's own gaps, read off `run` rather than
-     * guessed — the three either side of Stephan, who is standing at the middle of
-     * the line, so they file past him. Cutscene walks ignore walls (`cutUpdate` in
-     * `game.ts`), which is exactly why this has to be right here: nothing would have
-     * stopped them, and a robot clipping through a chrome post in the last shot of
-     * the chapter is something a viewer sees and no collider test does.
+     * Cutscene walks ignore walls (`cutUpdate` in `game.ts`), which is exactly why
+     * this has to be right here: nothing would have stopped them, and a robot
+     * clipping through a chrome post in the last shot of the chapter is something a
+     * viewer sees and no collider test does.
      */
-    const gapY = (i: number): number => (run.belts[i].a.y + run.belts[i].b.y) / 2;
-    const route = (cross: number, fan: number): Vec2[] => [
-      { x: stair.x + stair.w + 34, y: cross },
-      { x: stair.x + stair.w - 10, y: cross },
-      { x: stair.x + 24, y: gateMidY + fan },
-    ];
-    ctx.startCut(
-      [
-        { kind: 'voxxy', pts: route(gapY(3), -34) },
-        { kind: 'droid', pts: route(gapY(4), 0) },
-        { kind: 'biggy', pts: route(gapY(5), 34) },
+    const lane = (i: number): number => (run.belts[i].a.y + run.belts[i].b.y) / 2;
+    const foot = GF.gate.x + GF.gate.w;
+    const route = (kind: 'voxxy' | 'droid' | 'biggy', y: number, wait: number, head: number): CutRoute => ({
+      kind,
+      delay: CLIMB_DELAY[kind],
+      pts: [
+        { x: foot + wait, y },
+        { x: stair.x + stair.w - 2, y },
+        { x: stair.x + head, y },
       ],
-      () => ctx.startChapter(4),
-      VIEW_GROUND,
-    );
+    });
+    return [route('voxxy', lane(4), 13, 20), route('droid', lane(5), 17, 26), route('biggy', lane(6), 23, 36)];
+  }
+
+  /** The exit: the stair beat, then up the main staircase. */
+  function leave(): void {
+    scene = -1;
+    ctx.startCut(climbRoutes(), () => ctx.startChapter(4), VIEW_GROUND, {
+      walkTime: CLIMB_TIME,
+      hold: () => scene < CLIMB_AT,
+      tick: stairBeat,
+    });
+  }
+
+  const smooth = (u: number): number => {
+    const k = u < 0 ? 0 : u > 1 ? 1 : u;
+    return k * k * (3 - 2 * k);
+  };
+
+  /**
+   * The stair beat, one frame of it: Stephan to his post and his hand to the
+   * button, the belts, and the hall carrying on behind them.
+   */
+  function stairBeat(dt: number): void {
+    if (scene < 0) {
+      scene = 0;
+      // The speaker waits at the far end of the queue, off the lanes and out of
+      // the framing's foreground, and watches them go.
+      speaker.x = GF.gate.x + GF.gate.w + 26;
+      speaker.y = (run.belts[7].a.y + run.belts[7].b.y) / 2;
+      speaker.sp = 0;
+      speaker.face = Math.PI;
+    }
+    scene += dt;
+    const B = STAIR_BEAT;
+    // Stephan: turn from the doors to the post, step over, reach, press.
+    const k = smooth((scene - B.stepAt) / B.stepTime);
+    const nx = STEPHAN_HOME.x + (STEPHAN_PRESS.x - STEPHAN_HOME.x) * k;
+    const ny = STEPHAN_HOME.y + (STEPHAN_PRESS.y - STEPHAN_HOME.y) * k;
+    stephanSp = dt > 0 ? Math.hypot(nx - stephan.x, ny - stephan.y) / dt : 0;
+    stephan.x = nx;
+    stephan.y = ny;
+    const toPost = Math.atan2(BUTTON.y - STEPHAN_PRESS.y, BUTTON.x - STEPHAN_PRESS.x);
+    let want = toPost;
+    if (scene >= B.press + 0.7) {
+      // ...and then he turns to watch them go.
+      let cx = 0;
+      let cy = 0;
+      for (const b of ctx.bots) {
+        cx += b.x / ctx.bots.length;
+        cy += b.y / ctx.bots.length;
+      }
+      want = Math.atan2(cy - stephan.y, cx - stephan.x);
+    }
+    const d = Math.atan2(Math.sin(want - stephanFace), Math.cos(want - stephanFace));
+    const turn = STEPHAN_TURN * 2 * dt;
+    stephanFace = Math.abs(d) <= turn ? want : stephanFace + Math.sign(d) * turn;
+    const up = smooth((scene - (B.press - B.reachTime)) / B.reachTime);
+    const down = smooth((scene - (B.press + 0.2)) / 0.45);
+    reach = Math.max(0, up - down);
+    if (!pressed && scene >= B.press) {
+      pressed = true;
+      ctx.flash('Stephan presses the button on the post. A green light, a beep — and the eight belts wind home, one after the other. Up you go.', 4200);
+    }
+    if (scene >= B.belts && gateSwing < 1) windBelts(Math.min(1, (scene - B.belts) / GATE_SWING_TIME));
+    // The hall does not stop for the shot.
+    for (const a of crowd) stepVisitor(a, dt);
+  }
+
+  /**
+   * The shot the stair beat is filmed in (`GameSnapshot.shot`), eye and target in
+   * sim px with heights in metres off the hall floor.
+   *
+   * First the framing: from the lobby strip, above head height, the belt line
+   * with the flight rising behind it — Stephan, his post and the three of them in
+   * the one frame — pushing in a little while the black lifts. Then the climb:
+   * behind the three of them and below their heads, riding up the flight with
+   * them at the height the flight's own plate gives them, so they rise into the
+   * frame rather than out of it, with nothing between the lens and them but air.
+   */
+  function shot(): CameraShot | null {
+    if (!gateOpen) return null;
+    const climb = scene - CLIMB_AT;
+    if (scene < 0 || climb < 0) {
+      const u = smooth(Math.max(0, scene) / FRAME.time);
+      const mix = (a: { x: number; y: number; h: number }, b: { x: number; y: number; h: number }) => ({
+        x: a.x + (b.x - a.x) * u,
+        y: a.y + (b.y - a.y) * u,
+        h: a.h + (b.h - a.h) * u,
+      });
+      return { name: 'stair-gate', eye: mix(FRAME.from.eye, FRAME.to.eye), look: mix(FRAME.from.look, FRAME.to.look) };
+    }
+    let cx = 0;
+    let cy = 0;
+    for (const b of ctx.bots) {
+      cx += b.x / ctx.bots.length;
+      cy += b.y / ctx.bots.length;
+    }
+    const rc = riseAt(cx, cy, FLOOR_PLATES);
+    const ex = Math.min(cx + CLIMB_EYE.back, GLASS_X);
+    const ey = Math.max(cy - CLIMB_EYE.side, stair.y + 10);
+    const eh = Math.max(riseAt(ex, ey, FLOOR_PLATES) + CLIMB_EYE.clear, rc + CLIMB_EYE.h);
+    return {
+      name: 'stair-climb',
+      eye: { x: ex, y: ey, h: eh },
+      look: { x: cx - CLIMB_EYE.lead, y: cy, h: rc + CLIMB_EYE.lookH },
+    };
   }
 
   function update(dt: number): void {
-    if (gateOpen && gateSwing < 1) {
-      gateSwing = Math.min(1, gateSwing + dt / GATE_SWING_TIME);
-      // Each belt stops being a collider on the frame it finishes winding in, which
-      // is the same frame the renderer stops drawing it: both ask `beltUp` of the
-      // same `gateSwing`, so a belt cannot be a picture without a wall or a wall
-      // without a picture.
-      for (const b of gateBeltWalls) {
-        if (b.live && !beltUp(gateSwing, b.rank)) {
-          ctx.removeWall(b.live);
-          b.live = null;
-        }
-      }
-    }
-    if (leaveAt >= 0 && ctx.t >= leaveAt) {
-      leaveAt = -1;
-      leave();
-    }
     ctx.pushBiggy(dt);
     mg.update(dt);
     stepCrates(dt);
@@ -2736,6 +2935,21 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
        * stair foot while the sim has something solid there.
        */
       { kind: 'gate', ...GF.gate, state: gateOpen ? 'open' : 'shut', progress: gateSwing, label: 'main staircase' },
+      /*
+       * Stephan's button post, beside the belt line: red until he presses it,
+       * green from the press on. `v` is his hand on it (`reach`), so the button
+       * goes down under the finger rather than on its own.
+       */
+      {
+        kind: 'stair-button',
+        x: BUTTON.x - 1.5,
+        y: BUTTON.y - 1.5,
+        w: 3,
+        h: 3,
+        state: pressed ? 'done' : 'idle',
+        v: reach,
+        label: 'stair barrier · release',
+      },
       /*
        * THE BAR, and the three things that make it read as one.
        *
@@ -2999,6 +3213,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       // His back to the gate and the stairs, his eyes on the doors — or on whoever
       // has walked up to talk to him (`stephanFace`).
       face: stephanFace,
+      speed: stephanSp,
+      reach,
     });
     /*
      * THE KEYNOTE SPEAKER IS ALWAYS DRAWN, AND THEY LOOK LIKE SOMETHING.
@@ -3213,6 +3429,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     people,
     progress,
     tasks,
+    shot,
     /**
      * `crate` moves the first crate still on the floor; `crate3` moves that one
      * whatever state it is in, which is how a test takes a load off Biggy without

@@ -247,10 +247,10 @@ export function walkTo(g: DebugGame, kind: RobotKind, target: Vec2, tol = 7, avo
  *
  * Soup, speaker, beer: his three conditions, in the order a player meets them, and
  * every address read off a prop or a person the sim itself publishes rather than
- * typed in. It stops while the chapter is still holding the hall for the gate's
- * swing (`GATE_SWING_TIME + GATE_CUT_DELAY` in `ch3-breakfast.ts`) — once
- * `startChapter(4)` has run, the props are chapter 4's and there is nothing left of
- * chapter 3 to measure.
+ * typed in. It stops on the frame the last belt has wound in, inside the stair
+ * beat and before the climb (`STAIR_BEAT`, `GATE_CUT_DELAY` in `ch3-breakfast.ts`)
+ * — once `startChapter(4)` has run, the props are chapter 4's and there is nothing
+ * left of chapter 3 to measure.
  *
  * Shared, because two files need it: `tests/colliders.test.ts` sweeps what the
  * chapter draws with its gate open — the half of the chapter that was written off
@@ -351,16 +351,20 @@ export function playToStairGate(g: DebugGame, onOpen?: (g: DebugGame) => void): 
   // The frame the barrier starts moving on, for a caller that wants to watch it.
   onOpen?.(g);
   /*
-   * Let the barrier finish its swing and stop there.
+   * Let the belts finish winding in and stop there.
    *
-   * The chapter holds the hall for `GATE_SWING_TIME + GATE_CUT_DELAY` after
-   * `done()`, so stopping on the swing leaves half a second of `play` in hand —
-   * which is what callers need, because once `startChapter(4)` has run these are
-   * chapter 4's props and chapter 3 is gone.
+   * `done()` hands the chapter to the stair beat (`STAIR_BEAT` in
+   * `ch3-breakfast.ts`): the cast is placed at the belt line, Stephan steps to his
+   * post and presses the button, and only then do the belts go — so the wave is
+   * finished well inside the cutscene, with the three of them still standing on
+   * their marks for `GATE_CUT_DELAY` before the climb. Stopping there leaves the
+   * callers chapter 3's props and walls, which is what they need: once
+   * `startChapter(4)` has run these are chapter 4's and chapter 3 is gone.
    */
-  for (let i = 0; i < 200 && st().gateSwing < 1; i++) g.update(DT_MAX);
-  expect(st().gateSwing, 'the gate never finished swinging').toBe(1);
-  expect(g.snapshot().phase, 'the chapter handed over before its gate had opened on screen').toBe('play');
+  for (let i = 0; i < 400 && st().gateSwing < 1; i++) g.update(DT_MAX);
+  expect(st().gateSwing, 'the belts never finished winding in').toBe(1);
+  expect(g.snapshot().chapter, 'the chapter handed over before its belts had wound in on screen').toBe(3);
+  expect(g.snapshot().shot?.name, 'the climb started before the belts were home').toBe('stair-gate');
 }
 
 /**

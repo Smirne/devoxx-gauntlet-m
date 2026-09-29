@@ -81,8 +81,11 @@ function measureCut(g: DebugGame, budget = 1200): Measured {
         const d = Math.hypot(b.x - p.x, b.y - p.y);
         max.set(b.kind, b.max);
         // A teleport, not a step: `CUT_PLACE_AT` moves the cast to the head of its
-        // route under the black. Anything under 60 px in a 33 ms frame is a walk.
-        if (d > 60) continue;
+        // route under the black. Anything under 60 px in a 33 ms frame is a walk —
+        // except under a full black, where the placing is, however short the jump:
+        // chapter 3 lines the cast up at the belt line, and a robot that was already
+        // standing near Stephan is moved a few px, which is not a walk either.
+        if (d > 60 || s.fade >= 0.99) continue;
         top.set(b.kind, Math.max(top.get(b.kind) ?? 0, d / DT_MAX));
         walked.set(b.kind, (walked.get(b.kind) ?? 0) + d);
         if (clear && s.fade > 0) inFade.set(b.kind, (inFade.get(b.kind) ?? 0) + d);

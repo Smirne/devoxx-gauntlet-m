@@ -654,6 +654,30 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         g.userData = { belts };
         return g;
       }
+      case 'stair-button': {
+        // Stephan's release post beside the belt line: a slim dark pillar with a
+        // steel cap, a red mushroom button on top and a signal lamp on a stalk
+        // that goes green when he has pressed it.
+        const base = groundRiseM(p.x + pw / 2);
+        const H = 1.1;
+        const pillar = new THREE.Mesh(box(0.2, H, 0.2, V(cx, base + H / 2, cz)), mats.darkMetal);
+        const capM = new THREE.Mesh(box(0.26, 0.05, 0.26, V(cx, base + H + 0.025, cz)), mats.steel);
+        const btnMat = new THREE.MeshStandardMaterial({ color: 0xd8261e, emissive: new THREE.Color(0.5, 0.04, 0.02), roughness: 0.35 });
+        const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.075, 0.05, 20), btnMat);
+        btn.position.set(cx, base + H + 0.075, cz);
+        const lampMat = new THREE.MeshBasicMaterial({ color: 0xff2a1a, toneMapped: false });
+        const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.06, 14, 10), lampMat);
+        lamp.position.set(cx, base + H + 0.32, cz);
+        const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.24, 8), mats.steel);
+        stalk.position.set(cx, base + H + 0.17, cz);
+        const glow = new THREE.PointLight(0xff2a1a, 0.6, 3, 2);
+        glow.position.copy(lamp.position);
+        pillar.castShadow = true;
+        g.add(pillar, capM, btn, stalk, lamp, glow);
+        colliders.push(pillar);
+        g.userData = { btn, btnY: btn.position.y, lampMat, glow };
+        return g;
+      }
       default:
         return buildCh3(p, pw, ph);
     }
@@ -1590,6 +1614,16 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
           bl.mesh.scale.x = Math.max(0.001, bl.len * (1 - k * k));
           bl.mesh.visible = k < 1;
         }
+        break;
+      }
+      case 'stair-button': {
+        // Down under his finger, and the lamp from red to green on the press.
+        const on = p.state === 'done';
+        (u.btn as THREE.Object3D).position.y = (u.btnY as number) - 0.03 * Math.min(1, (p.v ?? 0) * 1.5);
+        (u.lampMat as THREE.MeshBasicMaterial).color.setRGB(on ? 0.15 : 3, on ? 3.2 : 0.25, on ? 0.5 : 0.15);
+        const glow = u.glow as THREE.PointLight;
+        glow.color.setRGB(on ? 0.2 : 1, on ? 1 : 0.15, on ? 0.35 : 0.1);
+        glow.intensity = on ? 1.6 : 0.5;
         break;
       }
       case 'beer-tap': {

@@ -73,6 +73,8 @@ const SWING = 0.62;
 const CLAP_HZ = 3.1;
 /** How far the arms come up to clap, radians about the shoulder. */
 const CLAP_LIFT = 2.1;
+/** How far a reaching arm comes up, radians from hanging: a little over horizontal. */
+const REACH_LIFT = 1.45;
 /** How far in towards the midline the hands sit while clapping. */
 const CLAP_IN = 0.42;
 /** ...and how far either side of that they beat. */
@@ -429,6 +431,16 @@ export function buildPerson(): PersonModel {
     } else {
       armL.pivot.rotation.z = 0;
       armR.pivot.rotation.z = 0;
+    }
+    /*
+     * A REACH: the right arm out and forward to shoulder height, to press
+     * something in front of them — Stephan's button at the foot of the main
+     * staircase. `reach` is the sim's (WHEN he presses); this is only the shape.
+     */
+    const reach = Math.max(0, Math.min(1, p.reach ?? 0));
+    if (reach > 0.01) {
+      armR.pivot.rotation.x += (-REACH_LIFT - armR.pivot.rotation.x) * reach;
+      armR.pivot.rotation.z = -0.12 * reach;
     }
 
     const carry = seated ? 'none' : CARRY[Math.floor(rnd(seed, 7) * CARRY.length) % CARRY.length];

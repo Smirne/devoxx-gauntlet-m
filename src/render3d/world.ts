@@ -59,6 +59,14 @@ export interface WorldOptions {
   preserveDrawingBuffer?: boolean;
 }
 
+/**
+ * How fast the camera closes on a shot the sim directs (`GameSnapshot.shot`), per
+ * second: most of a move in about a second — a camera operator, not a cut.
+ */
+const SHOT_EASE = 2.2;
+/** The robot fill while a directed shot has the camera: wider and brighter than in play. */
+const SHOT_FILL = { distance: 12, intensity: 20 } as const;
+
 export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}): World3D {
   const quality = QUALITY[opts.quality ?? 'high'];
   RectAreaLightUniformsLib.init();
@@ -625,6 +633,36 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       grade.dofAmount = 0.85;
       grade.dofFocus = 6 + 10 * Math.max(0, 1 - introT / 14);
       grade.dofRange = 7;
+    } else if (snap.shot && !cam.pose) {
+      // A shot the sim is directing (chapter 3's stair beat): eased to from
+      // wherever the camera was, and snapped under a full black. Heights are off
+      // the storey datum, like everything else the sim says about height.
+      grade.dofAmount = 0;
+      const c = cam.camera;
+      const sh = snap.shot;
+      _cutT.set(m(sh.eye.x), sh.eye.h, m(sh.eye.y));
+      if (!inCut) {
+        _cutPos.copy(c.position);
+        _cutLook.copy(c.position).add(c.getWorldDirection(new THREE.Vector3()).multiplyScalar(4));
+        inCut = true;
+      }
+      const k = snap.fade > 0.9 ? 1 : 1 - Math.exp(-dt * SHOT_EASE);
+      _cutPos.lerp(_cutT, k);
+      _cutLook.lerp(_cutT.set(m(sh.look.x), sh.look.h, m(sh.look.y)), k);
+      c.position.copy(_cutPos);
+      c.lookAt(_cutLook);
+      c.updateMatrixWorld();
+      cam.cut();
+      // The fill that follows the player's robot follows the cast instead: a
+      // staircase has no fitting over it, and the morning's lamps are a glint
+      // (`dimLamps`), so without it the climb went up into the dark.
+      _cutC.set(0, 0, 0);
+      for (const r of robots.values()) _cutC.add(r.rig.root.position);
+      _cutC.divideScalar(Math.max(1, robots.size));
+      robotFill.position.copy(c.position).lerp(_cutC, 0.55);
+      robotFill.position.y += 1.4;
+      robotFill.distance = SHOT_FILL.distance;
+      robotFill.intensity = SHOT_FILL.intensity;
     } else if (snap.phase === 'cut' && !cam.pose) {
       // The exit walk: the three of them from above and behind, eased in from
       // wherever the camera was (Michele: "it should show the 3 characters
@@ -686,6 +724,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       cam.update(dt, active.kind, _pos, active.face, speed, [...solid, ...props.colliders, ...(keynote && keynote.group.visible ? keynote.colliders : []), ...(crates.root.visible ? [crates.root] : [])]);
       robotFill.position.copy(cam.camera.position).lerp(rob.rig.root.position, 0.45);
       robotFill.position.y += 0.6;
+      robotFill.distance = 5;
       robotFill.intensity = onGround && ground && snap.chapter >= 3 ? 0.8 : 4;
     }
 

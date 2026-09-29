@@ -568,6 +568,21 @@ function mainStairSides(group: THREE.Group, mats: Materials): THREE.Object3D[] {
   }
   // The top end: white, floor to the landing.
   b.add(white, box(m(6), hTop, m(ms.h), V(xTop + m(3), hTop / 2, m(ms.y + ms.h / 2))));
+  /*
+   * ...and a light at the head of the flight: the first floor's own lighting
+   * spilling down it. There was nothing over the top of this staircase, so the
+   * last metres of chapter 3's climb went up into an unlit void under the hall
+   * ceiling (Michele, 29 Sep: "the scene ends in dark"). Warm, like the corridor
+   * it leads to; a point light, so the pool (`lightpool.ts`) only pays for it
+   * while the camera is near.
+   */
+  const head = new THREE.PointLight(0xffd6a0, 60, 14, 2);
+  head.position.set(xTop + 0.9, hTop + 1.5, m(ms.y + ms.h / 2));
+  // And one over the middle of the flight, so the treads read as treads on the
+  // way up rather than as a dark slope between two lit ends.
+  const mid = new THREE.PointLight(0xfff0dc, 40, 12, 2);
+  mid.position.set((xTop + xFoot) / 2, (hTop + hFoot) / 2 + 3.0, m(ms.y + ms.h / 2));
+  group.add(head, mid);
   out.push(...b.build(group));
   return out;
 }
