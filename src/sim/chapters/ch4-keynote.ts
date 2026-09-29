@@ -288,7 +288,47 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setView(VIEW_DEVOXX);
   ctx.setWalls(floor1Walls());
   const stair = F1.mainStair;
-  ctx.place([stair.x - 30, 330], [stair.x - 30, 356], [stair.x - 24, 380]);
+  /*
+   * AT THE HEAD OF THE STAIRS THEY HAVE JUST CLIMBED — FACING THE ROOM.
+   *
+   * Michele, 29 Sep 2026: *"stairs should not be closed (but robots can't go
+   * down). Robots should be pointing to the room."* The three of them arrive here
+   * off chapter 3's climb, and they stood with their backs to Room 8, nose to a
+   * rail across the head of the flight they had just come up: the stairs looked
+   * shut behind them and the chapter's room was behind the camera.
+   *
+   * So each faces Room 8's door, the way the whole chapter goes, and the flight
+   * behind them is drawn open (`src/render3d/venue.ts`) — and is still not a way
+   * back down: see the guard just below.
+   */
+  const door8 = roomDoor(R(8));
+  const facing8 = (x: number, y: number): [number, number, number] => [x, y, Math.atan2(door8.cy - y, door8.cx - x)];
+  ctx.place(facing8(stair.x - 30, 330), facing8(stair.x - 30, 356), facing8(stair.x - 24, 380));
+  /*
+   * ...AND THE WAY BACK DOWN IS NOT ONE.
+   *
+   * Nothing stood at the head of this flight in the sim: a robot walked straight
+   * out over the treads the renderer draws dropping to the lobby, a storey of
+   * stairs in mid-air, and stopped at the wall at the far end without a word.
+   * A guard across the top step, one tread in so they can stand at the head and
+   * look down. `hidden`, because the building has no barrier here to draw — and
+   * because the crowd coming UP this flight skips hidden walls (`stepAttendee`),
+   * so it stops the three of them and nobody else. It says why, in each voice.
+   */
+  ctx.walls.push({
+    x: stair.x + 8,
+    y: CY0,
+    w: 2,
+    h: CY1 - CY0,
+    hidden: true,
+    kind: 'stair-down',
+    why: (b) =>
+      b.kind === 'voxxy'
+        ? 'Voxxy: "Down? We JUST came up. And three thousand people are about to — the keynote is this way, in Room 8."'
+        : b.kind === 'droid'
+          ? 'Droid: "That is the way the audience comes up. We are going where they are going: Room 8."'
+          : 'Biggy: "Stairs. Up, once, carefully. Down, not with three thousand people coming the other way."',
+  });
 
   // The cinema section is closed to the public again, and sealed off the same way.
   ctx.walls.push({
