@@ -24,7 +24,7 @@ import { createPeople } from './people3d';
 import { carryFrame, hookPose, ladlePose, poseLadle, potPose, soupPots } from './props-ground';
 import { activeReach, palmWorld, reachClock } from './reach3d';
 import { createProps, type Props3D } from './props3d';
-import { FINGERS_SHUT, createRobots, dimLamps, handsOf, updateGlare, updateRobots, type Robot3D } from './robots3d';
+import { FINGERS_SHUT, createRobots, dimLamps, updateGlare, updateRobots, type Robot3D } from './robots3d';
 import { CORRIDOR_END, HEIGHTS, SIGN_SPANS, buildVenue, type Venue3D } from './venue';
 import { CY0, CY1, F1 } from '../sim/geometry';
 import { CRATE_AT, CRATE_ROW, LEAD, OVER_AT, SLOT, STAND_AT, WALK_AT } from '../sim/opening';
@@ -590,7 +590,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     if (door8) door8.visible = !keynoteOn;
     propsRoot1.visible = !onGround && !keynoteOn;
     updateRobots(robots, snap, dt, crateSurface);
-    if (keynoteOn && keynote) keynote.update(snap, time, dt, (kind) => handsOf(robots, kind));
+    if (keynoteOn && keynote) keynote.update(snap, time, dt);
     else props.update(snap, time, dt);
     seatOnBiggy(snap);
     holdLadle(snap);

@@ -17,7 +17,7 @@
  * the room over `ARRIVAL`. Miss it and the keynote starts with a half-built stage.
  */
 
-import { CY0, CY1, F1, R, VIEW_DEVOXX, VIEW_REEL, floor1Walls, roomDoor } from '../geometry';
+import { CY0, CY1, F1, R, VIEW_DEVOXX, VIEW_REEL, floor1Walls, roomDoor, rooms } from '../geometry';
 import { FACE_MIN_SPEED, MOUNT_REACH, PUSH_REACH, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
 import { botsCollide, circleRect, dist, inRect, mkBody, partyTrick, smallTalk, speed, standOff, stepBot, syncMount } from '../bot';
 import { LANYARD, lanyardFor } from '../lanyards';
@@ -30,6 +30,7 @@ import {
   SIGN_MISSING,
   SIGN_STANDING,
   SLOT_REACH,
+  carryPoint,
   letterName,
   loadDroid,
   signText,
@@ -168,6 +169,30 @@ export const LAB_X0 = 1560;
 export const LAB_X1 = 1698;
 export const LAB_DEPTH = 12;
 export const labTable = (y: number): Rect => ({ x: LAB_X0, y, w: LAB_X1 - LAB_X0, h: LAB_DEPTH });
+/**
+ * The speakers' breakfast (see `setup`): a row of tables across the corridor
+ * between the two secondary flights' west ends, wall to wall with them, sim px.
+ * `BREAKFAST_DEPTH` is a table and its cloth, 0.88 m.
+ */
+export const BREAKFAST_DEPTH = 11;
+export const BREAKFAST: Rect = {
+  x: F1.nicheTop.x,
+  y: F1.nicheTop.y + F1.nicheTop.h,
+  w: BREAKFAST_DEPTH,
+  h: F1.nicheBot.y - (F1.nicheTop.y + F1.nicheTop.h),
+};
+/** Why a shut room stops each of them, in their own voices. `n` is the room. */
+const ROOM_SHUT_WHY: Record<RobotKind, (n: string) => string> = {
+  voxxy: (n) => `Voxxy: Zaal ${n} is locked. Everybody is going to Room 8 this morning, and so am I`,
+  droid: (n) => `Droid: the doors to Zaal ${n} are shut, and nothing in there needs us. The keynote is in Room 8`,
+  biggy: (n) => `Biggy: Zaal ${n}. Locked. I leaned on it to be sure. Room 8`,
+};
+/** Why the breakfast stops each of them, in their own voices. */
+const BREAKFAST_WHY: Record<RobotKind, string> = {
+  voxxy: "Voxxy: the speakers' breakfast, stair to stair. Jump it and I land in the croissants. Room 8 is the other way",
+  droid: "Droid: coffee urns and croissant trays from one flight to the other. That is the speakers' breakfast — our morning is on the Room 8 side of it",
+  biggy: 'Biggy: a table of croissants the width of the corridor, and me. Not this morning. Room 8 is behind us',
+};
 export const RAKE_DEPTH = 2.4;
 export const STAGE_RISE = 0.6;
 
@@ -358,10 +383,56 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     });
   }
 
+  /*
+   * THE SPEAKERS' BREAKFAST, across the corridor at the secondary staircases.
+   *
+   * Michele, 29 Sep 2026 (#21): *"Chap 4: not all corridor should be walkable.
+   * Robots should stop at the secondary stairs. Add some tables with breakfast or
+   * other things if you want a reason."* The floor was open from the main
+   * staircase to the fire door — 90 m of corridor for a chapter that happens in
+   * its last 45 — and nothing at the far end but more corridor.
+   *
+   * The two secondary flights stand against the corridor's walls level with rooms
+   * 4 and 9 (`F1.nicheTop` / `nicheBot`, where the plans put them, unmoved); a row
+   * of breakfast tables between their west ends closes the lane between them, so
+   * flights and tables are one line across the building and the morning is
+   * everything on the Room 8 side of it. Coffee urns, croissant trays and cups,
+   * laid out for the speakers before the keynote (keynote3d.ts draws them off
+   * `BREAKFAST`).
+   *
+   * Solid, and NOT `low` like the lab tables: Voxxy's hop vaults low furniture
+   * (`stepBot`), and a robot is meant to be stopped by this, not to find the way
+   * over it. The crowd never comes this far (main staircase, corridor, Room 8's
+   * door), and neither does anything the chapter or its test pilot drives.
+   */
+  ctx.walls.push({
+    ...BREAKFAST,
+    kind: 'breakfast',
+    why: (b) => BREAKFAST_WHY[b.kind],
+  });
+
   const r8 = R(8);
   const d8 = roomDoor(r8);
   const cx = r8.x + r8.w / 2;
   const top = r8.y;
+
+  /*
+   * EVERY ROOM BUT ROOM 8 IS SHUT — in the sim as well as in the picture.
+   *
+   * Michele, 29 Sep 2026 (#18): *"room door is closed (but walkable)"*. It was the
+   * rooms right beside the robots' start. The 3D build draws every Devoxx room's
+   * doorway with its leaves shut and takes only Room 8's off for this chapter,
+   * but the sim left every doorway open: rooms 7 and 6 open off the corridor
+   * exactly where the three of them come up the main staircase, and a robot
+   * walked straight through their closed leaves into a room nobody has built.
+   * A door drawn shut is a wall now, the way chapter 1's are (`kind: 'shut'`),
+   * and it says so in each voice; the keynote is the only room open this morning.
+   */
+  for (const r of rooms) {
+    if (r.closed || r === r8) continue;
+    const d = roomDoor(r);
+    ctx.walls.push({ x: d.x, y: d.y, w: d.w, h: d.h, kind: 'shut', flavour: true, why: (b) => ROOM_SHUT_WHY[b.kind](String(r.n)) });
+  }
 
   /*
    * At the back of the stage, beside the sign's last letter — where presenters
@@ -1251,13 +1322,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      *    Top-left rect, its own collider under it, `face` which way it reads.
      *  - `letter-slot`: an empty gap, taped on the stage floor, `active` while
      *    Droid is carrying the letter it is waiting for.
-     *  - `letter-held`: the one in Droid's hands, published at HIS centre with his
-     *    heading, the way the soup pot is published at Biggy's.
+     *  - `letter-held`: the one in Droid's hands, published where it IS — out in
+     *    front of him along his heading, and never inside a wall (`carryPoint`,
+     *    src/sim/letters.ts) — facing the way he does. It used to be published at
+     *    his centre and hung off his hands by the renderer, 0.89 m out, which is
+     *    how it went through walls (Michele, 29 Sep).
      */
     const dr = ctx.byKind('droid');
     for (const l of letters) {
       if (l.at === 'held') {
-        out.push({ kind: 'letter-held', x: dr.x, y: dr.y, w: LETTER_W, h: LETTER_D, v: l.slot, label: SIGN[l.slot], state: 'active', face: dr.face });
+        const at = carryPoint(dr, ctx.walls);
+        out.push({ kind: 'letter-held', x: at.x, y: at.y, w: LETTER_W, h: LETTER_D, v: l.slot, label: SIGN[l.slot], state: 'active', face: dr.face });
       } else {
         out.push({ kind: 'letter', ...l.rect, v: l.slot, label: SIGN[l.slot], state: l.at === 'sign' ? 'done' : 'idle', face: l.face });
       }

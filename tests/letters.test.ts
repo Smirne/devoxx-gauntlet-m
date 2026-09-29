@@ -17,9 +17,13 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFS,
   DT_MAX,
+  LETTER_CARRY_REACH,
+  LETTER_D,
   LETTER_MASS,
   LETTER_REACH,
+  LETTER_W,
   PX_PER_M,
+  R,
   SIGN,
   SIGN_ORANGE,
   createGame,
@@ -27,9 +31,10 @@ import {
   type DebugGame,
   type KeynoteState,
   type Prop,
+  type Rect,
   type Vec2,
 } from '../src/sim';
-import { bot, raiseSign } from './pilot';
+import { bot, driveChapter4, raiseSign } from './pilot';
 
 const mk = (): DebugGame => createGame({ seed: 4, chapter: 4, cards: false }) as DebugGame;
 const key = (g: DebugGame): KeynoteState => g.debug.chapter() as KeynoteState;
@@ -312,5 +317,136 @@ describe('the #DEVOXX sign', () => {
       expect(key(g).carrying, 'E by the arrow did not set it down').toBe(-1);
     }
     expect(key(g).sign).toBe('#DEVOXX');
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * CARRIED, IT IS NEVER INSIDE A WALL.
+ *
+ * Michele, 29 Sep 2026: *"letters (and droid's arm) through the wall"*. The sim
+ * used to publish a carried letter at Droid's centre, which can never be in a
+ * wall, and the renderer hung it off his hands 0.89 m out, 0.39 m past the 0.50 m
+ * of him the sim collides with. So it went into every wall he stood at: in the
+ * wing, on every pick-up, its face 17 cm into the wall it had been leaning on.
+ *
+ * Now the sim publishes it where it is (`carryPoint`, src/sim/letters.ts): out in
+ * front of him at the reach of his hands, swept out from his centre and stopped
+ * short of the first wall. These hold both halves of that.
+ */
+describe('a letter in Droid’s hands', () => {
+  /** The carried letter, as the sim publishes it. */
+  const held = (g: DebugGame): Prop | undefined => g.snapshot().props.find((p) => p.kind === 'letter-held');
+  /** How far out along his heading it rides, and how far off that line. */
+  const offset = (g: DebugGame): { along: number; across: number } => {
+    const d = bot(g, 'droid');
+    const p = held(g)!;
+    const dx = p.x - d.x;
+    const dy = p.y - d.y;
+    return { along: dx * Math.cos(d.face) + dy * Math.sin(d.face), across: -dx * Math.sin(d.face) + dy * Math.cos(d.face) };
+  };
+
+  /**
+   * Is the carried letter's footprint — centred on its published point, turned to
+   * its `face`, `LETTER_D` deep along that and `LETTER_W` wide across it — inside
+   * wall `w`? Separating axes, written out here rather than borrowed from the sim;
+   * touching is not inside.
+   */
+  function inWall(p: Prop, w: Rect): boolean {
+    const f = p.face ?? 0;
+    const u: Vec2 = { x: Math.cos(f), y: Math.sin(f) };
+    const n: Vec2 = { x: -u.y, y: u.x };
+    const corners: Vec2[] = [];
+    for (const a of [-1, 1]) {
+      for (const b of [-1, 1]) {
+        corners.push({ x: p.x + u.x * (LETTER_D / 2) * a + n.x * (LETTER_W / 2) * b, y: p.y + u.y * (LETTER_D / 2) * a + n.y * (LETTER_W / 2) * b });
+      }
+    }
+    const wc: Vec2[] = [
+      { x: w.x, y: w.y },
+      { x: w.x + w.w, y: w.y },
+      { x: w.x, y: w.y + w.h },
+      { x: w.x + w.w, y: w.y + w.h },
+    ];
+    for (const ax of [{ x: 1, y: 0 }, { x: 0, y: 1 }, u, n]) {
+      const pa = corners.map((c) => c.x * ax.x + c.y * ax.y);
+      const wa = wc.map((c) => c.x * ax.x + c.y * ax.y);
+      if (Math.max(...pa) <= Math.min(...wa) + 1e-6 || Math.max(...wa) <= Math.min(...pa) + 1e-6) return false;
+    }
+    return true;
+  }
+  /** Every wall the carried letter is inside this frame, named. */
+  const walled = (g: DebugGame): string[] => {
+    const p = held(g);
+    if (!p) return [];
+    return g.debug
+      .walls()
+      .filter((w) => inWall(p, w))
+      .map((w) => `${w.kind ?? 'wall'} at (${Math.round(w.x)},${Math.round(w.y)}) ${Math.round(w.w)}x${Math.round(w.h)}`);
+  };
+
+  it('rides out in front of him at the reach of his hands when nothing is in the way', () => {
+    const g = mk();
+    lift(g);
+    // Turned round, off the wall he lifted it from, and a few steps into the open.
+    g.setStick(0, 1);
+    steps(g, 30);
+    g.setStick(0, 0);
+    steps(g, 15);
+    const o = offset(g);
+    expect(o.along, 'it is not out in front of him at his reach').toBeCloseTo(LETTER_CARRY_REACH, 6);
+    expect(Math.abs(o.across), 'it is off to one side of him').toBeLessThan(1e-6);
+    expect(walled(g)).toEqual([]);
+  });
+
+  it('stops at the wall he walks it into, instead of going through it', () => {
+    const r8 = R(8);
+    /** Where he stands with it, and which way he then walks. */
+    const walls: Array<[string, (g: DebugGame) => void, [number, number]]> = [
+      // Straight on from the pick-up, into the wing's wall the letters lean on.
+      ['the wing wall', () => undefined, [0, -1]],
+      // Room 8's east wall, off the back strip.
+      ['the room’s east wall', (g) => g.debug.place('droid', r8.x + r8.w - 33, r8.y + r8.h - 33), [1, 0]],
+      // The #DEV the crew stood up: a standing letter is a wall too.
+      ['a standing letter', (g) => inFront(g, 'droid', g.snapshot().props.find((p) => p.kind === 'letter' && p.state === 'done' && p.v === 1)!), [0, -1]],
+      // The corridor's own wall, outside the door.
+      ['the corridor wall', (g) => g.debug.place('droid', r8.x + 105, r8.y + r8.h + 20), [0, -1]],
+    ];
+    for (const [name, place, [sx, sy]] of walls) {
+      const g = mk();
+      lift(g);
+      place(g);
+      g.update(DT_MAX);
+      const inside: string[] = [];
+      g.setStick(sx, sy);
+      for (let i = 0; i * DT_MAX < 2.5; i++) {
+        g.update(DT_MAX);
+        inside.push(...walled(g));
+      }
+      g.setStick(0, 0);
+      steps(g, 3);
+      inside.push(...walled(g));
+      expect(inside.slice(0, 4), `walked into ${name}, the letter was inside a wall ${inside.length} times`).toEqual([]);
+      // ...and it was the wall that stopped it: pulled in off his full reach.
+      expect(offset(g).along, `walked into ${name}, it never met the wall`).toBeLessThan(LETTER_CARRY_REACH - 2);
+    }
+  });
+
+  it('is never inside a wall on the test pilot’s whole run through the chapter', () => {
+    const g = createGame({ seed: 20260930, chapter: 4, cards: false }) as DebugGame;
+    let carried = 0;
+    const inside: string[] = [];
+    const watched: DebugGame = {
+      ...g,
+      update: (dt: number) => {
+        g.update(dt);
+        if (!held(g)) return;
+        carried++;
+        inside.push(...walled(g).map((w) => `t=${g.snapshot().t.toFixed(1)} ${w}`));
+      },
+    };
+    driveChapter4(watched);
+    expect(g.snapshot().reel, 'the chapter never reached its ending').not.toBeNull();
+    expect(carried, 'the pilot never carried a letter').toBeGreaterThan(100);
+    expect(inside.slice(0, 6), `${inside.length} frames with a carried letter inside a wall`).toEqual([]);
   });
 });
