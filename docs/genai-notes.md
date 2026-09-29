@@ -5918,3 +5918,34 @@ while the room applauded; `tests/curtain-call.test.ts` caught it and they clap n
     new note names Biggy alone, so Droid can still ask. That is flagged for him to confirm.
   - The crates were not moved "behind the bar". The bar's back face sits 6 px off the hall
     wall, so the sim's stack stays at the cellar end, where the bar's new warm light reaches it.
+
+## 29 Sep 2026 — the keynote speaker's disguise: mask, cape, clicker, a badge you can read from above
+
+- **Human decision (Michele, from a playtest screenshot of the speaker next to Voxxy).**
+  - "the lanyard is not showing, the laptop is a bit awkward. Alternatives to make it
+    recognizable? A mask since it's yet mysterious? a cape?"
+- **Agent work.**
+  - Why the lanyard was missing: it was drawn, but under the laptop's lid. The laptop pose held
+    the lid square across the chest, where the ribbon hangs. The laptop is gone, along with
+    `Person.laptop` and its two meshes.
+  - New `Person.disguise` (`src/sim/types.ts`) and a shared `KEYNOTE_LOOK` (`src/sim/speakers.ts`).
+    Chapter 3 (hiding and following) and chapter 4 (on stage) both spread it, so the speaker
+    looks the same in both.
+  - `src/render/people.ts` builds a disguise kit only on the figure that wears it:
+    - a black domino mask with white eye-holes and two tails;
+    - a short half-cone cape, near-black outside and Devoxx orange inside, with a stand-up
+      collar that frames the head in orange from above. It sways on the clock and swings back
+      with the stride, and keeps no state;
+    - a clicker with a red light in the right hand, which is raised;
+    - an oversized badge reading "KEYNOTE" and "?", tipped face-up to the camera, on two wide
+      straps in the multicolour keynote ribbon.
+  - Fixed a separate bug: every hat sat low enough for the hair cap to poke through its top.
+  - Chapter 3's hint now says to look for the cape, mask and KEYNOTE badge.
+  - Tests: the mesh budget dropped from 17 to 15. A new test checks the kit, the ribbon colour,
+    that the badge faces upwards, and that the kit goes when a pooled figure is reused.
+  - Screenshots from the follow, high-orbit and close cameras, before and after.
+- **Caught and rejected.**
+  - A clicker instead of no prop at all: kept, because it says "presenter" without covering
+    the chest.
+  - The speaker still wears the teal cap on top of the mask. A Zorro hat was considered and
+    left out, because the teal is what the hint has always pointed to.

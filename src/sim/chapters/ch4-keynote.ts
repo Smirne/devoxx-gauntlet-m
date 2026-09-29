@@ -34,7 +34,7 @@ import {
   loadDroid,
   signText,
 } from '../letters';
-import { FRONT_ROW, SPEAKER_LOOKS } from '../speakers';
+import { FRONT_ROW, KEYNOTE_LOOK, SPEAKER_LOOKS } from '../speakers';
 import { buildReel, reelAt, reelLength } from '../reel';
 import type { Bot, Person, Plate, Prop, Rect, ReelCard, ReelView, RobotKind, Task, Vec2, Wall } from '../types';
 
@@ -1165,11 +1165,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       y: speakerAt.y,
       r: speakerAt.r,
       name: 'speaker',
-      // Chapter 3's teal hoodie and cap: the person the player walked here.
-      colour: '#1f9e9b',
-      hat: true,
+      // Chapter 3's hoodie, cap, mask, cape and badge: the person the player walked here.
+      ...KEYNOTE_LOOK,
       role: 'speaker',
-      lanyard: LANYARD.keynote,
       seed: 911,
       face: Math.PI / 2,
       cheer,

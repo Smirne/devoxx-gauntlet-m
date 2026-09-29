@@ -17,6 +17,7 @@ import * as THREE from 'three';
 
 import { buildPerson, type PersonModel } from '../src/render/people';
 import { m } from '../src/sim/units';
+import { LANYARD } from '../src/sim/lanyards';
 import type { Person } from '../src/sim/types';
 
 const models: PersonModel[] = [];
@@ -181,7 +182,7 @@ describe('a person', () => {
    * and the geometries and every material but the clothes are shared between
    * every figure ever built.
    */
-  it('costs seventeen meshes and two materials of its own', () => {
+  it('costs fifteen meshes and two materials of its own', () => {
     const a = mk();
     const b = mk();
     a.pose(person(), 0, 0);
@@ -199,8 +200,12 @@ describe('a person', () => {
      * to fix the slides?"* They are hidden on everybody who is not one of those
      * two, and they cost geometries the crowd already shares — the budget this
      * test guards is the per-figure one, and it is five boxes.
+     *
+     * Seventeen became fifteen on 29 Sep 2026: the laptop went (Michele: *"the
+     * laptop is a bit awkward"*), and the disguise that replaced it is built
+     * only on the one figure asked to wear it — see the test below.
      */
-    expect(meshes).toBeLessThanOrEqual(17);
+    expect(meshes).toBeLessThanOrEqual(15);
     const geo = (pm: PersonModel, n: string): THREE.BufferGeometry => (pm.root.getObjectByName(n) as THREE.Mesh).geometry;
     for (const n of ['head', 'torso', 'leg-l', 'contact']) expect(geo(a, n)).toBe(geo(b, n));
     const mat = (pm: PersonModel, n: string): THREE.Material => (pm.root.getObjectByName(n) as THREE.Mesh).material as THREE.Material;
@@ -209,6 +214,41 @@ describe('a person', () => {
     expect(mat(a, 'torso')).not.toBe(mat(b, 'torso'));
     expect(mat(a, 'collar')).not.toBe(mat(b, 'collar'));
     // ...and everything else on the accessories is shared.
-    for (const n of ['glasses', 'mic', 'laptop-lid']) expect(mat(a, n)).toBe(mat(b, n));
+    for (const n of ['glasses', 'mic']) expect(mat(a, n)).toBe(mat(b, n));
+  });
+
+  /**
+   * The keynote speaker's disguise (`Person.disguise`), which replaced the laptop.
+   *
+   * Michele, 29 Sep 2026: *"the lanyard is not showing, the laptop is a bit
+   * awkward ... A mask since it's yet mysterious? a cape?"* The laptop was posed
+   * across the chest, over the ribbon. The disguise's own long ribbon has to be
+   * there and in the sim's colour, the badge has to face UP towards a camera
+   * that looks down, and a pooled figure that stops being the speaker must lose
+   * the whole kit.
+   */
+  it('dresses the keynote speaker in the disguise, ribbon showing, and takes it off again', () => {
+    const pm = mk();
+    const disguise = { lining: '#e8a01c', badge: ['KEYNOTE', '?'] };
+    pm.pose(person({ role: 'speaker', lanyard: LANYARD.keynote, disguise }), 0, 0);
+    const kit = pm.root.getObjectByName('disguise') as THREE.Object3D;
+    expect(kit.visible).toBe(true);
+    for (const n of ['cape', 'mask', 'keynote-badge', 'keynote-strap-l', 'keynote-strap-r', 'clicker']) {
+      expect(pm.root.getObjectByName(n), n).toBeDefined();
+    }
+    // The straps are the keynote ribbon (the headless fallback paints its key colour).
+    const strap = pm.root.getObjectByName('keynote-strap-l') as THREE.Mesh;
+    expect((strap.material as THREE.MeshStandardMaterial).color.getHexString()).toBe(LANYARD.keynote.slice(1));
+    // The badge's face (+z) is tipped towards the ceiling.
+    const badge = pm.root.getObjectByName('keynote-badge') as THREE.Mesh;
+    pm.root.updateMatrixWorld(true);
+    const n = new THREE.Vector3(0, 0, 1).applyQuaternion(badge.getWorldQuaternion(new THREE.Quaternion()));
+    expect(n.y).toBeGreaterThan(0.4);
+    // No laptop anywhere.
+    expect(pm.root.getObjectByName('laptop-lid')).toBeUndefined();
+    // ...and a pooled figure that is somebody else next frame wears none of it.
+    pm.pose(person({ seed: 5 }), 0, 0);
+    expect(kit.visible).toBe(false);
+    expect((pm.root.getObjectByName('clicker') as THREE.Object3D).visible).toBe(false);
   });
 });

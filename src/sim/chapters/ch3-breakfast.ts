@@ -75,7 +75,7 @@ import {
   loadBiggy,
 } from '../crates';
 import { BAR_RECT, GF, VIEW_GROUND, entranceBayGaps, groundWalls } from '../geometry';
-import { SPEAKER_LOOKS } from '../speakers';
+import { KEYNOTE_LOOK, SPEAKER_LOOKS } from '../speakers';
 import { LANYARD } from '../lanyards';
 import { beltUp, nastriRun } from '../nastri';
 import { botsCollide, circleRect, dist, inRect, mkBody, speed, standOff, stepBot } from '../bot';
@@ -329,16 +329,6 @@ const TRAIL_STEP = 12;
 const TRAIL_REACH = 9;
 /** How much of Voxxy's route the speaker remembers — 120 crumbs is ~14 m. */
 const TRAIL_MAX = 120;
-/**
- * The keynote speaker's teal — hoodie and cap; the ribbon is `LANYARD.keynote`.
- *
- * Nothing else in the hall wears the hoodie, and the ribbon is `LANYARD.keynote`, the only multicolour one. At the
- * zoom this game is played at a person is thirty pixels tall, so one colour worn
- * head to foot is the only kind of "recognisable" that survives, and it is what
- * Michele asked for when he could not find them: *"therse should also be
- * something recognizable about thim."*
- */
-const SPEAKER_TEAL = '#1f9e9b';
 /** Stephan's polo: the dark olive one, off the photograph he sent. */
 const STEPHAN_POLO = '#434a3c';
 /** ...and its collar stripe, which is the half of it that reads at this size. */
@@ -3015,10 +3005,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      *
      * So they stand there from the first frame, and since the programme has said
      * **TBA** for a month, that is what we invented for them: the one person at
-     * Devoxx in a teal speaker's hoodie, teal cap and teal lanyard, with a badge
-     * that says TBA because nobody has printed the real one yet. Teal is the
-     * speaker ribbon's own colour (`src/sim/lanyards.ts`) and nothing else in the
-     * hall wears it, which is what makes a 30 px figure recognisable at all.
+     * Devoxx in a teal hoodie and cap, the multicolour keynote ribbon, and — since
+     * 29 Sep — a mystery guest's domino mask and cape, with an oversized badge
+     * that says KEYNOTE and "?" because nobody has printed the real one yet.
+     * Nothing else in the hall wears any of it, which is what makes a 30 px figure
+     * recognisable at all.
      *
      * The NAME still only shows up close. A floating label across the hall would
      * not be finding somebody, it would be reading a sign — and the booth arrow
@@ -3030,19 +3021,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       y: speaker.y,
       r: speaker.r,
       name: seen ? 'TBA — the keynote speaker' : undefined,
-      colour: SPEAKER_TEAL,
-      hat: true,
       /*
-       * ...and the laptop, open, in both hands.
+       * ...and the disguise: domino mask, cape, clicker, and a badge the size of
+       * a paperback that says KEYNOTE and nothing else (`KEYNOTE_LOOK`).
        *
-       * Michele: *"He could have a laptop in hand to fix the slides? In order to
-       * find him."* Nobody else in the hall is carrying one, so it is a shape you
-       * can pick out of a crowd — and it answers what they are doing behind a
-       * sponsor booth twenty minutes before their own keynote.
+       * It used to be an open laptop — Michele: *"He could have a laptop in hand
+       * to fix the slides?"* — until his playtest on 29 Sep: *"the lanyard is not
+       * showing, the laptop is a bit awkward ... A mask since it's yet
+       * mysterious? a cape?"* The laptop sat exactly over the ribbon.
        */
-      laptop: true,
+      ...KEYNOTE_LOOK,
       role: 'speaker',
-      lanyard: LANYARD.keynote,
       /*
        * They WALK when they are walking.
        *
@@ -3184,7 +3173,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
          * person is still round the back of it, and you still have to walk round.
          */
         at: speaker.following ? speakerAt : { x: speaker.x, y: speaker.y },
-        hint: 'Voxxy: they are hiding from the queues behind one of the booths with WALLS — you can see straight under the cloth tables, so it is none of those. Look for the multicolour lanyard and the teal hoodie: they are the one thing about them that is not hiding',
+        hint: 'Voxxy: they are hiding from the queues behind one of the booths with WALLS — you can see straight under the cloth tables, so it is none of those. Look for the cape, the mask and a badge that says KEYNOTE: for somebody hiding, they are not trying very hard',
       },
       {
         id: 'beer',

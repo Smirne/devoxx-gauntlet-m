@@ -304,6 +304,14 @@ export type Phase = 'intro' | 'play' | 'cut' | 'done';
  * is reachable from here.
  */
 
+/** What the keynote speaker wears to stay TBA — see `Person.disguise`. */
+export interface Disguise {
+  /** The cape's lining, the colour that shows when it swings. The shell is always near-black. */
+  lining: string;
+  /** What the oversized badge says, one entry per line, biggest first. */
+  badge: readonly string[];
+}
+
 /** A conference-goer, catering worker, Stephan, or the hiding keynote speaker. */
 export interface Person {
   x: number;
@@ -333,15 +341,19 @@ export interface Person {
   /** Bare feet under the trousers: Venkat, who talks barefoot. */
   barefoot?: boolean;
   /**
-   * An open laptop, held in both hands in front of them.
+   * The keynote speaker's disguise: a black domino mask, a short cape, a
+   * presentation clicker in one hand and an oversized badge on a long ribbon.
    *
-   * Michele, on the keynote speaker nobody could find: *"He could have a laptop in
-   * hand to fix the slides? In order to find him."* Nobody else in the hall
-   * carries one, so it is a silhouette you can pick out of a crowd — and it says
-   * what they are doing behind that booth, which is not hiding, it is panicking
-   * about slide 34.
+   * It replaced a laptop. Michele, 29 Sep 2026, on a playtest screenshot of a
+   * teal figure holding a grey slab: *"the lanyard is not showing, the laptop is
+   * a bit awkward. Alternatives to make it recognizable? A mask since it's yet
+   * mysterious? a cape?"* The laptop was held square across the chest, which is
+   * exactly where the ribbon hangs, so it hid the one thing the hint told you to
+   * look for. A speaker nobody has announced dressing as a masked mystery guest
+   * is the joke "TBA" was always setting up, and a cape swings, which is a
+   * silhouette nobody else in the crowd has.
    */
-  laptop?: boolean;
+  disguise?: Disguise;
   /** 'visitor' | 'queue' | 'seated' | 'stephan' | 'speaker' | 'staff' */
   role: string;
   /**
