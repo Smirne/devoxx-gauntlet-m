@@ -6549,8 +6549,7 @@ and no frame for over 12 s at chapter 1 → 2, 47 at 3 → 4. Now every floor is
 and the light count is the same on all of them — the hemisphere fills are summed into one light each
 frame (`HemiMerge`; hemisphere light is linear, so the sum is exact) and the two shadowed lamps
 upstairs stay counted downstairs, dark. One compile serves the game, behind a loading screen that is
-in `3d.html` itself, so here it is up 0.07 s after the page opens (the page used to be blank for 2 s
-before the gate). Its sweep is a CSS transform, which the compositor animates while the main thread is busy;
+in `3d.html` itself, ahead of the script (the page used to be blank until the gate). Its sweep is a CSS transform, which the compositor animates while the main thread is busy;
 its fill is the compile's real progress. Chapter 1 → 2 compiles nothing now, and the first frame after
 the gate's key arrives in 0.1–0.7 s with 0–1 programs compiled, against 5.5 s and 15 — or no frame for
 10 s when the key came a second after the gate.
@@ -6606,7 +6605,10 @@ bundle into it (`tools/inline-build.mjs`) put the bundle where Vite puts its scr
 1.5 MB ahead of the page's own markup. The loading screen is markup, so the published page stayed blank
 until the whole file had arrived and been parsed — 2.6 s from a local server, the length of the
 download over a real one. The bundle goes at the end of the body now (a module script runs after
-parsing wherever it stands), and the loader is up 0.13 s after the page opens, from the same server.
+parsing wherever it stands). Measured by decoding screenshots for the loader's yellow title, over a
+link throttled to 8 Mbit/s: painted 0.16–0.27 s after the page opens, where the old layout painted it
+at 4.3 s in one run and not before the gate in the other. From a local server, where the whole file
+arrives at once, it still waits about 2 s for the bundle to compile.
 
 **A side effect, fixed.** Room 8 is built at load now, so a `sheen` that three ignores on a standard
 material (the lab tables' velvet) warned on every page load instead of in chapter 4. Removed; it
@@ -6619,7 +6621,7 @@ the real page: *Skip chapter* from the opening to chapter 4, a robot driven and 
 final card surviving every key but `R`, `C` opening the credits over it, `R` starting the run again;
 `R` pressed twice in each chapter with frames still coming; a lost context recovered at the level
 below; no GL error in 30 s of chapters 2, 3 or 4; and the published single-file pages, 3D and 2.5D,
-loaded from a plain static server with no errors. Eleven commits, one step each, and two for these
+loaded from a plain static server with no errors. Eleven commits, one step each, and three for these
 notes. The credits were recounted as before (`git log`, a walk of `src` and `tests`, `wc -w` over
 `docs/*.md`), the last commit included.
 
