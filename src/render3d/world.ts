@@ -906,7 +906,14 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       // Three set-up frames: props are built from the first snapshots, and the
       // box-projection patch and the light pools take them over the first three.
       for (let i = 0; i < 3; i++) render(snap, 0, false, false);
-      return renderer.compileAsync(scene, cam.camera).then(() => undefined);
+      // Compiled with a render target bound, as the frame draws: with none,
+      // three picks every program's sRGB canvas-output variant, and the frame,
+      // which draws into linear HDR targets, compiled them all over again.
+      const was = renderer.getRenderTarget();
+      renderer.setRenderTarget(pipeline.reflection.rt);
+      const done = renderer.compileAsync(scene, cam.camera);
+      renderer.setRenderTarget(was);
+      return done.then(() => undefined);
     },
     resize,
     project,
