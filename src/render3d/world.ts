@@ -590,6 +590,43 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     return cx > e.x - 20 && cx < e.x + e.w + 20 && cz > e.y - 40 && cz < e.y + e.h + 10;
   }
 
+  /*
+   * SHADOW MAPS, NOT ALL OF THEM EVERY FRAME. Each shadowed spot is a render of
+   * the scene before the frame starts: the three lamps, and upstairs the foyer's
+   * street lamp and the fire door's wash — five, a quarter of the frame's draw
+   * calls. The driven robot's lamp, and any lamp that moved, still update every
+   * frame; the others take turns, every other frame. What they light changes
+   * only when something walks through them, and a map one frame old is drawn
+   * with its own matrix, so it lags that frame without ever misaligning.
+   */
+  let shadowTurn = 0;
+  const lampWas = new Map<THREE.SpotLight, { p: THREE.Vector3; t: THREE.Vector3 }>();
+  const _lp = new THREE.Vector3();
+  const _lt = new THREE.Vector3();
+  function scheduleShadows(driven: RobotKind): void {
+    shadowTurn ^= 1;
+    let k = 0;
+    const turn = (L: THREE.SpotLight, always: boolean): void => {
+      const s = L.shadow;
+      s.autoUpdate = always;
+      if (!always) s.needsUpdate = s.map === null || k++ % 2 === shadowTurn;
+    };
+    for (const r of robots.values()) {
+      const L = r.lamp;
+      _lp.copy(L.position);
+      _lt.copy(L.target.position);
+      let was = lampWas.get(L);
+      if (!was) {
+        was = { p: _lp.clone(), t: _lt.clone() };
+        lampWas.set(L, was);
+      }
+      const moved = was.p.distanceToSquared(_lp) > 1e-8 || was.t.distanceToSquared(_lt) > 1e-8;
+      was.p.copy(_lp);
+      was.t.copy(_lt);
+      turn(L, r.kind === driven || moved);
+    }
+    if (!onGround) for (const v of venue.volumeSpots) if (v.light.castShadow) turn(v.light, false);
+  }
   /** The chapter the follow camera last framed; see the reset below. */
   let camChapter = -1;
   /** `draw` false: everything but the drawing — for `prewarm`, behind the title gate. */
@@ -816,6 +853,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     pipeline.setVolumeLights(volSpots, pts);
     if (!draw) return;
 
+    scheduleShadows(active.kind);
     pipeline.render(dt);
 
     // Cinema E's mirror: re-rendered only while the camera is in the room or
