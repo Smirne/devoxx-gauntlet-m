@@ -80,7 +80,7 @@ import { riseAt } from '../surface';
 import { KEYNOTE_LOOK, SPEAKER_LOOKS } from '../speakers';
 import { LANYARD } from '../lanyards';
 import { beltUp, nastriRun } from '../nastri';
-import { botsCollide, circleRect, dist, inRect, mkBody, speed, standOff, stepBot } from '../bot';
+import { botsCollide, circleRect, dist, inRect, mkBody, smallTalk, speed, standOff, stepBot } from '../bot';
 import { WALK_SLACK, clearWalk, detour } from '../detour';
 import { PX_PER_M } from '../units';
 import type { Bot, CameraShot, CutRoute, Person, Prop, Rect, Task, Vec2, Wall } from '../types';
@@ -388,6 +388,14 @@ const SPEAKER_ROUND_TABLE =
 const SPEAKER_ROUND = 'Keynote speaker: "You fit through there and I do not. I am going round — keep going, I can see you."';
 const SPEAKER_WAITS =
   'Keynote speaker: "I cannot get to you in there. I will wait right here — come back out and lead me round."';
+/*
+ * ...and when Droid or Biggy stop to chat (`talk`). Hiding, to the two robots who
+ * were not sent: it is Voxxy's errand (`OBJECTIVE`), and the reason is theirs to
+ * give rather than a rule's. Handed over, to anybody.
+ */
+const SPEAKER_HIDING =
+  'Shh! I am hiding from the queues, and you are the most noticeable thing in this hall. Send the small orange one — nobody looks twice at her.';
+const SPEAKER_HANDED_OVER = 'Stephan has me now. Do not tell the queue where I am.';
 /** Stephan's polo: the dark olive one, off the photograph he sent. */
 const STEPHAN_POLO = '#434a3c';
 /** ...and its collar stripe, which is the half of it that reads at this size. */
@@ -939,8 +947,9 @@ const OBJECTIVE =
   'with the lit mark on the floor, and that errand is his alone. Voxxy: clear a catering queue (E), find the ' +
   'speaker at a built booth. The sponsor booths are open and running their games: three bits of ' +
   '<b>swag</b> to be won on the way, all optional.';
+// "talk", for any of the three (`talk`). It said "ask", which read as the queues.
 const KEYS =
-  '1/2/3/Tab: switch · WASD · E: use / lift / ask / clear a queue / play a game / tow Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics \u00b7 C: credits';
+  '1/2/3/Tab: switch · WASD · E: use / lift / talk / clear a queue / play a game / tow Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics \u00b7 C: credits';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');
@@ -2402,10 +2411,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * could not hop anywhere in this chapter at all, because everything here ends in
    * a line of dialogue and a line of dialogue was claiming the key.
    *
-   * The dead ends hand it back — Voxxy with nobody to talk to, Biggy with nothing
-   * to pick up, and, since the other two robots got a party trick of their own on
-   * 25 Sep 2026, Droid with nothing to reach. Every refusal that names a REASON
-   * keeps the key,
+   * The dead ends hand it back — Voxxy with nothing to do, Biggy with nothing to
+   * pick up, and, since the other two robots got a party trick of their own on
+   * 25 Sep 2026, Droid with nothing to reach. What `game.ts` does with it then is
+   * take hold of Biggy, or talk to whoever is standing there (`talk`, 29 Sep:
+   * *"I'd prefer all robots to talk"*), and only then the party trick. Every
+   * refusal that names a REASON keeps the key,
    * because those are answers: "no ladle", "I am three crates deep", "that weighs
    * more than I do". Hopping instead of saying one of those would be a worse game.
    */
@@ -2526,8 +2537,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         return true;
       }
       if (askQueue(d)) return true;
-      // His dead end, handed back: at Biggy it becomes a grab, anywhere else the
-      // stretch. "Nothing to reach here" is what the stretch says, without words.
+      // His dead end, handed back: at Biggy it becomes a grab, at a person a word
+      // with them (`talk`), anywhere else the stretch. "Nothing to reach here" is
+      // what the stretch says, without words.
       return false;
     }
 
@@ -2577,8 +2589,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         return true;
       }
       if (askQueue(bg)) return true;
-      // His dead end. He cannot hop, but he can be taken hold of, and `spareE`
-      // has a better line for him than this one did.
+      // His dead end. He cannot hop, but he can be taken hold of, he can talk to
+      // whoever is standing there (`talk`), and `spareE` has a better line for him
+      // than this one did.
       return false;
     }
 
@@ -2593,16 +2606,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       ctx.flash('Keynote speaker: "Oh! Is it time? Lead the way."');
       return true;
     }
-    // Then the NEAREST person in reach: at the high table two of them stand
-    // closer together than `TALK_REACH`, and "whoever is first in the list" would
-    // answer for whoever Voxxy is actually facing.
-    const n = npcs
-      .filter((o) => dist(o, v) < TALK_REACH)
-      .sort((a, b) => dist(a, v) - dist(b, v))[0];
-    if (n) {
-      ctx.flash(`${n.name}: "${n.line}"`, 4500);
-      return true;
-    }
+    // Everybody else in the hall is conversation, and conversation is `talk`,
+    // for all three of them — after the jobs below and after Biggy's bar.
     if (dist(v, station) < POT_NAG) {
       ctx.flash(potRefusal(v), 4200);
       return true;
@@ -2613,8 +2618,49 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       return true;
     }
     if (askQueue(v)) return true;
-    // Her dead end, handed back: at Biggy it becomes a grab, anywhere else a hop.
+    // Her dead end, handed back: at Biggy it becomes a grab, at a person a word
+    // with them (`talk`), anywhere else a hop.
     return false;
+  }
+
+  /**
+   * SMALL TALK, FOR ALL THREE OF THEM (`ChapterRuntime.talk`).
+   *
+   * Michele, 29 Sep 2026, with a screenshot of Josh in the hall: *"is this Josh?
+   * how do I talk to him? with E I get my action"* — and then *"I'd prefer all
+   * robots to talk."* The people in this hall answered Voxxy and nobody else, so
+   * `E` beside Josh was a stretch for Droid and a roll for Biggy.
+   *
+   * `game.ts` asks only once `key` has handed `E` back and the tow bar has had its
+   * turn: every job here still comes first — the pot, the crates, the ladle, a
+   * queue asked aside, the keynote speaker for Voxxy — and so does taking hold of
+   * Biggy. The party trick is what is left with nobody near.
+   *
+   * The NEAREST person answers, within `TALK_REACH` of the robot's own edge: at
+   * the high table two of them stand closer together than that, and "whoever is
+   * first in the list" would answer for whoever the robot is actually facing. The
+   * keynote speaker talks while standing still — hiding, to the two robots who
+   * are not the one sent to fetch them, or once handed over — and not while
+   * walking behind Voxxy, where they are never out of reach and `E` has to go on
+   * meaning her hop.
+   */
+  function talk(b: Bot): boolean {
+    let who: { name: string; line: string } | null = null;
+    let nearest = TALK_REACH + b.r;
+    for (const n of npcs) {
+      const d = dist(n, b);
+      if (d < nearest) {
+        nearest = d;
+        who = n;
+      }
+    }
+    const standing = speaker.withStephan || (!speaker.following && b.kind !== 'voxxy');
+    if (standing && dist(speaker, b) < nearest) {
+      who = { name: 'Keynote speaker', line: speaker.withStephan ? SPEAKER_HANDED_OVER : SPEAKER_HIDING };
+    }
+    if (!who) return false;
+    ctx.flash(smallTalk(b, who.name, who.line), 4500);
+    return true;
   }
 
   /* ------------------------------------------------------------------- update */
@@ -3640,6 +3686,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   return {
     key,
+    talk,
     update,
     props,
     people,

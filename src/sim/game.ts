@@ -429,12 +429,16 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   }
 
   /**
-   * `E` with nothing else on it: take hold of Biggy, let go of him, or show off.
+   * `E` with nothing else on it: take hold of Biggy, let go of him, talk to
+   * whoever is standing there, or show off.
    *
    * The order is intent, not convenience. A robot already on the bar means to let
    * go; one standing against Biggy means to take hold, because that is the reason
-   * to be standing there; anything else is that robot's party trick — Voxxy's hop,
-   * Biggy's roll, Droid's stretch. A robot can always step away from Biggy to
+   * to be standing there; one standing at a person means to talk to them
+   * (`ChapterRuntime.talk` — Michele, 29 Sep 2026: *"is this Josh? how do I talk
+   * to him? with E I get my action"*, and *"I'd prefer all robots to talk"*);
+   * anything else is that robot's party trick — Voxxy's hop, Biggy's roll,
+   * Droid's stretch. A robot can always step away from Biggy or from a person to
    * perform, and there is nothing any of them could want to hop over, rock on or
    * stretch out of while touching him.
    *
@@ -448,6 +452,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       towToggle();
       return;
     }
+    if (runtime?.talk?.(b)) return;
     showOff(bots, b, aside);
   }
 
