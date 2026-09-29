@@ -1518,16 +1518,15 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         g.add(puddle);
         return g;
       }
-      case 'toast': {
-        // The glass Biggy raises when the bar is done: a tulip of Belgian gold.
-        const glass = new THREE.Mesh(
-          new THREE.LatheGeometry([[0.02, 0], [0.02, 0.06], [0.05, 0.1], [0.04, 0.2]].map(([r0, y]) => new THREE.Vector2(r0, y)), 14),
-          beerMat,
-        );
-        g.add(glass);
-        g.userData = { glass };
+      case 'toast':
+        /*
+         * The glass Biggy used to raise off his lid when the bar was done — a
+         * tulip of Belgian gold, drawn half a metre above a robot with no hand
+         * there to hold it. Michele, 29 Sep 2026: *"leave out the floating bottle
+         * on biggy, taps are enough."* The sim still publishes the beat (the
+         * 2.5D build and the toast's line use it); the 3D build draws nothing.
+         */
         return g;
-      }
       case 'beer-glass': {
         // Four Belgian shapes by `v`: tulip, goblet, flute, chalice.
         g.position.set(m(p.x), 1.1, m(p.y));
