@@ -92,7 +92,7 @@ const ORDER: readonly RobotKind[] = ['voxxy', 'droid', 'biggy'];
  *   - a cutscene is direction, not physics. The shot is as long as the shot needs
  *     to be, and each robot's pace falls out of "cover your route in that time".
  *
- * The whole thing is gather + walk + hold + leave, about seven seconds.
+ * The whole thing is gather + walk + leave, about six and a half seconds.
  */
 
 /** After the gather fade, the robots are teleported to the head of their route. */
@@ -143,12 +143,16 @@ const CUT_WALK_TIME = 4.6;
  * itself instead of turning into a sprint.
  */
 const CUT_WALK_FRACTION = 0.7;
-/** They stand on their mark for this long before the black comes back. */
-const CUT_HOLD = 0.5;
+/*
+ * No hold on the mark. Michele, 29 Sep: *"the robots stop walking before the
+ * transition. They should keep walking with a fade out effect."* Once a robot has
+ * walked its route it carries on along its last heading, at the same pace, while
+ * the closing fade comes down: they walk out of the shot instead of posing in it.
+ */
 /**
  * A cutscene walk never holds the game hostage: after this the leg ends wherever it
  * has got to. It is a safety hatch, not a pace — it has to sit comfortably above
- * `CUT_WALK_TIME + CUT_HOLD` or it truncates the scene it is meant to protect.
+ * `CUT_WALK_TIME` or it truncates the scene it is meant to protect.
  */
 const CUT_WALK_MAX = 9;
 /** The closing fade, and when it hands over to the next chapter. */
@@ -296,10 +300,12 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     view: ViewRect;
     routes: Map<RobotKind, Array<{ x: number; y: number }>>;
     next: () => void;
-    stage: 'gather' | 'walk' | 'hold' | 'leave';
+    stage: 'gather' | 'walk' | 'leave';
     st: number;
     /** px/s per robot, derived at the top of the walk from route length / `CUT_WALK_TIME`. */
     pace: Map<RobotKind, number>;
+    /** Each robot's last heading on its route, which it keeps walking once the route runs out. */
+    heading: Map<RobotKind, number>;
   }
   let cut: CutState | null = null;
 
@@ -584,7 +590,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     const map = new Map<RobotKind, Array<{ x: number; y: number }>>();
     const budget = cutReach();
     for (const r of routes) map.set(r.kind, trimRoute(r.pts.map((p) => ({ x: p.x, y: p.y })), budget));
-    cut = { view: v, routes: map, next, stage: 'gather', st: 0, pace: new Map() };
+    cut = { view: v, routes: map, next, stage: 'gather', st: 0, pace: new Map(), heading: new Map() };
     for (const b of bots) {
       b.ix = 0;
       b.iy = 0;
@@ -594,6 +600,35 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     }
     if (byKind('droid').mounted) toggleMount();
     dropTow();
+  }
+
+  /** A robot past the end of its route keeps walking the way it was going. */
+  function walkOn(b: Bot, dt: number): void {
+    const h = cut?.heading.get(b.kind);
+    const sp = cut?.pace.get(b.kind) ?? 0;
+    if (h === undefined || sp <= 0) {
+      b.vx = 0;
+      b.vy = 0;
+      return;
+    }
+    const next = { x: b.x + Math.cos(h) * sp * dt, y: b.y + Math.sin(h) * sp * dt, r: b.r };
+    // Unlike the route, this stretch was never directed, so it respects the room:
+    // a robot that would walk into a wall or a friend stops there instead of
+    // walking through the handrail (the complaint `stairExitRoutes` answers).
+    const blocked =
+      walls.some((w) => !(w.skipFor && w.skipFor(b)) && circleRect(next, w)) ||
+      bots.some((o) => o !== b && Math.hypot(o.x - next.x, o.y - next.y) < o.r + b.r && Math.hypot(o.x - b.x, o.y - b.y) > Math.hypot(o.x - next.x, o.y - next.y));
+    if (blocked) {
+      b.vx = 0;
+      b.vy = 0;
+      return;
+    }
+    b.vx = Math.cos(h) * sp;
+    b.vy = Math.sin(h) * sp;
+    b.x = next.x;
+    b.y = next.y;
+    b.face = h;
+    b.anim += (sp * dt) / CUT_ANIM_DIV;
   }
 
   function cutUpdate(dt: number): void {
@@ -653,8 +688,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       for (const b of bots) {
         const r = cut.routes.get(b.kind);
         if (!r || !r.length) {
-          b.vx = 0;
-          b.vy = 0;
+          walkOn(b, dt);
           continue;
         }
         const target = r[0];
@@ -679,30 +713,21 @@ export function createGame(opts: GameOptions = {}): DebugGame {
         b.y += b.vy * dt;
         b.face = Math.atan2(dy, dx);
         b.anim += (sp * dt) / CUT_ANIM_DIV;
+        cut.heading.set(b.kind, b.face);
       }
       // The robots have moved; anything the chapter derives from that has to move
       // with them, or the cutscene is lit from wherever the chapter left off.
       runtime?.relight?.();
       if (done || cut.st > CUT_WALK_MAX) {
-        // They have arrived: hold the picture for a beat before the black returns,
-        // so the shot lands on a pose instead of cutting on the last footfall.
-        cut.stage = 'hold';
-        cut.st = 0;
-      }
-      return;
-    }
-    if (cut.stage === 'hold') {
-      fade = 0;
-      for (const b of bots) {
-        b.vx = 0;
-        b.vy = 0;
-      }
-      if (cut.st > CUT_HOLD) {
+        // They have arrived, and they do not stop: the black comes down on them
+        // still walking. See the note where `CUT_HOLD` used to be.
         cut.stage = 'leave';
         cut.st = 0;
       }
       return;
     }
+    for (const b of bots) walkOn(b, dt);
+    runtime?.relight?.();
     fade = Math.min(1, cut.st / CUT_LEAVE_FADE);
     if (cut.st > CUT_LEAVE_AT) {
       fade = 1;
