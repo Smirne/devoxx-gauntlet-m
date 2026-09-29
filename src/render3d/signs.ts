@@ -351,6 +351,241 @@ export const POSTERS: PosterSpec[] = [
   { title: 'After Dark', tagline: 'Three robots. One night. No lights.', hue: 18, glyph: 'robot' },
 ];
 
+/**
+ * OLD DEVOXX POSTERS, for the walls of the pickup store (Michele, 29 Sep: *"adorn
+ * the walls with old devoxx posters"*). Past editions as a store room keeps
+ * them: taped up, yellowing, the older the paler. Every design is invented here
+ * — no real edition's artwork is copied — and the years and the one fact they
+ * carry are the public history: JavaPolis became Devoxx in 2008, in the same
+ * Antwerp cinema.
+ */
+export interface VintageSpec {
+  year: string;
+  name: string;
+  line: string;
+  style: 'halftone' | 'block' | 'grid' | 'circles' | 'stripes' | 'type';
+  bg: string;
+  ink: string;
+  accent: string;
+  /** 0 new … 1 twenty years on a store-room wall. */
+  age: number;
+}
+
+export const OLD_DEVOXX: readonly VintageSpec[] = [
+  { year: '2005', name: 'JAVAPOLIS', line: 'Antwerp · Metropolis · bring a laptop', style: 'halftone', bg: '#1d2b53', ink: '#ffd23f', accent: '#ff6b35', age: 0.9 },
+  { year: '2008', name: 'DEVOXX', line: 'Same cinema. New name.', style: 'block', bg: '#f37021', ink: '#141414', accent: '#fff4e6', age: 0.7 },
+  { year: '2012', name: 'DEVOXX', line: 'The soup queue opens at 7:45', style: 'grid', bg: '#0b0b12', ink: '#39ff88', accent: '#ff7a1a', age: 0.55 },
+  { year: '2016', name: 'DEVOXX', line: 'Pick a room. Any room.', style: 'circles', bg: '#f1ebe0', ink: '#1a1a1a', accent: '#f37021', age: 0.4 },
+  { year: '2019', name: 'DEVOXX', line: 'OutOfMemoryError: beer', style: 'stripes', bg: '#4b1d6b', ink: '#ffffff', accent: '#ffb000', age: 0.25 },
+  { year: '2022', name: 'DEVOXX', line: 'Keynote speaker: TBA', style: 'type', bg: '#e8e4dc', ink: '#f37021', accent: '#1a1a1a', age: 0.12 },
+];
+
+export function vintagePoster(p: VintageSpec): THREE.CanvasTexture {
+  const W = 512;
+  const H = 724;
+  const [c, x] = canvas(W, H);
+  const heavy = '"Impact", "Haettenschweiler", "Arial Black", "Helvetica Neue", sans-serif';
+  const plain = '"Helvetica Neue", Arial, sans-serif';
+  x.fillStyle = p.bg;
+  x.fillRect(0, 0, W, H);
+  x.textAlign = 'center';
+  x.textBaseline = 'alphabetic';
+  switch (p.style) {
+    case 'halftone': {
+      // A dot screen falling off from the top right, and a steaming cup.
+      x.fillStyle = p.accent;
+      for (let gy = 0; gy < H * 0.62; gy += 22) {
+        for (let gx = 0; gx < W; gx += 22) {
+          const d = Math.hypot(W - gx, gy) / (W * 1.1);
+          const r = Math.max(0, 9 * (1 - d));
+          if (r > 0.6) {
+            x.beginPath();
+            x.arc(gx + ((gy / 22) % 2) * 11, gy, r, 0, Math.PI * 2);
+            x.fill();
+          }
+        }
+      }
+      x.fillStyle = p.ink;
+      x.fillRect(176, 250, 150, 130);
+      x.beginPath();
+      x.ellipse(251, 380, 75, 22, 0, 0, Math.PI);
+      x.fill();
+      x.lineWidth = 16;
+      x.strokeStyle = p.ink;
+      x.beginPath();
+      x.arc(334, 312, 30, -Math.PI / 2, Math.PI / 2);
+      x.stroke();
+      x.lineWidth = 7;
+      for (const sx of [212, 251, 290]) {
+        x.beginPath();
+        x.moveTo(sx, 236);
+        x.bezierCurveTo(sx - 18, 206, sx + 18, 186, sx, 150);
+        x.stroke();
+      }
+      x.font = `bold 92px ${heavy}`;
+      x.fillText(p.name, W / 2, 520);
+      x.fillStyle = p.accent;
+      x.font = `bold 120px ${heavy}`;
+      x.fillText(p.year, W / 2, 640);
+      break;
+    }
+    case 'block': {
+      // The year too big for the sheet, cropped by its edge.
+      x.fillStyle = p.ink;
+      x.font = `bold 330px ${heavy}`;
+      x.textAlign = 'left';
+      x.fillText(p.year.slice(0, 2), -20, 300);
+      x.fillText(p.year.slice(2), 150, 590);
+      x.textAlign = 'center';
+      x.fillStyle = p.accent;
+      x.fillRect(0, 610, W, 6);
+      x.font = `bold 78px ${heavy}`;
+      x.fillText(p.name, W / 2, 690);
+      break;
+    }
+    case 'grid': {
+      // A neon floor running to a horizon, the name above it in outline.
+      x.strokeStyle = p.ink;
+      x.lineWidth = 2;
+      const hy = 430;
+      for (let i = -12; i <= 12; i++) {
+        x.beginPath();
+        x.moveTo(W / 2 + i * 14, hy);
+        x.lineTo(W / 2 + i * 90, H);
+        x.stroke();
+      }
+      for (let k = 0; k < 9; k++) {
+        const y = hy + (H - hy) * Math.pow(k / 8, 1.8);
+        x.beginPath();
+        x.moveTo(0, y);
+        x.lineTo(W, y);
+        x.stroke();
+      }
+      const sun = x.createLinearGradient(0, 190, 0, hy);
+      sun.addColorStop(0, p.accent);
+      sun.addColorStop(1, '#7a1a4a');
+      x.fillStyle = sun;
+      x.beginPath();
+      x.arc(W / 2, hy, 150, Math.PI, 0);
+      x.fill();
+      x.lineWidth = 4;
+      x.font = `bold 104px ${heavy}`;
+      x.strokeText(p.name, W / 2, 150);
+      x.fillStyle = p.accent;
+      x.font = `bold 60px ${heavy}`;
+      x.fillText(p.year, W / 2, 230);
+      break;
+    }
+    case 'circles': {
+      // Three overlapping discs, a poster of its decade.
+      x.globalAlpha = 0.92;
+      x.fillStyle = p.accent;
+      x.beginPath();
+      x.arc(190, 250, 150, 0, Math.PI * 2);
+      x.fill();
+      x.fillStyle = p.ink;
+      x.beginPath();
+      x.arc(340, 330, 110, 0, Math.PI * 2);
+      x.fill();
+      x.globalAlpha = 0.8;
+      x.fillStyle = '#d9c9a8';
+      x.beginPath();
+      x.arc(260, 420, 70, 0, Math.PI * 2);
+      x.fill();
+      x.globalAlpha = 1;
+      x.fillStyle = p.ink;
+      x.textAlign = 'left';
+      x.font = `bold 96px ${heavy}`;
+      x.fillText(p.name, 36, 610);
+      x.fillStyle = p.accent;
+      x.font = `bold 64px ${heavy}`;
+      x.fillText(p.year, 38, 680);
+      x.textAlign = 'center';
+      break;
+    }
+    case 'stripes': {
+      // Diagonal stripes and a pint glass.
+      x.save();
+      x.translate(W / 2, H / 2);
+      x.rotate(-0.5);
+      x.fillStyle = p.accent;
+      for (let i = -12; i < 12; i++) x.fillRect(i * 64, -H, 26, H * 2);
+      x.restore();
+      x.fillStyle = p.bg;
+      x.fillRect(40, 420, W - 80, 250);
+      x.fillStyle = p.ink;
+      x.beginPath();
+      x.moveTo(196, 150);
+      x.lineTo(316, 150);
+      x.lineTo(300, 390);
+      x.lineTo(212, 390);
+      x.closePath();
+      x.fill();
+      x.fillStyle = p.accent;
+      x.fillRect(206, 196, 100, 176);
+      x.font = `bold 96px ${heavy}`;
+      x.fillStyle = p.ink;
+      x.fillText(p.name, W / 2, 530);
+      x.fillStyle = p.accent;
+      x.font = `bold 72px ${heavy}`;
+      x.fillText(p.year, W / 2, 610);
+      break;
+    }
+    case 'type': {
+      // Nothing but type, the way a recent one might be.
+      x.fillStyle = p.ink;
+      x.textAlign = 'left';
+      x.font = `bold 150px ${heavy}`;
+      x.fillText('DEV', 30, 250);
+      x.fillText('OXX', 30, 400);
+      x.fillStyle = p.accent;
+      x.font = `bold 90px ${heavy}`;
+      x.fillText(p.year, 34, 520);
+      x.textAlign = 'center';
+      break;
+    }
+  }
+  // The small print, on every one of them.
+  x.font = `bold 22px ${plain}`;
+  x.fillStyle = p.style === 'circles' || p.style === 'type' ? p.accent : p.ink;
+  x.globalAlpha = 0.9;
+  x.fillText(p.line, W / 2, p.style === 'block' || p.style === 'halftone' ? H - 60 + 34 : H - 30);
+  x.globalAlpha = 1;
+  // Age: a yellow cast, the colours bleaching, foxing spots, and the folds.
+  x.globalCompositeOperation = 'multiply';
+  x.fillStyle = `rgba(236, 214, 160, ${0.55 * p.age})`;
+  x.fillRect(0, 0, W, H);
+  x.globalCompositeOperation = 'source-over';
+  x.fillStyle = `rgba(245, 236, 214, ${0.28 * p.age})`;
+  x.fillRect(0, 0, W, H);
+  let seed = Math.round(Number(p.year) * 7 + 3);
+  const rnd = (): number => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 90 * p.age; i++) {
+    x.fillStyle = `rgba(120, 84, 40, ${0.08 + 0.12 * rnd()})`;
+    x.beginPath();
+    x.arc(rnd() * W, rnd() * H, 1 + rnd() * 5, 0, Math.PI * 2);
+    x.fill();
+  }
+  x.strokeStyle = `rgba(255, 255, 255, ${0.25 * p.age})`;
+  x.lineWidth = 2;
+  x.beginPath();
+  x.moveTo(W / 2, 0);
+  x.lineTo(W / 2 + 3, H);
+  x.moveTo(0, H / 2);
+  x.lineTo(W, H / 2 - 2);
+  x.stroke();
+  // Tape at the corners.
+  x.fillStyle = 'rgba(232, 222, 190, 0.78)';
+  for (const [tx, ty, a] of [[18, 16, -0.6], [W - 18, 16, 0.6], [18, H - 16, 0.6], [W - 18, H - 16, -0.6]] as const) {
+    x.save();
+    x.translate(tx, ty);
+    x.rotate(a);
+    x.fillRect(-34, -11, 68, 22);
+    x.restore();
+  }
+  return tex(c);
+}
+
 /** A sheet of paper taped to a door, the chapter's joke in marker pen. */
 export function notice(text: string): THREE.CanvasTexture {
   const [c, x] = canvas(256, 320);

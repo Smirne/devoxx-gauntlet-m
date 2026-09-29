@@ -481,12 +481,21 @@ const NO_MIRRORS: Mirror[] = [];
  * he can still get into the room: wider than he is, narrow enough that he has to
  * come off the throttle first. The tall pallets finish at 1.06 m, so they are solid
  * rather than `low` — see the note on the wall itself.
+ *
+ * Eight since 29 Sep (Michele: *"More crates here"*): a third column against the
+ * east wall and two along the south one, all east of the first column, so the
+ * doorway, Biggy's roll and the lane between the rows are what they were. `v` is
+ * how many crates high (the renderer's height; every pallet is solid either way).
  */
-const STORE_PALLETS: readonly Vec2[] = [
-  { x: GF.store.x + 34, y: GF.store.y + 30 },
-  { x: GF.store.x + 34, y: GF.store.y + 72 },
-  { x: GF.store.x + 80, y: GF.store.y + 30 },
-  { x: GF.store.x + 80, y: GF.store.y + 72 },
+const STORE_PALLETS: ReadonlyArray<Vec2 & { v: 1 | 2 }> = [
+  { x: GF.store.x + 34, y: GF.store.y + 30, v: 2 },
+  { x: GF.store.x + 34, y: GF.store.y + 72, v: 1 },
+  { x: GF.store.x + 80, y: GF.store.y + 30, v: 2 },
+  { x: GF.store.x + 80, y: GF.store.y + 72, v: 1 },
+  { x: GF.store.x + 120, y: GF.store.y + 30, v: 1 },
+  { x: GF.store.x + 120, y: GF.store.y + 72, v: 2 },
+  { x: GF.store.x + 80, y: GF.store.y + 96, v: 2 },
+  { x: GF.store.x + 120, y: GF.store.y + 96, v: 1 },
 ];
 
 /* ==================================================================== chapter */
@@ -2435,13 +2444,13 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           ? 'roller door — torn up, jammed in its housing'
           : 'roller door — shirts & gadgets, shut',
       },
-      ...STORE_PALLETS.map((pt, i): Prop => ({
+      ...STORE_PALLETS.map((pt): Prop => ({
         kind: 'crate',
         x: pt.x,
         y: pt.y,
         w: 16,
         h: 14,
-        v: i % 2 === 0 ? 2 : 1,
+        v: pt.v,
         state: 'idle',
         label: 'Devoxx t-shirts',
       })),

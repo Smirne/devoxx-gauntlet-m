@@ -23,7 +23,7 @@ import { m } from '../sim/units';
 
 import type { Materials } from './materials';
 import { box } from './materials';
-import { exitSign } from './signs';
+import { OLD_DEVOXX, exitSign, vintagePoster } from './signs';
 import { buildDuke } from './duke';
 import { BOOTH_SCHEMES } from '../render/venue/signage';
 import type { VolumePoint } from './pipeline';
@@ -705,6 +705,41 @@ function hallFurniture(group: THREE.Group, mats: Materials): THREE.Object3D[] {
  * the doors, a big white ring pendant lit underneath. The counter runs are the
  * sim's `desk` walls; the slat wall stands on the wardrobe's south face.
  */
+/**
+ * THE STORE'S OLD POSTERS (Michele, 29 Sep: *"adorn the walls with old devoxx
+ * posters"*): past editions taped up in a row above the pallets, oldest by the
+ * door, one overlapping its neighbour's corner as a store-room wall does. All on
+ * `STORE_WALL`, the store's one hard wall — its east and south sides are the
+ * hall's drapes, where a taped sheet would float in front of the folds — and on
+ * the left of anyone coming through the shutter. A few millimetres proud of the
+ * sim's own wall face, so nothing a robot touches moves, and hung above the
+ * tallest pallet (1.14 m) so the crates do not hide them.
+ */
+function storePosters(group: THREE.Group): void {
+  const S = GF.store;
+  const wall = m(S.y + 6 + 8) + 0.012;
+  const x0 = m(S.x);
+  const spots: Array<{ year: string; x: number; y: number; z: number; tilt: number }> = [
+    { year: '2005', x: x0 + 1.5, y: 2.05, z: wall, tilt: 0.03 },
+    { year: '2008', x: x0 + 2.75, y: 2.2, z: wall, tilt: -0.02 },
+    { year: '2012', x: x0 + 3.3, y: 1.8, z: wall + 0.006, tilt: 0.05 },
+    { year: '2016', x: x0 + 5.9, y: 2.1, z: wall, tilt: -0.015 },
+    { year: '2019', x: x0 + 7.3, y: 2.0, z: wall, tilt: 0.02 },
+    { year: '2022', x: x0 + 9.2, y: 2.1, z: wall, tilt: -0.025 },
+  ];
+  const geo = new THREE.PlaneGeometry(0.72, 1.02);
+  for (const s of spots) {
+    const spec = OLD_DEVOXX.find((p) => p.year === s.year);
+    if (!spec) continue;
+    const sheet = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: vintagePoster(spec), roughness: 0.85, metalness: 0 }));
+    sheet.position.set(s.x, s.y, s.z);
+    sheet.rotation.z = s.tilt;
+    sheet.receiveShadow = true;
+    sheet.name = `store-poster-${s.year}`;
+    group.add(sheet);
+  }
+}
+
 /** Reception's lit things, switched with the hall's power: material, full colour. */
 const receptionGlows: Array<{ mat: THREE.MeshBasicMaterial; base: THREE.Color }> = [];
 let receptionLight: THREE.PointLight | null = null;
@@ -899,6 +934,7 @@ export function buildGround(mats: Materials): Ground3D {
   colliders.push(...mainStairSides(group, mats));
   colliders.push(...hallFurniture(group, mats));
   colliders.push(...reception(group, mats));
+  storePosters(group);
   {
     // Duke, on his sim footprint, facing the doors.
     const duke = buildDuke();
