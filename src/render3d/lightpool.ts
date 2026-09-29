@@ -167,9 +167,10 @@ export class SpotPool {
   /**
    * Hand the slots out for a view from `eye`. `view` is the camera's frustum
    * (null for a capture that sees all round, like the environment probe), and
-   * `mirrorY` the height of the floor whose reflection is drawn.
+   * `mirrorY` the height of the floor whose reflection is drawn — null when none
+   * is this frame.
    */
-  update(eye: THREE.Vector3, view: THREE.Frustum | null, mirrorY = 0): void {
+  update(eye: THREE.Vector3, view: THREE.Frustum | null, mirrorY: number | null = 0): void {
     const sc = this.scored;
     sc.length = 0;
     const p = this._p;
@@ -184,6 +185,7 @@ export class SpotPool {
       if (view) {
         s.set(p, range);
         if (!view.intersectsSphere(s)) {
+          if (mirrorY === null) continue;
           s.center.y = 2 * mirrorY - s.center.y;
           if (!view.intersectsSphere(s)) continue;
         }

@@ -176,6 +176,12 @@ export class Pipeline {
   readonly reflection: PlanarReflection;
   /** Objects the reflection pass must hide (the mirrors themselves). */
   reflectors: THREE.Object3D[] = [];
+  /**
+   * Whether anything that samples the floor mirror is in view this frame, set
+   * by the world. The pass is a render of the whole scene; in Room 8 it drew
+   * 190 objects a frame for a corridor floor 60 m behind the wall.
+   */
+  reflectOn = true;
 
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene: THREE.Scene;
@@ -581,7 +587,7 @@ export class Pipeline {
     r.autoClear = true;
 
     // 1. reflection. The first scene render of the frame updates the shadow maps.
-    if (this.reflectors.length) this.reflection.update(r, this.scene, this.camera, this.reflectors);
+    if (this.reflectors.length && this.reflectOn) this.reflection.update(r, this.scene, this.camera, this.reflectors);
 
     // 2. scene
     r.setRenderTarget(this.sceneRT);

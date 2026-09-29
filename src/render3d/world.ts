@@ -115,6 +115,11 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   const details = buildDetails(mats, pipeline.reflection, [...SIGN_SPANS, venue.adSpan, ...(venue.candySpan ? [venue.candySpan] : [])]);
   scene.add(details.group);
   pipeline.reflectors = [...venue.reflectors, ...details.reflectors];
+  // What shows the floor mirror — the terrazzo, the puddles — as boxes, so a
+  // frame can ask whether any of it is in view (`render`). None of it moves.
+  venue.group.updateMatrixWorld(true);
+  details.group.updateMatrixWorld(true);
+  const mirrorBoxes = [...venue.reflectors, ...details.reflectors].map((o) => new THREE.Box3().setFromObject(o));
   const robots: Map<RobotKind, Robot3D> = createRobots(scene, quality.shadowSize);
   // The lamp flares are aimed at the real camera; mirrored, they became big
   // out-of-place blobs on the floor.
@@ -897,7 +902,12 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     const mirrored = mir !== null && world.mirrorOn && !onGround && inRoom(mir.room, eye);
     _viewProj.multiplyMatrices(cam.camera.projectionMatrix, cam.camera.matrixWorldInverse);
     _frustum.setFromProjectionMatrix(_viewProj);
-    spots.update(eye, mirrored ? null : _frustum, pipeline.reflection.planeY);
+    // The floor mirror is a render of the whole scene, drawn only while some of
+    // the terrazzo or a puddle is in view: the terrazzo ends at the fire door, so
+    // chapter 4's Room 8 never shows it. A mirror coming back into view is drawn
+    // on that frame, before anything samples it.
+    pipeline.reflectOn = !onGround && mirrorBoxes.some((b) => _frustum.intersectsBox(b));
+    spots.update(eye, mirrored ? null : _frustum, pipeline.reflectOn ? pipeline.reflection.planeY : null);
     updateGlare(robots, cam.camera);
 
     // The fog takes a fixed number of lights. The robots' lamps always, then
