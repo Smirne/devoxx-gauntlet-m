@@ -29,7 +29,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { DT_MAX, createGame, type DebugGame, type NightState, type RobotKind } from '../src/sim';
+import { DT_MAX, circleRect, createGame, type DebugGame, type GameSnapshot, type NightState, type RobotKind } from '../src/sim';
 import { finishChapter2, openFrontDoors, playToStairGate } from './pilot';
 // Vite's own `?raw`, not `node:fs`: the repo has no `@types/node` and
 // `tsconfig.json` pins `types` to `vite/client` (see `tests/clue-plate.test.ts`).
@@ -126,6 +126,43 @@ function runChapter1(): DebugGame {
   return g;
 }
 
+/** Chapter 2: every job done, and E at the front doors — the let-in follows. */
+function runChapter2(): DebugGame {
+  const g = createGame({ seed: 20260930, chapter: 2, cards: false });
+  g.update(DT_MAX);
+  finishChapter2(g);
+  // Up to the E at the doors; whatever measures the cutscene watches what follows.
+  expect(openFrontDoors(g, 'voxxy', false, false)).toBe(true);
+  return g;
+}
+
+/**
+ * Every frame of the cutscene that leaves `from`, with the picture up: the black
+ * frames are where the walker places the cast, which is a teleport, not a walk.
+ */
+function eachCutFrame(g: DebugGame, from: number, see: (s: GameSnapshot, n: number) => void): number {
+  let n = 0;
+  for (let i = 0; i < 1200 && g.snapshot().chapter === from; i++) {
+    g.update(DT_MAX);
+    const s = g.snapshot();
+    if (s.chapter !== from || s.phase !== 'cut' || s.fade >= 0.99) continue;
+    see(s, ++n);
+  }
+  return n;
+}
+
+/** On this frame, no two robots stand inside one another. */
+function expectApart(s: GameSnapshot, n: number): void {
+  for (let a = 0; a < s.bots.length; a++) {
+    for (let b = a + 1; b < s.bots.length; b++) {
+      const A = s.bots[a];
+      const B = s.bots[b];
+      const gap = Math.hypot(A.x - B.x, A.y - B.y) - A.r - B.r;
+      expect(gap, `${A.kind} inside ${B.kind} on cutscene frame ${n}`).toBeGreaterThanOrEqual(-0.5);
+    }
+  }
+}
+
 describe('no robot is ever run faster than it can walk', () => {
   it('chapter 1 to 2 — down the secondary staircase', () => {
     const g = runChapter1();
@@ -138,12 +175,12 @@ describe('no robot is ever run faster than it can walk', () => {
    * ...and the other two chapters, which is the half of this that has to keep
    * being true rather than the half that was broken.
    *
-   * Chapter 2 hands over with a bare `startChapter(3)` the moment the printer comes
-   * up behind the torn shutter, and chapter 4 ends on `ctx.finish()`: neither walks
-   * anybody anywhere, so neither has a pace to get wrong. That is asserted off the
-   * chapters' own source, so a transition added to either one fails HERE, with a
-   * message saying to come and measure it — rather than shipping at 2.6x Droid's
-   * top speed the way chapter 1's did.
+   * Chapter 4 ends on `ctx.finish()`: it walks nobody anywhere, so it has no pace to
+   * get wrong. (Chapter 2 used to hand over with a bare `startChapter(3)` too; since
+   * 29 Sep it ends on the front doors, and its walk is measured above.) That is
+   * asserted off the chapters' own source, so a transition added to any of them
+   * fails HERE, with a message saying to come and measure it — rather than
+   * shipping at 2.6x Droid's top speed the way chapter 1's did.
    */
   it('names every chapter that runs a walk, so a new one cannot arrive unmeasured', () => {
     const sources: Array<[string, string]> = [
@@ -160,13 +197,8 @@ describe('no robot is ever run faster than it can walk', () => {
     ).toEqual(['ch1-night.ts', 'ch2-expo.ts', 'ch3-breakfast.ts']);
   });
 
-  it('chapter 2 to 3 — out through the front doors', { timeout: 30000 }, () => {
-    const g = createGame({ seed: 20260930, chapter: 2, cards: false });
-    g.update(DT_MAX);
-    finishChapter2(g);
-    // Up to the E at the doors; the measurement watches the walk that follows.
-    expect(openFrontDoors(g, 'voxxy', false, false)).toBe(true);
-    const m = measureCut(g, 2000);
+  it('chapter 2 to 3 — in through the front doors, after Stephan', { timeout: 30000 }, () => {
+    const m = measureCut(runChapter2(), 2000);
     expect(m.reached, 'chapter 2 never handed over').toBe(3);
     expectAWalk(m, 'chapter 2 to 3');
   });
@@ -206,23 +238,42 @@ describe('no robot is ever run faster than it can walk', () => {
    */
   it('never walks one robot through another (chapter 1 to 2)', () => {
     const g = runChapter1();
-    let n = 0;
-    for (let i = 0; i < 1200 && g.snapshot().chapter === 1; i++) {
-      g.update(DT_MAX);
-      const s = g.snapshot();
-      if (s.phase !== 'cut' || s.fade >= 0.99) continue;
-      n++;
-      for (let a = 0; a < s.bots.length; a++) {
-        for (let b = a + 1; b < s.bots.length; b++) {
-          const A = s.bots[a];
-          const B = s.bots[b];
-          const gap = Math.hypot(A.x - B.x, A.y - B.y) - A.r - B.r;
-          expect(gap, `${A.kind} inside ${B.kind} on cutscene frame ${n}`).toBeGreaterThanOrEqual(-0.5);
-        }
-      }
-    }
+    const n = eachCutFrame(g, 1, expectApart);
     expect(g.snapshot().chapter, 'chapter 1 never handed over').toBe(2);
     expect(n, 'no cutscene frames were seen').toBeGreaterThan(20);
+  });
+
+  /*
+   * ...and chapter 2's, which since Michele's *"Let them regroup before the door,
+   * then they open, Stephan is outside and enters"* (29 Sep) is three robots on
+   * their marks in front of the front doors, a man walking in through them, and
+   * the three walking up the lobby after him (`LET_IN` in `ch2-expo.ts`). The
+   * walker ignores walls as well as robots, and Stephan is walked by the chapter,
+   * so the routes are also all that keeps anybody out of the building's fabric:
+   * on no frame with the picture up may a robot, or Stephan, stand inside a wall —
+   * the shut leaves included, which is why they stay walls until they swing.
+   */
+  it('never walks one robot through another, nor anybody through a wall (chapter 2 to 3)', { timeout: 30000 }, () => {
+    const g = runChapter2();
+    let seen = 0;
+    const n = eachCutFrame(g, 2, (s, k) => {
+      expectApart(s, k);
+      for (const b of s.bots) {
+        for (const w of s.walls) {
+          if (w.skipFor?.(b)) continue;
+          expect(circleRect(b, w), `${b.kind} inside a ${w.kind ?? 'wall'} on cutscene frame ${k}`).toBeNull();
+        }
+      }
+      for (const p of s.people) {
+        seen++;
+        for (const w of s.walls) {
+          expect(circleRect(p, w), `${p.name ?? p.role} inside a ${w.kind ?? 'wall'} on cutscene frame ${k}`).toBeNull();
+        }
+      }
+    });
+    expect(g.snapshot().chapter, 'chapter 2 never handed over').toBe(3);
+    expect(n, 'no cutscene frames were seen').toBeGreaterThan(20);
+    expect(seen, 'nobody walked in: the let-in has nobody in it').toBeGreaterThan(20);
   });
 
   /*
@@ -233,11 +284,13 @@ describe('no robot is ever run faster than it can walk', () => {
    */
   it('keeps them walking while the black comes down', { timeout: 30000 }, () => {
     const one = measureCut(runChapter1());
+    // Chapter 2's closing fade comes down on the three following Stephan in.
+    const two = measureCut(runChapter2(), 2000);
     const g = createGame({ seed: 20260930, chapter: 3, cards: false });
     for (let i = 0; i < 4; i++) g.update(DT_MAX);
     playToStairGate(g);
     const three = measureCut(g, 2000);
-    for (const [label, m] of [['chapter 1 to 2', one], ['chapter 3 to 4', three]] as const) {
+    for (const [label, m] of [['chapter 1 to 2', one], ['chapter 2 to 3', two], ['chapter 3 to 4', three]] as const) {
       const moved = [...m.inFade.values()].filter((d) => d > 5).length;
       expect(moved, `${label}: ${JSON.stringify([...m.inFade])} — the cast stopped before the fade`).toBeGreaterThanOrEqual(2);
     }

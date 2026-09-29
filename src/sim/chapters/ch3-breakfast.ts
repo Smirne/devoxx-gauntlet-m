@@ -955,7 +955,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');
   ctx.setView(VIEW_GROUND);
   ctx.setWalls(groundWalls());
-  ctx.place([600, 215], [630, 215], [660, 215]);
+  // Facing east, into the hall, whichever way chapter 2 left them walking: its
+  // let-in ends with the three following Stephan north up the lobby, and a heading
+  // carried over from there opened this chapter on a counter's flank.
+  ctx.place([600, 215, 0], [630, 215, 0], [660, 215, 0]);
 
   /**
    * HOW LONG STEPHAN TAKES TO OPEN THE STAIRS, seconds.
