@@ -14,9 +14,10 @@
  * that arrives on the next floor inside a wall, a chapter that starts before the
  * last one has finished handing over.
  *
- * It is NOT a pacing measurement. The choreographies place robots where a solved
- * puzzle needs them, so the clock here is the sim's, not a player's. The real
- * number is `tests/chapter4-length.test.ts`, which drives on the stick.
+ * It is NOT a pacing measurement for chapters 1–3: their choreographies still
+ * place robots where a solved puzzle needs them, so that part of the clock is the
+ * sim's, not a player's. Chapter 4 is driven on the stick throughout — the same
+ * drive `tests/chapter4-length.test.ts` measures — so its leg is a player's time.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -31,7 +32,7 @@ import {
   type NightState,
   type Vec2,
 } from '../src/sim';
-import { bot, playToStairGate, raiseSign, walkTo } from './pilot';
+import { bot, driveChapter4, playToStairGate, walkTo } from './pilot';
 
 /**
  * The run's seed. The chapter routines are exported so the same run can be driven
@@ -121,41 +122,23 @@ export function playChapter2(g: DebugGame): void {
 
 /* ------------------------------------------------------------- chapter 4 --- */
 
-/** Cake, the #DEVOXX sign, spotlights, everyone on the boards, and the opening video out. */
-export function playChapter4(g: DebugGame): void {
+/**
+ * Cake, the #DEVOXX sign, spotlights, everyone on the boards, and the opening video out.
+ *
+ * DRIVEN, not placed. Michele, 29 Sep 2026, on the old choreography, which put the
+ * cake beside its mark and every robot on its spot: *"1.7 seconds for chap 4?"* —
+ * and the filmed playthrough showed nothing happening. So this is the stick, one
+ * robot at a time, through room 8's one door and up its real aisles: the same
+ * drive `tests/chapter4-length.test.ts` measures (`driveChapter4` in the pilot).
+ * The only debug calls are `select` (keys 1/2/3) and the read-only `chapter()`.
+ */
+export function playChapter4(g: DebugGame, onLeg?: (name: string, seconds: number) => void): void {
   const key = (): KeynoteState => g.debug.chapter() as KeynoteState;
-  const prop = (kind: string): { x: number; y: number; w?: number; h?: number } => {
-    const p = g.snapshot().props.find((o) => o.kind === kind);
-    if (!p) throw new Error(`chapter 4 publishes no ${kind}`);
-    return p;
-  };
-
-  const mark = prop('cake-mark');
-  const markX = mark.x + (mark.w ?? 0) / 2;
-  expect(g.debug.placeProp('cake', markX, mark.y + 58)).toBe(true);
-  g.debug.select('biggy');
-  g.debug.place('biggy', markX, mark.y + 98);
-  g.setStick(0, -1);
-  until(g, 'the cake on its mark', () => key().cake, 300);
-  g.setStick(0, 0);
-
-  raiseSign(g);
+  driveChapter4(g, onLeg);
+  expect(key().cake, 'the cake never reached its mark').toBe(true);
   expect(key().sign, 'the #DEVOXX sign never went up').toBe('#DEVOXX');
-
-  g.debug.select('voxxy');
-  for (const s of g.snapshot().props.filter((p) => p.kind === 'spotlight')) {
-    g.debug.place('voxxy', s.x, s.y);
-    steps(g, 1);
-  }
   expect(key().spots, 'the spotlights never all lit').toBe(4);
   expect(key().ready, 'the stage never came ready').toBe(true);
-
-  const stage = prop('stage');
-  const sy = stage.y + (stage.h ?? 0) / 2;
-  g.debug.place('voxxy', stage.x + 20, sy);
-  g.debug.place('droid', stage.x + 90, sy);
-  g.debug.place('biggy', stage.x + 160, sy);
-  steps(g, 1);
   expect(g.snapshot().reel, 'the opening video never started').not.toBeNull();
 }
 
@@ -189,7 +172,9 @@ describe('a full run', () => {
       playToStairGate(g);
       until(g, 'the walk back up to Room 8', () => g.snapshot().chapter === 4);
     });
-    leg('4 · keynote — cake, sign, lights, stage', () => playChapter4(g));
+    const ch4: Array<[string, number]> = [];
+    leg('4 · keynote — cake, sign, lights, stage', () => playChapter4(g, (n, s) => ch4.push([`    ↳ ${n}`, s])));
+    legs.push(...ch4);
     leg('the opening video', () => {
       until(g, 'the end of the opening video', () => g.snapshot().reel === null, 3000);
     });
