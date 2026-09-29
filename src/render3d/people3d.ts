@@ -25,7 +25,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 
 import { buildPerson, type PersonModel } from '../render/people';
 import { CLAUDE_CLAY, CLAUDE_CREAM } from '../sim/cameos';
-import { WELLD_MARK_ASPECT, drawWellD } from './welld';
+import { WELLD_MARK_ASPECT, paintWellD } from './welld';
 import { riseAt } from '../sim/surface';
 import type { GameSnapshot } from '../sim/types';
 
@@ -1145,13 +1145,9 @@ function welldBackpack(torso: THREE.Mesh, H: number): THREE.Group {
   // The front panel, on the flat of the bag's back face: the print and the cords.
   const pw = w - 2 * r;
   const ph = h - 2 * r;
-  const panel = new THREE.Mesh(
-    new THREE.PlaneGeometry(pw, ph),
-    new THREE.MeshStandardMaterial({
-      roughness: 0.85,
-      map: canvasTex(320, Math.round((320 * ph) / pw), (x) => {
+  const Hc = Math.round((320 * ph) / pw);
+  const print = canvasTex(320, Hc, (x) => {
         const W = 320;
-        const Hc = Math.round((320 * ph) / pw);
         x.fillStyle = '#1d2331';
         x.fillRect(0, 0, W, Hc);
         // Ripstop: a faint grid in the weave.
@@ -1165,14 +1161,17 @@ function welldBackpack(torso: THREE.Mesh, H: number): THREE.Group {
         x.fillText('Dream.', 50, Hc * 0.2);
         x.fillText('Do.', 50, Hc * 0.2 + 50);
         x.fillText('Develop', 50, Hc * 0.2 + 100);
-        // The label: white, rounded, the red WeLLD on it.
+        // The label: white, rounded, the red WeLLD on it — the artwork, painted
+        // once it has decoded, and the print re-uploaded then.
         const lw = 136;
         const lh = Math.round(118 * WELLD_MARK_ASPECT) + 18;
         x.fillStyle = '#f4f2ee';
         x.beginPath();
         x.roundRect(50, Hc * 0.2 + 118, lw, lh, 7);
         x.fill();
-        drawWellD(x, 59, Hc * 0.2 + 127, 118);
+        paintWellD(x, 59, Hc * 0.2 + 127, 118, {}, () => {
+          print.needsUpdate = true;
+        });
         // Shock cord, crossed and laced between the side hooks.
         const cord = (pts: Array<[number, number]>): void => {
           for (const [c, lw, dy] of [['#07080b', 6, 0], ['#3a4152', 1.6, -1.5]] as Array<[string, number, number]>) {
@@ -1189,9 +1188,8 @@ function welldBackpack(torso: THREE.Mesh, H: number): THREE.Group {
         cord([[14, Hc - 8], [W / 2, y0 + 6], [W - 14, Hc - 8]]);
         cord([[14, y0], [W - 14, Hc - 8]]);
         cord([[W - 14, y0], [14, Hc - 8]]);
-      }),
-    }),
-  );
+  });
+  const panel = new THREE.Mesh(new THREE.PlaneGeometry(pw, ph), new THREE.MeshStandardMaterial({ roughness: 0.85, map: print }));
   // Facing away from Michele, so it reads to whoever is behind.
   panel.rotation.y = Math.PI;
   panel.position.set(0, top - h / 2, z - d / 2 - 0.002);

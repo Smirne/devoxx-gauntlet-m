@@ -29,7 +29,7 @@ import { mergeStatic, noMerge } from './merge';
 import type { PlanarReflection } from './reflector';
 import { adScreen, ledTicker } from './screens';
 import { POSTERS, backlitGlass, cityscape, emitter, exitSign, menuBoard, neonText, poster, rainMask, wayfinding, zaalPanel } from './signs';
-import { WELLD_LOCKUP_ASPECT, drawWellD } from './welld';
+import { WELLD_LOCKUP_ASPECT, paintWellD } from './welld';
 
 /** Where chapter 1's geometry stops, sim px: just past the fire door. */
 // Past the secondary staircases (sim x 1005.5..1114.7, standing in the corridor
@@ -1592,10 +1592,11 @@ function coffeeTable(mats: Materials, w: number, d: number): THREE.Group {
  *
  * Every coffee table in the corridor has the same closed laptop on it with the
  * same orange sticker — somebody's talk prep. On one of them the sticker is
- * WellD's instead (`src/render3d/welld.ts`): die-cut white, the red WeLLD and
- * Dream.Do.Develop on it, stuck on a little crooked the way laptop stickers are: Michele's laptop, left on the last table down the
- * corridor, where the Devoxx rooms are. Seven centimetres of red in a corridor
- * of them; nothing points at it.
+ * WellD's instead (`src/render3d/welld.ts`): die-cut white with the whole mark
+ * on it, WeLLD and Dream.Do.Develop, stuck on a little crooked the way laptop
+ * stickers are — Michele's laptop, left on the last table down the corridor,
+ * where the Devoxx rooms are. Nine centimetres of white in a dark corridor;
+ * nothing points at it.
  */
 function hideWellD(table: THREE.Group): void {
   const plain = table.getObjectByName('sticker');
@@ -1609,7 +1610,10 @@ function hideWellD(table: THREE.Group): void {
   x.beginPath();
   x.roundRect(0, 0, c.width, c.height, 30);
   x.fill();
-  drawWellD(x, 20, 20, 440, { tagline: true });
+  // The artwork decodes after this returns; the texture re-uploads when it lands.
+  paintWellD(x, 20, 20, 440, { tagline: true }, () => {
+    map.needsUpdate = true;
+  });
   const map = new THREE.CanvasTexture(c);
   map.colorSpace = THREE.SRGBColorSpace;
   map.anisotropy = 4;
