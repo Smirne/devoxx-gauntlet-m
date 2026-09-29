@@ -448,8 +448,26 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     for (const z of [CY0 - T / 2, CY1 + T / 2]) {
       steps.add(mats.plaster, box(m(CORRIDOR_END - ms.x), STOREY_H_M, m(T), V(m((ms.x + CORRIDOR_END) / 2), -STOREY_H_M / 2, m(z)), 2.5));
     }
-    // A handrail across the head of the flight, and one down each side.
-    steps.add(mats.steel, box(0.06, 0.06, m(CY1 - CY0) - 0.4, V(m(ms.x) - 0.05, 1.0, m((CY0 + CY1) / 2)), 2));
+    /*
+     * Handrails DOWN the flight, splitting it into its three runs — the venue's
+     * own photograph (image-1790032674926.webp) and the 2.5D build's
+     * `mainStaircase` — and none ACROSS its head.
+     *
+     * There was one across the head, at a metre, the whole width of the corridor,
+     * and it is what Michele saw at the top of the stairs the three of them had
+     * just climbed: *"stairs should not be closed (but robots can't go down)"*. A
+     * bar across the top of a flight is a barrier, and this one closed the way
+     * they came in. What stops a robot going back down is the sim's, not a
+     * picture's: chapter 4 guards the top step and says why (`ch4-keynote.ts`).
+     */
+    const run = m(ms.w);
+    const slope = Math.atan2(STOREY_H_M, run);
+    for (let k = 1; k <= 2; k++) {
+      const rail = box(Math.hypot(run, STOREY_H_M), 0.06, 0.06, V(0, 0, 0), 2);
+      rail.rotateZ(-slope);
+      rail.translate(m(ms.x) + run / 2, 1.0 - STOREY_H_M / 2, m(ms.y + (ms.h * k) / 3));
+      steps.add(mats.steel, rail);
+    }
     steps.build(group);
   }
 
