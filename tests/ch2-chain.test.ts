@@ -66,7 +66,7 @@ const TAG: Vec2 = { x: WIFI_TAG.x, y: WIFI_TAG.y };
 
 function powerUp(g: DebugGame): void {
   g.debug.select('droid');
-  g.debug.place('droid', PANEL.x + 20, PANEL.y + 30);
+  g.debug.place('droid', PANEL.x, PANEL.y + 8);
   for (let i = 0; i < 3; i++) g.key('KeyE');
 }
 

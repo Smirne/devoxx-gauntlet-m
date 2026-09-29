@@ -216,7 +216,7 @@ describe('the printer’s test badge', () => {
     // down to type it, then the cable. Nothing here is a cheat — it is the same
     // route `tests/chapters.test.ts` plays end to end.
     g.debug.select('droid');
-    g.debug.place('droid', panel.x + 20, panel.y + 30);
+    g.debug.place('droid', panel.x, panel.y + 8);
     for (let i = 0; i < 3; i++) g.key('KeyE');
     g.debug.select('biggy');
     g.debug.place('biggy', hub.x, hub.y + 30);

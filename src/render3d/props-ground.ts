@@ -31,6 +31,15 @@ const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(
 /** The ladle's grip-to-bowl length, metres (`makeLadle`); `world.ts` stands it in a pot by it. */
 export const LADLE_REACH = 0.62;
 
+/**
+ * The breaker board's three main isolators, as `build` lays them out, metres:
+ * `pitch` apart across the middle of the board, pivoting `pivotY` up and `out`
+ * proud of the technical room's north wall, with the palm's grip `grip` along the
+ * handle. Exported so `tests/reach3d.test.ts` can walk Droid to them from
+ * everywhere the sim lets him throw one, without building the board.
+ */
+export const BREAKER_HANDLES = Object.freeze({ pitch: 0.42, pivotY: 2.07, out: 0.36, grip: 0.26 });
+
 /** The state palette, linear RGB before intensity. */
 const STATE_RGB: Record<string, [number, number, number]> = {
   idle: [0.25, 0.28, 0.32],
@@ -302,18 +311,19 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
           g.add(c);
         }
         // The three main isolators: a housing each and a red handle on a pivot.
+        const H = BREAKER_HANDLES;
         const handles: THREE.Object3D[] = [];
         for (let i = 0; i < 3; i++) {
-          const hx = (i - 1) * 0.42;
-          g.add(new THREE.Mesh(box(0.2, 0.3, 0.1, V(hx, Y - 0.38, back + 0.3)), din));
+          const hx = (i - 1) * H.pitch;
+          g.add(new THREE.Mesh(box(0.2, 0.3, 0.1, V(hx, H.pivotY, back + H.out - 0.06)), din));
           const pivot = new THREE.Group();
-          pivot.position.set(hx, Y - 0.38, back + 0.36);
-          const arm = new THREE.Mesh(box(0.05, 0.26, 0.05, V(0, 0.13, 0)), new THREE.MeshStandardMaterial({ color: 0xc1261c, roughness: 0.4 }));
-          const grip = new THREE.Mesh(box(0.14, 0.05, 0.06, V(0, 0.26, 0)), new THREE.MeshStandardMaterial({ color: 0xc1261c, roughness: 0.4 }));
+          pivot.position.set(hx, H.pivotY, back + H.out);
+          const arm = new THREE.Mesh(box(0.05, H.grip, 0.05, V(0, H.grip / 2, 0)), new THREE.MeshStandardMaterial({ color: 0xc1261c, roughness: 0.4 }));
+          const grip = new THREE.Mesh(box(0.14, 0.05, 0.06, V(0, H.grip, 0)), new THREE.MeshStandardMaterial({ color: 0xc1261c, roughness: 0.4 }));
           // Where the palm closes: the middle of the grip. Droid's arm and this
           // handle turn on one clock (reach3d.ts), so the hand goes up with it.
           const gripAt = new THREE.Object3D();
-          gripAt.position.y = 0.26;
+          gripAt.position.y = H.grip;
           pivot.add(arm, grip, gripAt);
           g.add(pivot);
           handles.push(pivot);
@@ -1560,40 +1570,58 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         break;
       case 'breaker': {
         const up = p.v ?? 0;
-        // Handles already up stay up; the newest one goes up in Droid's hand,
-        // on the one clock his arm runs on (reach3d.ts), and flashes as it lands.
-        // No reach running (nobody drew one): it is simply up.
-        const clock = reachClock(`breaker${up - 1}`);
-        const throwK = clock === null ? 1 : pullAt(clock);
+        /*
+         * EVERY HANDLE ON ITS OWN CLOCK. Michele, 29 Sep 2026: *"breakers scene:
+         * i see no animation."* Only the newest handle used to be read off the
+         * reach clock, and every older one was drawn up — so a second press while
+         * the first was still in Droid's hand snapped the first up untouched. Now
+         * each handle the sim has up is where his hand has got it to: thrown if
+         * its pull is over (or none was drawn), in his hand if it is running, and
+         * still down if its turn has not come (`reachClock` reads -Infinity for a
+         * handle queued behind another, so its pull has not started).
+         */
+        let shown = 0;
+        let landed = -1;
+        let since = Infinity;
         (u.handles as THREE.Object3D[]).forEach((h, i) => {
-          const k = i < up - 1 ? 1 : i === up - 1 ? throwK : 0;
+          const clock = i < up ? reachClock(`breaker${i}`) : null;
+          const k = i >= up ? 0 : clock === null ? 1 : pullAt(clock);
           h.rotation.x = Math.PI - k * Math.PI;
+          if (i < up && (clock === null || clock >= PULL_END)) shown++;
+          if (clock !== null && clock >= PULL_END && clock - PULL_END < since) {
+            since = clock - PULL_END;
+            landed = i;
+          }
         });
         const fl = u.flash as THREE.Mesh;
-        const since = clock === null ? 1e9 : clock - PULL_END;
-        const spark = since >= 0 && since < 0.23 ? 1 - since / 0.23 : 0;
+        const spark = landed >= 0 && since < 0.23 ? 1 - since / 0.23 : 0;
         fl.visible = spark > 0;
         if (spark > 0) {
-          fl.position.set((up - 2) * 0.42, 2.07 + 0.26, (u.back as number) + 0.36);
+          const H = BREAKER_HANDLES;
+          fl.position.set((landed - 1) * H.pitch, H.pivotY + H.grip, (u.back as number) + H.out);
           (fl.material as THREE.MeshBasicMaterial).color.setRGB(1, 0.85, 0.5).multiplyScalar(30 * spark);
           fl.scale.setScalar(0.6 + spark);
         }
+        // The board as the picture has it: the supply is on when the LAST handle
+        // is home in his hand, not on the key press a queue of pulls ago.
+        const live = shown === up ? p.state : 'idle';
         // The tube: struck when the supply is on (the board's state leaves idle).
-        const on = p.state !== 'idle';
+        const on = live !== 'idle';
         if (on && (u.onAt as number) < 0) u.onAt = t;
         if (!on) u.onAt = -1;
         const ton = on ? t - (u.onAt as number) : -1;
         const tubeK = ton < 0 ? 0 : ton > 1.1 ? 1 : Math.sin(ton * 47) > 0.2 ? 0.9 : 0.05;
         (u.tubeMat as THREE.MeshBasicMaterial).color.setRGB(0.9, 0.95, 1).multiplyScalar(6 * tubeK);
         (u.tubeLight as THREE.PointLight).intensity = 35 * tubeK;
-        // The board strikes when the handle lands in his hand, not on the key
-        // press 0.75 s before it; with no reach drawn, on the sim's own clock.
-        const strike = clock === null ? (p.progress ?? 0) : since >= 0 && since < 0.45 ? 1 - since / 0.45 : 0;
-        stateColour(p.state === 'idle' && up > 0 ? 'active' : p.state, tmp, 6 + 20 * strike);
+        // The board strikes when a handle lands in his hand, not on the key press
+        // before it; with no hand drawn on the newest handle, on the sim's own clock.
+        const drawn = up > 0 && reachClock(`breaker${up - 1}`) !== null;
+        const strike = !drawn ? (p.progress ?? 0) : since < 0.45 ? 1 - since / 0.45 : 0;
+        stateColour(live === 'idle' && shown > 0 ? 'active' : live, tmp, 6 + 20 * strike);
         (u.led.material as THREE.MeshBasicMaterial).color.copy(tmp);
         const L = u.lamp as THREE.PointLight;
-        L.color.copy(stateColour(p.state === 'idle' ? 'broken' : p.state, tmp));
-        L.intensity = (p.state === 'idle' ? 2 : 8) + 40 * strike;
+        L.color.copy(stateColour(live === 'idle' ? 'broken' : live, tmp));
+        L.intensity = (live === 'idle' ? 2 : 8) + 40 * strike;
         break;
       }
       case 'rack-lights':
