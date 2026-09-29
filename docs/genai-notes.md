@@ -6428,3 +6428,36 @@ reaches `main`, it never needs one.
 **Checked before `main` moved.** Typecheck, the 857 tests and the production build on the purged
 tree, and the 3D page's four chapters without console errors; against the pre-purge tree, the only
 differences are the screenshots' history, the eleven hashes and this commit.
+
+## 29 Sep 2026 — the top bar keeps five keys; the run sheet keeps them all
+
+**What the human decided.** Michele, on chapter 2's top bar: *"Trim the on screen hints, they are
+already in the info panel. Keep: 1/2/3 switch, E to act, I for Info, R to restart"*, then *"H for
+hint"*, then *"put restart last"*. The labels are his: `E: act`, which is also what the README calls
+it, and `I: info`.
+
+**What the agent did.** The top bar and the run sheet's commands recap were drawn from one string,
+the chapter's `keys`, so the snapshot now carries two. `keys` is unchanged: the chapter's full list,
+printed at the foot of the run sheet. The new `topKeys` is what the top bar draws. In play it is
+`PLAY_KEYS` in `game.ts`, `1/2/3: switch · E: act · I: info · H: hint · R: restart`. On the title and
+through the opening it is the intro's own line, because nobody is driving yet and there is no sheet
+to point at. `tests/tasks-panel.test.ts` asserts, for chapters 1–4 and the shadow rig, that the bar
+names those five keys in that order and no others, that the sheet's recap still names every key the
+bar dropped, and that the opening keeps its line. Both halves were checked against a mutant: a bar
+that draws the full line fails the five chapter cases, and a bar that always draws the short line
+fails the opening's.
+
+**What was rejected, and why.** Shortening each chapter's `KEYS`: it is the same string the run sheet
+prints, so the info panel would have lost the list the trim relies on. Writing the short line into
+`hud.ts`: which keys a phase offers is the sim's call, and there it is tested without a browser.
+
+**Left as it was.** The sheet's recap and the meter strip still call `I` the "run sheet", the panel's
+own title, while the bar says "info". Chapter 1's "4-9 at the keypad" is now on the sheet only; the
+pad already answers a wrong press in the robot's voice. Every recap ends `P: physics`, which is the
+2.5D build's `P`; in the 3D build `P` is photo mode. That was wrong before today, and it is flagged as
+its own task.
+
+**Checked.** Typecheck, the 863 tests in 65 files and the production build are green. In both builds
+the live top bar drew the short line while the briefing's foot kept the chapter's full list, and the
+opening still read "Any key to skip". That look was taken before restart moved to the end; the order
+is the test's.
