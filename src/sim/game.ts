@@ -285,6 +285,12 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   /** `setStick`'s held heading, or null to face the stick. */
   let stickFace: number | null = null;
   let stickY = 0;
+  /**
+   * The stick is held off the driven robot until the player lets go of it. Only
+   * `handOver` sets it: the robot the stick moved to must not be driven off by a
+   * push that was meant for the one it was taken from.
+   */
+  let stickHeld = false;
   let runtime: ChapterRuntime | null = null;
   /** The tow bar, when somebody has hold of Biggy. See `tow.ts`. */
   let tow: TowState | null = null;
@@ -359,13 +365,15 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   /* ---------------------------------------------------------------- the step */
 
   function stepAll(dt: number, afterStep?: (b: Bot, before: PrevVel) => void): void {
+    // A hand-over's hold ends the moment the player lets go (`handOver`).
+    if (stickHeld && stickX === 0 && stickY === 0) stickHeld = false;
     bots.forEach((b, i) => {
       // Only the robot being driven gets the stick. The other two keep their
       // momentum — which is the whole point of Biggy.
       // Driven, and so braking when the stick is let go: not while he is on the
       // tow bar, where the holder's run is what moves him.
       b.driven = i === cur && !(tow && b.kind === 'biggy');
-      if (i === cur) {
+      if (i === cur && !stickHeld) {
         b.ix = stickX;
         b.iy = stickY;
       } else {
@@ -466,6 +474,21 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   /** Quietly drop the bar — chapter change, cutscene, teleport. No toast. */
   function dropTow(): void {
     tow = null;
+  }
+
+  /**
+   * Give the stick to `kind`, the way the tow bar and the tower hand it over, and
+   * hold it off until the player has let go (`stickHeld`). Drops the bar.
+   *
+   * Nothing moves because of it: no speed is set and no constant read. What it
+   * decides is who is being DRIVEN — and so who brakes, since the driven-only brake
+   * is a frozen constant and applies to whoever the stick has with the stick let
+   * go — and that the push which was going on stops where it is.
+   */
+  function handOver(kind: RobotKind): void {
+    dropTow();
+    cur = ORDER.indexOf(kind);
+    stickHeld = true;
   }
 
   function stepTowBar(dt: number): void {
@@ -1119,6 +1142,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       leanOnBiggy(bots, dt, t, aside);
     },
     toggleMount,
+    handOver,
     switchKey,
     startCut,
     startChapter,
