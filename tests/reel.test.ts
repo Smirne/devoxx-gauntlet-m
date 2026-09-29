@@ -11,15 +11,35 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { buildReel, reelAt, reelLength } from '../src/sim/reel';
+import { REEL_PREROLL, buildReel, reelAt, reelLength } from '../src/sim/reel';
 
 const perfect = { soup: 100, temp: 92, spare: 40, complaints: 0, keynoteComplaints: 0, oom: 0, cable: 0 };
 
 describe('the opening video', () => {
-  it('opens on Devoxx and ends on the running joke', () => {
+  /*
+   * Michele, 29 Sep: *"I'd start with Devoxx After Dark (like in the splash
+   * screen), A game by Michele Giacobazzi (pic of my char?). Then the bloopers /
+   * notes? Or credits in film version?"* The title as the splash draws it, the
+   * author, the night, the credits, and the running joke last.
+   */
+  it('opens on the title and its author, and ends on the credits and the running joke', () => {
     const cards = buildReel(perfect, [], 400);
-    expect(cards[0].title).toBe('DEVOXX BELGIUM');
+    expect(cards[0]).toMatchObject({ title: 'AFTER DARK', kind: 'splash' });
+    expect(cards[1].kind).toBe('byline');
+    expect(cards[1].title).toContain('Michele Giacobazzi');
     expect(cards[cards.length - 1]).toMatchObject({ title: 'KEYNOTE SPEAKER', sub: 'TBA', kind: 'end' });
+    const credits = cards.filter((c) => c.kind === 'credit');
+    expect(credits.map((c) => c.title)).toEqual(['Michele Giacobazzi', 'Claude, in Claude Code', 'WellD', 'Voxxy, Droid and Biggy']);
+    // ...all of them after the night's own cards, and right before the joke.
+    const firstCredit = cards.findIndex((c) => c.kind === 'credit');
+    expect(cards.slice(firstCredit, -1).every((c) => c.kind === 'credit')).toBe(true);
+  });
+
+  it('holds a dark beat before the first card, while the three regroup and the camera goes up', () => {
+    const cards = buildReel(perfect, [], 400);
+    expect(reelAt(cards, 0).card).toBeNull();
+    expect(reelAt(cards, REEL_PREROLL - 0.05).card).toBeNull();
+    expect(reelAt(cards, REEL_PREROLL + 1).card?.kind).toBe('splash');
   });
 
   it('has nothing to show for a clean run, and says so', () => {
@@ -92,7 +112,12 @@ describe('the opening video', () => {
     const cards = buildReel({ ...perfect, complaints: 5, oom: 2 }, ['duck'], 300);
     const len = reelLength(cards);
     expect(len).toBeGreaterThan(10);
-    expect(len).toBeLessThan(30);
+    // The title, the byline and four credit cards made it a film rather than a
+    // clip (29 Sep); the worst case, every blooper slot and the swag, still ends
+    // inside three quarters of a minute.
+    expect(len).toBeLessThan(45);
+    const worst = buildReel({ ...perfect, soup: 40, complaints: 5, oom: 2, cable: 1400, spare: 5, lateT: 30 }, ['duck', 'sticker', 'race'], 300, [2]);
+    expect(reelLength(worst)).toBeLessThan(45);
     // Walked at 30 Hz: the index never goes backwards, every card is shown, and
     // the fade is always a real number between 0 and 1.
     let seen = 0;

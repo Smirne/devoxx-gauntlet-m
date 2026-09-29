@@ -74,6 +74,7 @@ function until(g: DebugGame, done: () => boolean, budget = 600): boolean {
   return done();
 }
 
+import { REEL_PREROLL } from '../src/sim/reel';
 import { bot, driveTo, openFrontDoors, raiseSign, walkTo } from './pilot';
 
 
@@ -1658,7 +1659,10 @@ describe('chapter 4 — keynote', () => {
     const reel = g.snapshot().reel;
     expect(reel, 'no opening video').not.toBeNull();
     expect(g.snapshot().phase).toBe('play');
-    expect(reel!.card?.title).toBe('DEVOXX BELGIUM');
+    // A dark beat first (the three regroup, the camera goes up), then the title.
+    expect(reel!.card, 'the film started without its dark beat').toBeNull();
+    for (let i = 0; i < Math.ceil((REEL_PREROLL + 0.8) / DT_MAX); i++) g.update(DT_MAX);
+    expect(g.snapshot().reel!.card?.title).toBe('AFTER DARK');
     // It ends on the running joke, and it is a real length rather than a frame.
     expect(reel!.len).toBeGreaterThan(8);
     let sawEnd = false;

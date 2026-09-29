@@ -57,7 +57,7 @@ const SCREEN_BOTTOM = 3.35;
 const SCREEN_W = 6.5;
 const SCREEN_H = (SCREEN_W * 9) / 16;
 
-const INK: Record<ReelCard['kind'], string> = { title: '#ff7a1a', stat: '#e8e6e1', blooper: '#ffd27a', end: '#ff7a1a' };
+const INK: Record<ReelCard['kind'], string> = { splash: '#ff7a1a', byline: '#e8e6e1', title: '#ff7a1a', stat: '#e8e6e1', blooper: '#ffd27a', credit: '#e8e6e1', end: '#ff7a1a' };
 
 export function buildKeynote(mats: Materials): Keynote3D {
   const group = new THREE.Group();
