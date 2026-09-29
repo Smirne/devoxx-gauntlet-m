@@ -1049,3 +1049,70 @@ title  After Dark · ERRORS:0
 Zero console errors on every leg, and a screenshot per chapter. 7/9 on the card: the run drops
 points for the five catering complaints it never stopped to clear and for the stage finished with
 374 s of slack rather than at a run.
+
+## Michele, 28 Sep — *"remember that voxxy can go under the tables!"*
+
+He was right, and the first cut of the breadcrumbs had it wrong in two places at once. The sponsor
+half tables are `low: true` with `skipFor: voxxy` (`geometry.ts`), so **Voxxy's route is not a route
+anybody else can walk** — and the crumb guard waved low walls through, dropping crumbs under the
+tablecloths. Underneath that was an older fault the fix uncovered: the speaker's own wall push-out
+skipped `low` walls too, so the keynote speaker simply glided across the half tables and the BOF
+workshop tables. Both gone. The sweep now watches every frame of the errand on all fourteen seeds
+and names any table the speaker's body touched — with the old code, seeds 3 and 12 walked them
+straight through The Coffee Sponsor.
+
+## Michele, 28 Sep — *"5 — what is your suggestion?"*, and the answer: kill the freeze
+
+The ending's dead frame was never the single camera shot. It was this: the video finished,
+`endReel()` pulled the camera back out to the wide room, `finish()` put the score card up, and
+`game.ts` stops the sim dead while a card is showing — so the last thing a player saw was three
+thousand people stopped mid-clap behind a photograph of themselves.
+
+The run's last card is now the one card the room plays on behind. The framing stays where the video
+was, the crowd keeps walking, the applause stays up, and the tower stands with Voxxy still taking
+her encore off Biggy's shoulders. A chapter opts in through `ChapterRuntime.behindCard`; a briefing
+card still freezes, because the player has not started and there is nothing to watch yet. And a
+player who **skipped** the video skips the act with it — camera back out, everything stops — since
+holding a half-finished bow behind the card is worse than holding nothing.
+
+No cuts. Hard cuts on a fixed isometric camera read as a bug rather than as direction, and the
+curtain call is already the motion in the shot.
+
+## Michele, 29 Sep — *"We should work on credits"*
+
+*"Mentioning me, you, and some info on the process (4 repository, 10 gameplay POC, transition from
+2, to 2.5 to 3D, xxxx tokens, xxx agents, xxx loops..). Should contain the welld Logo and
+website."*
+
+`C`, from anywhere in the game, and offered on the final card next to "R to play again". Three
+credits — Michele for direction and every decision that stuck, the model for the code, WellD for
+paying for the nights — then nine figures under *How it was built*, then the mark and `welld.ch`.
+
+**Every number on it was counted, not remembered.** The GenAI section is five points and its whole
+value is being true, so nothing is on that screen that could not be measured:
+
+| | |
+|---|---|
+| 10 gameplay prototypes | `welldsagl/devoxx-game-experiments`, `poc/01-playground` → `poc/10-after-dark-kinepolis` |
+| 296 commits in 7 days | `git log`, 294 by the model and 2 by Michele, 22–29 Sep |
+| 83,809 lines of TypeScript | 61,666 in 88 source files, 22,143 in 66 test files (re-counted after the 3D line's final merge) |
+| 108,625 words of notes | `docs/*.md`, of which 72,287 are the GenAI record |
+| 44 subagents, 6 workflows | `Agent` and `Workflow` tool calls in this session's transcript |
+| 4,453 tool calls | 3,906 of them a shell; 7,245 model turns against 233 messages from Michele |
+| 2.15 B tokens | 6.2 M of them generated; the rest is context read again every turn |
+
+Three of those — the lines, the files and the tests — rot as the repository grows, so
+`tests/credits.test.ts` re-counts them from the source on every run and fails if the screen has
+drifted more than 2%. It reads the tree through Vite's `?raw` rather than `node:fs`, because this
+project carries no `@types/node`; `import.meta.glob` leaves out the module it is written in, so the
+test adds itself back, which is the sort of off-by-one that would otherwise sit there for ever.
+
+**What the screen admits.** The per-session figures are one session's and the game was built across
+several, so they are labelled *one session* on the tiles and the footnote says they are a floor
+rather than a total. And the logo is the real artwork inlined as a 7 KB data URI, on a white plate,
+uncoloured: a hand-traced wordmark is a wrong wordmark, and the tagline is black, so recolouring it
+to suit a dark panel is not a liberty to take.
+
+**Still open:** the fourth repository. Three are nameable — `gauntlet-loop-experiment` (the method),
+`devoxx-game-experiments` (the ten prototypes) and this one — and the screen currently says "the one
+before all of them" for the fourth, which is a placeholder for Michele to correct.

@@ -25,9 +25,34 @@ import { walkTo } from './pilot';
 /** Seconds of sim the speaker gets to cross the hall once Voxxy is on the mark. */
 const BUDGET = 90;
 
-/** Voxxy finds the speaker, leads them to the mark, and lets go. */
-function leadTheSpeaker(g: DebugGame): { booth: string; secs: number; ok: boolean } {
+/**
+ * Voxxy finds the speaker, leads them to the mark, and lets go.
+ *
+ * It also watches every frame of the errand for the speaker inside a sponsor
+ * half table. Michele, 28 Sep 2026: *"remember that voxxy can go under the
+ * tables!"* — the half tables are `low: true` with `skipFor: voxxy`, so Voxxy's
+ * route is not a route anybody else can walk, and both halves of this got it
+ * wrong at first: the breadcrumbs dropped crumbs under the cloth, and the
+ * follower's own push-out waved `low` walls through and simply glided across.
+ */
+function leadTheSpeaker(g: DebugGame): { booth: string; secs: number; ok: boolean; through: string[] } {
   const st = (): BreakfastState => g.debug.chapter() as BreakfastState;
+  const tables = GF.booths.filter((b) => b.table);
+  const through: string[] = [];
+  const real = g.update.bind(g);
+  (g as unknown as { update: (dt: number) => void }).update = (dt: number): void => {
+    real(dt);
+    const p = g.snapshot().people.find((o) => o.role === 'speaker');
+    if (!p) return;
+    // The body against the cloth, circle to rect — the same test the sim resolves
+    // the contact with, so a corner the speaker clears is not reported as a table
+    // they walked through.
+    for (const b of tables) {
+      const nx = Math.max(b.x, Math.min(p.x, b.x + b.w));
+      const ny = Math.max(b.y, Math.min(p.y, b.y + b.h));
+      if (Math.hypot(p.x - nx, p.y - ny) < p.r - 0.5 && !through.includes(b.name)) through.push(b.name);
+    }
+  };
   const booth = GF.booths.find((b) => b.name === st().speaker.booth);
   expect(booth, `the chapter hid the speaker at a booth the venue does not have`).toBeDefined();
   const hiding = g.snapshot().people.find((p) => p.role === 'speaker');
@@ -52,18 +77,20 @@ function leadTheSpeaker(g: DebugGame): { booth: string; secs: number; ok: boolea
   let i = 0;
   const frames = Math.ceil(BUDGET / DT_MAX);
   for (; i < frames && !st().speaker.withStephan; i++) g.update(DT_MAX);
-  return { booth: booth!.name, secs: i * DT_MAX, ok: st().speaker.withStephan };
+  return { booth: booth!.name, secs: i * DT_MAX, ok: st().speaker.withStephan, through };
 }
 
 describe('the keynote speaker', () => {
   it('walks to Stephan from wherever the chapter hides them', { timeout: 60000 }, () => {
     const seen = new Map<string, number>();
     const failed: string[] = [];
+    const through: string[] = [];
     for (let seed = 1; seed <= 14; seed++) {
       const g = createGame({ seed, chapter: 3, cards: false }) as DebugGame;
       const r = leadTheSpeaker(g);
       seen.set(r.booth, Math.max(seen.get(r.booth) ?? 0, r.secs));
       if (!r.ok) failed.push(`${r.booth} (seed ${seed})`);
+      for (const t of r.through) through.push(`${t} (seed ${seed})`);
     }
     // eslint-disable-next-line no-console
     console.log(
@@ -73,6 +100,14 @@ describe('the keynote speaker', () => {
     );
     expect(seen.size, 'the sweep only ever saw one hiding place').toBeGreaterThan(2);
     expect(failed, 'the speaker never reached Stephan from these booths').toEqual([]);
+    /*
+     * ...and never under a tablecloth on the way. Swept over every seed rather
+     * than one, because the fault only shows on the routes that pass a half
+     * table: with the old code it was seeds 3 and 12 — the Regex Racing hiding
+     * place — walking through The Coffee Sponsor, and a single-seed test picked
+     * a booth that happened not to.
+     */
+    expect(through, 'the speaker walked through these sponsor tables').toEqual([]);
   });
 
   /**

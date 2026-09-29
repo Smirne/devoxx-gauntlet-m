@@ -829,7 +829,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       `<span class="sub">Night ${nightT}s · Expo ${Math.max(0, expoT - nightT)}s (cable ${score.cable ?? 0} px) · ` +
       `Soup ${soup}% at ${temp}° (${score.complaints ?? 0} complaint${(score.complaints ?? 0) === 1 ? '' : 's'}) · ` +
       `Stage ready with ${spare}s to spare (${score.keynoteComplaints ?? 0} complaint${(score.keynoteComplaints ?? 0) === 1 ? '' : 's'}) · ` +
-      `Swag ${swag.length}/3 · Total ${Math.round(t)}s${sk}</span><small>R to play again</small>`;
+      `Swag ${swag.length}/3 · Total ${Math.round(t)}s${sk}</span><small>R to play again \u00b7 C for credits</small>`;
   }
 
   function finish(): void {
@@ -1140,7 +1140,13 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     clearContacts();
     if (fade > 0 && phase !== 'cut') fade = Math.max(0, fade - dt * FADE_IN_RATE);
     if (toast && t > toast.until) toast = null;
-    if (card !== null) return;
+    if (card !== null) {
+      // ...except the run's LAST card, which the room plays on behind — see
+      // `ChapterRuntime.behindCard`. A briefing still freezes: the player has not
+      // started, and there is nothing to watch yet.
+      if (phase === 'done' && runtime?.behindCard) runtime.behindCard(dt);
+      return;
+    }
     if (opening !== null) {
       opening += dt;
       const o = openingAt(opening);

@@ -5802,6 +5802,41 @@ while the room applauded; `tests/curtain-call.test.ts` caught it and they clap n
     - Voxxy's ears and visor, and the chapter 1 door texture, are left for a model-sheet pass.
     - Scripted chapter-opening framings are on the backlog.
 
+## 28 Sep 2026 — Voxxy's route is not everybody's route, and the ending stops freezing
+
+**What the human decided.** Michele read the breadcrumb fix and answered it with the one thing it
+had got wrong: *"remember that voxxy can go under the tables!"* And on backlog item 5, he asked for
+a recommendation and then approved it: *"ok go on"*.
+
+**What the agent got wrong and he caught.** The sponsor half tables are `low: true` with
+`skipFor: voxxy`, and the crumb guard was written as "any wall that is not low" — so it was dropping
+crumbs under the tablecloths, which is exactly the route only Voxxy can walk. The probe is the
+speaker's own body against every wall now. Checking that also surfaced an older fault the guard had
+been hiding: the speaker's wall push-out skipped `low` walls as well, so the keynote speaker glided
+through the sponsor tables and the BOF workshop tables. A person walking through a draped table is
+the kind of thing a judge sees in three seconds.
+
+**The test was wrong too, twice, and both are worth recording.** The first version sampled one seed
+and passed against the *unfixed* code, because that seed's route happened to miss every table — so
+it sweeps all fourteen now, and with the old code it names seeds 3 and 12 walking through The
+Coffee Sponsor. The second version tested the speaker's body against the booth's expanded bounding
+box, which reports a corner the speaker cleanly rounds as a table they walked through; it uses the
+circle-to-rect test the sim resolves the contact with. A regression test that passes against the
+bug is worse than no test, and the only way to know is to put the bug back and watch it fail.
+
+**The ending.** Rejected: cutting the video into several shots — most work, most likely to
+disorient on a fixed isometric camera, and it competes with the curtain call, which is the content
+of the shot. What the freeze actually was: `game.ts` stops the sim while a card is showing, which
+no chapter could see or override. `ChapterRuntime.behindCard` is the opt-in, called only while the
+phase is `done` and a card is up; chapter 4 keeps its framing, keeps the crowd walking, holds the
+applause at full and runs the curtain call on a clock started where the video ended. A skipped
+video still stops dead, because the act was skipped with it.
+
+**Tests.** `tests/speaker-follow.test.ts` sweeps the tables across all seeds;
+`tests/curtain-call.test.ts` +1 — the card lands on the same shot, the tower is still up, the room
+is still clapping, somebody is still moving and Voxxy is still jumping, and the card is not
+rewritten behind itself. Suite **791 green**, `tsc --noEmit` clean.
+
 ## 29 Sep 2026 — belts, and a full playthrough in the real 3D build
 
 - **Human decisions (Michele).**
@@ -6009,3 +6044,123 @@ while the room applauded; `tests/curtain-call.test.ts` caught it and they clap n
 - **Caught and rejected.**
   - A single higher drag for Biggy broke 17 tests: it killed his coast after a shove or a tow, which the jammed door, the roller door and the cake are built on. It was replaced by a brake that applies only when he is driven.
   - The first playthrough film was mostly black. That was the tool, whose camera lagged between shots, not the game.
+
+## 29 Sep 2026 — the credits, and the rule that every number on them be counted
+
+**What the human decided.** Michele: *"We should work on credits. Mentioning me, you, and some info
+on the process (4 repository, 10 gameplay POC, transition from 2, to 2.5 to 3D, xxxx tokens, xxx
+agents, xxx loops..). Should contain the welld Logo and website."* The `xxxx` is the whole
+instruction: he asked for the shape and left the figures to be found.
+
+**What the agent did.** A credits screen on `C`, offered on the final card. Then went and counted,
+because the GenAI section is five points and its entire value is being accurate. `git log` for the
+commits and the authors; the prototype repository for the ten POCs; a walk of `src` and `tests` for
+the code; `wc` over `docs/` for the notes; and this session's own 190 MB transcript, parsed, for the
+tool calls (4,453, of which 3,906 a shell), the subagents (44), the workflows (6), the turns (7,245
+against 233 human messages) and the tokens (2.15 B processed, 6.2 M generated).
+
+**What it refused to do.** Extrapolate. The session figures are one session's, and this game was
+built across several that this container cannot see — so those tiles are labelled *one session* and
+the footnote says they are a floor, not a total. And it did not invent the fourth repository:
+three are nameable, the fourth is Michele's to supply, and the screen carries a placeholder rather
+than a guess.
+
+**Three numbers that rot, and a test for them.** The lines, the files and the test count are claims
+about a repository that grows under them every commit. `tests/credits.test.ts` re-counts them from
+the source and fails at 2% drift. Two things in it are worth recording: it reads the tree through
+Vite's `?raw` and `import.meta.glob` rather than `node:fs`, because the project carries no
+`@types/node` (`tests/clue-plate.test.ts` already reads a source file that way); and
+`import.meta.glob` silently omits the module it is written in, which made the file count one short
+until the test added itself back.
+
+**The logo.** The real artwork, resampled to the 440x220 the panel shows and quantised to 64
+colours — 7 KB as a data URI, so the published build stays one self-contained file. Not traced in
+code, which is the house style for everything else in this game: a hand-drawn wordmark is a wrong
+wordmark. It keeps its transparent background and sits on a white plate, because the tagline is
+black and recolouring somebody's logo to suit your palette is not a liberty to take.
+
+**One shell detail worth keeping.** `C` never reaches the sim. On any card `game.key` dismisses the
+card whichever key it is, and while the opening video plays every key means skip — so a `C` that
+went through would open the credits and throw away the score card or the ending behind them. The
+overlay answers whether it took the key and the shell returns on `true`.
+
+**Tests.** `tests/credits.test.ts`, 5. Suite **826 green** in 60 files, `tsc --noEmit` clean,
+`ERRORS:0` in the browser.
+
+### Five corrections to the credits, and where the real token count came from
+
+**What the human decided.** Michele read the screen and corrected it, which is the only reason any
+of it is true: *"I didn't find the venue, i just pointed you to files and described / corrected
+your renders. You don't work officially at WellD, i wish you did. You can mention welld as sponsor
+for tokens, time, encouragement and playthrough? Models used include Opus 5, 5.5 and Sonnet. 3 repo
+is fine."*
+
+Every one of those was the agent flattering somebody. His own credit had him *finding* the venue —
+he pointed at `plans/` and at photographs and then said what each render got wrong, which is a
+different and harder job. The model credit said "Opus 5" when three models wrote this across four
+sessions. WellD was implied to be an employer. And the fourth repository the screen carried as a
+placeholder simply does not exist; three is the number.
+
+**What the agent did wrong before that.** All four are the same failure: writing down the version
+of events that reads best rather than the one that happened. A credits screen whose whole claim is
+*every number here was measured* cannot afford a single sentence that was merely plausible.
+
+**The tokens: asked, then measured.** He asked whether the other sessions should be asked for their
+totals, and for a prompt to ask them with. No prompt was needed — `list_sessions` reports each
+session's own `usage`, so the four sessions that built this game add up directly:
+
+| session | model | tokens | generated |
+| --- | --- | --- | --- |
+| this one (the game) | Opus 5 | 15.15 B | 56.1 M |
+| 3D game POC | Opus 5.5 | 2.20 B | 5.48 M |
+| 3D letters puzzle | Opus 5.5 | 107 M | 373 K |
+| Devoxx game soundtrack | Opus 5.5 | 54 M | 280 K |
+| **total** | | **17.51 B** | **62.26 M** |
+
+plus an archived Sonnet CLI session, which is where the third model on the credit line comes from.
+So the token tile is now the real four-session figure rather than one session's, and the footnote
+was narrowed to say so: the tool calls and the subagents are still one session's — those live in
+transcripts this container cannot open — and only those two are a floor.
+
+**Tests.** `tests/credits.test.ts` grew two assertions that would have caught the flattery if it
+had been written in code instead of prose: WellD's credit must contain the word *sponsor*, and the
+token tile must be labelled *four sessions* — if anybody quietly scopes it back to one, the suite
+goes red. Suite **826 green** in 60 files, `tsc --noEmit` clean, `ERRORS:0` in the browser.
+
+**Still open.** The WellD logo is the old one. The new mark is all brand red on transparent, which
+means the white plate under it can go entirely — but the artwork has not reached this container,
+as a PNG or as the SVG, so the swap is not in this commit.
+
+### What the three repositories were actually for
+
+**What the human decided.** Michele, 29 Sep: *"3 repositories: experiments, methods and physics,
+rendering (2.5D and 3D)"*, then *"prototype: including 'Devoxx olympics'"*.
+
+**What the agent had written.** `gauntlet-loop-experiment, the method · devoxx-game-experiments,
+the prototypes · this game` — three names and a shrug for the third. It counted the repositories
+correctly and then said nothing about what the work in them *was*, which is the part a reader of a
+credits screen actually wants.
+
+**What it checked before rewriting.** Both repositories, rather than taking the division on faith.
+`Smirne/gauntlet-loop-experiment` is a Micro Machines-style racer — `src/physics/{World,Collision}.js`,
+`src/vehicle/`, a Three.js renderer — carrying `PROMPT.md`, `REVIEW.md` with its 5/7/9 quality
+anchors, `CRITIQUE-LOG.md` and a 200-line `DEFECTS.md`. That is exactly the claim: the gauntlet
+method and a hand-written physics engine, proven on something that was not this game.
+`welldsagl/devoxx-game-experiments` holds `poc/00`–`poc/10`. So the tile now reads *the method and
+the physics · the prototypes · this game, the rendering in 2.5D and 3D*.
+
+**And the ten were not ten drafts of one game.** `poc/02-olympics.html` is *Devoxx Robot Olympics*,
+a different game — seven events and a finale in the keynote room. `03` is *Lights & Locks*, `07`
+*The Tomato Soup Run*; After Dark only starts at `04` and is rebuilt four more times before `10`
+lands in the real Kinepolis. "Nine of them thrown away" was true and told the wrong story: they
+were not iterations converging, they were separate games, and the one that survived won on merit.
+The note names two of the others so the screen says so.
+
+**Tests.** Four assertions, because a correction in prose drifts back and a correction in a test
+does not: the repositories note must name *physics* and *2.5D and 3D*, and the prototypes note must
+name the Olympics. Suite **826 green**, `tsc --noEmit` clean.
+
+**Still open, again.** The WellD logo. Michele has a new mark and the SVG for it, but neither has
+reached this container — no attachment from three consecutive messages landed on disk, and
+`welld.ch` is refused by this environment's egress policy, so the agent cannot go and get it
+either. SVG is text, so pasting the source into the conversation is the route that works.

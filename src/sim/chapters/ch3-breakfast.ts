@@ -882,7 +882,7 @@ const OBJECTIVE =
   'speaker at a built booth. The sponsor booths are open and running their games: three bits of ' +
   '<b>swag</b> to be won on the way, all optional.';
 const KEYS =
-  '1/2/3/Tab: switch · WASD · E: use / lift / ask / clear a queue / play a game / tow Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics';
+  '1/2/3/Tab: switch · WASD · E: use / lift / ask / clear a queue / play a game / tow Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics \u00b7 C: credits';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');
@@ -2776,13 +2776,19 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       const v = ctx.byKind('voxxy');
       /*
        * Drop a breadcrumb where Voxxy is — but only where the SPEAKER could
-       * stand. Voxxy is the one robot that fits under the sponsor tables, and a
-       * crumb left under one is a crumb the person following her cannot reach.
+       * stand.
+       *
+       * Michele, 28 Sep 2026: *"remember that voxxy can go under the tables!"*
+       * He is right, and the first cut of this got it wrong: the sponsor half
+       * tables are `low: true` with `skipFor: voxxy` (`geometry.ts`), so a guard
+       * that waved low walls through was dropping crumbs under the tablecloths —
+       * a route only Voxxy can walk, handed to the person following her. The
+       * probe is the speaker's own body against every wall, low ones included.
        */
       const last = trail[trail.length - 1];
       if (!last || Math.hypot(v.x - last.x, v.y - last.y) > TRAIL_STEP) {
         const probe = { x: v.x, y: v.y, r: speaker.r };
-        if (!ctx.walls.some((w) => !w.low && circleRect(probe, w))) {
+        if (!ctx.walls.some((w) => circleRect(probe, w))) {
           trail.push({ x: v.x, y: v.y });
           if (trail.length > TRAIL_MAX) trail.shift();
         }
@@ -2804,8 +2810,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         speaker.face = Math.atan2(dy, dx);
         speaker.x += (dx / dd) * SPEAKER_WALK * dt;
         speaker.y += (dy / dd) * SPEAKER_WALK * dt;
+        /*
+         * ...and a tablecloth stops them, which it did not used to.
+         *
+         * This skipped `low` walls, so the keynote speaker walked straight
+         * through the sponsor tables and the BOF workshop tables — the one thing
+         * in the hall that is low *because* only something Voxxy-sized gets under
+         * it. With the breadcrumbs routing them round the furniture there is
+         * nothing left for the exemption to rescue, and a person gliding through
+         * a draped table is the kind of thing a judge sees in three seconds.
+         */
         for (const w of ctx.walls) {
-          if (w.low) continue;
           const hit = circleRect(speaker, w);
           if (hit) {
             speaker.x += hit.nx * hit.pen;

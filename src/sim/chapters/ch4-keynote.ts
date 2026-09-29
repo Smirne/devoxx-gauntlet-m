@@ -234,7 +234,7 @@ const MURMURS: readonly string[] = [
   'Two rows have started a conversation about the parking. You are losing them.',
 ];
 
-const KEYS = '1/2/3/Tab: switch · WASD · E: use / hold Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics';
+const KEYS = '1/2/3/Tab: switch · WASD · E: use / hold Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics \u00b7 C: credits';
 const READY_OBJECTIVE =
   'Chapter 4 · <b>Keynote</b>. Stage ready. <b>Get all three robots on the stage</b> — Stephan and the speaker are waiting.';
 
@@ -662,6 +662,25 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    */
   let reelCards: ReelCard[] = [];
   let reelT = -1;
+  /**
+   * Seconds the stage has been holding its pose BEHIND the final card, or -1.
+   *
+   * Michele, 28 Sep 2026, on the ending: *"the score card still arrives over a
+   * frozen frame"*, then *"what is your suggestion?"* — and the answer was: do not
+   * cut, kill the freeze. What read as dead at the end was never the single shot.
+   * It was this: the video finished, the camera jumped back out to the wide room,
+   * `finish()` put the card up, and `game.ts` stops the sim dead while a card is
+   * showing — so the last thing the player saw was three thousand people stopped
+   * mid-clap behind a photograph of themselves.
+   *
+   * So the run's last card is the one card the room plays on behind. The framing
+   * stays where the video was, the crowd keeps walking, the applause stays up, and
+   * the tower stands with the small one still jumping off it. (It is `curtainHeld`
+   * rather than `held`, which in this chapter is the letter Droid is carrying.)
+   * Only when the video RAN, though: a player who skipped it skipped the act with it, and holding a
+   * half-finished bow behind the card is worse than holding nothing.
+   */
+  let curtainHeld = -1;
 
   function startReel(): void {
     reelCards = buildReel(ctx.score, ctx.swag, ctx.t, ctx.skipped);
@@ -674,13 +693,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /** True if the reel took the key. Any key skips to the final card. */
   function reelKey(): boolean {
     if (reelT < 0) return false;
-    endReel();
+    endReel(true);
     return true;
   }
 
-  function endReel(): void {
+  function endReel(skipped: boolean): void {
     reelT = -1;
-    ctx.setView(VIEW_DEVOXX);
+    // Skipped: the camera goes back out to the room and everything stops, which is
+    // what a player who pressed a key to get past this asked for. Ran to the end:
+    // keep the shot, and keep the room alive behind the card — see `curtainHeld`.
+    if (skipped) ctx.setView(VIEW_DEVOXX);
+    else curtainHeld = 0;
     ctx.finish();
   }
 
@@ -849,11 +872,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     partyTrick(ctx.bots, b, () => {});
   }
 
-  function curtainCall(dt: number): void {
+  function curtainCall(dt: number, at: number): void {
     const d = ctx.byKind('droid');
     const bg = ctx.byKind('biggy');
     const vx = ctx.byKind('voxxy');
-    const closing = reelT >= BEAT_CLOSE && !d.mounted;
+    const closing = at >= BEAT_CLOSE && !d.mounted;
     const parked: Bot[] = [];
     for (const b of ctx.bots) {
       if (b.mounted) continue;
@@ -869,32 +892,46 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     // only ever settles the ones that have arrived.
     for (const b of parked) b.face = Math.PI / 2;
 
-    if (beats < 1 && reelT >= BEAT_VOXXY) {
+    if (beats < 1 && at >= BEAT_VOXXY) {
       beats = 1;
       trick(vx);
     }
-    if (beats < 2 && reelT >= BEAT_BIGGY) {
+    if (beats < 2 && at >= BEAT_BIGGY) {
       beats = 2;
       trick(bg);
     }
-    if (beats < 3 && reelT >= BEAT_DROID) {
+    if (beats < 3 && at >= BEAT_DROID) {
       beats = 3;
       trick(d);
     }
-    if (beats < 4 && reelT >= BEAT_CLIMB && dist(d, bg) - d.r - bg.r < MOUNT_REACH) {
+    if (beats < 4 && at >= BEAT_CLIMB && dist(d, bg) - d.r - bg.r < MOUNT_REACH) {
       beats = 4;
       ctx.toggleMount();
-      encoreAt = reelT + ENCORE;
+      encoreAt = at + ENCORE;
     }
     // The tableau, held to the last card: the tower stands and the small one will
     // not stop jumping.
-    if (beats >= 4 && reelT >= encoreAt && (vx.hopRest ?? 0) <= 0) {
-      encoreAt = reelT + ENCORE;
+    if (beats >= 4 && at >= encoreAt && (vx.hopRest ?? 0) <= 0) {
+      encoreAt = at + ENCORE;
       trick(vx);
     }
   }
 
   /* ------------------------------------------------------------------- update */
+
+  /**
+   * The stage, held behind the final card: the room keeps walking and clapping,
+   * and the tower stands with the small one still jumping. See `held`.
+   *
+   * It runs the same curtain call on a clock of its own, started where the video
+   * left off, so every beat is already spent and what is left is the encore.
+   */
+  function behindCard(dt: number): void {
+    if (curtainHeld < 0) return;
+    curtainHeld += dt;
+    for (const a of crowd) stepAttendee(a, dt);
+    curtainCall(dt, reelLength(reelCards) + curtainHeld);
+  }
 
   function update(dt: number): void {
     if (reelT >= 0) {
@@ -905,8 +942,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
        */
       reelT += dt;
       for (const a of crowd) stepAttendee(a, dt);
-      curtainCall(dt);
-      if (reelT >= reelLength(reelCards)) endReel();
+      curtainCall(dt, reelT);
+      if (reelT >= reelLength(reelCards)) endReel(false);
       return;
     }
     t += dt;
@@ -1110,6 +1147,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * beat, which is about where Voxxy's first jump lands.
    */
   function cheerLevel(): number {
+    // ...and it stays up behind the final card, for as long as the card is up.
+    if (curtainHeld >= 0) return 1;
     if (reelT < 0) return 0;
     return Math.max(0, Math.min(1, reelT / CHEER_RISE));
   }
@@ -1302,6 +1341,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     people,
     progress,
     tasks,
+    behindCard,
     /** The opening video, while it is running. `null` every other frame. */
     reel: (): ReelView | null => (reelT < 0 ? null : reelAt(reelCards, reelT)),
     placeProp(kind: string, x: number, y: number): boolean {
