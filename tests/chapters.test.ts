@@ -1724,6 +1724,71 @@ describe('chapter 4 — keynote', () => {
     expect(seats.every((w) => w.low)).toBe(true);
     expect(seats[0].why?.(bot(g, 'biggy'))).toContain('aisles');
   });
+
+  /*
+   * ...AND ITS CROWD FACES THE WAY IT WALKS, in the corridor and in the room.
+   *
+   * Michele, 29 Sep 2026, on a screenshot of the first-floor corridor: *"people
+   * are walking backward (i think chap4 only)"* — and of Room 8, *"in the room
+   * people walk sidewise"*. One fault with two looks, and it is chapter 3's (the
+   * crowd test above): `stepAttendee` never set `face`, so every attendee kept
+   * `mkBot`'s 0, due east, for the whole walk. Down the corridor from the main
+   * staircase that is walking WEST facing east — backwards; through the door and
+   * up an aisle it is walking north facing east — sideways.
+   *
+   * Chapter 3 lets 15% of its crowd off, because that crowd shoves itself apart
+   * and a body pushed sideways travels off its own nose. This one does not shove:
+   * it waits behind the person in front. So with the robots parked west of the
+   * door, where nobody walks, and the cake on its mark rather than in the corridor
+   * the crowd comes up — nothing moves an attendee but their own legs, and EVERY
+   * walking sample is held to it: the frame's own step against the heading the sim
+   * published for that frame, from the first arrival until the room is full.
+   */
+  it('faces every walking attendee the way it walks, down the corridor and up the aisles', () => {
+    const g = mk(4);
+    const key = (): KeynoteState => g.debug.chapter() as KeynoteState;
+    const d8 = roomDoor(R(8));
+    const mark = g.snapshot().props.find((p) => p.kind === 'cake-mark')!;
+    expect(g.debug.placeProp('cake', mark.x + (mark.w ?? 0) / 2, mark.y + (mark.h ?? 0) / 2)).toBe(true);
+    const mid = (CY0 + CY1) / 2;
+    g.debug.place('voxxy', d8.cx - 150, mid);
+    g.debug.place('droid', d8.cx - 120, mid);
+    g.debug.place('biggy', d8.cx - 90, mid);
+
+    /** Faster than this is walking, px/s (8 cm/s); slower is waiting for the door. */
+    const WALKING = 1;
+    const seen = { corridor: 0, room: 0 };
+    const off: string[] = [];
+    const headings = new Set<number>();
+    let prev = new Map<number, Vec2>();
+    for (let i = 0; i < 20000 && key().restless === 0; i++) {
+      g.update(DT_MAX);
+      const now = new Map<number, Vec2>();
+      for (const p of g.snapshot().people) {
+        // Walking to a seat; sat down they are 'seated', and face the stage.
+        if (p.role !== 'visitor') continue;
+        now.set(p.seed, { x: p.x, y: p.y });
+        const was = prev.get(p.seed);
+        if (!was || (p.speed ?? 0) <= WALKING) continue;
+        const where = p.y < CY0 ? 'room' : 'corridor';
+        seen[where]++;
+        const step = Math.atan2(p.y - was.y, p.x - was.x);
+        const err = p.face === undefined ? Math.PI : step - p.face;
+        if (Math.abs(Math.atan2(Math.sin(err), Math.cos(err))) > Math.PI / 4) {
+          off.push(`#${p.seed} in the ${where} at (${Math.round(p.x)},${Math.round(p.y)}): walking ${Math.round((step * 180) / Math.PI)}°, facing ${p.face === undefined ? 'nowhere' : `${Math.round((p.face * 180) / Math.PI)}°`}`);
+        }
+        headings.add(Math.round((p.face ?? 0) * 4));
+      }
+      prev = now;
+    }
+    // The whole walk, every attendee in it, not the first few.
+    expect(key().restless, 'the room never filled').toBeGreaterThan(0);
+    expect(seen.corridor, 'nobody was caught walking the corridor').toBeGreaterThan(5000);
+    expect(seen.room, 'nobody was caught walking to a seat').toBeGreaterThan(5000);
+    expect(off.slice(0, 8), `${off.length} of ${seen.corridor + seen.room} walking samples face more than 45° off their own step`).toEqual([]);
+    // Corridor west, door and aisles north, rows both ways: the bug pointed every one of them at 0.
+    expect(headings.size, 'the whole crowd shares one heading').toBeGreaterThan(4);
+  });
 });
 
 /* =================================================================== the rig */

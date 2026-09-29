@@ -18,7 +18,7 @@
  */
 
 import { CY0, CY1, F1, R, VIEW_DEVOXX, VIEW_REEL, floor1Walls, roomDoor } from '../geometry';
-import { MOUNT_REACH, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
+import { FACE_MIN_SPEED, MOUNT_REACH, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
 import { botsCollide, circleRect, dist, inRect, mkBody, partyTrick, speed, standOff, stepBot, syncMount } from '../bot';
 import { LANYARD, lanyardFor } from '../lanyards';
 import {
@@ -538,6 +538,26 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     a.vy += ((dy / d) * spd - a.vy) * k;
     a.x += a.vx * dt;
     a.y += a.vy * dt;
+    /*
+     * ...AND THEY FACE THE WAY THEY ARE WALKING.
+     *
+     * Michele, 29 Sep 2026, with a screenshot of the first-floor corridor: *"people
+     * are walking backward (i think chap4 only)"* — and then of Room 8, *"in the
+     * room people walk sidewise"*. One fault with two looks, and it is chapter 3's
+     * bug over again (`stepVisitor`, and `tests/chapters.test.ts` pins it there):
+     * an attendee is a `Bot` only so `botsCollide` can shove it, `mkBot` sets
+     * `face` to **0** — due east — and nothing in this function ever touched it
+     * again, so `people()` published due east for all eighty-four of them. The
+     * crowd comes up the main staircase at the EAST end of the corridor and walks
+     * WEST to Room 8, so every one of them walked the whole corridor backwards,
+     * nose to the stairs they had just climbed, and then went north through the
+     * door and up the aisles facing east: sideways.
+     *
+     * Below `FACE_MIN_SPEED` the heading holds, as in chapter 3: somebody stopped
+     * behind the person in front keeps the way they were pointing rather than
+     * spinning on the last of their drift.
+     */
+    if (speed(a) > FACE_MIN_SPEED) a.face = Math.atan2(a.vy, a.vx);
     // Once in their row they are past the seat blocks, so walls stop mattering.
     if (a.leg < 4) {
       for (const w of ctx.walls) {
