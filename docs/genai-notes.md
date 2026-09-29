@@ -6429,6 +6429,49 @@ reaches `main`, it never needs one.
 tree, and the 3D page's four chapters without console errors; against the pre-purge tree, the only
 differences are the screenshots' history, the eleven hashes and this commit.
 
+## 29 Sep 2026 — the opening gets a real track: "Heroic Motif", cut to the crates
+
+**What the human decided.** Michele sent a phone screen-recording of a 24-second track — "Heroic
+Motif", Ronny Shamano, AI-generated and given to the game by a friend — and asked for it to be tried
+on the opening, cut to fit. After four renders: *"this is good. open MR"*, and Ronny Shamano on the
+credits for music help. That is the first audio file in a repository whose rule is "no external
+audio asset files"; the exception is his, and it is written into `CLAUDE.md` as his.
+
+**What the agent did.**
+
+- *Rendered the scene before touching the game.* Every frame of the opening captured through
+  `window.__ad3d.step()` in the real 3D page (headless Chromium on Metal), the game's own room tone and
+  crate booms rendered with `tools/render-audio --mute music`, and the track mixed under both with
+  ffmpeg. Nobody on the build side can hear, so each edit was checked on spectrograms and loudness
+  curves and the ear was left to Michele.
+- *v1* cut the track into sections and dropped each onto a crate. Michele: the fades in the first
+  part were strange. They were two things: the gaps between the sections, and a one-pass `loudnorm`
+  that rides the gain up and down over the first seconds.
+- *v2* played it through without cuts and moved the track's opening hit to the end. *"The ending
+  is a bit strange."*
+- *v3* used the track's own last bars. The recording stops at full level, because the song does:
+  the player shows 00:24 of 00:24. To reach them in time, 12.78 s of the middle go: exactly eight
+  bars at 150 bpm, the lag at which the track most resembles itself (a feature-correlation scan over
+  9–15 s), spliced at the point where the two sides match best — which lands just after Biggy's
+  crate thump. *"Much better, but the finale is a bit abrupt."*
+- *v4* stretched the last 0.4 s into a held tone (`rubberband`, 8.3×) and faded it over 3 s into
+  the dark. Kept.
+- *In the game*, the edit is `src/render/opening-track.mp3` (12.9 s, 128 kbit/s, 207 KB), imported
+  with `?inline` so the published page stays one file. `music.ts` plays it as chapter 0 on a deck of
+  its own, placed by one landing: the file's full band (2.2 s in) on Voxxy's crate
+  (`OPENING_TRACK_AT`). If the decode finishes after the cue, the track starts where it should
+  already be rather than late. A context that cannot decode it plays the synthesised opening score,
+  which stays — the tests' stub context is one.
+
+**What was rejected.** Re-timing the opening to the track (150 bpm against the crates' 96): the
+crates' beats are durations the physics tests hold, and a bar of 1.6 s would have rushed every
+robot's presentation. The flicker gates the synth score has: they are on the old score's grid, and
+under this track the band now fades through the flicker instead of cutting with it.
+
+**Checked.** A render through the game's own audio graph matches the approved mix to within 0.7 dB second by second (after the gain went 2.1 → 1.8);
+the render tool now waits on the decode (`openingTrackReady()`), which it outran on the first try —
+the track came in at 6.2 s, but at the right place in the song, which is the late-start path working.
+
 ## 29 Sep 2026 — the top bar keeps five keys; the run sheet keeps them all
 
 **What the human decided.** Michele, on chapter 2's top bar: *"Trim the on screen hints, they are
