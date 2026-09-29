@@ -973,6 +973,14 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     // used to push chapter 4 onto `skipped` a second time, so the final card read
     // "skipped: 1, 2, 3, 4, 4".
     if (phase === 'done') return;
+    // Skipping the OPENING skips the opening, as any key does — not chapter 1
+    // with it. It skipped both, so a player who used the button to get past the
+    // crates was one chapter ahead of their own count, and the press that was
+    // meant to reach chapter 4 put the final card up instead (29 Sep).
+    if (opening !== null) {
+      endOpening();
+      return;
+    }
     card = null;
     if (chapter === 0) {
       startChapter(1);
@@ -1277,8 +1285,8 @@ export function createGame(opts: GameOptions = {}): DebugGame {
    *
    * So the card is dismissed and the key then goes on to mean whatever it means.
    * Keys that only ever dismissed (Space, Enter) still just dismiss — they reach a
-   * runtime that ignores them — and a card shown by `fail()` or `finish()` leaves
-   * `phase` at 'done', where everything below but `R` falls through harmlessly.
+   * runtime that ignores them — and a card shown by `fail()` or `finish()` is not
+   * dismissed at all: `phase` is 'done', and only `R` means anything there.
    */
   function key(code: string): void {
     /*
@@ -1291,7 +1299,12 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       endOpening();
       return;
     }
-    if (card !== null) {
+    /*
+     * ...except the card that ends the run. Dismissed, it left the last room on
+     * screen with nobody to drive and nothing saying why — players took it for a
+     * frozen chapter 4 (29 Sep). It stays up, and `R` below plays again.
+     */
+    if (card !== null && phase !== 'done') {
       card = null;
       if (chapter === 0) startChapter(1);
     }

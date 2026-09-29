@@ -42,8 +42,21 @@ export interface Quality {
   name: QualityName;
   /** Cap on devicePixelRatio. */
   pixelRatio: number;
+  /**
+   * Cap on rendered pixels, millions: a big window at a high device ratio is
+   * held to this (4K at `high` was 8 MP a frame through every pass). Sized so
+   * that a 1080p window renders at 1:1 on `medium` and above.
+   */
+  maxPixels: number;
   msaa: number;
   ao: boolean;
+  /**
+   * Real lights in the forward shader's loop (`lightpool.ts`): unshadowed spot
+   * slots, and point slots on top of the robots' three spills. Every lit
+   * fragment pays for each one, twice (the reflection and the frame).
+   */
+  spots: number;
+  points: number;
   volScale: number;
   volSteps: number;
   reflScale: number;
@@ -52,10 +65,10 @@ export interface Quality {
 }
 
 export const QUALITY: Readonly<Record<QualityName, Quality>> = {
-  low: { name: 'low', pixelRatio: 1, msaa: 0, ao: false, volScale: 0.25, volSteps: 20, reflScale: 0.25, bloomLevels: 5, shadowSize: 512 },
-  medium: { name: 'medium', pixelRatio: 1, msaa: 0, ao: true, volScale: 0.35, volSteps: 28, reflScale: 0.4, bloomLevels: 6, shadowSize: 1024 },
-  high: { name: 'high', pixelRatio: 1.5, msaa: 4, ao: true, volScale: 0.5, volSteps: 40, reflScale: 0.5, bloomLevels: 7, shadowSize: 1024 },
-  ultra: { name: 'ultra', pixelRatio: 2, msaa: 4, ao: true, volScale: 0.5, volSteps: 64, reflScale: 0.75, bloomLevels: 7, shadowSize: 2048 },
+  low: { name: 'low', pixelRatio: 1, maxPixels: 1.3, msaa: 0, ao: false, spots: 4, points: 8, volScale: 0.25, volSteps: 20, reflScale: 0.25, bloomLevels: 5, shadowSize: 512 },
+  medium: { name: 'medium', pixelRatio: 1, maxPixels: 2.1, msaa: 0, ao: true, spots: 8, points: 12, volScale: 0.35, volSteps: 28, reflScale: 0.4, bloomLevels: 6, shadowSize: 1024 },
+  high: { name: 'high', pixelRatio: 1.5, maxPixels: 3.7, msaa: 4, ao: true, spots: 10, points: 14, volScale: 0.5, volSteps: 40, reflScale: 0.5, bloomLevels: 7, shadowSize: 1024 },
+  ultra: { name: 'ultra', pixelRatio: 2, maxPixels: 8.3, msaa: 4, ao: true, spots: 12, points: 14, volScale: 0.5, volSteps: 64, reflScale: 0.75, bloomLevels: 7, shadowSize: 2048 },
 };
 
 /** The look. Public so the debug URL and the photo-mode keys can poke at it. */
@@ -163,6 +176,12 @@ export class Pipeline {
   readonly reflection: PlanarReflection;
   /** Objects the reflection pass must hide (the mirrors themselves). */
   reflectors: THREE.Object3D[] = [];
+  /**
+   * Whether anything that samples the floor mirror is in view this frame, set
+   * by the world. The pass is a render of the whole scene; in Room 8 it drew
+   * 190 objects a frame for a corridor floor 60 m behind the wall.
+   */
+  reflectOn = true;
 
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene: THREE.Scene;
@@ -210,12 +229,19 @@ export class Pipeline {
   private frame = 0;
   private time = 0;
   private histValid = false;
+  /*
+   * Run-time trims (`governor.ts`): what the tier asked for, turned down a notch
+   * on a machine that cannot keep up, without the reload a tier change needs.
+   */
+  private aoOn = true;
+  private volScale: number;
 
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, quality: Quality) {
     this.renderer = renderer;
     this.scene = scene;
     this.camera = camera;
     this.quality = quality;
+    this.volScale = quality.volScale;
 
     const depthTexture = new THREE.DepthTexture(4, 4);
     depthTexture.type = THREE.FloatType;
@@ -400,8 +426,8 @@ export class Pipeline {
     const W = this.width;
     const H = this.height;
     this.sceneRT.setSize(W, H);
-    const vw = Math.max(4, Math.round(W * this.quality.volScale));
-    const vh = Math.max(4, Math.round(H * this.quality.volScale));
+    const vw = Math.max(4, Math.round(W * this.volScale));
+    const vh = Math.max(4, Math.round(H * this.volScale));
     this.volRT.setSize(vw, vh);
     this.volHist[0].setSize(vw, vh);
     this.volHist[1].setSize(vw, vh);
@@ -426,13 +452,37 @@ export class Pipeline {
     this.fxaaMat.uniforms.resolution.value.set(1 / W, 1 / H);
   }
 
-  /** The fog's lights for this frame. Spots beyond MAX_SPOTS, and shadows beyond MAX_SHADOWED, are dropped. */
+  /** AO on or off; off costs nothing (no normal pass, no blur). A tier without AO stays without. */
+  setAO(on: boolean): void {
+    this.aoOn = on;
+  }
+
+  /** The fog's resolution (times the canvas) and march steps. */
+  setVolume(scale: number, steps: number): void {
+    if (scale !== this.volScale) {
+      this.volScale = scale;
+      this.setSize(this.width, this.height);
+    }
+    if (this.volMat.defines.VOL_STEPS !== steps) {
+      this.volMat.defines.VOL_STEPS = steps;
+      this.volMat.needsUpdate = true;
+    }
+  }
+
+  /** The floor mirror's resolution, times the canvas. */
+  setReflectionScale(scale: number): void {
+    if (scale === this.reflection.scale) return;
+    this.reflection.scale = scale;
+    this.reflection.setSize(this.width, this.height);
+  }
+
   /** The fog's extent (the building); rays stop marching where they leave it. */
   setFogBox(min: THREE.Vector3, max: THREE.Vector3): void {
     this.volMat.uniforms.boxMin.value.copy(min);
     this.volMat.uniforms.boxMax.value.copy(max);
   }
 
+  /** The fog's lights for this frame. Spots beyond MAX_SPOTS, and shadows beyond MAX_SHADOWED, are dropped. */
   setVolumeLights(spots: VolumeSpot[], points: VolumePoint[]): void {
     this.spots = spots;
     this.points = points;
@@ -537,7 +587,7 @@ export class Pipeline {
     r.autoClear = true;
 
     // 1. reflection. The first scene render of the frame updates the shadow maps.
-    if (this.reflectors.length) this.reflection.update(r, this.scene, this.camera, this.reflectors);
+    if (this.reflectors.length && this.reflectOn) this.reflection.update(r, this.scene, this.camera, this.reflectors);
 
     // 2. scene
     r.setRenderTarget(this.sceneRT);
@@ -545,10 +595,11 @@ export class Pipeline {
     r.render(this.scene, this.camera);
 
     // 3. AO
-    if (this.gtao) {
+    const ao = this.gtao !== null && this.aoOn;
+    if (this.gtao && ao) {
       this.gtao.render(r, null as unknown as THREE.WebGLRenderTarget, null as unknown as THREE.WebGLRenderTarget, 0, false);
       this.litMat.uniforms.tAO.value = this.gtao.gtaoMap;
-    }
+    } else this.litMat.uniforms.tAO.value = this.whiteTex;
 
     // 4. volumetrics + temporal resolve
     this.updateVolumeUniforms();
@@ -570,7 +621,7 @@ export class Pipeline {
     const lu = this.litMat.uniforms;
     lu.tVol.value = hNext.texture;
     lu.volTexel.value.set(1 / hNext.width, 1 / hNext.height);
-    lu.aoStrength.value = this.gtao ? g.aoStrength : 0;
+    lu.aoStrength.value = ao ? g.aoStrength : 0;
     lu.volStrength.value = g.volStrength;
     lu.near.value = this.camera.near;
     lu.far.value = this.camera.far;

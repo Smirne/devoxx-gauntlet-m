@@ -14,7 +14,7 @@ import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
 import { DIST, PIVOT, ThirdPersonCamera } from './camera3d';
 import { applyBoxProjection, type ProbeBox } from './boxproj';
 import { buildDetails } from './details';
-import { LightPool } from './lightpool';
+import { HemiMerge, LightPool, SpotPool } from './lightpool';
 import { createMaterials } from './materials';
 import { Pipeline, QUALITY, type QualityName, type VolumeSpot } from './pipeline';
 import { buildGround, setFrontDoors, type Ground3D } from './ground3d';
@@ -24,6 +24,8 @@ import { createPeople } from './people3d';
 import { carryFrame, hookPose, ladlePose, poseLadle, potPose, soupPots } from './props-ground';
 import { activeReach, palmWorld, reachClock } from './reach3d';
 import { createProps, type Props3D } from './props3d';
+import { Governor } from './governor';
+import { GpuTimer } from './gputimer';
 import { FINGERS_SHUT, createRobots, dimLamps, updateGlare, updateRobots, type Robot3D } from './robots3d';
 import { CORRIDOR_END, HEIGHTS, SIGN_SPANS, buildVenue, type Venue3D } from './venue';
 import { CY0, CY1, F1 } from '../sim/geometry';
@@ -38,13 +40,20 @@ export interface World3D {
   readonly cam: ThirdPersonCamera;
   /** `intro`: play the establishing dolly instead of following the robot. */
   render(snap: GameSnapshot, dt: number, intro?: boolean): void;
+  /**
+   * Behind the title gate: set up the first frame without drawing it, then
+   * compile every material in the background (`compileAsync`, which uses
+   * `KHR_parallel_shader_compile` where the browser has it), so the opening
+   * does not start on a stall of a hundred shaders. Resolves when compiled.
+   */
+  prewarm(snap: GameSnapshot, progress?: (share: number) => void): Promise<void>;
   /** Photo mode: depth of field focused on the driven robot. */
   photo: boolean;
   /** Debug: refresh cinema E's mirror (on by default). */
   mirrorOn: boolean;
   /**
-   * True once the frame rate has stayed low even at the smallest render scale
-   * the adaptive resolution will go to: the page should suggest a lower quality.
+   * True once the frame rate has stayed low even on the governor's cheapest
+   * rung (`governor.ts`): the page should suggest a lower quality.
    */
   struggling: boolean;
   /** Screenshot/debug only: light the ground floor's hall as if the circuit were closed. */
@@ -82,10 +91,14 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     preserveDrawingBuffer: opts.preserveDrawingBuffer ?? false,
     stencil: false,
   });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.pixelRatio));
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
+  // Shadow maps render once per frame, on its first scene render, when the
+  // pipeline asks. Left on auto until the first frame, the environment
+  // capture's six renders before it drew every shadow map six times.
+  renderer.shadowMap.autoUpdate = false;
+  renderer.shadowMap.needsUpdate = true;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0, 0, 0);
@@ -107,6 +120,11 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   const details = buildDetails(mats, pipeline.reflection, [...SIGN_SPANS, venue.adSpan, ...(venue.candySpan ? [venue.candySpan] : [])]);
   scene.add(details.group);
   pipeline.reflectors = [...venue.reflectors, ...details.reflectors];
+  // What shows the floor mirror — the terrazzo, the puddles — as boxes, so a
+  // frame can ask whether any of it is in view (`render`). None of it moves.
+  venue.group.updateMatrixWorld(true);
+  details.group.updateMatrixWorld(true);
+  const mirrorBoxes = [...venue.reflectors, ...details.reflectors].map((o) => new THREE.Box3().setFromObject(o));
   const robots: Map<RobotKind, Robot3D> = createRobots(scene, quality.shadowSize);
   // The lamp flares are aimed at the real camera; mirrored, they became big
   // out-of-place blobs on the floor.
@@ -126,8 +144,17 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
    */
   const robotFill = new THREE.PointLight(0xdde4ff, 0, 5, 2);
   scene.add(robotFill);
-  const pool = new LightPool(scene, 14, [...robots.values()].map((r) => r.spill));
-  pool.collect(scene);
+  const pool = new LightPool(scene, quality.points, [...robots.values()].map((r) => r.spill));
+  // ...and so do the spot lights that cast no shadow (`SpotPool`). Built after
+  // the opening's and the mirror's own spots exist, so it takes those too.
+  const spots = new SpotPool(scene, quality.spots);
+  // ...and the hemisphere fills are summed into one (`HemiMerge`).
+  const hemi = new HemiMerge(scene);
+  const collectLights = (): void => {
+    pool.collect(scene);
+    spots.collect(scene);
+    hemi.collect(scene);
+  };
   for (const L of venue.volumeSpots) L.light.shadow.mapSize.set(quality.shadowSize, quality.shadowSize);
 
   // THE OPENING: the three arrive in crates against the corridor's west wall
@@ -318,11 +345,21 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     scene.add(s, s.target);
     mirrorSpots.push(s);
   }
+  collectLights();
 
   // Image-based light from the venue itself: a cube capture of the corridor
   // with every robot and lamp off, so glossy shells and glass pick up the neon
   // that is actually around them.
   const pmrem = new THREE.PMREMGenerator(renderer);
+  /*
+   * Until the first capture, a black capture of the same size stands in. The
+   * capture renders the scene, and with no environment at all it compiled every
+   * material without one, and the frame after it compiled them all again, with
+   * one: the first frame of the game paid for every shader twice.
+   */
+  let envRT: THREE.WebGLRenderTarget = pmrem.fromScene(new THREE.Scene(), 0, 0.1, 80, { size: 256 });
+  scene.environment = envRT.texture;
+  scene.environmentIntensity = 0.35;
   let envBaked = false;
   const PROBE = new THREE.Vector3(m(300), 1.8, m(350));
   const probeBox: ProbeBox = {
@@ -333,6 +370,8 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     probe: PROBE,
   };
   let patchedFrames = 0;
+  /** How many props were built, last frame; see the patch in `render`. */
+  let lastPropCount = 0;
   let introT = 0;
   const INTRO = {
     from: new THREE.Vector3(m(560), 1.1, m(350) + 1.5),
@@ -343,17 +382,25 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
 
   function bakeEnv(): void {
     pool.update(PROBE);
+    spots.update(PROBE, null);
+    hemi.update();
     const hidden: THREE.Object3D[] = [];
+    const lamps: number[] = [];
     for (const r of robots.values()) {
       if (r.rig.root.visible) hidden.push(r.rig.root);
       r.rig.root.visible = false;
-      r.lamp.visible = false;
+      // Dark, not hidden: a hidden lamp is a shadowed light fewer in three's
+      // count, and every material compiled once more for the capture alone.
+      lamps.push(r.lamp.intensity);
+      r.lamp.intensity = 0;
     }
-    const envRT = pmrem.fromScene(scene, 0.02, 0.1, 80, { size: 256, position: PROBE });
-    scene.environment = envRT.texture;
-    scene.environmentIntensity = 0.35;
+    const next = pmrem.fromScene(scene, 0.02, 0.1, 80, { size: 256, position: PROBE });
+    scene.environment = next.texture;
+    envRT.dispose();
+    envRT = next;
     for (const o of hidden) o.visible = true;
-    for (const r of robots.values()) r.lamp.visible = true;
+    let i = 0;
+    for (const r of robots.values()) r.lamp.intensity = lamps[i++];
     envBaked = true;
   }
 
@@ -363,46 +410,45 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   const volSpots: VolumeSpot[] = [];
   let time = 0;
 
+  /*
+   * THE FRAME GOVERNOR (`governor.ts`). The pipeline is heavy — a reflection
+   * pass, GTAO, a volumetric march, a bloom chain — so on a weaker GPU it walks
+   * down a ladder of cheaper settings (render scale, AO, the fog's detail, the
+   * floor mirror) until the frame fits, and back up when a GPU timer shows room.
+   * Frame time is the wall clock's, not the sim's clamped dt.
+   */
+  const governor = new Governor();
+  const timer = new GpuTimer(renderer.getContext() as WebGL2RenderingContext);
+  /** Device pixels per CSS pixel at the top rung: the tier's cap, held to its pixel budget on a big screen. */
+  function topRatio(): number {
+    const cap = Math.min(window.devicePixelRatio || 1, quality.pixelRatio);
+    return Math.max(0.5, Math.min(cap, Math.sqrt((quality.maxPixels * 1e6) / (w * h))));
+  }
   function resize(cw: number, ch: number): void {
     w = Math.max(4, cw);
     h = Math.max(4, ch);
+    renderer.setPixelRatio(Math.max(0.5, topRatio() * governor.current.ratio));
     renderer.setSize(w, h, false);
     const pr = renderer.getPixelRatio();
     pipeline.setSize(w * pr, h * pr);
     cam.camera.aspect = w / h;
     cam.camera.updateProjectionMatrix();
   }
-
-  /*
-   * Adaptive resolution: the pipeline is heavy (a reflection pass, GTAO, a
-   * volumetric march, a bloom chain), so on a weaker GPU the pixel ratio steps
-   * down until the frame fits, and back up when there is room. Frame time is
-   * measured on the wall clock, not the sim's clamped dt.
-   */
-  const maxRatio = Math.min(window.devicePixelRatio || 1, quality.pixelRatio);
-  let ratio = maxRatio;
-  let slow = 0;
-  let fast = 0;
+  function applyRung(): void {
+    const r = governor.current;
+    pipeline.setAO(r.ao);
+    pipeline.setVolume(quality.volScale * (r.vol === 1 ? 1 : 0.7), r.vol === 1 ? quality.volSteps : Math.max(12, Math.round(quality.volSteps / 2)));
+    pipeline.setReflectionScale(quality.reflScale * r.refl);
+    resize(w, h);
+  }
   let lastWall = performance.now();
-  function adapt(): void {
+  function govern(): void {
     if (opts.preserveDrawingBuffer) return; // screenshot mode: never
     const now = performance.now();
     const ms = now - lastWall;
     lastWall = now;
-    if (ms > 200) return; // a hitch (tab switch, shader compile), not a trend
-    slow = ms > 24 ? slow + 1 : Math.max(0, slow - 1);
-    fast = ms < 13 ? fast + 1 : 0;
-    let next = ratio;
-    if (slow > 45 && ratio <= 0.55) world.struggling = true;
-    if (slow > 45) next = Math.max(0.55, ratio - 0.15);
-    else if (fast > 240) next = Math.min(maxRatio, ratio + 0.1);
-    if (next !== ratio) {
-      ratio = next;
-      slow = 0;
-      fast = 0;
-      renderer.setPixelRatio(ratio);
-      resize(w, h);
-    }
+    if (governor.frame(now, ms, timer.poll())) applyRung();
+    if (governor.struggling) world.struggling = true;
   }
 
   /*
@@ -422,6 +468,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   const people = createPeople(peopleRoot);
   function switchFloor(g: boolean): void {
     onGround = g;
+    for (const L of upstairsShadows) L.intensity = g ? 0 : (L.userData.lit as number);
     if (g && !ground) {
       ground = buildGround(mats);
       scene.add(ground.group);
@@ -446,12 +493,53 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       probeBox.min.set(0, 0, m(CY0));
       probeBox.max.set(m(F1.fireX), HEIGHTS.corridor, m(CY1));
     }
-    for (const r of robots.values()) if (r.glare) pipeline.reflectors.push(r.glare);
-    pool.collect(scene);
+    // The lamps' flares are hidden from the floor mirror. Downstairs nothing
+    // samples a mirror (the stairs' stone is matte, `terrazzoMatte`), and with
+    // nothing to hide the pipeline skips the reflection pass: a whole scene
+    // render a frame, in the two heaviest chapters.
+    if (pipeline.reflectors.length) for (const r of robots.values()) if (r.glare) pipeline.reflectors.push(r.glare);
+    collectLights();
     envBaked = false;
     patchedFrames = 0;
     cam.cut();
   }
+
+  /*
+   * EVERY FLOOR IS BUILT BEFORE THE GAME STARTS, and every light is counted from
+   * the start.
+   *
+   * The ground floor used to be built on the first frame of chapter 2, and Room 8
+   * on the first frame of chapter 4, each with every material compiling again for
+   * a new light count: a blank screen of several seconds between chapters 1 and
+   * 2, which players took for a crash (29 Sep). Built here, hidden, they cost the
+   * loading screen a few seconds instead (`main3d.ts` compiles them all behind it
+   * with `prewarm`), and changing floor only changes what is shown.
+   *
+   * For one compile to serve every floor the light count must not change
+   * between them either. The pools and `HemiMerge` hold it for everything but
+   * the two shadowed lamps upstairs — the foyer's street lamp and the fire
+   * door's wash — which leave their floor's group for the scene's, so they stay
+   * counted downstairs too: dark there, and with their shadow maps left alone.
+   */
+  const upstairsShadows = venue.volumeSpots.map((v) => v.light).filter((L) => L.castShadow);
+  for (const L of upstairsShadows) {
+    L.userData.lit = L.intensity;
+    scene.attach(L);
+    scene.attach(L.target);
+  }
+  ground = buildGround(mats);
+  ground.group.visible = false;
+  scene.add(ground.group);
+  props2 = createProps(propsRoot2, mats, 'ground');
+  propsRoot2.visible = false;
+  // The film's portraits are photographed when it starts, not here (`portrait.ts`).
+  keynote = buildKeynote(mats, (name) => portraitOf(renderer, name));
+  keynote.group.visible = false;
+  scene.add(keynote.group);
+  collectLights();
+  applyBoxProjection(scene, probeBox);
+  /** Room 8 has been shown: its first frame re-captures the environment. */
+  let keynoteShown = false;
 
   /**
    * The soup pot, seated on Biggy's lid. The sim carries it at his north edge,
@@ -542,15 +630,71 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     }
   }
 
+  const _viewProj = new THREE.Matrix4();
+  const _frustum = new THREE.Frustum();
+  /** In cinema E or at its door (world metres in, sim rect): where its mirror can be seen from. */
+  function inRoom(e: { x: number; y: number; w: number; h: number }, eye: THREE.Vector3): boolean {
+    const cx = eye.x * PX_PER_M;
+    const cz = eye.z * PX_PER_M;
+    return cx > e.x - 20 && cx < e.x + e.w + 20 && cz > e.y - 40 && cz < e.y + e.h + 10;
+  }
+
+  /*
+   * SHADOW MAPS, NOT ALL OF THEM EVERY FRAME. Each shadowed spot is a render of
+   * the scene before the frame starts: the three lamps, and upstairs the foyer's
+   * street lamp and the fire door's wash — five, a quarter of the frame's draw
+   * calls. The driven robot's lamp, and any lamp that moved, still update every
+   * frame; the others take turns, every other frame. What they light changes
+   * only when something walks through them, and a map one frame old is drawn
+   * with its own matrix, so it lags that frame without ever misaligning.
+   */
+  let shadowTurn = 0;
+  const lampWas = new Map<THREE.SpotLight, { p: THREE.Vector3; t: THREE.Vector3 }>();
+  const _lp = new THREE.Vector3();
+  const _lt = new THREE.Vector3();
+  function scheduleShadows(driven: RobotKind): void {
+    shadowTurn ^= 1;
+    let k = 0;
+    const turn = (L: THREE.SpotLight, always: boolean): void => {
+      const s = L.shadow;
+      s.autoUpdate = always;
+      if (!always) s.needsUpdate = s.map === null || k++ % 2 === shadowTurn;
+    };
+    for (const r of robots.values()) {
+      const L = r.lamp;
+      _lp.copy(L.position);
+      _lt.copy(L.target.position);
+      let was = lampWas.get(L);
+      if (!was) {
+        was = { p: _lp.clone(), t: _lt.clone() };
+        lampWas.set(L, was);
+      }
+      const moved = was.p.distanceToSquared(_lp) > 1e-8 || was.t.distanceToSquared(_lt) > 1e-8;
+      was.p.copy(_lp);
+      was.t.copy(_lt);
+      turn(L, r.kind === driven || moved);
+    }
+    for (const L of upstairsShadows) {
+      // Downstairs they are dark and only counted: a map drawn once, and left.
+      if (onGround) {
+        L.shadow.autoUpdate = false;
+        L.shadow.needsUpdate = L.shadow.map === null;
+      } else turn(L, false);
+    }
+  }
   /** The chapter the follow camera last framed; see the reset below. */
   let camChapter = -1;
-  function render(snap: GameSnapshot, dt: number, intro = false): void {
+  /** `draw` false: everything but the drawing — for `prewarm`, behind the title gate. */
+  function render(snap: GameSnapshot, dt: number, intro = false, draw = true): void {
     time += dt;
-    adapt();
+    if (draw) {
+      govern();
+      timer.begin();
+    }
     // Chapters 2 and 3 are downstairs; chapter 4 climbs back to Room 8.
     const ground3 = snap.chapter === 2 || snap.chapter === 3;
     if (ground3 !== onGround) switchFloor(ground3);
-    if (!envBaked) bakeEnv();
+    if (!envBaked && draw) bakeEnv();
     if (onGround && ground) {
       // Chapter 2 lights the hall when its circuit closes; chapter 3 is the
       // morning, doors open, and the hall is lit from the start.
@@ -576,12 +720,10 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       venue.update(time, dt);
       details.update(time);
     }
-    // Chapter 4: Room 8, built the first time it is needed, shown only then.
+    // Chapter 4: Room 8, shown only then (built with everything else, above).
     const keynoteOn = snap.chapter === 4 && !onGround;
-    if (keynoteOn && !keynote) {
-      keynote = buildKeynote(mats, (name) => portraitOf(renderer, name));
-      scene.add(keynote.group);
-      pool.collect(scene);
+    if (keynoteOn && !keynoteShown) {
+      keynoteShown = true;
       patchedFrames = 0;
       envBaked = false;
     }
@@ -597,9 +739,18 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     peopleRoot.visible = onGround || snap.chapter === 4;
     if (peopleRoot.visible) people.update(snap, time);
     // Props are built lazily from the first snapshots; patch whatever exists.
+    // A floor's new props count too: chapter 3's arrive on chapter 2's floor,
+    // with no floor change to trigger this, and their glows stayed real lights
+    // all chapter — 14 point lights in every lit shader instead of 11, and
+    // every lit material compiled again on chapter 3's first frame (29 Sep).
+    const propCount = propsRoot1.children.length + propsRoot2.children.length;
+    if (propCount !== lastPropCount) {
+      lastPropCount = propCount;
+      patchedFrames = 0;
+    }
     if (patchedFrames < 3) {
       applyBoxProjection(scene, probeBox);
-      pool.collect(scene);
+      collectLights();
       patchedFrames++;
     }
 
@@ -763,12 +914,25 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     for (; mi < mirrorSpots.length; mi++) mirrorSpots[mi].intensity = 0;
 
     pool.update(cam.camera.position);
+    hemi.update();
+    // Cinema E's mirror is drawn from inside the room and shows what is behind
+    // the camera: there the spots are handed out nearest-first, not by view.
+    const eye = cam.camera.position;
+    const mir = venue.mirror;
+    const mirrored = mir !== null && world.mirrorOn && !onGround && inRoom(mir.room, eye);
+    _viewProj.multiplyMatrices(cam.camera.projectionMatrix, cam.camera.matrixWorldInverse);
+    _frustum.setFromProjectionMatrix(_viewProj);
+    // The floor mirror is a render of the whole scene, drawn only while some of
+    // the terrazzo or a puddle is in view: the terrazzo ends at the fire door, so
+    // chapter 4's Room 8 never shows it. A mirror coming back into view is drawn
+    // on that frame, before anything samples it.
+    pipeline.reflectOn = !onGround && mirrorBoxes.some((b) => _frustum.intersectsBox(b));
+    spots.update(eye, mirrored ? null : _frustum, pipeline.reflectOn ? pipeline.reflection.planeY : null);
     updateGlare(robots, cam.camera);
 
     // The fog takes a fixed number of lights. The robots' lamps always, then
     // whatever else is nearest the camera — so the haze you can see is lit by
     // the lights you can see, wherever you are in the building.
-    const eye = cam.camera.position;
     volSpots.length = 0;
     for (const r of robots.values()) if (r.fog > 0) volSpots.push({ light: r.lamp, fog: r.fog });
     const others: VolumeSpot[] = [...(onGround && ground ? ground.volumeSpots : venue.volumeSpots)];
@@ -778,22 +942,16 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     const pts = [...(onGround && ground ? ground.volumePoints : venue.volumePoints), ...props.volumePoints];
     pts.sort((a, b) => a.position.distanceToSquared(eye) - b.position.distanceToSquared(eye));
     pipeline.setVolumeLights(volSpots, pts);
+    if (!draw) return;
 
+    scheduleShadows(active.kind);
     pipeline.render(dt);
 
     // Cinema E's mirror: re-rendered only while the camera is in the room or
     // at its door, since that is the only place it can be seen from. After the
     // frame, so the shadow maps it samples exist and are this frame's.
-    const mir = venue.mirror;
-    if (mir && world.mirrorOn && !onGround) {
-      const e = mir.room;
-      const cx = eye.x * PX_PER_M;
-      const cz = eye.z * PX_PER_M;
-      if (cx > e.x - 20 && cx < e.x + e.w + 20 && cz > e.y - 40 && cz < e.y + e.h + 10) {
-        mir.render(renderer, scene, cam.camera);
-      }
-    }
-
+    if (mir && mirrored) mir.render(renderer, scene, cam.camera);
+    timer.end();
   }
 
   const _v = new THREE.Vector3();
@@ -835,6 +993,37 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     struggling: false,
     cam,
     render,
+    prewarm(snap: GameSnapshot, progress?: (share: number) => void): Promise<void> {
+      // Three set-up frames: props are built from the first snapshots, and the
+      // box-projection patch and the light pools take them over the first three.
+      for (let i = 0; i < 3; i++) render(snap, 0, false, false);
+      // Every material in the scene, every floor's, hidden or not: the light
+      // count is the same on all of them (see above), so one compile serves the
+      // whole game. With a render target bound, as the frame draws: with none,
+      // three picks every program's sRGB canvas-output variant, and the frame,
+      // which draws into linear HDR targets, compiled them all over again.
+      const was = renderer.getRenderTarget();
+      renderer.setRenderTarget(pipeline.reflection.rt);
+      const materials = [...renderer.compile(scene, cam.camera)];
+      renderer.setRenderTarget(was);
+      // What `compileAsync` does, counted: a program is ready when the driver
+      // says so (KHR_parallel_shader_compile). Without the extension three calls
+      // them all ready at once, and the first frame pays — behind the loader.
+      const props = renderer.properties as unknown as { get(m: THREE.Material): { currentProgram?: { isReady(): boolean } } };
+      return new Promise<void>((resolve) => {
+        const poll = (): void => {
+          let ready = 0;
+          for (const mat of materials) {
+            const prog = props.get(mat).currentProgram;
+            if (!prog || prog.isReady()) ready++;
+          }
+          progress?.(ready / Math.max(1, materials.length));
+          if (ready >= materials.length) resolve();
+          else setTimeout(poll, 40);
+        };
+        poll();
+      });
+    },
     resize,
     project,
     projectHint,

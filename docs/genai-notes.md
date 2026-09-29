@@ -6573,3 +6573,204 @@ the run starts; the hint line says where to start.
 **Checked.** Typecheck, the 867 tests in 65 files and the production build are green. Not looked at
 in a browser: `H` hints only the first unfinished row, so seeing either ring live means finishing
 the rows above it first. The HUD did not change, and the tests read the rows it draws.
+
+## 29 Sep 2026 (night) — the 3D build's frame rate: measured, then fixed where it was spent
+
+**What a human asked.** Michele, the day before the deadline: *"I have feedback from other users. The
+game (3D version) is very slow, and in some case unusable. I had a similar experience but temporary.
+How can we improve performance?"* The whole integration was on `main`, so this worked from a clean
+tree on one branch (`claude/compassionate-darwin-vwcjmq`).
+
+**How it was measured.** No real GPU in the container, so no frame rates were believed. The production
+bundle ran in headless Chromium on SwiftShader, and three things that do not depend on the GPU were
+counted instead: draw calls and triangles per pass (every `renderer.render` and shadow-map render
+wrapped and timed with `gl.finish()` between them), the lights three puts in every lit shader, and a
+CPU profile of the real `requestAnimationFrame` loop. Then a frame-by-frame timeline of each chapter:
+wall time, time inside raycasts, and programs compiled per frame.
+
+**What it found, in order of what a player feels.**
+
+1. *Chapter 3 froze every half second while the hall filled.* The timeline showed a frame of
+   **3,896 raycasts and 1.5–2 s** every 17 frames — the visitor spawn rate. The sim lists the crowd
+   first, so each arrival moves Stephan and the named crew one pooled figure along, and the renderer
+   tore their portrait down and sculpted it again on the new figure: a 72 × 54 head, thousands of rays
+   to seat its features, new canvas textures, none of it disposed. This is Michele's "temporary": slow
+   until the last visitor is in, then fine. On a slower CPU it is unplayable for the first half minute.
+2. *Every lit pixel looped over 41–55 lights*, twice (the floor reflection and the frame): 22–36 spot
+   lights, most of them tens of metres away or switched off, 17 points, 1–2 hemispheres, 3–5 shadow
+   maps. This is the GPU cost at every resolution.
+3. *The first frame of each floor compiled every shader twice or three times*: the environment capture
+   ran with no environment (every material compiled without an env map, then again with one) and hid
+   the robots' shadow-casting lamps (every material compiled again for a different shadowed-light
+   count). And the opening's ~100 programs compiled on the first frame after "press any key", while
+   the score started.
+4. *The adaptive resolution could not rescue a slow machine.* It needed 45 slow frames per step —
+   half a minute to reach its floor at 10 fps — skipped every frame over 200 ms as a "hitch", so a
+   machine at 4 fps never adapted at all, and could only climb back on a display faster than 60 Hz.
+
+What it did **not** find: the camera's collision rays, which the first CPU profile pointed at, cost
+under 1 ms a frame. The raycasts in that profile were the portraits.
+
+**What the agent changed** — eight commits, each one step:
+
+- *Portraits are kept by name and moved between figures* (`people3d.ts`), never rebuilt. Chapter 3,
+  900 frames: raycast time **95 s → 1.6 s**. `tests/portraits.test.ts` holds it (the same head object
+  survives the crowd growing and shrinking in front of it; the first two cases fail on the old code).
+- *A frame governor* (`governor.ts`, `gputimer.ts`) replaces the stepper: half-second windows, slow
+  only when 70% of a window's frames are, a ladder of cheaper settings that needs no reload (render
+  scale, AO, the fog's steps and resolution, the floor mirror), and climbing back only when a GPU timer
+  query or a >90 Hz display shows room, with a hold that doubles after a bounce. Each tier also got a
+  pixel budget, so a big high-DPI window no longer renders 8 MP through every pass, and `autoQuality`
+  now reads AMD laptop APUs and NVIDIA MX parts as integrated. `tests/governor.test.ts` drives it with
+  synthetic frame times: it steps down within about a second at 10 fps, adapts a machine at 4 fps and
+  one at a frame a second, ignores compile stalls and tab switches, and does not bounce.
+- *Spot lights go through a pool* like the point lights already did (`SpotPool`): the unshadowed
+  spots move to a layer no camera renders and a fixed number of real spots is handed each frame to the
+  ones whose range reaches the view or its mirror in the floor. Slots per tier: high 10 spots and 14
+  points, medium 8 and 12, low 4 and 8 — so a lit pixel pays for 32–34 lights at high, 28–30 at
+  medium and 20–22 at low, against 41–55 before.
+- *Every shader compiles once*: a black capture of the same size stands in until the first real one,
+  the lamps go dark for the capture instead of hidden, and the gate's wait runs the first frame's
+  set-up and `renderer.compileAsync`. Programs at a chapter's start: 97/80/105 for chapters 1/3/4,
+  from 111/90/131. The first pre-warm compiled the wrong half: three keys a program on where it
+  draws, and `compileAsync` with no render target bound picks the canvas's sRGB variant, while the
+  frame draws into linear HDR targets. Bound to one, the frame after "press any key" went from
+  **23.4 s to 0.7 s** on SwiftShader, and the programs still compiled after the key from 90 to 15.
+- *Shadow maps take turns*: the driven lamp and any lamp that moved update every frame, the rest every
+  other frame — three shadow renders a frame upstairs instead of five.
+- *The grime noise is computed once*: the roughness read a second 4-octave fbm identical to the
+  colour's, on most of the pixels on screen.
+
+**How "no visible change" was checked.** Ten fixed camera poses across chapters 1, 3 and 4, rendered by
+the original `main` build and by this one, and diffed. At `high`: mean pixel difference 0.14–0.52 of
+255, mean luminance equal to within 0.1, and no more than 0.05% of pixels more than 24 levels apart.
+At `medium` the first slot counts (6 spots, 10 points) lost a warm floor glow in the hall and some
+light on the corridor's poster wall (up to 3.5% of pixels moved); raised to 8 and 12, the same two
+poses differ by a mean 0.18–0.20 with the same luminance. `medium` is what integrated laptop GPUs
+get, which may well be most of the judges: it should look like the game.
+
+**Found and deliberately not fixed.** The robot fill light added in the 29 Sep critic round ("a soft
+fill on the robot being driven") is a point light, so the point-light pool collects it and freezes its
+position where it was when collected — the world origin. It has never followed the robot. Making it
+work is a change to the look, not to the frame rate, so it is left for Michele to decide.
+
+**For Michele to judge on real hardware.** Everything here was measured on a software renderer, so the
+thing that matters — frames per second on the machines that were slow — is his to see. The GPU timer
+is only available in Chromium browsers; in Safari and Firefox the governor can still step down but
+climbs back only on a fast display.
+
+**Verification.** `pnpm typecheck` and `pnpm build` clean; `pnpm test` green, 873 tests in 67 files
+(`tests/portraits.test.ts` and `tests/governor.test.ts` new); and `tools/playthrough/run.mjs` drove all
+four chapters and the opening video through the real 3D page to the final card, 213 s of sim clock,
+with no console errors. The credits' counted lines were recounted: the commits (347, this one
+included, with the history unshallowed to count them), the code and the notes.
+
+## 29 Sep 2026 (late night) — the crashes, the blank screens, and a chapter 4 nobody could drive
+
+**What a human reported.** Michele, once the frame-rate round was out, relaying his friends' playtests
+one message at a time: *"my friends say it crashed a couple times. one time on R"*, then *"it was
+probably Q, not R. This happened also to me. should we add a loading bar to the splash screen?"*, then
+*"i had trouble on chap 4, after skipping chapters. Slown down, and no way to move / switch robot"*,
+and *"also in passing from chap1 to 2 they experienced a long wait and a blank screen. It loaded after
+a bit."* Measured the same way as the round before — headless Chromium on SwiftShader, counting what
+does not depend on the GPU (programs compiled, draw calls, GL errors) and treating its timings as
+relative at best.
+
+**Q, and the lost GPU.** `Q` cycled the quality *upward* — low, medium, high, ultra, low — while the
+button that appears when the frame rate drops says "Running slow — click for lower quality". A
+struggling `high` went to `ultra` (more pixels, 2048² shadow maps, 64 fog steps), remembered across the
+reload: on a laptop, a lost WebGL context and a page black for good. `Q` steps down now (`high` →
+`medium` → `low` → back to `high`), a remembered `ultra` is read as `high`, and `ultra` needs `?q=ultra`
+(README updated). A context lost anyway — driver reset, video memory — shows a card that says the
+graphics card gave up, with one button that reloads a level lower, back into the same chapter. Tested
+by losing the context on purpose in chapter 2: the card came up, nothing threw behind it, and the
+button reloaded at `medium` into chapter 2.
+
+**The blank screen between chapters 1 and 2, and the loading bar.** Answering the question: yes, and it
+was the same bug. The ground floor was built on the first frame of chapter 2 and Room 8 on the first
+frame of chapter 4, and each changed the lights three counts into every shader (a hemisphere light
+more, two shadowed lamps fewer), so every material compiled again under a black frame: 49 programs
+and no frame for over 12 s at chapter 1 → 2, 47 at 3 → 4. Now every floor is built at start, hidden,
+and the light count is the same on all of them — the hemisphere fills are summed into one light each
+frame (`HemiMerge`; hemisphere light is linear, so the sum is exact) and the two shadowed lamps
+upstairs stay counted downstairs, dark. One compile serves the game, behind a loading screen that is
+in `3d.html` itself, ahead of the script (the page used to be blank until the gate). Its sweep is a CSS transform, which the compositor animates while the main thread is busy;
+its fill is the compile's real progress. Chapter 1 → 2 compiles nothing now, and the first frame after
+the gate's key arrives in 0.1–0.7 s with 0–1 programs compiled, against 5.5 s and 15 — or no frame for
+10 s when the key came a second after the gate.
+
+**Found on the way, three of them.**
+
+- *Chapter 3's props kept their lights out of the pools.* Props are built lazily, and the pools only
+  collected new lights for three frames after a floor change. Chapter 3's arrive on chapter 2's floor,
+  so a run that played its way there rendered chapter 3 with 14 point lights in every shader instead
+  of 11 and compiled every lit material again on its first frame — 36 programs. The world re-collects
+  whenever a prop is built now: 5 programs at 2 → 3, 4 at 3 → 4 (from 15), and 82 compiled by
+  chapter 4 where the published build compiled 165.
+- *The first floor's lights shone into the exhibition hall.* Both floors stand at y = 0 over the same
+  plan, and the point-light pool had forgotten which floor each light came from: at one pose in the
+  hall all fourteen of its slots went to the corridor's neon, sconces, popcorn stand and Zaal door
+  panels upstairs.
+  The pool keeps each light's group now and skips the hidden ones. **This one is a visible change, and
+  deliberate** — the hall is lit by its own exit signs and lamps, and is darker where the neon used to
+  glow through the slab (mean luminance 25.2 → 21.6 of 255 at that pose; 105.4 → 103.8 on chapter 2's
+  follow camera).
+- *The stairs sampled the render they were drawn into.* The treads used the corridor floor's terrazzo,
+  and that material samples the floor mirror, so in the mirror's own pass they read the texture being
+  rendered: a feedback loop WebGL refuses — 234, 142 and 257 `GL_INVALID_OPERATION`s in 30 s of
+  chapters 2, 3 and 4 at `low`, each one a dropped draw. They have a matte copy of the stone now
+  (`terrazzoMatte`), and downstairs, where nothing is a mirror, the mirror pass no longer runs at all.
+
+**Chapter 4: "no way to move / switch robot".** Two traps in a row, and a third on the 3D page only:
+*Skip chapter* during the opening skipped the opening **and chapter 1**, so the press meant to reach
+chapter 4 ended the run; any key then took the final card down, leaving the last room on screen with
+nobody to drive and nothing saying the run was over; and the card's own "C for credits" was never wired
+in 3D, so `C` took it down the same way. Skip during the opening now ends just the opening, the final
+card stays until `R`, and `C` opens the credits. Two new cases in `tests/chapters.test.ts` hold the sim
+half; both fail on the old code.
+
+**Chapter 4: "slowed down".** Room 8's frames drew the floor mirror — a render of the whole scene, 190
+draw calls — for a terrazzo that ends at the fire door, sixty metres behind the wall. The pass runs only
+while the terrazzo or a puddle is in the camera's frustum now: in Room 8 at chapter 4's start, 658 draw
+calls and 316k triangles a frame became 464 and 227k.
+
+**How "no visible change" was checked.** Fourteen fixed poses across all four chapters, rendered by the
+build published after the first round and by this one. Chapters 1 and 4, Room 8 included: mean
+difference at most 0.51 of 255, luminance equal. Chapters 2 and 3 move by the hall's light fix above
+— at the two poses that moved most, the lights live in each build were listed, and every one that
+differed was an upstairs light.
+
+**Not done.** The environment capture still runs on the first frame of a chapter — six renders of the
+floor, 10–12 s on the software renderer here, likely a fraction of a second on a real GPU but not
+measured on one. Chapter 4's crowd still compiles its costumes and portraits (4 programs) when it first
+appears.
+
+**The published page, too.** The artifact is one self-contained file, and the script that folds the
+bundle into it (`tools/inline-build.mjs`) put the bundle where Vite puts its script tag: in the head,
+1.5 MB ahead of the page's own markup. The loading screen is markup, so the published page stayed blank
+until the whole file had arrived and been parsed — 2.6 s from a local server, the length of the
+download over a real one. The bundle goes at the end of the body now (a module script runs after
+parsing wherever it stands). Measured by decoding screenshots for the loader's yellow title, over a
+link throttled to 8 Mbit/s: painted 0.16–0.27 s after the page opens, where the old layout painted it
+at 4.3 s in one run and not before the gate in the other. From a local server, where the whole file
+arrives at once, it still waits about 2 s for the bundle to compile.
+
+**A side effect, fixed.** Room 8 is built at load now, so a `sheen` that three ignores on a standard
+material (the lab tables' velvet) warned on every page load instead of in chapter 4. Removed; it
+never applied.
+
+**Verification.** `pnpm typecheck` and `pnpm build` clean; `pnpm test` green, 875 tests in 67 files
+(two new); `tools/playthrough/run.mjs` drove all four chapters and the opening video through the real
+3D page to the final card, 213 s of sim clock, no console errors. Then the players' own path through
+the real page: *Skip chapter* from the opening to chapter 4, a robot driven and another taken, the
+final card surviving every key but `R`, `C` opening the credits over it, `R` starting the run again;
+`R` pressed twice in each chapter with frames still coming; a lost context recovered at the level
+below; no GL error in 30 s of chapters 2, 3 or 4; and the published single-file pages, 3D and 2.5D,
+loaded from a plain static server with no errors. Eleven commits, one step each, and three for these
+notes. The credits were recounted as before (`git log`, a walk of `src` and `tests`, `wc -w` over
+`docs/*.md`), the last commit included.
+
+**For Michele to decide.** The final card no longer goes away on a key, which also means nobody can
+clear it to watch the curtain call behind it; if that matters more, the other way out of the dead end
+is a line on the HUD that says the run is over. And the frame rate on the laptops that were slow is
+still his to see: everything here ran on a software renderer.
