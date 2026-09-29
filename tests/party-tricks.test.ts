@@ -47,8 +47,10 @@ import {
   stepBot,
   toggleMount,
   type Bot,
+  type BreakfastState,
   type DebugGame,
   type KeynoteState,
+  type Person,
   type RobotKind,
   type Wall,
 } from '../src/sim';
@@ -762,4 +764,125 @@ describe('the party tricks have a pose', () => {
       rig.dispose();
     }
   });
+});
+
+/*
+ * ...AND WHERE SOMEBODY IS STANDING THERE, IT IS A CONVERSATION — FOR ALL THREE.
+ *
+ * Michele, 29 Sep 2026, with a screenshot of Josh in the chapter-3 hall: *"is this
+ * Josh? how do I talk to him? with E I get my action"*, and then *"I'd prefer all
+ * robots to talk."* The people in the hall answered Voxxy and nobody else: Droid
+ * stretched in front of them and Biggy rolled. The order `E` is spent in is the one
+ * this file is about, with one step added — a job at hand, then Biggy, then a word
+ * with whoever is standing there, and the party trick only with nobody near.
+ */
+describe('E at a person is a conversation, whichever robot is driven', () => {
+  const kinds = ['voxxy', 'droid', 'biggy'] as const;
+  const toast = (g: DebugGame): string => g.snapshot().toast?.t ?? '';
+  const performing = (b: Bot): boolean => airborne(b) || flourishing(b);
+  const person = (g: DebugGame, match: (p: Person) => boolean): Person => {
+    const p = g.snapshot().people.find(match);
+    if (!p) throw new Error('nobody like that in the room');
+    return p;
+  };
+  /** Take `kind` and stand it at (x, y), with the other two a long way off. */
+  function stand(g: DebugGame, kind: RobotKind, x: number, y: number): Bot {
+    g.debug.select(kind);
+    for (const o of g.snapshot().bots) if (o.kind !== kind) g.debug.place(o.kind, x + 300, y + 200);
+    g.debug.place(kind, x, y);
+    g.update(DT_MAX);
+    return bot(g, kind);
+  }
+
+  for (const kind of kinds) {
+    it(`chapter 3: ${kind} talks to Josh in its own voice, and Josh answers in his`, () => {
+      const g = createGame({ seed: 11, chapter: 3, cards: false });
+      g.update(DT_MAX);
+      const josh = person(g, (p) => p.name === 'Josh');
+      const b = stand(g, kind, josh.x + josh.r + bot(g, kind).r + 6, josh.y);
+      expect(Math.hypot(b.x - josh.x, b.y - josh.y), 'not standing at Josh').toBeLessThan(40);
+      g.key('KeyE');
+      const said = toast(g);
+      expect(said, 'the robot did not open the conversation, in its own voice').toMatch(new RegExp(`^${b.name}: "`));
+      expect(said, 'Josh did not answer in his own words').toContain('— Josh: "Bootiful robots!');
+      expect(performing(bot(g, kind)), `${kind} did a party trick at Josh`).toBe(false);
+    });
+  }
+
+  it('chapter 3: every robot opens differently the next time it talks', () => {
+    const g = createGame({ seed: 11, chapter: 3, cards: false });
+    g.update(DT_MAX);
+    const josh = person(g, (p) => p.name === 'Josh');
+    stand(g, 'biggy', josh.x + josh.r + bot(g, 'biggy').r + 6, josh.y);
+    const openings: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      g.key('KeyE');
+      openings.push(toast(g).split(' — Josh:')[0]);
+    }
+    expect(new Set(openings).size, `Biggy said the same thing three times: ${openings.join(' | ')}`).toBe(3);
+  });
+
+  it('chapter 3: a job at hand comes first — Droid between the coffee queue and the crew asks the queue', () => {
+    const g = createGame({ seed: 11, chapter: 3, cards: false });
+    g.update(DT_MAX);
+    const crew = person(g, (p) => p.name === 'Devoxx crew');
+    // The coffee queue's front rank, the one nearest the crew member.
+    const front = g
+      .snapshot()
+      .people.filter((p) => p.role === 'queue')
+      .sort((a, b) => Math.hypot(a.x - crew.x, a.y - crew.y) - Math.hypot(b.x - crew.x, b.y - crew.y))[0];
+    const d = stand(g, 'droid', (crew.x + front.x) / 2, (crew.y + front.y) / 2);
+    expect(Math.hypot(d.x - crew.x, d.y - crew.y), 'Droid is not in talking range of the crew').toBeLessThan(40 + d.r);
+    expect(Math.hypot(d.x - front.x, d.y - front.y), 'Droid is not at the queue').toBeLessThan(44);
+    g.key('KeyE');
+    expect(toast(g)).toContain('makes way');
+    expect(toast(g)).not.toContain('Devoxx crew:');
+    const coffee = (g.debug.chapter() as BreakfastState).queues.find((q) => q.label === 'coffee queue');
+    expect(coffee?.open ?? 0, 'the coffee queue did not step aside').toBeGreaterThan(0);
+  });
+
+  it('chapter 3: and Biggy before conversation — Voxxy against him beside Josh takes hold of him', () => {
+    const g = createGame({ seed: 11, chapter: 3, cards: false });
+    g.update(DT_MAX);
+    const josh = person(g, (p) => p.name === 'Josh');
+    g.debug.select('voxxy');
+    g.debug.place('droid', josh.x + 300, josh.y + 200);
+    const bgR = bot(g, 'biggy').r;
+    const bx = josh.x + josh.r + bgR + 12;
+    g.debug.place('biggy', bx, josh.y);
+    g.debug.place('voxxy', bx, josh.y + bgR + bot(g, 'voxxy').r + 1);
+    g.update(DT_MAX);
+    const v = bot(g, 'voxxy');
+    expect(Math.hypot(v.x - josh.x, v.y - josh.y), 'Voxxy is not in talking range of Josh').toBeLessThan(40);
+    g.key('KeyE');
+    expect(g.snapshot().tow?.holder, 'Voxxy talked instead of taking hold of Biggy').toBe('voxxy');
+    expect(toast(g)).not.toContain('Josh:');
+  });
+
+  it('chapter 3: the keynote speaker, still hiding, answers Droid — and waits for Voxxy', () => {
+    const g = createGame({ seed: 11, chapter: 3, cards: false });
+    g.update(DT_MAX);
+    const s = person(g, (p) => p.role === 'speaker');
+    stand(g, 'droid', s.x, s.y + 24);
+    g.key('KeyE');
+    expect(toast(g)).toMatch(/^Droid: "/);
+    expect(toast(g)).toContain('— Keynote speaker: "Shh!');
+    expect((g.debug.chapter() as BreakfastState).speaker.following, 'the speaker followed Droid').toBe(false);
+  });
+
+  /*
+   * THE HUD SAYS SO. There is no pop-up "E: talk" over a person — the key line is
+   * the chapter's (`GameSnapshot.keys`, drawn by the HUD for whoever is driven),
+   * and in chapter 3 it said "ask", which read as the queues.
+   */
+  for (const ch of [3]) {
+    it(`chapter ${ch}: the key line says E talks, whichever robot is selected`, () => {
+      const g = createGame({ seed: 11, chapter: ch, cards: false });
+      for (const kind of kinds) {
+        g.debug.select(kind);
+        g.update(DT_MAX);
+        expect(g.snapshot().keys, `with ${kind} selected`).toMatch(/E: [^·]*\btalk\b/);
+      }
+    });
+  }
 });

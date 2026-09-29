@@ -134,6 +134,17 @@ export interface ChapterRuntime {
    * and complain in the same frame. So each chapter opts in as it is taught to.
    */
   key(code: string): boolean | void;
+  /**
+   * `E` at somebody with something to say, for whichever robot is being driven.
+   *
+   * Michele, 29 Sep 2026: *"I'd prefer all robots to talk."* Asked by `game.ts`
+   * only after `key` has handed `E` back and the tow bar has had its turn, so the
+   * order is the same in every room and written down once: a job at hand first
+   * (the soup, a crate, the keynote speaker), then taking hold of Biggy, then
+   * conversation, and the party trick only with nobody near. True when somebody
+   * answered. A chapter with nobody in it to talk to leaves it out.
+   */
+  talk?(b: Bot): boolean;
   update(dt: number): void;
   props?(): Prop[];
   people?(): Person[];
