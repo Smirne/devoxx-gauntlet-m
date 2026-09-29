@@ -25,7 +25,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 
 import { buildPerson, type PersonModel } from '../render/people';
 import { CLAUDE_CLAY, CLAUDE_CREAM } from '../sim/cameos';
-import { drawWellD } from './welld';
+import { WELLD_MARK_ASPECT, drawWellD } from './welld';
 import { riseAt } from '../sim/surface';
 import type { GameSnapshot } from '../sim/types';
 
@@ -1087,45 +1087,27 @@ function buildJosh(torso: THREE.Mesh, H: number): Portrait {
 }
 
 /**
- * A goatee, groomed: a moustache that follows the upper lip, running down past
- * the corners of the mouth into a full, rounded chin — laid onto the face's own
- * surface (`faceBand`), so it is a beard and not a bead stuck on the chin.
- * Sized for a `smile` at its default height.
+ * A goatee: the chin and nothing above the mouth — Michele, 29 Sep 2026: *"No
+ * mustaches for me. I don't have a goatee at the moment, but that's a
+ * distinctive figure, so keep it."* From under the lower lip down, rounded at
+ * the bottom, laid onto the face's own surface (`faceBand`) so it is a beard and
+ * not a bead stuck on the chin. Sized for a `smile` at its default height.
  */
 function goatee(head: THREE.Mesh, colour: string): void {
-  const mat = std(colour, 0.95);
-  // Where the upper lip's top edge is, across the mouth (see `smile`).
-  const lip = (x: number): number => -0.4 + 0.075 * Math.min(1, (x / 0.23) ** 2) + 0.028 * Math.max(0, Math.cos((Math.PI * x) / 0.46));
-  // The moustache: full over the lip, tapering to the corners.
+  // A crescent, not a disc: its top edge follows the lower lip's curve a little
+  // below it, its bottom edge the round of the chin. A half-disc under a smile
+  // reads as a second mouth.
   faceBand(
     head,
     (t) => {
-      const x = -0.26 + 0.52 * t;
-      return [x, lip(x) + 0.01 + 0.075 - 0.04 * (x / 0.26) ** 2];
+      const x = -0.2 + 0.4 * t;
+      return [x, -0.6 + 0.16 * (x / 0.2) ** 2];
     },
     (t) => {
-      const x = -0.26 + 0.52 * t;
-      return [x, lip(x) + 0.01];
+      const x = -0.22 + 0.44 * t;
+      return [x, -0.9 + 0.2 * (x / 0.22) ** 2];
     },
-    mat,
-    0.022,
-  );
-  // Down round the corners of the mouth...
-  for (const sx of [-1, 1]) {
-    faceBand(
-      head,
-      (t) => [sx * (0.3 - 0.07 * t), -0.3 - 0.3 * t],
-      (t) => [sx * (0.235 - 0.06 * t), -0.3 - 0.3 * t],
-      mat,
-      0.022,
-    );
-  }
-  // ...into the chin: under the lower lip, rounded, and no lower than the chin.
-  faceBand(
-    head,
-    (t) => [-0.24 + 0.48 * t, -0.58 - 0.012 * Math.sin(Math.PI * t)],
-    (t) => [(-0.24 + 0.48 * t) * 0.8, -0.72 - 0.14 * Math.sin(Math.PI * t)],
-    mat,
+    std(colour, 0.95),
     0.022,
   );
 }
@@ -1133,10 +1115,12 @@ function goatee(head: THREE.Mesh, colour: string): void {
 /**
  * THE WELLD BACKPACK — Michele, 29 Sep 2026, with a photograph of it: *"Add a
  * WellD backpack for me."* Navy, a rounded top, shock cord crossed over the
- * front panel, zip pulls, mesh side pockets, and on the front DREAM. DO.
- * DEVELOP. in white over the red wellD block (`src/render3d/welld.ts`). The
- * maker's own logo under the cords is left off: that one is not Michele's to
- * give. Worn on the back, its straps over the hoodie's shoulders and down its
+ * front panel, zip pulls, mesh side pockets, and on the front the photograph's
+ * layout in the new mark's words (*"sorry, we have a new logo"*): Dream. Do.
+ * Develop stacked in white, over a white label with the red WeLLD on it
+ * (`src/render3d/welld.ts`) — red straight onto navy would sink in a dark hall.
+ * The maker's own logo under the cords is left off: that one is not Michele's
+ * to give. Worn on the back, its straps over the hoodie's shoulders and down its
  * fronts, so it reads from the front as well; named `backpack` so the portrait
  * can take it off to sit down.
  */
@@ -1174,20 +1158,21 @@ function welldBackpack(torso: THREE.Mesh, H: number): THREE.Group {
         x.fillStyle = 'rgba(255,255,255,0.035)';
         for (let i = 0; i < W; i += 9) x.fillRect(i, 0, 1, Hc);
         for (let j = 0; j < Hc; j += 9) x.fillRect(0, j, W, 1);
-        // DREAM. DO. DEVELOP. — white, bold, condensed, flush left.
+        // Dream. Do. Develop — white, bold, rounded, flush left, one word a line.
         x.fillStyle = '#f4f2ee';
-        x.font = 'bold 54px "Arial Narrow", "Helvetica Neue", Arial, sans-serif';
+        x.font = 'bold 52px "Ubuntu", "Trebuchet MS", "Segoe UI", "Helvetica Neue", Arial, sans-serif';
         x.textBaseline = 'alphabetic';
-        const line = (t: string, y: number): void => {
-          x.save();
-          x.scale(0.74, 1);
-          x.fillText(t, 58 / 0.74, y);
-          x.restore();
-        };
-        line('DREAM.', Hc * 0.2);
-        line('DO.', Hc * 0.2 + 50);
-        line('DEVELOP.', Hc * 0.2 + 100);
-        drawWellD(x, 60, Hc * 0.2 + 116, 104);
+        x.fillText('Dream.', 50, Hc * 0.2);
+        x.fillText('Do.', 50, Hc * 0.2 + 50);
+        x.fillText('Develop', 50, Hc * 0.2 + 100);
+        // The label: white, rounded, the red WeLLD on it.
+        const lw = 136;
+        const lh = Math.round(118 * WELLD_MARK_ASPECT) + 18;
+        x.fillStyle = '#f4f2ee';
+        x.beginPath();
+        x.roundRect(50, Hc * 0.2 + 118, lw, lh, 7);
+        x.fill();
+        drawWellD(x, 59, Hc * 0.2 + 127, 118);
         // Shock cord, crossed and laced between the side hooks.
         const cord = (pts: Array<[number, number]>): void => {
           for (const [c, lw, dy] of [['#07080b', 6, 0], ['#3a4152', 1.6, -1.5]] as Array<[string, number, number]>) {
@@ -1253,12 +1238,12 @@ function welldBackpack(torso: THREE.Mesh, H: number): THREE.Group {
  *
  * A brown buzz cut with a little texture to it, a fair, sun-warmed face with
  * the bones given some say — cheekbones, a squarer jaw, a definite chin — clear
- * hazel eyes, and the light brown goatee groomed into a proper shape (`goatee`)
- * round a real smile. The grey hoodie is open over a black tee, its sleeves and
- * sides banded in red that has half worn away, the hood down behind the neck;
- * the mirrored sunglasses hang from the tee's collar by one arm. Khaki chino
- * shorts, bare shins, white trainers; the WellD backpack (`welldBackpack`); and
- * a body of its own, tall (`CameoLook.seed`).
+ * hazel eyes, a real smile, and under it the light brown goatee — the chin
+ * only, no moustache (`goatee`). The grey hoodie is open over a black tee, its
+ * sleeves and sides banded in red that has half worn away, the hood down behind
+ * the neck; the mirrored sunglasses hang from the tee's collar by one arm. Khaki
+ * chino shorts, bare shins, white trainers; the WellD backpack
+ * (`welldBackpack`); and a body of its own, tall (`CameoLook.seed`).
  *
  * The tee's colourful blocks are the photograph's, the word on them is not: the
  * real one is a brand's wordmark (CLAUDE.md, nothing that needs permission), so
@@ -1280,7 +1265,8 @@ function buildMichele(torso: THREE.Mesh, H: number): Portrait {
     narrow: 0.86,
     long: 1.2,
     beard: '#8a6a4e',
-    face: { brow: 0.07, socket: 0.065, cheek: 0.09, jawTaper: 0.3, jawWidth: 0.07, chin: 0.08, nose: 0.21, noseW: 0.105, crownFlat: 0.12, blush: 0.13, lip: 0.05, ears: 1 },
+    // No shadow on the upper lip: no moustache.
+    face: { brow: 0.07, socket: 0.065, cheek: 0.09, jawTaper: 0.3, jawWidth: 0.07, chin: 0.08, nose: 0.21, noseW: 0.105, crownFlat: 0.12, blush: 0.13, lip: 0, ears: 1 },
   });
   // The crop's texture: a velvet of very short hair, not a painted cap.
   spikes(head, { count: 700, len: 0.03, width: 0.03, dark: '#3b2c20', light: '#5e4838', minY: 0.2 });

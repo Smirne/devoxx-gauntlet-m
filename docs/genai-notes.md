@@ -5990,3 +5990,26 @@ the backpack is off anyway.
 
 **Tests.** `tests/cameos.test.ts`: the same body at breakfast and at the keynote — one seed each, and
 not each other's.
+
+## 29 Sep 2026 — the new WellD mark, and no moustache
+
+**What the human decided.** Michele, with the new logo: *"sorry, we have a new logo"* — WeLLD in
+heavy red letters, the D's counter a bear's face turned on its side, Dream.Do.Develop under it — then
+*"Backpack is really cool!"*, *"No mustaches for me. I don't have a goatee at the moment, but that's a
+distinctive figure, so keep it."*, and *"Yes focus on 3D"*.
+
+**What the agent did.**
+
+- `drawWellD` redrawn for the new mark, every glyph traced off the logo as a path on its own 2000-wide
+  sheet: the W's flat middle peak, the e's flat-bottomed eye, two square Ls, the D with the bear's
+  face cut out of it (a hole, so it shows whatever the mark is on) and its two eyes; Dream.Do.Develop
+  fitted to the logo's own span whatever font the machine has. Drawn next to the logo and compared
+  before it went anywhere.
+- The backpack keeps the photograph's layout in the new mark's words: Dream. Do. Develop stacked in
+  white, over a white label with the red WeLLD on it. Red straight onto navy was tried on paper and
+  rejected: in the hall's light it would sink.
+- The hidden sticker is die-cut white now, the whole lockup on it, and still on the same laptop.
+- The moustache is gone and the upper lip clean; the chin goatee stays — not today's face, but the
+  figure's distinctive mark, which is the reason Michele gave for keeping it. On its own, the old chin
+  piece (a half-disc) read as a second mouth under the smile; it is a crescent now, its top edge
+  following the lower lip and its bottom the round of the chin.

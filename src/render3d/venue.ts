@@ -29,7 +29,7 @@ import { mergeStatic, noMerge } from './merge';
 import type { PlanarReflection } from './reflector';
 import { adScreen, ledTicker } from './screens';
 import { POSTERS, backlitGlass, cityscape, emitter, exitSign, menuBoard, neonText, poster, rainMask, wayfinding, zaalPanel } from './signs';
-import { WELLD_ASPECT, drawWellD } from './welld';
+import { WELLD_LOCKUP_ASPECT, drawWellD } from './welld';
 
 /** Where chapter 1's geometry stops, sim px: just past the fire door. */
 // Past the secondary staircases (sim x 1005.5..1114.7, standing in the corridor
@@ -1592,8 +1592,8 @@ function coffeeTable(mats: Materials, w: number, d: number): THREE.Group {
  *
  * Every coffee table in the corridor has the same closed laptop on it with the
  * same orange sticker — somebody's talk prep. On one of them the sticker is
- * WellD's instead (`src/render3d/welld.ts`), stuck on a little crooked the way
- * laptop stickers are: Michele's laptop, left on the last table down the
+ * WellD's instead (`src/render3d/welld.ts`): die-cut white, the red WeLLD and
+ * Dream.Do.Develop on it, stuck on a little crooked the way laptop stickers are: Michele's laptop, left on the last table down the
  * corridor, where the Devoxx rooms are. Seven centimetres of red in a corridor
  * of them; nothing points at it.
  */
@@ -1601,18 +1601,22 @@ function hideWellD(table: THREE.Group): void {
   const plain = table.getObjectByName('sticker');
   if (plain) plain.removeFromParent();
   const c = document.createElement('canvas');
-  c.width = 400;
-  c.height = Math.round(400 * WELLD_ASPECT);
+  c.width = 480;
+  c.height = Math.round(440 * WELLD_LOCKUP_ASPECT) + 40;
   const x = c.getContext('2d');
   if (!x) return;
-  drawWellD(x, 0, 0, 400);
+  x.fillStyle = '#ffffff';
+  x.beginPath();
+  x.roundRect(0, 0, c.width, c.height, 30);
+  x.fill();
+  drawWellD(x, 20, 20, 440, { tagline: true });
   const map = new THREE.CanvasTexture(c);
   map.colorSpace = THREE.SRGBColorSpace;
   map.anisotropy = 4;
   const w = 0.09;
   // A print with a little sheen to it: faintly there in a dark corridor, for whoever looks.
-  const mat = new THREE.MeshStandardMaterial({ map, alphaTest: 0.5, roughness: 0.45, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.3 });
-  const sticker = new THREE.Mesh(new THREE.PlaneGeometry(w, w * WELLD_ASPECT), mat);
+  const mat = new THREE.MeshStandardMaterial({ map, alphaTest: 0.5, roughness: 0.45, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.22 });
+  const sticker = new THREE.Mesh(new THREE.PlaneGeometry(w, (w * c.height) / c.width), mat);
   sticker.name = 'welld';
   // Flat on the lid, turned a little off square; text up the lid, away from the corridor.
   sticker.rotation.set(-Math.PI / 2, 0, 0.16);
