@@ -94,6 +94,8 @@ const POT_REACH = 70;
  */
 const POT_NAG = 40;
 const TALK_REACH = 40;
+/** How fast Stephan turns to somebody, rad/s: a man turning round, not a turret. */
+const STEPHAN_TURN = 5;
 /**
  * The crab sandwich, on the sandwich counter's hall-facing edge.
  *
@@ -1335,6 +1337,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const gateMidY = GF.gate.y + GF.gate.h / 2;
   const stephan = { x: stair.x + stair.w + 26, y: gateMidY, r: 8 };
   /*
+   * WHICH WAY HE IS LOOKING. Michele, 29 Sep 2026: Stephan stood with his face
+   * to the staircase — to the barrier and the flight behind it — so everybody
+   * coming in through the doors met the back of his polo. The man holding the one
+   * way up watches the way IN: `GF.entrance`, south-east of him. When a robot
+   * walks up to him he turns to it, and back to the doors once it has gone. The
+   * sim owns the heading (`Person.face`) so both renderers agree.
+   */
+  const doors: Vec2 = { x: GF.entrance.x + GF.entrance.w / 2, y: GF.entrance.y + GF.entrance.h / 2 };
+  const doorsFace = Math.atan2(doors.y - stephan.y, doors.x - stephan.x);
+  let stephanFace = doorsFace;
+  /*
    * THE SPEAKER GOES TO STEPHAN TOO. Michele, 28 Sep 2026: *"the speaker should
    * also go to stephan."*
    *
@@ -2530,6 +2543,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      * A speaker who is FOLLOWING is exempt — she is walking with Voxxy, and a
      * follower who shoulder-charges the robot she is following cannot keep up.
      */
+    {
+      // The nearest robot close enough to talk to, or the doors; a turn, not a snap.
+      let near: Bot | null = null;
+      for (const b of ctx.bots) {
+        if (dist(b, stephan) < TALK_REACH + b.r + 8 && (!near || dist(b, stephan) < dist(near, stephan))) near = b;
+      }
+      const want = near ? Math.atan2(near.y - stephan.y, near.x - stephan.x) : doorsFace;
+      const d = Math.atan2(Math.sin(want - stephanFace), Math.cos(want - stephanFace));
+      const turn = STEPHAN_TURN * dt;
+      stephanFace = Math.abs(d) <= turn ? want : stephanFace + Math.sign(d) * turn;
+    }
     for (const b of ctx.bots) {
       for (const n of npcs) standOff(b, n);
       standOff(b, stephan);
@@ -2949,9 +2973,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       role: 'stephan',
       lanyard: LANYARD.chair,
       seed: 910,
-      // He stands at the gate with his back to the stairs, looking at whoever is
-      // coming up the concourse — which since the staircase was turned is west.
-      face: Math.PI,
+      // His back to the gate and the stairs, his eyes on the doors — or on whoever
+      // has walked up to talk to him (`stephanFace`).
+      face: stephanFace,
     });
     /*
      * THE KEYNOTE SPEAKER IS ALWAYS DRAWN, AND THEY LOOK LIKE SOMETHING.
