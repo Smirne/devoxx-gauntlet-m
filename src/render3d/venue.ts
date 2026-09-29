@@ -29,6 +29,7 @@ import { mergeStatic, noMerge } from './merge';
 import type { PlanarReflection } from './reflector';
 import { adScreen, ledTicker } from './screens';
 import { POSTERS, backlitGlass, cityscape, emitter, exitSign, menuBoard, neonText, poster, rainMask, wayfinding, zaalPanel } from './signs';
+import { WELLD_ASPECT, drawWellD } from './welld';
 
 /** Where chapter 1's geometry stops, sim px: just past the fire door. */
 // Past the secondary staircases (sim x 1005.5..1114.7, standing in the corridor
@@ -1114,6 +1115,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   // per pair.
   let plinthN = 0;
   const placed: number[] = [];
+  const tables: THREE.Group[] = [];
   for (const w of walls) {
     if (w.kind !== 'corridor-plinth' || w.x >= CORRIDOR_END) continue;
     const cx = m(w.x + w.w / 2);
@@ -1123,6 +1125,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     const holoHere = plinthN++ % 3 === 1 && Math.abs(w.x + w.w / 2 - F1.fireX) >= 60;
     if (!holoHere) {
       const piece = plinthN % 2 === 0 ? armchair(mats, m(w.w), m(w.h)) : coffeeTable(mats, m(w.w), m(w.h));
+      if (plinthN % 2 !== 0) tables.push(piece);
       piece.position.set(cx, 0, cz);
       // Seats face into the corridor (the plinths stand against the south wall).
       piece.rotation.y = Math.PI;
@@ -1153,6 +1156,10 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     });
     volumePoints.push({ position: V(cx, 1.6, cz), color: new THREE.Color(0.15, 0.8, 1).multiplyScalar(0.9), range: 3 });
   }
+  // One of those laptops is somebody's in particular (`hideWellD`): the last
+  // table down the corridor, between the Devoxx rooms.
+  const lastTable = tables[tables.length - 1];
+  if (lastTable) hideWellD(lastTable);
 
   /* ------------------------------------------------ cove lines, downlights */
 
@@ -1570,6 +1577,7 @@ function coffeeTable(mats: Materials, w: number, d: number): THREE.Group {
   // A closed laptop with a sticker and two coffee cups: somebody's talk prep.
   const laptop = new THREE.Mesh(box(0.34, 0.02, 0.24, V(-0.15, 0.485, 0.02)), mats.steel);
   const sticker = new THREE.Mesh(box(0.07, 0.003, 0.07, V(-0.12, 0.497, 0.04)), new THREE.MeshStandardMaterial({ color: 0xf37021, roughness: 0.6 }));
+  sticker.name = 'sticker';
   const cupMat = new THREE.MeshStandardMaterial({ color: 0xece8df, roughness: 0.5 });
   const cup1 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.1, 12), cupMat);
   cup1.position.set(0.22, 0.525, -0.08);
@@ -1577,6 +1585,39 @@ function coffeeTable(mats: Materials, w: number, d: number): THREE.Group {
   cup2.position.set(0.3, 0.525, 0.1);
   g.add(top, base, laptop, sticker, cup1, cup2);
   return g;
+}
+
+/**
+ * THE HIDDEN LOGO. Michele, 29 Sep 2026: *"Hide the welld logo somewhere."*
+ *
+ * Every coffee table in the corridor has the same closed laptop on it with the
+ * same orange sticker — somebody's talk prep. On one of them the sticker is
+ * WellD's instead (`src/render3d/welld.ts`), stuck on a little crooked the way
+ * laptop stickers are: Michele's laptop, left on the last table down the
+ * corridor, where the Devoxx rooms are. Seven centimetres of red in a corridor
+ * of them; nothing points at it.
+ */
+function hideWellD(table: THREE.Group): void {
+  const plain = table.getObjectByName('sticker');
+  if (plain) plain.removeFromParent();
+  const c = document.createElement('canvas');
+  c.width = 400;
+  c.height = Math.round(400 * WELLD_ASPECT);
+  const x = c.getContext('2d');
+  if (!x) return;
+  drawWellD(x, 0, 0, 400);
+  const map = new THREE.CanvasTexture(c);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.anisotropy = 4;
+  const w = 0.09;
+  // A print with a little sheen to it: faintly there in a dark corridor, for whoever looks.
+  const mat = new THREE.MeshStandardMaterial({ map, alphaTest: 0.5, roughness: 0.45, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.3 });
+  const sticker = new THREE.Mesh(new THREE.PlaneGeometry(w, w * WELLD_ASPECT), mat);
+  sticker.name = 'welld';
+  // Flat on the lid, turned a little off square; text up the lid, away from the corridor.
+  sticker.rotation.set(-Math.PI / 2, 0, 0.16);
+  sticker.position.set(-0.12, 0.4975, 0.04);
+  table.add(sticker);
 }
 
 /* -------------------------------------------------------------- hologram */

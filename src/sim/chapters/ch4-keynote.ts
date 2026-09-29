@@ -1197,7 +1197,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     });
     cameoSeats.forEach((q, i) => {
       const name = SECOND_ROW[i];
-      out.push({ x: q.x, y: q.y, r: 4, name, ...CAMEO_LOOKS[name], role: 'seated', seed: 930 + i, face: -Math.PI / 2, speed: 0, cheer });
+      // Their seed is their look's, so the body is the one they had at breakfast.
+      out.push({ x: q.x, y: q.y, r: 4, name, ...CAMEO_LOOKS[name], role: 'seated', face: -Math.PI / 2, speed: 0, cheer });
     });
   // Both of them are on the stage looking back up the room at the audience.
     out.push({

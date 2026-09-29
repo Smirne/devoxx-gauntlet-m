@@ -19,6 +19,9 @@
  *   mirrored sunglasses hooked on the collar. The tee's brand wordmark is the
  *   one thing not copied — "nothing that needs permission" (CLAUDE.md) — and its
  *   colourful blocks spell Michele's own standing call instead: *"I vote funny."*
+ *   Then, at Michele's asking, khaki shorts and the WellD backpack: WellD is
+ *   Michele's own company, so its mark is Michele's to put in
+ *   (`src/render3d/welld.ts`) — and one of its stickers is hidden somewhere.
  * - **Claude** is recognisable without a logo, which rules out the mark and the
  *   name set in its type. What is left is what people actually know it by: the
  *   warm terracotta-and-cream palette, a terminal with a blinking cursor for a
@@ -33,15 +36,33 @@ export const CLAUDE_CLAY = '#d97757';
 /** ...and the cream it is always set on. */
 export const CLAUDE_CREAM = '#f0eee6';
 
-/** A speaker's look, and one thing no speaker has: a screen for a head (`Person.screen`). */
+/**
+ * A speaker's look, and two things no speaker look carries: a screen for a head
+ * (`Person.screen`), and a SEED of their own.
+ *
+ * Everybody else's seed is their index in the chapter's list, which is fine for
+ * a crowd and wrong for somebody the player is meant to recognise: the body
+ * came out 1.57 m at breakfast and 1.48 m and broad at the keynote, two
+ * different people with one face. One seed each, used by both chapters, is one
+ * body in both rooms (`src/render/people.ts`: height, build and what they
+ * carry are the seed's).
+ */
 export interface CameoLook extends SpeakerLook {
   screen?: boolean;
+  seed: number;
 }
 
 export const CAMEO_LOOKS: Readonly<Record<string, CameoLook>> = Object.freeze({
-  // Grey hoodie, its red stripes reduced to a red collar band at 30 px.
-  Michele: { colour: '#8d9095', collar: '#b8323c', lanyard: LANYARD.attendee },
-  Claude: { colour: CLAUDE_CLAY, collar: CLAUDE_CREAM, lanyard: LANYARD.attendee, screen: true },
+  /*
+   * Grey hoodie, its red stripes reduced to a red collar band at 30 px.
+   *
+   * Seed 1271: 1.70 m, the tallest the crowd's range allows, and an athlete's
+   * build rather than a wardrobe's. Michele, on the first portrait: *"Make me
+   * more beautiful :D"*.
+   */
+  Michele: { colour: '#8d9095', collar: '#b8323c', lanyard: LANYARD.attendee, seed: 1271 },
+  // Seed 1099: 1.59 m, middling, empty-handed — nothing to carry (it says why).
+  Claude: { colour: CLAUDE_CLAY, collar: CLAUDE_CREAM, lanyard: LANYARD.attendee, screen: true, seed: 1099 },
 });
 
 /**

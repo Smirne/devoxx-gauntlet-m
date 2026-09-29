@@ -25,6 +25,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 
 import { buildPerson, type PersonModel } from '../render/people';
 import { CLAUDE_CLAY, CLAUDE_CREAM } from '../sim/cameos';
+import { drawWellD } from './welld';
 import { riseAt } from '../sim/surface';
 import type { GameSnapshot } from '../sim/types';
 
@@ -351,6 +352,13 @@ interface Portrait {
   sleeve?: { cloth: THREE.Material; cuff: THREE.Material };
   /** Long sleeves in a cloth of their own (Michele's striped hoodie), on the figure's own arms. */
   arms?: THREE.Material;
+  /**
+   * Shorts: bare shins in `skin`, and these shorts (with their turned-up hem)
+   * over the top of each leg — built onto the leg pivots like the sleeves.
+   */
+  shorts?: { cloth: THREE.Material; hem: THREE.Material };
+  /** Shoes of their own, where the crowd's are dark: Michele's white trainers. */
+  shoes?: THREE.Material;
   /** Anything in the portrait that moves on its own clock — Claude's cursor. */
   tick?: (t: number) => void;
   /**
@@ -400,8 +408,14 @@ const std = (c: string, rough = 0.6): THREE.MeshStandardMaterial => new THREE.Me
  * Eyes, set INTO the face: the whites sunk into the socket, a dark iris with a
  * catchlight, and an upper lid in the skin over the top third, which is what
  * stops them reading as two marbles glued to a ball.
+ *
+ * `follow` turns each white and lid with the face's curve. On a narrow face the
+ * surface falls away fast towards the temples, so a white set square to the
+ * head is buried at the inner corner and bare at the outer one, and the iris,
+ * looking straight ahead, reads as looking at the nose. Opt-in, because the
+ * portraits drawn before it are tuned without it.
  */
-function eyes(head: THREE.Mesh, y: number, colour = '#1f1a16', open = 1): void {
+function eyes(head: THREE.Mesh, y: number, colour = '#1f1a16', open = 1, follow = false): void {
   const surf = surfOf(head);
   const white = std('#efe9e0', 0.35);
   const iris = std(colour, 0.25);
@@ -410,9 +424,11 @@ function eyes(head: THREE.Mesh, y: number, colour = '#1f1a16', open = 1): void {
   for (const sx of [-1, 1]) {
     const x = sx * 0.3;
     const z = surf(x, y);
+    const turn = follow ? Math.atan((surf(x - 0.08, y) - surf(x + 0.08, y)) / 0.16) : 0;
     const w = new THREE.Mesh(new THREE.SphereGeometry(0.11, 14, 10), white);
     w.scale.set(1, 0.72 * open, 0.55);
     w.position.set(x, y, z - 0.03);
+    w.rotation.y = turn;
     head.add(w);
     const p = new THREE.Mesh(new THREE.SphereGeometry(0.058, 12, 8), iris);
     p.scale.set(1, 1, 0.5);
@@ -424,6 +440,7 @@ function eyes(head: THREE.Mesh, y: number, colour = '#1f1a16', open = 1): void {
     const l = new THREE.Mesh(new THREE.SphereGeometry(0.125, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.42), lid);
     l.scale.set(1, 0.8, 0.62);
     l.position.set(x, y + 0.005, z - 0.035);
+    l.rotation.y = turn;
     head.add(l);
   }
 }
@@ -1070,24 +1087,178 @@ function buildJosh(torso: THREE.Mesh, H: number): Portrait {
 }
 
 /**
- * A goatee: a rounded tuft on the chin, from under the lower lip to below the
- * jaw, and the thin moustache that runs round to it.
+ * A goatee, groomed: a moustache that follows the upper lip, running down past
+ * the corners of the mouth into a full, rounded chin — laid onto the face's own
+ * surface (`faceBand`), so it is a beard and not a bead stuck on the chin.
+ * Sized for a `smile` at its default height.
  */
 function goatee(head: THREE.Mesh, colour: string): void {
-  const tuft = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), std(colour, 0.95));
-  tuft.scale.set(0.36, 0.62, 0.24);
-  const y = -0.8;
-  tuft.position.set(0, y, surf0(head, 0, y) + 0.015);
-  head.add(tuft);
-  moustache(head, colour, 0.44, 0.055);
+  const mat = std(colour, 0.95);
+  // Where the upper lip's top edge is, across the mouth (see `smile`).
+  const lip = (x: number): number => -0.4 + 0.075 * Math.min(1, (x / 0.23) ** 2) + 0.028 * Math.max(0, Math.cos((Math.PI * x) / 0.46));
+  // The moustache: full over the lip, tapering to the corners.
+  faceBand(
+    head,
+    (t) => {
+      const x = -0.26 + 0.52 * t;
+      return [x, lip(x) + 0.01 + 0.075 - 0.04 * (x / 0.26) ** 2];
+    },
+    (t) => {
+      const x = -0.26 + 0.52 * t;
+      return [x, lip(x) + 0.01];
+    },
+    mat,
+    0.022,
+  );
+  // Down round the corners of the mouth...
+  for (const sx of [-1, 1]) {
+    faceBand(
+      head,
+      (t) => [sx * (0.3 - 0.07 * t), -0.3 - 0.3 * t],
+      (t) => [sx * (0.235 - 0.06 * t), -0.3 - 0.3 * t],
+      mat,
+      0.022,
+    );
+  }
+  // ...into the chin: under the lower lip, rounded, and no lower than the chin.
+  faceBand(
+    head,
+    (t) => [-0.24 + 0.48 * t, -0.58 - 0.012 * Math.sin(Math.PI * t)],
+    (t) => [(-0.24 + 0.48 * t) * 0.8, -0.72 - 0.14 * Math.sin(Math.PI * t)],
+    mat,
+    0.022,
+  );
 }
 
 /**
- * MICHELE — the photograph at Pena, 29 Sep 2026 (`src/sim/cameos.ts`): a brown
- * buzz cut, fair skin, a light brown goatee and the faintest moustache, a small
- * closed smile. The grey hoodie is open over a black tee, its sleeves and sides
- * banded in red that has half worn away, the hood down behind the neck; the
- * mirrored sunglasses hang from the tee's collar by one arm.
+ * THE WELLD BACKPACK — Michele, 29 Sep 2026, with a photograph of it: *"Add a
+ * WellD backpack for me."* Navy, a rounded top, shock cord crossed over the
+ * front panel, zip pulls, mesh side pockets, and on the front DREAM. DO.
+ * DEVELOP. in white over the red wellD block (`src/render3d/welld.ts`). The
+ * maker's own logo under the cords is left off: that one is not Michele's to
+ * give. Worn on the back, its straps over the hoodie's shoulders and down its
+ * fronts, so it reads from the front as well; named `backpack` so the portrait
+ * can take it off to sit down.
+ */
+function welldBackpack(torso: THREE.Mesh, H: number): THREE.Group {
+  const g = new THREE.Group();
+  g.name = 'backpack';
+  const halfW = torso.scale.x / 2;
+  const front = torso.scale.z / 2;
+  const shoulder = torso.position.y + torso.scale.y / 2;
+  const hip = torso.position.y - torso.scale.y / 2;
+  const navy = std('#1d2331', 0.85);
+  const black = std('#0b0d12', 0.5);
+  const w = halfW * 1.45;
+  const h = (shoulder - hip) * 1.12;
+  const d = H * 0.1;
+  const r = d * 0.42;
+  const z = -front - d / 2 - 0.004;
+  const top = shoulder + H * 0.018;
+  const bag = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 4, r), navy);
+  bag.position.set(0, top - h / 2, z);
+  g.add(bag);
+  // The front panel, on the flat of the bag's back face: the print and the cords.
+  const pw = w - 2 * r;
+  const ph = h - 2 * r;
+  const panel = new THREE.Mesh(
+    new THREE.PlaneGeometry(pw, ph),
+    new THREE.MeshStandardMaterial({
+      roughness: 0.85,
+      map: canvasTex(320, Math.round((320 * ph) / pw), (x) => {
+        const W = 320;
+        const Hc = Math.round((320 * ph) / pw);
+        x.fillStyle = '#1d2331';
+        x.fillRect(0, 0, W, Hc);
+        // Ripstop: a faint grid in the weave.
+        x.fillStyle = 'rgba(255,255,255,0.035)';
+        for (let i = 0; i < W; i += 9) x.fillRect(i, 0, 1, Hc);
+        for (let j = 0; j < Hc; j += 9) x.fillRect(0, j, W, 1);
+        // DREAM. DO. DEVELOP. — white, bold, condensed, flush left.
+        x.fillStyle = '#f4f2ee';
+        x.font = 'bold 54px "Arial Narrow", "Helvetica Neue", Arial, sans-serif';
+        x.textBaseline = 'alphabetic';
+        const line = (t: string, y: number): void => {
+          x.save();
+          x.scale(0.74, 1);
+          x.fillText(t, 58 / 0.74, y);
+          x.restore();
+        };
+        line('DREAM.', Hc * 0.2);
+        line('DO.', Hc * 0.2 + 50);
+        line('DEVELOP.', Hc * 0.2 + 100);
+        drawWellD(x, 60, Hc * 0.2 + 116, 104);
+        // Shock cord, crossed and laced between the side hooks.
+        const cord = (pts: Array<[number, number]>): void => {
+          for (const [c, lw, dy] of [['#07080b', 6, 0], ['#3a4152', 1.6, -1.5]] as Array<[string, number, number]>) {
+            x.strokeStyle = c;
+            x.lineWidth = lw;
+            x.lineJoin = 'round';
+            x.beginPath();
+            pts.forEach(([px, py], i) => (i ? x.lineTo(px, py + dy) : x.moveTo(px, py + dy)));
+            x.stroke();
+          }
+        };
+        const y0 = Hc * 0.2 + 170;
+        cord([[14, y0], [W / 2, Hc - 8], [W - 14, y0]]);
+        cord([[14, Hc - 8], [W / 2, y0 + 6], [W - 14, Hc - 8]]);
+        cord([[14, y0], [W - 14, Hc - 8]]);
+        cord([[W - 14, y0], [14, Hc - 8]]);
+      }),
+    }),
+  );
+  // Facing away from Michele, so it reads to whoever is behind.
+  panel.rotation.y = Math.PI;
+  panel.position.set(0, top - h / 2, z - d / 2 - 0.002);
+  g.add(panel);
+  // A grab loop on top, two zip pulls, and the mesh pockets on the sides.
+  const loop = new THREE.Mesh(new THREE.TorusGeometry(w * 0.13, H * 0.006, 6, 14, Math.PI), black);
+  loop.position.set(0, top - 0.002, z);
+  g.add(loop);
+  for (const sx of [-1, 1]) {
+    const pull = new THREE.Mesh(new THREE.BoxGeometry(H * 0.008, H * 0.03, H * 0.004), black);
+    pull.position.set(sx * w * 0.36, top - h * 0.16, z - d / 2 - 0.006);
+    g.add(pull);
+    const pocket = new THREE.Mesh(new RoundedBoxGeometry(d * 0.22, h * 0.42, d * 0.72, 2, d * 0.08), std('#2c3344', 0.95));
+    pocket.position.set(sx * (w / 2 + d * 0.06), top - h * 0.7, z);
+    g.add(pocket);
+  }
+  // The straps: over each shoulder (a flattened half-ring from back to front),
+  // then down the hoodie's front to a buckle.
+  const rr = front + H * 0.012;
+  const low = shoulder + H * 0.014 - rr;
+  for (const sx of [-1, 1]) {
+    // Over the grey hoodie fronts, outside the tee: navy on black would vanish.
+    const x0 = sx * halfW * 0.8;
+    const over = new THREE.Mesh(new THREE.TorusGeometry(rr, H * 0.011, 6, 16, Math.PI), navy);
+    over.rotation.y = Math.PI / 2;
+    over.scale.z = 1.7;
+    over.position.set(x0, low, 0);
+    g.add(over);
+    const len = low - (hip + H * 0.03);
+    const strap = new THREE.Mesh(new RoundedBoxGeometry(H * 0.036, len, H * 0.012, 1, H * 0.004), navy);
+    strap.position.set(x0, low - len / 2, rr);
+    g.add(strap);
+    const buckle = new THREE.Mesh(new THREE.BoxGeometry(H * 0.03, H * 0.012, H * 0.016), black);
+    buckle.position.set(x0, hip + H * 0.03, rr + H * 0.004);
+    g.add(buckle);
+  }
+  return g;
+}
+
+/**
+ * MICHELE — the photograph at Pena, 29 Sep 2026 (`src/sim/cameos.ts`), and then
+ * Michele's own notes on the first portrait: *"Make me more beautiful :D"* and
+ * *"ah, short trousers for me!"*
+ *
+ * A brown buzz cut with a little texture to it, a fair, sun-warmed face with
+ * the bones given some say — cheekbones, a squarer jaw, a definite chin — clear
+ * hazel eyes, and the light brown goatee groomed into a proper shape (`goatee`)
+ * round a real smile. The grey hoodie is open over a black tee, its sleeves and
+ * sides banded in red that has half worn away, the hood down behind the neck;
+ * the mirrored sunglasses hang from the tee's collar by one arm. Khaki chino
+ * shorts, bare shins, white trainers; the WellD backpack (`welldBackpack`); and
+ * a body of its own, tall (`CameoLook.seed`).
  *
  * The tee's colourful blocks are the photograph's, the word on them is not: the
  * real one is a brand's wordmark (CLAUDE.md, nothing that needs permission), so
@@ -1095,26 +1266,28 @@ function goatee(head: THREE.Mesh, colour: string): void {
  */
 function buildMichele(torso: THREE.Mesh, H: number): Portrait {
   const g = new THREE.Group();
-  const skinC = '#e7b99b';
+  const skinC = '#ebb795';
   const head = sculptHead({
     skin: skinC,
-    hairTop: '#5c4533',
-    hairSide: '#6a503c',
-    line: [0.6, 0.44, 0.16, -0.36],
-    // A buzz cut: the hair is barely off the skull, top or sides.
-    thickTop: 0.03,
-    thickSide: 0.018,
+    hairTop: '#4b3828',
+    hairSide: '#6e5846',
+    line: [0.62, 0.46, 0.18, -0.32],
+    // A buzz cut: barely off the skull, faded at the sides.
+    thickTop: 0.04,
+    thickSide: 0.012,
     salt: 0,
-    stubble: 0.2,
-    narrow: 0.9,
-    long: 1.16,
+    stubble: 0.08,
+    narrow: 0.86,
+    long: 1.2,
     beard: '#8a6a4e',
-    face: { brow: 0.06, socket: 0.06, cheek: 0.05, jawTaper: 0.3, jawWidth: 0.02, chin: 0.06, nose: 0.2, noseW: 0.12, crownFlat: 0.1, blush: 0.12, lip: 0.25, ears: 1.1 },
+    face: { brow: 0.07, socket: 0.065, cheek: 0.09, jawTaper: 0.3, jawWidth: 0.07, chin: 0.08, nose: 0.21, noseW: 0.105, crownFlat: 0.12, blush: 0.13, lip: 0.05, ears: 1 },
   });
-  eyes(head, 0.1, '#5a4634', 0.9);
-  brows(head, '#6a503c', 0.05, 0.05, 0.3);
-  smile(head, 0.4, false, 0.03, 0.035);
-  goatee(head, '#8a6a4e');
+  // The crop's texture: a velvet of very short hair, not a painted cap.
+  spikes(head, { count: 700, len: 0.03, width: 0.03, dark: '#3b2c20', light: '#5e4838', minY: 0.2 });
+  eyes(head, 0.1, '#6b4a2b', 1, true);
+  brows(head, '#4a3727', 0.058, 0.12, 0.31);
+  smile(head, 0.46, true, 0.09, 0.075);
+  goatee(head, '#a07a57');
   g.add(head);
 
   const halfW = torso.scale.x / 2;
@@ -1199,8 +1372,27 @@ function buildMichele(torso: THREE.Mesh, H: number): Portrait {
   const arm = new THREE.Mesh(new THREE.BoxGeometry(0.006 * H, H * 0.05, 0.004 * H), rim);
   arm.position.set(teeW * 0.3 + H * 0.02, shoulder - H * 0.015, front + 0.01);
   g.add(arm);
-  // The badge rides high, so the print shows under it.
-  return { group: g, head, body, arms, skin: std(skinC, 0.8), hides: ['glasses', 'mic', 'collar', 'head', 'hair'], badge: 0.5 };
+  g.add(welldBackpack(torso, H));
+
+  // The shorts' seat, across the hips, joining the two legs' shorts (`dressShorts`).
+  const khaki = std('#b8a47e', 0.9);
+  const seat = new THREE.Mesh(TORSO_GEO, khaki);
+  seat.scale.set(halfW * 1.9, H * 0.07, torso.scale.z * 0.94);
+  seat.position.set(0, hip - H * 0.015, 0);
+  g.add(seat);
+  return {
+    group: g,
+    head,
+    body,
+    arms,
+    skin: std(skinC, 0.8),
+    // ...and the crowd's rucksack, which the WellD one replaces.
+    hides: ['glasses', 'mic', 'collar', 'head', 'hair', 'pack'],
+    // The badge rides high, so the print shows under it.
+    badge: 0.5,
+    shorts: { cloth: khaki, hem: std('#c9b893', 0.9) },
+    shoes: std('#f1eee8', 0.55),
+  };
 }
 
 /**
@@ -1308,6 +1500,42 @@ function dressSleeves(yaw: THREE.Group, pt: Portrait): void {
     const band = g.children[1] as THREE.Mesh;
     band.scale.set(arm.scale.x * 1.34, len * 0.2, arm.scale.z * 1.34);
     band.position.set(0, -len + arm.scale.x * 0.2 + len * 0.1, 0);
+  }
+}
+
+/**
+ * Shorts, the legs' `dressSleeves`: the legs in skin, and over the top of each
+ * one the shorts and a turned-up hem, on the leg's own pivot so they swing with
+ * it and sit with it. The seat across the hips is the portrait's own.
+ */
+function dressShorts(yaw: THREE.Group, pt: Portrait): void {
+  const sh = pt.shorts as NonNullable<Portrait['shorts']>;
+  let made = pt.group.userData.shorts as THREE.Object3D[] | undefined;
+  if (!made) {
+    made = [];
+    for (const side of ['l', 'r']) {
+      const leg = yaw.getObjectByName(`leg-${side}`) as THREE.Mesh;
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(LIMB_GEO, sh.cloth), new THREE.Mesh(LIMB_GEO, sh.hem));
+      (leg.parent as THREE.Object3D).add(g);
+      made.push(g);
+    }
+    pt.group.userData.shorts = made;
+  }
+  for (const [i, side] of ['l', 'r'].entries()) {
+    const leg = yaw.getObjectByName(`leg-${side}`) as THREE.Mesh;
+    leg.material = pt.skin;
+    const g = made[i];
+    g.visible = leg.visible;
+    // From just above the hip joint to a little above the knee.
+    const len = leg.scale.y * 0.46;
+    const top = leg.scale.x * 0.3;
+    const body = g.children[0] as THREE.Mesh;
+    body.scale.set(leg.scale.x * 1.22, len, leg.scale.z * 1.18);
+    body.position.set(0, top - len / 2, 0);
+    const hem = g.children[1] as THREE.Mesh;
+    hem.scale.set(leg.scale.x * 1.27, len * 0.14, leg.scale.z * 1.23);
+    hem.position.set(0, top - len + len * 0.07, 0);
   }
 }
 
@@ -1533,6 +1761,7 @@ export function createPeople(parent: THREE.Object3D): People3D {
           torso.material = pt.group.userData.cloth as THREE.Material;
           for (const n of ['arm-l', 'arm-r']) (yaw.getObjectByName(n) as THREE.Mesh).material = pt.group.userData.cloth as THREE.Material;
           for (const sl of (pt.group.userData.sleeves as THREE.Object3D[] | undefined) ?? []) sl.removeFromParent();
+          for (const sh of (pt.group.userData.shorts as THREE.Object3D[] | undefined) ?? []) sh.removeFromParent();
           yaw.remove(pt.group);
           portraits.delete(pm);
           pt = undefined;
@@ -1564,10 +1793,15 @@ export function createPeople(parent: THREE.Object3D): People3D {
           badge.position.y = top - badge.scale.y / 2;
         }
         if (pt.barefoot) placeFeet(yaw, H, pt.skin);
+        if (pt.shoes) for (const n of ['shoe-l', 'shoe-r']) (yaw.getObjectByName(n) as THREE.Mesh).material = pt.shoes;
         if (pt.sleeve) dressSleeves(yaw, pt);
-        // A skirt drawn for standing goes straight down through the seat.
-        const skirt = pt.group.getObjectByName('skirt');
-        if (skirt) skirt.visible = p.role !== 'seated';
+        if (pt.shorts) dressShorts(yaw, pt);
+        // A skirt drawn for standing goes straight down through the seat, and
+        // nobody watches a keynote with their backpack on.
+        for (const n of ['skirt', 'backpack']) {
+          const o = pt.group.getObjectByName(n);
+          if (o) o.visible = p.role !== 'seated';
+        }
       }
       for (let i = people.length; i < models.length; i++) models[i].root.visible = false;
     },

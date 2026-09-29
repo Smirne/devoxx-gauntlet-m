@@ -5932,3 +5932,61 @@ fill the front row alone, the two cameos sit one row behind, and nobody takes an
 and shorter than a head, and comes off when the pooled figure is somebody else. The figure's mesh
 budget went from seventeen to eighteen, and the test names the one, as it names the five before it —
 a budget raised with a reason on the record, not loosened.
+
+## 29 Sep 2026 — Michele, more beautiful, in shorts, with the WellD backpack; and one hidden logo
+
+**What the human decided.** Michele, with a photograph of a WellD backpack and the WellD logo:
+*"Add a WellD backpack for me. Hid the welld logo somewhere. Make me more beautiful :D"*, then, while
+it was being built, *"ah, short trousers for me!"* WellD is Michele's own company, so putting its
+mark in the game is Michele's call; CLAUDE.md's "nothing that needs permission" is about marks nobody
+on this team can speak for — which is exactly why the backpack maker's logo stayed off it.
+
+**What the agent built** (`src/render3d/people3d.ts`, `src/render3d/welld.ts`, `src/render3d/venue.ts`,
+`src/sim/cameos.ts`).
+
+- *More beautiful.* The face rebuilt on the same sculpting tools: cheekbones, a squarer jaw and a
+  definite chin, a finer nose, clear hazel eyes open full, a real smile with teeth, and the goatee
+  laid onto the face as a groomed shape — a moustache running down round the corners of the mouth
+  into a rounded chin — instead of a bead stuck on the chin; the buzz cut given a velvet of very short
+  hair instead of a painted cap. And a body: seed 1271, 1.70 m — the tallest the crowd's range
+  allows — with an athlete's build.
+- *One body in both rooms.* A cameo's seed was their place in the chapter's list, so Michele was
+  1.57 m at breakfast and 1.48 m and broad at the keynote — two people with one face — and both cameos
+  had drawn the crowd's rucksack. `CameoLook.seed` now gives each of them one body, used by both
+  chapters, and a test holds it.
+- *The backpack* (`welldBackpack`): navy, rounded, shock cord crossed over the front, zip pulls, mesh
+  side pockets, and DREAM. DO. DEVELOP. over the red wellD block. Its straps come over the shoulders
+  and down the hoodie's grey fronts (on the black tee they vanished), so it reads from the front too.
+  Taken off to sit down in Room 8.
+- *Shorts:* khaki chinos with a turned-up hem, built on the leg pivots the way short sleeves are built
+  on the arm pivots, so they swing and sit with the legs; bare shins; white trainers.
+- *WellD's mark, drawn* (`drawWellD`): this build ships no asset files, so the red block and the letters
+  are drawn from the logo's own geometry — the w two joined U's, the e a ring cut open with its bar on
+  the diagonal, two l's, a D — and checked against the logo image before being used anywhere.
+- *The hidden logo.* Every coffee table in the first-floor corridor carries the same closed laptop with
+  the same orange sticker: somebody's talk prep. On the last table down the corridor, between the
+  Devoxx rooms, that sticker is WellD's, stuck on a little crooked, with a faint sheen so it is there
+  in the dark for whoever looks. Nothing points at it.
+
+**What it found.**
+
+- *The eyes looked at the nose.* A narrower face falls away faster towards the temples, so a white set
+  square to the head was buried at its inner corner and bare at the outer one, and a straight-ahead iris
+  read as cross-eyed. `eyes(…, follow)` turns each white and lid with the face's curve; opt-in, so the
+  portraits tuned without it do not move.
+- *The first goatee was a frame.* Thin dark bands round the mouth and a dark block on the chin read as
+  a painted-on beard; the second is lighter (the photograph's light brown), the moustache fuller, the
+  sides hugging the mouth, the chin smaller and rounded.
+- *The seed's coffee does not show.* Seed 1271 hands the crowd figure a coffee, but the 3D hand is big
+  enough to swallow the cup, so no comment or note claims it.
+
+**Rejected.** The maker's logo on the backpack (not Michele's to give); the wellD mark in the walls'
+sticker atlas (`details.ts` scatters those everywhere — that is not hiding); the backpack on the lap in
+Room 8 (it would cover the tee and the badge, and the curtain call's applause would clap through it).
+
+**Not done.** The 2.5D figure keeps its grey hoodie and gets neither the backpack nor the shorts: at
+30 px neither would read, breakfast is behind the hall's south wall from the 2.5D camera, and in Room 8
+the backpack is off anyway.
+
+**Tests.** `tests/cameos.test.ts`: the same body at breakfast and at the keynote — one seed each, and
+not each other's.

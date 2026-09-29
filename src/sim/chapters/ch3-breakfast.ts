@@ -1148,6 +1148,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     barefoot?: boolean;
     lanyard?: string;
     screen?: boolean;
+    /** A body of their own (`CameoLook.seed`); everybody else's is their place in this list. */
+    seed?: number;
   }
   const npcs: Npc[] = [
     {
@@ -2930,7 +2932,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         mic: n.mic,
         barefoot: n.barefoot,
         screen: n.screen,
-        seed: 900 + i,
+        seed: n.seed ?? 900 + i,
       });
     }
     out.push({

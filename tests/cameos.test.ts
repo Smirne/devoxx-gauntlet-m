@@ -77,6 +77,26 @@ describe('Michele and Claude', () => {
     expect(toast(g), 'the first name in the list answered for the nearest').toMatch(/^Claude:/);
   });
 
+  /*
+   * A crowd member's seed is their place in the chapter's list, so the same name
+   * got a different body in each room: 1.57 m at breakfast, 1.48 m and broad at
+   * the keynote. The seed decides height, build and what they carry
+   * (`src/render/people.ts`); somebody the player is meant to recognise keeps one.
+   */
+  it('are the same body at breakfast and at the keynote', () => {
+    const g3 = mk(3);
+    g3.update(DT_MAX);
+    const g4 = mk(4);
+    g4.update(DT_MAX);
+    for (const name of ['Michele', 'Claude']) {
+      const a = person(g3, name)!;
+      const b = person(g4, name)!;
+      expect(a.seed, `${name} has no seed of their own`).toBeDefined();
+      expect(b.seed, `${name} changed bodies between the hall and Room 8`).toBe(a.seed);
+    }
+    expect(person(g3, 'Michele')!.seed).not.toBe(person(g3, 'Claude')!.seed);
+  });
+
   it('take their seats in Room 8 for the keynote, behind the front row, and the crowd still fills', () => {
     const g = mk(4);
     g.update(DT_MAX);
