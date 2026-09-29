@@ -86,6 +86,18 @@ body.ad3d .ad-card b{color:${YELLOW}}
 /* The task pips and count sit on a dark plate: on a lit carpet they vanished. */
 body.ad3d .ad-tasks{background:rgba(8,8,12,.55);border-radius:6px;padding:4px 10px;width:max-content;margin-left:auto;margin-right:auto}
 .ad-nohud .ad3d-help{display:none}
+/* The quality control, in the top bar beside Skip chapter: in the bar's flow, so
+   it can never be printed over another panel. It used to be a button of its own,
+   fixed bottom-left, over the speed readout (Michele, 29 Sep: "move the quality
+   info somewhere so it's not over other infos"). */
+body.ad3d .ad3d-quality{order:6;margin-left:auto;pointer-events:auto;cursor:pointer;white-space:nowrap;
+  font:12px system-ui,sans-serif;color:#ffd27a;background:rgba(255,210,122,.06);border:1px solid rgba(255,210,122,.45);
+  border-radius:0;padding:4px 10px;text-transform:uppercase;letter-spacing:.12em;
+  clip-path:polygon(0 0,calc(100% - 9px) 0,100% 9px,100% 100%,9px 100%,0 calc(100% - 9px))}
+body.ad3d .ad3d-quality + .ad-skip{margin-left:0}
+body.ad3d .ad3d-quality:hover{background:rgba(255,210,122,.14)}
+body.ad3d .ad3d-quality:focus-visible{outline:2px solid #ffd27a;outline-offset:2px}
+body.ad3d .ad3d-quality.ad3d-slow{color:#ff9a4a;border-color:#ff7a1a}
 `;
 
 export function installHudTheme(): void {

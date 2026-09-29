@@ -414,29 +414,30 @@ function cycleQuality(): void {
 }
 
 /*
- * The quality button, bottom-left: what it is set to, and a click moves it on.
- * When the frame rate stays low even after the resolution has been trimmed as
- * far as it goes (`world.struggling`), it says so once, in words.
+ * The quality button: what it is set to, and a click moves it on. It stands in
+ * the HUD's top bar, just before Skip chapter, so it is laid out WITH the bar
+ * and can never be printed over another panel — it used to be fixed
+ * bottom-left, on top of the speed readout (Michele, 29 Sep: "move the quality
+ * info somewhere so it's not over other infos"). When the frame rate stays low
+ * even after the resolution has been trimmed as far as it goes
+ * (`world.struggling`), it says so once, in words.
  */
 const qBtn = document.createElement('button');
 qBtn.type = 'button';
 qBtn.className = 'ad3d-quality';
-qBtn.textContent = `Quality: ${quality.toUpperCase()} (Q)`;
+qBtn.textContent = `Quality: ${quality} (Q)`;
 qBtn.title = 'Change render quality (reloads into the same chapter)';
-qBtn.style.cssText =
-  'position:fixed;left:12px;bottom:12px;z-index:30;font:600 12px system-ui,sans-serif;color:#ffd27a;background:rgba(10,10,14,.6);border:1px solid rgba(255,210,122,.45);border-radius:6px;padding:5px 9px;cursor:pointer';
 qBtn.addEventListener('click', (e) => {
   e.preventDefault();
   cycleQuality();
 });
-if (!shotMode && !hideHud) app.appendChild(qBtn);
+if (!shotMode) hud.root.querySelector('.ad-skip')?.before(qBtn);
 let warnedSlow = false;
 function checkSlow(): void {
   if (warnedSlow || !world.struggling || quality === 'low') return;
   warnedSlow = true;
-  qBtn.textContent = `Running slow — click for lower quality (now ${quality.toUpperCase()})`;
-  qBtn.style.borderColor = '#ff7a1a';
-  qBtn.style.color = '#ff9a4a';
+  qBtn.textContent = `Running slow — click for lower quality (now ${quality})`;
+  qBtn.classList.add('ad3d-slow');
 }
 
 /* ================================================================= loop ==== */

@@ -26,8 +26,8 @@ isometric camera per room — is still at `http://localhost:5173/`, and is where
 
 The first time it runs, the 3D build picks a render quality from the GPU the browser reports (low
 for software renderers and phones, medium for integrated graphics, high otherwise). The **Quality**
-button bottom-left, or `Q`, changes it; the page reloads straight back into the chapter you were in.
-If the frame rate stays low, the button says so.
+button top right, beside **Skip chapter**, or `Q`, changes it; the page reloads straight back into the
+chapter you were in. If the frame rate stays low, the button says so.
 
 ```bash
 pnpm test       # vitest — the sim's acceptance tests, including the frozen physics constants
@@ -51,7 +51,7 @@ audio, music included — is generated in code at startup.
 | number keys | Type the code, **standing at the fire-door keypad** |
 | `I` | The run sheet: every job in the chapter, who does it, what is done |
 | `H` | A hint, and an arrow to where it points |
-| `Q` / **Quality** button | Change render quality (reloads into the same chapter) |
+| `Q` / **Quality** button (top right) | Change render quality (reloads into the same chapter) |
 | `P` | Photo mode: hide the HUD, depth of field on the robot |
 | `M` / `N` | Mute everything / music on or off |
 | `R` | Restart the chapter |
