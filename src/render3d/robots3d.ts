@@ -529,6 +529,7 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
   if (lastPad !== undefined && pad !== lastPad && active) gesture.set(active, 0.7);
   lastPad = pad;
   for (const [k, v] of gesture) gesture.set(k, v - dt);
+  const floor = (snap.plates ?? []).filter((q) => q.kind !== 'jammed-leaf');
   for (const b of snap.bots) {
     const r = robots.get(b.kind);
     if (!r) continue;
@@ -546,7 +547,7 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
     // and the 3D leaf falls straight and thin, so the plate lifted robots off it
     // in places and let the leaf "eat the foot" in others (Michele, 28 Sep). The
     // 3D leaf is a surface of its own, through `surface` below.
-    const rise = riseAt(b.x, b.y, (snap.plates ?? []).filter((q) => q.kind !== 'jammed-leaf'));
+    const rise = riseAt(b.x, b.y, floor);
     // Plus any renderer-only surface under them: the crates' floors and their
     // fallen fronts, which the sim does not model as plates, and the fallen door.
     let lift = hop + rise + (surface ? surface(x, z) : 0);
@@ -560,7 +561,13 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
         wasMounted = b.mounted;
       }
       climb = THREE.MathUtils.clamp(climb + (b.mounted ? dt : -dt) / CLIMB_TIME, 0, 1);
-      const top = b.mounted && bg ? new THREE.Vector3(m(bg.x), mountLift(droid.rig), m(bg.y)) : new THREE.Vector3(x, 0, z);
+      // Both ends stand on the floor under them. Biggy's top used to be measured
+      // from zero, and on the raked Room 8's stage — 1.8 m down in the pit — the
+      // tower's top half stood in the air over its bottom half.
+      const bgFloor = bg ? riseAt(bg.x, bg.y, floor) + (surface ? surface(m(bg.x), m(bg.y)) : 0) : 0;
+      const top = b.mounted && bg
+        ? new THREE.Vector3(m(bg.x), bgFloor + mountLift(droid.rig), m(bg.y))
+        : new THREE.Vector3(x, rise + (surface ? surface(x, z) : 0), z);
       const e = climb * climb * (3 - 2 * climb);
       const k = b.mounted ? e : 1 - e;
       if (climb > 0 && climb < 1) {
