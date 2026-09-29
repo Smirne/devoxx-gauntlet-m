@@ -1379,11 +1379,19 @@ export function stairExitRoutes(): CutRoute[] {
    * waits a robot further back, which is the truth of that flight anyway: 1.30 m
    * clear and he is 1.44. They are a queue at the head of the stairs, not three
    * robots standing inside one another on it.
+   *
+   * THE LANES ARE IN THE ORDER OF THE QUEUE. Biggy used to come down the corridor
+   * on the south lane and cut diagonally to his mark east of Droid's, straight
+   * across the line Droid was walking down to his — through him, for a second
+   * and a half, since the walker moves bodies without colliding them (Michele,
+   * 29 Sep: "in the cutscene after chapter 1 droid walks through biggy"). Now
+   * Droid walks the south lane and turns down at TURN_X, Biggy walks the middle
+   * one and turns down 18 px further east, and the two descents are parallel.
    */
   return [
     { kind: 'voxxy', pts: [...lead(18, -14), { x: TURN_X, y: head.y }, { ...head }] },
-    { kind: 'droid', pts: [...lead(0, 0), { x: TURN_X, y: head.y - 2 }] },
-    { kind: 'biggy', pts: [...lead(-18, 14), { x: TURN_X + 18, y: head.y - 6 }] },
+    { kind: 'droid', pts: [...lead(0, 14), { x: TURN_X, y: head.y - 2 }] },
+    { kind: 'biggy', pts: [...lead(18, 0), { x: TURN_X + 18, y: head.y - 6 }] },
   ];
 }
 

@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 
+import { REEL_PREROLL } from '../sim/reel';
 import type { GameSnapshot, RobotKind } from '../sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
 
@@ -18,12 +19,14 @@ import { createMaterials } from './materials';
 import { Pipeline, QUALITY, type QualityName, type VolumeSpot } from './pipeline';
 import { buildGround, setFrontDoors, type Ground3D } from './ground3d';
 import { buildKeynote, type Keynote3D } from './keynote3d';
+import { portraitOf } from './portrait';
 import { createPeople } from './people3d';
-import { LADLE_REACH } from './props-ground';
+import { carryFrame, hookPose, ladlePose, poseLadle, potPose, soupPots } from './props-ground';
+import { activeReach, palmWorld, reachClock } from './reach3d';
 import { createProps, type Props3D } from './props3d';
 import { Governor } from './governor';
 import { GpuTimer } from './gputimer';
-import { createRobots, dimLamps, handsOf, updateGlare, updateRobots, type Robot3D } from './robots3d';
+import { FINGERS_SHUT, createRobots, dimLamps, updateGlare, updateRobots, type Robot3D } from './robots3d';
 import { CORRIDOR_END, HEIGHTS, SIGN_SPANS, buildVenue, type Venue3D } from './venue';
 import { CY0, CY1, F1 } from '../sim/geometry';
 import { CRATE_AT, CRATE_ROW, LEAD, OVER_AT, SLOT, STAND_AT, WALK_AT } from '../sim/opening';
@@ -81,6 +84,8 @@ export interface WorldOptions {
  * second: most of a move in about a second — a camera operator, not a cut.
  */
 const SHOT_EASE = 2.2;
+/** Seconds at the end of the film's dark beat that the camera spends going up to the screen. */
+const FILM_RISE = 1.2;
 /** The robot fill while a directed shot has the camera: wider and brighter than in play. */
 const SHOT_FILL = { distance: 12, intensity: 20 } as const;
 
@@ -271,6 +276,10 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   const _cutPos = new THREE.Vector3();
   const _cutLook = new THREE.Vector3();
   let inCut = false;
+  /** Chapter 4's film has started (and the curtain call is still up behind the final card). */
+  let filmSeen = false;
+  /** ...and has reached its last card, where the camera pulls back to the stage. */
+  let filmBow = false;
   const PULL_DELAY = 0.7;
   /**
    * The crate front tips out and falls flat, as the 2.5D model's does, but stops
@@ -540,7 +549,8 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   scene.add(ground.group);
   props2 = createProps(propsRoot2, mats, 'ground');
   propsRoot2.visible = false;
-  keynote = buildKeynote(mats);
+  // The film's portraits are photographed when it starts, not here (`portrait.ts`).
+  keynote = buildKeynote(mats, (name) => portraitOf(renderer, name));
   keynote.group.visible = false;
   scene.add(keynote.group);
   collectLights();
@@ -577,77 +587,64 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   }
 
   /**
-   * THE LADLE, wherever the sim says it is (Michele, 29 Sep: "droid should take
-   * the ladle, not the shelf" and "keep it in hand and drop it on the pot").
+   * THE LADLE, wherever the sim says it is and wherever Droid's hand has got it
+   * to (Michele, 29 Sep: "droid should take the ladle, not the shelf", "keep it
+   * in hand and drop it on the pot", and then "when taking the ladle, it goes
+   * through the shelf, and when dropping it, it appears in the pot before the
+   * movement").
    *
-   * `idle` hangs it on the shelf's rail; `active` puts its grip in Droid's right
-   * hand — the bone, so it swings with his walk — held up like a torch; `done`
-   * stands it in a pot with the handle out over the rim: Biggy's, while he carries
-   * one, the counter's vat otherwise. The hand-overs are timed to his reach (the
-   * sim changes state on the key; his arm gets to the shelf or the pot ~0.4 s
-   * later), so the ladle does not jump before his hand is there.
+   * The rule is `poseLadle`'s, in props-ground.ts, next to the ladle it poses:
+   * on the hook until his palm is on it, in his hand — lifted, swung round his
+   * side, carried upright — until his fingers open over a pot, then standing in
+   * it: Biggy's, while he carries one, the counter's otherwise. It used to run on
+   * a 0.4 s timer of its own while his arm ran on the reach clock, which is how
+   * the ladle got to the pot before he did.
    */
-  let ladleState = '';
-  let ladleSince = 0;
-  const _grip = new THREE.Vector3();
-  const _fore = new THREE.Vector3();
-  const _dir = new THREE.Vector3();
-  const _bowl = new THREE.Vector3();
-  const Z = new THREE.Vector3(0, 0, 1);
-  function standIn(tool: THREE.Object3D, bowlAt: THREE.Vector3, lean: THREE.Vector3): void {
-    // Grip up and out over the rim, bowl down in the soup.
-    _dir.copy(lean).normalize();
-    tool.quaternion.setFromUnitVectors(Z, _dir);
-    tool.position.copy(bowlAt).addScaledVector(_dir, -(LADLE_REACH + 0.1));
-  }
+  const _ladle = ladlePose();
+  const _hook = hookPose(ladlePose());
+  const _rest = ladlePose();
+  const _carry = new THREE.Quaternion();
+  const _palm = new THREE.Vector3();
+  const _fwd = new THREE.Vector3();
   function holdLadle(snap: GameSnapshot): void {
     const lp = snap.props.find((q) => q.kind === 'ladle');
     const lo = props.object('ladle');
     if (!lp || !lo || !lo.visible) return;
     const tool = lo.userData.tool as THREE.Object3D;
-    const state = lp.state ?? 'idle';
-    if (state !== ladleState) {
-      ladleSince = time;
-      ladleState = state;
-    }
-    const late = time - ladleSince;
     const dr = robots.get('droid');
-    const inHand = (state === 'active' && late > 0.4) || (state === 'done' && late < 0.4);
-    if (state === 'idle' || (state === 'active' && !inHand)) {
-      // On the hook, hanging handle-up with the bowl open to the hall.
-      tool.position.copy(lo.userData.hook as THREE.Vector3);
-      tool.rotation.set(Math.PI / 2, 0, 0);
-      return;
-    }
-    if (inHand && dr) {
-      const b = dr.rig.bones;
-      b.handR.getWorldPosition(_grip);
-      b.forearmR.getWorldPosition(_fore);
-      // Out past the wrist to where the fingers close.
-      _grip.addScaledVector(_dir.subVectors(_grip, _fore).normalize(), 0.07);
-      const bot = snap.bots.find((q) => q.kind === 'droid');
-      const face = bot ? bot.face : 0;
-      // Held out in front and a little to his right, bowl up, like a torch he
-      // is very proud of: it leads him to the pot, and it clears his own body
-      // from a camera behind him.
-      const fx = Math.cos(face);
-      const fz = Math.sin(face);
-      _dir.set(fx * 0.72 - fz * 0.32, 0.6, fz * 0.72 + fx * 0.32).normalize();
-      tool.quaternion.setFromUnitVectors(Z, _dir);
-      tool.position.copy(_grip);
-      return;
-    }
+    // Where it stands once it is in: Biggy's pot while he carries one, the
+    // counter's (the one he will take) otherwise.
     const pot = props.object('pot');
-    if (pot && pot.visible) {
-      _bowl.set(pot.position.x + 0.06, pot.position.y + 0.2, pot.position.z - 0.04);
-      standIn(tool, _bowl, _fore.set(0.35, -0.85, -0.3));
-      return;
-    }
     const st = snap.props.find((q) => q.kind === 'soup-station');
-    if (!st) return;
-    // The counter's vat: `props-ground` stands it on a 1 m counter, 0.5 m tall.
-    _bowl.set(m(st.x + (st.w ?? 22) / 2) + 0.08, 1.33, m(st.y + (st.h ?? 22) / 2) - 0.06);
-    standIn(tool, _bowl, _fore.set(0.4, -0.8, -0.35));
+    // (Biggy's is smaller, 0.36 m deep on its own floor, `props-ground`'s 'pot'.)
+    if (pot && pot.visible) potPose({ x: pot.position.x, z: pot.position.z }, _rest, pot.position.y, 0.2);
+    else if (st) potPose(soupPots(st).takeable, _rest);
+    let palm: THREE.Vector3 | null = null;
+    if (dr) {
+      palm = palmWorld(dr.rig, _palm);
+      dr.rig.root.getWorldDirection(_fwd).setY(0);
+      if (_fwd.lengthSq() < 1e-6) _fwd.set(0, 0, 1);
+      carryFrame(_fwd.normalize(), _carry);
+    }
+    const inHand = poseLadle(_ladle, {
+      state: lp.state,
+      take: reachClock('ladle-shelf'),
+      put: reachClock('ladle-pot'),
+      palm,
+      carry: _carry,
+      hook: _hook,
+      rest: _rest,
+    });
+    tool.position.copy(_ladle.pos);
+    tool.quaternion.copy(_ladle.quat);
+    // Fingers round it while he carries it; while a reach has his hand, the
+    // reach closes them (`Grip.hold`).
+    if (inHand && dr && !activeReach()) {
+      for (let i = 0; i < 4; i++) {
+        const f = dr.rig.bones[`fingerR${i}`];
+        if (f) f.rotation.x -= FINGERS_SHUT;
+      }
+    }
   }
 
   const _viewProj = new THREE.Matrix4();
@@ -756,7 +753,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     if (door8) door8.visible = !keynoteOn;
     propsRoot1.visible = !onGround && !keynoteOn;
     updateRobots(robots, snap, dt, crateSurface);
-    if (keynoteOn && keynote) keynote.update(snap, time, dt, (kind) => handsOf(robots, kind));
+    if (keynoteOn && keynote) keynote.update(snap, time, dt);
     else props.update(snap, time, dt);
     seatOnBiggy(snap);
     holdLadle(snap);
@@ -781,6 +778,10 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     const active = snap.bots[snap.active] ?? snap.bots[0];
     const rob = robots.get(active.kind);
     const grade = pipeline.grade;
+    // The film holds its last shot behind the final card, until the run starts again.
+    if (snap.reel) filmSeen = true;
+    else if (snap.phase !== 'done' || snap.chapter !== 4) filmSeen = filmBow = false;
+    const filmHeld = filmSeen && !snap.reel;
     const staged = stageOpening(snap, dt);
     if (staged && !cam.pose) {
       // The opening frames itself; the follow camera takes over, snapped to the
@@ -858,17 +859,36 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       c.lookAt(_cutLook);
       c.updateMatrixWorld();
       cam.cut();
-    } else if (snap.reel && keynote && !cam.pose) {
-      // The opening video: from the back rows, the whole screen and the stage
-      // under it, eased in from wherever the follow camera was.
+    } else if (keynote && !cam.pose && (snap.reel || filmHeld)) {
+      /*
+       * THE FILM. Michele, 29 Sep 2026: *"After the last robot reaches the stage,
+       * they should regroup, camera zooms on the screen, and the movie should
+       * start."* The dark beat before the first card (`REEL_PREROLL`) is the
+       * regroup, watched from the front rows; its last stretch is the camera going
+       * up to the screen, which then fills the frame for the whole film, credits
+       * and all — pulled back at the first credit, they shrank to a line nobody
+       * could read. On the last card it pulls back to the stage, where the three
+       * are taking their bow, and holds there behind the final card while the
+       * room claps.
+       */
       grade.dofAmount = 0;
       const c = cam.camera;
-      const k = 1 - Math.exp(-dt * 1.5);
-      c.position.lerp(keynote.reelView.pos, k);
-      _cutLook.lerp(keynote.reelView.look, k);
+      if (!inCut) {
+        _cutPos.copy(c.position);
+        _cutLook.copy(c.position).add(c.getWorldDirection(_cutT).multiplyScalar(4));
+        inCut = true;
+      }
+      const reel = snap.reel;
+      if (reel?.card?.kind === 'end') filmBow = true;
+      const bow = !reel || filmBow;
+      const regroup = !bow && reel.t < REEL_PREROLL - FILM_RISE;
+      const shot = bow || regroup ? keynote.stageView() : keynote.screenView(c.aspect, c.fov);
+      const k = 1 - Math.exp(-dt * (bow ? 0.4 : regroup ? 2.4 : 1.9));
+      _cutPos.lerp(shot.pos, k);
+      _cutLook.lerp(shot.look, k);
+      c.position.copy(_cutPos);
       c.lookAt(_cutLook);
       c.updateMatrixWorld();
-      inCut = true;
       cam.cut();
     } else if (rob) {
       // A new chapter, or the end of a cutscene: cut to behind the selected

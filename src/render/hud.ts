@@ -42,6 +42,12 @@ export interface HudOptions {
    * stops the hint one step earlier instead of failing.
    */
   project?: (simX: number, simY: number, heightM?: number) => { x: number; y: number } | null;
+  /**
+   * The chapter's key line as this page means it. The sim writes one line for
+   * both builds, and `P` is the physics view here but photo mode in the 3D
+   * build; that page says so through this. Unset, the line is shown as written.
+   */
+  keys?: (line: string) => string;
 }
 
 /**
@@ -726,6 +732,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   style.textContent = CSS;
   document.head.appendChild(style);
 
+  const keysLine = opts.keys ?? ((line: string): string => line);
   const root = el('div', 'ad-hud');
   root.setAttribute('data-hud', 'after-dark');
   el('div', 'ad-vig', root);
@@ -1117,7 +1124,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     sheetStory.classList.toggle('ad-hide', !story);
     chapterHead.classList.toggle('ad-hide', story);
     sheetBrief.classList.toggle('ad-hide', story);
-    setText(sheetKeys, snap.keys, textCache);
+    setText(sheetKeys, keysLine(snap.keys), textCache);
     // Rebuilt rather than diffed: the sheet is open only while the player is
     // reading it, the lists are five rows long, and a diff here would be cost
     // with no frame to spend it on.
@@ -1135,7 +1142,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
           `<span class="ad-key">\u2190 the night \u00b7 I \u2014 the run sheet</span>`,
         htmlCache,
       );
-      setText(sheetKeys, snap.keys, textCache);
+      setText(sheetKeys, keysLine(snap.keys), textCache);
       return;
     }
     sheetRows.textContent = '';
@@ -1481,7 +1488,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     }
 
     setText(chapterEl, CHAPTER_TITLES[snap.chapter] ?? CHAPTER_TITLES[0], textCache);
-    setText(keysEl, snap.topKeys, textCache);
+    setText(keysEl, keysLine(snap.topKeys), textCache);
     setText(swagEl, snap.swag.length > 0 ? `swag ${snap.swag.length}/3` : '', textCache);
 
     /*

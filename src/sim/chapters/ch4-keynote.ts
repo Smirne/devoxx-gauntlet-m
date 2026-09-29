@@ -17,9 +17,9 @@
  * the room over `ARRIVAL`. Miss it and the keynote starts with a half-built stage.
  */
 
-import { CY0, CY1, F1, R, VIEW_DEVOXX, VIEW_REEL, floor1Walls, roomDoor } from '../geometry';
-import { MOUNT_REACH, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
-import { botsCollide, circleRect, dist, inRect, mkBody, partyTrick, speed, standOff, stepBot, syncMount } from '../bot';
+import { CY0, CY1, F1, R, VIEW_DEVOXX, VIEW_REEL, floor1Walls, roomDoor, rooms } from '../geometry';
+import { FACE_MIN_SPEED, MOUNT_REACH, PUSH_REACH, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
+import { botsCollide, circleRect, dist, inRect, mkBody, partyTrick, smallTalk, speed, standOff, stepBot, syncMount } from '../bot';
 import { LANYARD, lanyardFor } from '../lanyards';
 import {
   LETTER_D,
@@ -30,6 +30,7 @@ import {
   SIGN_MISSING,
   SIGN_STANDING,
   SLOT_REACH,
+  carryPoint,
   letterName,
   loadDroid,
   signText,
@@ -89,17 +90,40 @@ const SPOT_REACH = 22;
  */
 const CRATE_FORCE = 1500 * SPEED_SCALE;
 /**
- * How far past touching Biggy can be and still be pushing, sim px.
+ * How far past touching Biggy can be and still be pushing, sim px: a hand on it.
  *
  * Michele, 28 Sep 2026: *"Pushing should be a bit easier, i didn't manage."* The
  * window was 6 px on top of the two radii and the lean had to be within 72° of
  * dead on (`PUSH_LEAN_MIN`), so a shove that was a hair off-centre slid round the
- * board instead of moving it and there was no feedback saying why. This is 16,
- * the lean is `CAKE_LEAN`, and the force is two thirds up — a cake on a wheeled
- * board is not a crate of beer, and the chapter's first job should not be the
- * hardest thing in the game.
+ * board instead of moving it and there was no feedback saying why. The answer was
+ * a window of 16, the lean `CAKE_LEAN`, and the force two thirds up.
+ *
+ * Michele, 29 Sep 2026, with a screenshot of Biggy shoving it down the corridor
+ * with daylight between them: *"cake is pushed from too far"*. Sixteen pixels is
+ * 1.28 m, and it was not an easier push, it was a force field. A board shoved at
+ * `CRATE_FORCE` runs away from a robot who accelerates at 1.5 s⁻¹, and it ran
+ * as far as the push reached — so the cake led him by up to the whole window.
+ * Measured: a 3 s shove down the corridor from dead behind, starting in contact,
+ * was pushing it from 2.5 px of daylight at the median and 9.8 px (0.78 m) at the
+ * worst, and the test pilot's drive into Room 8 (`driveChapter4`, which aimed
+ * short) pushed it from 12.5–16 px the whole way in without ever touching it.
+ *
+ * So it is `PUSH_REACH`, the rule chapter 1 learned for the robots (Michele,
+ * 23 Sep: *"droid is pushing Biggy just by coming close, with no contacts"*),
+ * and the same number. What made the 28 Sep push hard was the lean and the knife
+ * edge between two discs, and those stay fixed — `CAKE_LEAN`, `CAKE_STEER` and
+ * `CAKE_SCRUB` — which `tests/cake-push.test.ts` holds to the same shoves as
+ * before, off-centre and corner included.
  */
-const CAKE_TOUCH = 16;
+const CAKE_TOUCH = PUSH_REACH;
+/**
+ * Where the cake's arrow stops pointing at the cake and moves on to its mark, sim
+ * px past touching: "he is on it", for the hint. Not the push's reach — an arrow
+ * that flipped back to the cake every time the board rolled a hand's breadth
+ * ahead of him would be worse than no arrow — so it keeps the 32 it had when it
+ * was written as twice the old window.
+ */
+const CAKE_NEAR = 32;
 /** ...and how square to it he has to be pushing. Wider than a robot-on-robot shove. */
 const CAKE_LEAN = 0.12;
 /**
@@ -145,6 +169,30 @@ export const LAB_X0 = 1560;
 export const LAB_X1 = 1698;
 export const LAB_DEPTH = 12;
 export const labTable = (y: number): Rect => ({ x: LAB_X0, y, w: LAB_X1 - LAB_X0, h: LAB_DEPTH });
+/**
+ * The speakers' breakfast (see `setup`): a row of tables across the corridor
+ * between the two secondary flights' west ends, wall to wall with them, sim px.
+ * `BREAKFAST_DEPTH` is a table and its cloth, 0.88 m.
+ */
+export const BREAKFAST_DEPTH = 11;
+export const BREAKFAST: Rect = {
+  x: F1.nicheTop.x,
+  y: F1.nicheTop.y + F1.nicheTop.h,
+  w: BREAKFAST_DEPTH,
+  h: F1.nicheBot.y - (F1.nicheTop.y + F1.nicheTop.h),
+};
+/** Why a shut room stops each of them, in their own voices. `n` is the room. */
+const ROOM_SHUT_WHY: Record<RobotKind, (n: string) => string> = {
+  voxxy: (n) => `Voxxy: Zaal ${n} is locked. Everybody is going to Room 8 this morning, and so am I`,
+  droid: (n) => `Droid: the doors to Zaal ${n} are shut, and nothing in there needs us. The keynote is in Room 8`,
+  biggy: (n) => `Biggy: Zaal ${n}. Locked. I leaned on it to be sure. Room 8`,
+};
+/** Why the breakfast stops each of them, in their own voices. */
+const BREAKFAST_WHY: Record<RobotKind, string> = {
+  voxxy: "Voxxy: the speakers' breakfast, stair to stair. Jump it and I land in the croissants. Room 8 is the other way",
+  droid: "Droid: coffee urns and croissant trays from one flight to the other. That is the speakers' breakfast — our morning is on the Room 8 side of it",
+  biggy: 'Biggy: a table of croissants the width of the corridor, and me. Not this morning. Room 8 is behind us',
+};
 export const RAKE_DEPTH = 2.4;
 export const STAGE_RISE = 0.6;
 
@@ -235,16 +283,77 @@ const MURMURS: readonly string[] = [
   'Two rows have started a conversation about the parking. You are losing them.',
 ];
 
-const KEYS = '1/2/3/Tab: switch · WASD · E: use / hold Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics \u00b7 C: credits';
+const KEYS = '1/2/3/Tab: switch · WASD · E: use / talk / hold Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics \u00b7 C: credits';
 const READY_OBJECTIVE =
   'Chapter 4 · <b>Keynote</b>. Stage ready. <b>Get all three robots on the stage</b> — Stephan and the speaker are waiting.';
+
+/*
+ * THE TWO ON THE STAGE, WHEN A ROBOT STOPS TO TALK (`talk`).
+ *
+ * Michele, 29 Sep 2026: *"I'd prefer all robots to talk."* In this room nobody
+ * answered anybody — `E` beside Stephan was a hop — so the two people the three of
+ * them end the chapter standing next to say something, to whichever robot asks,
+ * and what they say follows the room: the jobs, then the stage waiting for them.
+ *
+ * Only those two. The rows are an audience in their seats, and the front one is
+ * real people with lines of their own at breakfast (`src/sim/speakers.ts`); a new
+ * line for any of them is Michele's to approve, not a builder's to write.
+ */
+/** Talking distance from a robot's edge, sim px — chapter 3's, one arm's length of conversation. */
+const TALK_REACH = 40;
+const STEPHAN_WAITING =
+  'The cake on its mark, the sign up, all four spotlights. The doors open whether we are ready or not.';
+const STEPHAN_READY = 'It is ready. Now the three of you, up here with us — they should see who did it.';
+const SPEAKER_WAITING =
+  'The mask stays on until Stephan says my name. The slides were finished at four this morning, which is on time.';
+const SPEAKER_READY = 'Up you come. I am not walking out there alone in a cape.';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('up');
   ctx.setView(VIEW_DEVOXX);
   ctx.setWalls(floor1Walls());
   const stair = F1.mainStair;
-  ctx.place([stair.x - 30, 330], [stair.x - 30, 356], [stair.x - 24, 380]);
+  /*
+   * AT THE HEAD OF THE STAIRS THEY HAVE JUST CLIMBED — FACING THE ROOM.
+   *
+   * Michele, 29 Sep 2026: *"stairs should not be closed (but robots can't go
+   * down). Robots should be pointing to the room."* The three of them arrive here
+   * off chapter 3's climb, and they stood with their backs to Room 8, nose to a
+   * rail across the head of the flight they had just come up: the stairs looked
+   * shut behind them and the chapter's room was behind the camera.
+   *
+   * So each faces Room 8's door, the way the whole chapter goes, and the flight
+   * behind them is drawn open (`src/render3d/venue.ts`) — and is still not a way
+   * back down: see the guard just below.
+   */
+  const door8 = roomDoor(R(8));
+  const facing8 = (x: number, y: number): [number, number, number] => [x, y, Math.atan2(door8.cy - y, door8.cx - x)];
+  ctx.place(facing8(stair.x - 30, 330), facing8(stair.x - 30, 356), facing8(stair.x - 24, 380));
+  /*
+   * ...AND THE WAY BACK DOWN IS NOT ONE.
+   *
+   * Nothing stood at the head of this flight in the sim: a robot walked straight
+   * out over the treads the renderer draws dropping to the lobby, a storey of
+   * stairs in mid-air, and stopped at the wall at the far end without a word.
+   * A guard across the top step, one tread in so they can stand at the head and
+   * look down. `hidden`, because the building has no barrier here to draw — and
+   * because the crowd coming UP this flight skips hidden walls (`stepAttendee`),
+   * so it stops the three of them and nobody else. It says why, in each voice.
+   */
+  ctx.walls.push({
+    x: stair.x + 8,
+    y: CY0,
+    w: 2,
+    h: CY1 - CY0,
+    hidden: true,
+    kind: 'stair-down',
+    why: (b) =>
+      b.kind === 'voxxy'
+        ? 'Voxxy: "Down? We JUST came up. And three thousand people are about to — the keynote is this way, in Room 8."'
+        : b.kind === 'droid'
+          ? 'Droid: "That is the way the audience comes up. We are going where they are going: Room 8."'
+          : 'Biggy: "Stairs. Up, once, carefully. Down, not with three thousand people coming the other way."',
+  });
 
   // The cinema section is closed to the public again, and sealed off the same way.
   ctx.walls.push({
@@ -274,10 +383,56 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     });
   }
 
+  /*
+   * THE SPEAKERS' BREAKFAST, across the corridor at the secondary staircases.
+   *
+   * Michele, 29 Sep 2026 (#21): *"Chap 4: not all corridor should be walkable.
+   * Robots should stop at the secondary stairs. Add some tables with breakfast or
+   * other things if you want a reason."* The floor was open from the main
+   * staircase to the fire door — 90 m of corridor for a chapter that happens in
+   * its last 45 — and nothing at the far end but more corridor.
+   *
+   * The two secondary flights stand against the corridor's walls level with rooms
+   * 4 and 9 (`F1.nicheTop` / `nicheBot`, where the plans put them, unmoved); a row
+   * of breakfast tables between their west ends closes the lane between them, so
+   * flights and tables are one line across the building and the morning is
+   * everything on the Room 8 side of it. Coffee urns, croissant trays and cups,
+   * laid out for the speakers before the keynote (keynote3d.ts draws them off
+   * `BREAKFAST`).
+   *
+   * Solid, and NOT `low` like the lab tables: Voxxy's hop vaults low furniture
+   * (`stepBot`), and a robot is meant to be stopped by this, not to find the way
+   * over it. The crowd never comes this far (main staircase, corridor, Room 8's
+   * door), and neither does anything the chapter or its test pilot drives.
+   */
+  ctx.walls.push({
+    ...BREAKFAST,
+    kind: 'breakfast',
+    why: (b) => BREAKFAST_WHY[b.kind],
+  });
+
   const r8 = R(8);
   const d8 = roomDoor(r8);
   const cx = r8.x + r8.w / 2;
   const top = r8.y;
+
+  /*
+   * EVERY ROOM BUT ROOM 8 IS SHUT — in the sim as well as in the picture.
+   *
+   * Michele, 29 Sep 2026 (#18): *"room door is closed (but walkable)"*. It was the
+   * rooms right beside the robots' start. The 3D build draws every Devoxx room's
+   * doorway with its leaves shut and takes only Room 8's off for this chapter,
+   * but the sim left every doorway open: rooms 7 and 6 open off the corridor
+   * exactly where the three of them come up the main staircase, and a robot
+   * walked straight through their closed leaves into a room nobody has built.
+   * A door drawn shut is a wall now, the way chapter 1's are (`kind: 'shut'`),
+   * and it says so in each voice; the keynote is the only room open this morning.
+   */
+  for (const r of rooms) {
+    if (r.closed || r === r8) continue;
+    const d = roomDoor(r);
+    ctx.walls.push({ x: d.x, y: d.y, w: d.w, h: d.h, kind: 'shut', flavour: true, why: (b) => ROOM_SHUT_WHY[b.kind](String(r.n)) });
+  }
 
   /*
    * At the back of the stage, beside the sign's last letter — where presenters
@@ -538,6 +693,26 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     a.vy += ((dy / d) * spd - a.vy) * k;
     a.x += a.vx * dt;
     a.y += a.vy * dt;
+    /*
+     * ...AND THEY FACE THE WAY THEY ARE WALKING.
+     *
+     * Michele, 29 Sep 2026, with a screenshot of the first-floor corridor: *"people
+     * are walking backward (i think chap4 only)"* — and then of Room 8, *"in the
+     * room people walk sidewise"*. One fault with two looks, and it is chapter 3's
+     * bug over again (`stepVisitor`, and `tests/chapters.test.ts` pins it there):
+     * an attendee is a `Bot` only so `botsCollide` can shove it, `mkBot` sets
+     * `face` to **0** — due east — and nothing in this function ever touched it
+     * again, so `people()` published due east for all eighty-four of them. The
+     * crowd comes up the main staircase at the EAST end of the corridor and walks
+     * WEST to Room 8, so every one of them walked the whole corridor backwards,
+     * nose to the stairs they had just climbed, and then went north through the
+     * door and up the aisles facing east: sideways.
+     *
+     * Below `FACE_MIN_SPEED` the heading holds, as in chapter 3: somebody stopped
+     * behind the person in front keeps the way they were pointing rather than
+     * spinning on the last of their drift.
+     */
+    if (speed(a) > FACE_MIN_SPEED) a.face = Math.atan2(a.vy, a.vx);
     // Once in their row they are past the seat blocks, so walls stop mattering.
     if (a.leg < 4) {
       for (const w of ctx.walls) {
@@ -585,6 +760,31 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         ? "Voxxy: it's as big as I am. I can carry it or see where I'm going, not both — Droid can see over it"
         : `Biggy: these hands are for pots. An ${SIGN[l.slot]} has no handle — Droid has the arms for it`,
     );
+    return true;
+  }
+
+  /**
+   * Stephan or the keynote speaker, to whichever robot asks (`ChapterRuntime.talk`)
+   * — the nearer of the two, within `TALK_REACH` of the robot's edge. Asked only
+   * once `key` has handed `E` back and nobody has taken hold of Biggy, so a letter
+   * in Droid's hands still goes in its gap first.
+   */
+  function talk(b: Bot): boolean {
+    const hosts = [
+      { at: stephan, name: 'Stephan', line: ready ? STEPHAN_READY : STEPHAN_WAITING },
+      { at: speakerAt, name: 'Keynote speaker', line: ready ? SPEAKER_READY : SPEAKER_WAITING },
+    ];
+    let who: (typeof hosts)[number] | null = null;
+    let nearest = TALK_REACH + b.r;
+    for (const h of hosts) {
+      const d = dist(h.at, b);
+      if (d < nearest) {
+        nearest = d;
+        who = h;
+      }
+    }
+    if (!who) return false;
+    ctx.flash(smallTalk(b, who.name, who.line), 4500);
     return true;
   }
 
@@ -1122,13 +1322,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      *    Top-left rect, its own collider under it, `face` which way it reads.
      *  - `letter-slot`: an empty gap, taped on the stage floor, `active` while
      *    Droid is carrying the letter it is waiting for.
-     *  - `letter-held`: the one in Droid's hands, published at HIS centre with his
-     *    heading, the way the soup pot is published at Biggy's.
+     *  - `letter-held`: the one in Droid's hands, published where it IS — out in
+     *    front of him along his heading, and never inside a wall (`carryPoint`,
+     *    src/sim/letters.ts) — facing the way he does. It used to be published at
+     *    his centre and hung off his hands by the renderer, 0.89 m out, which is
+     *    how it went through walls (Michele, 29 Sep).
      */
     const dr = ctx.byKind('droid');
     for (const l of letters) {
       if (l.at === 'held') {
-        out.push({ kind: 'letter-held', x: dr.x, y: dr.y, w: LETTER_W, h: LETTER_D, v: l.slot, label: SIGN[l.slot], state: 'active', face: dr.face });
+        const at = carryPoint(dr, ctx.walls);
+        out.push({ kind: 'letter-held', x: at.x, y: at.y, w: LETTER_W, h: LETTER_D, v: l.slot, label: SIGN[l.slot], state: 'active', face: dr.face });
       } else {
         out.push({ kind: 'letter', ...l.rect, v: l.slot, label: SIGN[l.slot], state: l.at === 'sign' ? 'done' : 'idle', face: l.face });
       }
@@ -1306,7 +1510,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
          * corridor, and chapter 4 is on a clock. So it points at the cake until
          * he is on it, and at the mark from the moment he is.
          */
-        at: dist(ctx.byKind('biggy'), crate) < ctx.byKind('biggy').r + crate.r + CAKE_TOUCH * 2
+        at: dist(ctx.byKind('biggy'), crate) < ctx.byKind('biggy').r + crate.r + CAKE_NEAR
           ? { x: crateMark.x + crateMark.w / 2, y: crateMark.y + crateMark.h / 2 }
           : { x: crate.x, y: crate.y },
         hint: 'Biggy: it only moves for me, and only if I lean into it rather than brush past it. Up an aisle — it does not go over the seats any more than I do',
@@ -1347,13 +1551,15 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   /** The rake's plates, when it is on: see `KEYNOTE_RAKE`. */
   const rakePlates: Plate[] = [
-    { kind: 'rake', x: r8.x, y: seatY0, w: r8.w, h: seatY1 - seatY0, lo: -RAKE_DEPTH, hi: 0, axis: 'y' },
+    // One tread per row of seats, 18 px deep, as the 3D rake draws them.
+    { kind: 'rake', x: r8.x, y: seatY0, w: r8.w, h: seatY1 - seatY0, lo: -RAKE_DEPTH, hi: 0, axis: 'y', steps: Math.round((seatY1 - seatY0) / 18) },
     { kind: 'pit', x: r8.x, y: top, w: r8.w, h: seatY0 - top, lo: -RAKE_DEPTH },
     { kind: 'stage', ...stage, lo: -RAKE_DEPTH + STAGE_RISE },
   ];
 
   return {
     key,
+    talk,
     update,
     plates: (): Plate[] => (KEYNOTE_RAKE.on ? rakePlates : []),
     props,

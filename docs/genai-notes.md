@@ -10,59 +10,96 @@ put in place before an agent could be trusted with the rest.
 
 ## In one page
 
-*The rest of this file is the log: one entry per session, 5,000 lines of it. This is the summary.*
+*For the judges. After this page come the tools, the method, and then the working log: one entry
+per session, about 6,400 lines, written while the game was being built. Three lines of work (the
+2.5D build, the 3D build and the integration) ran in parallel and were merged on 29 September, so
+the log is grouped by line of work rather than strictly by date.*
 
-**What was built, by whom.** Every line of code, test and document was written by a coding agent
-working in the repository: about 56,000 lines of TypeScript under `src/`, 19,000 of tests (782
-acceptance tests), and 274 commits between 21 and 28 September 2026. One human, Michele, did three
-things the agent never did:
+**What was built, and by whom.** A coding agent (Claude, in Claude Code) wrote every line of code,
+test and document in this repository. Counted at the merge on 29 September 2026: 338 commits between
+22 and 29 September, 336 by the agent and 2 by the human (the reference files); 84,759 lines of
+TypeScript, 62,459 of them the game and 22,300 the tests (857 of them); 118,754 words of notes,
+81,707 of them this file. The in-game credits (`C` on the final card) carry the same figures, and
+`tests/credits.test.ts` fails if the code counts drift. One human, Michele, did three things the
+agent never did:
 
-- **decided** — what the game is, which way to lean when two goals pulled apart, when a rule could be
-  broken;
-- **looked** — every playtest note that changed the game came from a person playing it;
-- **supplied the world** — the floor plans, the model sheets, and photographs of the venue and of
-  the people in it.
+- **decided** what the game is, which way to lean when two goals pulled apart, and when a rule could
+  be broken;
+- **looked**: every playtest note that changed the game came from a person playing it;
+- **supplied the world**: the floor plans, the model sheets, and photographs of the venue and of the
+  people in it.
 
-**The method that made an agent trustworthy on this.**
+**How the agent was made trustworthy.**
 
-- *The simulation is the only truth, and the tests are written against it.* The 2D sim is headless
-  and tested, and both renderers (the 2.5D diorama and the 3D build) only read it. So "the robot
-  walked through a wall" is a failing test, not an argument. The test in `tests/colliders.test.ts`
-  that rejects anything drawn without a collider caught the agent's own mistakes several times,
+- *The simulation is the only truth.* One headless 2D sim, with its tests, is read by both
+  renderers (the 2.5D diorama and the 3D build that is the entry) and written by neither. So "the
+  robot walked through a wall" is a failing test, not an argument. `tests/colliders.test.ts`
+  rejects anything drawn without a collider, and caught the agent's own mistakes several times,
   down to an inflatable Duke's arm.
 - *Images are the specification.* Plans and model sheets go to the agent as images, measured in
-  pixels and asserted in tests. When the prose and the drawing disagreed, the drawing won (the
-  staircases were moved for that).
-- *Builder, then critic on fresh context* ([`GAUNTLET.md`](../GAUNTLET.md)). The critic never sees
-  the diff, only the running build. In the 3D phase the agent critiqued its own renders before
+  pixels and asserted in tests. When the prose and the drawing disagreed, the drawing won, and the
+  staircases were moved for it.
+- *Builder, then a critic on fresh context* ([`GAUNTLET.md`](../GAUNTLET.md)). The critic judges the
+  running build and never sees the diff. In the 3D phase the agent critiqued its own renders before
   asking for a human's eye, and wrote down what it found, fixed and left.
-- *Frozen physics constants*, asserted by tests. They were unfrozen exactly once, by the human,
-  after a playtest.
+- *Frozen physics constants*, asserted by `tests/frozen-constants.test.ts`. Only the human changed
+  them: once to rescale every speed, once for Biggy's inertia.
+- *One clean full run is the ship gate.* `tests/full-run.test.ts` plays chapter 1 to the final card
+  in one game with nothing skipped, and `tools/playthrough/` plays the same run inside the real 3D
+  page and films it.
 
 **What the human decided that the agent would not have.**
 
-- "I vote funny, robots must be recognizable."
-- Leaving the stairs where the drawing puts them, not where the notes said.
-- Rescaling every speed by 0.25 after the first playtest.
-- Going 3D.
+- "I vote funny, robots must be recognizable": a caricature that reads as *him* beats a ratio
+  measured to three decimals.
+- Rescaling every speed by 0.25 after the first playtest (23 Sep); later, Biggy's acceleration and a
+  brake that only works while he is driven (29 Sep, "ok for biggy inertia"), so a shove still coasts.
+- Leaving the staircases where the drawing puts them, not where three documents said: "follow the
+  devoxx plant, not the plan.md".
+- Going 3D, on the same simulation.
 - Putting real people from the Devoxx community in, by first name, from photographs.
-- Giving speakers a teal lanyard and the keynote a multicolour one.
+- Purging 298 screenshots from the history before `main`, against the agent's advice: "reducing size
+  is important, and now it's the moment to do it".
 
 **What was rejected, and why.**
 
-- The first sculpted Stephan was "a beanie with some stuff on top". The fix was a head whose
-  hair is its own surface.
+- The first sculpted Stephan was "a beanie with some stuff on top". The fix was a head whose hair is
+  its own surface.
 - A camera that could end up inside the robot's head.
 - An attendee-grey lanyard the agent chose for the famous speakers to protect a puzzle; the human
   reversed it with a better rule.
-- Many "it is solvable in the tests but not by a person" puzzles, each fixed by making the sim say
+- One higher drag for Biggy: it broke 17 tests, because the jammed door, the roller door and the
+  cake all rest on him coasting after a shove.
+- Many puzzles that were solvable in the tests but not by a person, each fixed by making the sim say
   *why* a robot is blocked, in that robot's voice.
+
+**Where to look in the log.**
+
+- [Round 6](#round-6--the-frozen-physics-constants-were-unfrozen-once-on-the-evidence-of-a-playtest):
+  the physics constants unfrozen once, by the human, on the evidence of a playtest.
+- [Round 5](#round-5--the-likeness-gate-went-to-the-human): the robot-likeness gate failed four
+  rounds and went to the human instead of shipping.
+- [The staircases moved](#round--the-staircases-moved-because-the-drawing-outranks-the-prose-24-sep-2026):
+  the drawing outranks the prose.
+- [Cinema E](#24-sep-2026--cinema-e-he-could-not-solve-a-room-every-test-said-was-solvable-agent):
+  a room every test called solvable, and a human who could not solve it.
+- ["I walked through that"](#2026-09-23--the-third-round-of-i-walked-through-that-and-the-test-that-ends-it-agent):
+  the third report of one fault, and the test that makes the whole class impossible.
+- [The ship gate](#28-sep-2026--the-ship-gate-finds-a-soft-lock-nobody-had-hit): the full-run
+  test's first run found a soft-lock on twelve seeds of fourteen.
+- [Going 3D](#24-sep-2026--a-full-3d-proof-of-concept-of-chapter-1-aimed-at-cyberpunk-2077s-look-agent-overnight):
+  an overnight proof of concept over the same sim.
+- [The credits](#29-sep-2026--the-credits-and-the-rule-that-every-number-on-them-be-counted): every
+  number on them counted, not remembered.
 
 **Honest limits.**
 
 - YouTube could not be reached from the agent's sandbox, so music was described to it, not heard.
 - Every render the agent judged was a headless software-GPU screenshot. Frame rate and feel on real
   hardware came only from the human.
+- The token count, 17.5 billion over the four sessions that built the game (62.3 million of them
+  written by the model), is the sessions' own record. The tool-call and subagent counts on the
+  credits come from one session's transcript, so they are a floor.
 
 ## Tools
 

@@ -17,6 +17,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { T } from '../sim/constants';
+import { LAB_X0, LAB_X1 } from '../sim/chapters/ch4-keynote';
 import { CY0, CY1, F1, floor1Walls, nicheMidLanding, nicheMouth, roomDoor, rooms, roomSeating } from '../sim/geometry';
 import type { Rect, RoomDef, Wall } from '../sim/types';
 import { STOREY_H_M, m } from '../sim/units';
@@ -45,6 +46,27 @@ export const X_END = 1190;
  * end (Michele, 27 Sep: "the main corridor seems closed, it's not!").
  */
 export const CORRIDOR_END = F1.mainStair.x + F1.mainStair.w + T;
+/**
+ * Where the corridor's DRESSING stops, sim px: the head of the main staircase.
+ *
+ * It stopped at `X_END` with the rooms, so the corridor chapter 4 is played in —
+ * everything east of it — was bare walls (Michele, 29 Sep, #18: *"Corridor walls
+ * are much less colorful than in chapter 1, room signs are missing"*). It runs
+ * to the stairs now; past their head the walls drop with the flight, and a
+ * skirting there would hang in the air over the steps.
+ */
+export const DRESS_END = F1.mainStair.x - 10;
+/**
+ * Where a room's Zaal panel hangs, sim x: beside its door on the west side, as
+ * CAPTIONS.md #1 has them — except where chapter 4's lab tables and their quote
+ * wall stand on that stretch of wall (rooms 7 and 6), where it goes on the east
+ * side of the door instead of through the quotes.
+ */
+export function zaalX(r: RoomDef): number {
+  const d = roomDoor(r);
+  const west = d.x - 18;
+  return west > LAB_X0 - 12 && west < LAB_X1 + 12 ? d.x + d.w + 18 : west;
+}
 
 /** A wall slab that belongs to the foyer kiosk (drawn by `buildKiosk`, not the wall loop). */
 const inKiosk = (w: { x: number; y: number; w: number; h: number }): boolean => {
@@ -72,8 +94,6 @@ function regionAt(sx: number, sy: number): Region {
   return 'void';
 }
 
-/** A room this build draws: the closed section, plus the sealed Devoxx rooms 10 and 3 up to the stairs. */
-const inBuild = (r: RoomDef): boolean => r.x + r.w <= X_END;
 /** A room whose DOORWAY is inside the build, even if the room runs past it. */
 const doorInBuild = (r: RoomDef): boolean => {
   const d = roomDoor(r);
@@ -149,6 +169,12 @@ export const SIGN_SPANS: ReadonlyArray<[number, number, 1 | -1]> = [
   [88, 102, -1],
   [253, 267, -1],
   [553, 567, 1],
+  // Chapter 4's stretch, past `X_END`: two posters a side and the east wayfinding.
+  [1266, 1286, -1],
+  [1475, 1495, -1],
+  [1266, 1286, 1],
+  [1475, 1495, 1],
+  [1518, 1542, -1],
 ];
 
 /**
@@ -448,8 +474,26 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     for (const z of [CY0 - T / 2, CY1 + T / 2]) {
       steps.add(mats.plaster, box(m(CORRIDOR_END - ms.x), STOREY_H_M, m(T), V(m((ms.x + CORRIDOR_END) / 2), -STOREY_H_M / 2, m(z)), 2.5));
     }
-    // A handrail across the head of the flight, and one down each side.
-    steps.add(mats.steel, box(0.06, 0.06, m(CY1 - CY0) - 0.4, V(m(ms.x) - 0.05, 1.0, m((CY0 + CY1) / 2)), 2));
+    /*
+     * Handrails DOWN the flight, splitting it into its three runs — the venue's
+     * own photograph (image-1790032674926.webp) and the 2.5D build's
+     * `mainStaircase` — and none ACROSS its head.
+     *
+     * There was one across the head, at a metre, the whole width of the corridor,
+     * and it is what Michele saw at the top of the stairs the three of them had
+     * just climbed: *"stairs should not be closed (but robots can't go down)"*. A
+     * bar across the top of a flight is a barrier, and this one closed the way
+     * they came in. What stops a robot going back down is the sim's, not a
+     * picture's: chapter 4 guards the top step and says why (`ch4-keynote.ts`).
+     */
+    const run = m(ms.w);
+    const slope = Math.atan2(STOREY_H_M, run);
+    for (let k = 1; k <= 2; k++) {
+      const rail = box(Math.hypot(run, STOREY_H_M), 0.06, 0.06, V(0, 0, 0), 2);
+      rail.rotateZ(-slope);
+      rail.translate(m(ms.x) + run / 2, 1.0 - STOREY_H_M / 2, m(ms.y + (ms.h * k) / 3));
+      steps.add(mats.steel, rail);
+    }
     steps.build(group);
   }
 
@@ -924,12 +968,13 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   /* ---------------------------------------------------- corridor dressing */
 
   // Orange Zaal panels beside each door (CAPTIONS.md #1), lettered as the sim names the rooms.
+  // Every door on the corridor, not only the rooms this build has insides for:
+  // chapter 4 is played past `X_END`, and its rooms had no numbers (#18).
   for (const r of rooms) {
-    if (!inBuild(r)) continue;
-    const d = roomDoor(r);
+    if (!doorInBuild(r)) continue;
     const zFace = r.side < 0 ? m(CY0) + 0.03 : m(CY1) - 0.03;
     const panel = emitter(zaalPanel(String(r.n)), 1.1, 2.2, 3.2, 0xffffff, false);
-    panel.position.set(m(d.x - 18), 2.3, zFace);
+    panel.position.set(m(zaalX(r)), 2.3, zFace);
     panel.rotation.y = r.side < 0 ? 0 : Math.PI;
     group.add(panel);
     const pl = new THREE.PointLight(0xff6a10, 30, 7, 2);
@@ -946,6 +991,13 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     [539, -1],
     [330, 1],
     [530, 1],
+    // Past `X_END`, where chapter 4 is played (#18): the middles of the free wall
+    // either side of Room 8's and Room 5's doors, measured off the same doors,
+    // Zaal panels and columns — the lab tables' quote wall has the stretch east.
+    [1276, -1],
+    [1485, -1],
+    [1276, 1],
+    [1485, 1],
   ];
   posterSpots.forEach(([x, side], i) => {
     const zFace = side < 0 ? m(CY0) + 0.08 : m(CY1) - 0.08;
@@ -1093,6 +1145,15 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     const wf = emitter(wayfinding([['←', 'foyer · bar'], ['→', 'zaal 3–10']]), 1.8, 0.9, 2.2, 0xffffff, false);
     wf.position.set(m(200), 3.4, m(CY1) - 0.04);
     wf.rotation.y = Math.PI;
+    group.add(wf);
+  }
+  // ...and one at the far end, for chapter 4's corridor (#18): on the north wall
+  // between Room 8's door and the lab tables. Facing it you face north, so west —
+  // the rooms back along the corridor — is on the left, and the main staircase
+  // with rooms 6 and 7 at its head on the right.
+  {
+    const wf = emitter(wayfinding([['←', 'zaal 3–5 · 8–10'], ['→', 'zaal 6 · 7 · gelijkvloers']]), 1.8, 0.9, 2.2, 0xffffff, false);
+    wf.position.set(m(1530), 3.4, m(CY0) + 0.04);
     group.add(wf);
   }
   // EXIT sign over the foyer mouth.
@@ -1256,32 +1317,47 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
   // detail that gives a dark wall something to catch light on.
   {
     const det = new Buckets();
+    /**
+     * The stretches of wall with nothing to run along: every doorway on the
+     * corridor (not only the built rooms' — rooms 9 and 4 used to get a skirting
+     * straight across their doors), the stair flights, the foyer's mouth, and
+     * chapter 4's lab tables, which stand along both walls with their quote wall
+     * behind them. Sorted and merged, so they can be walked in one pass.
+     */
     const doorSpans = (side: -1 | 1): Array<[number, number]> => {
       const spans: Array<[number, number]> = [];
-      for (const r of rooms) if (inBuild(r) && r.side === side) {
+      for (const r of rooms) if (doorInBuild(r) && r.side === side) {
         const d = roomDoor(r);
         spans.push([d.x - 4, d.x + d.w + 4]);
       }
       const n = side < 0 ? F1.nicheTop : F1.nicheBot;
       spans.push([n.x - 4, n.x + n.w + 4]);
       if (side > 0) spans.push([F1.foyer.x, F1.foyer.x + F1.foyer.w]);
-      return spans;
+      spans.push([LAB_X0 - 4, LAB_X1 + 4]);
+      spans.sort((a, b) => a[0] - b[0]);
+      const merged: Array<[number, number]> = [];
+      for (const s of spans) {
+        const last = merged[merged.length - 1];
+        if (last && s[0] <= last[1]) last[1] = Math.max(last[1], s[1]);
+        else merged.push([s[0], s[1]]);
+      }
+      return merged;
     };
     const blocked = (x: number, spans: Array<[number, number]>): boolean => spans.some(([a, b]) => x > a && x < b);
     for (const side of [-1, 1] as const) {
       const zf = side < 0 ? c0 : c1;
       const inset = side < 0 ? 1 : -1;
       const spans = doorSpans(side);
-      // skirting in runs between openings
-      const edges = [...spans.flat(), X_END].sort((a, b) => a - b);
+      // Skirting in runs between the openings, as far as the head of the main
+      // stairs (`DRESS_END`) — it stopped at `X_END`, and chapter 4 is played past it.
       const cuts: Array<[number, number]> = [];
-      let open = false;
       let prev = 0;
-      for (const e of edges) {
-        if (!open) cuts.push([prev, e]);
-        open = !open && e !== X_END;
-        prev = e;
+      for (const [a, b] of spans) {
+        if (a >= DRESS_END) break;
+        if (a > prev) cuts.push([prev, a]);
+        prev = Math.max(prev, b);
       }
+      if (prev < DRESS_END) cuts.push([prev, DRESS_END]);
       for (const [a, b] of cuts) {
         if (b - a < 4) continue;
         const len = m(b - a);
@@ -1295,9 +1371,9 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
       // Battens never cross a sign: the Zaal panels, the posters and the ad
       // (one ran straight down the middle of Zaal E's panel).
       const signs: Array<[number, number]> = [...spans];
-      for (const r of rooms) if (inBuild(r) && r.side === side) signs.push([roomDoor(r).x - 28, roomDoor(r).x - 8]);
+      for (const r of rooms) if (doorInBuild(r) && r.side === side) signs.push([zaalX(r) - 10, zaalX(r) + 10]);
       for (const [a, b, sd] of [...SIGN_SPANS, adSpan, ...(candySpan ? [candySpan] : [])]) if (sd === side) signs.push([a - 4, b + 4]);
-      for (let x = 12; x < X_END - 4; x += 30) {
+      for (let x = 12; x < DRESS_END - 4; x += 30) {
         if (blocked(x, signs)) continue;
         det.add(mats.darkMetal, box(0.09, HEIGHTS.cove - 0.2, 0.06, V(m(x), (HEIGHTS.cove - 0.2) / 2 + 0.16, zf + inset * 0.03)));
       }

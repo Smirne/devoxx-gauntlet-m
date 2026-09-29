@@ -116,11 +116,24 @@ function autoQuality(): QualityName {
 }
 const qParam = params.get('q') as QualityName | null;
 const quality: QualityName = qParam && Q.includes(qParam) ? qParam : storedQuality() ?? autoQuality();
+/*
+ * `#rake` / `#flat` on the link: the published artifact's viewer drops the
+ * query string but passes a bare #token down to the page, so this is how the
+ * two Room 8s can be compared from the shared link (Michele, 29 Sep: "How to
+ * test the rake room? does the param works?"). Both start at chapter 4's
+ * briefing, the only chapter the rake is in.
+ */
+const hash = window.location.hash;
 /** Set by a quality change: the chapter to come back to after the reload. */
-const resumeAt = int('resume');
+const resumeAt = int('resume') ?? (hash === '#rake' || hash === '#flat' ? 4 : undefined);
 const shotMode = flag('shot');
-// Room 8 as a raked cinema — a proposal, off by default (`KEYNOTE_RAKE`).
-KEYNOTE_RAKE.on = flag('rake');
+/*
+ * Room 8 as a raked cinema (`KEYNOTE_RAKE`), ON in this build since Michele
+ * tried it (29 Sep: "rake room looks good"); `?rake=0` or `#flat` for the
+ * flat room. The sim's own default stays off, so the tests and the 2.5D page
+ * play the room they always did.
+ */
+KEYNOTE_RAKE.on = params.get('rake') !== null ? flag('rake') : hash !== '#flat';
 const hideHud = flag('nohud') || (shotMode && !flag('hud'));
 const warm = Math.max(0, Math.min(int('warm') ?? 0, 20000));
 
@@ -213,6 +226,9 @@ const hud: Hud = createHud(app, {
   // The hint's ring and off-screen arrow are drawn at a sim point, which only
   // the renderer can put on the canvas (same hook as the 2.5D page).
   project: (x, y, h) => world.projectHint(x, y, h ?? 0),
+  // P is photo mode here; the physics view is the 2.5D page's (Michele, 29 Sep:
+  // "is P photo or physics? the effect is photo").
+  keys: (line) => line.replace('P: physics', 'P: photo'),
 });
 const audio: Audio = createAudio();
 
@@ -326,6 +342,15 @@ window.addEventListener('keydown', (ev) => {
     return;
   }
   if (game.snapshot().opening && (ev.repeat || performance.now() - gateOffAt < GATE_GRACE)) {
+    ev.preventDefault();
+    return;
+  }
+  // The credits (C), before the sim hears the key — the same guard as the 2.5D
+  // page (see `onKeyDown` in main.ts). They are most often opened on the final
+  // card, where `game.key` dismisses the card whatever the key, so a `C` that
+  // got through would throw the score away behind them. While they are up they
+  // swallow every key; Escape or a click outside closes them.
+  if (!game.snapshot().typing && hud.creditsKey(code)) {
     ev.preventDefault();
     return;
   }
@@ -467,29 +492,30 @@ function reloadAt(next: QualityName): void {
 }
 
 /*
- * The quality button, bottom-left: what it is set to, and a click moves it on.
- * When the frame rate stays low even after the resolution has been trimmed as
- * far as it goes (`world.struggling`), it says so once, in words.
+ * The quality button: what it is set to, and a click moves it on. It stands in
+ * the HUD's top bar, just before Skip chapter, so it is laid out WITH the bar
+ * and can never be printed over another panel — it used to be fixed
+ * bottom-left, on top of the speed readout (Michele, 29 Sep: "move the quality
+ * info somewhere so it's not over other infos"). When the frame rate stays low
+ * even after the resolution has been trimmed as far as it goes
+ * (`world.struggling`), it says so once, in words.
  */
 const qBtn = document.createElement('button');
 qBtn.type = 'button';
 qBtn.className = 'ad3d-quality';
 qBtn.textContent = `Quality: ${quality.toUpperCase()} (Q)`;
 qBtn.title = `Q: ${quality === 'low' ? 'back up to high' : `down to ${DOWN[quality]}`} (reloads into the same chapter)`;
-qBtn.style.cssText =
-  'position:fixed;left:12px;bottom:12px;z-index:30;font:600 12px system-ui,sans-serif;color:#ffd27a;background:rgba(10,10,14,.6);border:1px solid rgba(255,210,122,.45);border-radius:6px;padding:5px 9px;cursor:pointer';
 qBtn.addEventListener('click', (e) => {
   e.preventDefault();
   cycleQuality();
 });
-if (!shotMode && !hideHud) app.appendChild(qBtn);
+if (!shotMode) hud.root.querySelector('.ad-skip')?.before(qBtn);
 let warnedSlow = false;
 function checkSlow(): void {
   if (warnedSlow || !world.struggling || quality === 'low') return;
   warnedSlow = true;
-  qBtn.textContent = `Running slow — click for lower quality (now ${quality.toUpperCase()})`;
-  qBtn.style.borderColor = '#ff7a1a';
-  qBtn.style.color = '#ff9a4a';
+  qBtn.textContent = `Running slow — click for lower quality (now ${quality})`;
+  qBtn.classList.add('ad3d-slow');
 }
 
 /*
@@ -522,6 +548,8 @@ for (let i = 0; i < warm; i++) {
 const anchors: SpeakerAnchors = {};
 let lastFade = -1;
 
+/** Chapter 4's film is playing (`GameSnapshot.reel`): the body carries `ad3d-film`. */
+let filmOn = false;
 function frame(dt: number): void {
   if (titleUp) {
     // The sim waits behind the gate; nothing is drawn under the black (the
@@ -545,6 +573,13 @@ function frame(dt: number): void {
     return;
   }
   world.render(snap, dt);
+  // The film at the end of chapter 4 plays with the HUD's chrome faded away — a
+  // cinema, not a dashboard. Its toasts ("any key to skip") and cards stay.
+  const film = snap.reel != null;
+  if (film !== filmOn) {
+    filmOn = film;
+    document.body.classList.toggle('ad3d-film', film);
+  }
   if (!hideHud) {
     for (const key of Object.keys(anchors) as RobotKind[]) delete anchors[key];
     for (const b of snap.bots) {
