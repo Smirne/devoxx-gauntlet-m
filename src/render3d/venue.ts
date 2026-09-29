@@ -30,7 +30,7 @@ import { mergeStatic, noMerge } from './merge';
 import type { PlanarReflection } from './reflector';
 import { adScreen, ledTicker } from './screens';
 import { POSTERS, backlitGlass, cityscape, emitter, exitSign, menuBoard, neonText, poster, rainMask, wayfinding, zaalPanel } from './signs';
-import { WELLD_LOCKUP_ASPECT, paintWellD } from './welld';
+import { wellDSticker } from './welld';
 
 /** Where chapter 1's geometry stops, sim px: just past the fire door. */
 // Past the secondary staircases (sim x 1005.5..1114.7, standing in the corridor
@@ -1679,27 +1679,7 @@ function coffeeTable(mats: Materials, w: number, d: number): THREE.Group {
 function hideWellD(table: THREE.Group): void {
   const plain = table.getObjectByName('sticker');
   if (plain) plain.removeFromParent();
-  const c = document.createElement('canvas');
-  c.width = 480;
-  c.height = Math.round(440 * WELLD_LOCKUP_ASPECT) + 40;
-  const x = c.getContext('2d');
-  if (!x) return;
-  x.fillStyle = '#ffffff';
-  x.beginPath();
-  x.roundRect(0, 0, c.width, c.height, 30);
-  x.fill();
-  // The artwork decodes after this returns; the texture re-uploads when it lands.
-  paintWellD(x, 20, 20, 440, { tagline: true }, () => {
-    map.needsUpdate = true;
-  });
-  const map = new THREE.CanvasTexture(c);
-  map.colorSpace = THREE.SRGBColorSpace;
-  map.anisotropy = 4;
-  const w = 0.09;
-  // A print with a little sheen to it: faintly there in a dark corridor, for whoever looks.
-  const mat = new THREE.MeshStandardMaterial({ map, alphaTest: 0.5, roughness: 0.45, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.22 });
-  const sticker = new THREE.Mesh(new THREE.PlaneGeometry(w, (w * c.height) / c.width), mat);
-  sticker.name = 'welld';
+  const sticker = wellDSticker(0.09);
   // Flat on the lid, turned a little off square; text up the lid, away from the corridor.
   sticker.rotation.set(-Math.PI / 2, 0, 0.16);
   sticker.position.set(-0.12, 0.4975, 0.04);
