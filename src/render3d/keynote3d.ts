@@ -76,6 +76,8 @@ const INK: Record<ReelCard['kind'], string> = { splash: '#ff7a1a', byline: '#e8e
  * off the stage floor, looking at a point `look` up over the apron.
  */
 const STAGE_EYE = Object.freeze({ back: 9.5, h: 2.6, look: 2.4 });
+/** Seconds a floor can takes to swing up onto the stage once Voxxy has lit it. */
+const SPOT_SWING = 1.1;
 /** The screen's brightness at full strength: over 1, so the bloom finds it, and never tone-mapped. */
 const SCREEN_GAIN = 1.3;
 /** The film's canvas, px (the slide's is 1024 x 576). */
@@ -671,13 +673,34 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
     const lens = new THREE.Mesh(new THREE.CircleGeometry(0.12, 16), lensMat);
     lens.position.z = 0.165;
     yoke.add(can, lens);
-    // Aim: each at its own quarter of the stage, 1.2 m up — four beams on one
-    // point made a white-out over the old banner, where the #DEVOXX sign now
-    // stands. `lookAt` points +z, and `o` is
-    // not in the scene yet, so the target is given in `o`'s own frame.
-    const stageAt = V(cx + (x - cx) * 0.35, 1.2, m(r8.y + 45));
+    /*
+     * AIMED WHEN IT IS LIT, AND SEEN TO BE. Michele, 29 Sep 2026, in the raked
+     * room: *"When activated we should roll it and point in the right direction."*
+     * Unlit, the can hangs tipped down on its yoke, nose to the carpet, the way a
+     * floor can is left when nobody has set it; lit, it swings up and round onto
+     * its own quarter of the stage (`update`) — four beams on one point made a
+     * white-out over the old banner, where the #DEVOXX sign now stands.
+     *
+     * The aim is 1.2 m over the STAGE's floor, which with the rake on is the pit
+     * floor plus `STAGE_RISE`: it used to be 1.2 m over the can's own base, and a
+     * can on a tread three rows up aimed over the three robots' heads.
+     *
+     * And the can itself pointed the wrong way all along: `lookAt` takes a WORLD
+     * point, and it was handed one in `o`'s frame — so every can faced the far
+     * corner of the building while its beam, a child of `o`, lit the stage. `o`
+     * has no parent yet, so its world frame is its own position; the yoke is aimed
+     * at the stage point itself.
+     */
+    const stageTop = rake ? -RAKE_DEPTH + STAGE_RISE : DAIS;
+    const stageAt = V(cx + (x - cx) * 0.35, stageTop + 1.2, m(r8.y + 45));
+    const local = stageAt.clone().sub(o.position);
     o.add(yoke);
-    yoke.lookAt(stageAt.clone().sub(V(x, 0, z)));
+    yoke.lookAt(stageAt);
+    const aim = yoke.quaternion.clone();
+    // At rest: the same heading, the nose down on the carpet in front of it.
+    const pivot = o.position.clone().add(yoke.position);
+    yoke.lookAt(pivot.add(V(local.x, 0, local.z).normalize().multiplyScalar(0.3)).add(V(0, -0.6, 0)));
+    const rest = yoke.quaternion.clone();
     const num = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.34), new THREE.MeshBasicMaterial({ map: word(String(p.v ?? '?'), '#ffffff'), transparent: true, toneMapped: false }));
     num.rotation.x = -Math.PI / 2;
     num.position.set(0, 0.065, 0);
@@ -692,8 +715,8 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
     const L = new THREE.SpotLight(0xfff0d8, 0, 30, 0.16, 0.5, 1.3);
     L.position.set(0, 0.3, 0);
     o.add(L, L.target);
-    L.target.position.copy(stageAt).sub(V(x, 0, z));
-    o.userData = { lens: lensMat, ring, ringMat, light: L };
+    L.target.position.copy(local);
+    o.userData = { lens: lensMat, ring, ringMat, light: L, yoke, rest, aim, litAt: -1 };
     return o;
   }
 
@@ -865,9 +888,25 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
             break;
           }
           case 'spotlight': {
-            const u = o.userData as { lens: THREE.MeshBasicMaterial; ring: THREE.Mesh; ringMat: THREE.MeshBasicMaterial; light: THREE.SpotLight };
-            u.lens.color.setRGB(1, 0.95, 0.85).multiplyScalar(done ? 14 : 0.06);
-            u.light.intensity = done ? 700 : 0;
+            const u = o.userData as {
+              lens: THREE.MeshBasicMaterial;
+              ring: THREE.Mesh;
+              ringMat: THREE.MeshBasicMaterial;
+              light: THREE.SpotLight;
+              yoke: THREE.Group;
+              rest: THREE.Quaternion;
+              aim: THREE.Quaternion;
+              litAt: number;
+            };
+            // Lit: the can swings up onto the stage, and the beam comes on as it
+            // gets there rather than sweeping the house on the way.
+            if (done && u.litAt < 0) u.litAt = t;
+            if (!done) u.litAt = -1;
+            const k = u.litAt < 0 ? 0 : Math.min(1, (t - u.litAt) / SPOT_SWING);
+            u.yoke.quaternion.slerpQuaternions(u.rest, u.aim, 1 - (1 - k) ** 3);
+            const beam = THREE.MathUtils.smoothstep(k, 0.7, 1);
+            u.lens.color.setRGB(1, 0.95, 0.85).multiplyScalar(done ? 0.06 + 13.94 * beam : 0.06);
+            u.light.intensity = 700 * beam;
             u.ring.visible = p.state === 'active';
             u.ringMat.opacity = 0.55 + 0.45 * Math.sin(t * 5);
             break;
