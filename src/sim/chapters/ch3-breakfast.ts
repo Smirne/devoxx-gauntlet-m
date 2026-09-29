@@ -55,7 +55,7 @@
  * is how the rest of this game works.
  */
 
-import { BIGGY_ROLL_DUR, FACE_MIN_SPEED, PUSH_LEAN_MIN, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
+import { BIGGY_ROLL_DUR, BLOCKED_THROTTLE, FACE_MIN_SPEED, PUSH_LEAN_MIN, SPEED_SCALE, TRAVEL_TIME_SCALE } from '../constants';
 import {
   CRATE_DELIVERY,
   CRATE_DRAG,
@@ -1130,6 +1130,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /* --------------------------------------------------------------- the queues */
 
   const queues: Queue[] = [];
+  /** Biggy's answer to a queue, at `E` and when he leans on one. */
+  const BIGGY_QUEUE_LINE =
+    'Biggy: "When I say excuse me to a queue, a queue hears a fridge falling over. They are not moving for me and I am not moving them. Voxxy asks; I wait for the gap."';
+  /** Sim time Biggy last said so, for the throttle. */
+  let leanAt = -Infinity;
   /**
    * One queue: a FRONT RANK across the doorway, and a tail of singles behind it.
    *
@@ -2248,6 +2253,18 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     const askQueue = (who: Bot): boolean => {
       const q = queues.find((o) => o.people.some((pp) => Math.hypot(pp.x - who.x, pp.y - who.y) < QUEUE_ASK));
       if (!q || q.open > 0) return false;
+      /*
+       * ...EXCEPT BIGGY. Michele, 29 Sep 2026: *"Biggy should not be able to move
+       * the queue on its own."* The queue in the soup doorway is the one gate the
+       * soup errand has, and Biggy asking it aside made it no gate at all: he
+       * walked up with an empty pot, pressed `E` and walked in. So he asks and
+       * nothing happens, and he knows why. Voxxy and Droid still can (his 28 Sep
+       * call, above, was about them being stopped by the crowd).
+       */
+      if (who.kind === 'biggy') {
+        ctx.flash(BIGGY_QUEUE_LINE, 4200);
+        return true;
+      }
       q.open = QUEUE_OPEN;
       const said =
         who.kind === 'voxxy'
@@ -2519,7 +2536,13 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
               p.cd = 1;
               complaints++;
               if (carrying && !delivered) spill(4, 'bumped into the queue');
-              else ctx.flash(`Biggy shoved the ${q.label} (${complaints})`);
+              else ctx.flash(`Biggy walked into the ${q.label} (${complaints}) \u2014 they do not move for him. Voxxy asks.`);
+              leanAt = ctx.t;
+            } else if (b.kind === 'biggy' && ctx.t - leanAt >= BLOCKED_THROTTLE) {
+              // Leaning on them, slowly: the queue stays exactly where it is, and
+              // he says so — at the throttle every other blocked line uses.
+              leanAt = ctx.t;
+              ctx.flash(BIGGY_QUEUE_LINE, 4200);
             }
           }
         }
