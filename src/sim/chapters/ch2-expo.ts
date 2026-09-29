@@ -296,14 +296,21 @@ const PAT_DIP = 0.18;
 /**
  * The let-in's three framings (`letInShot`), eye and target: sim px on the plan,
  * heights in metres over the lobby floor, which is `LOBBY_RISE_M` over the datum.
+ *
+ * Chosen off renders, one sim state and several lenses at a time. The first two
+ * stand on the WEST side of the three, off the line between Biggy and the doors:
+ * from anywhere south of them, 1.45 m of Biggy filled the foreground and hid
+ * Voxxy, which in the one shot about Voxxy is the wrong robot to see. The follow
+ * is high and behind, because from the stairs' side Droid's lane is between the
+ * lens and Stephan's, and from low behind the single file hides itself.
  */
 const LET_IN_SHOT = {
-  /** The doors, the three in front of them, and the forecourt through the glass. */
-  doors: { eye: { x: 1404, y: 548, h: LOBBY_RISE_M + 2.4 }, look: { x: 1480, y: 452, h: LOBBY_RISE_M + 0.6 } },
-  /** In on Stephan and Voxxy for the pat. */
-  pat: { eye: { x: 1422, y: 506, h: LOBBY_RISE_M + 1.9 }, look: { x: 1462, y: 449, h: LOBBY_RISE_M + 0.6 } },
-  /** Round after him, up the strip to the foot of the stairs, with the three following. */
-  stairs: { eye: { x: 1462, y: 522, h: LOBBY_RISE_M + 3.0 }, look: { x: 1444, y: 392, h: LOBBY_RISE_M + 0.8 } },
+  /** The three at the doors, their backs to us, the doors and the man outside the glass. */
+  doors: { eye: { x: 1386, y: 510, h: LOBBY_RISE_M + 2.5 }, look: { x: 1480, y: 452, h: LOBBY_RISE_M + 0.7 } },
+  /** In on the pat: his face over her head, Droid to the left of them, Biggy to the right. */
+  pat: { eye: { x: 1406, y: 478, h: LOBBY_RISE_M + 2.1 }, look: { x: 1462, y: 450, h: LOBBY_RISE_M + 0.75 } },
+  /** Up and round behind them as they follow him up the strip to the foot of the stairs. */
+  stairs: { eye: { x: 1466, y: 548, h: LOBBY_RISE_M + 3.9 }, look: { x: 1440, y: 396, h: LOBBY_RISE_M + 0.5 } },
 } as const;
 /**
  * How long Biggy takes to walk the router cabinet's doors open, seconds.
