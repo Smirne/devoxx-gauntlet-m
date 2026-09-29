@@ -200,3 +200,70 @@ describe('the ladle goes where the pot goes', () => {
     expect(Math.hypot(l.x + (l.w ?? 0) / 2 - sx, l.y + (l.h ?? 0) / 2 - sy)).toBeLessThan(2);
   });
 });
+
+/*
+ * WHOSE JOB THE POT IS. Michele, 29 Sep 2026: *"when other chars try to reach the
+ * soup there should be a message"*. The pot is Biggy's; the other two walked up to
+ * it, pressed `E`, and got a hop. Now each of them says why not, in their own
+ * voice — at the key and when they walk into the counter it stands on.
+ */
+describe('the soup pot is Biggy\'s, and the other two say so', () => {
+  const toast = (g: DebugGame): string => g.snapshot().toast?.t ?? '';
+
+  it('answers Voxxy and Droid at the pot in their own voices', () => {
+    const g = mk();
+    g.debug.select('voxxy');
+    g.debug.place('voxxy', 120, 142);
+    g.key('KeyE');
+    const v = toast(g);
+    expect(v.startsWith('Voxxy'), `Voxxy got: ${v}`).toBe(true);
+    expect(v.toLowerCase()).toContain('pot');
+    expect(st(g).carrying).toBe(false);
+
+    g.debug.place('voxxy', 400, 400);
+    g.debug.select('droid');
+    g.debug.place('droid', 120, 142);
+    g.key('KeyE');
+    const d = toast(g);
+    expect(d.startsWith('Droid'), `Droid got: ${d}`).toBe(true);
+    expect(d).not.toBe(v);
+    // Without the ladle his line points him at the shelf; it did not take one.
+    expect(d.toLowerCase()).toContain('shelf');
+    expect(st(g).ladle).toBe('shelf');
+    expect(st(g).carrying).toBe(false);
+  });
+
+  it('still lets Droid drop the ladle in, and still lets Biggy pick the pot up', () => {
+    const g = mk();
+    withThePot(g);
+  });
+
+  it('says it when they walk into the soup counter, and not sixty times a second', () => {
+    const g = mk();
+    g.debug.select('voxxy');
+    g.debug.place('voxxy', 140, 150);
+    g.setStick(0, -1);
+    const said: string[] = [];
+    for (let i = 0; i < 40; i++) {
+      g.update(DT_MAX);
+      const t = toast(g);
+      if (t && said[said.length - 1] !== t) said.push(t);
+    }
+    g.setStick(0, 0);
+    const mine = said.filter((t) => t.startsWith('Voxxy') && t.toLowerCase().includes('soup'));
+    expect(mine.length, `walking into the counter said: ${said.join(' | ')}`).toBe(1);
+    const until = g.snapshot().toast?.until;
+    // Leaning on it for another half second does not re-stamp the line.
+    g.setStick(0, -1);
+    steps(g, 10);
+    g.setStick(0, 0);
+    expect(g.snapshot().toast?.until).toBe(until);
+
+    const counter = g.debug.walls().find((w) => w.kind === 'soup-counter');
+    expect(counter, 'the soup counter has no voice').toBeTruthy();
+    const line = (k: 'voxxy' | 'droid'): string =>
+      counter?.why?.(g.snapshot().bots.find((b) => b.kind === k) as Bot) ?? '';
+    expect(line('voxxy')).not.toBe(line('droid'));
+    expect(line('droid').startsWith('Droid')).toBe(true);
+  });
+});

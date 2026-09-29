@@ -87,6 +87,12 @@ import type { ChapterCtx, ChapterDef, ChapterRuntime, PrevVel } from './index';
 
 const SHELF_REACH = 45;
 const POT_REACH = 70;
+/**
+ * How close Voxxy or Droid has to be to the soup pot for `E` to mean "the pot" —
+ * standing at the counter in front of it, not anywhere in the court. Tighter than
+ * `POT_REACH` so it does not swallow the key from a queue a step behind them.
+ */
+const POT_NAG = 40;
 const TALK_REACH = 40;
 /**
  * The crab sandwich, on the sandwich counter's hall-facing edge.
@@ -1045,6 +1051,34 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * always for.
    */
   let ladle: 'shelf' | 'carried' | 'in' = 'shelf';
+  /*
+   * THE POT IS BIGGY'S, AND THE OTHER TWO SAY SO.
+   *
+   * Michele, 29 Sep 2026: *"when other chars try to reach the soup there should be
+   * a message"*. Voxxy and Droid walked up to the pot, pressed `E` and got a hop,
+   * or leant on the counter and got nothing — a thing that silently does not work
+   * is the one thing a gate in this game may not be (CLAUDE.md). Each says why,
+   * in their own voice, at the key and when they walk into the counter; the
+   * counter's line is throttled by `game.ts` like every other wall's.
+   */
+  const potRefusal = (who: Bot): string =>
+    who.kind === 'voxxy'
+      ? 'Voxxy: "That pot is taller than I am and full of boiling tomato. I would not be carrying the soup, I would be IN it. BIGGY!"'
+      : ladle === 'shelf'
+        ? 'Droid: "A full pot, two metres up, on legs like mine? Every step would be a tidal wave. The pot is Biggy\'s. The ladle, on the other hand, is on the high shelf — that part is mine."'
+        : 'Droid: "I did the ladle. The pot is Biggy\'s: at my height every step is a tidal event, and Stephan asked for soup, not a weather report."';
+  const soupCounter = ctx.walls.find((w) => w.x === food.soup.x && w.y === food.soup.y && w.w === food.soup.w && w.h === food.soup.h);
+  if (soupCounter) {
+    soupCounter.kind = 'soup-counter';
+    soupCounter.why = (b) =>
+      b.kind === 'voxxy'
+        ? 'Voxxy: "The soup counter. From down here it is a white wall with steam coming off the top. The pot is Biggy\'s job."'
+        : b.kind === 'droid'
+          ? `Droid: "The soup counter. I could lift that pot. I could not walk with it: two metres of wobble over a full pot is soup on the ceiling. ${ladle === 'shelf' ? 'Mine is the ladle, on the high shelf.' : 'That is Biggy\'s.'}"`
+          : // Biggy walks up to it to pick the pot up: a line every time he arrives
+            // would be noise, and `E` is already where his answer is.
+            null;
+  }
   /**
    * WHERE THE SOUP WENT — one stain on the floor per splash, and they stay.
    *
@@ -2242,6 +2276,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         ctx.flash('Droid drops the ladle in the pot: "It is a long arm. That is the whole of my contribution to breakfast."', 3600);
         return true;
       }
+      if (dist(d, station) < POT_NAG) {
+        ctx.flash(potRefusal(d), 4200);
+        return true;
+      }
       const dc = crateInReach(d);
       if (dc) {
         ctx.flash(`Droid: "${dc.name}. Half my own mass, all of it above the knee. This one is Biggy's."`);
@@ -2312,6 +2350,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     if (!speaker.following && dist(speaker, v) < TALK_REACH) {
       speaker.following = true;
       ctx.flash('Keynote speaker: "Oh! Is it time? Lead the way."');
+      return true;
+    }
+    if (dist(v, station) < POT_NAG) {
+      ctx.flash(potRefusal(v), 4200);
       return true;
     }
     const vc = crateInReach(v);
