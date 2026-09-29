@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 
+import { REEL_PREROLL } from '../sim/reel';
 import type { GameSnapshot, RobotKind } from '../sim/types';
 import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
 
@@ -18,6 +19,7 @@ import { createMaterials } from './materials';
 import { Pipeline, QUALITY, type QualityName, type VolumeSpot } from './pipeline';
 import { buildGround, setFrontDoors, type Ground3D } from './ground3d';
 import { buildKeynote, type Keynote3D } from './keynote3d';
+import { portraitOf } from './portrait';
 import { createPeople } from './people3d';
 import { carryFrame, hookPose, ladlePose, poseLadle, potPose, soupPots } from './props-ground';
 import { activeReach, palmWorld, reachClock } from './reach3d';
@@ -65,6 +67,8 @@ export interface WorldOptions {
  * second: most of a move in about a second — a camera operator, not a cut.
  */
 const SHOT_EASE = 2.2;
+/** Seconds at the end of the film's dark beat that the camera spends going up to the screen. */
+const FILM_RISE = 1.2;
 /** The robot fill while a directed shot has the camera: wider and brighter than in play. */
 const SHOT_FILL = { distance: 12, intensity: 20 } as const;
 
@@ -237,6 +241,10 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   const _cutPos = new THREE.Vector3();
   const _cutLook = new THREE.Vector3();
   let inCut = false;
+  /** Chapter 4's film has started (and the curtain call is still up behind the final card). */
+  let filmSeen = false;
+  /** ...and has reached its last card, where the camera pulls back to the stage. */
+  let filmBow = false;
   const PULL_DELAY = 0.7;
   /**
    * The crate front tips out and falls flat, as the 2.5D model's does, but stops
@@ -571,7 +579,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     // Chapter 4: Room 8, built the first time it is needed, shown only then.
     const keynoteOn = snap.chapter === 4 && !onGround;
     if (keynoteOn && !keynote) {
-      keynote = buildKeynote(mats);
+      keynote = buildKeynote(mats, (name) => portraitOf(renderer, name));
       scene.add(keynote.group);
       pool.collect(scene);
       patchedFrames = 0;
@@ -598,6 +606,10 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     const active = snap.bots[snap.active] ?? snap.bots[0];
     const rob = robots.get(active.kind);
     const grade = pipeline.grade;
+    // The film holds its last shot behind the final card, until the run starts again.
+    if (snap.reel) filmSeen = true;
+    else if (snap.phase !== 'done' || snap.chapter !== 4) filmSeen = filmBow = false;
+    const filmHeld = filmSeen && !snap.reel;
     const staged = stageOpening(snap, dt);
     if (staged && !cam.pose) {
       // The opening frames itself; the follow camera takes over, snapped to the
@@ -675,17 +687,36 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       c.lookAt(_cutLook);
       c.updateMatrixWorld();
       cam.cut();
-    } else if (snap.reel && keynote && !cam.pose) {
-      // The opening video: from the back rows, the whole screen and the stage
-      // under it, eased in from wherever the follow camera was.
+    } else if (keynote && !cam.pose && (snap.reel || filmHeld)) {
+      /*
+       * THE FILM. Michele, 29 Sep 2026: *"After the last robot reaches the stage,
+       * they should regroup, camera zooms on the screen, and the movie should
+       * start."* The dark beat before the first card (`REEL_PREROLL`) is the
+       * regroup, watched from the front rows; its last stretch is the camera going
+       * up to the screen, which then fills the frame for the whole film, credits
+       * and all — pulled back at the first credit, they shrank to a line nobody
+       * could read. On the last card it pulls back to the stage, where the three
+       * are taking their bow, and holds there behind the final card while the
+       * room claps.
+       */
       grade.dofAmount = 0;
       const c = cam.camera;
-      const k = 1 - Math.exp(-dt * 1.5);
-      c.position.lerp(keynote.reelView.pos, k);
-      _cutLook.lerp(keynote.reelView.look, k);
+      if (!inCut) {
+        _cutPos.copy(c.position);
+        _cutLook.copy(c.position).add(c.getWorldDirection(_cutT).multiplyScalar(4));
+        inCut = true;
+      }
+      const reel = snap.reel;
+      if (reel?.card?.kind === 'end') filmBow = true;
+      const bow = !reel || filmBow;
+      const regroup = !bow && reel.t < REEL_PREROLL - FILM_RISE;
+      const shot = bow || regroup ? keynote.stageView() : keynote.screenView(c.aspect, c.fov);
+      const k = 1 - Math.exp(-dt * (bow ? 0.4 : regroup ? 2.4 : 1.9));
+      _cutPos.lerp(shot.pos, k);
+      _cutLook.lerp(shot.look, k);
+      c.position.copy(_cutPos);
       c.lookAt(_cutLook);
       c.updateMatrixWorld();
-      inCut = true;
       cam.cut();
     } else if (rob) {
       // A new chapter, or the end of a cutscene: cut to behind the selected

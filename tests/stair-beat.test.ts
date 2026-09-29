@@ -18,7 +18,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { DT_MAX, GF, createGame, riseAt, type BreakfastState, type DebugGame } from '../src/sim';
-import { MAIN_STAIR_TOP_M, LOBBY_RISE_M } from '../src/sim/geometry';
+import { F1, MAIN_STAIR_TOP_M, LOBBY_RISE_M, R, roomDoor } from '../src/sim/geometry';
 import type { CameraShot, RobotKind } from '../src/sim/types';
 import { playToStairGate } from './pilot';
 
@@ -168,4 +168,52 @@ describe('chapter 3 to 4 · the stair beat', () => {
     expect(end.fade, 'chapter 4 is still black a second in').toBeLessThan(0.05);
     expect(end.shot, 'the stair beat still has the camera in chapter 4').toBeNull();
   });
+});
+
+/*
+ * ...AND THE TOP OF THAT FLIGHT, WHERE CHAPTER 4 PICKS THEM UP.
+ *
+ * Michele, 29 Sep 2026: *"stairs should not be closed (but robots can't go down).
+ * Robots should be pointing to the room."* They stood at the head of the stairs
+ * they had just climbed with their backs to Room 8, nose to a rail drawn across
+ * the top of the flight — and in the sim nothing stood there at all: a robot drove
+ * straight out over a storey of treads and stopped, silently, at the far wall.
+ * Now the flight is drawn open, and it is the sim that keeps them off it.
+ */
+describe('the head of the main staircase, where chapter 4 starts', () => {
+  const kinds = ['voxxy', 'droid', 'biggy'] as const;
+  const bot = (g: DebugGame, kind: RobotKind) => g.snapshot().bots.find((b) => b.kind === kind)!;
+
+  it('the three of them start facing Room 8, not the stairs behind them', () => {
+    const g = createGame({ seed: 5, chapter: 4, cards: false }) as DebugGame;
+    g.update(DT_MAX);
+    const door = roomDoor(R(8));
+    for (const kind of kinds) {
+      const b = bot(g, kind);
+      const want = Math.atan2(door.cy - b.y, door.cx - b.x);
+      const off = Math.abs(Math.atan2(Math.sin(b.face - want), Math.cos(b.face - want)));
+      expect(off, `${kind} is not facing Room 8's door`).toBeLessThan(0.1);
+      expect(Math.cos(b.face), `${kind} is facing the stairs`).toBeLessThan(0);
+    }
+  });
+
+  for (const kind of kinds) {
+    it(`${kind} cannot walk back down, and says why in its own voice`, () => {
+      const g = createGame({ seed: 5, chapter: 4, cards: false }) as DebugGame;
+      g.update(DT_MAX);
+      g.debug.select(kind);
+      const said: string[] = [];
+      for (let i = 0; i < 240; i++) {
+        g.setStick(1, 0);
+        g.update(DT_MAX);
+        const t = g.snapshot().toast?.t;
+        if (t && !said.includes(t)) said.push(t);
+      }
+      g.setStick(0, 0);
+      const b = bot(g, kind);
+      // A step onto the head is fine — the guard is one tread in — and no further.
+      expect(b.x + b.r, `${kind} walked out over the flight`).toBeLessThanOrEqual(F1.mainStair.x + 8 + 0.5);
+      expect(said.some((t) => t.startsWith(`${b.name}: "`)), `${kind} said nothing about the stairs: ${said.join(' | ')}`).toBe(true);
+    });
+  }
 });

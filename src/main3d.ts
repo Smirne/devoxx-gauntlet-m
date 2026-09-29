@@ -466,6 +466,8 @@ for (let i = 0; i < warm; i++) {
 const anchors: SpeakerAnchors = {};
 let lastFade = -1;
 
+/** Chapter 4's film is playing (`GameSnapshot.reel`): the body carries `ad3d-film`. */
+let filmOn = false;
 function frame(dt: number): void {
   if (titleUp) {
     // The sim waits behind the gate; nothing is drawn under the black.
@@ -488,6 +490,13 @@ function frame(dt: number): void {
     return;
   }
   world.render(snap, dt);
+  // The film at the end of chapter 4 plays with the HUD's chrome faded away — a
+  // cinema, not a dashboard. Its toasts ("any key to skip") and cards stay.
+  const film = snap.reel != null;
+  if (film !== filmOn) {
+    filmOn = film;
+    document.body.classList.toggle('ad3d-film', film);
+  }
   if (!hideHud) {
     for (const key of Object.keys(anchors) as RobotKind[]) delete anchors[key];
     for (const b of snap.bots) {
