@@ -6774,3 +6774,66 @@ notes. The credits were recounted as before (`git log`, a walk of `src` and `tes
 clear it to watch the curtain call behind it; if that matters more, the other way out of the dead end
 is a line on the HUD that says the run is over. And the frame rate on the laptops that were slow is
 still his to see: everything here ran on a software renderer.
+
+## 30 Sep 2026 (after midnight) — what was still left at the start of a chapter
+
+**What a human asked.** Michele, with the second round merged: *"ok. Do another round to find other
+possible reason for slowness. Game runs fine now, but sometimes it slows donw (especially on chapter
+start). Open a new PR if you have some fixes"*.
+
+**How it was measured.** A CPU profile over each chapter change (the DevTools protocol's sampling
+profiler, on the dev server so the names were readable), with self and inclusive time per function
+and the resources each change created; then twenty seconds of play in every chapter, with the
+JavaScript time of each frame separated from the time spent inside WebGL calls — which the software
+renderer inflates beyond meaning — and the stacks of the slowest frames. Everything in headless
+Chromium on SwiftShader, as before.
+
+**What it found, in the order a player feels it.**
+
+1. *Chapter 3's first frame sculpted its whole cast: 3.2 s of main thread*, 2.2 s of it in the
+   mouths. Every feature on a portrait — eyes, brows, glasses, the mouth, a beard band, a headset's
+   boom, the hair spikes — is seated by a raycast against the whole head, 7,800 triangles a ray, and
+   a smile casts five hundred. `HeadProbe` sorts a head's triangles once into buckets by where a ray
+   can meet them (a grid over the face's footprint for the rays along −z, latitude and longitude for
+   the rays aimed at the centre) and a ray tests only its bucket, with three's own triangle test and
+   the nearest hit: the same answers, exactly — `tests/headprobe.test.ts` holds 7,000 rays to the
+   raycaster's, the crown, the poles and the seam included. 3.2 s → 0.38 s.
+2. *What was left of it moved behind the loading screen.* Chapters 3 and 4 open with their named
+   people on stage — thirteen and nine of them, the disguised keynote speaker included — and their
+   portraits were sculpted, their costumes built and their shaders compiled on the chapter's first
+   frame. The loading screen now plays those chapters' opening snapshots, from throwaway headless
+   games, through the crowd, only the chapters still to come and in the order play reaches them;
+   portraits are kept by name, so the chapter takes over what was built. Chapter 3's people now cost
+   50 ms of its first frame, and the programs compiled there went from 5 to 3 (chapter 4: 4 to 1) —
+   and to none at all once `main` was merged in, PR #5's own changes having landed meanwhile: on the
+   merged tree no chapter start compiles a program.
+   Named people have fixed seeds, so what is built is what the chapter would have built: close-ups
+   of six of the cast, frozen, differ from the previous build by a mean of 0.12–0.31 of 255. The
+   price is loading: 31.7 → 33.0 s to the gate on the software renderer.
+3. *The frame governor stepped the quality down on chapter starts.* A window full of set-up frames —
+   the environment capture, the first shadow maps, the first uses — reads as a slow machine, and the
+   step is itself a stall: every render target reallocated, 2.6–3 s on the software renderer. The
+   world now pauses the governor at the end of any frame that began a chapter or captured the
+   environment, for 1.5 s. `tests/governor.test.ts`: the same frames step it down when it is not
+   told, and leave it alone when it is; a machine slow after the pause still steps down.
+4. *The governor's fourth rung recompiled the fog.* Its march steps were a define; they are a uniform
+   under the tier's compiled-in maximum now, as the light loops inside the march already were.
+
+**What it did not find.** Anything periodic in steady play. JavaScript per frame was 8.5–20 ms
+(median) in every chapter on this machine, garbage collection 27–140 ms in twenty seconds, and every
+slow frame in the four runs was the governor's own step on a renderer that really is that slow.
+
+**Left as it is.** The environment capture still runs on a floor's first frame — six renders of the
+floor, under the chapter's black fade: 1–3 s here, not measured on a GPU. And a governor step still
+reallocates every render target;
+rendering into fixed targets at a lower internal resolution would avoid that, and was not attempted
+the day of the deadline.
+
+**Found on the way.** `main`'s credits check was red: PR #5 added two source files and three test
+files that the credits did not count. The branch's merge of `main` recounted them.
+
+**Verification.** `pnpm typecheck` and `pnpm build` clean, and `pnpm test` green — 945 tests in 71
+files — on the tree merged with `main`; `tools/playthrough/run.mjs` drove all four chapters and the
+opening through the real 3D page to the final card, 234 s of sim clock, no console errors; and the
+chapter-start profile, run again on the merged tree: no program compiled at any chapter start,
+chapter 3's people 43 ms. Four commits, one step each, a merge of `main`, and these notes.
