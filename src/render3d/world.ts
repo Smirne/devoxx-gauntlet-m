@@ -21,6 +21,8 @@ import { buildKeynote, type Keynote3D } from './keynote3d';
 import { createPeople } from './people3d';
 import { LADLE_REACH } from './props-ground';
 import { createProps, type Props3D } from './props3d';
+import { Governor } from './governor';
+import { GpuTimer } from './gputimer';
 import { createRobots, dimLamps, handsOf, updateGlare, updateRobots, type Robot3D } from './robots3d';
 import { CORRIDOR_END, HEIGHTS, SIGN_SPANS, buildVenue, type Venue3D } from './venue';
 import { CY0, CY1, F1 } from '../sim/geometry';
@@ -40,8 +42,8 @@ export interface World3D {
   /** Debug: refresh cinema E's mirror (on by default). */
   mirrorOn: boolean;
   /**
-   * True once the frame rate has stayed low even at the smallest render scale
-   * the adaptive resolution will go to: the page should suggest a lower quality.
+   * True once the frame rate has stayed low even on the governor's cheapest
+   * rung (`governor.ts`): the page should suggest a lower quality.
    */
   struggling: boolean;
   /** Screenshot/debug only: light the ground floor's hall as if the circuit were closed. */
@@ -77,7 +79,6 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     preserveDrawingBuffer: opts.preserveDrawingBuffer ?? false,
     stencil: false,
   });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.pixelRatio));
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -354,46 +355,45 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   const volSpots: VolumeSpot[] = [];
   let time = 0;
 
+  /*
+   * THE FRAME GOVERNOR (`governor.ts`). The pipeline is heavy — a reflection
+   * pass, GTAO, a volumetric march, a bloom chain — so on a weaker GPU it walks
+   * down a ladder of cheaper settings (render scale, AO, the fog's detail, the
+   * floor mirror) until the frame fits, and back up when a GPU timer shows room.
+   * Frame time is the wall clock's, not the sim's clamped dt.
+   */
+  const governor = new Governor();
+  const timer = new GpuTimer(renderer.getContext() as WebGL2RenderingContext);
+  /** Device pixels per CSS pixel at the top rung: the tier's cap, held to its pixel budget on a big screen. */
+  function topRatio(): number {
+    const cap = Math.min(window.devicePixelRatio || 1, quality.pixelRatio);
+    return Math.max(0.5, Math.min(cap, Math.sqrt((quality.maxPixels * 1e6) / (w * h))));
+  }
   function resize(cw: number, ch: number): void {
     w = Math.max(4, cw);
     h = Math.max(4, ch);
+    renderer.setPixelRatio(Math.max(0.5, topRatio() * governor.current.ratio));
     renderer.setSize(w, h, false);
     const pr = renderer.getPixelRatio();
     pipeline.setSize(w * pr, h * pr);
     cam.camera.aspect = w / h;
     cam.camera.updateProjectionMatrix();
   }
-
-  /*
-   * Adaptive resolution: the pipeline is heavy (a reflection pass, GTAO, a
-   * volumetric march, a bloom chain), so on a weaker GPU the pixel ratio steps
-   * down until the frame fits, and back up when there is room. Frame time is
-   * measured on the wall clock, not the sim's clamped dt.
-   */
-  const maxRatio = Math.min(window.devicePixelRatio || 1, quality.pixelRatio);
-  let ratio = maxRatio;
-  let slow = 0;
-  let fast = 0;
+  function applyRung(): void {
+    const r = governor.current;
+    pipeline.setAO(r.ao);
+    pipeline.setVolume(quality.volScale * (r.vol === 1 ? 1 : 0.7), r.vol === 1 ? quality.volSteps : Math.max(12, Math.round(quality.volSteps / 2)));
+    pipeline.setReflectionScale(quality.reflScale * r.refl);
+    resize(w, h);
+  }
   let lastWall = performance.now();
-  function adapt(): void {
+  function govern(): void {
     if (opts.preserveDrawingBuffer) return; // screenshot mode: never
     const now = performance.now();
     const ms = now - lastWall;
     lastWall = now;
-    if (ms > 200) return; // a hitch (tab switch, shader compile), not a trend
-    slow = ms > 24 ? slow + 1 : Math.max(0, slow - 1);
-    fast = ms < 13 ? fast + 1 : 0;
-    let next = ratio;
-    if (slow > 45 && ratio <= 0.55) world.struggling = true;
-    if (slow > 45) next = Math.max(0.55, ratio - 0.15);
-    else if (fast > 240) next = Math.min(maxRatio, ratio + 0.1);
-    if (next !== ratio) {
-      ratio = next;
-      slow = 0;
-      fast = 0;
-      renderer.setPixelRatio(ratio);
-      resize(w, h);
-    }
+    if (governor.frame(now, ms, timer.poll())) applyRung();
+    if (governor.struggling) world.struggling = true;
   }
 
   /*
@@ -550,7 +550,8 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   let camChapter = -1;
   function render(snap: GameSnapshot, dt: number, intro = false): void {
     time += dt;
-    adapt();
+    govern();
+    timer.begin();
     // Chapters 2 and 3 are downstairs; chapter 4 climbs back to Room 8.
     const ground3 = snap.chapter === 2 || snap.chapter === 3;
     if (ground3 !== onGround) switchFloor(ground3);
@@ -774,7 +775,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
         mir.render(renderer, scene, cam.camera);
       }
     }
-
+    timer.end();
   }
 
   const _v = new THREE.Vector3();

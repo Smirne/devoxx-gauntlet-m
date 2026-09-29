@@ -89,7 +89,11 @@ function storedQuality(): QualityName | null {
  * The first-run quality, from the GPU the browser reports: a software renderer
  * or a phone gets `low`, an integrated laptop GPU `medium`, anything else
  * `high`. A safety net for the judges' machines — the quality button (and Q)
- * still move it, and the adaptive resolution trims it further at run time.
+ * still move it, and the frame governor (`src/render3d/governor.ts`) trims it
+ * further at run time.
+ *
+ * AMD's laptop APUs ("AMD Radeon(TM) Graphics", the Vegas) and NVIDIA's MX
+ * parts are integrated-class too, and used to be read as `high` (29 Sep).
  */
 function autoQuality(): QualityName {
   try {
@@ -101,6 +105,7 @@ function autoQuality(): QualityName {
     gl.getExtension('WEBGL_lose_context')?.loseContext();
     if (/swiftshader|llvmpipe|software|basic render/i.test(r)) return 'low';
     if (/intel|mali|adreno|powervr|vivante/i.test(r)) return 'medium';
+    if (/radeon\(tm\) graphics|radeon graphics|radeon vega|vega \d+ graphics|geforce mx/i.test(r)) return 'medium';
     return 'high';
   } catch {
     return 'medium';
