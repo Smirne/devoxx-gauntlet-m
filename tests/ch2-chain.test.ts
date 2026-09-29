@@ -40,6 +40,7 @@ import {
   type Vec2,
 } from '../src/sim';
 import { PLUG_TIME } from '../src/sim/chapters/ch2-expo';
+import { openFrontDoors } from './pilot';
 
 const SEED = 20260930;
 const mk = (): DebugGame => createGame({ seed: SEED, chapter: 2, cards: false });
@@ -645,9 +646,8 @@ describe('chapter 2 — the curtain before chapter 3', () => {
       // And the player still has the keyboard: this is a curtain, not a cutscene.
       expect(g.snapshot().phase).toBe('play');
 
-      // And it does cut, a few seconds in rather than never.
-      for (let i = 0; i < Math.ceil(4 / DT_MAX) && g.snapshot().chapter === 2; i++) g.update(DT_MAX);
-      expect(g.snapshot().chapter, 'the curtain never lifted').toBe(3);
+      // And then the front doors are the last job (29 Sep), and opening them ends it.
+      expect(openFrontDoors(g, 'voxxy', false), 'the curtain never lifted').toBe(true);
     });
 
     it(`still prints the VOXY badge when the ${last} is the last thing done`, () => {
@@ -682,7 +682,7 @@ describe('chapter 2 — the curtain before chapter 3', () => {
       }
       expect(printed, 'the test badge never reached the tray').toBe(true);
       if (heard !== '') expect(heard).toContain('One X');
-      expect(g.snapshot().chapter, 'the chapter never handed over').toBe(3);
+      expect(openFrontDoors(g, 'voxxy', false), 'the chapter never handed over').toBe(true);
     });
   }
 });

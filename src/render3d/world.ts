@@ -16,7 +16,7 @@ import { buildDetails } from './details';
 import { LightPool } from './lightpool';
 import { createMaterials } from './materials';
 import { Pipeline, QUALITY, type QualityName, type VolumeSpot } from './pipeline';
-import { buildGround, type Ground3D } from './ground3d';
+import { buildGround, setFrontDoors, type Ground3D } from './ground3d';
 import { buildKeynote, type Keynote3D } from './keynote3d';
 import { createPeople } from './people3d';
 import { createProps, type Props3D } from './props3d';
@@ -482,6 +482,11 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       // (Michele, 29 Sep: "chap 3 lighting seems a bit too much").
       dimLamps(robots, snap.chapter >= 3 ? 0.06 : lit ? 0.25 : 1, dt);
       ground.setChapter(snap.chapter);
+      // The front doors: shut through chapter 2 until a robot opens them, open after.
+      {
+        const fd = snap.props.find((q) => q.kind === 'entrance-doors');
+        setFrontDoors(snap.chapter >= 3 ? 1 : (fd?.progress ?? 0));
+      }
       {
         const act = robots.get((snap.bots[snap.active] ?? snap.bots[0]).kind);
         if (act) ground.setFocus(act.rig.root.position.x, act.rig.root.position.z);

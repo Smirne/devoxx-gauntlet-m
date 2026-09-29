@@ -16,7 +16,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-import { DRINK_FRIDGES, DUKE, GF, HIGH_TABLES, LOBBY_RISE_M, MAIN_STAIR_TOP_M, WIFI_TAG, groundPlates, groundRiseM, groundWallsFor, stairDoors, stairMidLanding, stairRamps } from '../sim/geometry';
+import { DRINK_FRIDGES, DUKE, GF, HIGH_TABLES, LOBBY_RISE_M, MAIN_STAIR_TOP_M, WIFI_TAG, entranceBayOpenings, groundPlates, groundRiseM, groundWallsFor, stairDoors, stairMidLanding, stairRamps } from '../sim/geometry';
 import { DOOR_H, stairFlight } from '../render/venue/props';
 import type { Plate, Wall } from '../sim/types';
 import { m } from '../sim/units';
@@ -357,6 +357,18 @@ let outsideMorning = false;
 export function setOutsideMorning(on: boolean): void {
   outsideMorning = on;
 }
+/**
+ * The front doors' double leaves, one pair per bay: shut across the opening all
+ * of chapter 2's night, swinging OUT onto the forecourt when a robot opens them
+ * (the sim's `entrance-doors` prop, 29 Sep), and standing open from then on —
+ * where the sim's `entranceLeaves()` colliders are. Each pivot's `userData.side`
+ * is the way it swings.
+ */
+const frontLeaves: THREE.Object3D[] = [];
+export function setFrontDoors(open: number): void {
+  const e = THREE.MathUtils.smoothstep(open, 0, 1);
+  for (const p of frontLeaves) p.rotation.y = (p.userData.side as number) * e * (Math.PI / 2);
+}
 function facade(group: THREE.Group, mats: Materials, updaters: Array<(t: number, dt: number) => void>): THREE.Object3D[] {
   const out: THREE.Object3D[] = [];
   const frame = new THREE.MeshStandardMaterial({ color: 0xe8e8e4, roughness: 0.35, metalness: 0.4 });
@@ -368,6 +380,35 @@ function facade(group: THREE.Group, mats: Materials, updaters: Array<(t: number,
   const TRANSOM = 2.7;
   const walls = groundWallsFor(2);
   const base = LOBBY_RISE_M;
+  {
+    // The double doors in each bay's opening, hinged on the facade's outer face.
+    frontLeaves.length = 0;
+    const ex = m(GF.entrance.x + GF.entrance.w) + 0.02;
+    const DH = TRANSOM - 0.1;
+    for (const [y0, y1] of entranceBayOpenings()) {
+      const half = m(y1 - y0) / 2;
+      for (const [hz, dir] of [
+        [m(y0), 1],
+        [m(y1), -1],
+      ] as const) {
+        const pivot = new THREE.Group();
+        pivot.position.set(ex, base, hz);
+        const leaf = new THREE.Mesh(new THREE.PlaneGeometry(half - 0.02, DH), leafGlass);
+        leaf.rotation.y = Math.PI / 2;
+        leaf.position.set(0, DH / 2, (dir * half) / 2);
+        leaf.renderOrder = 2;
+        pivot.add(leaf);
+        for (const y of [0.04, DH]) pivot.add(new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, half - 0.02), frame).translateY(y).translateZ((dir * half) / 2));
+        for (const z of [0.03, half - 0.05]) pivot.add(new THREE.Mesh(new THREE.BoxGeometry(0.06, DH, 0.06), frame).translateY(DH / 2).translateZ(dir * z));
+        // A push bar on the lobby side, so a shut door reads as a door.
+        pivot.add(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, half * 0.7), mats.steel).translateY(1.05).translateZ((dir * half) / 2).translateX(-0.06));
+        // Out onto the forecourt (+x): turning by +y takes +z to +x, and -z by -y.
+        pivot.userData.side = dir;
+        group.add(pivot);
+        frontLeaves.push(pivot);
+      }
+    }
+  }
   for (const w of walls) {
     if (w.kind === 'facade') {
       const x = m(w.x + w.w / 2);
@@ -395,23 +436,8 @@ function facade(group: THREE.Group, mats: Materials, updaters: Array<(t: number,
       for (const y of [0.04, TRANSOM, GLASS_H]) b.add(frame, box(L, 0.08, 0.08, V(cx, base + y, cz)));
       for (const s of [-1, 1]) b.add(frame, box(0.08, GLASS_H, 0.08, V(cx + (s * L) / 2, base + GLASS_H / 2, cz)));
     } else if (w.kind === 'door-leaf') {
-      // A glass leaf, standing open, in its white frame.
-      const cx = m(w.x + w.w / 2);
-      const cz = m(w.y + w.h / 2);
-      const L = m(Math.max(w.w, w.h));
-      const along = w.w >= w.h;
-      const DH = TRANSOM - 0.1;
-      const leaf = new THREE.Mesh(new THREE.PlaneGeometry(L, DH), leafGlass);
-      leaf.position.set(cx, base + DH / 2, cz);
-      if (!along) leaf.rotation.y = Math.PI / 2;
-      leaf.renderOrder = 2;
-      group.add(leaf);
-      const fw = along ? L : 0.06;
-      const fd = along ? 0.06 : L;
-      for (const y of [0.04, DH]) b.add(frame, box(fw, 0.08, fd, V(cx, base + y, cz)));
-      for (const s of [-1, 1]) b.add(frame, box(along ? 0.06 : 0.06, DH, along ? 0.06 : 0.06, V(cx + (along ? (s * L) / 2 : 0), base + DH / 2, cz + (along ? 0 : (s * L) / 2))));
-      // The push bar.
-      b.add(mats.steel, box(along ? L * 0.8 : 0.04, 0.04, along ? 0.04 : L * 0.8, V(cx, base + 1.05, cz)));
+      // Drawn as the swinging double doors above (\`frontLeaves\`): the wall is
+      // where each leaf ends up, standing open.
     }
   }
   // Across the entrance gap: a transom over the open bays, and the exit signs.

@@ -372,6 +372,7 @@ const PROPS: Readonly<Record<string, PropSpec>> = {
    */
   ladle: { h: 0.52, color: 0xc6ced6, tl: true, lift: 1.41 },
   dropzone: { h: 0.04, color: 0x2f7d4f, tl: true, flat: true },
+  'entrance-doors': { h: 0.02, color: 0x9fb8c4, tl: true, flat: true },
   pot: { h: 0.3, color: 0x9aa3ad, lift: 0.95 },
   soup: { h: 0.12, color: 0xd9452f, lift: 0.97 },
   /** Spilled soup on the floor — a decal, and one per splash. */

@@ -106,7 +106,7 @@ import {
   TRAVEL_TIME_SCALE,
 } from '../constants';
 import { m } from '../units';
-import { CFP_WALL, CFP_WALL_W, GF, VIEW_GROUND, WIFI_TAG, WIFI_TAG_W, groundWallsFor, stairLanding } from '../geometry';
+import { CFP_WALL, CFP_WALL_W, GF, VIEW_GROUND, WIFI_TAG, WIFI_TAG_W, entranceBayGaps, entranceBayOpenings, groundWallsFor, stairLanding } from '../geometry';
 import { dist, inRect, speed } from '../bot';
 import { buildLights, litBy } from '../lights';
 import type { Bot, LightSource, Mirror, Prop, Task, TextPrompt, Vec2, Wall } from '../types';
@@ -175,6 +175,23 @@ const ROLLER_RISE_TIME = 0.42;
  * away: this is a curtain, not a cutscene.
  */
 const CURTAIN = 3;
+/*
+ * THE FRONT DOORS — the chapter's last step.
+ *
+ * Michele, 29 Sep: *"Chap 2 can finish at different moments, and the transition
+ * is a bit abrupt ... Or opening the door as the last step? Only when everything
+ * is ready?"* So the hall no longer cuts away on whichever of printer and store
+ * came last. When both are done (and the store and the badge have had their
+ * moment), the task list gains one line: open the main entrance. Any robot, E at
+ * the doors. They swing out onto the morning, and the three walk towards the
+ * daylight while the black comes down — the same ending however the chapter went.
+ */
+/** How close to the entrance's inner face a robot must be for E to open it, px. */
+const DOORS_REACH = 46;
+/** The leaves swing open over this long, s. */
+const DOORS_SWING = 1.1;
+/** From the bolts going back to the walk out, s: long enough to see them swing. */
+const DOORS_CUT_DELAY = 1.5;
 /**
  * How long Biggy takes to walk the router cabinet's doors open, seconds.
  *
@@ -371,6 +388,10 @@ export interface ExpoState {
     seat: number;
   };
   rollerBroken: boolean;
+  /** Printer and store both done: the front doors are the last job. */
+  doorsDue?: boolean;
+  /** The front doors have been opened; the walk out follows. */
+  doorsOpen?: boolean;
   /** 0..1, how far the smashed shutter has torn up into its housing. */
   rollerRise: number;
   /** The router cabinet, its terminal, and the WiFi password. */
@@ -487,6 +508,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   /** Sim time the badge drops, set when the printer comes up. -1 until then. */
   let badgeAt = -1;
   let curtainAt: number | null = null;
+  /** Everything is ready and the front doors are the last job. */
+  let doorsDue = false;
+  /** When the bolts went back (chapter clock), or null while shut. */
+  let doorsOpenAt: number | null = null;
+  let doorsCut = false;
   /** Whether the shutter was the LAST of the two, so the curtain line names it. */
   let rollerLast = false;
   /** 0..1, how far the smashed shutter has torn up. See `ROLLER_RISE_TIME`. */
@@ -524,6 +550,28 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           : 'Biggy: gate. Steel. Down. Registration opens it, not me',
   };
   ctx.walls.push(gate);
+
+  // The front doors: shut and bolted all night, one leaf across each bay's
+  // clear opening, glass (they stop a robot and pass the forecourt's light).
+  const e = GF.entrance;
+  const doorsAt = { x: e.x - 20, y: e.y + e.h / 2 };
+  const shutDoors: Wall[] = entranceBayOpenings().map(([y0, y1]) => ({
+    x: e.x + e.w / 2 - 3,
+    y: y0,
+    w: 6,
+    h: y1 - y0,
+    glass: true,
+    kind: 'entrance-shut',
+    why: (b: Bot) =>
+      doorsDue
+        ? `${b.name}: the front doors. Everything is ready — E, and let them in`
+        : b.kind === 'voxxy'
+          ? 'Voxxy: front doors, bolted till eight. Badges and shirts first, then we let them in'
+          : b.kind === 'droid'
+            ? 'Droid: the main entrance, locked for the night. It opens when registration is ready, and it is not'
+            : 'Biggy: locked. I could lean on it. It is glass. I will not lean on it',
+  }));
+  for (const w of shutDoors) ctx.walls.push(w);
 
   const roller: Wall = {
     ...GF.roller,
@@ -944,6 +992,13 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
     ctx.switchKey(code);
     if (code !== 'KeyE') return true;
+
+    if (doorsDue && doorsOpenAt === null && b.x > e.x - DOORS_REACH && b.x < e.x + e.w && b.y > e.y - 8 && b.y < e.y + e.h + 8) {
+      doorsOpenAt = ctx.t;
+      for (const w of shutDoors) ctx.removeWall(w);
+      ctx.flash(`${b.name} throws the bolts. The doors swing out onto Antwerp in the morning — and there is already a queue`, 4000);
+      return true;
+    }
 
     const atCabinet = dist(b, cabinetAt) < CABINET_REACH;
     const atTerminal = router.cabinetOpen && dist(b, cabinetAt) < TERMINAL_REACH;
@@ -1579,10 +1634,33 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
          * curtain is still a curtain.
          */
       } else if (ctx.t - curtainAt >= CURTAIN && badgeSaid && ctx.t >= badgeAt + BADGE_HOLD) {
-        ctx.score.expoT = Math.round(curtainAt);
-        ctx.score.cable = Math.trunc(cable.len);
-        ctx.startChapter(3);
+        if (!doorsDue) {
+          doorsDue = true;
+          ctx.score.expoT = Math.round(curtainAt);
+          ctx.score.cable = Math.trunc(cable.len);
+          ctx.flash('Registration is ready: badges printing, shirts on the racks. One job left — the front doors. Any of you, E at the main entrance', 6000);
+        }
       }
+    }
+    if (doorsOpenAt !== null && !doorsCut && ctx.t - doorsOpenAt >= DOORS_CUT_DELAY) {
+      doorsCut = true;
+      // Out through the three bays, towards the daylight. Each robot's route ends
+      // just inside its bay and the walk carries on past it into the fade.
+      const gaps = entranceBayGaps();
+      const lane = (k: number): number => (gaps[k][0] + gaps[k][1]) / 2;
+      const route = (k: number, back: number): Vec2[] => [
+        { x: e.x - 150 - back, y: lane(k) },
+        { x: e.x - 24, y: lane(k) },
+      ];
+      ctx.startCut(
+        [
+          { kind: 'voxxy', pts: route(0, 0) },
+          { kind: 'droid', pts: route(1, 14) },
+          { kind: 'biggy', pts: route(2, 28) },
+        ],
+        () => ctx.startChapter(3),
+        VIEW_GROUND,
+      );
     }
   }
 
@@ -1590,6 +1668,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   function props(): Prop[] {
     const out: Prop[] = [
+      // The front doors: bolted until the chapter's last job, then swinging out.
+      {
+        kind: 'entrance-doors',
+        x: e.x,
+        y: e.y,
+        w: e.w,
+        h: e.h,
+        state: doorsOpenAt !== null ? 'open' : doorsDue ? 'active' : 'idle',
+        progress: doorsOpenAt === null ? 0 : Math.min(1, (ctx.t - doorsOpenAt) / DOORS_SWING),
+        label: doorsDue ? 'front doors — E to open' : 'front doors — locked for the night',
+      },
       /*
        * THE BREAKER PANEL, AND HOW THE RENDERER LEARNS THE HALL IS LIT.
        *
@@ -2152,6 +2241,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         at: storeStand,
         hint: 'Voxxy: he cannot get up to what that shutter wants on his own. I take hold of him at the far end of the top lane and we run the whole length of it',
       },
+      ...(doorsDue
+        ? [
+            {
+              id: 'doors',
+              text: 'open the front doors',
+              done: doorsOpenAt !== null,
+              at: doorsAt,
+              hint: 'Droid: the main entrance, at the far end of the lobby past reception. Any of us — E at the doors',
+            },
+          ]
+        : []),
     ];
   }
 
@@ -2217,6 +2317,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       hallLit: hallLit(),
       printerOnline: printerOnline(),
       badgePrinted: badgeSaid,
+      doorsDue,
+      doorsOpen: doorsOpenAt !== null,
     }),
   };
 }

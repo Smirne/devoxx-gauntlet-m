@@ -30,7 +30,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { DT_MAX, createGame, type DebugGame, type NightState, type RobotKind } from '../src/sim';
-import { playToStairGate } from './pilot';
+import { finishChapter2, openFrontDoors, playToStairGate } from './pilot';
 // Vite's own `?raw`, not `node:fs`: the repo has no `@types/node` and
 // `tsconfig.json` pins `types` to `vite/client` (see `tests/clue-plate.test.ts`).
 import CH1_SRC from '../src/sim/chapters/ch1-night.ts?raw';
@@ -154,7 +154,18 @@ describe('no robot is ever run faster than it can walk', () => {
       walks,
       'a chapter has gained (or lost) a cutscene walk. Every walk in the game is measured in this ' +
         'file, per robot, against that robot\'s own `max` — add the new one rather than editing this list',
-    ).toEqual(['ch1-night.ts', 'ch3-breakfast.ts']);
+    ).toEqual(['ch1-night.ts', 'ch2-expo.ts', 'ch3-breakfast.ts']);
+  });
+
+  it('chapter 2 to 3 — out through the front doors', { timeout: 30000 }, () => {
+    const g = createGame({ seed: 20260930, chapter: 2, cards: false });
+    g.update(DT_MAX);
+    finishChapter2(g);
+    // Up to the E at the doors; the measurement watches the walk that follows.
+    expect(openFrontDoors(g, 'voxxy', false, false)).toBe(true);
+    const m = measureCut(g, 2000);
+    expect(m.reached, 'chapter 2 never handed over').toBe(3);
+    expectAWalk(m, 'chapter 2 to 3');
   });
 
   it('chapter 3 to 4 — up the main staircase', { timeout: 30000 }, () => {

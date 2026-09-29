@@ -74,7 +74,7 @@ function until(g: DebugGame, done: () => boolean, budget = 600): boolean {
   return done();
 }
 
-import { bot, driveTo, raiseSign, walkTo } from './pilot';
+import { bot, driveTo, openFrontDoors, raiseSign, walkTo } from './pilot';
 
 
 /* --------------------------------------------- the chapter-2 network closet
@@ -903,7 +903,9 @@ describe('chapter 2 — expo', () => {
     }
     g.setStick(0, 0);
     steps_(g, 4);
-    expect(g.snapshot().chapter).toBe(3);
+    // ...and the front doors, the chapter's last job since 29 Sep.
+    expect(g.snapshot().chapter).toBe(2);
+    expect(openFrontDoors(g, 'voxxy', false)).toBe(true);
   });
 });
 

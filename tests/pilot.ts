@@ -25,6 +25,7 @@ import {
   type Bot,
   type BreakfastState,
   type DebugGame,
+  type ExpoState,
   type KeynoteState,
   type Prop,
   type RobotKind,
@@ -670,4 +671,92 @@ export function driveChapter4(g: DebugGame, onLeg?: (name: string, seconds: numb
   clock.step(g);
   expect(g.snapshot().reel, 'the chapter never reached its ending').not.toBeNull();
   done('everyone onto the stage');
+}
+
+/**
+ * Chapter 2's last job (29 Sep): once the printer and the store are both done,
+ * the front doors. Waits for them to become the job, walks `kind` to the main
+ * entrance, presses E and waits out the walk into chapter 3. `walk = false`
+ * places the robot at the doors instead, for the tests that are about something
+ * else and only need the chapter to hand over.
+ */
+export function openFrontDoors(g: DebugGame, kind: RobotKind = 'voxxy', walk = true, finish = true): boolean {
+  const due = (): boolean => g.snapshot().chapter === 2 && (g.debug.chapter() as { doorsDue?: boolean }).doorsDue === true;
+  for (let i = 0; i < Math.ceil(15 / DT_MAX) && g.snapshot().chapter === 2 && !due(); i++) g.update(DT_MAX);
+  if (!due()) return false;
+  const e = GF.entrance;
+  const at = { x: e.x - 24, y: e.y + e.h / 2 };
+  g.debug.select(kind);
+  if (walk) {
+    if (!walkTo(g, kind, at, 10)) return false;
+  } else {
+    g.debug.place(kind, at.x, at.y);
+    g.update(DT_MAX);
+  }
+  g.key('KeyE');
+  // `finish = false` stops on the E, for a caller that wants to watch the walk.
+  if (!finish) return (g.debug.chapter() as { doorsOpen?: boolean }).doorsOpen === true;
+  for (let i = 0; i < Math.ceil(15 / DT_MAX) && g.snapshot().chapter === 2; i++) g.update(DT_MAX);
+  return g.snapshot().chapter === 3;
+}
+
+/**
+ * Chapter 2 up to its last job: breakers, cabinet, password, router, the cable to
+ * the printer and Biggy through the roller door. The front doors are left for
+ * `openFrontDoors`. (Moved here from full-run.test.ts so the cutscene measurement
+ * can reach the chapter-2 walk without running the whole game.)
+ */
+export function finishChapter2(g: DebugGame): void {
+  const HUB: Vec2 = { x: GF.cabinet.x + GF.cabinet.w / 2, y: GF.cabinet.y + GF.cabinet.h + 2 };
+  const PANEL: Vec2 = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
+  const steps = (gg: DebugGame, n: number): void => {
+    for (let i = 0; i < n; i++) gg.update(DT_MAX);
+  };
+  const expo = (): ExpoState => g.debug.chapter() as ExpoState;
+
+  g.debug.select('droid');
+  g.debug.place('droid', PANEL.x + 20, PANEL.y + 30);
+  for (let i = 0; i < 3; i++) g.key('KeyE');
+  expect(expo().power, 'the breakers never went in').toBe(true);
+
+  g.debug.select('biggy');
+  g.debug.place('biggy', HUB.x, HUB.y + 30);
+  g.key('KeyE');
+  expect(expo().router.cabinetOpen, 'the cabinet stayed shut').toBe(true);
+
+  // Droid up on Biggy for the label inside the lid, then down to type it in.
+  g.debug.place('biggy', 300, 640);
+  g.debug.place('droid', 284, 640);
+  g.debug.select('droid');
+  g.key('KeyE');
+  expect(bot(g, 'droid').mounted, 'Droid never got up on Biggy').toBe(true);
+  g.debug.place('biggy', HUB.x, HUB.y + 20);
+  steps(g, 1);
+  g.key('KeyE');
+  expect(expo().router.known, 'the password was never read').toBe(true);
+  g.key('KeyE');
+  expect(bot(g, 'droid').mounted, 'Droid never got back down').toBe(false);
+  g.debug.select('droid');
+  g.debug.place('droid', HUB.x, HUB.y + 20);
+  g.key('KeyE');
+  expect(expo().router.online, 'the router never came up').toBe(true);
+
+  // The cable, run the signposted way — the long way round is a blooper and this
+  // is meant to be the clean run.
+  const rack = { x: GF.rack.x + 10, y: GF.rack.y + 12 };
+  const printer = { x: GF.printer.x + 10, y: GF.printer.y + 6 };
+  expect(walkTo(g, 'voxxy', { x: rack.x, y: rack.y - 24 }), 'Voxxy never reached the rack').toBe(true);
+  g.key('KeyE');
+  expect(walkTo(g, 'voxxy', { x: printer.x, y: printer.y + 34 }), 'the cable never reached the printer').toBe(true);
+  g.key('KeyE');
+  expect(expo().printerOnline, 'the badge printer stayed offline').toBe(true);
+
+  // ...and Voxxy shoves Biggy through the roller door, which ends the chapter.
+  g.debug.select('voxxy');
+  g.debug.place('biggy', 400, 160);
+  g.debug.place('voxxy', 372, 160);
+  g.setStick(1, 0);
+  for (let i = 0; i < 600 && !expo().rollerBroken; i++) g.update(DT_MAX);
+  g.setStick(0, 0);
+  expect(expo().rollerBroken, 'the roller door never went').toBe(true);
 }

@@ -24,15 +24,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DT_MAX,
-  GF,
   createGame,
   type DebugGame,
-  type ExpoState,
   type KeynoteState,
   type NightState,
-  type Vec2,
 } from '../src/sim';
-import { bot, driveChapter4, playToStairGate, walkTo } from './pilot';
+import { driveChapter4, finishChapter2, openFrontDoors, playToStairGate } from './pilot';
 
 /**
  * The run's seed. The chapter routines are exported so the same run can be driven
@@ -67,57 +64,12 @@ export function playChapter1(g: DebugGame): void {
 
 /* ------------------------------------------------------------- chapter 2 --- */
 
-const HUB: Vec2 = { x: GF.cabinet.x + GF.cabinet.w / 2, y: GF.cabinet.y + GF.cabinet.h + 2 };
-const PANEL: Vec2 = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
 
 /** Breakers, cabinet, the label read off Biggy's shoulders, the cable, the door. */
 export function playChapter2(g: DebugGame): void {
-  const expo = (): ExpoState => g.debug.chapter() as ExpoState;
-
-  g.debug.select('droid');
-  g.debug.place('droid', PANEL.x + 20, PANEL.y + 30);
-  for (let i = 0; i < 3; i++) g.key('KeyE');
-  expect(expo().power, 'the breakers never went in').toBe(true);
-
-  g.debug.select('biggy');
-  g.debug.place('biggy', HUB.x, HUB.y + 30);
-  g.key('KeyE');
-  expect(expo().router.cabinetOpen, 'the cabinet stayed shut').toBe(true);
-
-  // Droid up on Biggy for the label inside the lid, then down to type it in.
-  g.debug.place('biggy', 300, 640);
-  g.debug.place('droid', 284, 640);
-  g.debug.select('droid');
-  g.key('KeyE');
-  expect(bot(g, 'droid').mounted, 'Droid never got up on Biggy').toBe(true);
-  g.debug.place('biggy', HUB.x, HUB.y + 20);
-  steps(g, 1);
-  g.key('KeyE');
-  expect(expo().router.known, 'the password was never read').toBe(true);
-  g.key('KeyE');
-  expect(bot(g, 'droid').mounted, 'Droid never got back down').toBe(false);
-  g.debug.select('droid');
-  g.debug.place('droid', HUB.x, HUB.y + 20);
-  g.key('KeyE');
-  expect(expo().router.online, 'the router never came up').toBe(true);
-
-  // The cable, run the signposted way — the long way round is a blooper and this
-  // is meant to be the clean run.
-  const rack = { x: GF.rack.x + 10, y: GF.rack.y + 12 };
-  const printer = { x: GF.printer.x + 10, y: GF.printer.y + 6 };
-  expect(walkTo(g, 'voxxy', { x: rack.x, y: rack.y - 24 }), 'Voxxy never reached the rack').toBe(true);
-  g.key('KeyE');
-  expect(walkTo(g, 'voxxy', { x: printer.x, y: printer.y + 34 }), 'the cable never reached the printer').toBe(true);
-  g.key('KeyE');
-  expect(expo().printerOnline, 'the badge printer stayed offline').toBe(true);
-
-  // ...and Voxxy shoves Biggy through the roller door, which ends the chapter.
-  g.debug.select('voxxy');
-  g.debug.place('biggy', 400, 160);
-  g.debug.place('voxxy', 372, 160);
-  g.setStick(1, 0);
-  until(g, 'the roller door and the walk up to the lunch rush', () => g.snapshot().chapter === 3, 600);
-  g.setStick(0, 0);
+  finishChapter2(g);
+  // ...and the front doors, the last job: Voxxy walks the lobby and lets them in.
+  expect(openFrontDoors(g, 'voxxy'), 'the front doors never opened onto chapter 3').toBe(true);
 }
 
 /* ------------------------------------------------------------- chapter 4 --- */
