@@ -445,9 +445,17 @@ for (let i = 0; i < warm; i++) {
 const anchors: SpeakerAnchors = {};
 let lastFade = -1;
 
+/** Set when the gate's wait has been used to compile the opening's shaders. */
+let warmed = false;
 function frame(dt: number): void {
   if (titleUp) {
-    // The sim waits behind the gate; nothing is drawn under the black.
+    // The sim waits behind the gate; nothing is drawn under the black. The
+    // wait compiles the opening's materials instead, off the main thread where
+    // the browser can, so the first frame after the key is not a long stall.
+    if (!warmed) {
+      warmed = true;
+      void world.prewarm(game.snapshot());
+    }
     return;
   }
   // The sim steps at most DT_MAX at a time; a slower frame takes several

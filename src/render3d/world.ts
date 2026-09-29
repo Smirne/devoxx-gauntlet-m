@@ -37,6 +37,13 @@ export interface World3D {
   readonly cam: ThirdPersonCamera;
   /** `intro`: play the establishing dolly instead of following the robot. */
   render(snap: GameSnapshot, dt: number, intro?: boolean): void;
+  /**
+   * Behind the title gate: set up the first frame without drawing it, then
+   * compile every material in the background (`compileAsync`, which uses
+   * `KHR_parallel_shader_compile` where the browser has it), so the opening
+   * does not start on a stall of a hundred shaders. Resolves when compiled.
+   */
+  prewarm(snap: GameSnapshot): Promise<void>;
   /** Photo mode: depth of field focused on the driven robot. */
   photo: boolean;
   /** Debug: refresh cinema E's mirror (on by default). */
@@ -82,6 +89,11 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
+  // Shadow maps render once per frame, on its first scene render, when the
+  // pipeline asks. Left on auto until the first frame, the environment
+  // capture's six renders before it drew every shadow map six times.
+  renderer.shadowMap.autoUpdate = false;
+  renderer.shadowMap.needsUpdate = true;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0, 0, 0);
@@ -322,6 +334,15 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   // with every robot and lamp off, so glossy shells and glass pick up the neon
   // that is actually around them.
   const pmrem = new THREE.PMREMGenerator(renderer);
+  /*
+   * Until the first capture, a black capture of the same size stands in. The
+   * capture renders the scene, and with no environment at all it compiled every
+   * material without one, and the frame after it compiled them all again, with
+   * one: the first frame of the game paid for every shader twice.
+   */
+  let envRT: THREE.WebGLRenderTarget = pmrem.fromScene(new THREE.Scene(), 0, 0.1, 80, { size: 256 });
+  scene.environment = envRT.texture;
+  scene.environmentIntensity = 0.35;
   let envBaked = false;
   const PROBE = new THREE.Vector3(m(300), 1.8, m(350));
   const probeBox: ProbeBox = {
@@ -344,16 +365,22 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     pool.update(PROBE);
     spots.update(PROBE, null);
     const hidden: THREE.Object3D[] = [];
+    const lamps: number[] = [];
     for (const r of robots.values()) {
       if (r.rig.root.visible) hidden.push(r.rig.root);
       r.rig.root.visible = false;
-      r.lamp.visible = false;
+      // Dark, not hidden: a hidden lamp is a shadowed light fewer in three's
+      // count, and every material compiled once more for the capture alone.
+      lamps.push(r.lamp.intensity);
+      r.lamp.intensity = 0;
     }
-    const envRT = pmrem.fromScene(scene, 0.02, 0.1, 80, { size: 256, position: PROBE });
-    scene.environment = envRT.texture;
-    scene.environmentIntensity = 0.35;
+    const next = pmrem.fromScene(scene, 0.02, 0.1, 80, { size: 256, position: PROBE });
+    scene.environment = next.texture;
+    envRT.dispose();
+    envRT = next;
     for (const o of hidden) o.visible = true;
-    for (const r of robots.values()) r.lamp.visible = true;
+    let i = 0;
+    for (const r of robots.values()) r.lamp.intensity = lamps[i++];
     envBaked = true;
   }
 
@@ -565,14 +592,17 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
 
   /** The chapter the follow camera last framed; see the reset below. */
   let camChapter = -1;
-  function render(snap: GameSnapshot, dt: number, intro = false): void {
+  /** `draw` false: everything but the drawing — for `prewarm`, behind the title gate. */
+  function render(snap: GameSnapshot, dt: number, intro = false, draw = true): void {
     time += dt;
-    govern();
-    timer.begin();
+    if (draw) {
+      govern();
+      timer.begin();
+    }
     // Chapters 2 and 3 are downstairs; chapter 4 climbs back to Room 8.
     const ground3 = snap.chapter === 2 || snap.chapter === 3;
     if (ground3 !== onGround) switchFloor(ground3);
-    if (!envBaked) bakeEnv();
+    if (!envBaked && draw) bakeEnv();
     if (onGround && ground) {
       // Chapter 2 lights the hall when its circuit closes; chapter 3 is the
       // morning, doors open, and the hall is lit from the start.
@@ -784,6 +814,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     const pts = [...(onGround && ground ? ground.volumePoints : venue.volumePoints), ...props.volumePoints];
     pts.sort((a, b) => a.position.distanceToSquared(eye) - b.position.distanceToSquared(eye));
     pipeline.setVolumeLights(volSpots, pts);
+    if (!draw) return;
 
     pipeline.render(dt);
 
@@ -833,6 +864,12 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     struggling: false,
     cam,
     render,
+    prewarm(snap: GameSnapshot): Promise<void> {
+      // Three set-up frames: props are built from the first snapshots, and the
+      // box-projection patch and the light pools take them over the first three.
+      for (let i = 0; i < 3; i++) render(snap, 0, false, false);
+      return renderer.compileAsync(scene, cam.camera).then(() => undefined);
+    },
     resize,
     project,
     projectHint,
