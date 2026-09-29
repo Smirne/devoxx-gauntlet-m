@@ -26,6 +26,9 @@ import { cfpBoard, emitter, wayfinding } from './signs';
 
 const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z);
 
+/** The ladle's grip-to-bowl length, metres (`makeLadle`); `world.ts` stands it in a pot by it. */
+export const LADLE_REACH = 0.62;
+
 /** The state palette, linear RGB before intensity. */
 const STATE_RGB: Record<string, [number, number, number]> = {
   idle: [0.25, 0.28, 0.32],
@@ -634,6 +637,7 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
       case 'duck':
       case 'cable':
       case 'toast':
+      case 'ladle':
         return p.kind;
       case 'race-marker':
         return `race:${p.v ?? 0}`;
@@ -672,6 +676,36 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
   const beerMat = new THREE.MeshPhysicalMaterial({ color: 0xc88a1a, roughness: 0.15, emissive: new THREE.Color(0.35, 0.18, 0.02), emissiveIntensity: 0.6 });
   const crateMats = [0x2f5d2f, 0x7a1f1f, 0x1f3f7a, 0x6a4a1a, 0x444444, 0x5a2a6a].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7 }));
 
+  /**
+   * A soup ladle, recognisable at a glance: a long handle with a hook at the grip
+   * end, a crook where it drops into a deep round bowl. Caricatured a little —
+   * 0.7 m of handle and a 0.1 m bowl — because it has to read in a robot's hand
+   * from the follow camera. Built with its GRIP at the origin and the handle
+   * running along +z to the bowl, which opens towards +y.
+   */
+  const ladleMat = new THREE.MeshStandardMaterial({ color: 0xe4e8ee, metalness: 0.85, roughness: 0.22, emissive: new THREE.Color(0.1, 0.1, 0.11), side: THREE.DoubleSide });
+  function makeLadle(): THREE.Group {
+    const g = new THREE.Group();
+    const L = LADLE_REACH;
+    const path = new THREE.CatmullRomCurve3([V(0, 0.07, -0.12), V(0, 0.03, -0.07), V(0, 0, 0), V(0, 0, L * 0.85), V(0, -0.03, L), V(0, -0.09, L + 0.03)]);
+    g.add(new THREE.Mesh(new THREE.TubeGeometry(path, 28, 0.013, 6), ladleMat));
+    const r = 0.1;
+    const bowl = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 9, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), ladleMat);
+    bowl.position.set(0, -0.09, L + 0.03 + r);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(r, 0.009, 6, 22), ladleMat);
+    rim.rotation.x = Math.PI / 2;
+    rim.position.copy(bowl.position);
+    // A black grip sleeve, the part a hand closes on.
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.2, 10), mats.darkMetal);
+    grip.rotation.x = Math.PI / 2;
+    grip.position.z = 0.08;
+    g.add(bowl, rim, grip);
+    g.traverse((o) => {
+      o.castShadow = true;
+    });
+    return g;
+  }
+
   function buildCh3(p: Prop, pw: number, ph: number): THREE.Object3D | null {
     const g = new THREE.Group();
     const w = m(pw);
@@ -691,20 +725,54 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         return g;
       }
       case 'ladle': {
-        // The high shelf, and the ladle on it until Droid takes it down.
-        g.position.set(m(p.x + pw / 2), 0, m(p.y + ph / 2));
-        const shelf = new THREE.Mesh(box(w, 0.05, d * 0.8, V(0, 2.35, 0)), mats.steel);
-        const ladle = new THREE.Group();
-        const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.09, 14, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), mats.steel);
-        bowl.position.set(0, 2.47, 0);
-        const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.5, 8), mats.steel);
-        handle.rotation.z = 1.1;
-        handle.position.set(0.22, 2.55, 0);
-        ladle.add(bowl, handle);
+        /*
+         * The high shelf, and the ladle — two things, and only one of them moves.
+         *
+         * The group is built ONCE (`key` gives it a stable name) at the world
+         * origin: the rack is placed from `GF.food.shelf` and never moves again,
+         * and `tool` — the ladle alone — is posed every frame by `world.ts`, from
+         * the prop's state: on the hook, in Droid's hand, standing in a pot. It was
+         * one group placed at the prop's rect, and the rect follows whoever has the
+         * ladle — so Droid walked off carrying the whole shelf on his head, and
+         * Biggy after him (Michele, 29 Sep: "droid should take the ladle, not the
+         * shelf", and "why is biggy taking the shelf with him?").
+         */
+        const sh = GF.food.shelf;
+        const cx = m(sh.x + sh.w / 2);
+        const back = m(sh.y);
+        const sw = m(sh.w);
+        // The rect's front edge, where the rail and the ladle are: the side the hall is on.
+        const front = m(sh.y + sh.h);
+        const rack = new THREE.Group();
+        for (const sx of [-1, 1]) {
+          // Two uprights on the wall, a bracket under each end of the slab.
+          rack.add(new THREE.Mesh(box(0.05, 2.7, 0.05, V(cx + sx * (sw / 2 - 0.1), 1.35, back + 0.03)), mats.darkMetal));
+          const brace = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.62, 0.03), mats.darkMetal);
+          brace.position.set(cx + sx * (sw / 2 - 0.1), 2.08, back + 0.3);
+          brace.rotation.x = -0.72;
+          rack.add(brace);
+        }
+        rack.add(new THREE.Mesh(box(sw, 0.05, front - back, V(cx, 2.35, (back + front) / 2)), mats.steel));
+        // The hanging rail along its front lip, and a row of stacked soup bowls on top.
+        const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, sw - 0.1, 8), mats.steel);
+        rail.rotation.z = Math.PI / 2;
+        rail.position.set(cx, 2.3, front - 0.03);
+        rack.add(rail);
+        const bowls = new THREE.Mesh(
+          new THREE.LatheGeometry([[0.001, 0], [0.07, 0], [0.1, 0.05], [0.11, 0.2]].map(([r0, y]) => new THREE.Vector2(r0, y)), 16),
+          new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: 0.4 }),
+        );
+        for (const k of [-1, 0, 1]) {
+          const b = bowls.clone();
+          b.position.set(cx + k * 0.42, 2.375, (back + front) / 2);
+          rack.add(b);
+        }
+        const tool = makeLadle();
+        tool.position.set(cx, 2.3, front - 0.03);
         const glow = new THREE.PointLight(0xffb05a, 6, 2.5, 2);
-        glow.position.set(0, 2.7, 0.4);
-        g.add(shelf, ladle, glow);
-        g.userData = { ladle, glow };
+        glow.position.set(cx, 2.6, front + 0.4);
+        g.add(rack, tool, glow);
+        g.userData = { tool, glow, hook: V(cx - 0.35, 2.3, front - 0.03) };
         return g;
       }
       case 'crab': {
@@ -1164,8 +1232,8 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         break;
       }
       case 'ladle':
-        (u.ladle as THREE.Object3D).visible = p.state !== 'done';
-        (u.glow as THREE.PointLight).intensity = p.state === 'done' ? 0 : 5 + 3 * Math.sin(t * 3);
+        // Lit while it is still waiting on the hook; where it IS is world.ts's job.
+        (u.glow as THREE.PointLight).intensity = p.state === 'idle' ? 5 + 3 * Math.sin(t * 3) : 0;
         break;
       case 'bar-counter':
       case 'duck-target':

@@ -2594,6 +2594,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
        * the shelf slab, at Droid's hand, standing in the pot), and a player who
        * cannot find it can follow it. The rect while it is carried is a small box
        * on Droid's own centre, exactly as the soup pot rides on Biggy's.
+       *
+       * Once the soup is handed over there is no pot on Biggy any more, so the
+       * ladle is back in the counter's vat rather than riding on a robot with
+       * nothing to stand in (the 3D build stands it in whichever pot this says).
        */
       {
         kind: 'ladle',
@@ -2601,7 +2605,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           ? GF.food.shelf
           : ladle === 'carried'
             ? { x: droidNow().x - 8, y: droidNow().y - 8, w: 16, h: 16 }
-            : carrying
+            : carrying && !delivered
               ? { x: bg.x - 8, y: bg.y - 8, w: 16, h: 16 }
               : { x: station.x - 8, y: station.y - 8, w: 16, h: 16 }),
         state: ladle === 'in' ? 'done' : ladle === 'carried' ? 'active' : 'idle',

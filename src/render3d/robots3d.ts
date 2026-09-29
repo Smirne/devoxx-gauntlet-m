@@ -25,6 +25,7 @@ import { riseAt } from '../sim/surface';
 import { BIGGY_ROLL_DUR, DEFS, DROID_STRETCH_DUR, JUMP_AIR, JUMP_RISE_M } from '../sim/constants';
 import { LEAD, SLOT, STAND_FACE, STEP_DELAY, STEP_TIME } from '../sim/opening';
 import type { Bot, GameSnapshot, RobotKind } from '../sim/types';
+import { GF } from '../sim/geometry';
 import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
 import { createRobot, updateRobot, type RobotRig } from '../render/robots';
 import { WORLD_NOISE_GLSL } from './materials';
@@ -260,6 +261,7 @@ function aimReach(rig: RobotRig, target: THREE.Vector3, left: number): void {
   rig.bones.shoulderR.rotation.x += (2.25 - angle) * e;
 }
 let lastPanel: string | undefined;
+let lastLadle: string | undefined;
 let lastPad: string | undefined;
 
 /**
@@ -397,6 +399,16 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
     reachAt.set('droid', new THREE.Vector3(m(br.x + (br.w ?? 26) / 2) + (up - 2) * 0.42, 2.33, m(br.y) - 0.28));
   }
   lastBreakers = up;
+  // Chapter 3's ladle: up to the shelf's rail for it, down to the pot with it.
+  const lad = snap.props.find((q) => q.kind === 'ladle');
+  if (lad && lastLadle !== undefined && lad.state !== lastLadle && (lad.state === 'active' || lad.state === 'done') && lastLadle !== 'done') {
+    const sh = GF.food.shelf;
+    const st = snap.props.find((q) => q.kind === 'soup-station');
+    gesture.set('droid', REACH);
+    if (lad.state === 'active') reachAt.set('droid', new THREE.Vector3(m(sh.x + sh.w / 2) - 0.35, 2.3, m(sh.y + sh.h)));
+    else if (st) reachAt.set('droid', new THREE.Vector3(m(st.x + (st.w ?? 22) / 2), 1.6, m(st.y + (st.h ?? 22) / 2)));
+  }
+  lastLadle = lad?.state;
   const pad = snap.props.find((q) => q.kind === 'keypad')?.label;
   const active = snap.bots[snap.active]?.kind;
   if (lastPad !== undefined && pad !== lastPad && active) gesture.set(active, 0.7);

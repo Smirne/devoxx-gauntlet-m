@@ -182,3 +182,21 @@ describe('a spill stays on the floor', () => {
     expect(st(g).batches).toBeGreaterThan(1);
   });
 });
+
+describe('the ladle goes where the pot goes', () => {
+  it('puts the ladle back in the counter pot once the soup has been handed over', () => {
+    const g = mk();
+    withThePot(g);
+    const stephan = g.snapshot().people?.find((p) => p.role === 'stephan');
+    expect(stephan).toBeTruthy();
+    g.debug.place('biggy', (stephan?.x ?? 0) - 20, stephan?.y ?? 0);
+    g.key('KeyE');
+    expect(st(g).delivered).toBe(true);
+    const l = props(g, 'ladle')[0];
+    expect(l.state).toBe('done');
+    expect(props(g, 'pot')).toHaveLength(0);
+    const sx = GF.food.soup.x + 45;
+    const sy = GF.food.soup.y + 15;
+    expect(Math.hypot(l.x + (l.w ?? 0) / 2 - sx, l.y + (l.h ?? 0) / 2 - sy)).toBeLessThan(2);
+  });
+});

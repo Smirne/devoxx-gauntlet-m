@@ -19,6 +19,7 @@ import { Pipeline, QUALITY, type QualityName, type VolumeSpot } from './pipeline
 import { buildGround, type Ground3D } from './ground3d';
 import { buildKeynote, type Keynote3D } from './keynote3d';
 import { createPeople } from './people3d';
+import { LADLE_REACH } from './props-ground';
 import { createProps, type Props3D } from './props3d';
 import { createRobots, dimLamps, handsOf, updateGlare, updateRobots, type Robot3D } from './robots3d';
 import { CORRIDOR_END, HEIGHTS, SIGN_SPANS, buildVenue, type Venue3D } from './venue';
@@ -463,6 +464,80 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     }
   }
 
+  /**
+   * THE LADLE, wherever the sim says it is (Michele, 29 Sep: "droid should take
+   * the ladle, not the shelf" and "keep it in hand and drop it on the pot").
+   *
+   * `idle` hangs it on the shelf's rail; `active` puts its grip in Droid's right
+   * hand — the bone, so it swings with his walk — held up like a torch; `done`
+   * stands it in a pot with the handle out over the rim: Biggy's, while he carries
+   * one, the counter's vat otherwise. The hand-overs are timed to his reach (the
+   * sim changes state on the key; his arm gets to the shelf or the pot ~0.4 s
+   * later), so the ladle does not jump before his hand is there.
+   */
+  let ladleState = '';
+  let ladleSince = 0;
+  const _grip = new THREE.Vector3();
+  const _fore = new THREE.Vector3();
+  const _dir = new THREE.Vector3();
+  const _bowl = new THREE.Vector3();
+  const Z = new THREE.Vector3(0, 0, 1);
+  function standIn(tool: THREE.Object3D, bowlAt: THREE.Vector3, lean: THREE.Vector3): void {
+    // Grip up and out over the rim, bowl down in the soup.
+    _dir.copy(lean).normalize();
+    tool.quaternion.setFromUnitVectors(Z, _dir);
+    tool.position.copy(bowlAt).addScaledVector(_dir, -(LADLE_REACH + 0.1));
+  }
+  function holdLadle(snap: GameSnapshot): void {
+    const lp = snap.props.find((q) => q.kind === 'ladle');
+    const lo = props.object('ladle');
+    if (!lp || !lo || !lo.visible) return;
+    const tool = lo.userData.tool as THREE.Object3D;
+    const state = lp.state ?? 'idle';
+    if (state !== ladleState) {
+      ladleSince = time;
+      ladleState = state;
+    }
+    const late = time - ladleSince;
+    const dr = robots.get('droid');
+    const inHand = (state === 'active' && late > 0.4) || (state === 'done' && late < 0.4);
+    if (state === 'idle' || (state === 'active' && !inHand)) {
+      // On the hook, hanging handle-up with the bowl open to the hall.
+      tool.position.copy(lo.userData.hook as THREE.Vector3);
+      tool.rotation.set(Math.PI / 2, 0, 0);
+      return;
+    }
+    if (inHand && dr) {
+      const b = dr.rig.bones;
+      b.handR.getWorldPosition(_grip);
+      b.forearmR.getWorldPosition(_fore);
+      // Out past the wrist to where the fingers close.
+      _grip.addScaledVector(_dir.subVectors(_grip, _fore).normalize(), 0.07);
+      const bot = snap.bots.find((q) => q.kind === 'droid');
+      const face = bot ? bot.face : 0;
+      // Held out in front and a little to his right, bowl up, like a torch he
+      // is very proud of: it leads him to the pot, and it clears his own body
+      // from a camera behind him.
+      const fx = Math.cos(face);
+      const fz = Math.sin(face);
+      _dir.set(fx * 0.72 - fz * 0.32, 0.6, fz * 0.72 + fx * 0.32).normalize();
+      tool.quaternion.setFromUnitVectors(Z, _dir);
+      tool.position.copy(_grip);
+      return;
+    }
+    const pot = props.object('pot');
+    if (pot && pot.visible) {
+      _bowl.set(pot.position.x + 0.06, pot.position.y + 0.2, pot.position.z - 0.04);
+      standIn(tool, _bowl, _fore.set(0.35, -0.85, -0.3));
+      return;
+    }
+    const st = snap.props.find((q) => q.kind === 'soup-station');
+    if (!st) return;
+    // The counter's vat: `props-ground` stands it on a 1 m counter, 0.5 m tall.
+    _bowl.set(m(st.x + (st.w ?? 22) / 2) + 0.08, 1.33, m(st.y + (st.h ?? 22) / 2) - 0.06);
+    standIn(tool, _bowl, _fore.set(0.4, -0.8, -0.35));
+  }
+
   /** The chapter the follow camera last framed; see the reset below. */
   let camChapter = -1;
   function render(snap: GameSnapshot, dt: number, intro = false): void {
@@ -509,6 +584,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     if (keynoteOn && keynote) keynote.update(snap, time, dt, (kind) => handsOf(robots, kind));
     else props.update(snap, time, dt);
     seatOnBiggy(snap);
+    holdLadle(snap);
     peopleRoot.visible = onGround || snap.chapter === 4;
     if (peopleRoot.visible) people.update(snap, time);
     // Props are built lazily from the first snapshots; patch whatever exists.
