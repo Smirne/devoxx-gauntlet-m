@@ -25,6 +25,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 
 import { buildPerson, type PersonModel } from '../render/people';
 import { CLAUDE_CLAY, CLAUDE_CREAM } from '../sim/cameos';
+import { HeadProbe } from './headprobe';
 import { WELLD_MARK_ASPECT, paintWellD } from './welld';
 import { riseAt } from '../sim/surface';
 import type { GameSnapshot } from '../sim/types';
@@ -305,14 +306,11 @@ function sculptHead(spec: HeadSpec): THREE.Mesh {
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62 }));
   mesh.castShadow = true;
-  // The face's depth at (x, y), for putting things on it.
-  const ray = new THREE.Raycaster();
-  const probe = new THREE.Mesh(geo);
-  const surf = (x: number, y: number): number => {
-    ray.set(new THREE.Vector3(x, y, 3), new THREE.Vector3(0, 0, -1));
-    const hit = ray.intersectObject(probe, false)[0];
-    return hit ? hit.point.z : Math.sqrt(Math.max(0, 1 - x * x - y * y));
-  };
+  // The face's depth at (x, y), for putting things on it: the first surface a
+  // ray from in front meets, found through `HeadProbe`'s buckets rather than by
+  // testing every triangle of the head (3.2 s of chapter 3's first frame).
+  const probe = new HeadProbe(geo);
+  const surf = (x: number, y: number): number => probe.depth(x, y) ?? Math.sqrt(Math.max(0, 1 - x * x - y * y));
   mesh.userData.surf = surf;
   mesh.userData.probe = probe;
   mesh.userData.skin = spec.skin;
@@ -770,8 +768,8 @@ function smile(head: THREE.Mesh, w: number, teeth: boolean, open = 0.1, up = 0.0
  * rather than the punk tufts of the very first attempt.
  */
 function spikes(head: THREE.Mesh, o: { count: number; len: number; width: number; dark: string; light: string; minY: number }): void {
-  const probe = head.userData.probe as THREE.Mesh;
-  const ray = new THREE.Raycaster();
+  const probe = head.userData.probe as HeadProbe;
+  const at = new THREE.Vector3();
   const cone = new THREE.ConeGeometry(o.width, 1, 5);
   cone.translate(0, 0.5, 0);
   const mat = new THREE.MeshStandardMaterial({ roughness: 0.6 });
@@ -794,14 +792,13 @@ function spikes(head: THREE.Mesh, o: { count: number; len: number; width: number
     if (dir.z > 0.35 && dir.y < 0.5) continue;
     // Over the ears and the nape the crop is too short to stand up.
     if (dir.y < 0.3 && dir.z > -0.3) continue;
-    ray.set(dir.clone().multiplyScalar(3), dir.clone().negate());
-    const hit = ray.intersectObject(probe, false)[0];
+    const hit = probe.radial(dir, at);
     if (!hit) continue;
     const h = hash(k, 3, 9);
     const lean = dir.clone().multiplyScalar(0.8).add(up.clone().multiplyScalar(0.55)).add(new THREE.Vector3(0, 0, 0.25 * Math.max(0, dir.z))).normalize();
     q.setFromUnitVectors(up, lean);
     const len = o.len * (0.7 + 0.6 * h);
-    mm.compose(hit.point.clone().addScaledVector(dir, -0.03), q, new THREE.Vector3(1, len, 1));
+    mm.compose(hit.clone().addScaledVector(dir, -0.03), q, new THREE.Vector3(1, len, 1));
     im.setMatrixAt(n, mm);
     c.copy(dark).lerp(light, hash(k, 7, 1));
     im.setColorAt(n, c);
