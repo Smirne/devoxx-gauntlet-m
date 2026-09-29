@@ -578,9 +578,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     kind: 'roller',
     why: (b) =>
       b.kind === 'biggy'
-        ? `Biggy: roller door. I'd need ${m(ROLLER_DOOR_SPEED).toFixed(1)} m/s and I top out at ${m(b.max).toFixed(1)}. Unless someone grabs hold and runs me down that lane`
+        ? `Biggy: roller door. I'd need ${m(ROLLER_DOOR_SPEED).toFixed(1)} m/s and I top out at ${m(b.max).toFixed(1)}. Unless someone grabs hold of me (E, right beside me) and runs me down that lane`
         : b.kind === 'voxxy'
-          ? "Voxxy: roller door — every badge and polo is behind it. I bounce off. Biggy at full tilt isn't enough either, so I'll take hold of him (Space) and run him down the whole top lane"
+          ? "Voxxy: roller door — every badge and polo is behind it. I bounce off. Biggy at full tilt isn't enough either, so I'll take hold of him (E, right beside him) and run him down the whole top lane"
           : 'Droid: a slatted roller door. Mass, not leverage. Biggy needs a longer run than he can give himself — and a straighter one than I can give him. Voxxy has the legs for it',
     // Horizontal door: the speed that counts is the one along the lane.
     onHit: (b) => {
@@ -603,7 +603,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         rollerTalk = ctx.t;
         ctx.flash(
           `Biggy: ${m(b.vx).toFixed(1)} m/s — needs ${m(ROLLER_DOOR_SPEED).toFixed(1)}. ` +
-            (b.vx > b.max - 5 * SPEED_SCALE ? "That's my top speed. Somebody take hold of me" : 'Longer run-up, straighter line'),
+            (b.vx > b.max - 5 * SPEED_SCALE ? "That's my top speed. Somebody take hold of me — E, right beside me" : 'Longer run-up, straighter line'),
         );
       }
       return false;
@@ -2237,9 +2237,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         id: 'store',
         text: 'get the pickup store open',
         done: rollerBroken,
-        who: ['biggy'],
+        /*
+         * BOTH OF THEM, AND THE KEY. Only Voxxy's tow gets Biggy past
+         * `ROLLER_DOOR_SPEED` — his own top speed is short of it and Droid's is
+         * shorter — so naming Biggy alone sent a stuck player to the one robot
+         * who cannot do it on his own. And the line says which key takes hold,
+         * which it never did: Michele, 29 Sep 2026, *"Pressing E to roll Biggy
+         * should be suggested in the roll."*
+         */
+        who: ['voxxy', 'biggy'],
         at: storeStand,
-        hint: 'Voxxy: he cannot get up to what that shutter wants on his own. I take hold of him at the far end of the top lane and we run the whole length of it',
+        hint: 'Voxxy: he cannot get up to what that shutter wants on his own. I take hold of him — E, right beside him — at the far end of the top lane, and we run the whole length of it',
       },
       ...(doorsDue
         ? [
