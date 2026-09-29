@@ -6601,6 +6601,13 @@ floor, 10–12 s on the software renderer here, likely a fraction of a second on
 measured on one. Chapter 4's crowd still compiles its costumes and portraits (4 programs) when it first
 appears.
 
+**The published page, too.** The artifact is one self-contained file, and the script that folds the
+bundle into it (`tools/inline-build.mjs`) put the bundle where Vite puts its script tag: in the head,
+1.5 MB ahead of the page's own markup. The loading screen is markup, so the published page stayed blank
+until the whole file had arrived and been parsed — 2.6 s from a local server, the length of the
+download over a real one. The bundle goes at the end of the body now (a module script runs after
+parsing wherever it stands), and the loader is up 0.13 s after the page opens, from the same server.
+
 **A side effect, fixed.** Room 8 is built at load now, so a `sheen` that three ignores on a standard
 material (the lab tables' velvet) warned on every page load instead of in chapter 4. Removed; it
 never applied.
@@ -6611,9 +6618,10 @@ never applied.
 the real page: *Skip chapter* from the opening to chapter 4, a robot driven and another taken, the
 final card surviving every key but `R`, `C` opening the credits over it, `R` starting the run again;
 `R` pressed twice in each chapter with frames still coming; a lost context recovered at the level
-below; and no GL error in 30 s of chapters 2, 3 or 4. Ten commits before this one, one step each. The
-credits were recounted as before (`git log`, a walk of `src` and `tests`, `wc -w` over `docs/*.md`),
-this commit included.
+below; no GL error in 30 s of chapters 2, 3 or 4; and the published single-file pages, 3D and 2.5D,
+loaded from a plain static server with no errors. Eleven commits, one step each, and two for these
+notes. The credits were recounted as before (`git log`, a walk of `src` and `tests`, `wc -w` over
+`docs/*.md`), the last commit included.
 
 **For Michele to decide.** The final card no longer goes away on a key, which also means nobody can
 clear it to watch the curtain call behind it; if that matters more, the other way out of the dead end
