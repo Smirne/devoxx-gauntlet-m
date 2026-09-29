@@ -107,6 +107,8 @@ export interface RobotState {
    * Omitting it, or passing 0, is a robot not showing off.
    */
   flair?: number;
+  /** A driven weight shift, pelvis up `rise` m and pitched `pitch` rad; see `GaitParams.body`. */
+  body?: { rise: number; pitch: number };
 }
 
 const BUILDERS: Record<RobotKind, () => RobotRig> = {
@@ -179,5 +181,6 @@ export function updateRobot(rig: RobotRig, state: RobotState): void {
     flair: state.flair ?? 0,
     shoved: state.shoved ?? 0,
     carrying: state.carrying ?? false,
+    body: state.body,
   });
 }

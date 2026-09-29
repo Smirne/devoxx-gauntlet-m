@@ -5855,3 +5855,36 @@ while the room applauded; `tests/curtain-call.test.ts` caught it and they clap n
     three links in, printer 'done' on the same frame). The delay is drawn, not simulated.
   - At the first try the plug was hidden inside her fat forearm cuff. It is now held out past her
     fingers, a size up.
+
+## 29 Sep 2026 — Droid's reach-and-pull on the lever and the breakers
+
+- **Human decision (Michele).** "Droid's animation while using levers / breaker still need
+  improvement. He should reach the lever and pull it, with more natural movements."
+- **What was wrong.** The arm was the gait's canned `reach` pose (right arm up at a fixed angle),
+  pitched roughly toward a hard-coded point. The lever and the breaker handles moved on clocks
+  of their own. So the hand waved in the handle's direction, and the handle flipped by itself a
+  beat later. On chapter 1 the hand was about 1.5 m short of the lever.
+- **Agent work.**
+  - New `src/render3d/reach3d.ts`: one presentation clock, started on the sim's own edges (the
+    panel going `done`, the breaker count going up). The robot and the prop both read it.
+  - The hand closes on the handle at 0.5 s. The pull runs 0.5–0.75 s and ends exactly at
+    `LEVER_REACH_TIME`, the sim's own number (now exported), so cinema B's door still starts
+    when the lever is home. Then he lets go, and the arm is back down by 1.35 s.
+  - Two-bone IK puts Droid's palm on the handle's real grip object in world space, every frame.
+    The handle is posed first, so the hand travels with it. The palm follows an arc from where
+    the gait holds it. The body turns to face the handle, the torso leans in by as much as the
+    handle is out of reach, the head looks at it, and the fingers close.
+  - The body helps with the pull: down into the chapter-1 lever, up on the toes into a breaker.
+    This goes through a new optional `body` gait input, applied before the leg IK so the feet
+    stay planted.
+  - The chapter-1 lever is now a long release arm with a red T-grip. The panel hangs 3.35 m up,
+    and from Biggy's shoulders Droid could not touch a 35 cm block on its face.
+  - A standing Droid who presses E at the breakers from further off (the sim allows 52 px, about
+    4 m) walks up to the handle first and backs off afterwards. This is drawn only: the sim has
+    not moved him. The breaker flash now fires when the handle lands in his hand, not on the key
+    press.
+  - Driving away mid-reach cancels it.
+  - `tests/reach3d.test.ts` covers the pull ending on `LEVER_REACH_TIME`, the hand staying on the
+    handle through the pull, no snapping, and the IK landing the palm within 5 mm.
+- **Not changed.** Sim timing and all physics constants are unchanged. The keypad's short
+  reach still uses the old pose.

@@ -144,6 +144,13 @@ export interface GaitParams {
    * rolling with a pot on top of it.
    */
   carrying?: boolean;
+  /**
+   * A weight shift someone else is driving: the pelvis raised by `rise` metres
+   * (at the rig's own scale) and pitched forward by `pitch` radians, BEFORE the
+   * legs, so the IK takes it up and the feet stay planted. The 3D renderer's
+   * lever reach uses it (`src/render3d/reach3d.ts`); omitted, nothing moves.
+   */
+  body?: { rise: number; pitch: number };
 }
 
 /**
@@ -708,6 +715,10 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
 
   if (idleAmt > 0.01) applyIdlePelvis(rig, st, idleAmt);
   if (poseName) applyPosePelvis(rig, poseName, e, scale);
+  if (params.body && !params.mounted) {
+    pelvis.position.y += params.body.rise * scale;
+    pelvis.rotation.x += params.body.pitch;
+  }
   // Droid's stretch lifts the pelvis BEFORE the legs, so the IK straightens them
   // under him and his feet stay where they were planted — the same arrangement the
   // 'reach' pose uses. Biggy's roll is the opposite case and waits until after.

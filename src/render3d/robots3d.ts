@@ -30,6 +30,7 @@ import { createRobot, updateRobot, type RobotRig } from '../render/robots';
 import { WORLD_NOISE_GLSL } from './materials';
 import { mergeUnderAnchors } from './merge';
 import { CLICK_U, counterLip, plugHand, printerPort } from './plug';
+import { activeReach, armReach, palmWorld, reachBody, reachPath, stepAt, stepFor, cancelReach, gripOf, pullAt, reachWeights, solveArmR, startReach, tickReach, type Grip } from './reach3d';
 
 export interface Robot3D {
   kind: RobotKind;
@@ -231,35 +232,80 @@ const climbFrom = new THREE.Vector3();
 let wasMounted = false;
 const CLIMB_TIME = 0.55;
 
-/** A gesture per robot, seconds left: the rig's own `reach` pose. */
+/** A gesture per robot, seconds left: the rig's own `reach` pose (the keypad's). */
 const gesture = new Map<RobotKind, number>();
-/** What a reach is aimed at, world metres — the lever or the breaker handle. */
-const reachAt = new Map<RobotKind, THREE.Vector3>();
-/** Length of the 'reach' pose, s (`POSE_DURATION.reach` in gait.ts). */
-const REACH = 1.15;
 let lastBreakers: number | undefined;
-const _sh = new THREE.Vector3();
+const _grip = new THREE.Vector3();
+const _look = new THREE.Vector3();
+const _rest = new THREE.Vector3();
 
 /**
- * Point a reach at its target (Michele, 28 Sep: "the arm should reach the
- * lever"). The pose raises Droid's right arm up and forward at a fixed angle, so
- * the rest is aiming: the body turns to face the target and the shoulder pitches
- * to its height, eased in and out with the pose.
+ * Droid's hand on a lever or a breaker handle — see `reach3d.ts` for the whole
+ * timeline and why the arm and the handle share one clock (Michele, 29 Sep: "He
+ * should reach the lever and pull it, with more natural movements").
+ *
+ * Called after the gait has posed him for the frame, so everything here is on
+ * top of his idle: the body turns to face the handle, the torso leans in as far
+ * as the handle is out of plain reach and then into the pull, the head looks at
+ * it, and the right arm is solved onto the handle's grip in world space. The
+ * handle is posed FIRST, from the same clock, so the hand closes on where the
+ * handle is this frame, not where it was the last.
  */
-function aimReach(rig: RobotRig, target: THREE.Vector3, left: number): void {
-  const p = 1 - left / REACH;
-  const e = THREE.MathUtils.smoothstep(p, 0, 0.3) * (1 - THREE.MathUtils.smoothstep(p, 0.78, 1));
+function driveReach(rig: RobotRig, grip: Grip, s: number, mounted: boolean): void {
+  const w = reachWeights(s);
+  grip.set(pullAt(s));
   const root = rig.root;
-  const want = Math.atan2(target.x - root.position.x, target.z - root.position.z);
+  const b = rig.bones;
+  grip.point.updateWorldMatrix(true, false);
+  grip.point.getWorldPosition(_grip);
+  // Face it: the whole body, eased in and back out with the reach.
+  const want = Math.atan2(_grip.x - root.position.x, _grip.z - root.position.z);
   let d = want - root.rotation.y;
   d = Math.atan2(Math.sin(d), Math.cos(d));
-  root.rotation.y += d * e;
+  // Square to it with the right shoulder a little ahead: a reach is one-handed.
+  root.rotation.y += (d - 0.12) * w.face;
   root.updateMatrixWorld(true);
-  rig.bones.shoulderR.getWorldPosition(_sh);
-  const elev = Math.atan2(target.y - _sh.y, Math.hypot(target.x - _sh.x, target.z - _sh.z));
-  const angle = THREE.MathUtils.clamp(Math.PI / 2 + elev, 0.9, 2.9);
-  rig.bones.shoulderR.rotation.x += (2.25 - angle) * e;
+  // Lean in by as much as the handle is past a comfortable reach (about a fifth
+  // of a radian per 10 cm short, capped), then into the pull itself: down and
+  // forward when the handle comes down, up and back when it goes up.
+  b.upperArmR.getWorldPosition(_look);
+  const short = _look.distanceTo(_grip) - armReach(rig) * 0.92;
+  const lean = THREE.MathUtils.clamp(short * 1.6, 0, 0.42);
+  const down = grip.throw === 'down';
+  b.torso.rotation.x += lean * w.body + (down ? 0.16 : -0.1) * w.effort;
+  b.torso.rotation.y += 0.22 * w.body;
+  b.torso.rotation.z -= 0.05 * w.body;
+  if (mounted) b.torso.position.y += (0.07 * w.body - (down ? 0.05 : 0) * w.effort) * (rig.height / 1.45);
+  // The free arm goes out for balance (on Biggy it keeps its hold on the crown).
+  if (!mounted) {
+    b.shoulderL.rotation.z += 0.28 * w.body;
+    b.shoulderL.rotation.x += 0.22 * w.body;
+    b.forearmL.rotation.x -= 0.3 * w.body;
+  }
+  // Eyes on the handle: the head turns and tips up toward it.
+  root.updateMatrixWorld(true);
+  b.head.getWorldPosition(_look);
+  const dx = _grip.x - _look.x;
+  const dz = _grip.z - _look.z;
+  const lookUp = Math.atan2(_grip.y - _look.y, Math.hypot(dx, dz));
+  let yaw = Math.atan2(dx, dz) - root.rotation.y - b.torso.rotation.y;
+  yaw = Math.atan2(Math.sin(yaw), Math.cos(yaw));
+  b.head.rotation.y += THREE.MathUtils.clamp(yaw, -0.6, 0.6) * 0.8 * w.face;
+  b.head.rotation.x -= THREE.MathUtils.clamp(lookUp, -0.5, 0.7) * 0.7 * w.body;
+  // The arm: the palm travels its arc from where the gait holds it onto the
+  // handle, and the IK carries the shoulder and elbow with it.
+  palmWorld(rig, _rest);
+  reachPath(rig, _rest, _grip, w.travel, _look);
+  solveArmR(rig, _look, w.arm, w.arm, w.fold);
+  // The wrist carries on the forearm's line and cocks back a little as it takes
+  // the weight; the fingers close round the grip.
+  b.handR.rotation.x += 0.25 * w.grip * (down ? 1 : -1) * (1 - 0.5 * w.pull);
+  for (let i = 0; i < 4; i++) {
+    const f = b[`fingerR${i}`];
+    if (f) f.rotation.x -= 1.25 * w.grip;
+  }
 }
+
 let lastPanel: string | undefined;
 let lastPad: string | undefined;
 
@@ -383,21 +429,29 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
   // The sim's state changes that a hand makes: Droid throwing the projector
   // panel, a digit going into the keypad. Read off the props, drawn as a reach.
   const panel = snap.props.find((q) => q.kind === 'projector-panel')?.state;
-  if (lastPanel !== undefined && panel !== lastPanel && panel === 'done') {
-    gesture.set('droid', REACH);
-    const pp = snap.props.find((q) => q.kind === 'projector-panel');
-    // The lever: left of the panel's centre, 3.35 m up (props3d.ts).
-    if (pp) reachAt.set('droid', new THREE.Vector3(m(pp.x + (pp.w ?? 30) / 2) - 0.2, 3.35, m(pp.y)));
-  }
+  // One clock for the hand and the handle (reach3d.ts), advanced here, before
+  // either reads it; the props read the same clock after the robots.
+  tickReach(dt);
+  if (lastPanel !== undefined && panel !== lastPanel && panel === 'done') startReach('lever');
+  if (panel !== undefined && panel !== 'done' && activeReach()?.id === 'lever') cancelReach();
   lastPanel = panel;
-  // Chapter 2's breakers, one handle at a time.
+  // Chapter 2's breakers, one handle at a time: the newest one up is his.
   const br = snap.props.find((q) => q.kind === 'breaker');
   const up = br?.v;
   if (br && lastBreakers !== undefined && up !== undefined && up > lastBreakers) {
-    gesture.set('droid', REACH);
-    reachAt.set('droid', new THREE.Vector3(m(br.x + (br.w ?? 26) / 2) + (up - 2) * 0.42, 2.33, m(br.y) - 0.28));
+    // Standing, from wherever E was pressed: he walks up to the handle first.
+    const d = snap.bots.find((o) => o.kind === 'droid');
+    const g = gripOf(`breaker${up - 1}`);
+    if (d && g && !d.mounted) {
+      g.point.getWorldPosition(_grip);
+      const w = stepFor({ x: m(d.x), z: m(d.y) }, _grip);
+      startReach(`breaker${up - 1}`, w.lead, w.step);
+    } else startReach(`breaker${up - 1}`);
   }
   lastBreakers = up;
+  // Driven off mid-reach: the hand lets go of the idea.
+  const dr = snap.bots.find((o) => o.kind === 'droid');
+  if (dr && activeReach() && Math.hypot(dr.vx, dr.vy) / PX_PER_M > 0.3) cancelReach();
   const pad = snap.props.find((q) => q.kind === 'keypad')?.label;
   const active = snap.bots[snap.active]?.kind;
   if (lastPad !== undefined && pad !== lastPad && active) gesture.set(active, 0.7);
@@ -452,17 +506,31 @@ export function updateRobots(robots: Map<RobotKind, Robot3D>, snap: GameSnapshot
         lift = top.y;
       }
     }
+    // The walk up to a handle and back (reach3d.ts `stepFor`): drawn only, the
+    // sim has not moved him, and the legs step it at the speed it is drawn at.
+    // Voxxy turns to the printer for the plug-in beat (plug.ts).
+    let face = snap.opening ? STAND_FACE : b.kind === 'voxxy' ? plugFace(snap, b.face, x, z) : b.face;
+    let speed = Math.hypot(b.vx, b.vy) / PX_PER_M;
+    let backward = b.vx * Math.cos(face) + b.vy * Math.sin(face) < -8;
+    const walk = b.kind === 'droid' && !mounted ? activeReach() : null;
+    if (walk && walk.lead > 0) {
+      const k = stepAt(walk.s, walk.lead);
+      x += walk.step.x * k;
+      z += walk.step.z * k;
+      const v = dt > 0 ? (k - stepAt(walk.s - dt, walk.lead)) / dt : 0;
+      speed = Math.abs(v) * Math.hypot(walk.step.x, walk.step.z);
+      face = Math.atan2(walk.step.z, walk.step.x);
+      backward = v < 0;
+    }
     r.rig.root.position.set(x, lift, z);
     // In the crates the sim turns them south, to the 2.5D diorama's camera; the
     // 3D intro looks at them from the east, so they stood side-on and turned on
     // the step (Michele: "I'd keep them frontal"). Facing east throughout.
-    const face = snap.opening ? STAND_FACE : b.kind === 'voxxy' ? plugFace(snap, b.face, x, z) : b.face;
-    updateRobot(r.rig, { speedMps: Math.hypot(b.vx, b.vy) / PX_PER_M, heading: face, dt, mounted, backward: b.vx * Math.cos(face) + b.vy * Math.sin(face) < -8, laden: b.kind === 'biggy' && snap.bots.some((o) => o.mounted), carrying: (b.kind === 'biggy' && snap.props.some((q) => q.kind === 'pot')) || (b.kind === 'droid' && snap.props.some((q) => q.kind === 'letter-held')), hop: u, flair: trick ? trick.flair : flairPhase(b), shoved: worldMoved(b) ? 1 : 0, pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null });
+    updateRobot(r.rig, { speedMps: speed, heading: face, dt, mounted, backward, laden: b.kind === 'biggy' && snap.bots.some((o) => o.mounted), carrying: (b.kind === 'biggy' && snap.props.some((q) => q.kind === 'pot')) || (b.kind === 'droid' && snap.props.some((q) => q.kind === 'letter-held')), hop: u, flair: trick ? trick.flair : flairPhase(b), shoved: worldMoved(b) ? 1 : 0, pose: (gesture.get(b.kind) ?? 0) > 0 ? 'reach' : null, body: walk ? reachBody(walk.s, gripOf(walk.id)?.throw ?? 'down') : undefined });
     if (b.kind === 'droid' && snap.opening) glance(r.rig, snap.opening.t);
-    const left = gesture.get(b.kind) ?? 0;
-    const target = reachAt.get(b.kind);
-    if (left > 0 && target) aimReach(r.rig, target, left);
-    else if (left <= 0) reachAt.delete(b.kind);
+    const reach = b.kind === 'droid' ? activeReach() : null;
+    const grip = reach ? gripOf(reach.id) : undefined;
+    if (reach && grip && !snap.opening) driveReach(r.rig, grip, reach.s, mounted);
     // Solved at the final riding height, not wherever the climb has got to.
     if (b.kind === 'droid' && mounted) gripBiggy(r.rig, mountLift(r.rig));
     if (b.kind === 'voxxy') plugReach(r.rig, snap, x, lift, z);

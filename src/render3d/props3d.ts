@@ -12,6 +12,7 @@ import * as THREE from 'three';
 
 import { CY0, CY1, floor1Walls } from '../sim/geometry';
 import { clueLitBy } from '../sim/lights';
+import { pullAt, reachClock, registerGrip } from './reach3d';
 import { createGroundProps, type GroundProps } from './props-ground';
 
 /**
@@ -222,6 +223,11 @@ function fireDoorLeaves(mats: Materials, depth: number): THREE.Group {
   return g;
 }
 
+/** The projector panel's release lever: arm length, m, and its two angles about x (0 = straight up, +z out of the panel). */
+const LEVER_LEN = 0.95;
+const LEVER_HOME = 1.85;
+const LEVER_THROWN = 2.65;
+
 export function createProps(parent: THREE.Object3D, mats: Materials, floor: 'first' | 'ground' = 'first'): Props3D {
   const byKey = new Map<string, THREE.Object3D>();
   const colliders: THREE.Object3D[] = [];
@@ -326,8 +332,30 @@ export function createProps(parent: THREE.Object3D, mats: Materials, floor: 'fir
         const housing = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.7, 0.14), mats.enamel);
         const led = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 10), panelLed.clone());
         led.position.set(0.28, 0.2, 0.08);
-        const lever = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.35, 0.08), mats.steel);
-        lever.position.set(-0.2, 0, 0.1);
+        /*
+         * The release lever: a long steel arm on a hub, standing out of the panel
+         * and down toward whoever parks on the ring, with a red T-grip on the end.
+         * It was a 35 cm block turning about its own middle, 1.5 m of air from
+         * any hand that could get under it — so Droid waved at it and it flipped
+         * by itself (Michele, 29 Sep: "He should reach the lever and pull it").
+         * The arm is long because the panel is 3.35 m up: from Biggy's shoulders
+         * the grip is where Droid's hand can close on it, and it comes down 0.6 m
+         * as he pulls. It turns on ONE clock with his arm (`reach3d.ts`).
+         */
+        const lever = new THREE.Group();
+        lever.position.set(-0.2, 0.05, 0.1);
+        const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.16, 16), mats.steel);
+        hub.rotation.z = Math.PI / 2;
+        const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.03, LEVER_LEN, 10), new THREE.MeshStandardMaterial({ color: 0x34373c, roughness: 0.5, metalness: 0.6 }));
+        rod.position.y = LEVER_LEN / 2;
+        const tee = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.24, 12), new THREE.MeshStandardMaterial({ color: 0xc1261c, roughness: 0.4 }));
+        tee.rotation.z = Math.PI / 2;
+        tee.position.y = LEVER_LEN;
+        const gripAt = new THREE.Object3D();
+        gripAt.position.y = LEVER_LEN;
+        lever.add(hub, rod, tee, gripAt);
+        lever.rotation.x = LEVER_HOME;
+        registerGrip('lever', { point: gripAt, throw: 'down', set: (k) => (lever.rotation.x = LEVER_HOME + (LEVER_THROWN - LEVER_HOME) * k) });
         const conduit = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 3.4, 8), mats.steel);
         conduit.position.set(0.3, -2.0, 0.02);
         // The panel has to read as the goal from across the corridor: a
@@ -603,19 +631,17 @@ export function createProps(parent: THREE.Object3D, mats: Materials, floor: 'fir
             break;
           }
           case 'projector-panel': {
-            // Green only once Droid's hand is on it: the sim flips at the key
-            // press, the reach takes ~0.6 s to get there (playtest: "the hint
-            // colour changes too soon, it should wait until contact").
-            if (p.state === 'done' && o.userData.doneAt === undefined) o.userData.doneAt = t;
-            // R restarts the chapter with the panel shut again: forget the throw.
-            if (p.state !== 'done') o.userData.doneAt = undefined;
-            const done = p.state === 'done' && t - (o.userData.doneAt as number) > 0.6;
+            // The lever is where Droid's hand has got it to: the same clock as
+            // his arm (reach3d.ts). With no reach running it is simply shut or
+            // thrown. Green only once it is home (playtest: "the hint colour
+            // changes too soon, it should wait until contact").
+            const clock = reachClock('lever');
+            const k = p.state !== 'done' ? 0 : clock === null ? 1 : pullAt(clock);
+            (o.userData.lever as THREE.Object3D).rotation.x = LEVER_HOME + (LEVER_THROWN - LEVER_HOME) * k;
+            const done = k >= 1;
             const led = o.userData.led as THREE.Mesh;
             const blink = done ? 1 : Math.sin(t * 5) > 0 ? 1 : 0.15;
             (led.material as THREE.MeshBasicMaterial).color.setRGB(done ? 0.1 : 1, done ? 1 : 0.05, 0.05).multiplyScalar(14 * blink);
-            // Thrown on contact, over a fifth of a second, not snapped.
-            const since = p.state === 'done' ? t - (o.userData.doneAt as number) : 0;
-            (o.userData.lever as THREE.Object3D).rotation.z = -0.9 * THREE.MathUtils.smoothstep(since, 0.6, 0.8);
             const pulse = done ? 0.5 : 0.55 + 0.45 * Math.sin(t * 3);
             const hm = (o.userData.halo as THREE.Mesh).material as THREE.MeshBasicMaterial;
             hm.color.setRGB(done ? 0.15 : 1, done ? 1 : 0.62, done ? 0.35 : 0.12).multiplyScalar(6 * pulse);
