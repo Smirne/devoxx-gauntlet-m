@@ -53,6 +53,9 @@ body.ad3d .ad-bubble{border-radius:0;background:rgba(8,4,8,.84);border:1px solid
   clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,0 100%)}
 body.ad3d .ad-bubble::after{display:none}
 body.ad3d .ad-card{background:rgba(0,0,0,.55);backdrop-filter:blur(3px)}
+/* The run's last card, over the curtain call (keynote3d.ts \`stageView\`): up over the screen, out of the
+   way of the three on the stage, and no scrim or blur between the player and the bow. */
+body.ad3d .ad-card.ad-card-live{background:rgba(6,7,10,.16);backdrop-filter:none;align-items:flex-start;padding-top:max(64px,9vh)}
 body.ad3d .ad-card .ad-cardbox{border-color:${YELLOW};padding:26px 34px}
 body.ad3d .ad-card b{color:${YELLOW}}
 
@@ -78,6 +81,9 @@ body.ad3d .ad-card b{color:${YELLOW}}
 .ad3d-gate h1{font-size:clamp(28px,5vw,56px);color:${YELLOW}}
 .ad3d-gate .ad3d-sub{text-align:center;color:#cbb89a;letter-spacing:.12em;text-transform:uppercase;font-size:13px}
 @keyframes ad3d-blink{50%{opacity:.25}}
+/* The film at the end (keynote3d.ts): the chrome fades out for it; the toasts and the final card stay.
+   Important, because the HUD sets the chrome's opacity inline for the cutscene fades. */
+body.ad3d.ad3d-film .ad-chrome,body.ad3d.ad3d-film .ad3d-help{opacity:0 !important;transition:opacity .9s ease;pointer-events:none}
 @media (prefers-reduced-motion: reduce){.ad3d-title .ad3d-press{animation:none}}
 /* Bottom-right, ABOVE the chapter meters (bottom-left is the robot panel):
    and the critic round (29 Sep) found the two printed over each other. */

@@ -23,6 +23,7 @@ import * as THREE from 'three';
 
 import { CY0, CY1, F1, R } from '../sim/geometry';
 import { BREAKFAST, KEYNOTE_RAKE, LAB_DEPTH, LAB_X0, LAB_X1, RAKE_DEPTH, STAGE_RISE } from '../sim/chapters/ch4-keynote';
+import { SECOND_ROW } from '../sim/cameos';
 import { riseAt } from '../sim/surface';
 import { SIGN_ORANGE } from '../sim/letters';
 import type { GameSnapshot, Plate, Prop, ReelCard } from '../sim/types';
@@ -32,6 +33,7 @@ import { yawFromSimHeading } from '../render/robots';
 
 import type { Materials } from './materials';
 import { box } from './materials';
+import { skyline, wordmark } from './splash';
 import { addSeats, HEIGHTS } from './venue';
 
 export interface Keynote3D {
@@ -39,8 +41,21 @@ export interface Keynote3D {
   /** For the camera's collision rays. */
   colliders: THREE.Object3D[];
   update(snap: GameSnapshot, t: number, dt: number): void;
-  /** Where the camera watches the opening video from: the back rows, looking at the screen. */
-  reelView: { pos: THREE.Vector3; look: THREE.Vector3 };
+  /**
+   * The film's shots (`world.ts`). `screenView` fills a camera of that aspect and
+   * vertical field of view with the house screen, straight on; `stageView` is the
+   * curtain call from the front rows — the stage low in the frame, the screen
+   * over it — which the camera pulls back to for the credits and holds behind the
+   * final card.
+   */
+  screenView(aspect: number, fovDeg: number): Shot;
+  stageView(): Shot;
+}
+
+/** A camera position and the point it looks at. */
+export interface Shot {
+  pos: THREE.Vector3;
+  look: THREE.Vector3;
 }
 
 const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z);
@@ -53,8 +68,47 @@ const SCREEN_W = 6.5;
 const SCREEN_H = (SCREEN_W * 9) / 16;
 
 const INK: Record<ReelCard['kind'], string> = { splash: '#ff7a1a', byline: '#e8e6e1', title: '#ff7a1a', stat: '#e8e6e1', blooper: '#ffd27a', credit: '#e8e6e1', end: '#ff7a1a' };
+/**
+ * The curtain call's camera, m: `back` from the apron towards the house, `h` up
+ * off the stage floor, looking at a point `look` up over the apron.
+ */
+const STAGE_EYE = Object.freeze({ back: 7, h: 3.1, look: 1.9 });
+/** Seconds a floor can takes to swing up onto the stage once Voxxy has lit it. */
+const SPOT_SWING = 1.1;
+/** The screen's brightness at full strength: over 1, so the bloom finds it, and never tone-mapped. */
+const SCREEN_GAIN = 1.3;
+/** The film's canvas, px (the slide's is 1024 x 576). */
+const FILM_W = 1600;
+const FILM_H = 900;
+/** The HUD's own condensed face (`hudTheme.ts`), so the film is set like the game's title. */
+const FILM_FONT = '"Bahnschrift","DIN Alternate","Roboto Condensed","Arial Narrow",sans-serif';
+/** The splash title's yellow (`hudTheme.ts`). */
+const FILM_YELLOW = '#f3e600';
+/** Each robot's lamp, for its name on the film: the candles on the cake. */
+const ROBOT_INK: Readonly<Record<string, string>> = { Voxxy: '#ff7a1a', Droid: '#39c96b', Biggy: '#3a86ff' };
 
-export function buildKeynote(mats: Materials): Keynote3D {
+/** The fractional part: a seeded scatter with no generator to carry about. */
+const frac = (v: number): number => v - Math.floor(v);
+
+/**
+ * Letter-spacing on a 2D canvas, px, where the browser has it (it is ignored
+ * where it does not). Returns what was set, so centred text can be shifted by
+ * half of it: the spacing trails the last letter too.
+ */
+function spaced(g: CanvasRenderingContext2D, px: number): number {
+  const s = g as CanvasRenderingContext2D & { letterSpacing?: string };
+  if (s.letterSpacing === undefined) return 0;
+  s.letterSpacing = `${px.toFixed(1)}px`;
+  return px;
+}
+
+/**
+ * `photo` photographs one of the game's people by name (`portraitOf`, which
+ * needs the renderer): the film shows the two who made the game as their own
+ * characters — Michele beside his byline, and both of them on their credits.
+ * Without it those cards are type only.
+ */
+export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanvasElement | null): Keynote3D {
   const group = new THREE.Group();
   group.name = 'keynote-room8';
   const colliders: THREE.Object3D[] = [];
@@ -293,7 +347,7 @@ export function buildKeynote(mats: Materials): Keynote3D {
   const scrCtx = scrCanvas.getContext('2d')!;
   const scrTex = new THREE.CanvasTexture(scrCanvas);
   scrTex.colorSpace = THREE.SRGBColorSpace;
-  const scrMat = new THREE.MeshBasicMaterial({ map: scrTex, toneMapped: false, color: new THREE.Color(1.3, 1.3, 1.3) });
+  const scrMat = new THREE.MeshBasicMaterial({ map: scrTex, toneMapped: false, color: new THREE.Color(SCREEN_GAIN, SCREEN_GAIN, SCREEN_GAIN) });
   const screen = new THREE.Mesh(new THREE.PlaneGeometry(SCREEN_W, SCREEN_H), scrMat);
   screen.position.set(cx, SCREEN_BOTTOM + SCREEN_H / 2, z0 + 0.2);
   group.add(screen);
@@ -314,43 +368,283 @@ export function buildKeynote(mats: Materials): Keynote3D {
     scrCtx.fillText('DEVOXX', w / 2, h * 0.38);
     scrCtx.fillStyle = '#e8e6e1';
     scrCtx.font = '600 52px system-ui, sans-serif';
-    scrCtx.fillText('BELGIUM 2026 · OPENING KEYNOTE', w / 2, h * 0.52);
+    scrCtx.fillText('BELGIUM 2026 · OPENING KEYNOTE', w / 2, h * 0.52, w * 0.8);
     scrCtx.fillStyle = '#9fb0c4';
     scrCtx.font = '400 46px system-ui, sans-serif';
     scrCtx.fillText('Speaker: TBA', w / 2, h * 0.64);
     scrCtx.fillStyle = '#ffd27a';
     scrCtx.font = '600 48px system-ui, sans-serif';
-    scrCtx.fillText(label, w / 2, h * 0.84, w * 0.92);
+    scrCtx.fillText(label, w / 2, h * 0.84, w * 0.66);
     scrCtx.fillStyle = '#ff7a1a';
     scrCtx.fillRect(w * 0.4, h * 0.44, w * 0.2, 4);
     // Duke, waving from the corner — the keynote screen had him in Michele's
-    // photograph (28 Sep). BSD-licensed artwork, drawn here in three shapes.
-    drawDuke(scrCtx, w * 0.1, h * 0.86, h * 0.5);
+    // photograph (28 Sep). BSD-licensed artwork, drawn here in three shapes. In
+    // the corner and under the lines, which he used to stand across.
+    drawDuke(scrCtx, w * 0.085, h * 0.95, h * 0.36);
     scrTex.needsUpdate = true;
   }
-  function paintCard(card: ReelCard | null, alpha: number): void {
-    const w = scrCanvas.width;
-    const h = scrCanvas.height;
-    scrCtx.fillStyle = '#07090d';
-    scrCtx.fillRect(0, 0, w, h);
-    if (card && alpha > 0.01) {
-      scrCtx.save();
-      scrCtx.globalAlpha = Math.min(1, alpha);
-      scrCtx.textAlign = 'center';
-      scrCtx.fillStyle = INK[card.kind];
-      scrCtx.font = '700 84px system-ui, sans-serif';
-      scrCtx.fillText(card.title, w / 2, h * 0.46, w * 0.9);
-      scrCtx.fillStyle = '#9fb0c4';
-      scrCtx.font = '400 38px system-ui, sans-serif';
-      scrCtx.fillText(card.sub, w / 2, h * 0.64, w * 0.88);
+
+  /*
+   * THE FILM. Michele, 29 Sep 2026: *"After the last robot reaches the stage, they
+   * should regroup, camera zooms on the screen, and the movie should start ... I'd
+   * start with Devoxx After Dark (like in the splash screen), A game by Michele
+   * Giacobazzi (pic of my char?). Then the bloopers / notes? Or credits in film
+   * version?"*
+   *
+   * The film has a canvas of its own, half as wide again as the slide's: the
+   * camera fills the frame with the screen for it (`world.ts`), and 1024 px of
+   * type stretched over a whole window read soft. Each card is painted ONCE, at
+   * full strength, and the fades are the screen's own brightness — a card used to
+   * be repainted and re-uploaded on every frame of every fade.
+   */
+  const filmCanvas = document.createElement('canvas');
+  filmCanvas.width = FILM_W;
+  filmCanvas.height = FILM_H;
+  const film = filmCanvas.getContext('2d')!;
+  const filmTex = new THREE.CanvasTexture(filmCanvas);
+  filmTex.colorSpace = THREE.SRGBColorSpace;
+  filmTex.anisotropy = 4;
+  /** The splash's own Antwerp and wordmark, drawn for the screen the first time the film needs them. */
+  let city: HTMLCanvasElement | null = null;
+  let mark: HTMLCanvasElement | null = null;
+  /**
+   * The two who made it, as their characters (`SECOND_ROW`, the pair in Room 8's
+   * second row), photographed when the film starts (`photo`). Michele, 29 Sep
+   * 2026, on the byline's picture of him: *"You should be in the credits too."*
+   */
+  let portraits: ReadonlyMap<string, HTMLCanvasElement> | null = null;
+  /** The maker a card names, if it names one: the first word of the credited name, or the byline's. */
+  const makerIn = (text: string): HTMLCanvasElement | null => {
+    for (const [name, pic] of portraits ?? []) if (new RegExp(`\\b${name}\\b`).test(text)) return pic;
+    return null;
+  };
+
+  /** A photograph in a frame, with a warm light behind the head. */
+  function framed(pic: HTMLCanvasElement, px: number, py: number, pw: number, ph: number): void {
+    film.save();
+    film.beginPath();
+    film.roundRect(px, py, pw, ph, 18);
+    film.clip();
+    const glow = film.createRadialGradient(px + pw / 2, py + ph * 0.36, 0, px + pw / 2, py + ph * 0.36, pw * 0.8);
+    glow.addColorStop(0, '#3a2a1c');
+    glow.addColorStop(1, '#12151c');
+    film.fillStyle = glow;
+    film.fillRect(px, py, pw, ph);
+    film.drawImage(pic, px, py, pw, ph);
+    film.restore();
+    film.strokeStyle = 'rgba(245,182,56,.55)';
+    film.lineWidth = 3;
+    film.beginPath();
+    film.roundRect(px, py, pw, ph, 18);
+    film.stroke();
+  }
+  /** Where a card's photograph goes: the left of the screen, 4:5. */
+  const PIC = { x: FILM_W * 0.09, h: FILM_H * 0.74, w: FILM_H * 0.74 * 0.8, y: FILM_H * 0.13 };
+
+  function paintCard(card: ReelCard | null): void {
+    const w = FILM_W;
+    const h = FILM_H;
+    film.save();
+    film.fillStyle = '#07090d';
+    film.fillRect(0, 0, w, h);
+    film.textAlign = 'center';
+    film.textBaseline = 'alphabetic';
+    if (card?.kind === 'splash') paintSplash(card);
+    else if (card?.kind === 'byline') paintByline(card);
+    else if (card?.kind === 'credit') paintCredit(card);
+    else if (card) {
+      const k = w / 1024;
+      film.fillStyle = INK[card.kind];
+      film.font = `600 ${Math.round(84 * k)}px ${FILM_FONT}`;
+      film.fillText(card.title, w / 2, h * 0.46, w * 0.9);
+      film.fillStyle = '#9fb0c4';
+      film.font = `400 ${Math.round(38 * k)}px ${FILM_FONT}`;
+      film.fillText(card.sub, w / 2, h * 0.64, w * 0.88);
       if (card.kind === 'end') {
-        scrCtx.fillStyle = INK.end;
-        scrCtx.fillRect(w * 0.42, h * 0.52, w * 0.16, 5);
+        film.fillStyle = INK.end;
+        film.fillRect(w * 0.42, h * 0.52, w * 0.16, 5 * k);
       }
-      scrCtx.restore();
     }
-    scrTex.needsUpdate = true;
+    film.restore();
+    filmTex.needsUpdate = true;
   }
+
+  /** The title as the splash screen draws it (`splash.ts`): Antwerp, gold dust, the wordmark, AFTER DARK. */
+  function paintSplash(card: ReelCard): void {
+    const w = FILM_W;
+    const h = FILM_H;
+    const bg = film.createRadialGradient(w / 2, h * 0.38, 0, w / 2, h * 0.38, w * 0.62);
+    bg.addColorStop(0, '#1a0f05');
+    bg.addColorStop(1, '#000000');
+    film.fillStyle = bg;
+    film.fillRect(0, 0, w, h);
+    for (let i = 1; i <= 150; i++) {
+      const a = 0.2 + 0.6 * frac(i * 0.3183);
+      film.fillStyle = `rgba(245,182,56,${a.toFixed(2)})`;
+      const s = 1.5 + 2.5 * frac(i * 0.7071);
+      film.fillRect(frac(i * 0.754877666) * w, frac(i * 0.569840291) * h * 0.8, s, s);
+    }
+    city ??= skyline(w, Math.round(h * 0.42), 1);
+    film.globalAlpha = 0.95;
+    film.drawImage(city, 0, h - city.height);
+    film.globalAlpha = 1;
+    mark ??= wordmark(Math.round(w * 0.56), 1);
+    const markY = h * 0.14;
+    film.save();
+    film.filter = 'drop-shadow(0 0 8px rgba(255,170,60,.9)) drop-shadow(0 0 28px rgba(255,120,20,.55))';
+    film.drawImage(mark, (w - mark.width) / 2, markY);
+    film.restore();
+    // AFTER DARK, with the splash's glow and its red/cyan split.
+    const size = Math.round(h * 0.1);
+    const titleY = markY + mark.height + size * 1.2;
+    film.font = `600 ${size}px ${FILM_FONT}`;
+    const sp = spaced(film, size * 0.3);
+    film.fillStyle = 'rgba(255,90,78,.6)';
+    film.fillText(card.title, w / 2 + sp / 2 + 4, titleY);
+    film.fillStyle = 'rgba(94,246,255,.45)';
+    film.fillText(card.title, w / 2 + sp / 2 - 4, titleY);
+    film.save();
+    film.shadowColor = 'rgba(243,230,0,.45)';
+    film.shadowBlur = 36;
+    film.fillStyle = FILM_YELLOW;
+    film.fillText(card.title, w / 2 + sp / 2, titleY);
+    film.restore();
+    const subSize = Math.round(h * 0.032);
+    film.font = `400 ${subSize}px ${FILM_FONT}`;
+    const sp2 = spaced(film, subSize * 0.12);
+    film.fillStyle = '#cbb89a';
+    film.fillText(card.sub.toUpperCase(), w / 2 + sp2 / 2, titleY + subSize * 2.1, w * 0.9);
+    spaced(film, 0);
+  }
+
+  /** Whose game it is: his character on the left, the name on the right. */
+  function paintByline(card: ReelCard): void {
+    const w = FILM_W;
+    const h = FILM_H;
+    const bg = film.createLinearGradient(0, 0, w, h);
+    bg.addColorStop(0, '#10131a');
+    bg.addColorStop(1, '#050608');
+    film.fillStyle = bg;
+    film.fillRect(0, 0, w, h);
+    let textX = w * 0.12;
+    const pic = makerIn(card.title);
+    if (pic) {
+      framed(pic, PIC.x, PIC.y, PIC.w, PIC.h);
+      textX = PIC.x + PIC.w + w * 0.06;
+    }
+    const room = w - textX - w * 0.06;
+    const split = /^(.*\bby)\s+(.+)$/i.exec(card.title);
+    film.textAlign = 'left';
+    if (split) {
+      const small = Math.round(h * 0.04);
+      film.font = `500 ${small}px ${FILM_FONT}`;
+      spaced(film, small * 0.25);
+      film.fillStyle = '#f5b638';
+      film.fillText(split[1].toUpperCase(), textX, h * 0.4, room);
+      spaced(film, 0);
+      const big = Math.round(h * 0.09);
+      film.font = `600 ${big}px ${FILM_FONT}`;
+      film.fillStyle = '#f2efe8';
+      film.fillText(split[2], textX, h * 0.4 + big * 1.25, room);
+      film.fillStyle = 'rgba(245,182,56,.7)';
+      film.fillRect(textX, h * 0.4 + big * 1.6, Math.min(room, w * 0.3), 3);
+      robotInk(card.sub, textX, h * 0.4 + big * 2.35, Math.round(h * 0.04), room);
+    } else {
+      film.font = `600 ${Math.round(h * 0.08)}px ${FILM_FONT}`;
+      film.fillStyle = '#f2efe8';
+      film.fillText(card.title, textX, h * 0.5, room);
+      robotInk(card.sub, textX, h * 0.62, Math.round(h * 0.04), room);
+    }
+  }
+
+  /**
+   * A line of film credits: the job small and spaced out, the name under it —
+   * and for the two who made it, their character beside it, as on the byline.
+   */
+  function paintCredit(card: ReelCard): void {
+    const w = FILM_W;
+    const h = FILM_H;
+    const pic = makerIn(card.title);
+    if (pic) {
+      framed(pic, PIC.x, PIC.y, PIC.w, PIC.h);
+      const x = PIC.x + PIC.w + w * 0.06;
+      const room = w - x - w * 0.06;
+      film.textAlign = 'left';
+      const role = Math.round(h * 0.034);
+      film.font = `500 ${role}px ${FILM_FONT}`;
+      spaced(film, role * 0.22);
+      film.fillStyle = '#9fb0c4';
+      // The job can be long ("the simulation, the venue, ..."): two lines rather than squeezed.
+      const lines = wrap(card.sub.toUpperCase(), room);
+      lines.forEach((ln, i) => film.fillText(ln, x, h * 0.44 - (lines.length - 1 - i) * role * 1.5, room));
+      spaced(film, 0);
+      const big = Math.round(h * 0.085);
+      film.font = `600 ${big}px ${FILM_FONT}`;
+      film.fillStyle = '#f2efe8';
+      film.fillText(card.title, x, h * 0.44 + big * 1.35, room);
+      return;
+    }
+    const small = Math.round(h * 0.034);
+    film.font = `500 ${small}px ${FILM_FONT}`;
+    const sp = spaced(film, small * 0.22);
+    film.fillStyle = '#9fb0c4';
+    film.fillText(card.sub.toUpperCase(), w / 2 + sp / 2, h * 0.42, w * 0.86);
+    spaced(film, 0);
+    const big = Math.round(h * 0.085);
+    film.font = `600 ${big}px ${FILM_FONT}`;
+    film.fillStyle = '#f2efe8';
+    if (/\b(Voxxy|Droid|Biggy)\b/.test(card.title)) {
+      film.textAlign = 'left';
+      const width = film.measureText(card.title).width;
+      robotInk(card.title, (w - Math.min(width, w * 0.86)) / 2, h * 0.42 + big * 1.45, big, w * 0.86, '600', '#f2efe8');
+    } else {
+      film.fillText(card.title, w / 2, h * 0.42 + big * 1.45, w * 0.86);
+    }
+  }
+
+  /**
+   * `text` at the film's current font, as one line if it fits `maxW` and as two
+   * otherwise — broken at the space that makes the two most nearly even.
+   */
+  function wrap(text: string, maxW: number): string[] {
+    if (film.measureText(text).width <= maxW) return [text];
+    const words = text.split(' ');
+    let at = 1;
+    let widest = Infinity;
+    for (let i = 1; i < words.length; i++) {
+      const wd = Math.max(film.measureText(words.slice(0, i).join(' ')).width, film.measureText(words.slice(i).join(' ')).width);
+      if (wd < widest) {
+        widest = wd;
+        at = i;
+      }
+    }
+    return [words.slice(0, at).join(' '), words.slice(at).join(' ')];
+  }
+
+  /**
+   * `text` from `x` (left-aligned), with each robot's name in its own lamp's
+   * colour — the three candles on the cake, the three beams in the dark.
+   */
+  function robotInk(text: string, x: number, y: number, size: number, maxW: number, weight = '400', ink = '#9fb0c4'): void {
+    film.save();
+    film.textAlign = 'left';
+    film.font = `${weight} ${size}px ${FILM_FONT}`;
+    const full = film.measureText(text).width;
+    const k = full > maxW ? maxW / full : 1;
+    film.translate(x, y);
+    film.scale(k, 1);
+    let at = 0;
+    for (const part of text.split(/\b(Voxxy|Droid|Biggy)\b/)) {
+      if (!part) continue;
+      film.fillStyle = ROBOT_INK[part] ?? ink;
+      film.fillText(part, at, 0);
+      at += film.measureText(part).width;
+    }
+    film.restore();
+  }
+
+  /** The middle of the stage's apron, sim px, from the `stage` prop — until it is seen, Room 8's front. */
+  const stageMid = { x: r8.x + r8.w / 2, y: r8.y + 44 };
 
   /** Floor height under a sim point, from the chapter's plates (the rake, when on). */
   let plates: readonly Plate[] = [];
@@ -512,13 +806,34 @@ export function buildKeynote(mats: Materials): Keynote3D {
     const lens = new THREE.Mesh(new THREE.CircleGeometry(0.12, 16), lensMat);
     lens.position.z = 0.165;
     yoke.add(can, lens);
-    // Aim: each at its own quarter of the stage, 1.2 m up — four beams on one
-    // point made a white-out over the old banner, where the #DEVOXX sign now
-    // stands. `lookAt` points +z, and `o` is
-    // not in the scene yet, so the target is given in `o`'s own frame.
-    const stageAt = V(cx + (x - cx) * 0.35, 1.2, m(r8.y + 45));
+    /*
+     * AIMED WHEN IT IS LIT, AND SEEN TO BE. Michele, 29 Sep 2026, in the raked
+     * room: *"When activated we should roll it and point in the right direction."*
+     * Unlit, the can hangs tipped down on its yoke, nose to the carpet, the way a
+     * floor can is left when nobody has set it; lit, it swings up and round onto
+     * its own quarter of the stage (`update`) — four beams on one point made a
+     * white-out over the old banner, where the #DEVOXX sign now stands.
+     *
+     * The aim is 1.2 m over the STAGE's floor, which with the rake on is the pit
+     * floor plus `STAGE_RISE`: it used to be 1.2 m over the can's own base, and a
+     * can on a tread three rows up aimed over the three robots' heads.
+     *
+     * And the can itself pointed the wrong way all along: `lookAt` takes a WORLD
+     * point, and it was handed one in `o`'s frame — so every can faced the far
+     * corner of the building while its beam, a child of `o`, lit the stage. `o`
+     * has no parent yet, so its world frame is its own position; the yoke is aimed
+     * at the stage point itself.
+     */
+    const stageTop = rake ? -RAKE_DEPTH + STAGE_RISE : DAIS;
+    const stageAt = V(cx + (x - cx) * 0.35, stageTop + 1.2, m(r8.y + 45));
+    const local = stageAt.clone().sub(o.position);
     o.add(yoke);
-    yoke.lookAt(stageAt.clone().sub(V(x, 0, z)));
+    yoke.lookAt(stageAt);
+    const aim = yoke.quaternion.clone();
+    // At rest: the same heading, the nose down on the carpet in front of it.
+    const pivot = o.position.clone().add(yoke.position);
+    yoke.lookAt(pivot.add(V(local.x, 0, local.z).normalize().multiplyScalar(0.3)).add(V(0, -0.6, 0)));
+    const rest = yoke.quaternion.clone();
     const num = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.34), new THREE.MeshBasicMaterial({ map: word(String(p.v ?? '?'), '#ffffff'), transparent: true, toneMapped: false }));
     num.rotation.x = -Math.PI / 2;
     num.position.set(0, 0.065, 0);
@@ -533,8 +848,8 @@ export function buildKeynote(mats: Materials): Keynote3D {
     const L = new THREE.SpotLight(0xfff0d8, 0, 30, 0.16, 0.5, 1.3);
     L.position.set(0, 0.3, 0);
     o.add(L, L.target);
-    L.target.position.copy(stageAt).sub(V(x, 0, z));
-    o.userData = { lens: lensMat, ring, ringMat, light: L };
+    L.target.position.copy(local);
+    o.userData = { lens: lensMat, ring, ringMat, light: L, yoke, rest, aim, litAt: -1 };
     return o;
   }
 
@@ -658,7 +973,22 @@ export function buildKeynote(mats: Materials): Keynote3D {
   return {
     group,
     colliders,
-    reelView: { pos: V(cx, 2.4, z0 + 15), look: V(cx, SCREEN_BOTTOM + SCREEN_H * 0.45, z0) },
+    screenView(aspect: number, fovDeg: number): Shot {
+      // Straight on, the bezel and a margin just inside the frame both ways.
+      const half = THREE.MathUtils.degToRad(fovDeg) / 2;
+      const d = Math.max(((SCREEN_W + 0.3) * 1.06) / 2 / (Math.tan(half) * aspect), ((SCREEN_H + 0.3) * 1.06) / 2 / Math.tan(half));
+      const y = SCREEN_BOTTOM + SCREEN_H / 2;
+      return { pos: V(cx, y, z0 + 0.2 + d), look: V(cx, y, z0 + 0.2) };
+    },
+    stageView(): Shot {
+      // From the front rows: the three on the apron low in the frame, the screen
+      // over them, the final card (centred, in the HUD) between the two.
+      const floor = hAt(stageMid.x, stageMid.y);
+      return {
+        pos: V(cx, floor + STAGE_EYE.h, m(stageMid.y) + STAGE_EYE.back),
+        look: V(cx, floor + STAGE_EYE.look, m(stageMid.y)),
+      };
+    },
     update(snap: GameSnapshot, t: number, _dt: number): void {
       plates = snap.plates ?? [];
       if (rake && !rakeBuilt) buildRake(snap.props);
@@ -681,6 +1011,9 @@ export function buildKeynote(mats: Materials): Keynote3D {
         switch (p.kind) {
           case 'stage': {
             ready = done;
+            // Where the three stand for the curtain call: the apron line (ch4-keynote.ts `marks`).
+            stageMid.x = p.x + (p.w ?? 0) / 2;
+            stageMid.y = p.y + (p.h ?? 0) - 12;
             const mt = o.userData.edge as THREE.MeshBasicMaterial;
             const pulse = done ? 4 + 2 * Math.sin(t * 4) : 5;
             mt.color.setRGB(done ? 0.2 : 1, done ? 1 : 0.45, done ? 0.35 : 0.1).multiplyScalar(pulse);
@@ -696,24 +1029,54 @@ export function buildKeynote(mats: Materials): Keynote3D {
             break;
           }
           case 'spotlight': {
-            const u = o.userData as { lens: THREE.MeshBasicMaterial; ring: THREE.Mesh; ringMat: THREE.MeshBasicMaterial; light: THREE.SpotLight };
-            u.lens.color.setRGB(1, 0.95, 0.85).multiplyScalar(done ? 14 : 0.06);
-            u.light.intensity = done ? 700 : 0;
+            const u = o.userData as {
+              lens: THREE.MeshBasicMaterial;
+              ring: THREE.Mesh;
+              ringMat: THREE.MeshBasicMaterial;
+              light: THREE.SpotLight;
+              yoke: THREE.Group;
+              rest: THREE.Quaternion;
+              aim: THREE.Quaternion;
+              litAt: number;
+            };
+            // Lit: the can swings up onto the stage, and the beam comes on as it
+            // gets there rather than sweeping the house on the way.
+            if (done && u.litAt < 0) u.litAt = t;
+            if (!done) u.litAt = -1;
+            const k = u.litAt < 0 ? 0 : Math.min(1, (t - u.litAt) / SPOT_SWING);
+            u.yoke.quaternion.slerpQuaternions(u.rest, u.aim, 1 - (1 - k) ** 3);
+            const beam = THREE.MathUtils.smoothstep(k, 0.7, 1);
+            u.lens.color.setRGB(1, 0.95, 0.85).multiplyScalar(done ? 0.06 + 13.94 * beam : 0.06);
+            u.light.intensity = 700 * beam;
             u.ring.visible = p.state === 'active';
             u.ringMat.opacity = 0.55 + 0.45 * Math.sin(t * 5);
             break;
           }
         }
       }
-      // The house screen: the video while it plays, else the holding slide.
+      // The house screen: the film while it plays, else the holding slide.
       const reel = snap.reel;
       if (reel) {
-        const key = `r|${reel.index}|${reel.card ? reel.card.title : ''}|${reel.alpha.toFixed(2)}`;
+        // The photograph is taken in the film's first dark seconds, not on the
+        // frame the byline comes up.
+        if (portraits === null) {
+          const got = new Map<string, HTMLCanvasElement>();
+          for (const name of SECOND_ROW) {
+            const pic = photo?.(name);
+            if (pic) got.set(name, pic);
+          }
+          portraits = got;
+        }
+        const key = `r|${reel.index}|${reel.card ? reel.card.title : ''}`;
         if (key !== scrKey) {
           scrKey = key;
-          paintCard(reel.card, reel.alpha);
+          paintCard(reel.card);
         }
+        scrMat.map = filmTex;
+        scrMat.color.setScalar(SCREEN_GAIN * (reel.card ? Math.min(1, reel.alpha) : 0));
       } else {
+        scrMat.map = scrTex;
+        scrMat.color.setScalar(SCREEN_GAIN);
         const crowd = snap.props.find((p) => p.kind === 'crowd');
         const label = ready ? 'Stage ready: all three on stage!' : (crowd?.label ?? '');
         const key = `s|${label}`;

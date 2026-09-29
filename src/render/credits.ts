@@ -94,7 +94,7 @@ export const CREDIT_STATS: readonly CreditStat[] = [
   {
     n: '84,759',
     label: 'lines of TypeScript',
-    note: '62,459 of game in 90 files, 22,300 of tests in 67 — 857 tests, no physics engine',
+    note: '62,459 of game in 91 files, 22,300 of tests in 67 — 857 tests, no physics engine',
   },
   {
     n: '118,754',

@@ -74,7 +74,11 @@ describe('Michele and Claude', () => {
     expect(Math.hypot(m.x - v.x, m.y - v.y)).toBeLessThan(40);
     expect(Math.hypot(c.x - v.x, c.y - v.y)).toBeLessThan(Math.hypot(m.x - v.x, m.y - v.y));
     g.key('KeyE');
-    expect(toast(g), 'the first name in the list answered for the nearest').toMatch(/^Claude:/);
+    // Voxxy opens, in her own voice, and the one she is standing at answers
+    // (`smallTalk`, 29 Sep 2026: every robot talks now, and each opens for itself).
+    expect(toast(g)).toMatch(/^Voxxy: "/);
+    expect(toast(g), 'the nearest did not answer').toContain('— Claude: "');
+    expect(toast(g), 'the first name in the list answered for the nearest').not.toContain('Michele:');
   });
 
   /*

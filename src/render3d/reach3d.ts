@@ -128,6 +128,12 @@ export function reachBody(s: number, dir: 'down' | 'up'): { rise: number; pitch:
 
 /* ------------------------------------------------------ the shared clock ---- */
 
+/** A point on the floor, world metres: `x` east, `z` south (the sim's y). */
+export interface Spot {
+  x: number;
+  z: number;
+}
+
 /** A handle a hand can take: its grip point, and how to put it at a travel `k`. */
 export interface Grip {
   /** The point the palm closes on. Its world position is read every frame. */
@@ -136,52 +142,137 @@ export interface Grip {
   set(k: number): void;
   /** Which way the handle travels — the body pulls down into one, pushes up into the other. */
   throw: 'down' | 'up';
+  /** The furthest a standing Droid walks to this one, m. `STEP_MAX` unless the prop says otherwise. */
+  walk?: number;
 }
 
 const grips = new Map<string, Grip>();
 
 /**
  * One reach in progress. `s` runs from `-lead`: a standing Droid who pressed E
- * from further off than his arm walks up to the handle first (`step`, world
- * metres, the whole way) and back to where the sim has him afterwards. The
- * handle does not move until his hand is on it, so the lead only delays the
- * picture; nothing in the sim waits on it (the chapter-1 lever, whose door does
- * wait, is thrown from Biggy's shoulders with no walk: lead 0).
+ * from further off than his arm walks up to the handle first — from `from`, or
+ * from wherever the sim has him, to `to` — and back to where the sim has him
+ * afterwards, over `back`. The handle does not move until his hand is on it, so
+ * the lead only delays the picture; nothing in the sim waits on it (the chapter-1
+ * lever, whose door does wait, is thrown from Biggy's shoulders with no walk:
+ * lead 0).
+ *
+ * The two ends are PLACES, not an offset from where the sim has him. It used to
+ * be an offset (`step`), added to the sim's position every frame, so a Droid still
+ * coasting when E went down was drawn arriving as far past the handle as the sim
+ * carried him — into the wall, in chapter 2. Now the walk up starts where he
+ * actually is, ends at the handle whatever the sim does meanwhile, and the walk
+ * back ends where the sim has him at that moment.
  */
 export interface Reach {
   id: string;
+  /** Seconds since the hand set off; negative while he is still walking up. */
   s: number;
+  /** The walk up, s. 0: he does not walk. */
   lead: number;
-  step: { x: number; z: number };
+  /** The walk back, s. 0: there is none — or the next handle in the queue takes over from where he stands. */
+  back: number;
+  /** Where the walk up starts. null: where the sim has him, read live. */
+  from: Spot | null;
+  /** Where he stands for this handle. null: where the sim has him (no walk). */
+  to: Spot | null;
+  /** Where the sim had him when this run of handles began; see `slipped`. */
+  anchor: Spot | null;
 }
 let active: Reach | null = null;
+/**
+ * Handles whose hand is still to come, in order — pressed while another was in
+ * his hand. Michele, 29 Sep 2026, on chapter 2's breakers: *"i see no
+ * animation."* Three presses used to be three `startReach`es, each replacing the
+ * last: the handle he was on snapped up untouched, the drawn Droid jumped back to
+ * where the sim had him to start the walk again, and only the third handle was
+ * ever pulled. Now every press is a pull of its own, taken in turn.
+ */
+const queue: Array<{ id: string; walk: boolean }> = [];
 
 /** How close a standing Droid comes to the handle's foot, m (root to grip, level). */
 export const STAND_OFF = 0.6;
 /** His walk up to it, m/s on average — the deliberate one's stride, not a dash. */
 export const STEP_SPEED = 1.2;
-/** The furthest he will walk to a handle, m. */
-export const STEP_MAX = 3.5;
+/**
+ * The furthest he will walk to a handle, m — a couple of his strides.
+ *
+ * It was 3.5, which was what chapter 2's 52 px breaker reach needed and which
+ * still fell short of it from the back of that zone: his hand stopped in the air,
+ * a metre off the handle it was supposed to be pulling. Since 29 Sep the sim puts
+ * him at the board to throw them at all (`PANEL_REACH` in `ch2-expo.ts`), and the
+ * longest walk from anywhere inside that to any of the three handles is 2.0 m, so
+ * he always ends it within arm's length — `tests/reach3d.test.ts` sweeps the zone
+ * to keep it so. A prop whose own reach is longer says so on its grip
+ * (`Grip.walk`): chapter 3's ladle does.
+ */
+export const STEP_MAX = 2;
+/** When the walk back starts, s: while the arm is still on its way down. */
+export const WALK_BACK = REACH_END - 0.3;
+/**
+ * How far the sim may carry him from where the run began before the hand gives
+ * up, m (see `slipped`).
+ *
+ * It used to be a SPEED: over 0.3 m/s and the reach was cancelled, on the frame it
+ * started as much as any other. Droid is deliberate — drag 7 s⁻¹ from a top speed
+ * of 2.3 m/s — so a player who let go of the stick and pressed E in one movement
+ * was still rolling at more than that, and the hand was dropped before it had
+ * left his side: no reach, and a handle that went up on its own. Distance is the
+ * right measure because it is what the picture has to hide. Coasting to a stop
+ * from full speed covers 0.33 m, and the reach carries on; walking off covers
+ * this in a quarter of a second, and it does not.
+ */
+export const REACH_SLIP = 0.6;
 
-/** The walk-up for a standing robot at `from` to a grip at `to` (world metres). */
-export function stepFor(from: { x: number; z: number }, to: { x: number; z: number }): { lead: number; step: { x: number; z: number } } {
-  const dx = to.x - from.x;
-  const dz = to.z - from.z;
+/**
+ * Where a standing robot at `from` stands to take a grip at `grip` (world metres),
+ * and how long the walk there takes: `STAND_OFF` short of it, along the line he
+ * approaches on — so the walk heads at the handle and he arrives facing it. Null
+ * when he is near enough already.
+ */
+export function stepFor(from: Spot, grip: Spot, max = STEP_MAX): { lead: number; to: Spot | null } {
+  const dx = grip.x - from.x;
+  const dz = grip.z - from.z;
   const d = Math.hypot(dx, dz);
-  const need = Math.min(STEP_MAX, d - STAND_OFF);
-  if (need < 0.15) return { lead: 0, step: { x: 0, z: 0 } };
-  return { lead: need / STEP_SPEED, step: { x: (dx / d) * need, z: (dz / d) * need } };
+  const need = Math.min(max, d - STAND_OFF);
+  if (need < 0.15) return { lead: 0, to: null };
+  return { lead: need / STEP_SPEED, to: { x: from.x + (dx / d) * need, z: from.z + (dz / d) * need } };
 }
 
-/** How far along the walk-up the body is at `s`: 0 where the sim has him, 1 at the handle. */
-export function stepAt(s: number, lead: number): number {
-  if (lead <= 0) return 0;
-  const back = REACH_END - 0.3;
-  return ss(s, -lead, 0) * (1 - ss(s, back, back + lead));
+/**
+ * Where the drawn body stands `s` into reach `r` (its own clock unless asked
+ * about another moment), with the sim holding him at `sim`: on his way from
+ * `from` (or from the sim) to `to` during the lead, at `to` through the reach,
+ * and on his way back to the sim over `back` at the end. Pure: the same answer
+ * for the same numbers, whatever else is running.
+ */
+export function walkAt(r: Reach, sim: Spot, out: Spot = { x: 0, z: 0 }, s = r.s): Spot {
+  const to = r.to;
+  let base = sim;
+  let k = 0;
+  if (to && s < 0) {
+    base = r.from ?? sim;
+    k = r.lead > 0 ? ss(s, -r.lead, 0) : 1;
+  } else if (to) {
+    k = r.back > 0 ? 1 - ss(s, WALK_BACK, WALK_BACK + r.back) : 1;
+  }
+  out.x = base.x + ((to?.x ?? base.x) - base.x) * k;
+  out.z = base.z + ((to?.z ?? base.z) - base.z) * k;
+  return out;
 }
 
-/** When a reach with this lead is over, s. */
-export const reachEnd = (lead: number): number => Math.max(REACH_END, REACH_END - 0.3 + lead);
+/** When a reach with this walk back is over, s. */
+export const reachEnd = (back: number): number => Math.max(REACH_END, WALK_BACK + back);
+
+/**
+ * Has the sim carried him away from where the run began? More than `REACH_SLIP`
+ * and the picture can no longer pretend he is standing at the handle. Only a
+ * standing Droid has an anchor: on Biggy's shoulders he is carried, not driven
+ * off, and the hand stays on its handle wherever the tower goes.
+ */
+export function slipped(r: Reach, sim: Spot): boolean {
+  return r.anchor !== null && Math.hypot(sim.x - r.anchor.x, sim.z - r.anchor.z) > REACH_SLIP;
+}
 
 /** A prop announces a handle ('lever', 'breaker0'..). Rebuilding the prop replaces it. */
 export function registerGrip(id: string, g: Grip): void {
@@ -190,26 +281,87 @@ export function registerGrip(id: string, g: Grip): void {
 export function gripOf(id: string): Grip | undefined {
   return grips.get(id);
 }
-/** The sim's edge arrived: the hand sets off for `id`. A new reach replaces a running one. */
-export function startReach(id: string, lead = 0, step = { x: 0, z: 0 }): void {
-  active = { id, s: -lead, lead, step };
+
+const _g = new THREE.Vector3();
+
+/**
+ * Set the hand off for `id`. `at` is where the sim has him, or null when that is
+ * not known; `from`, where the drawn body is when that is somewhere else (at the
+ * last handle, in a queue). Without `walk` he reaches from where he is — Biggy's
+ * shoulders — and the lead is 0.
+ */
+function begin(id: string, at: Spot | null, walk: boolean, from: Spot | null, anchor: Spot | null): void {
+  const start = from ?? at;
+  const g = grips.get(id);
+  let lead = 0;
+  let to: Spot | null = from;
+  if (walk && start && g) {
+    g.point.getWorldPosition(_g);
+    const w = stepFor(start, { x: _g.x, z: _g.z }, g.walk);
+    if (w.to) {
+      lead = w.lead;
+      to = w.to;
+    }
+  }
+  const home = at ?? start;
+  const back = to && home ? Math.hypot(to.x - home.x, to.z - home.z) / STEP_SPEED : 0;
+  active = { id, s: -lead, lead, back, from, to, anchor };
 }
-/** Advance the one clock. Called once a frame, before the robots and the props read it. */
-export function tickReach(dt: number): void {
-  if (!active) return;
-  active.s += dt;
-  if (active.s >= reachEnd(active.lead)) active = null;
+
+/**
+ * The sim's edge arrived: the hand sets off for `id`, from a Droid the sim has at
+ * `at` (world metres; he walks up to it if `walk` and it is out of arm's length).
+ * A new reach replaces a running one, and anything queued behind it.
+ */
+export function startReach(id: string, at: Spot | null = null, walk = true): void {
+  queue.length = 0;
+  begin(id, at, walk, null, walk ? at : null);
+}
+/**
+ * The same, for a hand that may be busy: set off now if it is free, or taken in
+ * turn once the running reach is over. The chapter-2 breakers come this way.
+ */
+export function queueReach(id: string, at: Spot | null = null, walk = true): void {
+  if (active) queue.push({ id, walk });
+  else begin(id, at, walk, null, walk ? at : null);
+}
+/**
+ * Advance the one clock. Called once a frame, before the robots and the props
+ * read it, with where the sim has Droid (`at`) for the next handle in the queue.
+ *
+ * With a handle waiting he does not walk back: the next one starts from the
+ * handle he is at, a step to the side at most. A press that comes once the walk
+ * back has begun lets him finish it, and walks him up again from where the sim
+ * has him — never a jump from one to the other.
+ */
+export function tickReach(dt: number, at: Spot | null = null): void {
+  const r = active;
+  if (!r) return;
+  if (queue.length > 0 && r.s < WALK_BACK) r.back = 0;
+  r.s += dt;
+  if (r.s < reachEnd(r.back)) return;
+  active = null;
+  const next = queue.shift();
+  if (next) begin(next.id, at, next.walk, r.back === 0 ? r.to : null, r.anchor ?? (next.walk ? at : null));
 }
 /** The running reach, if any. */
 export function activeReach(): Reach | null {
   return active;
 }
-/** Seconds into the reach on `id` (negative while he walks up), or null when no hand is on its way to it. */
+/**
+ * Seconds into the reach on `id` (negative while he walks up), or null when no
+ * hand is on its way to it. A handle queued behind the running one reads
+ * -Infinity: its hand is coming but has not set off, so everything keyed on its
+ * clock — the pull, the strike — is still to happen.
+ */
 export function reachClock(id: string): number | null {
-  return active && active.id === id ? active.s : null;
+  if (active && active.id === id) return active.s;
+  return queue.some((q) => q.id === id) ? -Infinity : null;
 }
+/** Drop the hand, and every handle still waiting for it. */
 export function cancelReach(): void {
   active = null;
+  queue.length = 0;
 }
 
 /* ------------------------------------------------------------ the arm IK ---- */

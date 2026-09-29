@@ -680,6 +680,50 @@ export function partyTrick(bots: Bot[], b: Bot, flash: (s: string) => void): boo
   return true;
 }
 
+/* ---------------------------------------------------------------- small talk */
+
+/**
+ * HOW EACH OF THEM STARTS A CONVERSATION.
+ *
+ * Michele, 29 Sep 2026, with a screenshot of Josh standing in the hall: *"is this
+ * Josh? how do I talk to him? with E I get my action"* — and then, on the idea that
+ * Droid and Biggy would only say "Voxxy does the talking": *"I'd prefer all robots
+ * to talk."* Only Voxxy could; `E` beside a person was a stretch for Droid and a
+ * roll for Biggy, which answers "how do I talk to him?" with a party trick.
+ *
+ * So any of the three talks now (`ChapterRuntime.talk`), and each opens in its own
+ * voice, the way everything else they say is theirs: Voxxy quick, Droid deliberate,
+ * Biggy heavy. The person's answer is theirs and is not touched — it is written
+ * after the robot's opening, in the same toast, as `Name: "line"`, which also
+ * answers the first half of the question: the toast says who it was.
+ *
+ * Three openings each, taken in turn rather than at random: nothing in this game
+ * is random that does not have to be, and the third person Biggy greets should not
+ * get the same "…Hello." as the first two.
+ */
+const OPENERS: Record<RobotKind, readonly string[]> = {
+  voxxy: ['Voxxy: "Hi! Quick one —"', 'Voxxy: "Morning! Got a second?"', 'Voxxy: "Hello — down here!"'],
+  droid: [
+    'Droid: "Good morning. A question, if I may."',
+    'Droid: "Excuse me. Up here. Take your time — I do."',
+    'Droid: "Pardon me. I will be brief, by my standards."',
+  ],
+  biggy: ['Biggy: "…Hello."', 'Biggy: "Do not be alarmed. I only want to talk."', 'Biggy: "Morning. I will stand very still."'],
+};
+/** How many conversations each robot has opened, so the next one opens differently. */
+const OPENED = new WeakMap<Bot, number>();
+
+/**
+ * A conversation, as the toast that shows it: `b`'s opening in its own voice, then
+ * `name` answering with `line` — their own words, exactly as the chapter wrote them.
+ */
+export function smallTalk(b: Bot, name: string, line: string): string {
+  const n = OPENED.get(b) ?? 0;
+  OPENED.set(b, n + 1);
+  const said = OPENERS[b.kind];
+  return `${said[n % said.length]} — ${name}: "${line}"`;
+}
+
 /* ---------------------------------------------------------------- Droid rides Biggy */
 
 /**
