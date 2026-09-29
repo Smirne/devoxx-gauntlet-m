@@ -545,7 +545,7 @@ export function buildKeynote(mats: Materials): Keynote3D {
       });
       const o = new THREE.Mesh(letterGeometry(p.label ?? '#'), mat);
       // Standing where the letter will stand, reading out at the house.
-      o.position.set(m(p.x + (p.w ?? 0) / 2), DAIS, m(p.y + (p.h ?? 0) / 2));
+      o.position.set(m(p.x + (p.w ?? 0) / 2), hAt(p.x + (p.w ?? 0) / 2, p.y + (p.h ?? 0) / 2) + (rake ? 0.004 : DAIS), m(p.y + (p.h ?? 0) / 2));
       o.rotation.y = yawFromSimHeading(Math.PI / 2);
       g = { o, mat };
       gapObjs.set(slot, g);
@@ -568,13 +568,18 @@ export function buildKeynote(mats: Materials): Keynote3D {
         if (p.kind === 'letter-held') {
           // In his hands, clear of the carpet, the way he is walking.
           const at = hands?.('droid');
-          if (at) o.position.set(at.x, LETTER_HELD_LIFT_M, at.z);
-          else o.position.set(m(p.x) + Math.cos(face) * 0.6, LETTER_HELD_LIFT_M, m(p.y) + Math.sin(face) * 0.6);
+          // Lifted off the floor Droid is standing on — the pit or the stage, raked.
+          const fy = hAt(p.x, p.y) + LETTER_HELD_LIFT_M;
+          if (at) o.position.set(at.x, fy, at.z);
+          else o.position.set(m(p.x) + Math.cos(face) * 0.6, fy, m(p.y) + Math.sin(face) * 0.6);
         } else {
           // In the sign it stands on the dais; in the wing, on the carpet, tipped
           // back against the wall from its bottom edge.
           const inSign = p.state === 'done';
-          o.position.set(m(p.x + (p.w ?? 0) / 2), inSign ? DAIS : 0, m(p.y + (p.h ?? 0) / 2));
+          const lx = p.x + (p.w ?? 0) / 2;
+          const ly = p.y + (p.h ?? 0) / 2;
+          // The stage's own height when raked (a plate), the dais when flat.
+          o.position.set(m(lx), hAt(lx, ly) + (inSign && !rake ? DAIS : 0), m(ly));
           if (!inSign) mesh.rotation.x = -LEAN_RAD;
         }
       } else if (p.kind === 'letter-slot') {

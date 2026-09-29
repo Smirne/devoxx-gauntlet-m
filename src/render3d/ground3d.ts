@@ -1047,7 +1047,10 @@ export function buildGround(mats: Materials): Ground3D {
   const tables: Array<{ rect: { x: number; y: number; w: number; h: number }; mats: THREE.MeshStandardMaterial[]; fade: number }> = [];
   let focusX = -1e9;
   let focusZ = -1e9;
+  const beltGroup = new THREE.Group();
+  group.add(beltGroup);
   {
+    const belts = new Buckets();
     const solid2 = new Buckets();
     const TABLE_TOP = 1.3;
     const legMat = mats.steel;
@@ -1192,12 +1195,14 @@ export function buildGround(mats: Materials): Ground3D {
         // The belt barrier across the open front: posts and a red belt.
         const belt = new THREE.MeshStandardMaterial({ color: 0xb22222, roughness: 0.6 });
         const posts = Math.max(2, Math.round(bw / 1.6) + 1);
+        // Only while the hall is shut (chapter 2): in chapter 3 the stands are
+        // open for business (Michele, 29 Sep) and the belts are gone.
         for (let k = 0; k < posts; k++) {
           const px = x0 + 0.15 + ((bw - 0.3) * k) / (posts - 1);
-          solid2.add(mats.steel, box(0.05, 0.95, 0.05, V(px, 0.48, z1 + 0.1)));
-          solid2.add(mats.steel, new THREE.CylinderGeometry(0.16, 0.16, 0.03, 16).translate(px, 0.015, z1 + 0.1));
+          belts.add(mats.steel, box(0.05, 0.95, 0.05, V(px, 0.48, z1 + 0.1)));
+          belts.add(mats.steel, new THREE.CylinderGeometry(0.16, 0.16, 0.03, 16).translate(px, 0.015, z1 + 0.1));
         }
-        solid2.add(belt, box(bw - 0.3, 0.05, 0.01, V(cx, 0.9, z1 + 0.1)));
+        belts.add(belt, box(bw - 0.3, 0.05, 0.01, V(cx, 0.9, z1 + 0.1)));
         return;
       }
       // A high table.
@@ -1236,6 +1241,7 @@ export function buildGround(mats: Materials): Ground3D {
       tables.push({ rect: { x: b.x, y: b.y, w: b.w, h: b.h }, mats: tableMats, fade: 1 });
     });
     colliders.push(...solid2.build(group));
+    belts.build(beltGroup);
   }
 
   /* ------------------------------------------------------------- lights */
@@ -1331,6 +1337,7 @@ export function buildGround(mats: Materials): Ground3D {
     setChapter(n: number): void {
       later.visible = n >= 3;
       morning = n >= 3;
+      beltGroup.visible = n < 3;
       setOutsideMorning(n >= 3);
     },
     setPower(on: number, t: number, instant = false): void {
