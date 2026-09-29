@@ -3609,6 +3609,18 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * where they are: last in the progress line, and only once something has been won.
    */
   function tasks(): Task[] {
+    /*
+     * THE CRATES FIRST, THEN THE BAR — chapter 4's rule for the cake and the
+     * letters, on the beer. Michele, 29 Sep 2026: *"The beer hint points to the
+     * bar, but you need to take the crates first. Hint the crates if biggy is not
+     * porting any, the bar if he's already loaded."* Empty-handed, the arrow goes
+     * on the loose crate nearest him, which is the one his `E` would take: on the
+     * pallet to begin with, and wherever a heap error scattered them after one.
+     * With anything on his back, the lit mark by the taps.
+     */
+    const bg = ctx.byKind('biggy');
+    const load = carriedCrates();
+    const nextCrate = held('loose').sort((a, b) => dist(bg, a) - dist(bg, b))[0];
     return [
       {
         id: 'ladle',
@@ -3669,10 +3681,13 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         text: `stack tonight’s beer delivery at ${BAR_NAME}`,
         done: beerDone,
         who: ['biggy'],
-        at: STACK_AT,
+        at: load > 0 || !nextCrate ? STACK_AT : { x: nextCrate.x, y: nextCrate.y },
         n: held('stacked').length,
         of: CRATE_DELIVERY,
-        hint: 'Biggy: they are mine alone, and there are only so many of them I can hold. When the last safe one goes on, take that load to the lit mark by the taps before trying for another',
+        hint:
+          load > 0
+            ? `Biggy: ${load} up, and a load is a load. The lit mark by the taps at ${BAR_NAME} — E on it and they go over the bar`
+            : 'Biggy: the crates first — E right beside one and it goes up. They are mine alone, and only so many at a time: when the last safe one goes on, that is a load',
       },
       {
         id: 'stairs',

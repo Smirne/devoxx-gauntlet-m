@@ -6541,3 +6541,35 @@ its own task.
 the live top bar drew the short line while the briefing's foot kept the chapter's full list, and the
 opening still read "Any key to skip". That look was taken before restart moved to the end; the order
 is the test's.
+
+## 29 Sep 2026 — the roll names its key; the beer hint follows the load
+
+**What the human decided.** Michele, after a playthrough: *"Pressing E to roll Biggy should be
+suggested in the roll"*, and *"The beer hint points to the bar, but you need to take the crates
+first. Hint the crates if biggy is not porting any, the bar if he's already loaded."*
+
+**What the agent did.**
+
+- *The roll* was read as chapter 2's roller door. Biggy only gets through it when Voxxy takes hold
+  of him and runs him down the lane until he rolls; the crash line already said "Biggy rolls
+  through". The store row's hint now says `E` takes hold, and so do Biggy's and Voxxy's lines at
+  the shutter. Voxxy's said "(Space)", the tow's first key, which Michele had already folded into
+  `E` (*"I'd keep it to one key"*). The row also names Voxxy beside Biggy. Only her tow reaches the
+  door's 5.4 m/s: her cap is 5.8, Biggy's own 4.7 and Droid's 3.2. So the first rung of `H`, "Biggy:
+  this one is mine", sent a stuck player to the one robot who cannot do it alone.
+  `tests/tow.test.ts` now drives the run on `E`, which no test did: the existing ones take hold with
+  Space, or just push.
+- *The beer row* now points at the loose crate nearest Biggy while he carries none, which is the one
+  his `E` would take, on the pallet or wherever a heap error left it. Once he carries any, it points
+  at the lit mark by the taps. That is chapter 4's rule for the cake and the letters. The hint line
+  changes with it: the crates first, `E` to lift, only so many at a time; or "n up", and `E` at the
+  mark.
+- Four mutants each fail a new test: the arrow always on the bar, the row naming Biggy alone, Voxxy
+  saying Space, and chapter 2 keeping Voxxy's `E` instead of handing it to the grab.
+
+**Left as it was.** The store's ring stays at the door rather than at the far end of the lane where
+the run starts; the hint line says where to start.
+
+**Checked.** Typecheck, the 867 tests in 65 files and the production build are green. Not looked at
+in a browser: `H` hints only the first unfinished row, so seeing either ring live means finishing
+the rows above it first. The HUD did not change, and the tests read the rows it draws.
