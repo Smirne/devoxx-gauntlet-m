@@ -1503,8 +1503,10 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     }
     g.position.set(m(d.cx), 0, leafZ);
     // Named, so chapter 4 can open Room 8's (keynote3d.ts builds its inside).
+    // Room 8's stays its own object: merged into the venue's batches, hiding
+    // it would hide nothing and chapter 4 would find its doors still shut.
     g.name = `door-${String(r.n)}`;
-    group.add(g);
+    group.add(r.n === 8 ? noMerge(g) : g);
   }
 
   /* ------------------------------------------------------ emergency power */
