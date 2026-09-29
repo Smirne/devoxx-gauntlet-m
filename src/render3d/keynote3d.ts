@@ -22,7 +22,7 @@
 import * as THREE from 'three';
 
 import { CY0, CY1, F1, R } from '../sim/geometry';
-import { KEYNOTE_RAKE, LAB_DEPTH, LAB_X0, LAB_X1, RAKE_DEPTH, STAGE_RISE } from '../sim/chapters/ch4-keynote';
+import { BREAKFAST, KEYNOTE_RAKE, LAB_DEPTH, LAB_X0, LAB_X1, RAKE_DEPTH, STAGE_RISE } from '../sim/chapters/ch4-keynote';
 import { riseAt } from '../sim/surface';
 import { SIGN_ORANGE } from '../sim/letters';
 import type { GameSnapshot, Plate, Prop, ReelCard } from '../sim/types';
@@ -204,6 +204,86 @@ export function buildKeynote(mats: Materials): Keynote3D {
         }
       }
     }
+  }
+
+  /* ------------------------------------ the speakers' breakfast, at the stairs */
+  // Michele, 29 Sep (#21): "Robots should stop at the secondary stairs. Add some
+  // tables with breakfast". The sim's `BREAKFAST` is the wall; this is what it is:
+  // four clothed tables filling the lane between the two flights' west ends, with
+  // urns, croissants, cups and juice on them, the taps and the card turned east,
+  // to the Room 8 side the robots come from.
+  {
+    const cloth = new THREE.MeshStandardMaterial({ color: 0xf1eee6, roughness: 0.95 });
+    const croissant = new THREE.MeshStandardMaterial({ color: 0xc9812f, roughness: 0.55 });
+    const china = new THREE.MeshStandardMaterial({ color: 0xf7f6f2, roughness: 0.3 });
+    const juice = new THREE.MeshStandardMaterial({ color: 0xf29a1d, roughness: 0.15, transparent: true, opacity: 0.85 });
+    const TH = 0.76;
+    const bx = m(BREAKFAST.x + BREAKFAST.w / 2);
+    const z0 = m(BREAKFAST.y);
+    const lane = m(BREAKFAST.h);
+    const depth = m(BREAKFAST.w) - 0.08;
+    const n = 4;
+    const each = lane / n;
+    for (let i = 0; i < n; i++) {
+      const tz = z0 + each * (i + 0.5);
+      const len = each - 0.06;
+      // The cloth to the floor, and the table top a touch proud of it.
+      group.add(new THREE.Mesh(box(depth, TH - 0.02, len, V(bx, (TH - 0.02) / 2, tz)), cloth));
+      group.add(new THREE.Mesh(box(depth + 0.04, 0.03, len + 0.04, V(bx, TH - 0.005, tz)), cloth));
+      if (i % 2 === 0) {
+        // A coffee urn, tap to the east.
+        const urn = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.46, 20), mats.steel);
+        urn.position.set(bx - 0.05, TH + 0.23, tz - len * 0.25);
+        const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.15, 0.06, 20), mats.darkMetal);
+        lid.position.set(urn.position.x, TH + 0.49, urn.position.z);
+        const tap = new THREE.Mesh(box(0.08, 0.04, 0.04, V(urn.position.x + 0.19, TH + 0.12, urn.position.z)), mats.darkMetal);
+        group.add(urn, lid, tap);
+        // Cups stacked beside it, upside down.
+        for (let s = 0; s < 3; s++) {
+          for (let c = 0; c < 4; c++) {
+            const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.032, 0.085, 12), china);
+            cup.position.set(bx + 0.12 - s * 0.1, TH + 0.045 + c * 0.05, tz - len * 0.02);
+            group.add(cup);
+          }
+        }
+      } else {
+        // Juice, and a jug of it.
+        for (let j = 0; j < 5; j++) {
+          const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.11, 10), juice);
+          glass.position.set(bx + 0.15, TH + 0.055, tz - len * 0.3 + j * 0.09);
+          group.add(glass);
+        }
+        const jug = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.24, 16), juice);
+        jug.position.set(bx - 0.12, TH + 0.12, tz - len * 0.22);
+        group.add(jug);
+      }
+      // A tray of croissants on every table.
+      const ty = TH + 0.025;
+      const tray = new THREE.Mesh(box(0.42, 0.02, 0.58, V(bx, ty, tz + len * 0.22)), mats.darkMetal);
+      group.add(tray);
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 2; c++) {
+          const cr = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.028, 8, 12, Math.PI * 1.25), croissant);
+          cr.rotation.x = -Math.PI / 2;
+          cr.rotation.z = (r * 2 + c) * 0.9;
+          cr.scale.set(1, 1, 0.8);
+          cr.position.set(bx - 0.1 + c * 0.2, ty + 0.035, tz + len * 0.22 - 0.18 + r * 0.18);
+          group.add(cr);
+        }
+      }
+    }
+    // The tent card on the middle of the row, to the east.
+    const card = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.9, 0.28),
+      new THREE.MeshBasicMaterial({ map: word("SPEAKERS' BREAKFAST", '#1a1a1a', '#f4efe2', 1024, 320), toneMapped: false }),
+    );
+    card.position.set(bx + depth / 2 - 0.02, TH + 0.16, z0 + lane / 2);
+    card.rotation.y = Math.PI / 2;
+    group.add(card);
+    // Warm light over it, so it reads from down the corridor.
+    const lamp = new THREE.PointLight(0xffd9a8, 40, 7, 2);
+    lamp.position.set(bx + 0.8, 2.4, z0 + lane / 2);
+    group.add(lamp);
   }
 
   /* ------------------------------------------------------------- the screen */

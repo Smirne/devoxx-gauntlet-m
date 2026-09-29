@@ -75,7 +75,8 @@ function until(g: DebugGame, done: () => boolean, budget = 600): boolean {
 }
 
 import { REEL_PREROLL } from '../src/sim/reel';
-import { bot, driveTo, openFrontDoors, raiseSign, walkTo } from './pilot';
+import { BREAKFAST } from '../src/sim/chapters/ch4-keynote';
+import { bot, driveChapter4, driveTo, openFrontDoors, raiseSign, walkTo } from './pilot';
 
 
 /* --------------------------------------------- the chapter-2 network closet
@@ -1792,6 +1793,70 @@ describe('chapter 4 — keynote', () => {
     expect(off.slice(0, 8), `${off.length} of ${seen.corridor + seen.room} walking samples face more than 45° off their own step`).toEqual([]);
     // Corridor west, door and aisles north, rows both ways: the bug pointed every one of them at 0.
     expect(headings.size, 'the whole crowd shares one heading').toBeGreaterThan(4);
+  });
+
+  /*
+   * ...AND THE MORNING STOPS AT THE SECONDARY STAIRS.
+   *
+   * Michele, 29 Sep 2026 (#21): *"Chap 4: not all corridor should be walkable.
+   * Robots should stop at the secondary stairs. Add some tables with breakfast or
+   * other things if you want a reason."* The speakers' breakfast closes the lane
+   * between the two flights' west ends and the flights close the rest. Driven west
+   * at it — down the middle and hard along either flight, with Voxxy hopping, since
+   * her hop clears low furniture — every robot stops on the Room 8 side, and says
+   * why in its own voice.
+   */
+  it('stops every robot at the secondary stairs, and each says why in its own voice', () => {
+    const line = BREAKFAST.x + BREAKFAST.w;
+    const said = new Map<RobotKind, string>();
+    for (const k of ['voxxy', 'droid', 'biggy'] as const) {
+      for (const y of [BREAKFAST.y + 10, (CY0 + CY1) / 2, BREAKFAST.y + BREAKFAST.h - 10]) {
+        const g = mk(4);
+        g.debug.select(k);
+        g.debug.place(k, line + 60, y);
+        g.update(DT_MAX);
+        g.setStick(-1, 0);
+        let west = Infinity;
+        for (let i = 0; i < 240; i++) {
+          g.update(DT_MAX);
+          if (k === 'voxxy' && i % 30 === 15) g.key('KeyE');
+          west = Math.min(west, bot(g, k).x);
+          const t = g.snapshot().toast?.t ?? '';
+          if (t.includes('breakfast') || t.includes('croissant')) said.set(k, t);
+        }
+        expect(west, `${k} got past the breakfast at y ${y}`).toBeGreaterThanOrEqual(line + bot(g, k).r - 0.5);
+      }
+    }
+    expect([...said.keys()].sort(), 'somebody hit it and was not told why').toEqual(['biggy', 'droid', 'voxxy']);
+    for (const [k, t] of said) expect(t.startsWith(`${bot(mk(4), k).name}:`), `${k} is not the one speaking: ${t}`).toBe(true);
+    // Not one script with the name swapped.
+    expect(new Set([...said.values()].map((t) => t.replace(/^(Voxxy|Droid|Biggy):\s*/, ''))).size).toBe(3);
+  });
+
+  it('keeps the whole chapter on the Room 8 side of it: the start, the pilot’s run and the crowd', () => {
+    const g = mk(4);
+    const line = BREAKFAST.x + BREAKFAST.w;
+    let robots = Math.min(...g.snapshot().bots.map((b) => b.x));
+    let crowd = Infinity;
+    let walkers = 0;
+    const watched: DebugGame = {
+      ...g,
+      update: (dt: number) => {
+        g.update(dt);
+        const s = g.snapshot();
+        for (const b of s.bots) robots = Math.min(robots, b.x);
+        for (const p of s.people) {
+          if (p.role !== 'visitor') continue;
+          walkers++;
+          crowd = Math.min(crowd, p.x);
+        }
+      },
+    };
+    driveChapter4(watched);
+    expect(g.snapshot().reel, 'the chapter never reached its ending').not.toBeNull();
+    expect(robots, 'a robot started or was driven west of the breakfast').toBeGreaterThan(line);
+    expect(walkers, 'the crowd never came up the stairs').toBeGreaterThan(0);
+    expect(crowd, 'the crowd walked west of the breakfast').toBeGreaterThan(line);
   });
 });
 

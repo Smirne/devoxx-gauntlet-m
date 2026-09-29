@@ -169,6 +169,24 @@ export const LAB_X0 = 1560;
 export const LAB_X1 = 1698;
 export const LAB_DEPTH = 12;
 export const labTable = (y: number): Rect => ({ x: LAB_X0, y, w: LAB_X1 - LAB_X0, h: LAB_DEPTH });
+/**
+ * The speakers' breakfast (see `setup`): a row of tables across the corridor
+ * between the two secondary flights' west ends, wall to wall with them, sim px.
+ * `BREAKFAST_DEPTH` is a table and its cloth, 0.88 m.
+ */
+export const BREAKFAST_DEPTH = 11;
+export const BREAKFAST: Rect = {
+  x: F1.nicheTop.x,
+  y: F1.nicheTop.y + F1.nicheTop.h,
+  w: BREAKFAST_DEPTH,
+  h: F1.nicheBot.y - (F1.nicheTop.y + F1.nicheTop.h),
+};
+/** Why the breakfast stops each of them, in their own voices. */
+const BREAKFAST_WHY: Record<RobotKind, string> = {
+  voxxy: "Voxxy: the speakers' breakfast, stair to stair. Jump it and I land in the croissants. Room 8 is the other way",
+  droid: "Droid: coffee urns and croissant trays from one flight to the other. That is the speakers' breakfast — our morning is on the Room 8 side of it",
+  biggy: 'Biggy: a table of croissants the width of the corridor, and me. Not this morning. Room 8 is behind us',
+};
 export const RAKE_DEPTH = 2.4;
 export const STAGE_RISE = 0.6;
 
@@ -297,6 +315,34 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       why: (b) => `${b.name}: a lab table, laid out for the hands-on sessions. Round it`,
     });
   }
+
+  /*
+   * THE SPEAKERS' BREAKFAST, across the corridor at the secondary staircases.
+   *
+   * Michele, 29 Sep 2026 (#21): *"Chap 4: not all corridor should be walkable.
+   * Robots should stop at the secondary stairs. Add some tables with breakfast or
+   * other things if you want a reason."* The floor was open from the main
+   * staircase to the fire door — 90 m of corridor for a chapter that happens in
+   * its last 45 — and nothing at the far end but more corridor.
+   *
+   * The two secondary flights stand against the corridor's walls level with rooms
+   * 4 and 9 (`F1.nicheTop` / `nicheBot`, where the plans put them, unmoved); a row
+   * of breakfast tables between their west ends closes the lane between them, so
+   * flights and tables are one line across the building and the morning is
+   * everything on the Room 8 side of it. Coffee urns, croissant trays and cups,
+   * laid out for the speakers before the keynote (keynote3d.ts draws them off
+   * `BREAKFAST`).
+   *
+   * Solid, and NOT `low` like the lab tables: Voxxy's hop vaults low furniture
+   * (`stepBot`), and a robot is meant to be stopped by this, not to find the way
+   * over it. The crowd never comes this far (main staircase, corridor, Room 8's
+   * door), and neither does anything the chapter or its test pilot drives.
+   */
+  ctx.walls.push({
+    ...BREAKFAST,
+    kind: 'breakfast',
+    why: (b) => BREAKFAST_WHY[b.kind],
+  });
 
   const r8 = R(8);
   const d8 = roomDoor(r8);
