@@ -5705,3 +5705,47 @@ overlay answers whether it took the key and the shell returns on `true`.
 
 **Tests.** `tests/credits.test.ts`, 5. Suite **826 green** in 60 files, `tsc --noEmit` clean,
 `ERRORS:0` in the browser.
+
+### Five corrections to the credits, and where the real token count came from
+
+**What the human decided.** Michele read the screen and corrected it, which is the only reason any
+of it is true: *"I didn't find the venue, i just pointed you to files and described / corrected
+your renders. You don't work officially at WellD, i wish you did. You can mention welld as sponsor
+for tokens, time, encouragement and playthrough? Models used include Opus 5, 5.5 and Sonnet. 3 repo
+is fine."*
+
+Every one of those was the agent flattering somebody. His own credit had him *finding* the venue —
+he pointed at `plans/` and at photographs and then said what each render got wrong, which is a
+different and harder job. The model credit said "Opus 5" when three models wrote this across four
+sessions. WellD was implied to be an employer. And the fourth repository the screen carried as a
+placeholder simply does not exist; three is the number.
+
+**What the agent did wrong before that.** All four are the same failure: writing down the version
+of events that reads best rather than the one that happened. A credits screen whose whole claim is
+*every number here was measured* cannot afford a single sentence that was merely plausible.
+
+**The tokens: asked, then measured.** He asked whether the other sessions should be asked for their
+totals, and for a prompt to ask them with. No prompt was needed — `list_sessions` reports each
+session's own `usage`, so the four sessions that built this game add up directly:
+
+| session | model | tokens | generated |
+| --- | --- | --- | --- |
+| this one (the game) | Opus 5 | 15.15 B | 56.1 M |
+| 3D game POC | Opus 5.5 | 2.20 B | 5.48 M |
+| 3D letters puzzle | Opus 5.5 | 107 M | 373 K |
+| Devoxx game soundtrack | Opus 5.5 | 54 M | 280 K |
+| **total** | | **17.51 B** | **62.26 M** |
+
+plus an archived Sonnet CLI session, which is where the third model on the credit line comes from.
+So the token tile is now the real four-session figure rather than one session's, and the footnote
+was narrowed to say so: the tool calls and the subagents are still one session's — those live in
+transcripts this container cannot open — and only those two are a floor.
+
+**Tests.** `tests/credits.test.ts` grew two assertions that would have caught the flattery if it
+had been written in code instead of prose: WellD's credit must contain the word *sponsor*, and the
+token tile must be labelled *four sessions* — if anybody quietly scopes it back to one, the suite
+goes red. Suite **826 green** in 60 files, `tsc --noEmit` clean, `ERRORS:0` in the browser.
+
+**Still open.** The WellD logo is the old one. The new mark is all brand red on transparent, which
+means the white plate under it can go entirely — but the artwork has not reached this container,
+as a PNG or as the SVG, so the swap is not in this commit.

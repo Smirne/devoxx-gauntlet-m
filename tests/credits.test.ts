@@ -55,11 +55,15 @@ const numbers = (s: string): number[] =>
   [...s.matchAll(/\b(\d[\d,]*)\b/g)].map((m) => Number(m[1].replace(/,/g, '')));
 
 describe('the credits', () => {
-  it('names the human, the model and the company', () => {
+  it('names the human, the models and the sponsor', () => {
     const who = CREDIT_ROLES.map((r) => r.who).join(' | ');
     expect(who).toContain('Michele Giacobazzi');
-    expect(who).toContain('Claude');
+    // Three models over four sessions, not one.
+    expect(who).toMatch(/Opus 5.*Opus 5\.5.*Sonnet/);
     expect(who).toContain('WellD');
+    // WellD sponsored this; nobody here is on their payroll for it.
+    const welld = CREDIT_ROLES.find((r) => r.who === 'WellD');
+    expect(welld?.what.toLowerCase(), 'WellD is credited as something other than a sponsor').toContain('sponsor');
     // Everybody gets a line saying what they actually did, not a job title.
     for (const r of CREDIT_ROLES) expect(r.what.length, `${r.who} has no credit`).toBeGreaterThan(40);
   });
@@ -122,6 +126,11 @@ describe('the credits', () => {
     // Ten prototypes, and the count is the headline rather than buried.
     const poc = CREDIT_STATS.find((s) => s.label.includes('prototypes'));
     expect(poc?.n).toBe('10');
+    // Three repositories, each named, so nobody has to take the number on trust.
+    const repos = CREDIT_STATS.find((s) => s.label === 'repositories');
+    expect(repos?.n).toBe('3');
+    expect(repos?.note).toContain('gauntlet-loop-experiment');
+    expect(repos?.note).toContain('devoxx-game-experiments');
   });
 
   /**
@@ -133,7 +142,10 @@ describe('the credits', () => {
   it('marks the per-session figures as one session, on the screen', () => {
     const perSession = CREDIT_STATS.filter((s) => s.label.includes('one session'));
     expect(perSession.length, 'no figure is scoped to the session it came from').toBeGreaterThan(1);
-    expect(CREDIT_FOOTNOTE.toLowerCase()).toContain('one session of several');
     expect(CREDIT_FOOTNOTE).toMatch(/floor, not a total/);
+    // ...and the tokens are NOT one of them: that figure is all four sessions,
+    // read off the account's own usage records rather than extrapolated.
+    const tokens = CREDIT_STATS.find((s) => s.label.startsWith('tokens'));
+    expect(tokens?.label, 'the token count went back to being one session').toContain('four sessions');
   });
 });

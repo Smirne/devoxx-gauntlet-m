@@ -37,34 +37,38 @@ export const CREDIT_ROLES: readonly CreditRole[] = [
   {
     who: 'Michele Giacobazzi',
     what:
-      'Direction, design and every decision that stuck. Found the venue, chose the night shift, ' +
-      'played every build and said what was wrong with it — the ladle, the cake, the frozen ending, ' +
-      'the robot walking through a table.',
+      'Direction, design and every decision that stuck. Put the real venue in front of the model \u2014 ' +
+      'the plans, the photographs \u2014 then played every build and said what was wrong with it: the ladle, ' +
+      'the cake, the frozen ending, the robot walking through a table. The renders are right because he ' +
+      'kept describing what they got wrong.',
   },
   {
-    who: 'Claude Opus 5, in Claude Code',
+    who: 'Claude \u2014 Opus 5, Opus 5.5 and Sonnet, in Claude Code',
     what:
       'Wrote the simulation, the renderer, the venue, the three robots, the music and the tests. ' +
       'Proposed a great deal that was rejected, which is the half of this that took the time.',
   },
   {
     who: 'WellD',
-    what: 'Where the two of us work, and who paid for the nights.',
+    what: 'Sponsor \u2014 the tokens, the time, the encouragement, and a playthrough whenever one was needed.',
   },
 ];
 
 /**
  * The process, in figures.
  *
- * `4 repositories` is Michele's count of the whole effort; three are nameable
- * here (`gauntlet-loop-experiment`, the method; `devoxx-game-experiments`, the
- * ten prototypes; `devoxx-gauntlet-m`, this game) and the fourth is his.
+ * The token count is the real one: `list_sessions` reports each session's usage,
+ * so the four that built this game add up rather than being extrapolated from the
+ * one whose transcript is readable from in here. The tool calls and the subagents
+ * cannot be had the same way \u2014 they live in transcripts this container cannot
+ * open \u2014 so those two say which session they came from and the footnote calls
+ * them a floor.
  */
 export const CREDIT_STATS: readonly CreditStat[] = [
   {
-    n: '4',
+    n: '3',
     label: 'repositories',
-    note: 'the method, the prototypes, this game, and the one before all of them',
+    note: 'gauntlet-loop-experiment, the method \u00b7 devoxx-game-experiments, the prototypes \u00b7 this game',
   },
   {
     n: '10',
@@ -95,8 +99,8 @@ export const CREDIT_STATS: readonly CreditStat[] = [
   },
   {
     n: '44',
-    label: 'subagents',
-    note: 'critics, explorers and builders spawned inside one session, plus 6 orchestrated workflows',
+    label: 'subagents, one session',
+    note: 'critics, explorers and builders, plus 6 orchestrated workflows \u2014 counted in this session alone',
   },
   {
     n: '4,453',
@@ -104,9 +108,9 @@ export const CREDIT_STATS: readonly CreditStat[] = [
     note: '3,906 of them a shell — 7,245 model turns answering 233 messages from Michele',
   },
   {
-    n: '2.15 B',
-    label: 'tokens, one session',
-    note: '6.2 million of them written by the model; the rest is context, read again every turn',
+    n: '17.5 B',
+    label: 'tokens, four sessions',
+    note: '62.3 million of them written by the model; the rest is context, read again every turn',
   },
 ];
 
@@ -116,7 +120,8 @@ export const CREDIT_STATS: readonly CreditStat[] = [
  * session's, and this game was built across several.
  */
 export const CREDIT_FOOTNOTE =
-  'Counted off the repository and this session’s own transcript on 29 September 2026. ' +
-  'The session figures are one session of several, so they are a floor, not a total.';
+  'Counted off the repository and off the sessions\u2019 own records on 29 September 2026. The tokens are ' +
+  'the whole of the four sessions that built this; the tool calls and the subagents are one session\u2019s, ' +
+  'so those two are a floor, not a total.';
 
 export const CREDIT_CLOSE = 'C or Esc to close';
