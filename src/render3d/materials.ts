@@ -149,8 +149,11 @@ export function withGrime(mat: THREE.MeshStandardMaterial, amount = 0.5, scale =
         float gBlot = smoothstep(.45, .8, gN);
         diffuseColor.rgb *= 1. - grimeAmt * (.45 * gBlot + .25 * (gN - .5));
       `,
+      // The same blotches, not a second fbm: `gN` is the colour chunk's, which
+      // three places before the roughness map in the same scope — and this was
+      // 32 more hashes on every wall, floor and ceiling fragment.
       fragRough: /* glsl */ `
-        roughnessFactor = clamp(roughnessFactor + grimeAmt * .35 * smoothstep(.45, .8, wFbm(vWorldP * grimeScale)), 0., 1.);
+        roughnessFactor = clamp(roughnessFactor + grimeAmt * .35 * smoothstep(.45, .8, gN), 0., 1.);
       `,
     },
     'grime',
