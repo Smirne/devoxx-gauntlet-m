@@ -68,12 +68,16 @@ export const CREDIT_STATS: readonly CreditStat[] = [
   {
     n: '3',
     label: 'repositories',
-    note: 'gauntlet-loop-experiment, the method \u00b7 devoxx-game-experiments, the prototypes \u00b7 this game',
+    note:
+      'gauntlet-loop-experiment, the method and the physics \u00b7 devoxx-game-experiments, the prototypes \u00b7 '
+      + 'this game, the rendering in 2.5D and 3D',
   },
   {
     n: '10',
     label: 'gameplay prototypes',
-    note: 'one HTML file each, 01 playground to 10 the real Kinepolis — nine of them thrown away',
+    note:
+      'one HTML file each, 01 a playground to 10 the real Kinepolis \u2014 and not one idea refined: '
+      + '02 was a Devoxx Robot Olympics, 07 a tomato soup run',
   },
   {
     n: '2D → 2.5D → 3D',

@@ -5749,3 +5749,37 @@ goes red. Suite **826 green** in 60 files, `tsc --noEmit` clean, `ERRORS:0` in t
 **Still open.** The WellD logo is the old one. The new mark is all brand red on transparent, which
 means the white plate under it can go entirely — but the artwork has not reached this container,
 as a PNG or as the SVG, so the swap is not in this commit.
+
+### What the three repositories were actually for
+
+**What the human decided.** Michele, 29 Sep: *"3 repositories: experiments, methods and physics,
+rendering (2.5D and 3D)"*, then *"prototype: including 'Devoxx olympics'"*.
+
+**What the agent had written.** `gauntlet-loop-experiment, the method · devoxx-game-experiments,
+the prototypes · this game` — three names and a shrug for the third. It counted the repositories
+correctly and then said nothing about what the work in them *was*, which is the part a reader of a
+credits screen actually wants.
+
+**What it checked before rewriting.** Both repositories, rather than taking the division on faith.
+`Smirne/gauntlet-loop-experiment` is a Micro Machines-style racer — `src/physics/{World,Collision}.js`,
+`src/vehicle/`, a Three.js renderer — carrying `PROMPT.md`, `REVIEW.md` with its 5/7/9 quality
+anchors, `CRITIQUE-LOG.md` and a 200-line `DEFECTS.md`. That is exactly the claim: the gauntlet
+method and a hand-written physics engine, proven on something that was not this game.
+`welldsagl/devoxx-game-experiments` holds `poc/00`–`poc/10`. So the tile now reads *the method and
+the physics · the prototypes · this game, the rendering in 2.5D and 3D*.
+
+**And the ten were not ten drafts of one game.** `poc/02-olympics.html` is *Devoxx Robot Olympics*,
+a different game — seven events and a finale in the keynote room. `03` is *Lights & Locks*, `07`
+*The Tomato Soup Run*; After Dark only starts at `04` and is rebuilt four more times before `10`
+lands in the real Kinepolis. "Nine of them thrown away" was true and told the wrong story: they
+were not iterations converging, they were separate games, and the one that survived won on merit.
+The note names two of the others so the screen says so.
+
+**Tests.** Four assertions, because a correction in prose drifts back and a correction in a test
+does not: the repositories note must name *physics* and *2.5D and 3D*, and the prototypes note must
+name the Olympics. Suite **826 green**, `tsc --noEmit` clean.
+
+**Still open, again.** The WellD logo. Michele has a new mark and the SVG for it, but neither has
+reached this container — no attachment from three consecutive messages landed on disk, and
+`welld.ch` is refused by this environment's egress policy, so the agent cannot go and get it
+either. SVG is text, so pasting the source into the conversation is the route that works.

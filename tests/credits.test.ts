@@ -126,11 +126,20 @@ describe('the credits', () => {
     // Ten prototypes, and the count is the headline rather than buried.
     const poc = CREDIT_STATS.find((s) => s.label.includes('prototypes'));
     expect(poc?.n).toBe('10');
-    // Three repositories, each named, so nobody has to take the number on trust.
+    // Three repositories, each named AND said what it was for, so nobody has to
+    // take either the number or the shape of the work on trust. Michele's own
+    // division, 29 Sep: "experiments, methods and physics, rendering (2.5D and 3D)".
     const repos = CREDIT_STATS.find((s) => s.label === 'repositories');
     expect(repos?.n).toBe('3');
     expect(repos?.note).toContain('gauntlet-loop-experiment');
     expect(repos?.note).toContain('devoxx-game-experiments');
+    expect(repos?.note, 'the racer repo lost the physics').toContain('physics');
+    expect(repos?.note, 'this repo lost the rendering').toMatch(/2\.5D and 3D/);
+
+    // ...and the ten prototypes were not ten drafts of one game. `02-olympics.html`
+    // is a different game entirely, and saying so is the difference between a
+    // process story and a progress bar.
+    expect(poc?.note, 'the prototypes went back to being one idea refined').toContain('Olympics');
   });
 
   /**
