@@ -130,6 +130,23 @@ describe('the tow bar', () => {
     expect(top).toBeLessThanOrEqual(towCap('voxxy') * 1.05 + 1e-6);
   });
 
+  /*
+   * ...AND ON THE KEY THE GAME TELLS YOU TO PRESS. Michele: *"Pressing E to roll
+   * Biggy should be suggested in the roll."* The store hint and the shutter's own
+   * lines say `E` now, so `E` has to be what takes hold in that lane: chapter 2
+   * hands Voxxy's `E` on to the grab when nothing else there wants it.
+   */
+  it('takes hold on E, the key the store hint names, and gets him through', () => {
+    const g = mk(2);
+    onTheLane(g, 0);
+    g.key('KeyE');
+    expect(g.snapshot().tow?.holder, 'E beside Biggy did not take hold of him').toBe('voxxy');
+    g.setStick(1, 0);
+    for (let i = 0; i < 400 && !(g.debug.chapter() as ExpoState).rollerBroken; i++) g.update(DT_MAX);
+    g.setStick(0, 0);
+    expect((g.debug.chapter() as ExpoState).rollerBroken, 'the run on E never got through the shutter').toBe(true);
+  });
+
   it('re-aims the bar when the stick goes across it, and bleeds the old momentum', () => {
     const g = mk(2);
     onTheLane(g, 0);
