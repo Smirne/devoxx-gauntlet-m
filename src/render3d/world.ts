@@ -242,8 +242,8 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   let inCut = false;
   /** Chapter 4's film has started (and the curtain call is still up behind the final card). */
   let filmSeen = false;
-  /** ...and has reached its credits, where the camera pulls back to the stage. */
-  let filmCredits = false;
+  /** ...and has reached its last card, where the camera pulls back to the stage. */
+  let filmBow = false;
   const PULL_DELAY = 0.7;
   /**
    * The crate front tips out and falls flat, as the 2.5D model's does, but stops
@@ -620,7 +620,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     const grade = pipeline.grade;
     // The film holds its last shot behind the final card, until the run starts again.
     if (snap.reel) filmSeen = true;
-    else if (snap.phase !== 'done' || snap.chapter !== 4) filmSeen = filmCredits = false;
+    else if (snap.phase !== 'done' || snap.chapter !== 4) filmSeen = filmBow = false;
     const filmHeld = filmSeen && !snap.reel;
     const staged = stageOpening(snap, dt);
     if (staged && !cam.pose) {
@@ -705,9 +705,11 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
        * they should regroup, camera zooms on the screen, and the movie should
        * start."* The dark beat before the first card (`REEL_PREROLL`) is the
        * regroup, watched from the front rows; its last stretch is the camera going
-       * up to the screen, which then fills the frame for the film. At the credits
-       * it pulls back to the stage, where the three are taking their bow under
-       * them, and it holds there behind the final card while the room claps.
+       * up to the screen, which then fills the frame for the whole film, credits
+       * and all — pulled back at the first credit, they shrank to a line nobody
+       * could read. On the last card it pulls back to the stage, where the three
+       * are taking their bow, and holds there behind the final card while the
+       * room claps.
        */
       grade.dofAmount = 0;
       const c = cam.camera;
@@ -717,8 +719,8 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
         inCut = true;
       }
       const reel = snap.reel;
-      if (reel?.card?.kind === 'credit') filmCredits = true;
-      const bow = !reel || filmCredits;
+      if (reel?.card?.kind === 'end') filmBow = true;
+      const bow = !reel || filmBow;
       const regroup = !bow && reel.t < REEL_PREROLL - FILM_RISE;
       const shot = bow || regroup ? keynote.stageView() : keynote.screenView(c.aspect, c.fov);
       const k = 1 - Math.exp(-dt * (bow ? 0.4 : regroup ? 2.4 : 1.9));

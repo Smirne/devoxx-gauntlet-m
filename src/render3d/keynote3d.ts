@@ -23,6 +23,7 @@ import * as THREE from 'three';
 
 import { CY0, CY1, F1, R } from '../sim/geometry';
 import { KEYNOTE_RAKE, LAB_DEPTH, LAB_X0, LAB_X1, RAKE_DEPTH, STAGE_RISE } from '../sim/chapters/ch4-keynote';
+import { SECOND_ROW } from '../sim/cameos';
 import { riseAt } from '../sim/surface';
 import { SIGN_ORANGE } from '../sim/letters';
 import type { GameSnapshot, Plate, Prop, ReelCard, RobotKind } from '../sim/types';
@@ -107,8 +108,9 @@ function spaced(g: CanvasRenderingContext2D, px: number): number {
 
 /**
  * `photo` photographs one of the game's people by name (`portraitOf`, which
- * needs the renderer): the byline card shows Michele's character beside his
- * name. Without it the card is type only.
+ * needs the renderer): the film shows the two who made the game as their own
+ * characters — Michele beside his byline, and both of them on their credits.
+ * Without it those cards are type only.
  */
 export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanvasElement | null): Keynote3D {
   const group = new THREE.Group();
@@ -328,8 +330,39 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
   /** The splash's own Antwerp and wordmark, drawn for the screen the first time the film needs them. */
   let city: HTMLCanvasElement | null = null;
   let mark: HTMLCanvasElement | null = null;
-  /** Michele's character, photographed when the film starts (`photo`), for the byline. */
-  let portrait: HTMLCanvasElement | null | undefined;
+  /**
+   * The two who made it, as their characters (`SECOND_ROW`, the pair in Room 8's
+   * second row), photographed when the film starts (`photo`). Michele, 29 Sep
+   * 2026, on the byline's picture of him: *"You should be in the credits too."*
+   */
+  let portraits: ReadonlyMap<string, HTMLCanvasElement> | null = null;
+  /** The maker a card names, if it names one: the first word of the credited name, or the byline's. */
+  const makerIn = (text: string): HTMLCanvasElement | null => {
+    for (const [name, pic] of portraits ?? []) if (new RegExp(`\\b${name}\\b`).test(text)) return pic;
+    return null;
+  };
+
+  /** A photograph in a frame, with a warm light behind the head. */
+  function framed(pic: HTMLCanvasElement, px: number, py: number, pw: number, ph: number): void {
+    film.save();
+    film.beginPath();
+    film.roundRect(px, py, pw, ph, 18);
+    film.clip();
+    const glow = film.createRadialGradient(px + pw / 2, py + ph * 0.36, 0, px + pw / 2, py + ph * 0.36, pw * 0.8);
+    glow.addColorStop(0, '#3a2a1c');
+    glow.addColorStop(1, '#12151c');
+    film.fillStyle = glow;
+    film.fillRect(px, py, pw, ph);
+    film.drawImage(pic, px, py, pw, ph);
+    film.restore();
+    film.strokeStyle = 'rgba(245,182,56,.55)';
+    film.lineWidth = 3;
+    film.beginPath();
+    film.roundRect(px, py, pw, ph, 18);
+    film.stroke();
+  }
+  /** Where a card's photograph goes: the left of the screen, 4:5. */
+  const PIC = { x: FILM_W * 0.09, h: FILM_H * 0.74, w: FILM_H * 0.74 * 0.8, y: FILM_H * 0.13 };
 
   function paintCard(card: ReelCard | null): void {
     const w = FILM_W;
@@ -345,10 +378,10 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
     else if (card) {
       const k = w / 1024;
       film.fillStyle = INK[card.kind];
-      film.font = `700 ${Math.round(84 * k)}px system-ui, sans-serif`;
+      film.font = `600 ${Math.round(84 * k)}px ${FILM_FONT}`;
       film.fillText(card.title, w / 2, h * 0.46, w * 0.9);
       film.fillStyle = '#9fb0c4';
-      film.font = `400 ${Math.round(38 * k)}px system-ui, sans-serif`;
+      film.font = `400 ${Math.round(38 * k)}px ${FILM_FONT}`;
       film.fillText(card.sub, w / 2, h * 0.64, w * 0.88);
       if (card.kind === 'end') {
         film.fillStyle = INK.end;
@@ -416,30 +449,11 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
     bg.addColorStop(1, '#050608');
     film.fillStyle = bg;
     film.fillRect(0, 0, w, h);
-    // The picture, in a frame, with a warm light behind the head.
-    const ph = h * 0.74;
-    const pw = ph * 0.8;
-    const px = w * 0.09;
-    const py = (h - ph) / 2;
     let textX = w * 0.12;
-    if (portrait) {
-      film.save();
-      film.beginPath();
-      film.roundRect(px, py, pw, ph, 18);
-      film.clip();
-      const glow = film.createRadialGradient(px + pw / 2, py + ph * 0.36, 0, px + pw / 2, py + ph * 0.36, pw * 0.8);
-      glow.addColorStop(0, '#3a2a1c');
-      glow.addColorStop(1, '#12151c');
-      film.fillStyle = glow;
-      film.fillRect(px, py, pw, ph);
-      film.drawImage(portrait, px, py, pw, ph);
-      film.restore();
-      film.strokeStyle = 'rgba(245,182,56,.55)';
-      film.lineWidth = 3;
-      film.beginPath();
-      film.roundRect(px, py, pw, ph, 18);
-      film.stroke();
-      textX = px + pw + w * 0.06;
+    const pic = makerIn(card.title);
+    if (pic) {
+      framed(pic, PIC.x, PIC.y, PIC.w, PIC.h);
+      textX = PIC.x + PIC.w + w * 0.06;
     }
     const room = w - textX - w * 0.06;
     const split = /^(.*\bby)\s+(.+)$/i.exec(card.title);
@@ -466,10 +480,33 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
     }
   }
 
-  /** A line of film credits: the job small and spaced out, the name under it. */
+  /**
+   * A line of film credits: the job small and spaced out, the name under it —
+   * and for the two who made it, their character beside it, as on the byline.
+   */
   function paintCredit(card: ReelCard): void {
     const w = FILM_W;
     const h = FILM_H;
+    const pic = makerIn(card.title);
+    if (pic) {
+      framed(pic, PIC.x, PIC.y, PIC.w, PIC.h);
+      const x = PIC.x + PIC.w + w * 0.06;
+      const room = w - x - w * 0.06;
+      film.textAlign = 'left';
+      const role = Math.round(h * 0.034);
+      film.font = `500 ${role}px ${FILM_FONT}`;
+      spaced(film, role * 0.22);
+      film.fillStyle = '#9fb0c4';
+      // The job can be long ("the simulation, the venue, ..."): two lines rather than squeezed.
+      const lines = wrap(card.sub.toUpperCase(), room);
+      lines.forEach((ln, i) => film.fillText(ln, x, h * 0.44 - (lines.length - 1 - i) * role * 1.5, room));
+      spaced(film, 0);
+      const big = Math.round(h * 0.085);
+      film.font = `600 ${big}px ${FILM_FONT}`;
+      film.fillStyle = '#f2efe8';
+      film.fillText(card.title, x, h * 0.44 + big * 1.35, room);
+      return;
+    }
     const small = Math.round(h * 0.034);
     film.font = `500 ${small}px ${FILM_FONT}`;
     const sp = spaced(film, small * 0.22);
@@ -486,6 +523,25 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
     } else {
       film.fillText(card.title, w / 2, h * 0.42 + big * 1.45, w * 0.86);
     }
+  }
+
+  /**
+   * `text` at the film's current font, as one line if it fits `maxW` and as two
+   * otherwise — broken at the space that makes the two most nearly even.
+   */
+  function wrap(text: string, maxW: number): string[] {
+    if (film.measureText(text).width <= maxW) return [text];
+    const words = text.split(' ');
+    let at = 1;
+    let widest = Infinity;
+    for (let i = 1; i < words.length; i++) {
+      const wd = Math.max(film.measureText(words.slice(0, i).join(' ')).width, film.measureText(words.slice(i).join(' ')).width);
+      if (wd < widest) {
+        widest = wd;
+        at = i;
+      }
+    }
+    return [words.slice(0, at).join(' '), words.slice(at).join(' ')];
   }
 
   /**
@@ -918,7 +974,14 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
       if (reel) {
         // The photograph is taken in the film's first dark seconds, not on the
         // frame the byline comes up.
-        if (portrait === undefined) portrait = photo?.('Michele') ?? null;
+        if (portraits === null) {
+          const got = new Map<string, HTMLCanvasElement>();
+          for (const name of SECOND_ROW) {
+            const pic = photo?.(name);
+            if (pic) got.set(name, pic);
+          }
+          portraits = got;
+        }
         const key = `r|${reel.index}|${reel.card ? reel.card.title : ''}`;
         if (key !== scrKey) {
           scrKey = key;

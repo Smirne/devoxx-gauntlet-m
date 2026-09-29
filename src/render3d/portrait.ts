@@ -38,15 +38,20 @@ export function portraitOf(renderer: THREE.WebGLRenderer, name: string, w = 480,
   // Standing, as at the breakfast table, turned a little off the lens.
   const person: Person = { x: 0, y: 0, r: 4, name, ...look, role: 'staff', face: Math.PI / 2 - 0.32, speed: 0 };
   createPeople(studio).update({ people: [person], plates: [] }, 0);
+  // Framed off their own head, which is where the seed put it: Claude is 1.59 m,
+  // Michele 1.70 m, and one fixed camera took the top off one or the other.
+  studio.updateMatrixWorld(true);
+  const head = studio.getObjectByName(`portrait-${name}`) ?? studio.getObjectByName('head');
+  const y = head ? head.getWorldPosition(new THREE.Vector3()).y : 1.47 - STUDIO_DEPTH;
 
   // A key from the front and above, a cool rim behind, and a sky/floor fill.
-  const at = new THREE.Vector3(0, 1.36 - STUDIO_DEPTH, 0);
+  const at = new THREE.Vector3(0, y - 0.11, 0);
   const key = new THREE.DirectionalLight(0xffe4c8, 3.4);
-  key.position.set(-1.3, 2.3 - STUDIO_DEPTH, 2.2);
+  key.position.set(-1.3, y + 0.83, 2.2);
   const rim = new THREE.DirectionalLight(0x9cc2ff, 2.6);
-  rim.position.set(1.6, 2.0 - STUDIO_DEPTH, -1.8);
+  rim.position.set(1.6, y + 0.53, -1.8);
   const fill = new THREE.DirectionalLight(0xfff4ea, 0.9);
-  fill.position.set(1.8, 1.2 - STUDIO_DEPTH, 2.0);
+  fill.position.set(1.8, y - 0.27, 2.0);
   for (const L of [key, rim, fill]) {
     L.target.position.copy(at);
     scene.add(L, L.target);
@@ -54,7 +59,7 @@ export function portraitOf(renderer: THREE.WebGLRenderer, name: string, w = 480,
   scene.add(new THREE.HemisphereLight(0xfff1e0, 0x2a2230, 1.1));
 
   const cam = new THREE.PerspectiveCamera(24, w / h, 0.1, 20);
-  cam.position.set(0, 1.42 - STUDIO_DEPTH, 2.05);
+  cam.position.set(0, y - 0.05, 2.05);
   cam.lookAt(at);
   cam.updateMatrixWorld();
 
