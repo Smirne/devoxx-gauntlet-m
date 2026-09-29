@@ -109,18 +109,23 @@ function autoQuality(): QualityName {
 const qParam = params.get('q') as QualityName | null;
 const quality: QualityName = qParam && Q.includes(qParam) ? qParam : storedQuality() ?? autoQuality();
 /*
- * `#rake` on the link: the published artifact's viewer drops the query string
- * but passes a bare #token down to the page, so this is how the raked Room 8
- * can be tried from the shared link (Michele, 29 Sep: "How to test the rake
- * room? does the param works?"). It starts at chapter 4's briefing, the only
- * chapter the rake is in.
+ * `#rake` / `#flat` on the link: the published artifact's viewer drops the
+ * query string but passes a bare #token down to the page, so this is how the
+ * two Room 8s can be compared from the shared link (Michele, 29 Sep: "How to
+ * test the rake room? does the param works?"). Both start at chapter 4's
+ * briefing, the only chapter the rake is in.
  */
-const hashRake = window.location.hash === '#rake';
+const hash = window.location.hash;
 /** Set by a quality change: the chapter to come back to after the reload. */
-const resumeAt = int('resume') ?? (hashRake ? 4 : undefined);
+const resumeAt = int('resume') ?? (hash === '#rake' || hash === '#flat' ? 4 : undefined);
 const shotMode = flag('shot');
-// Room 8 as a raked cinema — a proposal, off by default (`KEYNOTE_RAKE`).
-KEYNOTE_RAKE.on = flag('rake') || hashRake;
+/*
+ * Room 8 as a raked cinema (`KEYNOTE_RAKE`), ON in this build since Michele
+ * tried it (29 Sep: "rake room looks good"); `?rake=0` or `#flat` for the
+ * flat room. The sim's own default stays off, so the tests and the 2.5D page
+ * play the room they always did.
+ */
+KEYNOTE_RAKE.on = params.get('rake') !== null ? flag('rake') : hash !== '#flat';
 const hideHud = flag('nohud') || (shotMode && !flag('hud'));
 const warm = Math.max(0, Math.min(int('warm') ?? 0, 20000));
 

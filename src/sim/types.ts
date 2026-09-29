@@ -46,6 +46,14 @@ export interface Plate extends Rect {
   /** Which axis a ramp climbs along. Ignored by a flat plate. Default `'x'`. */
   axis?: 'x' | 'y';
   /**
+   * A ramp that climbs in this many equal TREADS rather than smoothly: every
+   * point stands at the height of the high edge of the tread it is on. Room 8's
+   * rake is built as rows (`KEYNOTE_RAKE`), and a smooth slope under stepped
+   * rows sank whatever stood mid-row up to a step deep into the tread (Michele,
+   * 29 Sep: "the projectors are eaten by the pavement").
+   */
+  steps?: number;
+  /**
    * Yaw of the footprint about its own centre, radians — for a plate that is not
    * square to the world, which is every piece of scenery that was dropped rather
    * than built. `x/y/w/h` stay the un-rotated rect.

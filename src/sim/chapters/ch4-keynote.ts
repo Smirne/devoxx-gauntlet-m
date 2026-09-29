@@ -1347,7 +1347,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   /** The rake's plates, when it is on: see `KEYNOTE_RAKE`. */
   const rakePlates: Plate[] = [
-    { kind: 'rake', x: r8.x, y: seatY0, w: r8.w, h: seatY1 - seatY0, lo: -RAKE_DEPTH, hi: 0, axis: 'y' },
+    // One tread per row of seats, 18 px deep, as the 3D rake draws them.
+    { kind: 'rake', x: r8.x, y: seatY0, w: r8.w, h: seatY1 - seatY0, lo: -RAKE_DEPTH, hi: 0, axis: 'y', steps: Math.round((seatY1 - seatY0) / 18) },
     { kind: 'pit', x: r8.x, y: top, w: r8.w, h: seatY0 - top, lo: -RAKE_DEPTH },
     { kind: 'stage', ...stage, lo: -RAKE_DEPTH + STAGE_RISE },
   ];

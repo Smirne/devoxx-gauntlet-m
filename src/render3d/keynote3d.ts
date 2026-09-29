@@ -297,8 +297,10 @@ export function buildKeynote(mats: Materials): Keynote3D {
     const riser = new THREE.MeshStandardMaterial({ color: 0x141416, roughness: 0.9 });
     // The cross-aisle, corridor level.
     group.add(new THREE.Mesh(box(x1 - x0, 0.2, m(r8.y + r8.h - seatY1), V(cx, -0.1, (m(seatY1) + z1) / 2), 3), carpet));
-    // The rows: a step every 18 px, each a slab from its tread down to the pit.
-    const N = Math.round((seatY1 - seatY0) / 18);
+    // The rows: one slab per tread of the sim's rake plate (`Plate.steps`), each
+    // from its tread down to the pit, so what stands on a row stands on it.
+    const plate = plates.find((q) => q.kind === 'rake');
+    const N = plate?.steps ?? Math.round((seatY1 - seatY0) / 18);
     for (let i = 0; i < N; i++) {
       const ya = seatY0 + ((seatY1 - seatY0) * i) / N;
       const yb = seatY0 + ((seatY1 - seatY0) * (i + 1)) / N;
@@ -313,8 +315,19 @@ export function buildKeynote(mats: Materials): Keynote3D {
     group.add(new THREE.Mesh(box(x1 - x0, 0.2, m(seatY0 - r8y), V(cx, -RAKE_DEPTH - 0.1, m((r8y + seatY0) / 2)), 3), carpet));
     // The side walls come down into the pit.
     for (const wx of [x0 + 0.06, x1 - 0.06]) group.add(new THREE.Mesh(box(0.1, RAKE_DEPTH, z1 - z0, V(wx, -RAKE_DEPTH / 2, (z0 + z1) / 2)), mats.acoustic));
-    // A balcony rail along the front of the cross-aisle, as in the photograph.
-    group.add(new THREE.Mesh(box(x1 - x0, 0.05, 0.05, V(cx, 1.0, m(seatY1) + 0.05)), mats.steel));
+    // A balcony rail along the front of the cross-aisle, as in the photograph —
+    // over the seat blocks only, on posts, so the two aisles stay open. It ran
+    // the room's full width, across the aisles the robots walk down (Michele,
+    // 29 Sep: "there's this metal thing").
+    const railZ = m(seatY1) + 0.05;
+    for (const r of rows) {
+      const a = m(r.x) + 0.15;
+      const b = m(r.x + (r.w ?? 0)) - 0.15;
+      if (b - a < 0.5) continue;
+      group.add(new THREE.Mesh(box(b - a, 0.05, 0.05, V((a + b) / 2, 1.0, railZ)), mats.steel));
+      const posts = Math.max(2, Math.round((b - a) / 1.5) + 1);
+      for (let k = 0; k < posts; k++) group.add(new THREE.Mesh(box(0.04, 1.0, 0.04, V(a + ((b - a) * k) / (posts - 1), 0.5, railZ)), mats.steel));
+    }
     rakeBuilt = true;
   }
 

@@ -174,6 +174,7 @@ anywhere, including the title screen.
 | `?q=low\|medium\|high\|ultra` | Force a render quality instead of the one picked from the GPU |
 | `?seed=N` | Seed the sim RNG, so clue digits and crowds replay exactly |
 | `?nohud=1` | Hide the DOM overlay |
+| `?rake=0` or `#flat` | Room 8 flat instead of raked (`#rake` / `#flat` also work on the published link, and start at chapter 4) |
 | `?shot=1` | No animation loop: `window.__ad3d.step(n)` drives frames, for deterministic screenshots (`?chapter=N` applies only here) |
 
 **The 2.5D build** (`index.html`):
