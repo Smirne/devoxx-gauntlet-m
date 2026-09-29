@@ -5987,3 +5987,25 @@ while the room applauded; `tests/curtain-call.test.ts` caught it and they clap n
   within half a riser of each tread. The gather fade stays, because the robots can be
   anywhere in the hall when Stephan's third condition lands. The camera move happens as the
   fade lifts, from close on Stephan up to the whole flight.
+
+## 29 Sep 2026 (evening) — a playtest round, merged from five parallel helpers
+
+- **Human decisions (Michele).**
+  - Biggy's inertia (accel 0.6 → 1.5, a driven-only brake of 1.2; drag unchanged). It is recorded in GAUNTLET.md as the second unfreeze.
+  - Chapter 2 now ends at the front doors.
+  - His storyboard for chapter 3→4: framing on the stair, Stephan's button, the belts, the climb.
+  - The mask-and-cape keynote speaker.
+  - Red hall panels out; broodje krab, coffee and breakfast on the catering tables.
+- **Agent work.**
+  - One coordinating session delegated to helpers, each in its own git worktree:
+    - Droid's reach-and-pull (IK onto the actual handle).
+    - Voxxy's plug-in beat.
+    - The chapter 3 batch: ladle, soup lines, Stephan's facing, queues, beer pour, catering.
+    - The keynote speaker's look.
+    - The stair beat.
+    - A chapter 4 choreography that drives instead of teleporting.
+  - The coordinator merged each branch and resolved conflicts: it ported the ladle reach onto the new reach3d module, and merged the imports.
+  - It re-ran the full suite after every merge, and re-filmed the whole game with `tools/playthrough/run.mjs`.
+- **Caught and rejected.**
+  - A single higher drag for Biggy broke 17 tests: it killed his coast after a shove or a tow, which the jammed door, the roller door and the cake are built on. It was replaced by a brake that applies only when he is driven.
+  - The first playthrough film was mostly black. That was the tool, whose camera lagged between shots, not the game.
