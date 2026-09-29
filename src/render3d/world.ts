@@ -13,7 +13,7 @@ import { PX_PER_M, ROBOT_HEIGHT_M, m } from '../sim/units';
 import { DIST, PIVOT, ThirdPersonCamera } from './camera3d';
 import { applyBoxProjection, type ProbeBox } from './boxproj';
 import { buildDetails } from './details';
-import { LightPool, SpotPool } from './lightpool';
+import { HemiMerge, LightPool, SpotPool } from './lightpool';
 import { createMaterials } from './materials';
 import { Pipeline, QUALITY, type QualityName, type VolumeSpot } from './pipeline';
 import { buildGround, setFrontDoors, type Ground3D } from './ground3d';
@@ -43,7 +43,7 @@ export interface World3D {
    * `KHR_parallel_shader_compile` where the browser has it), so the opening
    * does not start on a stall of a hundred shaders. Resolves when compiled.
    */
-  prewarm(snap: GameSnapshot): Promise<void>;
+  prewarm(snap: GameSnapshot, progress?: (share: number) => void): Promise<void>;
   /** Photo mode: depth of field focused on the driven robot. */
   photo: boolean;
   /** Debug: refresh cinema E's mirror (on by default). */
@@ -138,9 +138,12 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   // ...and so do the spot lights that cast no shadow (`SpotPool`). Built after
   // the opening's and the mirror's own spots exist, so it takes those too.
   const spots = new SpotPool(scene, quality.spots);
+  // ...and the hemisphere fills are summed into one (`HemiMerge`).
+  const hemi = new HemiMerge(scene);
   const collectLights = (): void => {
     pool.collect(scene);
     spots.collect(scene);
+    hemi.collect(scene);
   };
   for (const L of venue.volumeSpots) L.light.shadow.mapSize.set(quality.shadowSize, quality.shadowSize);
 
@@ -364,6 +367,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   function bakeEnv(): void {
     pool.update(PROBE);
     spots.update(PROBE, null);
+    hemi.update();
     const hidden: THREE.Object3D[] = [];
     const lamps: number[] = [];
     for (const r of robots.values()) {
@@ -448,6 +452,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   const people = createPeople(peopleRoot);
   function switchFloor(g: boolean): void {
     onGround = g;
+    for (const L of upstairsShadows) L.intensity = g ? 0 : (L.userData.lit as number);
     if (g && !ground) {
       ground = buildGround(mats);
       scene.add(ground.group);
@@ -482,6 +487,42 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     patchedFrames = 0;
     cam.cut();
   }
+
+  /*
+   * EVERY FLOOR IS BUILT BEFORE THE GAME STARTS, and every light is counted from
+   * the start.
+   *
+   * The ground floor used to be built on the first frame of chapter 2, and Room 8
+   * on the first frame of chapter 4, each with every material compiling again for
+   * a new light count: a blank screen of several seconds between chapters 1 and
+   * 2, which players took for a crash (29 Sep). Built here, hidden, they cost the
+   * loading screen a few seconds instead (`main3d.ts` compiles them all behind it
+   * with `prewarm`), and changing floor only changes what is shown.
+   *
+   * For one compile to serve every floor the light count must not change
+   * between them either. The pools and `HemiMerge` hold it for everything but
+   * the two shadowed lamps upstairs — the foyer's street lamp and the fire
+   * door's wash — which leave their floor's group for the scene's, so they stay
+   * counted downstairs too: dark there, and with their shadow maps left alone.
+   */
+  const upstairsShadows = venue.volumeSpots.map((v) => v.light).filter((L) => L.castShadow);
+  for (const L of upstairsShadows) {
+    L.userData.lit = L.intensity;
+    scene.attach(L);
+    scene.attach(L.target);
+  }
+  ground = buildGround(mats);
+  ground.group.visible = false;
+  scene.add(ground.group);
+  props2 = createProps(propsRoot2, mats, 'ground');
+  propsRoot2.visible = false;
+  keynote = buildKeynote(mats);
+  keynote.group.visible = false;
+  scene.add(keynote.group);
+  collectLights();
+  applyBoxProjection(scene, probeBox);
+  /** Room 8 has been shown: its first frame re-captures the environment. */
+  let keynoteShown = false;
 
   /**
    * The soup pot, seated on Biggy's lid. The sim carries it at his north edge,
@@ -629,7 +670,13 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       was.t.copy(_lt);
       turn(L, r.kind === driven || moved);
     }
-    if (!onGround) for (const v of venue.volumeSpots) if (v.light.castShadow) turn(v.light, false);
+    for (const L of upstairsShadows) {
+      // Downstairs they are dark and only counted: a map drawn once, and left.
+      if (onGround) {
+        L.shadow.autoUpdate = false;
+        L.shadow.needsUpdate = L.shadow.map === null;
+      } else turn(L, false);
+    }
   }
   /** The chapter the follow camera last framed; see the reset below. */
   let camChapter = -1;
@@ -669,12 +716,10 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       venue.update(time, dt);
       details.update(time);
     }
-    // Chapter 4: Room 8, built the first time it is needed, shown only then.
+    // Chapter 4: Room 8, shown only then (built with everything else, above).
     const keynoteOn = snap.chapter === 4 && !onGround;
-    if (keynoteOn && !keynote) {
-      keynote = buildKeynote(mats);
-      scene.add(keynote.group);
-      collectLights();
+    if (keynoteOn && !keynoteShown) {
+      keynoteShown = true;
       patchedFrames = 0;
       envBaked = false;
     }
@@ -833,6 +878,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     for (; mi < mirrorSpots.length; mi++) mirrorSpots[mi].intensity = 0;
 
     pool.update(cam.camera.position);
+    hemi.update();
     // Cinema E's mirror is drawn from inside the room and shows what is behind
     // the camera: there the spots are handed out nearest-first, not by view.
     const eye = cam.camera.position;
@@ -906,18 +952,36 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     struggling: false,
     cam,
     render,
-    prewarm(snap: GameSnapshot): Promise<void> {
+    prewarm(snap: GameSnapshot, progress?: (share: number) => void): Promise<void> {
       // Three set-up frames: props are built from the first snapshots, and the
       // box-projection patch and the light pools take them over the first three.
       for (let i = 0; i < 3; i++) render(snap, 0, false, false);
-      // Compiled with a render target bound, as the frame draws: with none,
+      // Every material in the scene, every floor's, hidden or not: the light
+      // count is the same on all of them (see above), so one compile serves the
+      // whole game. With a render target bound, as the frame draws: with none,
       // three picks every program's sRGB canvas-output variant, and the frame,
       // which draws into linear HDR targets, compiled them all over again.
       const was = renderer.getRenderTarget();
       renderer.setRenderTarget(pipeline.reflection.rt);
-      const done = renderer.compileAsync(scene, cam.camera);
+      const materials = [...renderer.compile(scene, cam.camera)];
       renderer.setRenderTarget(was);
-      return done.then(() => undefined);
+      // What `compileAsync` does, counted: a program is ready when the driver
+      // says so (KHR_parallel_shader_compile). Without the extension three calls
+      // them all ready at once, and the first frame pays — behind the loader.
+      const props = renderer.properties as unknown as { get(m: THREE.Material): { currentProgram?: { isReady(): boolean } } };
+      return new Promise<void>((resolve) => {
+        const poll = (): void => {
+          let ready = 0;
+          for (const mat of materials) {
+            const prog = props.get(mat).currentProgram;
+            if (!prog || prog.isReady()) ready++;
+          }
+          progress?.(ready / Math.max(1, materials.length));
+          if (ready >= materials.length) resolve();
+          else setTimeout(poll, 40);
+        };
+        poll();
+      });
     },
     resize,
     project,

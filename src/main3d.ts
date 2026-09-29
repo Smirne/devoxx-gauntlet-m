@@ -124,6 +124,34 @@ KEYNOTE_RAKE.on = flag('rake');
 const hideHud = flag('nohud') || (shotMode && !flag('hud'));
 const warm = Math.max(0, Math.min(int('warm') ?? 0, 20000));
 
+/* ======================================================= loading screen ==== */
+
+/*
+ * The loading screen is in `3d.html`, on screen before this script runs a line:
+ * building the venue below keeps the main thread busy for seconds, and so does
+ * compiling its shaders. This names the phase and, during the compile, fills
+ * the bar with its real progress. Screenshot runs have no use for it.
+ */
+const loadingEl = document.getElementById('ad3d-loading');
+let loadingUp = loadingEl !== null && !shotMode;
+function loading(what: string, share: number | null): void {
+  if (!loadingEl) return;
+  const label = loadingEl.querySelector('.ld-what');
+  if (label) label.textContent = what;
+  loadingEl.classList.toggle('ld-known', share !== null);
+  if (share !== null) loadingEl.style.setProperty('--p', share.toFixed(3));
+}
+function loaded(): void {
+  loadingUp = false;
+  if (!loadingEl) return;
+  loadingEl.classList.add('ld-done');
+  window.setTimeout(() => loadingEl.remove(), 450);
+}
+/** Two frames: what the page shows now is painted before the next long job. */
+const nextPaint = (): Promise<void> => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())));
+if (shotMode) loadingEl?.remove();
+else await nextPaint();
+
 /* =============================================================== the app === */
 
 const app: HTMLElement = document.getElementById('app') ?? document.body;
@@ -280,6 +308,11 @@ let photo = false;
 
 window.addEventListener('keydown', (ev) => {
   const code = codeOf(ev);
+  // Nothing is playable until the loading screen has gone.
+  if (loadingUp) {
+    ev.preventDefault();
+    return;
+  }
   if (titleUp) {
     dismissTitle();
     ev.preventDefault();
@@ -357,6 +390,7 @@ window.addEventListener('blur', () => {
 // Mouse look: pointer lock on click, or a plain drag where lock is refused.
 let dragging = false;
 canvas.addEventListener('mousedown', (ev) => {
+  if (loadingUp) return;
   if (titleUp) {
     dismissTitle();
     return;
@@ -458,17 +492,10 @@ for (let i = 0; i < warm; i++) {
 const anchors: SpeakerAnchors = {};
 let lastFade = -1;
 
-/** Set when the gate's wait has been used to compile the opening's shaders. */
-let warmed = false;
 function frame(dt: number): void {
   if (titleUp) {
-    // The sim waits behind the gate; nothing is drawn under the black. The
-    // wait compiles the opening's materials instead, off the main thread where
-    // the browser can, so the first frame after the key is not a long stall.
-    if (!warmed) {
-      warmed = true;
-      void world.prewarm(game.snapshot());
-    }
+    // The sim waits behind the gate; nothing is drawn under the black (the
+    // shaders compiled behind the loading screen, below).
     return;
   }
   // The sim steps at most DT_MAX at a time; a slower frame takes several
@@ -514,6 +541,23 @@ function loop(now: number): void {
   last = now;
   frame(dt);
 }
+/*
+ * Behind the loading screen: every floor's materials compile (`World3D.prewarm`,
+ * with its real progress on the bar), then one frame is drawn — the
+ * environment capture, the first shadow maps, whatever a driver still does at
+ * first use — so the first frame anyone sees, at the gate or straight back into
+ * a chapter after a quality change, is not a long stall. Those stalls were a
+ * blank screen for seconds, which players took for a crash (29 Sep).
+ */
+if (loadingUp) {
+  loading('Compiling shaders', 0);
+  await world.prewarm(game.snapshot(), (share) => loading('Compiling shaders', share));
+  loading('Lighting the venue', null);
+  await nextPaint();
+  world.render(game.snapshot(), 0);
+  loaded();
+}
+last = performance.now();
 if (!shotMode) requestAnimationFrame(loop);
 
 /* ========================================================= debug handle ==== */

@@ -214,3 +214,48 @@ export class SpotPool {
     }
   }
 }
+
+/**
+ * EVERY HEMISPHERE LIGHT, AS ONE.
+ *
+ * The night fill is the scene's; the exhibition hall and Room 8 each add their
+ * own. Three counts them into every shader, so walking from one floor to the
+ * other changed the count and recompiled every material. Hemisphere light is
+ * linear — sky and ground colours times intensity, mixed by the normal — and
+ * all of these point straight up, so the sum of the ones shown is one light:
+ * the sources move to `POOLED_LAYER` and this sets a single real one from them
+ * each frame.
+ */
+export class HemiMerge {
+  readonly light = new THREE.HemisphereLight(0x000000, 0x000000, 1);
+  private readonly sources: THREE.HemisphereLight[] = [];
+
+  constructor(parent: THREE.Object3D) {
+    this.light.name = 'hemi-merge';
+    parent.add(this.light);
+  }
+
+  /** Take every hemisphere light under `root` not taken yet. */
+  collect(root: THREE.Object3D): void {
+    root.traverse((o) => {
+      const h = o as THREE.HemisphereLight;
+      if (!h.isHemisphereLight || h === this.light || this.sources.includes(h)) return;
+      h.layers.set(POOLED_LAYER);
+      this.sources.push(h);
+    });
+  }
+
+  update(): void {
+    const sky = this.light.color.setRGB(0, 0, 0);
+    const ground = this.light.groundColor.setRGB(0, 0, 0);
+    for (const h of this.sources) {
+      if (h.intensity <= 0 || !shown(h)) continue;
+      sky.r += h.color.r * h.intensity;
+      sky.g += h.color.g * h.intensity;
+      sky.b += h.color.b * h.intensity;
+      ground.r += h.groundColor.r * h.intensity;
+      ground.g += h.groundColor.g * h.intensity;
+      ground.b += h.groundColor.b * h.intensity;
+    }
+  }
+}
