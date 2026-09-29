@@ -393,6 +393,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     let i = 0;
     for (const r of robots.values()) r.lamp.intensity = lamps[i++];
     envBaked = true;
+    setUp = true;
   }
 
   let w = 4;
@@ -433,6 +434,14 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     resize(w, h);
   }
   let lastWall = performance.now();
+  /**
+   * This frame set something up — a chapter began, a floor was shown, the
+   * environment was captured. The governor is paused at the frame's end, so
+   * neither it nor the first-use frames after it are judged (`Governor.pause`).
+   */
+  let setUp = false;
+  let setUpChapter = -1;
+  const SETUP_MS = 1500;
   function govern(): void {
     if (opts.preserveDrawingBuffer) return; // screenshot mode: never
     const now = performance.now();
@@ -694,6 +703,10 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       govern();
       timer.begin();
     }
+    if (snap.chapter !== setUpChapter) {
+      setUpChapter = snap.chapter;
+      setUp = true;
+    }
     // Chapters 2 and 3 are downstairs; chapter 4 climbs back to Room 8.
     const ground3 = snap.chapter === 2 || snap.chapter === 3;
     if (ground3 !== onGround) switchFloor(ground3);
@@ -932,6 +945,10 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     // frame, so the shadow maps it samples exist and are this frame's.
     if (mir && mirrored) mir.render(renderer, scene, cam.camera);
     timer.end();
+    if (setUp) {
+      setUp = false;
+      governor.pause(performance.now(), SETUP_MS);
+    }
   }
 
   const _v = new THREE.Vector3();
