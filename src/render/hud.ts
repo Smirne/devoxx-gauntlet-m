@@ -380,6 +380,12 @@ const CSS = `
 
 .ad-card{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;
   background:rgba(6,7,10,.58)}
+/* THE RUN'S LAST CARD has something behind it worth seeing — the stage still
+   lit, the tower still up, the room still clapping (behindCard).
+   A briefing keeps the full scrim, because behind a briefing there is a room
+   nobody has played yet and the words are the whole point. */
+.ad-card.ad-card-live{background:rgba(6,7,10,.26)}
+.ad-card.ad-card-live .ad-cardbox{background:rgba(10,11,14,.9)}
 .ad-card .ad-cardbox{max-width:min(760px,82vw);padding:20px 28px;border:1px solid ${ACCENT};border-radius:12px;
   background:rgba(10,11,14,.96);box-shadow:0 20px 70px rgba(0,0,0,.65);text-align:center;font-size:20px;line-height:1.35}
 .ad-card b{color:${ACCENT}}
@@ -1317,6 +1323,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   }
 
   function updateCard(snap: GameSnapshot): void {
+    card.classList.toggle('ad-card-live', snap.phase === 'done');
     const html = snap.card;
     if (html) {
       setHtml(cardBox, html, htmlCache);

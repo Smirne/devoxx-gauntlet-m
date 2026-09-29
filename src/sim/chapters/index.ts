@@ -178,6 +178,20 @@ export interface ChapterRuntime {
    */
   relight?(): void;
   /**
+   * Keep playing BEHIND the run's last card.
+   *
+   * `game.ts` stops the sim while a card is showing, which is right for a briefing
+   * — the player has not started — and wrong for the one card that comes after
+   * everything. Chapter 4 ends on its opening video and a curtain call; the card
+   * used to land on a freeze-frame of it, three thousand people stopped mid-clap.
+   *
+   * Called once a frame while `phase` is `done` and a card is up, and by nothing
+   * else. A chapter that does not implement it freezes exactly as before. Whatever
+   * it does must be decoration: the run is scored, the card is written, and
+   * nothing it touches can change either.
+   */
+  behindCard?(dt: number): void;
+  /**
    * One short line of live progress for the HUD's bottom-centre readout, rebuilt
    * every frame (`GameSnapshot.progress`). Every chapter implements it: without
    * one a chapter shows the player a static briefing and no running score of what

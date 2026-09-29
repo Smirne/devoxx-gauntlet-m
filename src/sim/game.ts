@@ -1054,7 +1054,13 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     clearContacts();
     if (fade > 0 && phase !== 'cut') fade = Math.max(0, fade - dt * FADE_IN_RATE);
     if (toast && t > toast.until) toast = null;
-    if (card !== null) return;
+    if (card !== null) {
+      // ...except the run's LAST card, which the room plays on behind — see
+      // `ChapterRuntime.behindCard`. A briefing still freezes: the player has not
+      // started, and there is nothing to watch yet.
+      if (phase === 'done' && runtime?.behindCard) runtime.behindCard(dt);
+      return;
+    }
     if (opening !== null) {
       opening += dt;
       const o = openingAt(opening);
