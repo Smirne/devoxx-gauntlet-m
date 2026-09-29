@@ -821,6 +821,17 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
 
   const beerMat = new THREE.MeshPhysicalMaterial({ color: 0xc88a1a, roughness: 0.15, emissive: new THREE.Color(0.35, 0.18, 0.02), emissiveIntensity: 0.6 });
   const crateMats = [0x2f5d2f, 0x7a1f1f, 0x1f3f7a, 0x6a4a1a, 0x444444, 0x5a2a6a].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7 }));
+  // A beer crate's fittings, shared by all six: its hand holes, paper label,
+  // brown glass and crown caps (see `case 'crate'` in buildCh3).
+  const crateHole = new THREE.MeshBasicMaterial({ color: 0x050505 });
+  const crateLabel = new THREE.MeshStandardMaterial({
+    map: canvasText(['BELGIAN BEER', '24 × 33 cl'], { w: 256, h: 64, bg: '#efe6cf', fg: '#3a2a12' }),
+    roughness: 0.8,
+  });
+  const bottleGlass = new THREE.MeshStandardMaterial({ color: 0x3b2107, roughness: 0.15, metalness: 0.1 });
+  const bottleCapMat = new THREE.MeshStandardMaterial({ color: 0xc9a23a, roughness: 0.35, metalness: 0.8 });
+  const bottleNeck = new THREE.CylinderGeometry(0.013, 0.02, 0.09, 8);
+  const bottleCap = new THREE.CylinderGeometry(0.016, 0.016, 0.014, 8);
 
   /*
    * THE POUR, DRAWN. Michele, 29 Sep 2026: *"the animation when beer is completed
@@ -1377,12 +1388,53 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
       }
       case 'crate': {
         if (!p.label?.startsWith('beer')) return null;
-        // A beer crate, centre coordinates, stacked by `v`.
+        /*
+         * A beer crate, centre coordinates, stacked by `v`: an open plastic
+         * crate in a brewery colour — four walls on a floor, hand holes in the
+         * ends, a paper label — full of bottles whose necks and caps show at the
+         * rim. It was a coloured block with a brown slab on it (Michele, 29 Sep:
+         * "Beer crates still look like boxes"). The caps stop just under the
+         * rim, so a crate stacked 0.34 m up (`update`) sits on the one below.
+         */
         const i = Array.from(p.label).reduce((a, ch) => a + ch.charCodeAt(0), 0) % crateMats.length;
-        const body = new THREE.Mesh(box(w, 0.32, d, V(0, 0.16, 0)), crateMats[i]);
-        body.castShadow = true;
-        const bottles = new THREE.Mesh(box(w * 0.85, 0.1, d * 0.85, V(0, 0.36, 0)), new THREE.MeshStandardMaterial({ color: 0x3a2208, roughness: 0.2 }));
-        g.add(body, bottles);
+        const shell = crateMats[i];
+        const H = 0.32;
+        const t = 0.022;
+        const parts = [
+          box(w, t, d, V(0, t / 2, 0)),
+          box(w, H, t, V(0, H / 2, d / 2 - t / 2)),
+          box(w, H, t, V(0, H / 2, -d / 2 + t / 2)),
+          box(t, H, d - 2 * t, V(w / 2 - t / 2, H / 2, 0)),
+          box(t, H, d - 2 * t, V(-w / 2 + t / 2, H / 2, 0)),
+        ];
+        for (const geo of parts) {
+          const wall = new THREE.Mesh(geo, shell);
+          wall.castShadow = true;
+          g.add(wall);
+        }
+        for (const sx of [-1, 1]) g.add(new THREE.Mesh(box(0.004, 0.05, 0.14, V(sx * (w / 2 + 0.002), H - 0.06, 0)), crateHole));
+        const label = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.56, 0.11), crateLabel);
+        label.position.set(0, H * 0.52, d / 2 + 0.002);
+        g.add(label);
+        // Shadowed shoulders under the necks, then the necks and their caps.
+        g.add(new THREE.Mesh(box(w - 2 * t, 0.01, d - 2 * t, V(0, 0.2, 0)), bottleGlass));
+        // Six by four: the 24 the label says.
+        const nx = 6;
+        const nz = 4;
+        const necks = new THREE.InstancedMesh(bottleNeck, bottleGlass, nx * nz);
+        const caps = new THREE.InstancedMesh(bottleCap, bottleCapMat, nx * nz);
+        const pitchX = (w - 2 * t) / nx;
+        const pitchZ = (d - 2 * t) / nz;
+        const mtx = new THREE.Matrix4();
+        for (let a = 0; a < nx; a++) {
+          for (let b = 0; b < nz; b++) {
+            const bx = -w / 2 + t + pitchX * (a + 0.5);
+            const bz = -d / 2 + t + pitchZ * (b + 0.5);
+            necks.setMatrixAt(a * nz + b, mtx.makeTranslation(bx, 0.255, bz));
+            caps.setMatrixAt(a * nz + b, mtx.makeTranslation(bx, 0.306, bz));
+          }
+        }
+        g.add(necks, caps);
         return g;
       }
       default:
