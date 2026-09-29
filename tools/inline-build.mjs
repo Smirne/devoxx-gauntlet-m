@@ -41,10 +41,26 @@ const safe = (js) => js.replace(/<\/script/gi, '<\\/script');
 if (/rel="modulepreload"/.test(html)) {
   throw new Error(`${pageName} imports a shared chunk; build it on its own with PAGE=main or PAGE=3d`);
 }
+/*
+ * The bundle goes at the END of the body, not where Vite put it (the head). A
+ * module script runs once the document is parsed wherever it stands, so this
+ * changes nothing about when it runs; but in the head, 1.5 MB of script stood
+ * before the page's own markup, and the 3D page's loading screen, which is
+ * markup, could not be drawn until the whole file had arrived and been parsed —
+ * a blank page for the length of the download, the thing the loader is there to
+ * prevent (29 Sep).
+ */
+const scripts = [];
 html = html.replace(/<script type="module"[^>]*src="\.\/([^"]+)"><\/script>/g, (_m, src) => {
   used.push(src);
-  return `<script type="module">${safe(readFileSync(join(dist, src), 'utf8'))}</script>`;
+  scripts.push(`<script type="module">${safe(readFileSync(join(dist, src), 'utf8'))}</script>`);
+  return '';
 });
+if (scripts.length) {
+  if (!html.includes('</body>')) throw new Error(`${pageName} has no </body> to put its bundle before`);
+  // A function, not a string: a replacement string would read the bundle's own `$&` and `$'`.
+  html = html.replace('</body>', () => `${scripts.join('\n')}\n</body>`);
+}
 html = html.replace(/<link rel="stylesheet"[^>]*href="\.\/([^"]+)">/g, (_m, href) => {
   used.push(href);
   return `<style>${readFileSync(join(dist, href), 'utf8')}</style>`;
