@@ -777,6 +777,18 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       const time = cut.opts.walkTime ?? CUT_WALK_TIME;
       let late = 0;
       for (const w of cut.delay.values()) late = Math.max(late, w);
+      if (cut.opts.fadeEarly) {
+        // Every pace is set to arrive at `time` (`beginWalk`), so the black starts
+        // CUT_LEAVE_FADE before that, on robots still walking, and the closing
+        // stage picks the fade up where this left it.
+        const u = (cut.st - (time - CUT_LEAVE_FADE)) / CUT_LEAVE_FADE;
+        if (u > 0) fade = Math.max(fade, Math.min(1, u));
+        if (done || u >= 1) {
+          cut.stage = 'leave';
+          cut.st = Math.min(1, Math.max(0, u)) * CUT_LEAVE_FADE;
+          return;
+        }
+      }
       if (done || cut.st > Math.max(CUT_WALK_MAX, time + late + 3)) {
         // They have arrived, and they do not stop: the black comes down on them
         // still walking. See the note where `CUT_HOLD` used to be.

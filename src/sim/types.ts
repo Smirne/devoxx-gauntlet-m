@@ -337,6 +337,16 @@ export interface CutOptions {
    * by the shot. The route budget scales with it, so it is still a walk.
    */
   walkTime?: number;
+  /**
+   * The closing fade comes down over the last `CUT_LEAVE_FADE` of the walk
+   * itself, and the hand-over follows the arrival, instead of fading on a cast
+   * that has already arrived. For a route that ends against the building — the
+   * head of a flight — where a robot past its mark has nowhere left to walk, so
+   * the usual "they walk on into the black" would be three robots standing still
+   * (Michele, 29 Sep, on the end of chapter 1: "robots stop movement before the
+   * transition").
+   */
+  fadeEarly?: boolean;
 }
 
 /**

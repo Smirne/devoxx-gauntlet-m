@@ -813,7 +813,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   /** The exit: out of the closed section, down the secondary staircase. */
   function leave(): void {
-    ctx.startCut(stairExitRoutes(), () => ctx.startChapter(2), VIEW_F1);
+    ctx.startCut(stairExitRoutes(), () => ctx.startChapter(2), VIEW_F1, { fadeEarly: true });
   }
 
   /* --------------------------------------------------------------------- keys */
