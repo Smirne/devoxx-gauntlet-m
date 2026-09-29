@@ -80,6 +80,9 @@ const Q_KEY = 'afterdark3d.quality';
 function storedQuality(): QualityName | null {
   try {
     const v = window.localStorage.getItem(Q_KEY) as QualityName | null;
+    // A remembered `ultra` came from the old upward cycle (see `cycleQuality`),
+    // not from a choice: it is the setting that crashed, so it is not honoured.
+    if (v === 'ultra') return 'high';
     return v && Q.includes(v) ? v : null;
   } catch {
     return null;
@@ -393,9 +396,19 @@ function showEnd(): void {
 
 /* ======================================================= quality control === */
 
-/** Next quality, remembered, and back into the same chapter after the reload. */
+/**
+ * One step DOWN, remembered, and back into the same chapter after the reload.
+ *
+ * It used to cycle upward (low → medium → high → ultra → low), so the button's
+ * own "Running slow — click for lower quality" took a struggling `high` to
+ * ULTRA — more pixels, 2048 shadow maps, 64 fog steps — and on a laptop to a
+ * lost GPU context, which players reported as the game crashing when they
+ * pressed Q (29 Sep). It steps down now, and from `low` back up to `high`;
+ * `ultra` is only for asking by name (`?q=ultra`).
+ */
+const DOWN: Readonly<Record<QualityName, QualityName>> = { ultra: 'high', high: 'medium', medium: 'low', low: 'high' };
 function cycleQuality(): void {
-  const next = Q[(Q.indexOf(quality) + 1) % Q.length];
+  const next = DOWN[quality];
   try {
     window.localStorage.setItem(Q_KEY, next);
   } catch {
@@ -418,7 +431,7 @@ const qBtn = document.createElement('button');
 qBtn.type = 'button';
 qBtn.className = 'ad3d-quality';
 qBtn.textContent = `Quality: ${quality.toUpperCase()} (Q)`;
-qBtn.title = 'Change render quality (reloads into the same chapter)';
+qBtn.title = `Q: ${quality === 'low' ? 'back up to high' : `down to ${DOWN[quality]}`} (reloads into the same chapter)`;
 qBtn.style.cssText =
   'position:fixed;left:12px;bottom:12px;z-index:30;font:600 12px system-ui,sans-serif;color:#ffd27a;background:rgba(10,10,14,.6);border:1px solid rgba(255,210,122,.45);border-radius:6px;padding:5px 9px;cursor:pointer';
 qBtn.addEventListener('click', (e) => {
