@@ -423,25 +423,36 @@ export function palmWorld(rig: RobotRig, out = new THREE.Vector3()): THREE.Vecto
  * metres (0 when the palm can get there).
  */
 export function solveArmR(rig: RobotRig, target: THREE.Vector3, wShoulder: number, wElbow: number, fold = 0): number {
+  return solveArm(rig, 'R', target, wShoulder, wElbow, fold);
+}
+
+/**
+ * `solveArmR` for either arm. The left one is the same chain with its elbow
+ * hanging out to HIS left: the pole is mirrored across his own centre line, and
+ * nothing else about the solve is handed — both forearms hinge the same way
+ * (`applyCarry` in gait.ts bends them with the same sign).
+ */
+export function solveArm(rig: RobotRig, side: 'L' | 'R', target: THREE.Vector3, wShoulder: number, wElbow: number, fold = 0): number {
   const b = rig.bones;
-  const up = b.upperArmR;
-  const fore = b.forearmR;
+  const up = b[`upperArm${side}`];
+  const fore = b[`forearm${side}`];
+  const hand = b[`hand${side}`];
   rig.root.updateMatrixWorld(true);
   up.getWorldPosition(_S);
   fore.getWorldPosition(_E0);
-  b.handR.getWorldPosition(_H0);
+  hand.getWorldPosition(_H0);
   const a = _S.distanceTo(_E0);
   const fl = _H0.distanceTo(_E0);
-  const c = fl + (PALM * fl) / b.handR.position.length();
+  const c = fl + (PALM * fl) / hand.position.length();
 
   _n.copy(target).sub(_S);
   const d = _n.length();
   _n.divideScalar(Math.max(d, 1e-6));
   const dc = clamp(d, Math.abs(a - c) + 1e-3, (a + c) * 0.999);
 
-  // The pole: down, out to his right (-x in rig space) and a touch back.
+  // The pole: down, out to his side (-x in rig space is his right) and a touch back.
   rig.root.getWorldQuaternion(_rq);
-  _p.set(-0.55, -1, -0.2).applyQuaternion(_rq);
+  _p.set(side === 'R' ? -0.55 : 0.55, -1, -0.2).applyQuaternion(_rq);
   _p.addScaledVector(_n, -_p.dot(_n));
   if (_p.lengthSq() < 1e-8) _p.set(0, -1, 0);
   _p.normalize();
@@ -469,4 +480,53 @@ export function solveArmR(rig: RobotRig, target: THREE.Vector3, wShoulder: numbe
   up.quaternion.copy(_q0).slerp(_qw, clamp(wShoulder, 0, 1));
   fore.rotation.x = THREE.MathUtils.lerp(fore.rotation.x, -theta, clamp(wElbow, 0, 1)) - fold;
   return Math.max(0, d - (a + c) * 0.999);
+}
+
+/* ------------------------------------------------- a letter in both hands ---- */
+
+/**
+ * How far either side of a carried letter's middle each hand holds it, m — the
+ * gait's own carry pose, measured (hands at +0.053 / -0.038 across his front).
+ */
+const HOLD_SPREAD = 0.045;
+const _hold = new THREE.Vector3();
+const _hand = new THREE.Vector3();
+
+/**
+ * Droid's two hands ON the #DEVOXX letter he is carrying, wherever the sim says
+ * it is: `centre` is the letter's middle (world metres; its height is ignored)
+ * and `face` the sim heading it faces. Each palm goes to the letter's own plane, a
+ * hand's spread either side of its middle, at the height the gait's carry put
+ * that hand; `k` blends it over the gait's canned carry.
+ *
+ * Michele, 29 Sep 2026: *"letters (and droid's arm) through the wall"*. The carry
+ * was a canned pose with the letter hung off wherever its hands ended up — 0.89 m
+ * out, 0.39 m past everything the sim collides with. The sim now says where the
+ * letter is and keeps it out of the walls (`carryPoint`, src/sim/letters.ts), and
+ * this brings the hands to it rather than it to the hands, so no arm can reach
+ * further than the letter it is holding. Returns the worse hand's shortfall, m.
+ */
+export function holdLetter(rig: RobotRig, centre: THREE.Vector3, face: number, k: number): number {
+  const nx = -Math.sin(face);
+  const nz = Math.cos(face);
+  let short = 0;
+  for (const side of ['L', 'R'] as const) {
+    rig.root.updateMatrixWorld(true);
+    rig.bones[`hand${side}`].getWorldPosition(_hand);
+    const s = side === 'L' ? HOLD_SPREAD : -HOLD_SPREAD;
+    _hold.set(centre.x + nx * s, _hand.y, centre.z + nz * s);
+    short = Math.max(short, solveArm(rig, side, _hold, k, k));
+  }
+  return short;
+}
+
+/** `palmWorld` for either hand. */
+export function palmOf(rig: RobotRig, side: 'L' | 'R', out = new THREE.Vector3()): THREE.Vector3 {
+  const b = rig.bones;
+  rig.root.updateMatrixWorld(true);
+  b[`forearm${side}`].getWorldPosition(_E0);
+  b[`hand${side}`].getWorldPosition(out);
+  const fore = out.distanceTo(_E0);
+  const palm = (PALM * fore) / b[`hand${side}`].position.length();
+  return out.add(_f.copy(out).sub(_E0).normalize().multiplyScalar(palm));
 }

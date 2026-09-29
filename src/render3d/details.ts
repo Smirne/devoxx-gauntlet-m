@@ -14,6 +14,7 @@
 
 import * as THREE from 'three';
 
+import { LAB_X0, LAB_X1 } from '../sim/chapters/ch4-keynote';
 import { CY0, CY1, F1, floor1Walls, roomDoor, rooms } from '../sim/geometry';
 import { m } from '../sim/units';
 
@@ -21,18 +22,28 @@ import type { Materials } from './materials';
 import { withReflection } from './materials';
 import { mergeStatic, noMerge } from './merge';
 import type { PlanarReflection } from './reflector';
-import { HEIGHTS, X_END } from './venue';
+import { DRESS_END, HEIGHTS, X_END, zaalX } from './venue';
 
 type Side = -1 | 1;
 
-/** Sim-x intervals of the corridor wall on `side` that nothing else uses. */
+/**
+ * Sim-x intervals of the corridor wall on `side` that nothing else uses, from the
+ * foyer end to the head of the main stairs (`DRESS_END`).
+ *
+ * It stopped at `X_END`, with the rooms this build has insides for, so chapter 4's
+ * corridor had none of this (Michele, 29 Sep, #18: *"Corridor walls are much less
+ * colorful than in chapter 1"*). Every doorway and Zaal panel on the corridor
+ * blocks now, and so do chapter 4's lab tables, which stand along both walls with
+ * their quote wall behind them.
+ */
 export function freeSpans(side: Side, taken: Array<[number, number, Side]> = []): Array<[number, number]> {
   const blocked: Array<[number, number]> = [];
   for (const r of rooms) {
-    if (r.x + r.w > X_END || r.side !== side) continue;
+    if (r.side !== side) continue;
     const d = roomDoor(r);
     blocked.push([d.x - 6, d.x + d.w + 6]);
-    blocked.push([d.x - 26, d.x - 10]); // the Zaal panel
+    const z = zaalX(r);
+    blocked.push([z - 8, z + 8]); // the Zaal panel
   }
   // The real corridor columns from the plan (the old guess, "one at each room
   // edge", left an ad screen half behind one), with a margin for their plinths.
@@ -46,16 +57,17 @@ export function freeSpans(side: Side, taken: Array<[number, number, Side]> = [])
   const n = side < 0 ? F1.nicheTop : F1.nicheBot;
   blocked.push([n.x - 8, n.x + n.w + 8]);
   blocked.push([F1.fireX - 30, F1.fireX + 30]);
-  blocked.push([X_END - 30, X_END + 40]);
+  blocked.push([LAB_X0 - 6, LAB_X1 + 6]);
   for (const [a, b, s] of taken) if (s === side) blocked.push([a, b]);
   blocked.sort((a, b) => a[0] - b[0]);
   const out: Array<[number, number]> = [];
   let x = 8;
   for (const [a, b] of blocked) {
+    if (a >= DRESS_END) break;
     if (a > x + 6) out.push([x, a]);
     x = Math.max(x, b);
   }
-  if (X_END - 30 > x + 6) out.push([x, X_END - 30]);
+  if (DRESS_END > x + 6) out.push([x, DRESS_END]);
   return out;
 }
 
@@ -333,9 +345,11 @@ export function buildDetails(mats: Materials, refl: PlanarReflection, taken: Arr
       envMapIntensity: 1.6,
     });
     const quadsP: THREE.BufferGeometry[] = [];
+    // Every doorway on the corridor, as far as the main stairs (it stopped at
+    // `X_END`; #18), and not behind chapter 4's quote wall.
     const doorBlocked = (side: Side, x: number): boolean => {
       for (const r of rooms) {
-        if (r.x + r.w > X_END || r.side !== side) continue;
+        if (r.side !== side) continue;
         const d = roomDoor(r);
         if (x > d.x - 8 && x < d.x + d.w + 8) return true;
       }
@@ -343,11 +357,12 @@ export function buildDetails(mats: Materials, refl: PlanarReflection, taken: Arr
       if (x > n.x - 8 && x < n.x + n.w + 8) return true;
       if (x > F1.fireX - 12 && x < F1.fireX + 26) return true;
       if (side > 0 && x > F1.foyer.x - 6 && x < F1.foyer.x + F1.foyer.w + 6) return true;
-      return x > X_END - 20;
+      if (x > LAB_X0 - 8 && x < LAB_X1 + 8) return true;
+      return x > DRESS_END;
     };
     for (const side of [-1, 1] as Side[]) {
       const z = side < 0 ? c0 + 0.018 : c1 - 0.018;
-      for (let x0 = 12; x0 + 30 <= X_END; x0 += 30) {
+      for (let x0 = 12; x0 + 30 <= DRESS_END; x0 += 30) {
         const a = x0 + 1;
         const b2 = x0 + 29;
         if (doorBlocked(side, a) || doorBlocked(side, b2) || doorBlocked(side, (a + b2) / 2)) continue;
