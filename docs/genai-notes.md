@@ -5663,3 +5663,45 @@ video still stops dead, because the act was skipped with it.
 `tests/curtain-call.test.ts` +1 — the card lands on the same shot, the tower is still up, the room
 is still clapping, somebody is still moving and Voxxy is still jumping, and the card is not
 rewritten behind itself. Suite **791 green**, `tsc --noEmit` clean.
+
+## 29 Sep 2026 — the credits, and the rule that every number on them be counted
+
+**What the human decided.** Michele: *"We should work on credits. Mentioning me, you, and some info
+on the process (4 repository, 10 gameplay POC, transition from 2, to 2.5 to 3D, xxxx tokens, xxx
+agents, xxx loops..). Should contain the welld Logo and website."* The `xxxx` is the whole
+instruction: he asked for the shape and left the figures to be found.
+
+**What the agent did.** A credits screen on `C`, offered on the final card. Then went and counted,
+because the GenAI section is five points and its entire value is being accurate. `git log` for the
+commits and the authors; the prototype repository for the ten POCs; a walk of `src` and `tests` for
+the code; `wc` over `docs/` for the notes; and this session's own 190 MB transcript, parsed, for the
+tool calls (4,453, of which 3,906 a shell), the subagents (44), the workflows (6), the turns (7,245
+against 233 human messages) and the tokens (2.15 B processed, 6.2 M generated).
+
+**What it refused to do.** Extrapolate. The session figures are one session's, and this game was
+built across several that this container cannot see — so those tiles are labelled *one session* and
+the footnote says they are a floor, not a total. And it did not invent the fourth repository:
+three are nameable, the fourth is Michele's to supply, and the screen carries a placeholder rather
+than a guess.
+
+**Three numbers that rot, and a test for them.** The lines, the files and the test count are claims
+about a repository that grows under them every commit. `tests/credits.test.ts` re-counts them from
+the source and fails at 2% drift. Two things in it are worth recording: it reads the tree through
+Vite's `?raw` and `import.meta.glob` rather than `node:fs`, because the project carries no
+`@types/node` (`tests/clue-plate.test.ts` already reads a source file that way); and
+`import.meta.glob` silently omits the module it is written in, which made the file count one short
+until the test added itself back.
+
+**The logo.** The real artwork, resampled to the 440x220 the panel shows and quantised to 64
+colours — 7 KB as a data URI, so the published build stays one self-contained file. Not traced in
+code, which is the house style for everything else in this game: a hand-drawn wordmark is a wrong
+wordmark. It keeps its transparent background and sits on a white plate, because the tagline is
+black and recolouring somebody's logo to suit your palette is not a liberty to take.
+
+**One shell detail worth keeping.** `C` never reaches the sim. On any card `game.key` dismisses the
+card whichever key it is, and while the opening video plays every key means skip — so a `C` that
+went through would open the credits and throw away the score card or the ending behind them. The
+overlay answers whether it took the key and the shell returns on `true`.
+
+**Tests.** `tests/credits.test.ts`, 5. Suite **826 green** in 60 files, `tsc --noEmit` clean,
+`ERRORS:0` in the browser.

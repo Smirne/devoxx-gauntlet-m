@@ -259,6 +259,21 @@ const STORY_KEEPS = new Set(['KeyI', 'KeyH', 'KeyM', 'KeyN', 'ShiftLeft', 'Shift
 function onKeyDown(ev: KeyboardEvent): void {
   const code = codeOf(ev);
   /*
+   * THE CREDITS FIRST, because they are a modal and because of where they are
+   * most likely to be opened: the final card.
+   *
+   * `game.key` dismisses whatever card is showing, whichever key it is, so a `C`
+   * that reached the sim would open the credits and throw the score card away
+   * behind them. While a video is playing every key means skip, which would do
+   * the same to the ending. So `creditsKey` answers whether it took the key and
+   * this returns on `true` without the sim ever hearing it. `typing` guards it
+   * like the other overlay letters — chapter 2's terminal owns the alphabet.
+   */
+  if (!game.snapshot().typing && hud.creditsKey(code)) {
+    ev.preventDefault();
+    return;
+  }
+  /*
    * While the sim has the keyboard (chapter 2's router terminal — `snapshot().typing`)
    * the movement keys are letters, not a stick. `DevoxxForever` starts with a `D`,
    * and without this the first character of the password walks the robot out of

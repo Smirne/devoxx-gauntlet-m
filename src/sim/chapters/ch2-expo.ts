@@ -407,7 +407,7 @@ const OBJECTIVE =
   'the <b>store</b> open. <b>Droid</b> reaches what is too high, <b>Biggy</b> moves what is too ' +
   'heavy, <b>Voxxy</b> goes where nothing else fits.';
 const KEYS =
-  '1/2/3/Tab: switch · WASD · E: use / climb / terminal / hold Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics';
+  '1/2/3/Tab: switch · WASD · E: use / climb / terminal / hold Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics \u00b7 C: credits';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');

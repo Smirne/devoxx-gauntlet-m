@@ -20,6 +20,15 @@ import type { Bot, GameSnapshot, Prop, RobotKind, Task } from '../sim/types';
 import { displayMps } from '../sim/units';
 import { CARDS as INTRO_CARDS } from '../sim/opening';
 import { GOAL, STORY } from '../sim/story';
+import {
+  CREDIT_CLOSE,
+  CREDIT_FOOTNOTE,
+  CREDIT_ROLES,
+  CREDIT_STATS,
+  CREDIT_SUB,
+  CREDIT_TITLE,
+} from './credits';
+import { WELLD_LOGO, WELLD_RED, WELLD_SITE } from './welld';
 
 export interface HudOptions {
   /**
@@ -50,6 +59,15 @@ export interface Hud {
   toggleTasks(): void;
   /** `Escape`, or a click anywhere off the panel. */
   closeTasks(): void;
+  /**
+   * `C` — the credits, and every key while they are up.
+   *
+   * True when the overlay took the key, and the shell must then return WITHOUT
+   * handing it to the sim: on any card `game.key` dismisses the card, and during
+   * the opening video every key skips the video, so a `C` that reached the sim
+   * would cost the player the thing they were looking at.
+   */
+  creditsKey(code: string): boolean;
   /**
    * Left/right arrow while the sheet is open: turn between its two pages, the
    * night (the story, the run's goal) and this chapter (briefing, tasks). Returns
@@ -342,6 +360,44 @@ const CSS = `
 .ad-sheet.ad-tale .ad-goal{margin-top:14px}
 .ad-sheet.ad-tale .ad-peek{font-size:12px;color:${MUTED};justify-content:flex-end}
 .ad-goal{margin-top:6px;color:#f2efe9}
+
+/* THE CREDITS (C). A modal, wider than the run sheet because the process story
+   is two columns of numbers, and scrollable because on a phone it is not. */
+.ad-credits{pointer-events:auto;position:absolute;inset:0;z-index:6;display:flex;
+  align-items:center;justify-content:center;padding:20px;background:rgba(6,7,10,.8)}
+.ad-credits .ad-cbox{width:min(880px,94vw);max-height:92vh;overflow-y:auto;
+  padding:22px 28px 16px;border:1px solid ${ACCENT};border-radius:14px;
+  background:rgba(10,11,14,.98);box-shadow:0 30px 90px rgba(0,0,0,.75)}
+.ad-credits h3{margin:0;font-size:26px;letter-spacing:.02em;color:${ACCENT};text-transform:none}
+.ad-credits .ad-csub{margin:2px 0 14px;font-size:12px;letter-spacing:.14em;
+  text-transform:uppercase;color:${MUTED}}
+.ad-crole{margin-bottom:10px;font-size:13px;line-height:1.5;color:#b9b4ac}
+.ad-crole b{display:block;font-size:14px;color:#f2efe9;font-weight:600;letter-spacing:.01em}
+.ad-chead{margin:14px 0 10px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:${MUTED};border-top:1px solid rgba(242,239,233,.12);padding-top:14px}
+/* Nine figures, so three columns: at two they leave an orphan on the last row,
+   and at three the block is exactly three rows and the panel fits a laptop
+   screen without scrolling. */
+.ad-cstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px 20px}
+.ad-cstat .ad-cn{font-size:19px;color:${ACCENT};font-weight:600;
+  font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.ad-cstat .ad-cl{font-size:12px;color:#f2efe9}
+.ad-cstat .ad-cnote{margin-top:2px;font-size:11px;line-height:1.4;color:${MUTED}}
+.ad-cfoot{margin-top:16px;padding-top:14px;border-top:1px solid rgba(242,239,233,.12);
+  display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap}
+/* The mark keeps its own white ground: the tagline is black and the panel is not.
+   Recolouring somebody's logo to suit a palette is not a liberty to take. */
+.ad-cwd{display:flex;align-items:center;gap:12px}
+.ad-cwd img{display:block;width:120px;height:auto;padding:7px 10px;border-radius:8px;
+  background:#fff}
+.ad-cwd .ad-csite{font-size:13px;color:${WELLD_RED};font-weight:600;letter-spacing:.02em}
+.ad-cnote2{flex:1 1 280px;min-width:0;font-size:11px;line-height:1.45;color:${MUTED}}
+.ad-ckey{margin-top:10px;font-size:11px;letter-spacing:.06em;color:${MUTED};text-align:right}
+@media (max-width:860px){ .ad-cstats{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@media (max-width:560px){
+  .ad-credits .ad-cbox{padding:20px 18px 16px}
+  .ad-cstats{grid-template-columns:1fr}
+}
 .ad-peek{display:flex;align-items:center;justify-content:space-between;gap:12px;
   font-size:13px;color:#cdc9c2}
 .ad-peek b{color:#f2efe9;font-weight:600;font-variant-numeric:tabular-nums}
@@ -717,6 +773,62 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   const askEl = el('span', 'ad-ask', taskBar);
   askEl.textContent = 'I run sheet · H hint';
 
+
+  /*
+   * THE CREDITS (C) — built once, never rebuilt. Nothing in it depends on the
+   * run, so it is markup laid out from `src/render/credits.ts` at startup and
+   * then only shown and hidden. See that file for why every number on it was
+   * counted rather than recalled.
+   */
+  const credits = el('div', 'ad-credits ad-hide', root);
+  {
+    const box = el('div', 'ad-cbox', credits);
+    el('h3', '', box).textContent = CREDIT_TITLE;
+    el('div', 'ad-csub', box).textContent = CREDIT_SUB;
+    for (const r of CREDIT_ROLES) {
+      const row = el('div', 'ad-crole', box);
+      el('b', '', row).textContent = r.who;
+      row.appendChild(document.createTextNode(r.what));
+    }
+    el('div', 'ad-chead', box).textContent = 'How it was built';
+    const grid = el('div', 'ad-cstats', box);
+    for (const st of CREDIT_STATS) {
+      const cell = el('div', 'ad-cstat', grid);
+      el('div', 'ad-cn', cell).textContent = st.n;
+      el('div', 'ad-cl', cell).textContent = st.label;
+      el('div', 'ad-cnote', cell).textContent = st.note;
+    }
+    const foot = el('div', 'ad-cfoot', box);
+    const wd = el('div', 'ad-cwd', foot);
+    const mark = el('img', '', wd);
+    mark.src = WELLD_LOGO;
+    mark.alt = 'WellD';
+    el('span', 'ad-csite', wd).textContent = WELLD_SITE;
+    el('div', 'ad-cnote2', foot).textContent = CREDIT_FOOTNOTE;
+    el('div', 'ad-ckey', box).textContent = CREDIT_CLOSE;
+  }
+  let creditsOpen = false;
+
+  /**
+   * `C`, and every key while the credits are up.
+   *
+   * It returns whether it took the key, and the shell returns on `true` WITHOUT
+   * passing it to the sim — which is the whole reason this is a swallow and not
+   * a toggle. On the final card every key dismisses the card (`game.key`), so a
+   * `C` that reached the sim would open the credits and throw away the score
+   * behind them; during the opening video every key skips the video.
+   */
+  function creditsKey(code: string): boolean {
+    if (code === 'KeyC') {
+      creditsOpen = !creditsOpen;
+      return true;
+    }
+    if (!creditsOpen) return false;
+    // Modal: Escape and a click close it, and nothing else gets through to a
+    // game the player has stopped looking at.
+    if (code === 'Escape') creditsOpen = false;
+    return true;
+  }
 
   /* the run sheet (I) and the hint mark (H) */
   const sheet = el('div', 'ad-sheet ad-hide', root);
@@ -1323,6 +1435,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   }
 
   function updateCard(snap: GameSnapshot): void {
+    credits.classList.toggle('ad-hide', !creditsOpen);
     card.classList.toggle('ad-card-live', snap.phase === 'done');
     const html = snap.card;
     if (html) {
@@ -1485,6 +1598,12 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
    * root already sits over the canvas, and a listener on the window would also
    * catch the click that the Skip button is in the middle of handling.
    */
+  const onCreditsClick = (ev: MouseEvent): void => {
+    if (!creditsOpen) return;
+    if (!(ev.target as HTMLElement).closest('.ad-cbox')) creditsOpen = false;
+  };
+  credits.addEventListener('click', onCreditsClick);
+
   const onRootClick = (ev: MouseEvent): void => {
     if (!sheetOpen) return;
     if (sheet.contains(ev.target as Node)) return;
@@ -1539,5 +1658,5 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     }
   }
 
-  return { update, toggleTasks, closeTasks, pageTasks, turnStory, nudge, dispose, root };
+  return { update, toggleTasks, closeTasks, creditsKey, pageTasks, turnStory, nudge, dispose, root };
 }

@@ -137,7 +137,7 @@ export interface DarkState {
   doneB: boolean;
 }
 
-const KEYS = '1/2/3/Tab: switch · WASD · E: hold Biggy / Voxxy jumps · R: restart · I: run sheet · H: hint · P: physics';
+const KEYS = '1/2/3/Tab: switch · WASD · E: hold Biggy / Voxxy jumps · R: restart · I: run sheet · H: hint · P: physics · C: credits';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('up');

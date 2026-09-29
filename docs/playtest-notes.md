@@ -1077,3 +1077,42 @@ holding a half-finished bow behind the card is worse than holding nothing.
 
 No cuts. Hard cuts on a fixed isometric camera read as a bug rather than as direction, and the
 curtain call is already the motion in the shot.
+
+## Michele, 29 Sep — *"We should work on credits"*
+
+*"Mentioning me, you, and some info on the process (4 repository, 10 gameplay POC, transition from
+2, to 2.5 to 3D, xxxx tokens, xxx agents, xxx loops..). Should contain the welld Logo and
+website."*
+
+`C`, from anywhere in the game, and offered on the final card next to "R to play again". Three
+credits — Michele for direction and every decision that stuck, the model for the code, WellD for
+paying for the nights — then nine figures under *How it was built*, then the mark and `welld.ch`.
+
+**Every number on it was counted, not remembered.** The GenAI section is five points and its whole
+value is being true, so nothing is on that screen that could not be measured:
+
+| | |
+|---|---|
+| 10 gameplay prototypes | `welldsagl/devoxx-game-experiments`, `poc/01-playground` → `poc/10-after-dark-kinepolis` |
+| 296 commits in 7 days | `git log`, 294 by the model and 2 by Michele, 22–29 Sep |
+| 80,213 lines of TypeScript | 58,635 in 86 source files, 21,578 in 64 test files |
+| 108,625 words of notes | `docs/*.md`, of which 72,287 are the GenAI record |
+| 44 subagents, 6 workflows | `Agent` and `Workflow` tool calls in this session's transcript |
+| 4,453 tool calls | 3,906 of them a shell; 7,245 model turns against 233 messages from Michele |
+| 2.15 B tokens | 6.2 M of them generated; the rest is context read again every turn |
+
+Three of those — the lines, the files and the tests — rot as the repository grows, so
+`tests/credits.test.ts` re-counts them from the source on every run and fails if the screen has
+drifted more than 2%. It reads the tree through Vite's `?raw` rather than `node:fs`, because this
+project carries no `@types/node`; `import.meta.glob` leaves out the module it is written in, so the
+test adds itself back, which is the sort of off-by-one that would otherwise sit there for ever.
+
+**What the screen admits.** The per-session figures are one session's and the game was built across
+several, so they are labelled *one session* on the tiles and the footnote says they are a floor
+rather than a total. And the logo is the real artwork inlined as a 7 KB data URI, on a white plate,
+uncoloured: a hand-traced wordmark is a wrong wordmark, and the tagline is black, so recolouring it
+to suit a dark panel is not a liberty to take.
+
+**Still open:** the fourth repository. Three are nameable — `gauntlet-loop-experiment` (the method),
+`devoxx-game-experiments` (the ten prototypes) and this one — and the screen currently says "the one
+before all of them" for the fourth, which is a placeholder for Michele to correct.
