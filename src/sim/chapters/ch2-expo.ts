@@ -114,7 +114,37 @@ import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 
 /* ---------------------------------------------------------------- reach distances */
 
-const PANEL_REACH = 52;
+/**
+ * How close Droid has to stand to the breaker panel's middle (`panelAt`) to put a
+ * hand on its handles, sim px — 1.6 m.
+ *
+ * Michele, 29 Sep 2026, on the breakers: *"i see no animation, and yes, droid
+ * should be nearer to activate it."* It was 52 px — 4.2 m, which from the back of
+ * the zone is most of the way across the technical room — so `E` threw a handle
+ * from where no arm could get to it, and the 3D build had to invent the difference:
+ * a walk of up to 3.5 m, drawn only, before the hand even set off, while the toast
+ * and the clack had already gone off at the key press. The picture of a throw
+ * arrived seconds after the game had announced it, when it arrived at all (the rest
+ * of that is `src/render3d/reach3d.ts`). The honest half of the fix is on this side
+ * of the line: the board decides where he stands, and the picture only has to lift
+ * the arm.
+ *
+ * 20 px from `panelAt` is the board's own footprint and a stride round it. The
+ * handles hang 0.36 m proud of the wall and `panelAt` is 1.28 m out, so wherever
+ * he stands in it the furthest handle is 2.6 m off: at most 2.0 m of walk before
+ * his arm is long enough, which is what `STEP_MAX` in `src/render3d/reach3d.ts` is
+ * sized for (and `tests/reach3d.test.ts` sweeps this zone to hold it to that). His
+ * reach is no longer anywhere near the router terminal's either (`TERMINAL_REACH`).
+ */
+export const PANEL_REACH = 20;
+/**
+ * ...and inside this, but not inside `PANEL_REACH`, he is near enough to be asking
+ * about the board and too far to reach it, and he says so in his own voice. It is
+ * the old 52 px reach, kept as the distance at which `E` still means the handles:
+ * a player who threw one from there before 29 Sep is now told to get closer,
+ * rather than handed Droid's stretch, which answers a question nobody asked.
+ */
+const PANEL_HAIL = 52;
 const PLUG_REACH = 40;
 /** A new cable point is only recorded once Voxxy has actually gone somewhere. */
 const CABLE_STEP = 6;
@@ -236,11 +266,14 @@ const PASSWORD_BLANK = '·';
  * How close a robot must be to the terminal in the open cabinet to touch its keys,
  * sim px — 4.3 m, measured from the cabinet's south face.
  *
- * Deliberately the same reach the cam-lock wheel had, for the same reason: the
- * breaker panel is 89 px along the same back wall with its own 52 px reach, and
- * these two must overlap only just, so that "Droid presses E at the cabinet" and
- * "Droid presses E at the breakers" are different places to stand and not a coin
- * toss. Where they do overlap, the nearer hand wins (see `key`).
+ * Deliberately the same reach the cam-lock wheel had. The breaker panel is 89 px
+ * along the same back wall, and "Droid presses E at the cabinet" and "Droid
+ * presses E at the breakers" have to be different places to stand and not a coin
+ * toss. Since 29 Sep they cannot be confused at all: `PANEL_REACH` is 20 px, and
+ * 20 + 54 is well short of 89. What still overlaps this is `PANEL_HAIL`, the ring
+ * in which Droid is told to get closer to the board — and there the nearer of the
+ * two wins, as the two reaches used to (see `key`), so a Droid standing nearer the
+ * terminal types rather than being sent back to the handles.
  */
 const TERMINAL_REACH = 54;
 /** How close Biggy has to be to get a shoulder behind the cabinet door, sim px. */
@@ -1004,12 +1037,33 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     const atTerminal = router.cabinetOpen && dist(b, cabinetAt) < TERMINAL_REACH;
 
     if (b.kind === 'droid') {
-      const atPanel = !power && dist(b, panelAt) < PANEL_REACH;
+      const toPanel = dist(b, panelAt);
+      // Near enough to be asking about the board (`PANEL_HAIL`), and of those, near
+      // enough to reach it (`PANEL_REACH`). Both go quiet once the supply is on.
+      const nearPanel = !power && toPanel < PANEL_HAIL;
+      const atPanel = nearPanel && toPanel < PANEL_REACH;
       // The panel and the cabinet share the technical room's back wall 89 px apart
-      // and their reaches just overlap, so the nearer hand wins rather than
-      // whichever check happens to be written first.
-      if (atTerminal && (!atPanel || dist(b, cabinetAt) <= dist(b, panelAt))) {
+      // and the ring round the board overlaps the terminal's reach, so the nearer
+      // hand wins rather than whichever check happens to be written first.
+      if (atTerminal && (!nearPanel || dist(b, cabinetAt) <= toPanel)) {
         useTerminal(b);
+        return true;
+      }
+      if (nearPanel && !atPanel) {
+        /*
+         * TOO FAR TO REACH, AND HE SAYS SO. Michele, 29 Sep 2026: *"droid should be
+         * nearer to activate it."* The board used to answer from 4 m away; now it
+         * answers from under it, and every gate says why a robot is blocked, in that
+         * robot's voice — so this is not the stretch (his `E` with nothing to reach,
+         * which here would read as trying and failing) but how far short he is, in
+         * metres, and where to go instead. It keeps the ring's old precedence over
+         * everything else his `E` can mean — Biggy's shoulders, the cabinet, the
+         * tag: in here, with the supply off, it is about the handles.
+         */
+        ctx.flash(
+          `Droid: ${Math.max(0.1, m(toPanel - PANEL_REACH)).toFixed(1)} m short. These arms reach a long way ` +
+            'up, not a long way across. Right under the board, and the handles are mine',
+        );
         return true;
       }
       if (atPanel) {
@@ -2151,8 +2205,15 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * at somewhere nobody can go. Each is inside the reach the chapter already
    * enforces for that prop, so walking to the arrow is walking to the thing.
    */
-  /** In front of the breaker panel, well inside `PANEL_REACH`. */
-  const panelStand: Vec2 = { x: panelAt.x, y: panelAt.y + 18 };
+  /**
+   * In front of the breaker panel, well inside `PANEL_REACH`: 8 px (0.64 m) south of
+   * its middle. It was 18 px, which was well inside the old 52 px reach and is now
+   * on the edge of the 20 px one — the arrow must never be the place that earns the
+   * "closer" line. Not much nearer the wall either: the 2.5D build draws the board's
+   * face 0.4 m off `GF.panel.y` (`BREAKER_D`), at the height of a 2.1 m Droid's
+   * head, and from here his 6.25 px of radius clears it by 0.38 m.
+   */
+  const panelStand: Vec2 = { x: panelAt.x, y: panelAt.y + 8 };
   /** Clear of the cabinet's south face by more than Biggy's radius, between the two leaves. */
   const cabinetStand: Vec2 = { x: cabinetAt.x, y: cabinetAt.y + 14 };
   /** North of the patch rack, off its collider and inside `PLUG_REACH`. */

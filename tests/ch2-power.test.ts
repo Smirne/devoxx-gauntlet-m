@@ -34,6 +34,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { DT_MAX, GF, createGame, type DebugGame, type ExpoState, type Prop, type Vec2 } from '../src/sim';
+import { PANEL_REACH } from '../src/sim/chapters/ch2-expo';
 import { PROP_DRAW, isFloorDecalOrHung } from './prop-geometry';
 
 const SEED = 20260930;
@@ -54,7 +55,7 @@ const PANEL: Vec2 = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
 /** Droid, stood at the panel, ready to throw handles one at a time. */
 function atPanel(g: DebugGame): void {
   g.debug.select('droid');
-  g.debug.place('droid', PANEL.x + 20, PANEL.y + 30);
+  g.debug.place('droid', PANEL.x, PANEL.y + 8);
 }
 
 function powerUp(g: DebugGame): void {
@@ -120,6 +121,101 @@ describe('chapter 2 — a thrown breaker does something', () => {
     expect(lines[2], 'the last handle does not read as the big one').toMatch(/transformer|mains|bars/i);
     // ...and none of them claims a lit hall.
     expect(expo(g).hallLit, 'the breakers lit the hall by themselves').toBe(false);
+  });
+});
+
+/* ============================================ from under the board, only === */
+
+describe('chapter 2 — Droid throws the breakers from under the board', () => {
+  const droidOf = (g: DebugGame) => g.snapshot().bots.find((b) => b.kind === 'droid');
+
+  /**
+   * Michele, 29 Sep 2026: *"breakers scene: i see no animation, and yes, droid
+   * should be nearer to activate it."* The board used to answer E from 52 px —
+   * 4.2 m, most of the technical room — so a handle went up from where no arm
+   * could reach it and the 3D build had to walk him the difference, seconds after
+   * the toast had already said it was done.
+   *
+   * The spot every choreography in this suite threw from, 36 px out, is inside
+   * the old reach and outside the new one: exactly the case to pin. From there he
+   * is told, in his own voice, how far short he is — not handed his stretch, and
+   * not given a handle. From under the board, where the task arrow points, three
+   * presses are three handles and the supply.
+   */
+  it('answers only from under the board, and tells a Droid who is short how far', () => {
+    const g = mk();
+    g.debug.select('droid');
+    g.debug.place('droid', PANEL.x + 20, PANEL.y + 30);
+    g.key('KeyE');
+    expect(expo(g).breakersLeft, 'a handle went up from 2.9 m off the board').toBe(3);
+    expect(prop(g, 'breaker')?.v ?? 0).toBe(0);
+    expect(prop(g, 'breaker')?.progress ?? 0, 'the board struck with nobody at it').toBe(0);
+    expect(said(g), 'the gate is not in his voice').toMatch(/^Droid:/);
+    expect(said(g), 'he does not say how far short he is').toMatch(/\d\.\d m short/);
+    expect(said(g), 'he does not say where to go').toMatch(/under the board/i);
+    expect(droidOf(g)?.flair ?? 0, 'the answer was his stretch, not a reason').toBe(0);
+
+    g.debug.place('droid', PANEL.x, PANEL.y + 8);
+    for (let i = 1; i <= 3; i++) {
+      g.key('KeyE');
+      expect(prop(g, 'breaker')?.v, `handle ${i} did not go up from under the board`).toBe(i);
+    }
+    expect(expo(g).power).toBe(true);
+  });
+
+  /** The line is `PANEL_REACH` itself, and the arrow is well inside it. */
+  it('draws the line at PANEL_REACH, and points the task arrow well inside it', () => {
+    const inside = mk();
+    inside.debug.select('droid');
+    inside.debug.place('droid', PANEL.x, PANEL.y + PANEL_REACH - 1);
+    inside.key('KeyE');
+    expect(prop(inside, 'breaker')?.v, 'a pixel inside the reach and no handle').toBe(1);
+
+    const outside = mk();
+    outside.debug.select('droid');
+    outside.debug.place('droid', PANEL.x, PANEL.y + PANEL_REACH + 1);
+    outside.key('KeyE');
+    expect(prop(outside, 'breaker')?.v ?? 0, 'a pixel outside the reach threw a handle').toBe(0);
+    expect(said(outside)).toMatch(/m short/);
+
+    // The power row's arrow is somewhere E works, with room to spare.
+    const g = mk();
+    steps(g, 2);
+    const at = g.snapshot().tasks.find((t) => t.id === 'power')?.at;
+    expect(at, 'the power row has no arrow').toBeDefined();
+    if (!at) return;
+    expect(Math.hypot(at.x - PANEL.x, at.y - PANEL.y), 'the arrow is on the edge of the reach').toBeLessThanOrEqual(PANEL_REACH / 2);
+    g.debug.select('droid');
+    g.debug.place('droid', at.x, at.y);
+    g.key('KeyE');
+    expect(prop(g, 'breaker')?.v, 'E at the arrow threw nothing').toBe(1);
+  });
+
+  /**
+   * The ring round the board in which he is told to get closer overlaps the
+   * terminal's reach, as the two reaches used to overlap each other: there the
+   * nearer of the two has the key, so a Droid at the open cabinet is answered by
+   * the terminal rather than sent back to the board. Both spots are just off the
+   * midpoint between the two, on the floor in front of the cabinet's west leaf.
+   */
+  it('lets the nearer of the board and the terminal have the key', () => {
+    const g = mk();
+    openCabinet(g);
+    expect(expo(g).router.cabinetOpen).toBe(true);
+    const nearCabinet = { x: (PANEL.x + HUB.x) / 2 + 2.5, y: 590 };
+    const nearBoard = { x: (PANEL.x + HUB.x) / 2 - 2.5, y: 590 };
+    const d = (p: Vec2, q: Vec2): number => Math.hypot(p.x - q.x, p.y - q.y);
+    expect(d(nearCabinet, HUB)).toBeLessThan(d(nearCabinet, PANEL));
+    expect(d(nearBoard, PANEL)).toBeLessThan(d(nearBoard, HUB));
+
+    g.debug.select('droid');
+    g.debug.place('droid', nearCabinet.x, nearCabinet.y);
+    g.key('KeyE');
+    expect(said(g), 'nearer the cabinet, and sent back to the board').toMatch(/unit is cold/);
+    g.debug.place('droid', nearBoard.x, nearBoard.y);
+    g.key('KeyE');
+    expect(said(g), 'nearer the board, and answered by the terminal').toMatch(/m short/);
+    expect(prop(g, 'breaker')?.v ?? 0).toBe(0);
   });
 });
 

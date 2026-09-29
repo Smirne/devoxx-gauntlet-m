@@ -126,7 +126,7 @@ function openCabinet(g: DebugGame): boolean {
  */
 function powerUp(g: DebugGame): boolean {
   g.debug.select('droid');
-  g.debug.place('droid', PANEL.x + 20, PANEL.y + 30);
+  g.debug.place('droid', PANEL.x, PANEL.y + 8);
   for (let i = 0; i < 3; i++) g.key('KeyE');
   return expo(g).power;
 }
@@ -452,7 +452,7 @@ describe('chapter 2 — expo', () => {
     expect((g.debug.chapter() as ExpoState).breakersLeft).toBe(3);
 
     g.debug.select('droid');
-    g.debug.place('droid', panel.x + 20, panel.y + 30);
+    g.debug.place('droid', panel.x, panel.y + 8);
     g.key('KeyE');
     g.key('KeyE');
     expect((g.debug.chapter() as ExpoState).breakersLeft).toBe(1);
@@ -813,7 +813,7 @@ describe('chapter 2 — expo', () => {
 
     // Power and cable, but no router: the printer is still dark.
     g.debug.select('droid');
-    g.debug.place('droid', panel.x + 20, panel.y + 30);
+    g.debug.place('droid', panel.x, panel.y + 8);
     for (let i = 0; i < 3; i++) g.key('KeyE');
     expect(expo(g).power).toBe(true);
 
@@ -860,7 +860,7 @@ describe('chapter 2 — expo', () => {
      *    exercises the route with the most moving parts rather than the shortest.
      */
     g.debug.select('droid');
-    g.debug.place('droid', panel.x + 20, panel.y + 30);
+    g.debug.place('droid', panel.x, panel.y + 8);
     for (let i = 0; i < 3; i++) g.key('KeyE');
     expect(expo(g).power).toBe(true);
     expect(expo(g).hallLit, 'the breakers lit the hall on their own').toBe(false);
