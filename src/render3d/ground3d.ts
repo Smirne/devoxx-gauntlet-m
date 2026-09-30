@@ -761,7 +761,12 @@ function scheduleScreens(group: THREE.Group, mats: Materials): void {
     [373, 473],
     [693, 473],
   ];
-  const boards = [scheduleScreen(false), scheduleScreen(true)];
+  // One material a board and one mesh a material: eight screens and their
+  // bezels are three draws, not sixteen (the perf pass's rule, `merge.ts`).
+  const boards = [false, true].map((later) =>
+    glowing(new THREE.MeshBasicMaterial({ map: scheduleScreen(later), color: new THREE.Color(1.25, 1.25, 1.25), toneMapped: false })),
+  );
+  const out = new Buckets();
   const SW = 1.0;
   const SH = SW * (9 / 16);
   const Y = 2.55;
@@ -772,17 +777,14 @@ function scheduleScreens(group: THREE.Group, mats: Materials): void {
     const z = m(col.y + col.h / 2);
     for (const side of [-1, 1] as const) {
       const face = side < 0 ? m(col.x) : m(col.x + col.w);
-      const bezel = new THREE.Mesh(box(0.05, SH + 0.06, SW + 0.06, V(face + side * 0.03, Y, z)), mats.blackGloss);
-      group.add(bezel);
-      const screen = new THREE.Mesh(
-        new THREE.PlaneGeometry(SW, SH),
-        glowing(new THREE.MeshBasicMaterial({ map: boards[n++ % 2], color: new THREE.Color(1.25, 1.25, 1.25), toneMapped: false })),
-      );
-      screen.position.set(face + side * 0.058, Y, z);
-      screen.rotation.y = side * (Math.PI / 2);
-      group.add(screen);
+      out.add(mats.blackGloss, box(0.05, SH + 0.06, SW + 0.06, V(face + side * 0.03, Y, z)));
+      const screen = new THREE.PlaneGeometry(SW, SH);
+      screen.rotateY(side * (Math.PI / 2));
+      screen.translate(face + side * 0.058, Y, z);
+      out.add(boards[n++ % 2], screen);
     }
   }
+  out.build(group, false);
 }
 
 /** Reception's lit things, switched with the hall's power: material, full colour. */
@@ -1191,28 +1193,27 @@ export function buildGround(mats: Materials): Ground3D {
     const hem = new THREE.CylinderGeometry(0.02, 0.02, BW + 0.08, 8);
     hem.rotateX(Math.PI / 2);
     const spots: Array<[number, number]> = [[690, 240], [690, 380], [690, 520], [690, 665], [330, 380], [330, 520]];
-    spots.forEach(([x, y], i) => {
-      const map = devoxxBanner(i);
+    // The two prints, one material each, and everything baked into one mesh a
+    // material: six banners are four draws.
+    const prints = [0, 1].map((v) => {
+      const map = devoxxBanner(v);
       const mat = new THREE.MeshStandardMaterial({ map, roughness: 0.85, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.05 });
       panels.push(mat);
-      const top = bottomChord - 0.3;
-      for (const side of [-1, 1]) {
-        const sheet = new THREE.Mesh(new THREE.PlaneGeometry(BW, BH), mat);
-        sheet.position.set(m(x) + side * 0.004, top - BH / 2, m(y));
-        sheet.rotation.y = side * (Math.PI / 2);
-        group.add(sheet);
-      }
-      for (const hy of [top, top - BH]) {
-        const bar = new THREE.Mesh(hem, mats.steel);
-        bar.position.set(m(x), hy, m(y));
-        group.add(bar);
-      }
-      for (const dz of [-BW / 2, BW / 2]) {
-        const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.3, 4), mats.darkMetal);
-        wire.position.set(m(x), top + 0.15, m(y) + dz);
-        group.add(wire);
-      }
+      return mat;
     });
+    const out = new Buckets();
+    const top = bottomChord - 0.3;
+    spots.forEach(([x, y], i) => {
+      for (const side of [-1, 1]) {
+        const sheet = new THREE.PlaneGeometry(BW, BH);
+        sheet.rotateY(side * (Math.PI / 2));
+        sheet.translate(m(x) + side * 0.004, top - BH / 2, m(y));
+        out.add(prints[i % 2], sheet);
+      }
+      for (const hy of [top, top - BH]) out.add(mats.steel, hem.clone().translate(m(x), hy, m(y)));
+      for (const dz of [-BW / 2, BW / 2]) out.add(mats.darkMetal, new THREE.CylinderGeometry(0.004, 0.004, 0.3, 4).translate(m(x), top + 0.15, m(y) + dz));
+    });
+    out.build(group, false);
   }
   let focusX = -1e9;
   let focusZ = -1e9;
