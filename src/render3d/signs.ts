@@ -753,6 +753,80 @@ export function beerCentralFlyer(): THREE.CanvasTexture {
   return tex(c);
 }
 
+/**
+ * THE SCHEDULE SCREENS: Devoxx's "now and next" on a TV at every crossing of the
+ * hall. The talks are invented, the rooms are the plan's, the keynote speaker
+ * is TBA, and the evening has a film in it. `later` is the afternoon's board, so
+ * two screens on the same column do not say the same thing.
+ */
+export function scheduleScreen(later: boolean): THREE.CanvasTexture {
+  const W = 1024;
+  const H = 576;
+  const [c, x] = canvas(W, H);
+  const sans = '"Helvetica Neue", Arial, sans-serif';
+  x.fillStyle = '#0b0b10';
+  x.fillRect(0, 0, W, H);
+  // The header: the brand bar, what this board is, and the clock.
+  x.fillStyle = '#f37021';
+  x.fillRect(0, 0, W, 86);
+  x.fillStyle = '#ffffff';
+  x.textBaseline = 'middle';
+  x.textAlign = 'left';
+  x.font = `bold 44px ${sans}`;
+  x.fillText('DEVOXX', 34, 45);
+  x.font = `600 30px ${sans}`;
+  x.fillStyle = '#1a0d05';
+  x.fillText(later ? 'LATER TODAY' : 'NOW & NEXT', 230, 46);
+  x.textAlign = 'right';
+  x.fillStyle = '#ffffff';
+  x.font = `bold 40px ${sans}`;
+  x.fillText(later ? '09:14' : '09:13', W - 34, 45);
+  const rows: ReadonlyArray<[string, string, string]> = later
+    ? [
+        ['13:30', 'ROOM 8', 'Robots on the night shift'],
+        ['13:30', 'ROOM 5', 'Your build is a monolith (and that is fine)'],
+        ['13:30', 'ROOM 7', 'NullPointer insurance, explained'],
+        ['16:40', 'ROOM 9', 'Garbage collection for humans'],
+        ['19:30', 'ROOM 8', 'Movie night · film TBA'],
+      ]
+    : [
+        ['09:30', 'ROOM 8', 'Opening keynote · speaker TBA'],
+        ['10:50', 'ROOM 4', 'Stop-the-world, and other pauses'],
+        ['10:50', 'ROOM 5', 'Virtual threads, real queues'],
+        ['10:50', 'ROOM 6', 'Soup is a side effect'],
+        ['10:50', 'ROOM 9', 'Legacy systems: a love story'],
+      ];
+  rows.forEach(([time, room, title], i) => {
+    const y = 140 + i * 78;
+    if (i % 2 === 0) {
+      x.fillStyle = 'rgba(255,255,255,0.05)';
+      x.fillRect(0, y - 36, W, 72);
+    }
+    x.textAlign = 'left';
+    x.fillStyle = i === 0 && !later ? '#ffb070' : '#d8d8de';
+    x.font = `bold 34px ${sans}`;
+    x.fillText(time, 34, y);
+    // The room as a pill, in the room signs' orange.
+    x.fillStyle = '#f37021';
+    x.beginPath();
+    x.roundRect(160, y - 22, 138, 44, 22);
+    x.fill();
+    x.fillStyle = '#ffffff';
+    x.font = `bold 26px ${sans}`;
+    x.textAlign = 'center';
+    x.fillText(room, 229, y + 1);
+    x.textAlign = 'left';
+    x.fillStyle = '#ffffff';
+    x.font = `${i === 0 && !later ? 'bold ' : ''}32px ${sans}`;
+    x.fillText(title, 326, y);
+  });
+  x.fillStyle = '#8a8a96';
+  x.font = `24px ${sans}`;
+  x.textAlign = 'center';
+  x.fillText('#DEVOXX · rooms upstairs, when Stephan opens the stairs · soup at the food court', W / 2, H - 30);
+  return tex(c);
+}
+
 /** A sheet of paper taped to a door, the chapter's joke in marker pen. */
 export function notice(text: string): THREE.CanvasTexture {
   const [c, x] = canvas(256, 320);

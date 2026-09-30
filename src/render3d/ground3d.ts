@@ -16,14 +16,14 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-import { DRINK_FRIDGES, DUKE, GF, HIGH_TABLES, LOBBY_RISE_M, MAIN_STAIR_TOP_M, WIFI_TAG, entranceBayOpenings, groundPlates, groundRiseM, groundWallsFor, stairDoors, stairMidLanding, stairRamps } from '../sim/geometry';
+import { DRINK_FRIDGES, DUKE, GF, HALL_COLUMNS, HIGH_TABLES, LOBBY_RISE_M, MAIN_STAIR_TOP_M, WIFI_TAG, entranceBayOpenings, groundPlates, groundRiseM, groundWallsFor, stairDoors, stairMidLanding, stairRamps } from '../sim/geometry';
 import { DOOR_H, stairFlight } from '../render/venue/props';
 import type { Plate, Wall } from '../sim/types';
 import { m } from '../sim/units';
 
 import type { Materials } from './materials';
 import { box } from './materials';
-import { OLD_DEVOXX, beerCentralFlyer, exitSign, vintagePoster } from './signs';
+import { OLD_DEVOXX, beerCentralFlyer, exitSign, scheduleScreen, vintagePoster } from './signs';
 import { buildDuke } from './duke';
 import { BOOTH_SCHEMES } from '../render/venue/signage';
 import type { VolumePoint } from './pipeline';
@@ -747,6 +747,44 @@ function storePosters(group: THREE.Group): void {
   }
 }
 
+/**
+ * THE SCHEDULE SCREENS: a TV on each long face of four columns down the middle
+ * of the hall, the Devoxx "now and next" board that stands at every crossing of
+ * the real one. On the east-west aisles, the long walks through the booths, and
+ * on the hall's circuit (`glowing`): dark in chapter 2 until the breakers are in.
+ * The sim's column rects are the mounting faces, so nothing a robot touches moves.
+ */
+function scheduleScreens(group: THREE.Group, mats: Materials): void {
+  const at = [
+    [533, 333],
+    [853, 333],
+    [373, 473],
+    [693, 473],
+  ];
+  const boards = [scheduleScreen(false), scheduleScreen(true)];
+  const SW = 1.0;
+  const SH = SW * (9 / 16);
+  const Y = 2.55;
+  let n = 0;
+  for (const [cx, cy] of at) {
+    const col = HALL_COLUMNS.find((c) => c.x === cx && c.y === cy);
+    if (!col) continue;
+    const z = m(col.y + col.h / 2);
+    for (const side of [-1, 1] as const) {
+      const face = side < 0 ? m(col.x) : m(col.x + col.w);
+      const bezel = new THREE.Mesh(box(0.05, SH + 0.06, SW + 0.06, V(face + side * 0.03, Y, z)), mats.blackGloss);
+      group.add(bezel);
+      const screen = new THREE.Mesh(
+        new THREE.PlaneGeometry(SW, SH),
+        glowing(new THREE.MeshBasicMaterial({ map: boards[n++ % 2], color: new THREE.Color(1.25, 1.25, 1.25), toneMapped: false })),
+      );
+      screen.position.set(face + side * 0.058, Y, z);
+      screen.rotation.y = side * (Math.PI / 2);
+      group.add(screen);
+    }
+  }
+}
+
 /** Reception's lit things, switched with the hall's power: material, full colour. */
 const receptionGlows: Array<{ mat: THREE.MeshBasicMaterial; base: THREE.Color }> = [];
 let receptionLight: THREE.PointLight | null = null;
@@ -942,6 +980,7 @@ export function buildGround(mats: Materials): Ground3D {
   colliders.push(...hallFurniture(group, mats));
   colliders.push(...reception(group, mats));
   storePosters(group);
+  scheduleScreens(group, mats);
   {
     // Duke, on his sim footprint, facing the doors.
     const duke = buildDuke();
