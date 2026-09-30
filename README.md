@@ -1,5 +1,9 @@
 # After Dark
 
+**▶ Play it: <https://devoxx-after-dark.vercel.app/>** (keyboard and WebGL2; a desktop browser) ·
+the prototypes it grew from: <https://devoxx-game-pocs.vercel.app/> ·
+source: <https://github.com/Smirne/devoxx-gauntlet-m>
+
 The cleaners have gone home, the projectors are cold, and Devoxx opens in six hours. **After Dark**
 is a lights-and-locks puzzle game set in the real Kinepolis Antwerp: you play Voxxy, Droid and Biggy,
 the three Devoxx robots, working the night shift over four chapters — the dark cinema floor, the
@@ -25,7 +29,8 @@ isometric camera per room — is still at `http://localhost:5173/`, and is where
 (`P`) lives.
 
 On a static host the same holds, with one convenience: `vercel.json` redirects the bare domain `/`
-to `/3d.html`, so the published link opens the entry; the 2.5D build is at `/index.html`.
+to `/3d.html`, so the published link opens the entry; the 2.5D build is at
+<https://devoxx-after-dark.vercel.app/index.html>.
 
 The first time it runs, the 3D build picks a render quality from the GPU the browser reports (low
 for software renderers and phones, medium for integrated graphics, high otherwise), and while it runs

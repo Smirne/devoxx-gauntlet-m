@@ -7186,3 +7186,17 @@ In the page: one R asks and a second restarts; M and N say what they did; the cr
 px of content in a 606 px box at 1366×640. The flight case and the stair were compared before and
 after, frame for frame. Every frame of it — the critics' and the builder's — is in the session's
 scratchpad, as Michele asked; none is in the repository.
+
+## 30 Sep 2026 — the published links go into the README
+
+**What the human decided.** Michele deployed both sites on Vercel himself: the game at
+<https://devoxx-after-dark.vercel.app/> and the earlier prototypes at
+<https://devoxx-game-pocs.vercel.app/>. The repo stays public on his account at
+<https://github.com/Smirne/devoxx-gauntlet-m>; moving it to the company account was considered and
+dropped.
+
+**What the agent did.** Put the three links at the top of the README, where a judge who opens the
+repo first will see them, and pointed `docs/ideas-history.md` at the prototypes site.
+
+**Not checked.** This container's network policy blocks `*.vercel.app`, so the agent could not load
+either deployment or confirm the `/` → `/3d.html` redirect. That check was left to Michele.
