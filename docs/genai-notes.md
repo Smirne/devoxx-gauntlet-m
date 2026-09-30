@@ -7410,3 +7410,52 @@ three robots 9/10, sense of place 8/10, GenAI craft 4/5. What this change does w
     second `P`.
   - The briefing carries the venue line.
   - `ERRORS:0`.
+
+## 30 Sep 2026 — three robot tweaks against the model sheets, render only
+
+**What the human decided.** An outside critic compared the robots with the organisers' model
+sheets. Michele approved three of its points on 30 Sep: Droid has far too much hot orange trim;
+Voxxy's ears are pointed where the sheet has round bear ears; and Voxxy's start and stop look like
+a toy's. The sim stays as it is: she still goes from 0 to 4 m/s in 0.1 s and stops in 0.57 s, and
+those constants are frozen.
+
+**What the agent did.** All three changes are in `src/render/robots/`. The 2.5D and 3D builds both
+use these files, so both builds change.
+- *Droid* (`droid.ts`). The one trim material (`#cf6d28`) is now two. `rim` keeps the demo's hot
+  orange (`#cf6d28`) and goes on the shoulder hoops only. That is where the sheet's one warm edge
+  is, and the hoops keep the demo's shape and colour, which Michele likes. `trim`, a worn gunmetal
+  (`#5c6068`), goes on
+  the collar lip, the vent frames, the waist seam and the joint rings. The X harness on the pelvis
+  keeps its shape but is now dark panel, like the sheet's crossed pelvis plates. The face and skull
+  are unchanged.
+- *Voxxy's ears* (`voxxy.ts`). The agent checked `robots/voxxy-robot.png` before changing
+  anything, and the critic was right: every view shows round domes. `model-sheet-targets.md` §3d
+  also calls them "ear domes". The top of each ear is now a true arc with the same 0.0615 m radius
+  as before, so the ear tips are still at `ROBOT_HEIGHT_M.voxxy`. The tilt, the spacing and the
+  white inner decal did not change.
+- *Voxxy's weight* (`gait.ts`). Voxxy's profile gains optional settings, and Droid and Biggy do not
+  use them, so their motion is exactly as before:
+  - her acceleration lean now follows a sharper acceleration signal through an underdamped spring
+    (13 rad/s, damping 0.35);
+  - braking leans back 1.6× as hard as starting leans forward;
+  - her hips drop by up to 3 cm into a stop;
+  - her feet skid a little (`skid` 0 → 0.09).
+
+  As a result she leans about 25% further into a start and settles back once she is at speed. On a
+  stop she leans back about twice as far as before (−0.30 rad against −0.16), then rocks forward
+  once and comes to rest.
+
+**What was rejected, and why.** A worn bronze (`#86664a`) on the hoops as well, which was the
+first version of this change. The review of the PR found that it reversed a preference already
+recorded in `droid.ts`: Michele likes the demo's orange hoops, and they are "not to be corrected
+toward the sheet". It also left Droid an almost all-dark figure from across the corridor. Asked,
+Michele chose the middle ground: hot orange back on the hoop rims only, with the vents, joint rings
+and X harness staying muted. Recolouring the hip rings bronze as well: the sheet shows copper
+wear at the hips, but warm rings on every joint was what the critic objected to. Swinging her arms
+forward on braking: the lean and the hip drop already read clearly, and more would start to look
+drunk. Changing any test: none checked the old colour or ear shape.
+
+**Checked.** `tsc` passes and all 950 tests pass. The before and after images come from the built
+pages: `?pose=voxxy` and `?pose=droid` portraits, and a side-on frame sequence of Voxxy's start and
+stop in the 3D build (`shot=1`, stick driven through `__ad3d.game`, 1/30 s per frame). The agent
+compared them side by side with both sheets. The screenshots are not committed.
