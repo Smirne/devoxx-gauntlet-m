@@ -1701,27 +1701,26 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     const hasMark = t.at !== undefined && opts.project !== undefined;
     const level = nudgeStep(t, nudges.get(t.id) ?? 0, opts.project !== undefined);
     nudges.set(t.id, level);
-    const life = 4200;
+    let line: string;
     if (level === 1 && t.who !== undefined && t.who.length > 0) {
       // Every robot it needs, because plenty need two and naming one of them is
       // a wrong answer rather than half an answer.
       const names = t.who.map((k) => `${k[0].toUpperCase()}${k.slice(1)} (${BOT_KEY[k]})`);
-      pushLine(
+      line =
         t.who.length === 1
           ? `${names[0]}: this one is mine.`
-          : `${names.join(' and ')} — this one takes both of us.`,
-        snap,
-        life,
-      );
+          : `${names.join(' and ')} — this one takes both of us.`;
     } else if (level >= 2 && level - 2 < hintLines(t).length) {
       // One rung per line, nearest obstacle first: the gate in front of the task
       // before the task itself. See `Task.hint`.
-      pushLine(hintLines(t)[level - 2], snap, life);
+      line = hintLines(t)[level - 2];
     } else if (level === markLevel(t) && hasMark) {
-      pushLine('Look for the ring.', snap, life);
+      line = 'Look for the ring.';
     } else {
-      pushLine('That is everything anybody knows about this one.', snap, life);
+      line = 'That is everything anybody knows about this one.';
     }
+    // A hint is read like any other line: a long one stays until it can be.
+    pushLine(line, snap, Math.max(4200, readMs(line)));
   }
 
   function say(text: string): void {
