@@ -54,7 +54,7 @@ describe('mount — the reach', () => {
         const [d, bg, log] = pair(gap, angle);
         expect(press(d, bg, log)).toBe(false);
         expect(d.mounted).toBe(false);
-        expect(log[0]).toMatch(/^Droid: .* m of daylight\. .*come round beside him$/);
+        expect(log[0]).toMatch(/^Droid: .* m of daylight\. .*right up against his side$/);
       }
     }
   });

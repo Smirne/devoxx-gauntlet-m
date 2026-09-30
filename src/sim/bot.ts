@@ -777,7 +777,7 @@ export function toggleMount(bots: Bot[], flash: (s: string) => void): boolean {
   const gap = dist(d, bg) - d.r - bg.r;
   if (gap >= MOUNT_REACH) {
     flash(
-      `Droid: ${m(gap).toFixed(1)} m of daylight. I climb with a hand on his shoulder — come round beside him`,
+      `Droid: ${m(gap).toFixed(1)} m of daylight. I climb with a hand on his shoulder — right up against his side`,
     );
     return false;
   }
