@@ -34,6 +34,7 @@ import { yawFromSimHeading } from '../render/robots';
 import type { Materials } from './materials';
 import { box } from './materials';
 import { skyline, wordmark } from './splash';
+import { wellDSticker } from './welld';
 import { addSeats, HEIGHTS } from './venue';
 
 export interface Keynote3D {
@@ -195,6 +196,7 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
     const bottle = new THREE.MeshStandardMaterial({ color: 0xcfe6f0, roughness: 0.1, transparent: true, opacity: 0.7 });
     const chair = new THREE.MeshStandardMaterial({ color: 0x1a1a1e, roughness: 0.6, metalness: 0.3 });
     const TH = 0.76;
+    let welld: THREE.Mesh | null = null;
     const qa = document.createElement('canvas');
     qa.width = 2048;
     qa.height = 512;
@@ -240,9 +242,29 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
           if ((i + (face > 0 ? 1 : 0)) % 3 === 0) continue;
           const z = tz + face * d * 0.22;
           const base = new THREE.Mesh(box(0.32, 0.015, 0.22, V(x, TH + 0.01, z)), lap);
-          const lid = new THREE.Mesh(box(0.32, 0.22, 0.012, V(x, TH + 0.12, z + face * 0.1)), lap);
-          lid.rotation.x = face * 0.25;
+          /*
+           * The lid is built at its own origin and hinged behind the base, the
+           * screen towards whoever sits at it. It was a `box()` — geometry baked
+           * at its place in the corridor — turned about the WORLD origin, which
+           * swung every lid five metres under the floor or six up into the
+           * ceiling, and the tables had bases and no screens.
+           */
+          const lid = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.22, 0.012), lap);
+          lid.position.set(x, TH + 0.12, z - face * 0.1);
+          lid.rotation.x = -face * 0.25;
           group.add(base, lid);
+          // A WellD sticker on the back of a few of the wall side's lids: those
+          // backs face the corridor, and these are the ones where the room side's
+          // seat is empty, so no other lid stands in front of them (Michele: no
+          // booth, "but put some sticker also on chap 4").
+          const roomSeatEmpty = (i + (inward > 0 ? 1 : 0)) % 3 === 0;
+          if (face !== inward && roomSeatEmpty && i % 2 === 0) {
+            welld ??= wellDSticker(0.1);
+            const st = welld.clone();
+            st.position.set(0, 0.02, -face * 0.0075);
+            st.rotation.set(0, face > 0 ? Math.PI : 0, (i % 4 === 0 ? 1 : -1) * 0.14);
+            lid.add(st);
+          }
           if (i % 2 === 0) {
             const bt = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.22, 10), bottle);
             bt.position.set(x + 0.25, TH + 0.11, z);
@@ -682,8 +704,13 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
     }
     // The pit floor, from the stage wall to the first row.
     group.add(new THREE.Mesh(box(x1 - x0, 0.2, m(seatY0 - r8y), V(cx, -RAKE_DEPTH - 0.1, m((r8y + seatY0) / 2)), 3), carpet));
-    // The side walls come down into the pit.
+    // The side walls come down into the pit, and so does the drape behind the
+    // stage: it stopped at corridor level, and under it the wings looked out
+    // at the city (Michele, 29 Sep: "seeing through the room 8 wall").
     for (const wx of [x0 + 0.06, x1 - 0.06]) group.add(new THREE.Mesh(box(0.1, RAKE_DEPTH, z1 - z0, V(wx, -RAKE_DEPTH / 2, (z0 + z1) / 2)), mats.acoustic));
+    const pitDrape = new THREE.Mesh(box(x1 - x0 - 0.1, RAKE_DEPTH, 0.12, V(cx, -RAKE_DEPTH / 2, z0 + 0.1)), mats.drape);
+    pitDrape.receiveShadow = true;
+    group.add(pitDrape);
     // A balcony rail along the front of the cross-aisle, as in the photograph —
     // over the seat blocks only, on posts, so the two aisles stay open. It ran
     // the room's full width, across the aisles the robots walk down (Michele,

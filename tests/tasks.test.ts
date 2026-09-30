@@ -258,8 +258,15 @@ describe('chapter 1 — night', () => {
     collect(g, lines);
     expect(lines.length).toBeGreaterThan(5);
     expect(mentions(lines, code), 'a chapter 1 line hands over the whole code').toEqual([]);
+    /*
+     * No digit the code could hold. The code is typed on a 4-to-9 pad
+     * (`tests/keypad.test.ts`), so 1, 2 and 3 are never part of it — they are
+     * the robot keys, and the keypad hint names them because the text review
+     * asked for exactly that (Michele, 29 Sep: "from further away 1, 2, 3 just
+     * switch robots"). Any 4 to 9 in a line is still a leak.
+     */
     for (const line of lines) {
-      expect(line, `a chapter 1 line has a digit in it, and the answer is four digits: "${line}"`).not.toMatch(/\d/);
+      expect(line, `a chapter 1 line has a digit the code could hold: "${line}"`).not.toMatch(/[4-9]/);
     }
   });
 });

@@ -15,9 +15,14 @@
  * only paints that artwork into a canvas: all of it, or the wordmark without
  * Dream.Do.Develop under it.
  *
- * Used on the backpack (`src/render3d/people3d.ts`, Michele's portrait) and on
- * one laptop in the first-floor corridor (`src/render3d/venue.ts`).
+ * Used on the backpack (`src/render3d/people3d.ts`, Michele's portrait), on
+ * one laptop in the first-floor corridor (`src/render3d/venue.ts`), and on a
+ * few laptop lids at chapter 4's lab tables (`src/render3d/keynote3d.ts`;
+ * Michele, 29 Sep: WellD is not a Devoxx sponsor, so no booth, *"but put some
+ * sticker also on chap 4"*).
  */
+
+import * as THREE from 'three';
 
 import { WELLD_LOGO } from '../render/welld';
 
@@ -65,4 +70,34 @@ export function paintWellD(ctx: CanvasRenderingContext2D, x: number, y: number, 
   load();
   if (ready) queueMicrotask(draw);
   else waiting.push(draw);
+}
+
+/**
+ * A die-cut white WellD sticker, `w` metres wide, facing +z: the whole mark,
+ * WeLLD and Dream.Do.Develop, on white, a print with a little sheen to it —
+ * faintly there in a dark room, for whoever looks. Clone it for more than one:
+ * the clones share the texture.
+ */
+export function wellDSticker(w: number): THREE.Mesh {
+  const c = document.createElement('canvas');
+  c.width = 480;
+  c.height = Math.round(440 * WELLD_LOCKUP_ASPECT) + 40;
+  const map = new THREE.CanvasTexture(c);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.anisotropy = 4;
+  const x = c.getContext('2d');
+  if (x) {
+    x.fillStyle = '#ffffff';
+    x.beginPath();
+    x.roundRect(0, 0, c.width, c.height, 30);
+    x.fill();
+    // The artwork decodes after this returns; the texture re-uploads when it lands.
+    paintWellD(x, 20, 20, 440, { tagline: true }, () => {
+      map.needsUpdate = true;
+    });
+  }
+  const mat = new THREE.MeshStandardMaterial({ map, alphaTest: 0.5, roughness: 0.45, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.22 });
+  const sticker = new THREE.Mesh(new THREE.PlaneGeometry(w, (w * c.height) / c.width), mat);
+  sticker.name = 'welld';
+  return sticker;
 }

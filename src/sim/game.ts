@@ -59,6 +59,7 @@ import type {
 } from './types';
 import { CHAPTERS, type ChapterCtx, type ChapterRuntime, type ChapterState, type PrevVel } from './chapters';
 import { makeQuips } from './quips';
+import { PX_PER_M } from './units';
 
 export const CHAPTER_COUNT = 4;
 
@@ -777,6 +778,18 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       const time = cut.opts.walkTime ?? CUT_WALK_TIME;
       let late = 0;
       for (const w of cut.delay.values()) late = Math.max(late, w);
+      if (cut.opts.fadeEarly) {
+        // Every pace is set to arrive at `time` (`beginWalk`), so the black starts
+        // CUT_LEAVE_FADE before that, on robots still walking, and the closing
+        // stage picks the fade up where this left it.
+        const u = (cut.st - (time - CUT_LEAVE_FADE)) / CUT_LEAVE_FADE;
+        if (u > 0) fade = Math.max(fade, Math.min(1, u));
+        if (done || u >= 1) {
+          cut.stage = 'leave';
+          cut.st = Math.min(1, Math.max(0, u)) * CUT_LEAVE_FADE;
+          return;
+        }
+      }
       if (done || cut.st > Math.max(CUT_WALK_MAX, time + late + 3)) {
         // They have arrived, and they do not stop: the black comes down on them
         // still walking. See the note where `CUT_HOLD` used to be.
@@ -862,7 +875,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     const sk = skipped.length ? ` · skipped: ${skipped.join(', ')}` : '';
     card =
       `<b>Keynote starts.</b> ${pts}/9<br>` +
-      `<span class="sub">Night ${nightT}s · Expo ${Math.max(0, expoT - nightT)}s (cable ${score.cable ?? 0} px) · ` +
+      `<span class="sub">Night ${nightT}s · Expo ${Math.max(0, expoT - nightT)}s (cable ${Math.round((score.cable ?? 0) / PX_PER_M)} m) · ` +
       `Soup ${soup}% at ${temp}° (${score.complaints ?? 0} complaint${(score.complaints ?? 0) === 1 ? '' : 's'}) · ` +
       `Stage ready with ${spare}s to spare (${score.keynoteComplaints ?? 0} complaint${(score.keynoteComplaints ?? 0) === 1 ? '' : 's'}) · ` +
       `Swag ${swag.length}/3 · Total ${Math.round(t)}s${sk}</span><small>R to play again \u00b7 C for credits</small>`;

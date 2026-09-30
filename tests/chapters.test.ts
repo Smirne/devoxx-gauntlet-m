@@ -296,6 +296,43 @@ describe('chapter 1 — night', () => {
     expect(g.snapshot().floor).toBe('down');
   });
 
+  /**
+   * ...and they are still walking when the black comes down. The head of the
+   * flight is the end of the road, so "arrive, then fade" was three robots
+   * standing still for most of a second (0.89 s) under the closing fade —
+   * Michele, 29 Sep: *"robots stop movement before the transition"*. The fade
+   * now runs over the last second of the walk (`CutOptions.fadeEarly`).
+   */
+  it('keeps the three walking into the black at the end of chapter 1', () => {
+    const g = mk(1);
+    const code = (g.debug.chapter() as NightState).code;
+    g.debug.select('voxxy');
+    g.debug.place('voxxy', 585, 330);
+    steps(g, 1);
+    for (const d of code) g.key(`Digit${d}`);
+    expect(until(g, () => g.snapshot().phase === 'cut', 600)).toBe(true);
+    let prev = g.snapshot().bots.map((b) => ({ x: b.x, y: b.y }));
+    let lifted = false;
+    let still = 0;
+    let closing = 0;
+    for (let i = 0; i < 900 && g.snapshot().chapter === 1; i++) {
+      g.update(DT_MAX);
+      const s = g.snapshot();
+      if (s.chapter !== 1) break;
+      const moving = s.bots.some((b, k) => Math.hypot(b.x - prev[k].x, b.y - prev[k].y) > DT_MAX);
+      prev = s.bots.map((b) => ({ x: b.x, y: b.y }));
+      if (s.fade === 0) lifted = true;
+      // The closing fade only: the gather's black has lifted before it starts.
+      if (lifted && s.fade > 0.05 && s.fade < 0.95) {
+        closing += DT_MAX;
+        if (!moving) still += DT_MAX;
+      }
+    }
+    expect(g.snapshot().chapter).toBe(2);
+    expect(closing, 'no closing fade was seen').toBeGreaterThan(0.5);
+    expect(still, 'the three stood still while the screen went black').toBeLessThan(0.1);
+  });
+
   it('breaks the jammed door for Biggy alone after a run across the corridor, and not at a crawl', () => {
     const run = mk(1);
     run.debug.select('biggy');

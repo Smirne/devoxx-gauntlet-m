@@ -29,8 +29,8 @@ import type { VolumePoint } from './pipeline';
 import { mergeStatic, noMerge } from './merge';
 import type { PlanarReflection } from './reflector';
 import { adScreen, ledTicker } from './screens';
-import { POSTERS, backlitGlass, cityscape, emitter, exitSign, menuBoard, neonText, poster, rainMask, wayfinding, zaalPanel } from './signs';
-import { WELLD_LOCKUP_ASPECT, paintWellD } from './welld';
+import { POSTERS, backlitGlass, cityscape, emitter, exitSign, menuBoard, movieNightPoster, neonText, poster, rainMask, wayfinding, zaalPanel } from './signs';
+import { wellDSticker } from './welld';
 
 /** Where chapter 1's geometry stops, sim px: just past the fire door. */
 // Past the secondary staircases (sim x 1005.5..1114.7, standing in the corridor
@@ -999,9 +999,16 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     [1276, 1],
     [1485, 1],
   ];
+  /*
+   * ...and the frame just east of Room 8's door, the first one the three pass
+   * coming from the main staircase in chapter 4, bills Devoxx's own movie night
+   * rather than a parody (Michele, 29 Sep: "There's a movie night each year so
+   * we could have a poster for that").
+   */
+  const MOVIE_NIGHT_AT = 1485;
   posterSpots.forEach(([x, side], i) => {
     const zFace = side < 0 ? m(CY0) + 0.08 : m(CY1) - 0.08;
-    const tx = poster(POSTERS[i % POSTERS.length]);
+    const tx = x === MOVIE_NIGHT_AT && side < 0 ? movieNightPoster() : poster(POSTERS[i % POSTERS.length]);
     const p = emitter(tx, 1.3, 1.95, 2.6, 0xffffff, false);
     // 3.5 cm off the wall: at 2 cm it sat exactly on the frame's front face and
     // the two z-fought (the flickering keynote poster).
@@ -1503,8 +1510,10 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     }
     g.position.set(m(d.cx), 0, leafZ);
     // Named, so chapter 4 can open Room 8's (keynote3d.ts builds its inside).
+    // Room 8's stays its own object: merged into the venue's batches, hiding
+    // it would hide nothing and chapter 4 would find its doors still shut.
     g.name = `door-${String(r.n)}`;
-    group.add(g);
+    group.add(r.n === 8 ? noMerge(g) : g);
   }
 
   /* ------------------------------------------------------ emergency power */
@@ -1677,27 +1686,7 @@ function coffeeTable(mats: Materials, w: number, d: number): THREE.Group {
 function hideWellD(table: THREE.Group): void {
   const plain = table.getObjectByName('sticker');
   if (plain) plain.removeFromParent();
-  const c = document.createElement('canvas');
-  c.width = 480;
-  c.height = Math.round(440 * WELLD_LOCKUP_ASPECT) + 40;
-  const x = c.getContext('2d');
-  if (!x) return;
-  x.fillStyle = '#ffffff';
-  x.beginPath();
-  x.roundRect(0, 0, c.width, c.height, 30);
-  x.fill();
-  // The artwork decodes after this returns; the texture re-uploads when it lands.
-  paintWellD(x, 20, 20, 440, { tagline: true }, () => {
-    map.needsUpdate = true;
-  });
-  const map = new THREE.CanvasTexture(c);
-  map.colorSpace = THREE.SRGBColorSpace;
-  map.anisotropy = 4;
-  const w = 0.09;
-  // A print with a little sheen to it: faintly there in a dark corridor, for whoever looks.
-  const mat = new THREE.MeshStandardMaterial({ map, alphaTest: 0.5, roughness: 0.45, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.22 });
-  const sticker = new THREE.Mesh(new THREE.PlaneGeometry(w, (w * c.height) / c.width), mat);
-  sticker.name = 'welld';
+  const sticker = wellDSticker(0.09);
   // Flat on the lid, turned a little off square; text up the lid, away from the corridor.
   sticker.rotation.set(-Math.PI / 2, 0, 0.16);
   sticker.position.set(-0.12, 0.4975, 0.04);

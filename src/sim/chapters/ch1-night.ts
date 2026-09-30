@@ -284,11 +284,9 @@ export interface NightState {
 }
 
 const OBJECTIVE =
-  'Chapter 1 · <b>Night</b>. The Devoxx entrance downstairs is shut; you came in through the ' +
-  "cinema's back door, into the closed section — and the power is out. The fire door to the Devoxx " +
+  'Chapter 1 · <b>Night</b>. The power is out in the closed cinema section. The fire door to the Devoxx ' +
   'rooms has a keypad: find the <b>4 digits</b>, each visible only under the right <b>mix of lights</b>. ' +
-  'Droid can climb on Biggy (E). Biggy can smash the jammed door with a straight run across the corridor. ' +
-  'In the last cinema the <b>screen is a mirror</b>: light that hits it comes back into the room.';
+  'Droid might need help from Biggy (E). Biggy can break jammed doors.';
 const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb / hold Biggy / Voxxy jumps · 4-9 at the keypad (Backspace) · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics \u00b7 C: credits';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
@@ -815,7 +813,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
   /** The exit: out of the closed section, down the secondary staircase. */
   function leave(): void {
-    ctx.startCut(stairExitRoutes(), () => ctx.startChapter(2), VIEW_F1);
+    ctx.startCut(stairExitRoutes(), () => ctx.startChapter(2), VIEW_F1, { fadeEarly: true });
   }
 
   /* --------------------------------------------------------------------- keys */
@@ -903,7 +901,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       // robot switcher while parked at the door, and swallowing it as a digit
       // would fill the field with keys they never meant for it.
       if (!/^Digit[4-9]$/.test(input)) {
-        ctx.flash(`${b.name}: this keypad is 4 to 9. ${input[5]} is a robot, not a digit`);
+        ctx.flash(`${b.name}: this keypad only has 4 to 9. 1, 2 and 3 switch robots`);
         return true;
       }
       entered += input[5];
@@ -1243,7 +1241,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       at: { x: keypad.x + keypad.w / 2, y: keypad.y + keypad.h / 2 },
       n: entered.length,
       of: 4,
-      hint: 'Droid: drive right up to the pad first — from a step away the number keys take a robot instead',
+      hint: 'Voxxy: right up against the keypad first — from further away 1, 2, 3 just switch robots',
     });
     return out;
   }

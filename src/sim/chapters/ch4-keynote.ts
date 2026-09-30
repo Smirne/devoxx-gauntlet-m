@@ -276,7 +276,7 @@ const MURMUR_EVERY = 9;
  */
 const MURMURS: readonly string[] = [
   'The room is full and the stage is not. Somebody in row four starts a slow clap. It does not catch on.',
-  'Three thousand people, one unfinished stage. The murmur goes up a semitone.',
+  'Seven hundred people, one unfinished stage. The murmur goes up a semitone.',
   'From somewhere near the back: <b>"IS IT AN OUTOFMEMORYERROR?"</b> Laughter. Not kind laughter.',
   'A man in the fourth row has opened his laptop and started working. That is worse than heckling.',
   'Stephan, from the wings, to nobody: "Any minute now." Nobody believes him.',
@@ -1535,7 +1535,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         at: { x: spot.x, y: spot.y },
         n: spots.filter((s) => s.on).length,
         of: spots.length,
-        hint: 'Voxxy: they come on in order and only in order. Run over one and nothing happens, and you are at the wrong one — the one that is waiting is the one lit up',
+        hint: 'Voxxy: 1, 2, 3, 4, in that order. Drive over the one that is glowing; the others ignore me',
       },
       {
         id: 'stage',
@@ -1544,7 +1544,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         at: { x: stage.x + stage.w / 2, y: stage.y + stage.h / 2 },
         n: onStage,
         of: ctx.bots.length,
-        hint: 'Biggy: all three of us on the boards at the same time — and Stephan is not starting until the cake, the sign and the lights are done either',
+        hint: 'Biggy: all three of us on the stage at once — and only after the cake, the letters and the spotlights are done',
       },
     ];
   }
