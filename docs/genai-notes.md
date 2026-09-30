@@ -7241,6 +7241,65 @@ card; no page errors. The fill light and the stair compared before and after, fr
 Every frame stayed in the session's scratchpad. The credits' repository figures are recounted with
 this entry, by the commands of 29 Sep.
 
+**After round 2, and what Michele decided.** The text pass came before PR #18 merged: chapter 3's
+card in short sentences, "hold Biggy" in every chapter, "Kinepolis Antwerp" in the film; the
+apostrophes stay mixed. Of what was left for him, Michele picked three, with PR #18 merging as it
+was: *"Chapter 2's first frame is blown out by Biggy's light. Chapter 1's first frame shows the back
+of a crate. Skip in chapter 4 goes to the end card without the ending film. I'd fix this."*
+
+1. *Chapter 2's first frame.* Measured before anything changed, each lamp switched off in turn on
+   that frame: Biggy's flood was most of it (Droid 124 → 57 luma without it, the floor round Voxxy
+   198 → 120), and it shone from 0.35 m in front of the camera, which follows Voxxy from where Biggy
+   stands. Two answers in the renderer were tried and dropped: a flatter falloff for the flood,
+   matched at 12 m (Droid 124 → 102 at best; the floor round Voxxy is three metres off and stays
+   lit), and swinging the camera off his axis (it hid Voxxy behind Droid). What worked was the
+   critic's other idea, in the sim: Biggy starts half-turned to the north wall, and his flood washes
+   the wall instead of his teammates' backs. Droid 124 → 53, the floor 198 → 129, the frame 95 → 63,
+   and Droid is graphite again. Chapter 2 has no light puzzle, and the first W reads the camera, not
+   his heading, so nothing else moves.
+2. *Chapter 1's first frame.* The opening's hand-off already looks down over the crates; a chapter
+   1 started without the opening, on R or on the reload a quality change makes, still cut to the
+   usual pitch, and the camera behind Voxxy, boxed in by her crate a stride behind her, swung round
+   onto its back. Those starts take the hand-off framing now; R is recognised by the chapter clock
+   running backwards. Tried and dropped: the camera facing the open crates, the view the critic
+   wanted, because the first W steers by the camera and would have walked Voxxy back into hers.
+3. *Skip in chapter 4.* A chapter can take Skip for an ending of its own now. Chapter 4's does the
+   jobs as somebody else would have (the cake, the sign, the spotlights), seats the room, puts the
+   three of them on their curtain-call marks and starts the video. Skip during the video goes to
+   the card, and never counts a chapter played to the end as skipped. Five tests that skipped
+   straight to the card take one more press; a new one holds the ending, and the test that any key
+   skips the video runs for Skip as well.
+
+**Round 3 (5b6e76e): the player's slice again, alone on the machine.** Round 2's player critic
+could check almost nothing at a load of 17 to 21; this one had the machine to itself and played by
+hand for an hour, real key presses, through the gates, the mount, the tow and all four chapters.
+
+1. *Two wrong-robot jobs said nothing*, against the rule that every gate says why in the robot's
+   own voice: Voxxy and Biggy under chapter 2's breaker board (she hopped, he rolled), and Voxxy
+   driving into chapter 4's cake crate, which moved 4 px, right for a board that outweighs her, in
+   silence. All four now say whose job it is, in their voice, and tests hear them.
+2. *A toast half under the run sheet* in chapter 3: toasts draw above the sheet.
+3. *"Droid pushes Biggy — 0.0 m/s and climbing"* on the first frame of a push: the readout waits
+   for 0.2 m/s.
+4. *"Come round beside him"* to a Droid beside Biggy but half a metre off: "right up against his
+   side".
+
+**Round 3, checked and not what the critic thought.** The "null" plate by the KEYNOTE: TBA poster
+is a sticker, next to the Kotlin one, on purpose. W steering by the camera from a standstill is the
+rule (`pushStick`).
+
+**Round 3, left for a human.** Biggy turned 104° when Droid nudged him at under a pixel a second:
+an undriven robot faces its motion above `FACE_MIN_SPEED`, which is frozen and which `aim.test.ts`
+calls the whole rule, so that is a physics decision. Taking hold of Biggy says "push or pull along
+the bar", and pulling straight back for 0.2 s is how the bar is let go, so a pull ends at once:
+the prompt or the rule has to give. H's first press names who, not what or where, which is the
+ladder as designed; and the camera was drawn in against a wall once in chapter 2's stairwell.
+
+**Verification (after round 2).** `pnpm typecheck` clean and `pnpm test` green, 952 tests in 71
+files. In the page: `?chapter=1` and R R in chapter 1 both land the camera on the hand-off pose,
+(1.41, 3.15, 29.72) m; chapter 2's first frame as measured above; a skipped chapter 4 held by the tests, the video running
+and the three of them on the stage through the curtain call. No page errors, and no frame committed. The credits' repository figures are recounted with this entry.
+
 ## 30 Sep 2026 — the published links go into the README
 
 **What the human decided.** Michele deployed both sites on Vercel himself: the game at
