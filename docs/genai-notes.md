@@ -7765,3 +7765,37 @@ the sim's own debug moves, found no page errors:
 - The ring is still amber after the soup is in.
 - It turns green when the speaker arrives.
 - The speaker stops 1.5 m from Stephan and stays at speed 0.
+
+## 30 Sep 2026 — Biggy's helmet stays on when he rolls
+
+**What the human found and decided.** Michele, after PR #27: *"Minor: when rolling now biggy's elmet
+seems detached"*.
+
+**What the agent did.**
+- It captured Biggy rolling under a tow push in the 3D build, frame by frame from beside him. The
+  helmet circled the ball: it stuck out of his side at a quarter turn, sank into his underside at a
+  half, and dragged the blue lamp round the floor with it.
+- It then measured the rig in a scratch test (deleted afterwards) and found two faults, both
+  render-only:
+  - **The ball rolled about the wrong point.** The pivot was measured from the hip's height over
+    the ankle rather than over the floor, and placed as if the pelvis were upright when the walking
+    lean had tipped it forward. It sat about 15 cm off the ball's centre, so the ball hopped 30 cm
+    off the floor on every turn.
+  - **The helmet was turned back about its own base.** That base rides round with the ball.
+    Because the angle wrapped once per turn, the helmet also jumped 72° once per turn.
+- The fix:
+  - The ball now turns about its centre as the pelvis actually holds it, and the walking lean fades
+    out as Biggy tucks into a ball.
+  - The collar and helmet turn back about the same centre, so they stay seated on top while the
+    ball rolls under them.
+  - The helmet rocks 0.3 rad forward and back once per turn, so the face still shows the roll.
+
+**What was rejected, and why.**
+- Letting the helmet turn with the ball, which is physically honest for a rigid ball. At rolling
+  speed his face would go round three times a second, and the face is what makes him recognisable.
+- Keeping the old rule of 80% back but pivoting it correctly: the 72° jump each turn would remain.
+
+**Checked.**
+- `tsc` passes and the full suite passes (953 tests).
+- The new roll test fails on the old code with "the ball hops as it rolls" (0.31 m) and passes now.
+- The frame strip in the build shows the helmet on top through the whole turn, with no page errors.
