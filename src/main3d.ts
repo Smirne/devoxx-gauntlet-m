@@ -334,6 +334,8 @@ window.addEventListener('keydown', (ev) => {
     ev.preventDefault();
     return;
   }
+  // A quality reload waiting to be confirmed: any key but Q calls it off.
+  if (code !== 'KeyQ') disarmQuality();
   // The credits, as on the 2.5D page (`src/main.ts`): a modal, taken before the
   // sim hears the key. This page never wired them, so the final card's own
   // "C for credits" opened nothing and only took the card down (29 Sep).
@@ -397,10 +399,11 @@ window.addEventListener('keydown', (ev) => {
   // do"). Only the overlay keys that act on the sheet or the view leave it open;
   // a movement key closes it and moves.
   if (!SHEET_KEEPS.has(code)) hud.closeTasks();
-  // Q cycles the render quality. The pipeline is built for one quality, so the
-  // choice is remembered and the page reloads into it.
+  // Q asks to change the render quality; a second Q confirms. The pipeline is
+  // built for one quality, so the choice is remembered and the page reloads
+  // into it — back to the chapter's start, which is why it asks first.
   if (code === 'KeyQ' && !game.snapshot().typing) {
-    cycleQuality();
+    askQuality();
     return;
   }
   if (code === 'KeyP') {
@@ -507,19 +510,52 @@ function reloadAt(next: QualityName): void {
 const qBtn = document.createElement('button');
 qBtn.type = 'button';
 qBtn.className = 'ad3d-quality';
-qBtn.textContent = `Quality: ${quality.toUpperCase()} (Q)`;
-qBtn.title = `Q: ${quality === 'low' ? 'back up to high' : `down to ${DOWN[quality]}`} (reloads into the same chapter)`;
+qBtn.title = `Q: ${quality === 'low' ? 'back up to high' : `down to ${DOWN[quality]}`} (asks first: the reload restarts the chapter)`;
 qBtn.addEventListener('click', (e) => {
   e.preventDefault();
-  cycleQuality();
+  askQuality();
 });
 if (!shotMode) hud.root.querySelector('.ad-skip')?.before(qBtn);
 let warnedSlow = false;
+/**
+ * A quality change is never taken on one press. Q sits between W and A, and
+ * a stray one reloaded the page back to the chapter's start mid-play (Michele,
+ * 30 Sep: "My playthrough was reset to chapter start"). The first Q or click
+ * only asks; a second one within `ARM_MS` reloads; any other key, or the time
+ * running out, calls it off. Nothing changes the tier on its own.
+ */
+const ARM_MS = 5000;
+let armedTimer: number | undefined;
+function qLabel(): void {
+  const armed = armedTimer !== undefined;
+  qBtn.textContent = armed
+    ? `Reload at ${DOWN[quality].toUpperCase()}? Q again — restarts the chapter`
+    : warnedSlow
+      ? `Running slow — click for lower quality (now ${quality})`
+      : `Quality: ${quality.toUpperCase()} (Q)`;
+  qBtn.classList.toggle('ad3d-slow', armed || warnedSlow);
+}
+qLabel();
+function askQuality(): void {
+  if (armedTimer !== undefined) {
+    cycleQuality();
+    return;
+  }
+  // With the HUD hidden the question could not be seen, so there is nothing to confirm.
+  if (photo || hideHud) return;
+  armedTimer = window.setTimeout(disarmQuality, ARM_MS);
+  qLabel();
+}
+function disarmQuality(): void {
+  if (armedTimer === undefined) return;
+  window.clearTimeout(armedTimer);
+  armedTimer = undefined;
+  qLabel();
+}
 function checkSlow(): void {
   if (warnedSlow || !world.struggling || quality === 'low') return;
   warnedSlow = true;
-  qBtn.textContent = `Running slow — click for lower quality (now ${quality})`;
-  qBtn.classList.add('ad3d-slow');
+  qLabel();
 }
 
 /*

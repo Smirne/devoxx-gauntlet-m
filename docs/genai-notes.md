@@ -7044,3 +7044,72 @@ as "Sponsor — the tokens, the time…", and `tests/credits.test.ts` asserts th
 about the film, so the screen was left for Michele to call.
 
 **Checked.** Typecheck, and the 941 tests in 70 files, are green.
+
+## 30 Sep 2026 — the opening plays "Heroic Motif" in the published build, not the synth score
+
+**What the human decided.** Michele, after playing the published build: *"The game has the old
+music! Should play the ronny shamano track on intro"*.
+
+**What the agent did.** The track was in the bundle, but `startMusic` loaded it with
+`fetch(dataURL)`. The artifact sandbox's content policy refuses a fetch of a `data:` URL. The decode
+never started, and the `.catch` handed the opening back to the synthesised score without a word.
+The agent reproduced it in Chromium by serving the live 3D artifact under `connect-src 'none'`. The
+console said `Refused to connect to 'data:audio/mpeg…'`, nothing was decoded, and the old score
+played. `trackBytes` (`src/render/music.ts`) now turns the inlined base64 into bytes in place and
+hands them to `decodeAudioData`, so no network permission is involved. Under the same policy, the
+new build decodes the 12.9 s file and starts it. Both artifacts were republished from commit
+541f51d. The 2.5D artifact was also found stale: it still had no track and carried Biggy's old accel.
+
+**What was rejected, and why.** Relaxing the page's policy: the sandbox is not ours to configure.
+Shipping the MP3 as a separate file: the build must stay one self-contained page (`GAUNTLET.md`).
+
+**Checked.** `tests/music.test.ts` asserts that the bytes round-trip to the same base64 with an
+`ID3` header, and that the decoder receives the track while `fetch` is refused. On the old code, both
+new tests fail. Typecheck and the full suite are green.
+
+## 30 Sep 2026 — Q asks before it reloads
+
+**What a human decided.** Michele's chapter-2 playthrough went back to the chapter's start in the
+published 3D build, and he asked whether someone had replaced the artifact. No one had. His console
+showed the page at `?q=high&resume=2`, and only the quality switch builds that address. Q sits
+between W and A, and a single press reloaded the page at the next quality tier, back to the
+chapter's start. He asked for a confirmation, and for no automatic quality switch. Asked whether
+that meant the frame governor as well, he kept it: only the tier reload is covered.
+
+**What the agent did.** In `src/main3d.ts`, the first Q or click on the quality button now only
+asks: the button reads "Reload at HIGH? Q again — restarts the chapter". A second Q or click within
+5 s reloads. Any other key, or the 5 s running out, calls it off. With the HUD hidden (photo mode,
+`?nohud`) Q does nothing, because the question could not be seen. The "graphics card gave up" card
+already asked with a button, and is unchanged. Checked in Chromium: Q arms, W cancels, the timeout
+cancels, and a second click reloads at `?q=high&resume=…`.
+
+**What was rejected, and why.** Turning off the governor, which trims resolution and effects during
+play without a reload: Michele kept it, and slow judges' laptops need it.
+
+**Left as it was.** The console's `BiquadFilter … 8800 outside nominal range [0, 8000]`: the
+browser's audio was at 16 kHz during a Meet call, and the capped value is harmless. The blocked
+`data:audio` fetch was already being looked at in another session.
+
+**Checked.** Typecheck, and the 948 tests in 71 files (after merging main), are green.
+
+## 30 Sep 2026 — submission prep: the published link opens the 3D build
+
+**What the human decided.** Michele is publishing the game on Vercel for the submission form's
+playable-build link, and asked whether the 3D build could be the default instead of the 2.5D one,
+which owns `index.html`.
+
+**What the agent did.** Drafted the submission form's fields (technologies, GenAI tools, repo and
+build links) from the README and this file. Added `vercel.json`: Vite preset, `pnpm build` into
+`dist/`, and a temporary redirect from the bare `/` to `/3d.html`. Query strings pass through, so
+`/?resume=4` lands on `/3d.html?resume=4`. The 2.5D build stays reachable at `/index.html`. Added a
+line to the README's "Run it" section.
+
+**What was rejected, and why.** Swapping the two pages (`3d.html` → `index.html`): it touches the
+tests, `tools/playthrough`, `tools/publish-build.sh` and the docs on deadline day, for the same
+result the host can give with no code change. Also rejected: `server.open: '/3d.html'` in
+`vite.config.ts`, so that `pnpm dev` would open the entry. Tried and reverted, because in a headless
+container Vite prints a `spawn xdg-open ENOENT` stack trace, and the gauntlet critics and
+`tools/render-audio` start Vite headless.
+
+**Checked.** `pnpm build` is green, and `dist/` holds both pages. The redirect itself can only be
+checked on the Vercel deployment.
