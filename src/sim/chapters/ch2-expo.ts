@@ -618,7 +618,14 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   // their back, like they just finished descending. Voxxy first, near the doors."
   // Voxxy three steps back from the west wall, so her lamp does not paint a
   // halo on it at the chapter's first frame (Michele, 28 Sep).
-  ctx.place([foot - 52, cy - 4, Math.PI], [foot - 33, cy + 6, Math.PI], [foot - 14, cy - 2, Math.PI]);
+  //
+  // Biggy half-turned to the north wall. Square to the west, his flood (57° each
+  // side of its axis) lit Droid's back from a metre and a half and the floor round
+  // Voxxy from three, from just under the camera that follows her — the chapter's
+  // first frame came up blown white, Droid pale blue instead of graphite (critic
+  // round, 30 Sep; Michele: "I'd fix this"). Turned 54° north, the flood washes the
+  // wall beside him and leaves the other two in their own light.
+  ctx.place([foot - 52, cy - 4, Math.PI], [foot - 33, cy + 6, Math.PI], [foot - 14, cy - 2, -2.2]);
 
   let power = false;
   /**
@@ -1379,6 +1386,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         ctx.flash('Voxxy: shut. I can see the seam and I cannot do one thing about it. Biggy opens this one');
         return true;
       }
+      // Under the breaker board she hopped and said nothing (critic round, 30 Sep):
+      // every gate says why a robot is blocked, in that robot's voice.
+      if (!power && dist(b, panelAt) < PANEL_HAIL) {
+        ctx.flash('Voxxy: the handles are a metre over my ears. That board is Droid\'s reach, not mine');
+        return true;
+      }
       if (dist(b, posterAt) < POSTER_READ) {
         ctx.flash(
           router.known
@@ -1438,6 +1451,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     }
     if (atTerminal) {
       useTerminal(b);
+      return true;
+    }
+    if (!power && dist(b, panelAt) < PANEL_HAIL) {
+      ctx.flash('Biggy: a board of little handles, up a wall. I do doors. Droid does handles');
       return true;
     }
     // His dead end, handed back. He does not do buttons; he does doors, and — with

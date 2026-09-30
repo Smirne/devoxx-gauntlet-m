@@ -488,6 +488,9 @@ export function botsCollide(a: Bot, b: Bot, e: number = REST_BOT): { rv: number 
  * cannot undercut the door check on the next frame, and it decays on its own.
  * `t` is sim seconds, used only to throttle the toast.
  */
+/** The speed a push has to have got Biggy to before it says so, px/s: 0.2 m/s. */
+const PUSH_FLASH_MIN = 2.5;
+
 export function pushBiggy(bots: Bot[], dt: number, t: number, flash: (s: string) => void): void {
   const bg = bots.find((b) => b.kind === 'biggy');
   if (!bg || bg.mounted) return;
@@ -514,7 +517,9 @@ export function pushBiggy(bots: Bot[], dt: number, t: number, flash: (s: string)
         p.vx -= (pv - bv) * nx * 0.5;
         p.vy -= (pv - bv) * ny * 0.5;
       }
-      if (!bg.pushFlash || t - bg.pushFlash > PUSH_FLASH_COOLDOWN) {
+      // Not on the first frame of contact, when he has not moved yet: that read
+      // "0.0 m/s and climbing" (critic round, 30 Sep).
+      if (speed(bg) >= PUSH_FLASH_MIN && (!bg.pushFlash || t - bg.pushFlash > PUSH_FLASH_COOLDOWN)) {
         bg.pushFlash = t;
         flash(`${p.name} pushes Biggy — ${m(speed(bg)).toFixed(1)} m/s and climbing`);
       }
@@ -772,7 +777,7 @@ export function toggleMount(bots: Bot[], flash: (s: string) => void): boolean {
   const gap = dist(d, bg) - d.r - bg.r;
   if (gap >= MOUNT_REACH) {
     flash(
-      `Droid: ${m(gap).toFixed(1)} m of daylight. I climb with a hand on his shoulder — come round beside him`,
+      `Droid: ${m(gap).toFixed(1)} m of daylight. I climb with a hand on his shoulder — right up against his side`,
     );
     return false;
   }

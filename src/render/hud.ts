@@ -321,7 +321,7 @@ const CSS = `
   border-right:1px solid currentColor;border-bottom:1px solid currentColor}
 .ad-bubble.ad-out{animation:ad-sink-b .34s ease-in forwards}
 
-.ad-toasts{position:absolute;left:50%;bottom:96px;transform:translateX(-50%);width:min(680px,74vw);
+.ad-toasts{position:absolute;left:50%;bottom:96px;transform:translateX(-50%);width:min(680px,74vw);z-index:5;
   display:flex;flex-direction:column;align-items:center;gap:6px}
 .ad-toast{max-width:100%;padding:8px 15px;border-radius:9px;border-left:3px solid currentColor;
   background:rgba(10,11,14,.92);box-shadow:0 8px 28px rgba(0,0,0,.5);font-size:15px;text-align:center;
