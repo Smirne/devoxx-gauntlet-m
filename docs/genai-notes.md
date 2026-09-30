@@ -7245,6 +7245,65 @@ repo first will see them, and pointed `docs/ideas-history.md` at the prototypes 
 **Not checked.** This container's network policy blocks `*.vercel.app`, so the agent could not load
 either deployment or confirm the `/` → `/3d.html` redirect. That check was left to Michele.
 
+## 30 Sep 2026 — phones get the intro, and a "plays on a desktop" card
+
+**What the human decided.** People were opening the published link on their phones and getting a
+gate that asked for a key they did not have. Michele asked for mobile detection and a "this game
+plays only on desktop" message. He noted that the intro seemed to work on a phone, and suggested
+"tap for intro".
+
+**What the agent did.** `src/main3d.ts` now detects a touch-only device. It checks the phone/tablet
+user agent, then an iPad posing as a Mac (touch points > 1), then a coarse pointer with no fine
+one. A touch laptop has a fine pointer too, so it is left alone. On a touch-only device:
+- the splash says "Tap for the intro", with a line saying the game itself plays on a desktop with a
+  keyboard;
+- a tap on the gate starts the intro;
+- once the grace period is over, a tap skips the intro, and the toast says "Tap to skip";
+- the mouse and Q hints are hidden;
+- a tap never asks for pointer lock (on a phone it threw an unhandled `WrongDocumentError`).
+
+When the intro ends or is skipped, a card says "This game plays on a desktop" and offers "Watch the
+intro again". `?desktop=1` overrides the detection.
+
+Michele then asked: "an ipad with keyboard could play it?" It can. On a touch device, the first
+physical key clears the touch mode. The hints come back, and the card, if it is up, comes down
+(that key does nothing else). From there it is the desktop game. Without a mouse the camera still
+settles behind the robot, and A/D turn it. A refused pointer lock is now caught instead of left as
+an unhandled rejection. The gate and the card both say "press any key" if you have a keyboard. The gate's own `pointerdown` also means a click
+now dismisses it on desktop: the gate covers the canvas, so the canvas's `mousedown` handler never
+fired for it.
+
+**What was rejected, and why.** Touch controls for play: the keypad, the robot switching and the
+tow all need a keyboard, and building them on deadline day is not one step.
+
+**Checked.** Typecheck, `pnpm build`, and the 948 tests are green. In the browser pane at phone size
+(375×812, mobile UA), with no errors: the gate, a tap to start, the full intro left to run, a tap to
+skip, and the card. At desktop size the gate still says "Press any key" and has no touch class.
+
+## 30 Sep 2026 — submission prep: page-view analytics, on the Vercel build only
+
+**What the human decided.** Michele wanted analytics on the published build, and chose Vercel Web
+Analytics once the agent had compared it with Cloudflare, GoatCounter, Umami, Plausible and PostHog.
+After the first draft he caught that a static tag logs a 404 on every page load that Vercel does not
+serve: `pnpm dev`, a clone, and the claude.ai builds `tools/publish-build.sh` makes. He asked for
+the script to load only in the Vercel build.
+
+**What the agent did.** Added a small Vite plugin in `vite.config.ts`. It adds
+`<script defer src="/_vercel/insights/script.js">` to each page's `<head>` only when `VERCEL=1`,
+which Vercel sets during its builds. Vercel serves the script from the game's own domain once
+Analytics is turned on in the project dashboard. It sets no cookies, so the game needs no consent
+banner.
+
+**What was rejected, and why.** The first draft's static tag in `3d.html` and `index.html`, because
+of the 404s above. The `@vercel/analytics` npm package, because it adds a dependency to do what one
+build-time tag does. Custom gameplay events (which robot was picked, where players get stuck),
+because they need Vercel Pro or another provider and it is deadline day. If they ever come, they
+belong in render or the app shell, never in `src/sim`.
+
+**Checked.** A plain `pnpm build` leaves the tag out of both pages; `VERCEL=1 pnpm build` puts it in
+both. Whether page views are actually recorded can only be checked on the deployment, after
+Analytics is enabled.
+
 ## 30 Sep 2026 — a judges' panel of critics on the organisers' criteria, and the fixes it bought
 
 **What the human asked and decided.** Michele supplied the live competition pages as PDFs (the

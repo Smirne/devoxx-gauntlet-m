@@ -1,8 +1,21 @@
 import { resolve } from 'node:path';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
+
+// Vercel Web Analytics, only in a build Vercel runs (it sets VERCEL=1). The
+// script is served by Vercel itself, so anywhere else — `pnpm dev`, a clone,
+// the claude.ai builds from `tools/publish-build.sh` — it would be a 404.
+const vercelAnalytics = (): Plugin => ({
+  name: 'vercel-analytics',
+  apply: 'build',
+  transformIndexHtml: () =>
+    process.env.VERCEL === '1'
+      ? [{ tag: 'script', attrs: { defer: true, src: '/_vercel/insights/script.js' }, injectTo: 'head' }]
+      : [],
+});
 
 export default defineConfig({
   base: './',
+  plugins: [vercelAnalytics()],
   server: { port: 5173, host: true },
   build: {
     target: 'es2022',
