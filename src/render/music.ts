@@ -493,6 +493,21 @@ const OPENING_TRACK_GAIN = 1.8;
 /** The track, as a data URL: inlined, so `tools/inline-build.mjs` has no file to fold. */
 const OPENING_TRACK: string = OPENING_TRACK_URL;
 
+/**
+ * The track's bytes, read straight out of its data URL.
+ *
+ * Not `fetch(OPENING_TRACK)`: the published artifact's sandbox refuses a fetch of
+ * a `data:` URL, the decode never started, and the opening fell back to the old
+ * synth score with no error anyone saw (30 Sep, Michele: "the game has the old
+ * music"). Decoding the base64 in place needs no network permission at all.
+ */
+export function trackBytes(url: string): ArrayBuffer {
+  const bin = atob(url.slice(url.indexOf(',') + 1));
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out.buffer;
+}
+
 /** Settles once the last `startMusic` has the track decoded, or has given up on it. */
 let trackDecoded: Promise<unknown> = Promise.resolve();
 /**
@@ -1226,9 +1241,8 @@ export function startMusic(ctx: AudioContext, out: AudioNode, noise: AudioBuffer
    */
   let track: AudioBuffer | null | false = typeof ctx.decodeAudioData === 'function' ? null : false;
   if (track === null) {
-    trackDecoded = fetch(OPENING_TRACK)
-      .then((r) => r.arrayBuffer())
-      .then((bytes) => ctx.decodeAudioData(bytes))
+    trackDecoded = Promise.resolve()
+      .then(() => ctx.decodeAudioData(trackBytes(OPENING_TRACK)))
       .then((buf) => {
         track = buf;
         if (deck?.trackAt !== undefined) playTrack(deck, buf);
