@@ -96,6 +96,8 @@ export class Governor {
   /** The last window judged was slow: confirms a slow window of only a few (long) frames. */
   private slowBefore = false;
   private holdUntil = -Infinity;
+  /** Judging nothing until then; see `pause`. */
+  private pausedUntil = -Infinity;
   private hold = HOLD_MS;
   private climbedAt = -Infinity;
 
@@ -112,7 +114,7 @@ export class Governor {
    * the rung changed and the caller has to apply it.
    */
   frame(now: number, wallMs: number, gpuMs: number | null = null): boolean {
-    if (this.since < 0) {
+    if (this.since < 0 || now < this.pausedUntil) {
       this.restart(now);
       return false;
     }
@@ -159,6 +161,21 @@ export class Governor {
       return this.move(this.rung - 1);
     }
     return false;
+  }
+
+  /**
+   * Judge nothing for `ms` from `now`: the frames between are the game setting
+   * something up — a chapter's floor shown, its environment captured, its cast
+   * sculpted — and say nothing about the machine. They used to fill a window on
+   * their own, so every chapter start could step the quality down, and the step
+   * itself (every render target reallocated) was one more stall on top (29 Sep,
+   * the chapter-start profile). The caller pauses at the END of such a frame, so
+   * the frame is measured inside the pause.
+   */
+  pause(now: number, ms: number): void {
+    this.pausedUntil = Math.max(this.pausedUntil, now + ms);
+    this.slowBefore = false;
+    this.restart(now);
   }
 
   private move(to: number): boolean {

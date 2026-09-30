@@ -294,6 +294,7 @@ export class Pipeline {
         time: { value: 0 },
         frameJitter: { value: 0 },
         density: { value: 0 },
+        volSteps: { value: quality.volSteps },
         heightFalloff: { value: 0 },
         fogBase: { value: 0 },
         noiseAmt: { value: 0 },
@@ -457,16 +458,18 @@ export class Pipeline {
     this.aoOn = on;
   }
 
-  /** The fog's resolution (times the canvas) and march steps. */
+  /**
+   * The fog's resolution (times the canvas) and march steps. The steps are a
+   * uniform under the tier's compiled-in maximum: as a define, every governor
+   * step that changed them recompiled the fog's shader, one more stall on the
+   * frame that was already too slow (29 Sep).
+   */
   setVolume(scale: number, steps: number): void {
     if (scale !== this.volScale) {
       this.volScale = scale;
       this.setSize(this.width, this.height);
     }
-    if (this.volMat.defines.VOL_STEPS !== steps) {
-      this.volMat.defines.VOL_STEPS = steps;
-      this.volMat.needsUpdate = true;
-    }
+    this.volMat.uniforms.volSteps.value = Math.max(1, Math.min(steps, this.volMat.defines.VOL_STEPS as number));
   }
 
   /** The floor mirror's resolution, times the canvas. */

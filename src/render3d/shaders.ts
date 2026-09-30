@@ -38,6 +38,8 @@ uniform vec3 camPos;
 uniform float time;
 uniform float frameJitter;
 uniform float density;
+/* The march's steps: VOL_STEPS is the tier's, compiled in; this is the governor's share of it. */
+uniform int volSteps;
 uniform float heightFalloff;
 uniform float fogBase;
 uniform float noiseAmt;
@@ -106,10 +108,11 @@ void main(){
   }
 
   float j = fract(ign(gl_FragCoord.xy) + frameJitter);
-  float dt = tEnd / float(VOL_STEPS);
+  float dt = tEnd / float(volSteps);
   vec3 acc = vec3(0.);
   float trans = 1.;
   for (int s = 0; s < VOL_STEPS; s++){
+    if (s >= volSteps) break;
     float t = (float(s) + j) * dt;
     vec3 p = camPos + rd * t;
     float hgt = max(p.y - fogBase, 0.);
