@@ -23,7 +23,7 @@ import { m } from '../sim/units';
 
 import type { Materials } from './materials';
 import { box } from './materials';
-import { OLD_DEVOXX, exitSign, vintagePoster } from './signs';
+import { OLD_DEVOXX, beerCentralFlyer, exitSign, vintagePoster } from './signs';
 import { buildDuke } from './duke';
 import { BOOTH_SCHEMES } from '../render/venue/signage';
 import type { VolumePoint } from './pipeline';
@@ -691,6 +691,13 @@ function hallFurniture(group: THREE.Group, mats: Materials): THREE.Object3D[] {
       hd.position.set(cx, FH - 0.16, cz - d / 2 - 0.006);
       hd.rotation.y = Math.PI;
       group.add(hd);
+    }
+    // Somebody taped a flyer to the first fridge's door: the party afterwards.
+    if (f === DRINK_FRIDGES[0]) {
+      const flyer = new THREE.Mesh(new THREE.PlaneGeometry(0.21, 0.297), new THREE.MeshStandardMaterial({ map: beerCentralFlyer(), roughness: 0.7 }));
+      flyer.position.set(m(f.x) + w * 1.5, 1.3, m(f.y + f.h / 2) - d / 2 - 0.012);
+      flyer.rotation.set(0, Math.PI, 0.06);
+      group.add(flyer);
     }
   }
   return b.build(group);

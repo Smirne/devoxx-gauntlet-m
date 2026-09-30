@@ -24,7 +24,7 @@ import type { Materials } from './materials';
 import { box } from './materials';
 import { CLICK_U, PORT_LOCAL, counterLip, plugHand, printerPort } from './plug';
 import { poseShutter, rollerShutter } from './shutter';
-import { cfpBoard, emitter, wayfinding } from './signs';
+import { beerCentralChalkboard, cfpBoard, emitter, wayfinding } from './signs';
 import { GRIP_AT, LET_GO, PULL_END, REACH_END, pullAt, reachClock, registerGrip } from './reach3d';
 
 const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z);
@@ -1487,6 +1487,13 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         const backbar = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.96, 1.1), bandMat);
         backbar.position.set(0, 1.75, -d / 2 + 0.02);
         g.add(backbar);
+        // A chalkboard on the back wall, over the band, left of the neon and
+        // clear of the bar's own sign on the right: where the evening goes after
+        // the last talk (Michele: "hints to a party at Beer Central?").
+        const slate = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.75), new THREE.MeshStandardMaterial({ map: beerCentralChalkboard(), roughness: 0.9 }));
+        slate.position.set(-w * 0.22, 1.95, -d / 2 + 0.04);
+        slate.rotation.z = -0.03;
+        g.add(slate);
         const warm = new THREE.PointLight(0xffa850, 0, 10, 1.4);
         warm.position.set(m(20), 2.4, d / 2 + 0.8);
         g.add(warm);

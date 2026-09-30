@@ -586,6 +586,173 @@ export function vintagePoster(p: VintageSpec): THREE.CanvasTexture {
   return tex(c);
 }
 
+/**
+ * DEVOXX MOVIE NIGHT (Michele, 29 Sep: *"There's a movie night each year so we
+ * could have a poster for that"*). A cinema marquee: a bulb-framed board, the
+ * letters on a white letter board the way a cinema changes its bill, and the
+ * film still TBA, like the keynote speaker. For a backlit frame (1.3 x 1.95 m).
+ */
+export function movieNightPoster(): THREE.CanvasTexture {
+  const W = 512;
+  const H = 768;
+  const [c, x] = canvas(W, H);
+  const heavy = '"Impact", "Haettenschweiler", "Arial Black", sans-serif';
+  const plain = '"Helvetica Neue", Arial, sans-serif';
+  // Velvet red, darker at the edges: the curtain before the film.
+  const g = x.createLinearGradient(0, 0, W, 0);
+  g.addColorStop(0, '#3a0508');
+  g.addColorStop(0.5, '#7a0d14');
+  g.addColorStop(1, '#3a0508');
+  x.fillStyle = g;
+  x.fillRect(0, 0, W, H);
+  x.fillStyle = 'rgba(0,0,0,0.22)';
+  for (let i = 0; i < W; i += 32) x.fillRect(i, 0, 12, H);
+  // The marquee: black board, a frame of bulbs.
+  x.fillStyle = '#0d0d10';
+  x.fillRect(40, 60, W - 80, 330);
+  for (let i = 0; i <= 14; i++) {
+    for (const [bx, by] of [[40 + (i * (W - 80)) / 14, 60], [40 + (i * (W - 80)) / 14, 390]] as const) {
+      const rg = x.createRadialGradient(bx, by, 1, bx, by, 13);
+      rg.addColorStop(0, '#fffbe0');
+      rg.addColorStop(0.4, '#ffcf4a');
+      rg.addColorStop(1, 'rgba(255,160,40,0)');
+      x.fillStyle = rg;
+      x.beginPath();
+      x.arc(bx, by, 13, 0, Math.PI * 2);
+      x.fill();
+    }
+  }
+  x.textAlign = 'center';
+  x.fillStyle = '#ff7a1a';
+  x.font = `bold 44px ${heavy}`;
+  x.fillText('DEVOXX', W / 2, 130);
+  x.fillStyle = '#ffffff';
+  x.font = `bold 92px ${heavy}`;
+  x.fillText('MOVIE', W / 2, 240);
+  x.fillText('NIGHT', W / 2, 340);
+  // The letter board, with the bill in loose black letters.
+  x.fillStyle = '#f4f1e8';
+  x.fillRect(60, 430, W - 120, 150);
+  x.strokeStyle = 'rgba(0,0,0,0.12)';
+  x.lineWidth = 2;
+  for (const y of [480, 530]) {
+    x.beginPath();
+    x.moveTo(60, y);
+    x.lineTo(W - 60, y);
+    x.stroke();
+  }
+  x.fillStyle = '#111111';
+  x.font = `bold 40px ${plain}`;
+  x.fillText('TONIGHT · ROOM 8', W / 2, 472);
+  x.fillText('FILM: TBA', W / 2, 522);
+  x.font = `bold 30px ${plain}`;
+  x.fillText('POPCORN: YES', W / 2, 568);
+  // A striped popcorn box.
+  x.save();
+  x.translate(W / 2, 690);
+  x.fillStyle = '#ffffff';
+  x.beginPath();
+  x.moveTo(-50, -60);
+  x.lineTo(50, -60);
+  x.lineTo(38, 50);
+  x.lineTo(-38, 50);
+  x.closePath();
+  x.fill();
+  x.fillStyle = '#d4141c';
+  for (const sx of [-34, -8, 18]) {
+    x.beginPath();
+    x.moveTo(sx, -60);
+    x.lineTo(sx + 14, -60);
+    x.lineTo(sx + 11, 50);
+    x.lineTo(sx - 2, 50);
+    x.closePath();
+    x.fill();
+  }
+  x.fillStyle = '#fff3c4';
+  for (const [px, py, pr] of [[-36, -66, 16], [-12, -76, 18], [14, -72, 17], [36, -64, 15], [0, -88, 14]] as const) {
+    x.beginPath();
+    x.arc(px, py, pr, 0, Math.PI * 2);
+    x.fill();
+  }
+  x.restore();
+  x.font = `16px ${plain}`;
+  x.fillStyle = 'rgba(255,255,255,0.6)';
+  x.fillText('AFTER THE LAST TALK · KINEPOLIS ANTWERPEN', W / 2, 752);
+  return tex(c);
+}
+
+/** Chalk on slate, for the bar: the party after the conference (Michele: "hints to a party at Beer Central?"). */
+export function beerCentralChalkboard(): THREE.CanvasTexture {
+  const W = 512;
+  const H = 384;
+  const [c, x] = canvas(W, H);
+  x.fillStyle = '#6b4a2b';
+  x.fillRect(0, 0, W, H);
+  x.fillStyle = '#1f2522';
+  x.fillRect(16, 16, W - 32, H - 32);
+  // Old chalk, wiped: a haze of what was written here last week.
+  x.fillStyle = 'rgba(255,255,255,0.05)';
+  for (let i = 0; i < 6; i++) x.fillRect(40 + i * 60, 60 + ((i * 37) % 200), 180, 26);
+  const chalk = '"Chalkboard SE", "Segoe Print", "Comic Sans MS", "Bradley Hand", cursive';
+  x.textAlign = 'center';
+  x.fillStyle = '#f2f0e6';
+  x.font = `32px ${chalk}`;
+  x.fillText('after the last talk', W / 2, 80);
+  x.fillStyle = '#ffd24a';
+  x.font = `bold 62px ${chalk}`;
+  x.fillText('BEER CENTRAL', W / 2, 170);
+  x.fillStyle = '#f2f0e6';
+  x.font = `28px ${chalk}`;
+  x.fillText('by Antwerpen-Centraal', W / 2, 222);
+  x.fillText('first round: whoever broke the build', W / 2, 300);
+  // An arrow and a pint, in chalk.
+  x.strokeStyle = '#f2f0e6';
+  x.lineWidth = 5;
+  x.beginPath();
+  x.moveTo(70, 250);
+  x.lineTo(150, 250);
+  x.moveTo(132, 236);
+  x.lineTo(150, 250);
+  x.lineTo(132, 264);
+  x.stroke();
+  x.beginPath();
+  x.moveTo(400, 236);
+  x.lineTo(446, 236);
+  x.lineTo(440, 290);
+  x.lineTo(406, 290);
+  x.closePath();
+  x.stroke();
+  return tex(c);
+}
+
+/** A flyer taped to a drinks fridge: the same party, in print. */
+export function beerCentralFlyer(): THREE.CanvasTexture {
+  const W = 256;
+  const H = 362;
+  const [c, x] = canvas(W, H);
+  x.fillStyle = '#ffd24a';
+  x.fillRect(0, 0, W, H);
+  x.fillStyle = '#1a1a1a';
+  x.fillRect(0, 0, W, 90);
+  x.textAlign = 'center';
+  x.fillStyle = '#ffd24a';
+  x.font = 'bold 30px "Impact", "Arial Black", sans-serif';
+  x.fillText('AFTER DEVOXX?', W / 2, 58);
+  x.fillStyle = '#1a1a1a';
+  x.font = 'bold 40px "Impact", "Arial Black", sans-serif';
+  x.fillText('BEER', W / 2, 160);
+  x.fillText('CENTRAL', W / 2, 206);
+  x.font = '17px "Helvetica Neue", Arial, sans-serif';
+  x.fillText('by Antwerpen-Centraal', W / 2, 250);
+  x.fillText('everyone ends up there', W / 2, 276);
+  x.font = 'italic 14px Georgia, serif';
+  x.fillText('(you did not hear it from Stephan)', W / 2, 330);
+  // Tape.
+  x.fillStyle = 'rgba(240, 236, 220, 0.8)';
+  x.fillRect(W / 2 - 40, 0, 80, 18);
+  return tex(c);
+}
+
 /** A sheet of paper taped to a door, the chapter's joke in marker pen. */
 export function notice(text: string): THREE.CanvasTexture {
   const [c, x] = canvas(256, 320);

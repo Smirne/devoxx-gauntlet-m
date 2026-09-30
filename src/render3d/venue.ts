@@ -29,7 +29,7 @@ import type { VolumePoint } from './pipeline';
 import { mergeStatic, noMerge } from './merge';
 import type { PlanarReflection } from './reflector';
 import { adScreen, ledTicker } from './screens';
-import { POSTERS, backlitGlass, cityscape, emitter, exitSign, menuBoard, neonText, poster, rainMask, wayfinding, zaalPanel } from './signs';
+import { POSTERS, backlitGlass, cityscape, emitter, exitSign, menuBoard, movieNightPoster, neonText, poster, rainMask, wayfinding, zaalPanel } from './signs';
 import { wellDSticker } from './welld';
 
 /** Where chapter 1's geometry stops, sim px: just past the fire door. */
@@ -999,9 +999,16 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     [1276, 1],
     [1485, 1],
   ];
+  /*
+   * ...and the frame just east of Room 8's door, the first one the three pass
+   * coming from the main staircase in chapter 4, bills Devoxx's own movie night
+   * rather than a parody (Michele, 29 Sep: "There's a movie night each year so
+   * we could have a poster for that").
+   */
+  const MOVIE_NIGHT_AT = 1485;
   posterSpots.forEach(([x, side], i) => {
     const zFace = side < 0 ? m(CY0) + 0.08 : m(CY1) - 0.08;
-    const tx = poster(POSTERS[i % POSTERS.length]);
+    const tx = x === MOVIE_NIGHT_AT && side < 0 ? movieNightPoster() : poster(POSTERS[i % POSTERS.length]);
     const p = emitter(tx, 1.3, 1.95, 2.6, 0xffffff, false);
     // 3.5 cm off the wall: at 2 cm it sat exactly on the frame's front face and
     // the two z-fought (the flickering keynote poster).
