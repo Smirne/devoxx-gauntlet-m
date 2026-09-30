@@ -7067,6 +7067,31 @@ Shipping the MP3 as a separate file: the build must stay one self-contained page
 `ID3` header, and that the decoder receives the track while `fetch` is refused. On the old code, both
 new tests fail. Typecheck and the full suite are green.
 
+## 30 Sep 2026 — Q asks before it reloads
+
+**What a human decided.** Michele's chapter-2 playthrough went back to the chapter's start in the
+published 3D build, and he asked whether someone had replaced the artifact. No one had. His console
+showed the page at `?q=high&resume=2`, and only the quality switch builds that address. Q sits
+between W and A, and a single press reloaded the page at the next quality tier, back to the
+chapter's start. He asked for a confirmation, and for no automatic quality switch. Asked whether
+that meant the frame governor as well, he kept it: only the tier reload is covered.
+
+**What the agent did.** In `src/main3d.ts`, the first Q or click on the quality button now only
+asks: the button reads "Reload at HIGH? Q again — restarts the chapter". A second Q or click within
+5 s reloads. Any other key, or the 5 s running out, calls it off. With the HUD hidden (photo mode,
+`?nohud`) Q does nothing, because the question could not be seen. The "graphics card gave up" card
+already asked with a button, and is unchanged. Checked in Chromium: Q arms, W cancels, the timeout
+cancels, and a second click reloads at `?q=high&resume=…`.
+
+**What was rejected, and why.** Turning off the governor, which trims resolution and effects during
+play without a reload: Michele kept it, and slow judges' laptops need it.
+
+**Left as it was.** The console's `BiquadFilter … 8800 outside nominal range [0, 8000]`: the
+browser's audio was at 16 kHz during a Meet call, and the capped value is harmless. The blocked
+`data:audio` fetch was already being looked at in another session.
+
+**Checked.** Typecheck, and the 948 tests in 71 files (after merging main), are green.
+
 ## 30 Sep 2026 — submission prep: the published link opens the 3D build
 
 **What the human decided.** Michele is publishing the game on Vercel for the submission form's
