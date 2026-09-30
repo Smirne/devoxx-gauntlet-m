@@ -972,7 +972,9 @@ export function buildGround(mats: Materials): Ground3D {
     if (p.kind === 'lobby') continue;
     if (p.hi === undefined || p.axis === undefined) continue;
     const rise = Math.abs(p.hi - p.lo);
-    stepsFor(floors, p, p.kind === 'main-flight' ? mats.steel : mats.terrazzoMatte, Math.max(3, Math.round(rise / 0.17)));
+    // The main flight in the carpet its top half wears upstairs (`venue.ts`): it
+    // was steel, grey with a sparkle under the navy (critic round, 30 Sep).
+    stepsFor(floors, p, p.kind === 'main-flight' ? mats.carpet : mats.terrazzoMatte, Math.max(3, Math.round(rise / 0.17)));
   }
   const floorMeshes = floors.build(group, false);
   colliders.push(...floorMeshes);

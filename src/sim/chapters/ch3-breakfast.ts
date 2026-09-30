@@ -939,14 +939,14 @@ export interface BreakfastState {
 }
 
 const OBJECTIVE =
-  'Chapter 3 · <b>Breakfast</b>. The main entrance is open and 3,000 people are about to walk in. <b>Stephan</b> ' +
+  'Chapter 3 · <b>Breakfast</b>. The main entrance is open and three thousand people are inside. <b>Stephan</b> ' +
   'stands at the main staircase and wants three things before he opens it: his <b>tomato soup</b> — at ' +
   "breakfast, yes — the <b>keynote speaker</b>, and <b>tonight's beer delivery</b> out of the aisle and onto " +
   'the bar. Droid: the ladle. Biggy: the pot and the crates. Voxxy: open queues (E), find the speaker. The ' +
   'sponsor booths are open and running their games: three bits of <b>swag</b> to be won on the way, all optional.';
 // "talk", for any of the three (`talk`). It said "ask", which read as the queues.
 const KEYS =
-  '1/2/3/Tab: switch · WASD · E: use / lift / talk / clear a queue / play a game / tow Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics \u00b7 C: credits';
+  '1/2/3/Tab: switch · WASD · E: use / lift / talk / clear a queue / play a game / hold Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics \u00b7 C: credits';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('down');
@@ -2391,11 +2391,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * joke is: on the programme.
    */
   ctx.card(
-    '<b>Breakfast, and Stephan wants three things.</b> The doors are open, three thousand people are inside, ' +
-      'and the man at the foot of the main staircase is not unhooking that barrier until he has his ' +
-      '<b>tomato soup</b> — at breakfast, yes — until somebody finds the <b>keynote speaker</b>, who is still ' +
-      '<b>TBA</b> on the programme and hiding from the queue behind a booth, and until <b>tonight\u2019s beer</b> ' +
-      `is out of the aisle and behind the bar at ${BAR_NAME}.` +
+    '<b>Breakfast, and Stephan wants three things.</b> The doors are open and three thousand people are inside, ' +
+      'and the man at the foot of the main staircase is not unhooking that barrier until he has them. ' +
+      'His <b>tomato soup</b> — at breakfast, yes. The <b>keynote speaker</b>, still <b>TBA</b> on the programme ' +
+      'and hiding from the queue behind a booth. And <b>tonight\u2019s beer</b>, out of the aisle and behind the ' +
+      `bar at ${BAR_NAME}.` +
       '<small>Press any key</small>',
   );
 

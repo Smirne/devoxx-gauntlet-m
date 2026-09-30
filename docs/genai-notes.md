@@ -7187,6 +7187,60 @@ px of content in a 606 px box at 1366×640. The flight case and the stair were c
 after, frame for frame. Every frame of it — the critics' and the builder's — is in the session's
 scratchpad, as Michele asked; none is in the repository.
 
+**Round 2 (the fixed build, 995fedb), and what came of it.** Three new critics on fresh context,
+told what was already decided so they would not report it again. They shared a machine at a load
+of 12 to 21 on four cores, up to 15 s a frame, and the player critic said plainly how little of its
+slice that let it check: chapter 1's first minute and the keys, not a gate, a mount or chapters 2
+to 4. The other two reached every chapter. The fixes are PR #18, with `main` (PRs #16 and #17)
+merged in.
+
+1. *In chapter 2's dark hall the robot you drive is a black cut-out* (place critic), inside its own
+   beam, seen from behind. A fill light from behind the camera was added for exactly that on 29
+   Sep, and it had never lit anything: the light pool takes every point light in the scene, records
+   where it stands and removes it, and the fill was in the scene first, so it stayed at the origin
+   where it stood at startup. It is left out of the pool now, like the robots' own spills; chapter
+   2's hall, the darkest place and the biggest, gets 10 where the first floor's dark gets 4, and the
+   fill written for the stair climb's cutscene works for the first time. At the critic's spot, by
+   "Async Airlines", the box round Voxxy went from a mean luma of 29 to 101 of 255: she reads orange.
+2. *Chapter 1 said who and what, never where* (player critic). The run sheet and the mix hints name
+   each clue's place, in the words the building shows: the foyer, the popcorn kiosk, and Zaal B and
+   Zaal E by the letter on their orange panels.
+3. *M and N were named nowhere in the game* (player critic): the 3D help text names them.
+4. *Skipping to the end printed figures nobody earned* (story critic): "Soup 100% at 100° (0
+   complaints) · Stage ready with 0s to spare", the defaults that keep the points adding up. A
+   skipped chapter shows "—", and a test holds it. The robot tabs, the speed gauge, chapter 4's
+   countdown and a Skip button the sim ignores no longer sit round the card.
+5. *The ground floor's main flight had steel treads* (place critic), grey, with a sparkle and blocky
+   shadows, under the navy its top half has worn since round 1: carpet.
+6. *Hints and wording* (story critic). A hint stays up as long as any other line of its length.
+   Chapter 3's briefing said 3,000 people "are about to walk in" and its card that they are inside:
+   both say inside. Chapter 1's keys line says what 4–9 do; the credits' "three engines" are three
+   renderers; the tool-calls figure no longer ends "in one session alone" under a label that says
+   many.
+
+**Checked, and not what the critic thought (round 2).** *"H shows no hint text"* (story critic). It
+does, with the briefing open or closed: each press put its line up at once in the live page. The
+critic watched the sim's toast slot, which a hint does not use, and read the HUD on a sim clock many
+times slower than the wall clock the line lives on.
+
+**Round 2, left for a human.** Room 8's house screen is 6.5 m wide in a 30.6 m room, and the room's
+7.2 m ceiling leaves no height for a bigger 16:9 screen: a taller room, or a screen that drops
+behind the #DEVOXX letters, is Michele's call. The main staircase's head, seen from the corridor,
+is still a floor edge and a rail; the canopy over it would be new content. Chapter 3's hall is lit
+like the night, and the code and the critic cite different photographs for its ceiling. Chapter
+2's first frame is blown out by Biggy's flood at point-blank; chapter 1's first frame is the back of
+a crate; the closed section's rooms are lettered, not numbered. Skip in chapter 4 goes to the card
+without the film, which is what a skip is for, unless he wants a judge who skips to see it. "Hold
+Biggy" in three chapters and "tow Biggy" in one, "Antwerp" and the film's "Antwerpen", chapter 3's
+seventy-word card and two straight apostrophes wait for a text pass.
+
+**Verification (round 2).** `pnpm typecheck` clean and `pnpm test` green, 950 tests in 71 files, on
+the branch merged with `main`. In the live page: H's hints on screen at once, with the briefing open
+and closed; four skips end on "Night — · Expo — · Soup — · Stage —" with nothing else round the
+card; no page errors. The fill light and the stair compared before and after, frame for frame.
+Every frame stayed in the session's scratchpad. The credits' repository figures are recounted with
+this entry, by the commands of 29 Sep.
+
 ## 30 Sep 2026 — the published links go into the README
 
 **What the human decided.** Michele deployed both sites on Vercel himself: the game at
