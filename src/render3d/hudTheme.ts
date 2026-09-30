@@ -118,6 +118,7 @@ export function installHudTheme(): void {
   queueMicrotask(() => document.head.appendChild(style));
   const help = document.createElement('div');
   help.className = 'ad3d-help';
-  help.innerHTML = 'mouse · look &nbsp;/&nbsp; click · lock<br>wheel · zoom<br>P · photo mode<br>Q · quality';
+  // M and N were named nowhere in the game, only in the README (critic round 2).
+  help.innerHTML = 'mouse · look &nbsp;/&nbsp; click · lock<br>wheel · zoom<br>P · photo mode<br>Q · quality<br>M · mute &nbsp;/&nbsp; N · music';
   document.body.appendChild(help);
 }
