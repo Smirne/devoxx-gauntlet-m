@@ -628,11 +628,11 @@ export interface ReelCard {
   /** Seconds this card holds, excluding the black beat after it. */
   hold: number;
   /**
-   * `splash` is the game's own title as the splash screen draws it, `byline`
-   * the author's card (the 3D screen shows his character beside it), `credit`
-   * one line of the film's credits.
+   * `splash` is the game's own title as the splash screen draws it, `credit`
+   * one line of the film's credits (the 3D screen shows the makers' characters
+   * beside theirs).
    */
-  kind: 'splash' | 'byline' | 'title' | 'stat' | 'blooper' | 'credit' | 'end';
+  kind: 'splash' | 'title' | 'stat' | 'blooper' | 'credit' | 'end';
 }
 
 /** The reel's state this frame. `card: null` is the black beat between two cards. */

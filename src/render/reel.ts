@@ -32,7 +32,6 @@ const SCREEN_H = 2.4;
 
 const INK: Record<ReelCard['kind'], string> = {
   splash: '#ff7a1a',
-  byline: '#e8e6e1',
   title: '#ff7a1a',
   stat: '#e8e6e1',
   blooper: '#ffd27a',

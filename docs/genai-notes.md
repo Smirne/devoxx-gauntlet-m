@@ -6944,3 +6944,29 @@ three pixel readouts were found and fixed in the backlog PR.
 **For Michele to decide.** The Beer Central hints place it "by Antwerpen-Centraal": worth a glance
 from someone who drinks there. The talks on the screens and the movie night's "TONIGHT · ROOM 8" are
 fiction on real rooms. And the merge: this PR after #6, retargeted to `main`.
+
+## 30 Sep 2026 — the film names Michele once, and WellD "with the support of"
+
+**What the human decided.** Michele watched the ending (recorded frame by frame from the 3D build)
+and said: *"my card appears twice. Keep just the second one. With the support of WellD (instead of
+sponsor)"*. The film had shown his character on the "A game by" byline straight after the title,
+and again on his credit near the end.
+
+**What the agent did.** `buildReel` (`src/sim/reel.ts`) no longer puts the byline card after the
+splash. The title now cuts straight to the night's numbers, and the film is 3.4 s shorter. WellD's
+credit reads "With the support of" over "WellD". The `byline` kind went too, with the 3D screen's
+`paintByline` and its entries in both colour tables, so nothing is left to draw a card that never
+comes. `tests/reel.test.ts` now asserts that Michele is named on exactly one card and what WellD's
+line says. On the old reel that test fails: two cards name him. The film was re-recorded in the 3D
+build to check it. His credit still carries his portrait, and the page reported no errors.
+
+**What was rejected, and why.** Keeping the byline and dropping his credit: he asked for the second
+card, and the credit is also the one in the same form as everyone else's. Moving "Starring Voxxy,
+Droid and Biggy" onto another card: the robots' own credit, "Courtesy of the Devoxx Robot Games",
+already names them.
+
+**Left as it was.** The credits screen (`C`, `src/render/credits.ts`) still describes WellD's part
+as "Sponsor — the tokens, the time…", and `tests/credits.test.ts` asserts that word. The request was
+about the film, so the screen was left for Michele to call.
+
+**Checked.** Typecheck, and the 941 tests in 70 files, are green.
