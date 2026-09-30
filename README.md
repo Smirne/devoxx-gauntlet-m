@@ -24,6 +24,9 @@ The original 2.5D diorama build of the same game — same simulation, same chapt
 isometric camera per room — is still at `http://localhost:5173/`, and is where the physics view
 (`P`) lives.
 
+On a static host the same holds, with one convenience: `vercel.json` redirects the bare domain `/`
+to `/3d.html`, so the published link opens the entry; the 2.5D build is at `/index.html`.
+
 The first time it runs, the 3D build picks a render quality from the GPU the browser reports (low
 for software renderers and phones, medium for integrated graphics, high otherwise), and while it runs
 it trims resolution, ambient occlusion, fog detail and reflections by itself if the frame rate drops.
