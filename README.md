@@ -3,7 +3,7 @@
 The cleaners have gone home, the projectors are cold, and Devoxx opens in six hours. **After Dark**
 is a lights-and-locks puzzle game set in the real Kinepolis Antwerp: you play Voxxy, Droid and Biggy,
 the three Devoxx robots, working the night shift over four chapters — the dark cinema floor, the
-unlit exhibition hall, the lunch rush and the keynote. The building is pitch black, and each robot
+unlit exhibition hall, the breakfast rush and the keynote. The building is pitch black, and each robot
 carries a different lamp: Voxxy a narrow orange beam, Droid a small green pool, Biggy a wide blue
 flood. Light is the mechanic. Where two colours overlap you can read what is written there, and the
 only way through a locked door is to put the right robots in the right places at the same time.
@@ -88,13 +88,14 @@ puzzle hint — read it rather than pushing harder.
 
 ## What you are playing
 
-Four chapters, each in one part of the building, each seen from a fixed diorama camera:
+Four chapters, each in one part of the building — in the 3D build from behind the robot you drive,
+in the 2.5D build from a fixed diorama camera:
 
 1. **Night** — the closed cinema section behind the fire door. Four things in the dark need reading
    before the door will open.
 2. **Expo** — the exhibition hall with the power off. Breakers, a cable run that is measured to the
    pixel, and a roller door that will not care how hard you ask it politely.
-3. **Lunch** — doors open, visitors arrive, the soup queue forms, and a speaker is missing fifteen
+3. **Breakfast** — doors open, visitors arrive, the soup queue forms, and a speaker is missing fifteen
    minutes before their talk.
 4. **Keynote** — Room 8. Cake, a banner, spotlights, a filling room, and three robots who have to be
    on that stage when the lights come up.

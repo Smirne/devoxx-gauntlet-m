@@ -193,7 +193,7 @@ const OPENING_KEYS = 'Any key to skip';
  * restart last"*. Every other key a chapter binds is still in its own `keys`
  * line, which the run sheet prints in full.
  */
-const PLAY_KEYS = '1/2/3: switch · E: act · I: info · H: hint · R: restart';
+const PLAY_KEYS = '1/2/3: switch · E: act · I: run sheet · H: hint · R: restart';
 
 /* ---------------------------------------------------------------------- rng */
 
