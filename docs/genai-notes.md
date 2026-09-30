@@ -7235,3 +7235,27 @@ tow all need a keyboard, and building them on deadline day is not one step.
 **Checked.** Typecheck, `pnpm build`, and the 948 tests are green. In the browser pane at phone size
 (375×812, mobile UA), with no errors: the gate, a tap to start, the full intro left to run, a tap to
 skip, and the card. At desktop size the gate still says "Press any key" and has no touch class.
+
+## 30 Sep 2026 — submission prep: page-view analytics, on the Vercel build only
+
+**What the human decided.** Michele wanted analytics on the published build, and chose Vercel Web
+Analytics once the agent had compared it with Cloudflare, GoatCounter, Umami, Plausible and PostHog.
+After the first draft he caught that a static tag logs a 404 on every page load that Vercel does not
+serve: `pnpm dev`, a clone, and the claude.ai builds `tools/publish-build.sh` makes. He asked for
+the script to load only in the Vercel build.
+
+**What the agent did.** Added a small Vite plugin in `vite.config.ts`. It adds
+`<script defer src="/_vercel/insights/script.js">` to each page's `<head>` only when `VERCEL=1`,
+which Vercel sets during its builds. Vercel serves the script from the game's own domain once
+Analytics is turned on in the project dashboard. It sets no cookies, so the game needs no consent
+banner.
+
+**What was rejected, and why.** The first draft's static tag in `3d.html` and `index.html`, because
+of the 404s above. The `@vercel/analytics` npm package, because it adds a dependency to do what one
+build-time tag does. Custom gameplay events (which robot was picked, where players get stuck),
+because they need Vercel Pro or another provider and it is deadline day. If they ever come, they
+belong in render or the app shell, never in `src/sim`.
+
+**Checked.** A plain `pnpm build` leaves the tag out of both pages; `VERCEL=1 pnpm build` puts it in
+both. Whether page views are actually recorded can only be checked on the deployment, after
+Analytics is enabled.
