@@ -1386,6 +1386,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         ctx.flash('Voxxy: shut. I can see the seam and I cannot do one thing about it. Biggy opens this one');
         return true;
       }
+      // Under the breaker board she hopped and said nothing (critic round, 30 Sep):
+      // every gate says why a robot is blocked, in that robot's voice.
+      if (!power && dist(b, panelAt) < PANEL_HAIL) {
+        ctx.flash('Voxxy: the handles are a metre over my ears. That board is Droid\'s reach, not mine');
+        return true;
+      }
       if (dist(b, posterAt) < POSTER_READ) {
         ctx.flash(
           router.known
@@ -1445,6 +1451,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     }
     if (atTerminal) {
       useTerminal(b);
+      return true;
+    }
+    if (!power && dist(b, panelAt) < PANEL_HAIL) {
+      ctx.flash('Biggy: a board of little handles, up a wall. I do doors. Droid does handles');
       return true;
     }
     // His dead end, handed back. He does not do buttons; he does doors, and — with

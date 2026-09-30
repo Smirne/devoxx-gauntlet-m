@@ -126,6 +126,8 @@ const CAKE_TOUCH = PUSH_REACH;
 const CAKE_NEAR = 32;
 /** ...and how square to it he has to be pushing. Wider than a robot-on-robot shove. */
 const CAKE_LEAN = 0.12;
+/** How often a robot that is not Biggy says why the cake will not move for it, s. */
+const CAKE_SAY_EVERY = 6;
 /**
  * How much of the push follows BIGGY'S STICK rather than the line of contact, 0..1.
  *
@@ -611,6 +613,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let ready = false;
   let spare = 0;
   let ended = false;
+  /** When a robot that is not Biggy last said why the cake will not move for it. */
+  let cakeSaidAt = -Infinity;
 
   ctx.objective(
     `Chapter 4 · <b>Keynote</b>. Top of the main staircase — the crowd is right behind you: first attendees in ${Math.round(HEAD)}s, ${Math.round(ARRIVAL)}s to fill Room 8, front rows first. Before they sit: <b>Biggy</b> pushes the cake onto the stage, <b>Droid</b> finishes the <b>#DEVOXX</b> sign (the O and both X's lean in the wing — E to lift one, E at its gap), <b>Voxxy</b> lights spotlights 1→4. Then <b>all three on stage</b> with Stephan and the speaker.`,
@@ -1248,6 +1252,26 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
     stepBot(crate, dt, ctx.walls);
     for (const b of ctx.bots) botsCollide(b, crate, 0.1);
+    /*
+     * ...AND ANYBODY ELSE SAYS WHY IT HARDLY MOVES. Voxxy drove into it at full
+     * speed, it rolled 4 px, and nobody said a word (critic round, 30 Sep): every
+     * gate says why a robot is blocked, in that robot's voice. Leaning into it, the
+     * way Biggy's push is read, and not more than once every few seconds.
+     */
+    const drv = ctx.bots[ctx.cur];
+    if (drv.kind !== 'biggy' && !drv.mounted && !cakeOnMark() && t >= cakeSaidAt + CAKE_SAY_EVERY) {
+      const cx = crate.x - drv.x;
+      const cy = crate.y - drv.y;
+      const cd = Math.hypot(cx, cy);
+      if (cd > 0 && cd < drv.r + crate.r + CAKE_TOUCH && (drv.ix * cx + drv.iy * cy) / cd > CAKE_LEAN) {
+        cakeSaidAt = t;
+        ctx.flash(
+          drv.kind === 'voxxy'
+            ? 'Voxxy: a cake on a board, and the board outweighs me. Biggy pushes this one'
+            : 'Droid: I could carry the cake. Not the board under it. Biggy pushes this one',
+        );
+      }
+    }
     /*
      * BIGGY PUSHES THE CAKE, and it goes where he is pushing.
      *

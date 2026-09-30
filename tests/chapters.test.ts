@@ -485,11 +485,19 @@ describe('chapter 2 — expo', () => {
     const g = mk(2);
     const panel = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
 
-    // Biggy does not do buttons.
+    // Biggy does not do buttons, and neither does Voxxy — and each says so, in
+    // their own voice (critic round, 30 Sep: Voxxy only hopped).
     g.debug.select('biggy');
     g.debug.place('biggy', panel.x + 30, panel.y + 30);
     g.key('KeyE');
     expect((g.debug.chapter() as ExpoState).breakersLeft).toBe(3);
+    expect(g.snapshot().toast?.t).toMatch(/^Biggy: .*Droid/);
+    g.debug.select('voxxy');
+    g.debug.place('voxxy', panel.x, panel.y + 12);
+    g.key('KeyE');
+    expect((g.debug.chapter() as ExpoState).breakersLeft).toBe(3);
+    expect(g.snapshot().toast?.t).toMatch(/^Voxxy: .*Droid/);
+    g.debug.place('voxxy', panel.x + 200, panel.y + 12);
 
     g.debug.select('droid');
     g.debug.place('droid', panel.x, panel.y + 8);
@@ -1807,6 +1815,25 @@ describe('chapter 4 — keynote', () => {
     expect(g.snapshot().phase).toBe('done');
     expect(g.snapshot().card).toContain('skipped: 4<');
     expect(g.snapshot().card).toContain('Stage —');
+  });
+
+  /**
+   * The cake moves for Biggy. Anybody else leaning into it bumps it a few pixels,
+   * which is right for a board that outweighs them, and now says why (critic
+   * round, 30 Sep: Voxxy drove into it at full speed and nothing was said).
+   */
+  it('has Voxxy and Droid say why the cake will not move for them', () => {
+    for (const kind of ['voxxy', 'droid'] as const) {
+      const g = mk(4);
+      const cake = g.snapshot().props.find((p) => p.kind === 'cake')!;
+      g.debug.select(kind);
+      g.debug.place(kind, cake.x - 34, cake.y, 0);
+      g.setStick(1, 0);
+      const said = (): string => g.snapshot().toast?.t ?? '';
+      expect(until(g, () => said().includes('Biggy pushes this one'), 120), `${kind} said nothing`).toBe(true);
+      expect(said().startsWith(kind === 'voxxy' ? 'Voxxy:' : 'Droid:')).toBe(true);
+      expect((g.debug.chapter() as KeynoteState).cake).toBe(false);
+    }
   });
 
   it('blocks the seat blocks and leaves the aisles open', () => {
