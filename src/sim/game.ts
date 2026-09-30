@@ -881,11 +881,20 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     const nightT = score.nightT ?? 0;
     const expoT = score.expoT ?? 0;
     const sk = skipped.length ? ` · skipped: ${skipped.join(', ')}` : '';
+    const plural = (n: number): string => `${n} complaint${n === 1 ? '' : 's'}`;
+    // A chapter nobody played has no figures. `defaultScore` fills its score in so
+    // the points still add up, and the card used to print those as if they had
+    // happened: "Soup 100% at 100°" for a soup nobody carried (critic round, 30 Sep).
+    const played = (n: number, key: string): boolean => !skipped.includes(n) && score[key] !== undefined;
+    const night = played(1, 'nightT') ? `${nightT}s` : '—';
+    const expo = played(2, 'expoT')
+      ? `${Math.max(0, expoT - nightT)}s (cable ${Math.round((score.cable ?? 0) / PX_PER_M)} m)`
+      : '—';
+    const breakfast = played(3, 'soup') ? `${soup}% at ${temp}° (${plural(score.complaints ?? 0)})` : '—';
+    const stage = played(4, 'spare') ? `ready with ${spare}s to spare (${plural(score.keynoteComplaints ?? 0)})` : '—';
     card =
       `<b>Keynote starts.</b> Score ${pts}/9<br>` +
-      `<span class="sub">Night ${nightT}s · Expo ${Math.max(0, expoT - nightT)}s (cable ${Math.round((score.cable ?? 0) / PX_PER_M)} m) · ` +
-      `Soup ${soup}% at ${temp}° (${score.complaints ?? 0} complaint${(score.complaints ?? 0) === 1 ? '' : 's'}) · ` +
-      `Stage ready with ${spare}s to spare (${score.keynoteComplaints ?? 0} complaint${(score.keynoteComplaints ?? 0) === 1 ? '' : 's'}) · ` +
+      `<span class="sub">Night ${night} · Expo ${expo} · Soup ${breakfast} · Stage ${stage} · ` +
       `Swag ${swag.length}/3 · Total ${total}s${sk}</span><small>R to play again \u00b7 C for credits</small>`;
   }
 

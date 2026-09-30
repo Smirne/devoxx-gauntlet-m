@@ -96,6 +96,13 @@ export interface Hud {
    */
   nudge(): void;
   /**
+   * The physics view is up (`P` in the 2.5D build). The speed meter's raw sim
+   * line (`… px/s (sim)`) shows only then: it is for a physics judge, and to a
+   * player it read as debug noise (critic panel, 30 Sep). The 3D build has no
+   * physics view and never calls this, so there the line stays hidden.
+   */
+  setPhysics(on: boolean): void;
+  /**
    * A line from the shell itself, in the stack and in flavour grey: for a key
    * whose effect is not on screen (the sound switches), so it still says what it
    * did.
@@ -229,6 +236,7 @@ const CSS = `
 .ad-speed .ad-v{font:600 18px/1.1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
 .ad-speed .ad-state{font-size:10px;letter-spacing:.12em;color:${MUTED}}
 .ad-speed .ad-cap{font-size:10px;color:${MUTED}}
+.ad-speed .ad-cap[hidden]{display:none}
 .ad-speed.ad-boost .ad-state{color:${ACCENT}}
 
 .ad-track{height:4px;border-radius:2px;background:#22262e;overflow:hidden;margin-top:5px}
@@ -1000,6 +1008,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   const speedFill = el('div', 'ad-fill', speedTrack);
   speedFill.dataset['k'] = 'speed';
   const speedCap = el('div', 'ad-cap', speedBox);
+  speedCap.hidden = true;
 
   /* bottom-right: chapter meters */
   const meters = el('div', 'ad-meters ad-chrome', root);
@@ -1568,8 +1577,13 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
       setText(introLine, c.line, textCache);
       if (bot) setStyle(intro, 'introcol', 'color', rgb(bot.light.c), styleCache);
     }
-    left.classList.toggle('ad-hide', opening);
-    meters.classList.toggle('ad-hide', opening);
+    // On an end card nobody is driving, and the sim ignores a skip once the run is
+    // over: the robot tabs, a speed gauge at 0.0, the chapter's countdown and a
+    // button that does nothing, all around the score.
+    const over = snap.phase === 'done';
+    left.classList.toggle('ad-hide', opening || over);
+    meters.classList.toggle('ad-hide', opening || over);
+    skip.classList.toggle('ad-hide', over);
     // The top bar keeps only the one thing that is true during the opening: that
     // a key skips it. The chapter's name and briefing arrive when the chapter does.
     chapterEl.classList.toggle('ad-hide', opening);
@@ -1701,32 +1715,35 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     const hasMark = t.at !== undefined && opts.project !== undefined;
     const level = nudgeStep(t, nudges.get(t.id) ?? 0, opts.project !== undefined);
     nudges.set(t.id, level);
-    const life = 4200;
+    let line: string;
     if (level === 1 && t.who !== undefined && t.who.length > 0) {
       // Every robot it needs, because plenty need two and naming one of them is
       // a wrong answer rather than half an answer.
       const names = t.who.map((k) => `${k[0].toUpperCase()}${k.slice(1)} (${BOT_KEY[k]})`);
-      pushLine(
+      line =
         t.who.length === 1
           ? `${names[0]}: this one is mine.`
-          : `${names.join(' and ')} — this one takes both of us.`,
-        snap,
-        life,
-      );
+          : `${names.join(' and ')} — this one takes both of us.`;
     } else if (level >= 2 && level - 2 < hintLines(t).length) {
       // One rung per line, nearest obstacle first: the gate in front of the task
       // before the task itself. See `Task.hint`.
-      pushLine(hintLines(t)[level - 2], snap, life);
+      line = hintLines(t)[level - 2];
     } else if (level === markLevel(t) && hasMark) {
-      pushLine('Look for the ring.', snap, life);
+      line = 'Look for the ring.';
     } else {
-      pushLine('That is everything anybody knows about this one.', snap, life);
+      line = 'That is everything anybody knows about this one.';
     }
+    // A hint is read like any other line: a long one stays until it can be.
+    pushLine(line, snap, Math.max(4200, readMs(line)));
   }
 
   function say(text: string): void {
     if (lastSnap) pushLine(text, lastSnap, TOAST_MS, true);
   }
 
-  return { update, toggleTasks, closeTasks, creditsKey, pageTasks, turnStory, nudge, say, dispose, root };
+  function setPhysics(on: boolean): void {
+    speedCap.hidden = !on;
+  }
+
+  return { update, toggleTasks, closeTasks, creditsKey, pageTasks, turnStory, nudge, setPhysics, say, dispose, root };
 }

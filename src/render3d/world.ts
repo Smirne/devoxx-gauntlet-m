@@ -152,7 +152,13 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
    */
   const robotFill = new THREE.PointLight(0xdde4ff, 0, 5, 2);
   scene.add(robotFill);
-  const pool = new LightPool(scene, quality.points, [...robots.values()].map((r) => r.spill));
+  // ...and NOT pooled. The pool takes every point light in the scene at its
+  // position when it collects them, and this one was in the scene first: it was
+  // pinned at the origin, where it stood at startup, and the robot it follows
+  // never got it (second critic round, 30 Sep: the driven robot a black cut-out
+  // in chapter 2's hall). Left out, like the robots' own spills, it is a light of
+  // its own, in the scene from the first frame, so the light count never moves.
+  const pool = new LightPool(scene, quality.points, [...[...robots.values()].map((r) => r.spill), robotFill]);
   // ...and so do the spot lights that cast no shadow (`SpotPool`). Built after
   // the opening's and the mirror's own spots exist, so it takes those too.
   const spots = new SpotPool(scene, quality.spots);
@@ -916,7 +922,9 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       robotFill.position.copy(cam.camera.position).lerp(rob.rig.root.position, 0.45);
       robotFill.position.y += 0.6;
       robotFill.distance = 5;
-      robotFill.intensity = onGround && ground && snap.chapter >= 3 ? 0.8 : 4;
+      // Chapter 2's hall is the darkest place in the game and the biggest, so it
+      // gets more than the first floor's dark.
+      robotFill.intensity = onGround && ground ? (snap.chapter >= 3 ? 0.8 : 10) : 4;
     }
 
     // Mirror bounces from the sim.
