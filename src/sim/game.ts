@@ -193,7 +193,7 @@ const OPENING_KEYS = 'Any key to skip';
  * restart last"*. Every other key a chapter binds is still in its own `keys`
  * line, which the run sheet prints in full.
  */
-const PLAY_KEYS = '1/2/3: switch · E: act · I: info · H: hint · R: restart';
+const PLAY_KEYS = '1/2/3: switch · E: act · I: run sheet · H: hint · R: restart';
 
 /* ---------------------------------------------------------------------- rng */
 
@@ -266,6 +266,8 @@ const NO_PLATES: Plate[] = [];
 
 /** Seconds after typing into a prompt during which R does not restart. */
 const TYPING_GRACE = 2;
+/** Seconds a first R in a chapter stays armed: a second R inside it restarts. */
+const RESTART_CONFIRM = 3;
 
 export function createGame(opts: GameOptions = {}): DebugGame {
   const showCards = opts.cards !== false;
@@ -342,6 +344,8 @@ export function createGame(opts: GameOptions = {}): DebugGame {
 
   /** Sim time of the last key pressed while a chapter had the keyboard; see `KeyR`. */
   let typedAt = -Infinity;
+  /** Sim time of the R that asked to restart the chapter, or -Infinity; see `KeyR`. */
+  let restartAskedAt = -Infinity;
 
   function flash(text: string, ms: number = TOAST_MS, flavour = false): void {
     toast = { t: text, until: t + ms / 1000, flavour };
@@ -869,16 +873,29 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       Math.min(9, Math.round(3 + (soup / 100) * 2 + temp / 100 + spare / (40 * TRAVEL_TIME_SCALE) - complaints * 0.3 + swag.length * 0.5)),
     );
     score.points = pts;
-    score.total = Math.round(t);
+    // From lights-out to the keynote, which is what the film has just said: chapter
+    // 4 takes it when the film starts. A run that never showed the film (a skip)
+    // ends here, so the clock here is the same thing.
+    const total = score.total ?? Math.round(t);
+    score.total = total;
     const nightT = score.nightT ?? 0;
     const expoT = score.expoT ?? 0;
     const sk = skipped.length ? ` · skipped: ${skipped.join(', ')}` : '';
+    const plural = (n: number): string => `${n} complaint${n === 1 ? '' : 's'}`;
+    // A chapter nobody played has no figures. `defaultScore` fills its score in so
+    // the points still add up, and the card used to print those as if they had
+    // happened: "Soup 100% at 100°" for a soup nobody carried (critic round, 30 Sep).
+    const played = (n: number, key: string): boolean => !skipped.includes(n) && score[key] !== undefined;
+    const night = played(1, 'nightT') ? `${nightT}s` : '—';
+    const expo = played(2, 'expoT')
+      ? `${Math.max(0, expoT - nightT)}s (cable ${Math.round((score.cable ?? 0) / PX_PER_M)} m)`
+      : '—';
+    const breakfast = played(3, 'soup') ? `${soup}% at ${temp}° (${plural(score.complaints ?? 0)})` : '—';
+    const stage = played(4, 'spare') ? `ready with ${spare}s to spare (${plural(score.keynoteComplaints ?? 0)})` : '—';
     card =
-      `<b>Keynote starts.</b> ${pts}/9<br>` +
-      `<span class="sub">Night ${nightT}s · Expo ${Math.max(0, expoT - nightT)}s (cable ${Math.round((score.cable ?? 0) / PX_PER_M)} m) · ` +
-      `Soup ${soup}% at ${temp}° (${score.complaints ?? 0} complaint${(score.complaints ?? 0) === 1 ? '' : 's'}) · ` +
-      `Stage ready with ${spare}s to spare (${score.keynoteComplaints ?? 0} complaint${(score.keynoteComplaints ?? 0) === 1 ? '' : 's'}) · ` +
-      `Swag ${swag.length}/3 · Total ${Math.round(t)}s${sk}</span><small>R to play again \u00b7 C for credits</small>`;
+      `<b>Keynote starts.</b> Score ${pts}/9<br>` +
+      `<span class="sub">Night ${night} · Expo ${expo} · Soup ${breakfast} · Stage ${stage} · ` +
+      `Swag ${swag.length}/3 · Total ${total}s${sk}</span><small>R to play again \u00b7 C for credits</small>`;
   }
 
   function finish(): void {
@@ -942,6 +959,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     phase = 'play';
     cur = 0;
     toast = null;
+    restartAskedAt = -Infinity;
     cut = null;
     /*
      * Any opening still running belongs to the chapter being left.
@@ -1008,8 +1026,24 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       next();
       return;
     }
-    skipped.push(chapter);
-    defaultScore(chapter);
+    /*
+     * THE LAST CHAPTER'S ENDING PLAYS, SKIPPED OR NOT.
+     *
+     * Skip in chapter 4 went straight to the final card: no stage, no video, no
+     * curtain call (critic round, 30 Sep; Michele: "I'd fix this"). A chapter with
+     * an ending of its own now plays it and puts the card up itself when it is
+     * over. Pressed again during that ending, Skip only skips the video: the
+     * chapter is over already and counts as whatever it was, played or skipped.
+     */
+    const inEnding = (runtime?.reel?.() ?? null) !== null;
+    if (!inEnding && !skipped.includes(chapter)) {
+      skipped.push(chapter);
+      defaultScore(chapter);
+    }
+    if (runtime?.skip) {
+      dropTow();
+      if (runtime.skip()) return;
+    }
     if (chapter < CHAPTER_COUNT) startChapter(chapter + 1);
     else {
       phase = 'done';
@@ -1351,9 +1385,22 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     const typingNow = runtime?.typing?.() ?? false;
     if (typingNow) typedAt = t;
     if (code === 'KeyR' && !typingNow && t - typedAt < TYPING_GRACE) return;
+    /*
+     * ...and in a chapter, only when asked twice. One R used to wipe the chapter
+     * at once, and R sits beside E, the key every chapter is played with: the
+     * critic round of 30 Sep put all three robots back at spawn with one stray
+     * press and nothing on screen to say why. The first R asks, on screen; a
+     * second one while the question is up restarts. The title and the end card
+     * have nothing to lose, so R there still starts the run at once.
+     */
     if (code === 'KeyR' && !typingNow) {
-      if (chapter >= 1 && phase === 'play') restartChapter();
-      else restart();
+      if (chapter >= 1 && phase === 'play') {
+        if (t >= restartAskedAt && t - restartAskedAt <= RESTART_CONFIRM) restartChapter();
+        else {
+          restartAskedAt = t;
+          flash('Restart the chapter from the beginning? <b>R</b> again to restart', RESTART_CONFIRM * 1000);
+        }
+      } else restart();
       return;
     }
     if (phase !== 'play' || !runtime) return;

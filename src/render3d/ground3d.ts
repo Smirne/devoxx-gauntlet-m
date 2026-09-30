@@ -79,6 +79,35 @@ class Buckets {
 }
 
 /**
+ * A flight case's aluminium: the twelve edges and the lid seam, a little proud of
+ * the black skin so that a lamp catches them. The case in front of every half-table
+ * booth was a bare cube in the counter's grey, which the critic round of 30 Sep
+ * took for a placeholder, while the robot that walks into it is told "a flight
+ * case. Full of somebody's demo".
+ */
+function flightCaseEdges(w: Wall, base: number, h: number): THREE.BufferGeometry[] {
+  const W = m(w.w);
+  const D = m(w.h);
+  const cx = m(w.x + w.w / 2);
+  const cz = m(w.y + w.h / 2);
+  // The edge's section, and how far it stands out of the skin.
+  const t = 0.045;
+  const o = 0.004;
+  const x0 = cx - W / 2 + t / 2 - o;
+  const x1 = cx + W / 2 - t / 2 + o;
+  const z0 = cz - D / 2 + t / 2 - o;
+  const z1 = cz + D / 2 - t / 2 + o;
+  const out: THREE.BufferGeometry[] = [];
+  for (const x of [x0, x1]) for (const z of [z0, z1]) out.push(box(t, h, t, V(x, base + h / 2, z), 1));
+  // Bottom, top, and the lid's seam a fifth of the way down.
+  for (const y of [base + t / 2, base + h - t / 2, base + h * 0.8]) {
+    out.push(box(W + 2 * o, t, t, V(cx, y, z0), 1), box(W + 2 * o, t, t, V(cx, y, z1), 1));
+    out.push(box(t, t, D + 2 * o, V(x0, y, cz), 1), box(t, t, D + 2 * o, V(x1, y, cz), 1));
+  }
+  return out;
+}
+
+/**
  * How tall each kind of ground-floor wall stands, m, and what it is made of.
  *
  * The sim only knows footprints. These are the building's: the perimeter and the
@@ -95,8 +124,9 @@ function styleOf(w: Wall, mats: Materials, concrete: THREE.Material): { h: numbe
     // hiding the open stand behind it.
     case 'totem':
       return { h: 1.9, mat: mats.blackGloss };
+    // A flight case: black road-case skin, its aluminium added by `flightCaseEdges`.
     case 'crate':
-      return { h: 1.1, mat: mats.counter };
+      return { h: 1.1, mat: mats.rubber };
     // White square columns, as in every photograph of the hall.
     case 'column':
     case 'lobby-column':
@@ -942,7 +972,9 @@ export function buildGround(mats: Materials): Ground3D {
     if (p.kind === 'lobby') continue;
     if (p.hi === undefined || p.axis === undefined) continue;
     const rise = Math.abs(p.hi - p.lo);
-    stepsFor(floors, p, p.kind === 'main-flight' ? mats.steel : mats.terrazzoMatte, Math.max(3, Math.round(rise / 0.17)));
+    // The main flight in the carpet its top half wears upstairs (`venue.ts`): it
+    // was steel, grey with a sparkle under the navy (critic round, 30 Sep).
+    stepsFor(floors, p, p.kind === 'main-flight' ? mats.carpet : mats.terrazzoMatte, Math.max(3, Math.round(rise / 0.17)));
   }
   const floorMeshes = floors.build(group, false);
   colliders.push(...floorMeshes);
@@ -974,6 +1006,7 @@ export function buildGround(mats: Materials): Ground3D {
       continue;
     }
     solid.add(s.mat, box(m(w.w), s.h, m(w.h), V(m(w.x + w.w / 2), base + s.h / 2, m(w.y + w.h / 2)), 2.5));
+    if (w.kind === 'crate') for (const g of flightCaseEdges(w, base, s.h)) solid.add(mats.steel, g);
   }
   colliders.push(...solid.build(group));
   colliders.push(...shafts(group, mats, concrete));
@@ -1010,6 +1043,7 @@ export function buildGround(mats: Materials): Ground3D {
       const st = styleOf(w, mats, concrete);
       if (!st || w.glass) continue;
       extra.add(st.mat, box(m(w.w), st.h, m(w.h), V(m(w.x + w.w / 2), groundRiseM(w.x + w.w / 2) + st.h / 2, m(w.y + w.h / 2)), 2.5));
+      if (w.kind === 'crate') for (const g of flightCaseEdges(w, groundRiseM(w.x + w.w / 2), st.h)) extra.add(mats.steel, g);
     }
     extra.build(later);
   }

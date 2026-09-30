@@ -65,6 +65,7 @@ body.ad3d .ad-card b{color:${YELLOW}}
 .ad3d-end h1{color:${YELLOW};letter-spacing:.28em;font-size:24px;text-shadow:0 0 18px rgba(243,230,0,.5)}
 .ad3d-end button{font:inherit;letter-spacing:.16em;text-transform:uppercase;color:${CYAN};background:transparent;border:1px solid ${CYAN};padding:8px 18px;cursor:pointer}
 .ad3d-end button:focus-visible{outline:2px solid ${YELLOW};outline-offset:3px}
+body.ad3d-touch .ad3d-help,body.ad3d-touch .ad3d-quality{display:none}
 .ad3d-lost{background:radial-gradient(ellipse at center,#28060c,#000)}
 
 .ad3d-title{position:fixed;inset:0;z-index:8;display:flex;flex-direction:column;justify-content:flex-end;gap:12px;padding:0 max(16px,6vw) 12vh;
@@ -87,8 +88,10 @@ body.ad3d .ad-card b{color:${YELLOW}}
 body.ad3d.ad3d-film .ad-chrome,body.ad3d.ad3d-film .ad3d-help{opacity:0 !important;transition:opacity .9s ease;pointer-events:none}
 @media (prefers-reduced-motion: reduce){.ad3d-title .ad3d-press{animation:none}}
 /* Bottom-right, ABOVE the chapter meters (bottom-left is the robot panel):
-   and the critic round (29 Sep) found the two printed over each other. */
-.ad3d-help{position:fixed;right:16px;bottom:118px;z-index:6;pointer-events:none;color:#b79c96;font:11px/1.6 "Bahnschrift","Arial Narrow",sans-serif;
+   and the critic round (29 Sep) found the two printed over each other. Under the
+   HUD's own layer (z 5), so the credits and the cards cover it rather than wear
+   it across their right edge (critic round, 30 Sep). */
+.ad3d-help{position:fixed;right:16px;bottom:118px;z-index:4;pointer-events:none;color:#b79c96;font:11px/1.6 "Bahnschrift","Arial Narrow",sans-serif;
   text-transform:uppercase;letter-spacing:.14em;text-align:right;opacity:.8;text-shadow:0 1px 3px #000}
 /* The task pips and count sit on a dark plate: on a lit carpet they vanished. */
 body.ad3d .ad-tasks{background:rgba(8,8,12,.55);border-radius:6px;padding:4px 10px;width:max-content;margin-left:auto;margin-right:auto}
@@ -116,6 +119,7 @@ export function installHudTheme(): void {
   queueMicrotask(() => document.head.appendChild(style));
   const help = document.createElement('div');
   help.className = 'ad3d-help';
-  help.innerHTML = 'mouse · look &nbsp;/&nbsp; click · lock<br>wheel · zoom<br>P · photo mode<br>Q · quality';
+  // M and N were named nowhere in the game, only in the README (critic round 2).
+  help.innerHTML = 'mouse · look &nbsp;/&nbsp; click · lock<br>wheel · zoom<br>P · photo mode<br>Q · quality<br>M · mute &nbsp;/&nbsp; N · music';
   document.body.appendChild(help);
 }

@@ -341,6 +341,8 @@ describe('chapter 2 — the password field', () => {
     expect(expo(g).router.online, 'one R too many restarted the chapter').toBe(true);
     // ...and R is a restart again once the hands are off the keyboard.
     steps(g, Math.ceil(2.2 / DT_MAX));
+    // Twice: in a chapter the first R only asks.
+    g.key('KeyR');
     g.key('KeyR');
     expect(expo(g).router.online, 'R never came back as restart').toBe(false);
   });

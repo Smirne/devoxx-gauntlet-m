@@ -1200,25 +1200,34 @@ export function buildVoxxy(): RobotRig {
   }
 
   /*
-   * EARS: pointed teardrops angled 25 degrees outward, overlapping the crown,
-   * each with a small white inner-ear decal.
+   * EARS: round bear ears — domes angled 25 degrees outward, overlapping the
+   * crown, each with a small white inner-ear decal.
    *
-   * §3d: ear diameter / head_w = 0.185 and ear centre spacing / head_w = 0.593.
-   * The rounded blobs with white skull-caps this replaces were the wrong shape,
-   * the wrong angle and carried no marking at all — and the ears are the top of
-   * the silhouette, so they are the first thing that says "Voxxy" at play scale.
+   * §3d: ear diameter / head_w = 0.185 and ear centre spacing / head_w = 0.593,
+   * and `docs/model-sheet-targets.md` measures them as "ear domes": the part
+   * above the oval is about half the ear's width, i.e. a semicircle. They were
+   * pointed teardrops for a while — a fox's ear — and an outside critic caught
+   * it on 30 Sep 2026 against every panel of `robots/voxxy-robot.png`, where the
+   * top of each ear is a clean round arc. The top is now a true circle of the
+   * same 0.0615 m radius the teardrop had at its widest, centred so the tip
+   * still lands at 0.106 — the ear tips stay the top of the figure at exactly
+   * ROBOT_HEIGHT_M.voxxy — and the lower half narrows away inside the crown.
+   * The ears are the top of the silhouette, so they are the first thing that
+   * says "Voxxy" at play scale: round says bear-cub, pointed said fox.
    */
+  const EAR_R = 0.0615;
+  const EAR_C = 0.106 - EAR_R;
+  const earCap: Array<[number, number]> = [];
+  for (let i = 0; i <= 8; i++) {
+    const a = (i / 8) * (Math.PI / 2);
+    earCap.push([EAR_R * Math.cos(a), EAR_C + EAR_R * Math.sin(a)]);
+  }
   const earGeoPts: Array<[number, number]> = [
     [0.0, -0.076],
-    [0.034, -0.07],
-    [0.0555, -0.05],
-    [0.0615, -0.025],
-    [0.06, 0.005],
-    [0.052, 0.035],
-    [0.04, 0.06],
-    [0.0255, 0.082],
-    [0.0115, 0.098],
-    [0.0, 0.106],
+    [0.032, -0.068],
+    [0.0515, -0.047],
+    [0.0598, -0.018],
+    ...earCap,
   ];
   const earSurface = profileSampler(earGeoPts);
   for (const sx of [-1, 1]) {

@@ -95,6 +95,19 @@ export interface Hud {
    * arrow pointing at nothing.
    */
   nudge(): void;
+  /**
+   * The physics view is up (`P` in the 2.5D build). The speed meter's raw sim
+   * line (`… px/s (sim)`) shows only then: it is for a physics judge, and to a
+   * player it read as debug noise (critic panel, 30 Sep). The 3D build has no
+   * physics view and never calls this, so there the line stays hidden.
+   */
+  setPhysics(on: boolean): void;
+  /**
+   * A line from the shell itself, in the stack and in flavour grey: for a key
+   * whose effect is not on screen (the sound switches), so it still says what it
+   * did.
+   */
+  say(text: string): void;
   dispose(): void;
   /** The overlay root, for hosts that need to measure or reparent it. */
   readonly root: HTMLElement;
@@ -223,6 +236,7 @@ const CSS = `
 .ad-speed .ad-v{font:600 18px/1.1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
 .ad-speed .ad-state{font-size:10px;letter-spacing:.12em;color:${MUTED}}
 .ad-speed .ad-cap{font-size:10px;color:${MUTED}}
+.ad-speed .ad-cap[hidden]{display:none}
 .ad-speed.ad-boost .ad-state{color:${ACCENT}}
 
 .ad-track{height:4px;border-radius:2px;background:#22262e;overflow:hidden;margin-top:5px}
@@ -307,7 +321,7 @@ const CSS = `
   border-right:1px solid currentColor;border-bottom:1px solid currentColor}
 .ad-bubble.ad-out{animation:ad-sink-b .34s ease-in forwards}
 
-.ad-toasts{position:absolute;left:50%;bottom:96px;transform:translateX(-50%);width:min(680px,74vw);
+.ad-toasts{position:absolute;left:50%;bottom:96px;transform:translateX(-50%);width:min(680px,74vw);z-index:5;
   display:flex;flex-direction:column;align-items:center;gap:6px}
 .ad-toast{max-width:100%;padding:8px 15px;border-radius:9px;border-left:3px solid currentColor;
   background:rgba(10,11,14,.92);box-shadow:0 8px 28px rgba(0,0,0,.5);font-size:15px;text-align:center;
@@ -399,11 +413,32 @@ const CSS = `
 .ad-cwd svg{display:block;width:132px;height:auto}
 .ad-cwd .ad-csite{font-size:13px;color:${WELLD_RED};font-weight:600;letter-spacing:.02em}
 .ad-cnote2{flex:1 1 280px;min-width:0;font-size:11px;line-height:1.45;color:${MUTED}}
-.ad-ckey{margin-top:10px;font-size:11px;letter-spacing:.06em;color:${MUTED};text-align:right}
+/* The way out is at the top, where it cannot fall below the fold: at the bottom
+   of the panel it was the first thing a short screen cut off (critic round, 30 Sep). */
+.ad-credits .ad-cbox{position:relative}
+.ad-ckey{position:absolute;top:18px;right:26px;font-size:11px;letter-spacing:.06em;color:${MUTED};text-align:right}
 @media (max-width:860px){ .ad-cstats{grid-template-columns:repeat(2,minmax(0,1fr))} }
 @media (max-width:560px){
   .ad-credits .ad-cbox{padding:20px 18px 16px}
   .ad-cstats{grid-template-columns:1fr}
+}
+/* A 720p screen leaves the panel 662 px, and the credits ran past it: the last
+   row of figures and the close key were below the fold with nothing to say so
+   (critic round, 30 Sep). Tighter type and air on short screens, so they fit. */
+@media (max-height:800px){
+  .ad-credits{padding:10px}
+  .ad-credits .ad-cbox{max-height:96vh;padding:14px 24px 10px}
+  .ad-credits h3{font-size:21px}
+  .ad-credits .ad-csub{margin:0 0 8px}
+  .ad-crole{margin-bottom:5px;font-size:12px;line-height:1.38}
+  .ad-crole b{font-size:13px}
+  .ad-chead{margin:8px 0 6px;padding-top:8px}
+  .ad-cstats{gap:7px 18px}
+  .ad-cstat .ad-cn{font-size:17px}
+  .ad-cstat .ad-cnote{font-size:10.5px;line-height:1.3}
+  .ad-cfoot{margin-top:8px;padding-top:8px}
+  .ad-cwd svg{width:112px}
+  .ad-ckey{top:14px}
 }
 .ad-peek{display:flex;align-items:center;justify-content:space-between;gap:12px;
   font-size:13px;color:#cdc9c2}
@@ -699,6 +734,29 @@ function toastLifeMs(until: number, snapT: number): number {
   return Math.max(900, Math.min(8000, ms));
 }
 
+/**
+ * How long a line takes to READ, ms: a second to notice it, then about four words
+ * a second, up to twelve seconds. The chapters give a line its life in sim time,
+ * and the long ones came up for four seconds and went — the shutter's forty-five
+ * words, the fire door's twenty (critic round, 30 Sep). A short line keeps its
+ * own life; a long one stays until it can have been read.
+ */
+function readMs(text: string): number {
+  const words = text.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
+  return Math.min(12000, 1000 + words * 230);
+}
+
+/**
+ * The same READOUT with a new figure: "Voxxy pushes Biggy — 5.8 m/s and climbing",
+ * then 6.1. That is one line being updated, not a second line — stacked, a push
+ * filled the three places and pushed the story out. Only for measured speeds:
+ * two clues differ only in their digits too, and both have to stay on screen.
+ */
+function sameReadout(a: string, b: string): boolean {
+  const stem = (s: string): string => s.replace(/\d+(?:[.,]\d+)*/g, '#');
+  return a.includes('m/s') && b.includes('m/s') && stem(a) === stem(b);
+}
+
 /** Clear air left between two bubbles that would otherwise touch, in px. */
 const BUBBLE_GAP = 6;
 
@@ -950,6 +1008,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   const speedFill = el('div', 'ad-fill', speedTrack);
   speedFill.dataset['k'] = 'speed';
   const speedCap = el('div', 'ad-cap', speedBox);
+  speedCap.hidden = true;
 
   /* bottom-right: chapter meters */
   const meters = el('div', 'ad-meters ad-chrome', root);
@@ -1348,13 +1407,18 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
       const key = `${t.t}|${t.until}`;
       if (key !== lastToastKey) {
         lastToastKey = key;
-        const life = toastLifeMs(t.until, snap.t);
+        const life = Math.max(toastLifeMs(t.until, snap.t), readMs(t.t));
         // The same sentence twice is one message that is still true, not two
         // messages: leaning on a door re-fires its `why` every throttle window, and
         // stacking those produced six identical toasts down the middle of the
         // screen. Refresh the existing line's timer instead.
-        const repeat = live.find((lt) => !lt.out && lt.text === t.t);
+        const repeat = live.find((lt) => !lt.out && (lt.text === t.t || sameReadout(lt.text, t.t)));
         if (repeat) {
+          if (repeat.text !== t.t) {
+            repeat.text = t.t;
+            const line = repeat.node.querySelector('.ad-line');
+            if (line) line.innerHTML = t.t;
+          }
           repeat.dieAt = now + life;
           repeat.removeAt = now + life + 340;
         } else {
@@ -1513,8 +1577,13 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
       setText(introLine, c.line, textCache);
       if (bot) setStyle(intro, 'introcol', 'color', rgb(bot.light.c), styleCache);
     }
-    left.classList.toggle('ad-hide', opening);
-    meters.classList.toggle('ad-hide', opening);
+    // On an end card nobody is driving, and the sim ignores a skip once the run is
+    // over: the robot tabs, a speed gauge at 0.0, the chapter's countdown and a
+    // button that does nothing, all around the score.
+    const over = snap.phase === 'done';
+    left.classList.toggle('ad-hide', opening || over);
+    meters.classList.toggle('ad-hide', opening || over);
+    skip.classList.toggle('ad-hide', over);
     // The top bar keeps only the one thing that is true during the opening: that
     // a key skips it. The chapter's name and briefing arrive when the chapter does.
     chapterEl.classList.toggle('ad-hide', opening);
@@ -1646,28 +1715,35 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     const hasMark = t.at !== undefined && opts.project !== undefined;
     const level = nudgeStep(t, nudges.get(t.id) ?? 0, opts.project !== undefined);
     nudges.set(t.id, level);
-    const life = 4200;
+    let line: string;
     if (level === 1 && t.who !== undefined && t.who.length > 0) {
       // Every robot it needs, because plenty need two and naming one of them is
       // a wrong answer rather than half an answer.
       const names = t.who.map((k) => `${k[0].toUpperCase()}${k.slice(1)} (${BOT_KEY[k]})`);
-      pushLine(
+      line =
         t.who.length === 1
           ? `${names[0]}: this one is mine.`
-          : `${names.join(' and ')} — this one takes both of us.`,
-        snap,
-        life,
-      );
+          : `${names.join(' and ')} — this one takes both of us.`;
     } else if (level >= 2 && level - 2 < hintLines(t).length) {
       // One rung per line, nearest obstacle first: the gate in front of the task
       // before the task itself. See `Task.hint`.
-      pushLine(hintLines(t)[level - 2], snap, life);
+      line = hintLines(t)[level - 2];
     } else if (level === markLevel(t) && hasMark) {
-      pushLine('Look for the ring.', snap, life);
+      line = 'Look for the ring.';
     } else {
-      pushLine('That is everything anybody knows about this one.', snap, life);
+      line = 'That is everything anybody knows about this one.';
     }
+    // A hint is read like any other line: a long one stays until it can be.
+    pushLine(line, snap, Math.max(4200, readMs(line)));
   }
 
-  return { update, toggleTasks, closeTasks, creditsKey, pageTasks, turnStory, nudge, dispose, root };
+  function say(text: string): void {
+    if (lastSnap) pushLine(text, lastSnap, TOAST_MS, true);
+  }
+
+  function setPhysics(on: boolean): void {
+    speedCap.hidden = !on;
+  }
+
+  return { update, toggleTasks, closeTasks, creditsKey, pageTasks, turnStory, nudge, setPhysics, say, dispose, root };
 }

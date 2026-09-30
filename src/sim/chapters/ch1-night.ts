@@ -30,7 +30,7 @@ import {
   roomDoor,
   roomScreen,
 } from '../geometry';
-import { JAMMED_DOOR_SPEED, MOUNT_BIGGY_MAX_SPEED, MOUNT_REACH, SPEED_SCALE, T, W } from '../constants';
+import { DEFS, JAMMED_DOOR_SPEED, MOUNT_BIGGY_MAX_SPEED, MOUNT_REACH, SPEED_SCALE, T, W } from '../constants';
 import { PX_PER_M, m } from '../units';
 import { buildLights, clueLit, litBy } from '../lights';
 import { dist, speed } from '../bot';
@@ -284,10 +284,11 @@ export interface NightState {
 }
 
 const OBJECTIVE =
-  'Chapter 1 · <b>Night</b>. The power is out in the closed cinema section. The fire door to the Devoxx ' +
+  'Chapter 1 · <b>Night</b> · <i>Kinepolis Antwerp, first floor</i>. The power is out in the closed cinema ' +
+  'section, the wing Devoxx does not use. The fire door to the Devoxx ' +
   'rooms has a keypad: find the <b>4 digits</b>, each visible only under the right <b>mix of lights</b>. ' +
   'Droid might need help from Biggy (E). Biggy can break jammed doors.';
-const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb / hold Biggy / Voxxy jumps · 4-9 at the keypad (Backspace) · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics \u00b7 C: credits';
+const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb / hold Biggy / Voxxy jumps · 4-9: type at the keypad (Backspace erases) · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics \u00b7 C: credits';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('up');
@@ -1212,12 +1213,20 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         ];
       return [];
     };
+    /*
+     * Where each clue is, in the words the building shows the player: the foyer,
+     * the popcorn kiosk, and two rooms by the letter on their orange panel. The run
+     * sheet and the hint said who and what, never where (critic round 2, 30 Sep).
+     */
+    const WHERE: Record<number, string> = { 1: 'in the foyer', 2: 'at the popcorn kiosk', 3: 'in Zaal B', 4: 'in Zaal E' };
     const out: Task[] = clues
       .slice()
       .sort((a, b) => a.slot - b.slot)
       .map((c) => ({
         id: `clue${c.slot}`,
-        text: `light the ${c.label} mix`,
+        // 'all three' is a count, not a colour pair: "light the all three mix" was
+        // how the run sheet read it.
+        text: `${c.label === 'all three' ? 'light the mix of all three lamps' : `light the ${c.label} mix`} ${WHERE[c.slot] ?? ''}`.trim(),
         done: c.found,
         // The first robot the mix needs. A two-colour mix needs both, and the
         // panel says so from `need` — but an arrow can only point for one, and
@@ -1229,8 +1238,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         hint: [
           ...gate(c.slot),
           c.need.length === 3
-            ? 'Biggy: all three of us, and mine has to come off the screen. Back of the room, aim at the picture'
-            : `Voxxy: ${c.need.join(' and ')}, same spot, both lamps on it at once`,
+            ? 'Biggy: all three of us, in Zaal E, and mine has to come off the screen. Back of the room, aim at the picture'
+            : // Said by the first robot the mix needs, about the other one, by name:
+              // it used to be Voxxy reading out the ids ("voxxy and droid"), even for
+              // the green + blue mix she has no part in.
+              `${DEFS[c.need[0]].name}: me and ${DEFS[c.need[1]].name}, ${WHERE[c.slot] ?? 'here'}: both lamps on the same spot at once`,
         ],
       }));
     out.push({

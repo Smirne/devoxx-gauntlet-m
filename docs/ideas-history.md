@@ -1,5 +1,8 @@
 # Game ideas — how we got here (10–16 Sep 2026)
 
+The prototypes described below are playable at <https://devoxx-game-pocs.vercel.app/>; POC 10 is also
+kept in this repo as `reference/poc/10-after-dark-kinepolis.html`.
+
 ## Strategy read of the scoring
 Originality is 40/100 and realism of robot physics 20/100, and the robot descriptions are physics specs (light/fast, tall/deliberate, high inertia). Making the physics differences the core mechanic scores in originality, realism and "all three robots matter" at once. Judges run from a clone: browser build + hosted link minimises friction. Top-down physics on the real floor plan gets sense-of-place cheaply and keeps physics legible.
 

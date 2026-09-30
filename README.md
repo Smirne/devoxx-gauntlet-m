@@ -1,15 +1,33 @@
 # After Dark
 
+**▶ Play it: <https://devoxx-after-dark.vercel.app/>** (keyboard and WebGL2; a desktop browser) ·
+the prototypes it grew from: <https://devoxx-game-pocs.vercel.app/> ·
+source: <https://github.com/Smirne/devoxx-gauntlet-m>
+
 The cleaners have gone home, the projectors are cold, and Devoxx opens in six hours. **After Dark**
 is a lights-and-locks puzzle game set in the real Kinepolis Antwerp: you play Voxxy, Droid and Biggy,
 the three Devoxx robots, working the night shift over four chapters — the dark cinema floor, the
-unlit exhibition hall, the lunch rush and the keynote. The building is pitch black, and each robot
+unlit exhibition hall, the breakfast rush and the keynote. The building is pitch black, and each robot
 carries a different lamp: Voxxy a narrow orange beam, Droid a small green pool, Biggy a wide blue
 flood. Light is the mechanic. Where two colours overlap you can read what is written there, and the
 only way through a locked door is to put the right robots in the right places at the same time.
 
 **Trailer** (one minute, contains spoilers): [youtube.com/watch?v=BdS6FYy0NqI](https://www.youtube.com/watch?v=BdS6FYy0NqI).
 It is shot frame by frame from the real 3D build; how it is made is in [`tools/promo/`](tools/promo/README.md).
+
+## What you have not played before
+
+- **Light is the key, literally.** Each robot carries a lamp of its own colour, and clues are
+  written so that they only appear where the right colours overlap. Reading the room means
+  arranging the robots, not finding an item.
+- **The robots are told apart by physics, not by an inventory.** Mass, height and width decide
+  who can do what: Biggy is too heavy to stop and so breaks a jammed door, Droid is too tall for a
+  low passage but climbs onto Biggy to reach a high panel, and Voxxy is light enough to shove Biggy
+  past his own top speed. It is one physics step, not a script.
+- **A night shift, not a race.** The venue before Devoxx opens: the dark cinema wing, the expo with
+  the power off, the lunch queue, and Room 8 for the keynote.
+- **The ending is your run.** The keynote's opening film is cut from how you actually played it:
+  the soup you spilled, the cable you dragged, the scenes you skipped.
 
 ## Run it
 
@@ -26,6 +44,10 @@ building, all four chapters, an HDR pipeline with reflections, volumetric light 
 The original 2.5D diorama build of the same game — same simulation, same chapters, a fixed
 isometric camera per room — is still at `http://localhost:5173/`, and is where the physics view
 (`P`) lives.
+
+On a static host the same holds, with one convenience: `vercel.json` redirects the bare domain `/`
+to `/3d.html`, so the published link opens the entry; the 2.5D build is at
+<https://devoxx-after-dark.vercel.app/index.html>.
 
 The first time it runs, the 3D build picks a render quality from the GPU the browser reports (low
 for software renderers and phones, medium for integrated graphics, high otherwise), and while it runs
@@ -61,9 +83,9 @@ into the bundle.
 | `Q` / **Quality** button (top right) | One quality level down (reloads into the same chapter) |
 | `P` | Photo mode: hide the HUD, depth of field on the robot |
 | `M` / `N` | Mute everything / music on or off |
-| `R` | Restart the chapter |
+| `R` | Restart the chapter: the first press asks, a second one within 3 s restarts |
 | `C` | The credits; `C` or `Esc` closes them |
-| **Skip chapter ▸** (top right) | Jump to the next chapter |
+| **Skip chapter ▸** (top right) | Jump to the next chapter; in chapter 4, to its ending — the opening video and the curtain call — and a second press skips the video |
 
 ## Controls (2.5D diorama build)
 
@@ -78,9 +100,9 @@ into the bundle.
 | `M` | Mute everything |
 | `N` | Music on / off, leaving the sound effects alone |
 | `P` | **The physics view** — collision circles at each robot's real radius, velocity arrows to scale, and every contact the solver resolved this frame drawn on its own normal and sized by the impulse, with the numbers beside them. It reads the simulation; it does not re-derive it |
-| `R` | Restart the run |
+| `R` | Restart the chapter: the first press asks, a second one within 3 s restarts |
 | `C` | The credits; `C` or `Esc` closes them |
-| **Skip chapter ▸** (button, top right) | Jump to the next chapter if you are stuck, or to see the later ones |
+| **Skip chapter ▸** (button, top right) | Jump to the next chapter if you are stuck, or to see the later ones; in chapter 4 it plays the ending, and a second press skips the video |
 | **the briefing** (top of the screen) | Folds itself to one line a few seconds in, so it is not sitting over the diorama all chapter. Click it to unfold or refold |
 
 A ring on the floor, in that robot's lamp colour, marks the one you are driving. The line across the
@@ -91,13 +113,14 @@ puzzle hint — read it rather than pushing harder.
 
 ## What you are playing
 
-Four chapters, each in one part of the building, each seen from a fixed diorama camera:
+Four chapters, each in one part of the building — in the 3D build from behind the robot you drive,
+in the 2.5D build from a fixed diorama camera:
 
 1. **Night** — the closed cinema section behind the fire door. Four things in the dark need reading
    before the door will open.
 2. **Expo** — the exhibition hall with the power off. Breakers, a cable run that is measured to the
    pixel, and a roller door that will not care how hard you ask it politely.
-3. **Lunch** — doors open, visitors arrive, the soup queue forms, and a speaker is missing fifteen
+3. **Breakfast** — doors open, visitors arrive, the soup queue forms, and a speaker is missing fifteen
    minutes before their talk.
 4. **Keynote** — Room 8. Cake, a banner, spotlights, a filling room, and three robots who have to be
    on that stage when the lights come up.
@@ -135,7 +158,7 @@ is the only source of truth for game state; `src/render` is Three.js and only ev
 robots are procedural primitives on a bone rig with a procedurally animated gait, the venue is built
 from the floor plans, and every sound is synthesised with the Web Audio API at runtime — including
 the music, which is a four-bar score per chapter played by oscillators rather than a file. The one
-file is the opening's: "Heroic Motif" by Ronny Shamano, AI-generated and given to the game, cut to
+file is the opening's: "Heroic Motif" by Ronny Shamano, made with Suno and given to the game, cut to
 the crates (`src/render/opening-track.mp3`); the synthesised opening score is its fallback.
 
 Built with generative AI, deliberately and with the process written down:
@@ -203,9 +226,11 @@ anywhere, including the title screen.
 | `?nohud=1` | Hide the DOM overlay |
 | `?physics=1` | Start with the physics view up (`P` toggles it in play) |
 
-`document.title` always reads `After Dark 3D · ERRORS:<count>` in the 3D build and
+`document.title` reads `After Dark 3D · ERRORS:<count>` in the 3D build and
 `After Dark · ERRORS:<count>` in the 2.5D one, where `<pre id="console-log">` also carries the lines,
-so "no console errors" can be read straight out of `--dump-dom`.
+so "no console errors" can be read straight out of `--dump-dom`. The one exception is the published
+Vercel build, whose tab reads `AFTER DARK 3D - The Devoxx Game` (or `AFTER DARK - The Devoxx Game`)
+for players; add `?errors=1` there to get the count back.
 
 ## Who you will meet
 
@@ -220,8 +245,8 @@ three robots, starts a conversation.
 ## Licence
 
 MIT — see [LICENSE](LICENSE). It covers the code and the generated content, which is all of the game
-but one file: no third-party art, models or textures ship in the build, and the only audio file is
-the opening's track, "Heroic Motif" by Ronny Shamano, AI-generated and given to this game with
-permission — credited on the credits screen (`C`). The robot model sheets (`robots/`),
+but two things: the opening's track, "Heroic Motif" by Ronny Shamano, made with Suno and given to
+this game with permission, and WellD's logo on the credits screen (`C`), which credits both. No other
+third-party art, models, textures or audio ship in the build. The robot model sheets (`robots/`),
 floor plans (`plans/`) and venue photographs (`media/`) are the organisers' own reference material
 from <https://game.devoxx.be/references.html>, kept here only as build references.

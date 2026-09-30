@@ -485,11 +485,19 @@ describe('chapter 2 — expo', () => {
     const g = mk(2);
     const panel = { x: GF.panel.x + 13, y: GF.panel.y + 8 };
 
-    // Biggy does not do buttons.
+    // Biggy does not do buttons, and neither does Voxxy — and each says so, in
+    // their own voice (critic round, 30 Sep: Voxxy only hopped).
     g.debug.select('biggy');
     g.debug.place('biggy', panel.x + 30, panel.y + 30);
     g.key('KeyE');
     expect((g.debug.chapter() as ExpoState).breakersLeft).toBe(3);
+    expect(g.snapshot().toast?.t).toMatch(/^Biggy: .*Droid/);
+    g.debug.select('voxxy');
+    g.debug.place('voxxy', panel.x, panel.y + 12);
+    g.key('KeyE');
+    expect((g.debug.chapter() as ExpoState).breakersLeft).toBe(3);
+    expect(g.snapshot().toast?.t).toMatch(/^Voxxy: .*Droid/);
+    g.debug.place('voxxy', panel.x + 200, panel.y + 12);
 
     g.debug.select('droid');
     g.debug.place('droid', panel.x, panel.y + 8);
@@ -645,6 +653,8 @@ describe('chapter 2 — expo', () => {
 
     // No prompt: R is restart, and a restart now puts you back at the top of THIS
     // chapter rather than at the top of the run (Michele: "not the whole game!").
+    // Twice: in a chapter the first R only asks.
+    g.key('KeyR');
     g.key('KeyR');
     expect(g.snapshot().chapter).toBe(2);
     expect(g.snapshot().t).toBe(0);
@@ -1278,7 +1288,11 @@ describe('chapter 3 — breakfast', () => {
       for (let i = 0; i < CRATE_STACK_LIMIT - 1; i++) liftCrate(g);
       expect(bg.mass).toBeGreaterThan(DEFS.biggy.mass);
       if (escape === 'skip') g.skipChapter();
-      else g.key('KeyR');
+      else {
+        // Twice: in a chapter the first R only asks.
+        g.key('KeyR');
+        g.key('KeyR');
+      }
       // `R` restarts the chapter rather than the run, so the escape it tests is
       // now "back to the top of chapter 3" — and the load must not survive that
       // either, which is the same `restoreIdentity` this test exists for.
@@ -1295,7 +1309,7 @@ describe('chapter 3 — breakfast', () => {
     // Sixty since 25 Sep 2026, up from thirty-six — Michele, once the figures had
     // bodies worth looking at: *"Raise a bit, 60?"* Hard-coded rather than read
     // off the chapter's own constant on purpose: this is the number the card's
-    // "3,000 people walk in" is standing in for, and it should not be able to
+    // "three thousand people are inside" is standing in for, and it should not be able to
     // drift without somebody editing this line.
     expect(breakfast.crowd).toBe(60);
     expect(g.snapshot().people.filter((p) => p.role === 'visitor')).toHaveLength(60);
@@ -1615,7 +1629,8 @@ describe('chapter 3 — breakfast', () => {
    */
   it('carries swag won in chapter 3 through to the final card', () => {
     const plain = createGame({ seed: SEED, chapter: 3, cards: false });
-    for (let i = 0; i < 2; i++) plain.skipChapter();
+    // Chapter 3, chapter 4 — which plays its ending — and then the video.
+    for (let i = 0; i < 3; i++) plain.skipChapter();
     const bare = /(\d)\/9/.exec(plain.snapshot().card ?? '');
     expect(plain.snapshot().card).toContain('Swag 0/3');
 
@@ -1626,7 +1641,7 @@ describe('chapter 3 — breakfast', () => {
     g.key('KeyE');
     expect(g.snapshot().swag).toContain('sticker');
 
-    for (let i = 0; i < 2; i++) g.skipChapter();
+    for (let i = 0; i < 3; i++) g.skipChapter();
     expect(g.snapshot().phase).toBe('done');
     expect(g.snapshot().card).toContain('Swag 1/3');
     // Half a point each, so one swag is worth either nothing or one whole point
@@ -1725,38 +1740,100 @@ describe('chapter 4 — keynote', () => {
    * already follows.
    */
   it('lets any key skip the opening video straight to the final card', () => {
+    for (const escape of ['key', 'skip'] as const) {
+      const g = mk(4);
+      const key = (): KeynoteState => g.debug.chapter() as KeynoteState;
+      const mark = g.snapshot().props.find((p) => p.kind === 'cake-mark');
+      const markX = mark!.x + (mark!.w ?? 0) / 2;
+      g.debug.placeProp('cake', markX, mark!.y + 58);
+      g.debug.select('biggy');
+      g.debug.place('biggy', markX, mark!.y + 98);
+      g.setStick(0, -1);
+      until(g, () => key().cake, 200);
+      g.setStick(0, 0);
+      raiseSign(g);
+      g.debug.select('voxxy');
+      for (const sp of g.snapshot().props.filter((p) => p.kind === 'spotlight')) {
+        g.debug.place('voxxy', sp.x, sp.y);
+        steps(g, 1);
+      }
+      const stage = g.snapshot().props.find((p) => p.kind === 'stage');
+      const sy = stage!.y + (stage!.h ?? 0) / 2;
+      g.debug.place('voxxy', stage!.x + 20, sy);
+      g.debug.place('droid', stage!.x + 90, sy);
+      g.debug.place('biggy', stage!.x + 160, sy);
+      steps(g, 1);
+      expect(g.snapshot().reel, 'the video never started').not.toBeNull();
+
+      // Two seconds in — long enough that a player has seen the first card and
+      // decided they have had enough of it.
+      steps(g, 60);
+      expect(g.snapshot().reel).not.toBeNull();
+      // Skip chapter is a key like any other here: the chapter was played to the
+      // end, so skipping its video must not call it skipped.
+      if (escape === 'key') g.key('Space');
+      else g.skipChapter();
+      expect(g.snapshot().reel, `${escape} did not stop the video`).toBeNull();
+      expect(g.snapshot().phase).toBe('done');
+      expect(g.snapshot().card).toContain('Keynote starts');
+      expect(g.snapshot().card, `${escape} counted a played chapter as skipped`).not.toContain('skipped');
+    }
+  });
+
+  /**
+   * SKIP CHAPTER STILL ENDS WITH THE KEYNOTE.
+   *
+   * It went straight to the final card: no stage, no video, no curtain call, the
+   * three of them left in the corridor under a countdown (critic round, 30 Sep;
+   * Michele: "I'd fix this"). A skip plays the ending as if somebody had done the
+   * jobs, and a second skip, during the video, goes to the card, which still lists
+   * the chapter as skipped and scores it nothing.
+   */
+  it('plays the ending when chapter 4 is skipped', () => {
     const g = mk(4);
     const key = (): KeynoteState => g.debug.chapter() as KeynoteState;
-    const mark = g.snapshot().props.find((p) => p.kind === 'cake-mark');
-    const markX = mark!.x + (mark!.w ?? 0) / 2;
-    g.debug.placeProp('cake', markX, mark!.y + 58);
-    g.debug.select('biggy');
-    g.debug.place('biggy', markX, mark!.y + 98);
-    g.setStick(0, -1);
-    until(g, () => key().cake, 200);
-    g.setStick(0, 0);
-    raiseSign(g);
-    g.debug.select('voxxy');
-    for (const sp of g.snapshot().props.filter((p) => p.kind === 'spotlight')) {
-      g.debug.place('voxxy', sp.x, sp.y);
-      steps(g, 1);
-    }
-    const stage = g.snapshot().props.find((p) => p.kind === 'stage');
-    const sy = stage!.y + (stage!.h ?? 0) / 2;
-    g.debug.place('voxxy', stage!.x + 20, sy);
-    g.debug.place('droid', stage!.x + 90, sy);
-    g.debug.place('biggy', stage!.x + 160, sy);
-    steps(g, 1);
-    expect(g.snapshot().reel, 'the video never started').not.toBeNull();
-
-    // Two seconds in — long enough that a player has seen the first card and
-    // decided they have had enough of it.
+    g.skipChapter();
+    expect(g.snapshot().phase, 'the skip went straight to the card').toBe('play');
+    expect(g.snapshot().reel, 'no opening video').not.toBeNull();
+    expect(key().cake).toBe(true);
+    expect(key().sign).toBe('#DEVOXX');
+    expect(key().spots).toBe(4);
+    expect(key().crowd).toBeGreaterThan(0);
+    expect(key().seated, 'the room is not seated').toBe(key().crowd);
+    const stage = g.snapshot().props.find((p) => p.kind === 'stage')!;
+    const onStage = (): string[] =>
+      g
+        .snapshot()
+        .bots.filter((b) => b.x < stage.x || b.x > stage.x + (stage.w ?? 0) || b.y < stage.y || b.y > stage.y + (stage.h ?? 0))
+        .map((b) => b.kind);
+    expect(onStage(), 'off the stage').toEqual([]);
+    // Two seconds of the curtain call, and the three of them are still up there.
     steps(g, 60);
     expect(g.snapshot().reel).not.toBeNull();
-    g.key('Space');
-    expect(g.snapshot().reel, 'the key did not stop the video').toBeNull();
+    expect(onStage(), 'off the stage').toEqual([]);
+    g.skipChapter();
     expect(g.snapshot().phase).toBe('done');
-    expect(g.snapshot().card).toContain('Keynote starts');
+    expect(g.snapshot().card).toContain('skipped: 4<');
+    expect(g.snapshot().card).toContain('Stage —');
+  });
+
+  /**
+   * The cake moves for Biggy. Anybody else leaning into it bumps it a few pixels,
+   * which is right for a board that outweighs them, and now says why (critic
+   * round, 30 Sep: Voxxy drove into it at full speed and nothing was said).
+   */
+  it('has Voxxy and Droid say why the cake will not move for them', () => {
+    for (const kind of ['voxxy', 'droid'] as const) {
+      const g = mk(4);
+      const cake = g.snapshot().props.find((p) => p.kind === 'cake')!;
+      g.debug.select(kind);
+      g.debug.place(kind, cake.x - 34, cake.y, 0);
+      g.setStick(1, 0);
+      const said = (): string => g.snapshot().toast?.t ?? '';
+      expect(until(g, () => said().includes('Biggy pushes this one'), 120), `${kind} said nothing`).toBe(true);
+      expect(said().startsWith(kind === 'voxxy' ? 'Voxxy:' : 'Droid:')).toBe(true);
+      expect((g.debug.chapter() as KeynoteState).cake).toBe(false);
+    }
   });
 
   it('blocks the seat blocks and leaves the aisles open', () => {
@@ -1944,9 +2021,15 @@ describe('the game rig', () => {
       steps(g, 3);
       expect(g.snapshot().chapter).toBe(n);
     }
+    // Chapter 4's skip plays its ending, the video; a second skip goes to the card.
+    g.skipChapter();
+    expect(g.snapshot().reel, 'the skip went past the ending').not.toBeNull();
     g.skipChapter();
     expect(g.snapshot().phase).toBe('done');
     expect(g.snapshot().card).toContain('skipped: 1, 2, 3, 4');
+    // A skipped chapter has no figures: the card printed the ones `defaultScore`
+    // fills in, "Soup 100% at 100°" for a soup nobody carried (critic round, 30 Sep).
+    expect(g.snapshot().card).toContain('Night — · Expo — · Soup — · Stage — · Swag 0/3');
 
     // Skipping the END CARD skips nothing: it used to push chapter 4 a second
     // time, so the card read "skipped: 1, 2, 3, 4, 4".
@@ -2008,7 +2091,8 @@ describe('the game rig', () => {
   it('honours the end card\'s own "R to play again" on the first press', () => {
     const g = createGame({ seed: SEED });
     g.key('Space');
-    for (let i = 0; i < 4; i++) g.skipChapter();
+    // Four chapters, and the video chapter 4 ends on.
+    for (let i = 0; i < 5; i++) g.skipChapter();
     expect(g.snapshot().phase).toBe('done');
     expect(g.snapshot().card).toContain('R to play again');
     g.key('KeyR');
@@ -2039,6 +2123,8 @@ describe('the game rig', () => {
 
   it('keeps the final card up until R, whatever else is pressed', () => {
     const g = createGame({ seed: SEED, chapter: 4, cards: false });
+    // The chapter, then the video it ends on.
+    g.skipChapter();
     g.skipChapter();
     expect(g.snapshot().phase).toBe('done');
     for (const code of ['Space', 'KeyC', 'Digit2', 'KeyW', 'Enter', 'KeyE']) {
@@ -2076,6 +2162,8 @@ describe('the game rig', () => {
     expect(g.snapshot().phase).toBe('play');
     steps(g, 10);
     expect(g.snapshot().t).toBeGreaterThan(0);
+    // Twice: in a chapter the first R only asks.
+    g.key('KeyR');
     g.key('KeyR');
     expect(g.snapshot().chapter, 'R threw the player back to the title').toBe(1);
     expect(g.snapshot().t, 'the chapter clock did not restart').toBe(0);
