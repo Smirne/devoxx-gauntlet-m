@@ -115,7 +115,7 @@ export const CREDIT_STATS: readonly CreditStat[] = [
   {
     n: '4,453+',
     label: 'tool calls, many sessions',
-    note: '3,906 of them a shell — 7,245 model turns answering 233 messages from Michele, in one session alone',
+    note: '3,906 of them a shell, 7,245 model turns, 233 messages from Michele \u2014 the ones one session could count',
   },
   {
     n: '17.5 B',
