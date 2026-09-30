@@ -827,6 +827,47 @@ export function scheduleScreen(later: boolean): THREE.CanvasTexture {
   return tex(c);
 }
 
+/**
+ * A Devoxx banner for the hall's roof trusses, 1.2 x 2.8 m: the orange one
+ * with the name and the year, and the black one with the conference's own motto.
+ * Type only — no logo is copied.
+ */
+export function devoxxBanner(variant: number): THREE.CanvasTexture {
+  const W = 256;
+  const H = 600;
+  const [c, x] = canvas(W, H);
+  const heavy = '"Impact", "Haettenschweiler", "Arial Black", sans-serif';
+  const sans = '"Helvetica Neue", Arial, sans-serif';
+  const orange = variant % 2 === 0;
+  x.fillStyle = orange ? '#f37021' : '#111114';
+  x.fillRect(0, 0, W, H);
+  x.textAlign = 'center';
+  x.textBaseline = 'middle';
+  if (orange) {
+    // DEVOXX down the banner, one letter a line, big.
+    x.fillStyle = '#ffffff';
+    x.font = `bold 78px ${heavy}`;
+    'DEVOXX'.split('').forEach((ch, i) => x.fillText(ch, W / 2, 70 + i * 74));
+    x.fillStyle = '#1a0d05';
+    x.font = `bold 30px ${sans}`;
+    x.fillText('BELGIUM', W / 2, 520);
+    x.fillText('2026', W / 2, 556);
+  } else {
+    x.fillStyle = '#f37021';
+    x.fillRect(0, 0, W, 16);
+    x.fillRect(0, H - 16, W, 16);
+    x.font = `bold 52px ${heavy}`;
+    x.fillText('DEVOXX', W / 2, 90);
+    x.fillStyle = '#ffffff';
+    x.font = `bold 34px ${sans}`;
+    ['FOR', 'DEVELOPERS,', 'BY', 'DEVELOPERS'].forEach((w, i) => x.fillText(w, W / 2, 230 + i * 62));
+    x.fillStyle = '#f37021';
+    x.font = `bold 26px ${sans}`;
+    x.fillText('ANTWERP', W / 2, 520);
+  }
+  return tex(c);
+}
+
 /** A sheet of paper taped to a door, the chapter's joke in marker pen. */
 export function notice(text: string): THREE.CanvasTexture {
   const [c, x] = canvas(256, 320);

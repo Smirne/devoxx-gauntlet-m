@@ -23,7 +23,7 @@ import { m } from '../sim/units';
 
 import type { Materials } from './materials';
 import { box } from './materials';
-import { OLD_DEVOXX, beerCentralFlyer, exitSign, scheduleScreen, vintagePoster } from './signs';
+import { OLD_DEVOXX, beerCentralFlyer, devoxxBanner, exitSign, scheduleScreen, vintagePoster } from './signs';
 import { buildDuke } from './duke';
 import { BOOTH_SCHEMES } from '../render/venue/signage';
 import type { VolumePoint } from './pipeline';
@@ -1175,6 +1175,45 @@ export function buildGround(mats: Materials): Ground3D {
   const panels: THREE.MeshStandardMaterial[] = [];
   const strips: Array<{ mat: THREE.MeshBasicMaterial; base: THREE.Color }> = [];
   const tables: Array<{ rect: { x: number; y: number; w: number; h: number }; mats: THREE.MeshStandardMaterial[]; fade: number }> = [];
+  /*
+   * DEVOXX BANNERS from the roof trusses, over the black above the booths: the
+   * orange one with the name down it and the black one with the motto, in turn.
+   * Hung where the trusses at x 330 and 690 cross the east-west aisles, a little
+   * south of each crossing's column, facing along the aisle so a robot walking
+   * it sees them flat on; two sheets back to back, so both sides read. Their
+   * print catches the hall's lights (`panels`), so chapter 2's dark hall keeps
+   * them dark. They hang from 3.2 m up: nothing in the game reaches that high.
+   */
+  {
+    const bottomChord = HALL_H - 0.9 - 0.21;
+    const BW = 1.2;
+    const BH = 2.8;
+    const hem = new THREE.CylinderGeometry(0.02, 0.02, BW + 0.08, 8);
+    hem.rotateX(Math.PI / 2);
+    const spots: Array<[number, number]> = [[690, 240], [690, 380], [690, 520], [690, 665], [330, 380], [330, 520]];
+    spots.forEach(([x, y], i) => {
+      const map = devoxxBanner(i);
+      const mat = new THREE.MeshStandardMaterial({ map, roughness: 0.85, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.05 });
+      panels.push(mat);
+      const top = bottomChord - 0.3;
+      for (const side of [-1, 1]) {
+        const sheet = new THREE.Mesh(new THREE.PlaneGeometry(BW, BH), mat);
+        sheet.position.set(m(x) + side * 0.004, top - BH / 2, m(y));
+        sheet.rotation.y = side * (Math.PI / 2);
+        group.add(sheet);
+      }
+      for (const hy of [top, top - BH]) {
+        const bar = new THREE.Mesh(hem, mats.steel);
+        bar.position.set(m(x), hy, m(y));
+        group.add(bar);
+      }
+      for (const dz of [-BW / 2, BW / 2]) {
+        const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.3, 4), mats.darkMetal);
+        wire.position.set(m(x), top + 0.15, m(y) + dz);
+        group.add(wire);
+      }
+    });
+  }
   let focusX = -1e9;
   let focusZ = -1e9;
   const beltGroup = new THREE.Group();
