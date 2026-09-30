@@ -75,6 +75,7 @@ function until(g: DebugGame, done: () => boolean, budget = 600): boolean {
   return done();
 }
 
+import { HALL_COLUMNS, LOBBY_COLUMNS } from '../src/sim/geometry';
 import { REEL_PREROLL } from '../src/sim/reel';
 import { BREAKFAST } from '../src/sim/chapters/ch4-keynote';
 import { bot, driveChapter4, driveTo, openFrontDoors, raiseSign, speakerMarkAt, walkTo } from './pilot';
@@ -1627,6 +1628,25 @@ describe('chapter 3 — breakfast', () => {
 
     // All three, on one card.
     expect(g.snapshot().progress).toContain('swag 1/3');
+  });
+
+  /*
+   * The lap test above teleports Voxxy onto each marker, so it cannot see a marker
+   * she could never stand on. One was drawn inside a hall column (Michele, 30 Sep
+   * 2026). Every marker's disc, and Voxxy standing on it, must be clear of every
+   * column and every booth.
+   */
+  it('keeps every Regex Racing marker clear of the columns and the booths', () => {
+    const g = mk(3);
+    const markers = g.snapshot().props.filter((p) => p.kind === 'race-marker');
+    expect(markers).toHaveLength(4);
+    const solids = [...HALL_COLUMNS, ...LOBBY_COLUMNS, ...GF.booths];
+    const clearance = (x: number, y: number, r: { x: number; y: number; w: number; h: number }): number =>
+      Math.hypot(Math.max(r.x - x, 0, x - (r.x + r.w)), Math.max(r.y - y, 0, y - (r.y + r.h)));
+    for (const m of markers) {
+      const need = Math.max((m.w ?? 0) / 2, DEFS.voxxy.r) + 2;
+      for (const s of solids) expect(clearance(m.x, m.y, s)).toBeGreaterThan(need);
+    }
   });
 
   /**
