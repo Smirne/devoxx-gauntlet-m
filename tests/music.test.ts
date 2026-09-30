@@ -32,11 +32,13 @@ import {
   chordNote,
   hz,
   startMusic,
+  trackBytes,
   type Score,
 } from '../src/render/music';
 import { createGame } from '../src/sim/game';
 import { LEAD, OVER_AT, PANEL_DELAY, PANEL_EACH, SLOT, STRIKES, WALK_AT, emergencyAt } from '../src/sim/opening';
 import type { GameSnapshot } from '../src/sim/types';
+import OPENING_TRACK_URL from '../src/render/opening-track.mp3?inline';
 
 /** `MASTER_GAIN` in `src/render/audio.ts` — the headroom the score is mixed under. */
 const MASTER_GAIN = 0.55;
@@ -438,5 +440,38 @@ describe("the opening's track", () => {
   it("brings its band in on Voxxy's crate, after the cue", () => {
     expect(OPENING_TRACK_AT).toBeGreaterThan(0);
     expect(OPENING_TRACK_AT + OPENING_TRACK_BAND).toBeCloseTo(LEAD + PANEL_DELAY + PANEL_EACH, 6);
+  });
+
+  // The published page cannot fetch a data: URL, and the opening fell back to the
+  // synth score without a word (30 Sep). The bytes are read in place instead.
+  it('reads the inlined file without fetch, byte for byte', () => {
+    const body = OPENING_TRACK_URL.slice(OPENING_TRACK_URL.indexOf(',') + 1);
+    const bytes = new Uint8Array(trackBytes(OPENING_TRACK_URL));
+    expect(OPENING_TRACK_URL.startsWith('data:audio/mpeg;base64,')).toBe(true);
+    expect(bytes.length).toBe((body.length * 3) / 4 - (body.endsWith('==') ? 2 : body.endsWith('=') ? 1 : 0));
+    expect(String.fromCharCode(...bytes.subarray(0, 3))).toBe('ID3');
+    expect(btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''))).toBe(body);
+  });
+
+  it('hands the decoder the track even where fetch is refused', async () => {
+    vi.stubGlobal('fetch', () => Promise.reject(new TypeError('Refused to connect: data: URL')));
+    let decoded: ArrayBuffer | null = null;
+    const ctx = {
+      currentTime: 0,
+      state: 'running',
+      sampleRate: 44100,
+      createGain: () => ({ gain: { value: 1, cancelScheduledValues() {}, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {} }, connect: (n: unknown) => n, disconnect() {} }),
+      decodeAudioData: (b: ArrayBuffer) => {
+        decoded = b;
+        return new Promise(() => {});
+      },
+    } as unknown as AudioContext;
+    const music = startMusic(ctx, ctx.createGain(), null);
+    await Promise.resolve();
+    await Promise.resolve();
+    music.dispose();
+    vi.unstubAllGlobals();
+    expect(decoded).not.toBeNull();
+    expect(String.fromCharCode(...new Uint8Array(decoded!).subarray(0, 3))).toBe('ID3');
   });
 });
