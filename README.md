@@ -36,18 +36,19 @@ the pinned version.
 
 ```bash
 pnpm install
-pnpm dev        # Vite dev server, then open http://localhost:5173/3d.html
+pnpm dev        # Vite dev server, then open the "Local:" URL it prints
 ```
 
-**The entry is the 3D build: `http://localhost:5173/3d.html`.** A third-person camera inside the
-building, all four chapters, an HDR pipeline with reflections, volumetric light and a filmic grade.
-The original 2.5D diorama build of the same game — same simulation, same chapters, a fixed
-isometric camera per room — is still at `http://localhost:5173/`, and is where the physics view
-(`P`) lives.
+**The entry is the 3D build**, and the bare address opens it: `http://localhost:5173/` redirects
+to `/3d.html`, in `pnpm dev`, in `pnpm preview` and on the published site alike. A third-person
+camera inside the building, all four chapters, an HDR pipeline with reflections, volumetric light
+and a filmic grade. The original 2.5D diorama build of the same game — same simulation, same
+chapters, a fixed isometric camera per room — is at `/index.html`
+(<https://devoxx-after-dark.vercel.app/index.html> on the published site), and is where the physics
+view (`P`) lives.
 
-On a static host the same holds, with one convenience: `vercel.json` redirects the bare domain `/`
-to `/3d.html`, so the published link opens the entry; the 2.5D build is at
-<https://devoxx-after-dark.vercel.app/index.html>.
+If port 5173 is already taken, Vite says so and moves to the next free one: open the URL it
+prints, or pick a port yourself with `pnpm dev --port 5180`.
 
 The first time it runs, the 3D build picks a render quality from the GPU the browser reports (low
 for software renderers and phones, medium for integrated graphics, high otherwise), and while it runs

@@ -13,13 +13,38 @@ const vercelAnalytics = (): Plugin => ({
       : [],
 });
 
+// The bare `/` opens the entry, the 3D build, in `pnpm dev` and `pnpm preview`
+// as it does on Vercel (`vercel.json`). The 2.5D build stays at /index.html.
+const entryRedirect = (): Plugin => {
+  const redirect = (req: { url?: string }, res: { statusCode: number; setHeader(k: string, v: string): void; end(): void }, next: () => void): void => {
+    const url = req.url ?? '';
+    if (url === '/' || url.startsWith('/?')) {
+      res.statusCode = 302;
+      res.setHeader('Location', '/3d.html' + url.slice(1));
+      res.end();
+      return;
+    }
+    next();
+  };
+  return {
+    name: 'entry-redirect',
+    configureServer: (server) => void server.middlewares.use(redirect),
+    configurePreviewServer: (server) => void server.middlewares.use(redirect),
+  };
+};
+
 export default defineConfig({
   base: './',
-  plugins: [vercelAnalytics()],
+  plugins: [vercelAnalytics(), entryRedirect()],
   // The published Vercel build keeps the error count out of the tab title (see
   // `titleFor` in main.ts / main3d.ts); every other build shows it.
   define: { 'import.meta.env.VITE_VERCEL': JSON.stringify(process.env.VERCEL === '1') },
-  server: { port: 5173, host: true },
+  // Bound to localhost only (Vite's default), so a port another app already
+  // holds on localhost is noticed and Vite moves to the next free one, printing
+  // it. `host: true` bound every interface, which the OS allows beside an app
+  // on 127.0.0.1, and the browser's localhost then reached that app instead.
+  // `pnpm dev --host` still serves the LAN, for a phone.
+  server: { port: 5173 },
   build: {
     target: 'es2022',
     outDir: 'dist',

@@ -7676,3 +7676,31 @@ lever shot only, `capture.mjs` (`STAGED_PATCH`) rewrites `ch1-night.ts` as the d
 to the page, so E right under the panel falls through to the stretch instead of "too high". The
 patch fails loudly if that line ever changes. On the pull, *"a bit slow"*: Biggy's last leg is
 shorter and quicker, and Droid grabs two frames after Biggy stops.
+
+## 30 Sep 2026 — the bare address opens the 3D build locally too, and a taken port is noticed
+
+**What the human found and decided.** Michele cloned the repo to check it as a judge would, and
+could not reach `/3d.html`, first on 5173 and then on 5180. Both times another app on his machine
+already held the port. He asked why pnpm had not noticed, and asked for the 3D build to be the
+default, or for a link to it from the 2.5D build.
+
+**What the agent did.**
+- A fresh clone of `main` worked in the agent's container, so it looked for what differed on
+  Michele's machine. It found the cause in `vite.config.ts`: `server.host: true` bound every
+  interface (0.0.0.0). The OS allows that alongside an app already listening on 127.0.0.1, so Vite
+  saw no conflict, and the browser's `localhost` reached the other app.
+- It dropped `host: true`, so Vite binds localhost only. It reproduced the problem with a dummy
+  server on `127.0.0.1:5173`: Vite now prints "Port 5173 is in use, trying another one…" and serves
+  on 5174. `pnpm dev --host` still serves the LAN.
+- It added an `entryRedirect` plugin to `pnpm dev` and `pnpm preview`, the same redirect as
+  `vercel.json`. The bare `/` now answers 302 to `/3d.html` and keeps the query, so
+  `/?resume=4` → `/3d.html?resume=4`. `/index.html` still serves the 2.5D build.
+- It updated the README's "Run it" section to match.
+
+**What was rejected, and why.** Swapping the two pages' filenames: the redirect gives the same
+result without touching the tests or tools. `strictPort`: it would fail on a conflict Vite can see,
+but it does nothing about the all-interfaces case, which was the real problem.
+
+**Checked.** `tsc` passes and the full suite passes. Tested by hand: the port conflict with the
+dummy server, the dev redirect with and without a query, `/index.html` → 200, and the preview
+redirect on a production build.
