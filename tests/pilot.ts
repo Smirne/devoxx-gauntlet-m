@@ -243,6 +243,20 @@ export function walkTo(g: DebugGame, kind: RobotKind, target: Vec2, tol = 7, avo
 }
 
 /**
+ * Where Voxxy stands to bring the keynote speaker in: inside Stephan's mark, at
+ * its south end.
+ *
+ * The soup and the speaker share one mark since Michele's *"the dropzone per
+ * speaker and soup could be the same"* (30 Sep 2026), and it is centred on
+ * Stephan, so its middle is the one point of it nobody else can stand on.
+ */
+export function speakerMarkAt(g: DebugGame): Vec2 {
+  const m = g.snapshot().props.find((o) => o.kind === 'dropzone' && (o.label ?? '').includes('speaker'));
+  if (!m) throw new Error('chapter 3 publishes no mark for the speaker');
+  return { x: m.x + (m.w ?? 0) / 2, y: m.y + (m.h ?? 0) - 8 };
+}
+
+/**
  * Play chapter 3 to the moment Stephan opens the stairs, and stop there.
  *
  * Soup, speaker, beer: his three conditions, in the order a player meets them, and
@@ -287,7 +301,7 @@ export function playToStairGate(g: DebugGame, onOpen?: (g: DebugGame) => void): 
 
     /*
      * The keynote speaker is hiding behind a booth; Voxxy finds them and they
-     * follow her to the stage.
+     * follow her to Stephan.
      *
      * The speaker is a `Person` the chapter spawns over time and this run is four
      * frames old, so the booth the sim NAMES is the reliable address — the same
@@ -315,10 +329,7 @@ export function playToStairGate(g: DebugGame, onOpen?: (g: DebugGame) => void): 
      * pilot — the same A* router `tests/chapters.test.ts` drives this errand with —
      * so the speaker is led down a route a player could actually walk.
      */
-    const spkMark = g.snapshot().props.find((o) => o.kind === 'dropzone' && (o.label ?? '').includes('speaker'));
-    if (!spkMark) throw new Error('chapter 3 publishes no mark for the speaker');
-    const spkAt = { x: spkMark.x + (spkMark.w ?? 0) / 2, y: spkMark.y + (spkMark.h ?? 0) / 2 };
-    expect(walkTo(g, 'voxxy', spkAt), 'Voxxy could not walk the speaker to Stephan').toBe(true);
+    expect(walkTo(g, 'voxxy', speakerMarkAt(g)), 'Voxxy could not walk the speaker to Stephan').toBe(true);
     for (let i = 0; i < 900 && !st().speaker.withStephan; i++) g.update(DT_MAX);
     expect(st().speaker.withStephan, 'the speaker never reached Stephan').toBe(true);
 

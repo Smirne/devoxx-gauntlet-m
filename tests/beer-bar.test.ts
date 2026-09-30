@@ -379,19 +379,21 @@ describe('the bar reads as a bar', () => {
   /**
    * Every labelled mark in the chapter wears the same ring.
    *
-   * There are three now — the beer's, the soup's and, since Michele's *"the
-   * speaker should also go to stephan"*, the speaker's beside it. The ring pieces
-   * carry no label of their own, so each mark is matched to the four strips that
-   * lie inside its own rect grown by `HALO_W`: two marks a body's length apart
-   * used to answer this question with seven, which was the test's window being
-   * loose rather than the ring being wrong.
+   * There are two — the beer's, and Stephan's. His was two for a while: the
+   * soup's, and since Michele's *"the speaker should also go to stephan"* the
+   * speaker's beside it, until his *"the dropzone per speaker and soup could be
+   * the same"* (30 Sep 2026) made them one. The ring pieces carry no label of
+   * their own, so each mark is matched to the four strips that lie inside its own
+   * rect grown by `HALO_W`: two marks a body's length apart once answered this
+   * question with seven, which was the test's window being loose rather than the
+   * ring being wrong.
    */
   it('wears the same halo on every mark, so one ring means one thing', () => {
     const g = mk();
     const HALO_W = 3;
     const props = g.snapshot().props;
     const marks = props.filter((p) => p.kind === 'dropzone' && p.label !== undefined);
-    expect(marks.length, 'chapter 3 should mark the beer, the soup and the speaker').toBe(3);
+    expect(marks.length, 'chapter 3 should mark the beer, and Stephan once for the soup and the speaker').toBe(2);
     for (const m of marks) {
       const ring = props.filter(
         (o) =>

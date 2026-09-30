@@ -20,7 +20,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { DT_MAX, GF, circleRect, createGame, dist, inRect, type BreakfastState, type DebugGame, type Vec2 } from '../src/sim';
-import { bot, driveTo, walkTo } from './pilot';
+import { bot, driveTo, speakerMarkAt, walkTo } from './pilot';
 
 /** Seconds of sim the speaker gets to cross the hall once Voxxy is on the mark. */
 const BUDGET = 90;
@@ -67,12 +67,7 @@ function leadTheSpeaker(g: DebugGame): { booth: string; secs: number; ok: boolea
   g.key('KeyE');
   expect(st().speaker.following, `the speaker at ${booth!.name} would not come out`).toBe(true);
 
-  const mark = g.snapshot().props.find((o) => o.kind === 'dropzone' && (o.label ?? '').includes('speaker'));
-  expect(mark, 'chapter 3 publishes no mark for the speaker').toBeDefined();
-  expect(
-    walkTo(g, 'voxxy', { x: mark!.x + (mark!.w ?? 0) / 2, y: mark!.y + (mark!.h ?? 0) / 2 }),
-    `Voxxy could not walk to the speaker's mark from ${booth!.name}`,
-  ).toBe(true);
+  expect(walkTo(g, 'voxxy', speakerMarkAt(g)), `Voxxy could not walk to the speaker's mark from ${booth!.name}`).toBe(true);
 
   let i = 0;
   const frames = Math.ceil(BUDGET / DT_MAX);
@@ -167,12 +162,7 @@ function underATable(g: DebugGame): TableRun {
   expect(st().speaker.following, `the speaker at ${booth} would not come out`).toBe(true);
   expect(walkTo(g, 'voxxy', { x: table.x - 15, y: cy }), `Voxxy could not walk to ${table.name}`).toBe(true);
   expect(driveTo(g, 'voxxy', [{ x: table.x + table.w + 15, y: cy }]), `Voxxy could not get under ${table.name}`).toBe(true);
-  const mark = g.snapshot().props.find((o) => o.kind === 'dropzone' && (o.label ?? '').includes('speaker'));
-  expect(mark, 'chapter 3 publishes no mark for the speaker').toBeDefined();
-  expect(
-    walkTo(g, 'voxxy', { x: mark!.x + (mark!.w ?? 0) / 2, y: mark!.y + (mark!.h ?? 0) / 2 }),
-    `Voxxy could not walk on to the mark from ${table.name}`,
-  ).toBe(true);
+  expect(walkTo(g, 'voxxy', speakerMarkAt(g)), `Voxxy could not walk on to the mark from ${table.name}`).toBe(true);
   let i = 0;
   const frames = Math.ceil(TABLE_BUDGET / DT_MAX);
   for (; i < frames && !st().speaker.withStephan; i++) g.update(DT_MAX);

@@ -77,7 +77,7 @@ function until(g: DebugGame, done: () => boolean, budget = 600): boolean {
 
 import { REEL_PREROLL } from '../src/sim/reel';
 import { BREAKFAST } from '../src/sim/chapters/ch4-keynote';
-import { bot, driveChapter4, driveTo, openFrontDoors, raiseSign, walkTo } from './pilot';
+import { bot, driveChapter4, driveTo, openFrontDoors, raiseSign, speakerMarkAt, walkTo } from './pilot';
 
 
 /* --------------------------------------------- the chapter-2 network closet
@@ -1109,20 +1109,18 @@ describe('chapter 3 — breakfast', () => {
     expect(breakfast().speaker.following).toBe(true);
 
     /*
-     * ...and the speaker goes TO STEPHAN, on their own mark beside the soup's.
+     * ...and the speaker goes TO STEPHAN, onto the soup's own mark.
      *
      * Michele, 28 Sep 2026: *"the speaker should also go to stephan."* They used
      * to be walked to a stage in the lobby, 17 m from the man who is asking for
-     * them; both of his conditions are handed over at his feet now, one mark each.
+     * them, and then had a mark of their own beside the soup's — until Michele,
+     * 30 Sep 2026: *"the dropzone per speaker and soup could be the same."* One
+     * mark at his feet, for both of the things he is waiting for there.
      */
-    const spkMark = g.snapshot().props.find((p) => p.kind === 'dropzone' && (p.label ?? '').includes('speaker'));
-    expect(spkMark, 'the speaker has no mark on the floor').toBeDefined();
-    const spkAt = { x: spkMark!.x + (spkMark!.w ?? 0) / 2, y: spkMark!.y + (spkMark!.h ?? 0) / 2 };
-    expect(
-      Math.hypot(spkAt.x - steph!.x, spkAt.y - steph!.y),
-      'the speaker’s mark is not within arm’s reach of Stephan',
-    ).toBeLessThan(70);
-    expect(walkTo(g, 'voxxy', spkAt)).toBe(true);
+    const marks = g.snapshot().props.filter((p) => p.kind === 'dropzone' && /soup|speaker/.test(p.label ?? ''));
+    expect(marks.length, 'the soup and the speaker have a mark each again').toBe(1);
+    expect(marks[0].label, 'Stephan’s mark does not say the speaker goes there').toContain('speaker');
+    expect(walkTo(g, 'voxxy', speakerMarkAt(g))).toBe(true);
     expect(until(g, () => breakfast().speaker.withStephan, 900)).toBe(true);
 
     // ...and then walks the rest of the way to him and WAITS, standing. Michele,
