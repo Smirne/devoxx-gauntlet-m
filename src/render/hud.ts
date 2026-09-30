@@ -1568,8 +1568,13 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
       setText(introLine, c.line, textCache);
       if (bot) setStyle(intro, 'introcol', 'color', rgb(bot.light.c), styleCache);
     }
-    left.classList.toggle('ad-hide', opening);
-    meters.classList.toggle('ad-hide', opening);
+    // On an end card nobody is driving, and the sim ignores a skip once the run is
+    // over: the robot tabs, a speed gauge at 0.0, the chapter's countdown and a
+    // button that does nothing, all around the score.
+    const over = snap.phase === 'done';
+    left.classList.toggle('ad-hide', opening || over);
+    meters.classList.toggle('ad-hide', opening || over);
+    skip.classList.toggle('ad-hide', over);
     // The top bar keeps only the one thing that is true during the opening: that
     // a key skips it. The chapter's name and briefing arrive when the chapter does.
     chapterEl.classList.toggle('ad-hide', opening);
