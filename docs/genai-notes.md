@@ -7113,3 +7113,22 @@ container Vite prints a `spawn xdg-open ENOENT` stack trace, and the gauntlet cr
 
 **Checked.** `pnpm build` is green, and `dist/` holds both pages. The redirect itself can only be
 checked on the Vercel deployment.
+
+## 30 Sep 2026 — submission prep: page-view analytics on the Vercel deployment
+
+**What the human decided.** Michele wanted analytics on the published build, and chose Vercel Web
+Analytics once the agent had compared it with Cloudflare, GoatCounter, Umami, Plausible and PostHog.
+
+**What the agent did.** Added one tag to the `<head>` of `3d.html` and `index.html`:
+`<script defer src="/_vercel/insights/script.js">`. Vercel serves the script from the game's own
+domain once Analytics is turned on in the project dashboard. It sets no cookies, so the game needs
+no consent banner.
+
+**What was rejected, and why.** The `@vercel/analytics` npm package, because it adds a dependency
+to do what one script tag does. Custom gameplay events (which robot was picked, where players get
+stuck), because they need Vercel Pro or another provider and it is deadline day. If they ever come,
+they belong in render or the app shell, never in `src/sim`.
+
+**Checked.** `pnpm build` passes. On a clone or under `pnpm dev`, the script path returns 404 and
+the game is unaffected, so the README's "runs from a clone" promise holds. Whether page views are
+actually recorded can only be checked on the deployment, after Analytics is enabled.
