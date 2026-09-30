@@ -618,7 +618,14 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   // their back, like they just finished descending. Voxxy first, near the doors."
   // Voxxy three steps back from the west wall, so her lamp does not paint a
   // halo on it at the chapter's first frame (Michele, 28 Sep).
-  ctx.place([foot - 52, cy - 4, Math.PI], [foot - 33, cy + 6, Math.PI], [foot - 14, cy - 2, Math.PI]);
+  //
+  // Biggy half-turned to the north wall. Square to the west, his flood (57° each
+  // side of its axis) lit Droid's back from a metre and a half and the floor round
+  // Voxxy from three, from just under the camera that follows her — the chapter's
+  // first frame came up blown white, Droid pale blue instead of graphite (critic
+  // round, 30 Sep; Michele: "I'd fix this"). Turned 54° north, the flood washes the
+  // wall beside him and leaves the other two in their own light.
+  ctx.place([foot - 52, cy - 4, Math.PI], [foot - 33, cy + 6, Math.PI], [foot - 14, cy - 2, -2.2]);
 
   let power = false;
   /**
