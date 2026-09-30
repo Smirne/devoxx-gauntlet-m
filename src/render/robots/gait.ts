@@ -177,8 +177,24 @@ interface Profile {
   lean: number;
   /** Extra lean, radians per m/s^2 — the heavy "lean into it". */
   accelLean: number;
-  /** Stance-foot slide under braking, metres per m/s^2. Biggy only, by design. */
+  /** Stance-foot slide under braking, centimetres per m/s^2. */
   skid: number;
+  /**
+   * MOMENTUM, optional and Voxxy's only (Michele, 30 Sep 2026, on a critic's
+   * "her start/stop reads as toy-like"). The sim takes her 0 -> 4 m/s in 0.1 s
+   * and stops her in 0.57 s, frozen; what made that read as a wind-up toy was
+   * the body tracking the acceleration exactly, with no weight behind it. With
+   * these set, the acceleration lean goes through an underdamped spring
+   * (`leanSpring`: natural frequency, rad/s, and damping ratio), so the body
+   * lags into the push and overshoots once when she plants; braking leans back
+   * harder than starting leans forward (`brakeLean` multiplies `accelLean`
+   * while decelerating); and the hips drop into the stop (`brakeDip`, metres
+   * per m/s^2, capped) so the knees take the load. Absent, a robot's lean is
+   * exactly what it was — Droid and Biggy do not set them.
+   */
+  leanSpring?: { omega: number; zeta: number };
+  brakeLean?: number;
+  brakeDip?: number;
   /** Arm swing amplitude at full speed, radians. */
   armSwing: number;
   /** Extra elbow flex on the forward swing, radians. */
@@ -220,8 +236,16 @@ const PROFILES: Record<RobotKind, Profile> = {
     lift: 0.055,
     bob: 1.1,
     lean: 0.9,
-    accelLean: 0.012,
-    skid: 0,
+    // Read against a sharper acceleration signal than the others (see
+    // `accelLeanOf`), so 0.009 here peaks ~25% past the old 0.012 on a start;
+    // braking leans back 1.6x as hard, through a spring that rings once at
+    // ~2 Hz — quick enough to stay hers, damped enough (0.35) that the one
+    // forward rock after she stops is a settle and not a wobble.
+    accelLean: 0.009,
+    skid: 0.09,
+    leanSpring: { omega: 13, zeta: 0.35 },
+    brakeLean: 1.6,
+    brakeDip: 0.0016,
     armSwing: 0.85,
     elbow: 0.5,
     twist: 0.1,
@@ -333,6 +357,11 @@ interface GaitState {
   headErr: number;
   prevSpeed: number;
   accel: number;
+  /** `accel` smoothed at 18 s^-1 instead of 6: what the lean spring chases. */
+  accelFast: number;
+  /** The spring-driven acceleration lean (`Profile.leanSpring`) and its rate. */
+  leanP: number;
+  leanPV: number;
   t: number;
   pose: PoseName | null;
   poseT: number;
@@ -407,6 +436,9 @@ function capture(rig: RobotRig): GaitState {
     headErr: 0,
     prevSpeed: 0,
     accel: 0,
+    accelFast: 0,
+    leanP: 0,
+    leanPV: 0,
     t: 0,
     pose: null,
     poseT: 0,
@@ -585,6 +617,7 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
   const accelRaw = dt > 0 ? (v - st.prevSpeed) / dt : 0;
   st.prevSpeed = v;
   st.accel += (accelRaw - st.accel) * (1 - Math.exp(-6 * dt));
+  st.accelFast += (accelRaw - st.accelFast) * (1 - Math.exp(-18 * dt));
   /*
    * IS HE ROLLING? — and if he is, he is not walking.
    *
@@ -739,8 +772,11 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
   const calm = params.laden ? 0.25 : 1;
   const bob = -BOB_M * p.bob * (0.5 - 0.5 * Math.cos(st.phase * TAU * 2)) * moving * calm;
   const back = params.backward ? -1 : 1;
-  const lean = (back * LEAN_RAD_PER_MPS * p.lean * v + clamp(st.accel * p.accelLean, -0.32, 0.32)) * (params.laden ? 0.4 : 1);
-  pelvis.position.y += bob - crouch;
+  const accelLean = accelLeanOf(st, p, dt);
+  const lean = (back * LEAN_RAD_PER_MPS * p.lean * v + clamp(accelLean, -0.32, 0.32)) * (params.laden ? 0.4 : 1);
+  // Hips drop into a hard stop, so the knees are seen to take her weight.
+  const dip = p.brakeDip ? clamp(-st.accel * p.brakeDip, 0, 0.03) : 0;
+  pelvis.position.y += bob - crouch - dip;
   pelvis.rotation.x += clamp(lean, -0.45, 0.45);
   pelvis.rotation.z += Math.sin(st.phase * TAU) * p.sway * moving * calm;
   pelvis.rotation.y += -Math.sin(st.phase * TAU) * p.twist * moving * calm;
@@ -801,7 +837,7 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
     st.contact[1] = false;
   } else {
     const lift = p.lift * smoothstep(0.05, 0.45, v) * scale;
-    // Braking slide: only Biggy has a skid worth seeing.
+    // Braking slide: Biggy's is the big one; Voxxy's small feet skid a little.
     const skid = back > 0 ? clamp(-st.accel, 0, 40) * p.skid * 0.01 : 0;
     for (const side of [0, 1] as const) {
       const u = (st.phase + side * 0.5) % 1;
@@ -873,7 +909,7 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
 
   /* ------------------------------------------------------ torso + head */
   torso.rotation.y += Math.sin(st.phase * TAU) * p.twist * moving;
-  torso.rotation.x += 0.35 * clamp(st.accel * p.accelLean, -0.2, 0.2);
+  torso.rotation.x += 0.35 * clamp(accelLean, -0.2, 0.2);
   head.rotation.x += p.headBob * Math.sin(st.phase * TAU * 2) * moving;
   head.rotation.y += clamp(st.headErr * p.headLead, -0.7, 0.7);
   // Banking into a turn: lean the body toward the inside of the corner.
@@ -918,6 +954,30 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
     ant.rotation.x += st.antX;
     ant.rotation.z += st.antZ;
   }
+}
+
+/**
+ * The acceleration part of the body lean, radians.
+ *
+ * Without `leanSpring` it is the smoothed acceleration times `accelLean`, as it
+ * always was. With it, the target follows a SHARPER acceleration (`accelFast`)
+ * and a damped spring chases it, integrated in 1/120 s substeps so a long frame
+ * cannot blow it up. The sharper signal is what lets the spring overshoot: it
+ * drops back to zero as soon as the robot is at speed or at rest, and the body,
+ * still carrying its own momentum, rocks once past upright before it settles.
+ */
+function accelLeanOf(st: GaitState, p: Profile, dt: number): number {
+  if (!p.leanSpring) return st.accel * p.accelLean;
+  const a = st.accelFast;
+  const target = a * p.accelLean * (a < 0 ? (p.brakeLean ?? 1) : 1);
+  const { omega, zeta } = p.leanSpring;
+  const n = Math.max(1, Math.ceil(dt * 120));
+  const h = dt / n;
+  for (let i = 0; i < n; i++) {
+    st.leanPV += (omega * omega * (target - st.leanP) - 2 * zeta * omega * st.leanPV) * h;
+    st.leanP += st.leanPV * h;
+  }
+  return st.leanP;
 }
 
 /* ------------------------------------------------------------------- idle */
