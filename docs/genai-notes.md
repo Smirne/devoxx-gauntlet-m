@@ -7091,3 +7091,25 @@ browser's audio was at 16 kHz during a Meet call, and the capped value is harmle
 `data:audio` fetch was already being looked at in another session.
 
 **Checked.** Typecheck, and the 948 tests in 71 files (after merging main), are green.
+
+## 30 Sep 2026 — submission prep: the published link opens the 3D build
+
+**What the human decided.** Michele is publishing the game on Vercel for the submission form's
+playable-build link, and asked whether the 3D build could be the default instead of the 2.5D one,
+which owns `index.html`.
+
+**What the agent did.** Drafted the submission form's fields (technologies, GenAI tools, repo and
+build links) from the README and this file. Added `vercel.json`: Vite preset, `pnpm build` into
+`dist/`, and a temporary redirect from the bare `/` to `/3d.html`. Query strings pass through, so
+`/?resume=4` lands on `/3d.html?resume=4`. The 2.5D build stays reachable at `/index.html`. Added a
+line to the README's "Run it" section.
+
+**What was rejected, and why.** Swapping the two pages (`3d.html` → `index.html`): it touches the
+tests, `tools/playthrough`, `tools/publish-build.sh` and the docs on deadline day, for the same
+result the host can give with no code change. Also rejected: `server.open: '/3d.html'` in
+`vite.config.ts`, so that `pnpm dev` would open the entry. Tried and reverted, because in a headless
+container Vite prints a `spawn xdg-open ENOENT` stack trace, and the gauntlet critics and
+`tools/render-audio` start Vite headless.
+
+**Checked.** `pnpm build` is green, and `dist/` holds both pages. The redirect itself can only be
+checked on the Vercel deployment.
