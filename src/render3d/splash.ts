@@ -318,7 +318,7 @@ export function fillSplash(el: HTMLElement): () => void {
   el.appendChild(sub);
   const press = document.createElement('p');
   press.className = 'ad3d-press';
-  press.textContent = 'Press any key';
+  press.textContent = 'Press any key to begin';
   el.appendChild(press);
 
   // Gold dust drifting up, as behind the video's logo.

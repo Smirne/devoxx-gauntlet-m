@@ -50,7 +50,7 @@ export const CREDIT_ROLES: readonly CreditRole[] = [
   {
     who: 'Ronny Shamano',
     what:
-      'Music help — “Heroic Motif”, the opening track, made with AI and given to the game.',
+      'Music help — “Heroic Motif”, the opening track, made with Suno and given to the game.',
   },
   {
     who: 'WellD',

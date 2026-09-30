@@ -5,8 +5,9 @@ this game is produced by a **builder**, then torn apart by a **critic on fresh c
 sees the builder's diff, only the running build. A piece is done when the critic says our version
 would be mistaken for the professionally-shipped game — or when it caps out and gets logged.
 
-Deadline: **30 Sep 2026, 23:59 CEST.** No round may run past 28 Sep evening; the last ~36 h are
-README, GenAI notes, MIT licence check, submission form, buffer.
+Deadline: **30 Sep 2026, 23:59 CEST.** The plan was that no round would run past 28 Sep evening,
+leaving the last ~36 h for README, GenAI notes, MIT licence check, submission form and buffer. In
+practice the 3D build's rounds and the critic panel ran into 30 Sep.
 
 ---
 
@@ -46,6 +47,11 @@ The renderer is a **diorama**: a fixed orthographic/isometric camera per room an
 free 3D camera. That is what makes it read as a sharp game to judges (the brief's own "a sharp 2D
 game beats a vague 3D one") while still showing the robots' designed appearance, which a top-down
 camera cannot.
+
+*Superseded for the entry, 27–29 Sep 2026:* Michele decided to go 3D on the same simulation. The
+entry is `3d.html` (`src/render3d/`), a third-person camera inside the building; the diorama build
+above is kept compiling as the 2.5D page. The architecture rule did not change: both renderers only
+read `src/sim`.
 
 Robots are **procedural primitives** — Box, Cylinder, Sphere, Lathe, Extrude, Torus — with a
 hierarchical bone rig and a procedurally animated gait. No GLB import, no rigging pipeline, no
