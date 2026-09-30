@@ -405,11 +405,32 @@ const CSS = `
 .ad-cwd svg{display:block;width:132px;height:auto}
 .ad-cwd .ad-csite{font-size:13px;color:${WELLD_RED};font-weight:600;letter-spacing:.02em}
 .ad-cnote2{flex:1 1 280px;min-width:0;font-size:11px;line-height:1.45;color:${MUTED}}
-.ad-ckey{margin-top:10px;font-size:11px;letter-spacing:.06em;color:${MUTED};text-align:right}
+/* The way out is at the top, where it cannot fall below the fold: at the bottom
+   of the panel it was the first thing a short screen cut off (critic round, 30 Sep). */
+.ad-credits .ad-cbox{position:relative}
+.ad-ckey{position:absolute;top:18px;right:26px;font-size:11px;letter-spacing:.06em;color:${MUTED};text-align:right}
 @media (max-width:860px){ .ad-cstats{grid-template-columns:repeat(2,minmax(0,1fr))} }
 @media (max-width:560px){
   .ad-credits .ad-cbox{padding:20px 18px 16px}
   .ad-cstats{grid-template-columns:1fr}
+}
+/* A 720p screen leaves the panel 662 px, and the credits ran past it: the last
+   row of figures and the close key were below the fold with nothing to say so
+   (critic round, 30 Sep). Tighter type and air on short screens, so they fit. */
+@media (max-height:800px){
+  .ad-credits{padding:10px}
+  .ad-credits .ad-cbox{max-height:96vh;padding:14px 24px 10px}
+  .ad-credits h3{font-size:21px}
+  .ad-credits .ad-csub{margin:0 0 8px}
+  .ad-crole{margin-bottom:5px;font-size:12px;line-height:1.38}
+  .ad-crole b{font-size:13px}
+  .ad-chead{margin:8px 0 6px;padding-top:8px}
+  .ad-cstats{gap:7px 18px}
+  .ad-cstat .ad-cn{font-size:17px}
+  .ad-cstat .ad-cnote{font-size:10.5px;line-height:1.3}
+  .ad-cfoot{margin-top:8px;padding-top:8px}
+  .ad-cwd svg{width:112px}
+  .ad-ckey{top:14px}
 }
 .ad-peek{display:flex;align-items:center;justify-content:space-between;gap:12px;
   font-size:13px;color:#cdc9c2}

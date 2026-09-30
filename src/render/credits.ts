@@ -37,10 +37,9 @@ export const CREDIT_ROLES: readonly CreditRole[] = [
   {
     who: 'Michele Giacobazzi',
     what:
-      'Direction, design and every decision that stuck. Put the real venue in front of the model \u2014 ' +
-      'the plans, the photographs \u2014 then played every build and said what was wrong with it: the ladle, ' +
-      'the cake, the frozen ending, the robot walking through a table. The renders are right because he ' +
-      'kept describing what they got wrong.',
+      'Direction, design and every decision that stuck. Put the real venue in front of the model, then ' +
+      'played every build and said what was wrong with it: the ladle, ' +
+      'the cake, the frozen ending, the robot walking through a table.',
   },
   {
     who: 'Claude \u2014 Opus 5, Opus 5.5 and Sonnet, in Claude Code',
@@ -51,8 +50,7 @@ export const CREDIT_ROLES: readonly CreditRole[] = [
   {
     who: 'Ronny Shamano',
     what:
-      'Music help — “Heroic Motif”, the track the three robots step out of their crates to, ' +
-      'made with AI and given to the game.',
+      'Music help — “Heroic Motif”, the opening track, made with AI and given to the game.',
   },
   {
     who: 'WellD',
@@ -77,22 +75,22 @@ export const CREDIT_STATS: readonly CreditStat[] = [
     n: '3',
     label: 'repositories',
     note:
-      'gauntlet-loop-experiment, the method and the physics \u00b7 devoxx-game-experiments, the prototypes \u00b7 '
-      + 'this game, the rendering in 2.5D and 3D',
+      'gauntlet-loop-experiment, method and physics \u00b7 devoxx-game-experiments, the prototypes \u00b7 ' +
+      'this one, 2.5D and 3D',
   },
   {
     n: '10',
     label: 'gameplay prototypes',
     note:
-      'one HTML file each, 01 a playground to 10 the real Kinepolis \u2014 and not one idea refined: '
-      + '02 was a Devoxx Robot Olympics, 07 a tomato soup run',
+      'one HTML file each, and ten different games: 02 a Devoxx Robot Olympics, 07 a tomato soup run, ' +
+      '10 the real Kinepolis',
   },
   {
     n: '2D → 2.5D → 3D',
     label: 'three engines, one simulation',
     note:
-      'the prototypes were flat canvas; then an isometric renderer reading a headless 2D sim; ' +
-      'then a third-person camera reading the same sim, unchanged',
+      'flat canvas prototypes, then an isometric renderer on a headless 2D sim, then a third-person ' +
+      'camera on the same sim, unchanged',
   },
   {
     n: '455',
@@ -132,8 +130,7 @@ export const CREDIT_STATS: readonly CreditStat[] = [
  * session's, and this game was built across several.
  */
 export const CREDIT_FOOTNOTE =
-  'Counted off the repository on 30 September 2026 and off the sessions\u2019 own records on 29 September. ' +
-  'The tokens are the whole of the four sessions that built this; the tool calls and the subagents are what ' +
-  'one of many sessions could count, so those two are a floor, not a total.';
+  'The repository counted on 30 September 2026, the sessions\u2019 own records on 29 September. ' +
+  'The tool calls and the subagents are what one of many sessions could count: a floor, not a total.';
 
 export const CREDIT_CLOSE = 'C or Esc to close';
