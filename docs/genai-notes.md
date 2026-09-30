@@ -7204,3 +7204,10 @@ lever shot only, `capture.mjs` (`STAGED_PATCH`) rewrites `ch1-night.ts` as the d
 to the page, so E right under the panel falls through to the stretch instead of "too high". The
 patch fails loudly if that line ever changes. On the pull, *"a bit slow"*: Biggy's last leg is
 shorter and quicker, and Droid grabs two frames after Biggy stops.
+
+After the PR, Michele: *"chapter 3 has some white noise"*. It was not a render fault. Chapter 3's
+score runs on bright hats and a shaker, which are filtered-noise bursts. The edit lifts that score
+17 dB to match the other chapters' mean level, and the cameo's effects 13 dB, and at those gains the
+hats read as hiss. Its band above 5 kHz sat at −40 to −46 dB, against about −51 in chapters 1–2.
+The game's music is unchanged: the trailer alone takes the top off chapter 3, for both score and
+effects (`treble` −12 dB at 4.5 kHz, lowpass at 9 kHz). That band now sits at −53 to −58 dB.
