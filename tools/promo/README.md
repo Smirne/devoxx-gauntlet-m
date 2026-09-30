@@ -1,21 +1,32 @@
 # The promo video
 
-A 29-second trailer, built from the game itself: every frame comes from the real 3D build
-(`3d.html`, `q=high`, 1920×1080), and every gameplay frame comes from the tests' own scripted run.
-None of it is posed or composited into the scene. The only additions are the text cards and the
+A 60-second trailer ("contains spoilers"), built from the game itself: every frame comes from the
+real 3D build (`3d.html`, `q=high`, 1920×1080). The only additions are the text cards and the
 transitions.
+
+Published: [youtube.com/watch?v=BdS6FYy0NqI](https://www.youtube.com/watch?v=BdS6FYy0NqI).
 
 | Time | What |
 |---|---|
-| 0–3 s | The splash: the DEVOXX wordmark over Antwerp at night |
-| 3–7 s | The opening: the crates open, and Voxxy, Droid and Biggy come out |
-| 7–19 s | Gameplay: the dark corridor, Voxxy's beam on the expo booths, all three robots at the technical room, the front doors letting the crowd in, the lunch-rush stairs, Room 8 raked, the stage, the `#DEVOXX` letters and the cake |
-| 19–26 s | How we made it: three cards |
-| 26–29 s | End card: the repo, the licence, the music credit |
+| 0–2.5 s | The splash, tagged *Contains spoilers* |
+| 2–14 s | The opening, uncut: the crates open, and Voxxy, Droid and Biggy come out |
+| 14–19 s | Light is the mechanic: Voxxy's orange alone shows a "?", then Droid's green joins it and the 9 rises |
+| 18.5–25.7 s | Droid can't reach the lever: he stretches right under it, still short; then, already up on Biggy, Biggy creeps straight at the panel and stops dead facing it, and Droid pulls it |
+| 26.5–30 s | Biggy's roll through the shutter door (chapter 2) |
+| 29.5–32 s | The exhibition hall's booths: the real Kinepolis, from the Devoxx plans |
+| 31.5–39 s | Stephan comes in through the front doors and pats Voxxy, then opens the stairs |
+| 38.5–42.5 s | The cameo: Michele's backpack, then Michele and Claude at the high table |
+| 42–49 s | Chapter 4: Droid carries the last X in one straight line, `#DEVOXX` goes up, the camera rises to the house screen |
+| 48.5–58.5 s | How we made it: three cards on black, the screen fading out into them |
+| 58–61 s | End card: play URL, repo, licence, music credit |
 
-Music: "Heroic Motif" by Ronny Shamano (the opening's track) for the first 12 s, then the game's
-own procedural scores (the expo's, then the keynote's), rendered offline by
-`tools/render-audio/`.
+Every gameplay shot carries the game's own sound effects for its frames (footsteps, the clue's
+chime, the lever, the shutter). The capture records one snapshot per frame, and
+`renderSnapshots` in `tools/render-audio/harness.ts` plays those snapshots back through the real
+cue player on an offline audio context.
+
+Music: "Heroic Motif" by Ronny Shamano, synced to the opening, then the game's own chapter scores,
+rendered offline by `tools/render-audio/`.
 
 ## Rebuilding it
 
@@ -25,21 +36,28 @@ Chromium on an Apple M-series gets about 50 fps at `high`.
 
 ```bash
 pnpm dev --port 5287 --host 127.0.0.1                       # in another shell
-node tools/promo/scout.mjs /tmp/promo/scout 1               # optional: a frame a second, named by sim step
-node tools/promo/capture.mjs /tmp/promo/frames              # splash, end, opening, the gameplay windows
-for n in 2 4; do node tools/render-audio/render.mjs --out /tmp/promo/audio --name score$n \
-  --seconds 12 --opening-score $n --mute bed,cues; done
-node tools/promo/cut.mjs /tmp/promo/frames /tmp/promo/audio dist-promo/after-dark-promo.mp4
+node tools/promo/capture.mjs /tmp/promo/frames              # splash, end, opening, run windows, staged shots
+node tools/render-audio/render.mjs --out /tmp/promo/audio --name opening --seconds 14 --mute bed,cues
+node tools/render-audio/render.mjs --out /tmp/promo/audio --name bed --seconds 6 --mute music,cues
+for n in 1 2 3 4; do node tools/render-audio/render.mjs --out /tmp/promo/audio --name score$n \
+  --seconds 30 --opening-score $n --mute bed,cues; done
+node tools/promo/cut.mjs /tmp/promo/frames /tmp/promo/audio dist-promo/after-dark-trailer-contains-spoilers.mp4 \
+  --play devoxx-after-dark.vercel.app --url github.com/Smirne/devoxx-gauntlet-m --pocs devoxx-game-pocs.vercel.app
 ```
 
-- `scout.mjs` plays the full run (the choreography from `tests/full-run.test.ts`) and saves a
-  frame every N seconds, named by sim step, so you can make a contact sheet and pick shots.
-- `capture.mjs` plays the same run again (it is deterministic for the seed in `common.mjs`) and
-  renders every sim step inside the windows listed in `SHOTS`. Before each window it renders
-  45 frames without keeping them, so the follow camera settles the way it does in play.
-- `cut.mjs` holds the edit (`EDIT`): the segments, the card over each one, and the transition
-  into each one. It renders the cards from `cards.html` as transparent PNGs, and it refuses to
-  write a cut longer than 30 s.
+- When a URL changes, only the last command needs to run again: the cards are re-rendered from
+  `cards.html` with the new `--play`, `--url` or `--pocs` values.
+- `capture.mjs <out> [what…]` takes `splash`, `end`, `opening`, `run`, `staged`, or a single
+  staged shot by name (`light`, `lever`, `printer`, `cameo`, `keynote`). `printer` (not in the current cut) and `keynote` first
+  replay the tests' run, unfilmed, to the moment they pick up from (`PRELUDE`). The `run` windows (`SHOTS`) replay the tests'
+  deterministic full run. The staged shots (`STAGED`) set a chapter up with the debug API and
+  script the robots and the camera one frame at a time.
+- `STAGED_PATCH` rewrites a game module for one staged shot, in what the dev server sends that
+  page only; the repo's code is untouched. The lever uses it: in the game, E right under the
+  panel is "too high", and Droid only stretches 4 m away from it.
+- `cut.mjs` holds the edit (`EDIT`): the segments, the card over each one, and the transition and
+  sound act for each one. It refuses to write a cut longer than `--max` seconds (63 by default). A segment can `hold` one frame
+  still instead of playing from `from`, and `dim` it under a card.
 
 ## How we made it (for the video description)
 

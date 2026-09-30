@@ -25,6 +25,7 @@ import { openingTrackReady } from '../../src/render/music';
 import { DT_MAX } from '../../src/sim/constants';
 import { createGame } from '../../src/sim/game';
 import { OVER_AT } from '../../src/sim/opening';
+import type { GameSnapshot } from '../../src/sim/types';
 
 export interface RenderOpts {
   /** Seconds of audio. Default: the whole opening and four seconds of chapter 1. */
@@ -221,4 +222,44 @@ async function renderOpening(opts: RenderOpts = {}): Promise<RenderResult> {
   return { wav: b64, peak, rms, seconds, log };
 }
 
+/* ------------------------------------------------------ recorded snapshots */
+
+/**
+ * The cue player's sound for frames somebody else already played: the promo's
+ * shots record one snapshot per frame (`tools/promo/capture.mjs`), and this
+ * plays them back through the real `createCues` and `audio.ts` on an offline
+ * context, one snapshot every `1 / fps` s. Footsteps, the clue's chime, the
+ * lever, the printer: the game's own sound, in sync with the game's own frames.
+ * No score and no room tone unless asked: the edit lays the score itself.
+ */
+async function renderSnapshots(snaps: GameSnapshot[], opts: { fps?: number; bed?: boolean; sampleRate?: number } = {}): Promise<RenderResult> {
+  const fps = opts.fps ?? 30;
+  const sampleRate = opts.sampleRate ?? 48000;
+  const seconds = snaps.length / fps + 1;
+  const off = new OfflineAudioContext({ numberOfChannels: 2, length: Math.ceil(seconds * sampleRate), sampleRate });
+  (window as unknown as { AudioContext: unknown }).AudioContext = offlineConstructor(off);
+  installTimers();
+  const audio = createAudio();
+  const heard: Audio = {
+    ...audio,
+    setMusic: (): void => undefined,
+    setAmbient: opts.bed ? audio.setAmbient : (): void => undefined,
+  };
+  const cues = createCues(heard);
+  window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
+  const dt = 1 / fps;
+  for (let i = 1; i < snaps.length; i++) {
+    void off.suspend(i * dt).then(() => {
+      runTimers(off.currentTime);
+      cues(snaps[i], dt);
+      return off.resume();
+    });
+  }
+  cues(snaps[0], dt);
+  const buf = await off.startRendering();
+  const { b64, peak, rms } = encodeWav(buf);
+  return { wav: b64, peak, rms, seconds, log: [] };
+}
+
 (window as unknown as { renderOpening: typeof renderOpening }).renderOpening = renderOpening;
+(window as unknown as { renderSnapshots: typeof renderSnapshots }).renderSnapshots = renderSnapshots;

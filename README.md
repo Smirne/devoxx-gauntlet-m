@@ -8,6 +8,9 @@ carries a different lamp: Voxxy a narrow orange beam, Droid a small green pool, 
 flood. Light is the mechanic. Where two colours overlap you can read what is written there, and the
 only way through a locked door is to put the right robots in the right places at the same time.
 
+**Trailer** (one minute, contains spoilers): [youtube.com/watch?v=BdS6FYy0NqI](https://www.youtube.com/watch?v=BdS6FYy0NqI).
+It is shot frame by frame from the real 3D build; how it is made is in [`tools/promo/`](tools/promo/README.md).
+
 ## Run it
 
 Node 20 or newer (developed on Node 22) and [pnpm](https://pnpm.io) 10 — `corepack enable` gives you
