@@ -7713,3 +7713,20 @@ score runs on bright hats and a shaker, which are filtered-noise bursts. The edi
 hats read as hiss. Its band above 5 kHz sat at −40 to −46 dB, against about −51 in chapters 1–2.
 The game's music is unchanged: the trailer alone takes the top off chapter 3, for both score and
 effects (`treble` −12 dB at 4.5 kHz, lowpass at 9 kHz). That band now sits at −53 to −58 dB.
+
+## 30 Sep 2026 — chapter 3 white noise
+
+**Reported by Michele:** chapter 3's music "seems off, there's white noise."
+
+**What the agent did.** Found the source in the chapter 3 ambient bed (`audio.ts`): two wide
+band-passed noise layers at 0.09 and 0.03, 2–3× louder than any other chapter's bed and with no
+tonal content, sitting under a shaker (`music.ts`) that is also noise. It cut the bed to 0.03 and
+0.008, narrowed the bands (Q 0.8→2.2, 1.1→2.5) and lowered the shaker from 0.1 to 0.06.
+
+**Not checked.** No ears in the loop: levels were chosen by comparison with the other beds, not
+listened to. Michele should play chapter 3 and say if it is still too hissy.
+
+**Follow-up, same day.** Michele played the preview: the white noise was gone, but chapter 3 had a
+"click click" (he guessed footsteps) he found acceptable but too loud, and he asked for more music.
+The agent halved Voxxy's footstep tick and the score's rim click (0.14 → 0.07), added a slow bell
+melody from bar 3 (chord tones 4-3-4-2) and a second, quiet pad voice. Not listened to by the agent.
