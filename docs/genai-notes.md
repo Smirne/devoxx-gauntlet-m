@@ -7114,6 +7114,93 @@ container Vite prints a `spawn xdg-open ENOENT` stack trace, and the gauntlet cr
 **Checked.** `pnpm build` is green, and `dist/` holds both pages. The redirect itself can only be
 checked on the Vercel deployment.
 
+## 30 Sep 2026 (morning) — a loop of critics on the merged build
+
+**What a human asked.** Michele, with every branch merged: *"Loop of critics? Don't commit the
+shots"*, and during the first fix round, *"reduce text in the credits panel if needed"*.
+
+**How it ran.** The gauntlet's loop as GAUNTLET.md describes it: critics on fresh context, each on
+one slice — the player, the place and the robots, the story and the text — judging the served build
+(`tools/publish-build.sh`, the committed tree) through browser automation and never the diff, the
+notes or a PR; then one builder; then new critics on the fixed build. Every screenshot stayed in
+the session's scratchpad: none is in the repository.
+
+**Round 1 (main at 4f7104a), and what came of it.**
+
+1. *R wiped a chapter on one press* (player critic). R sits beside E. The first R in a chapter now
+   asks, on screen, and a second within three seconds restarts; the title and the end card keep one
+   press. `tests/restart.test.ts` has the question; the tests that restart a chapter press twice.
+2. *A placeholder cube at chapter 3's start* (place critic): the flight case in front of every
+   half-table booth, a bare grey box. Now a black road case with aluminium edges and a lid seam.
+3. *The main staircase read as a pit* from its head, where chapter 4 starts (place critic): grey
+   terrazzo treads into the dark. Navy carpet, pale nosings, and amber step lights at both walls and
+   either side of the two handrails, so the three runs read from the top — no light added.
+4. *Long lines went before they could be read* (story critic). The critic's measurement was the
+   sim's single toast slot, which the HUD's three-line stack outlives; but underneath it was true
+   that the shutter's forty-five words were up for 4.6 s. A line now stays until it can be read (a
+   second, then about four words a second, up to twelve), and a speed readout that changes updates
+   its own line instead of stacking a new one — only for m/s readouts, because two clues also
+   differ only in their digits and both must stay.
+5. *The film said 198 seconds and the card after it "Total 232s"* (story critic): the card counted
+   the film. Chapter 4 takes the run's length when the film starts; the card uses it; a test holds
+   them to one number. The card's bare "7/9" says "Score 7/9".
+6. *The credits ran off a 720p screen*, the close key below the fold and the 3D help text printed
+   across the panel (story critic). Tighter type under 800 px, the close key at the top, the help
+   text under the HUD's layer, and shorter text, as Michele allowed: it fits at 1366×640.
+7. *M and N said nothing* (player critic): they now say what they did.
+8. Wording: chapter 1's two-colour hint read out ids in Voxxy's voice ("voxxy and droid") — the
+   first robot the mix needs now says it, by name; "light the all three mix"; the top bar's "I:
+   info"; "gonna" in chapter 3's briefing; the film's "every number below"; the README's "Lunch" and
+   fixed diorama camera, which are the 2.5D build.
+
+**Checked, and not what the critic thought.**
+- *"Droid runs 40% faster than the frozen table."* He does, by Michele's decision of 23 Sep ("droid
+  in particular is a bit cumbersome to move around"): `DROID_SPEED_SCALE`, asserted by
+  `tests/frozen-constants.test.ts`. The prose was stale, and is corrected: `docs/scale-and-units.md`,
+  and GAUNTLET.md's table and its "one factor, no exceptions". The session's permission classifier
+  stopped the GAUNTLET.md edit as an agent editing an instruction file; Michele then gave it: *"Modify
+  gauntlet.md with my permission"*. CLAUDE.md still says "one factor on every px/s quantity" —
+  one line, left for him.
+- *"The film's bloopers show while the camera is still tilting up."* The scripted run renders three
+  frames per 2.5 s of game time, and the film camera eases by elapsed time; at real speed it has
+  settled before the first card.
+- *"A gate line vanishes on the wall clock while the sim still holds it."* A reader reads on the
+  wall clock.
+- *"The chapter's briefing panel covers the robot."* It closes on the first movement key.
+
+**Left for a human, and why.** The venue's proportions across the corridor (Michele decided the sim
+rect); Droid's orange hoops, piping and harness (from the organisers' demo; `droid.ts` records that
+Michele keeps them); Biggy's helmet and Voxxy's ears (a model-sheet pass wants his eye); named real
+speakers drawn in the audience (their permission is his question); chapter 3's hall lit as day,
+the corridor's neon, landmarks in the dark hall, blade-mounted Zaal panels, a HUD that scales on a
+1080p screen, and a camera that starts some chapters with a teammate in the way.
+
+**Merged, and the PR.** `main` moved during the round (PRs #11–#13: the opening's music, the 3D shell,
+their notes) and merged in clean; the fixes are PR #15. A second round of critics was started on
+the fixed build (995fedb) before the PR opened; what it finds is added below.
+
+**Verification.** `pnpm typecheck` clean and `pnpm test` green, 950 tests in 71 files, on the branch
+merged with `main`. `tools/playthrough/run.mjs` drove all four chapters and the film through the
+real 3D page to the final card with no console errors: "Score 7/9 … Total 198s", the film's figure.
+In the page: one R asks and a second restarts; M and N say what they did; the credits panel is 606
+px of content in a 606 px box at 1366×640. The flight case and the stair were compared before and
+after, frame for frame. Every frame of it — the critics' and the builder's — is in the session's
+scratchpad, as Michele asked; none is in the repository.
+
+## 30 Sep 2026 — the published links go into the README
+
+**What the human decided.** Michele deployed both sites on Vercel himself: the game at
+<https://devoxx-after-dark.vercel.app/> and the earlier prototypes at
+<https://devoxx-game-pocs.vercel.app/>. The repo stays public on his account at
+<https://github.com/Smirne/devoxx-gauntlet-m>; moving it to the company account was considered and
+dropped.
+
+**What the agent did.** Put the three links at the top of the README, where a judge who opens the
+repo first will see them, and pointed `docs/ideas-history.md` at the prototypes site.
+
+**Not checked.** This container's network policy blocks `*.vercel.app`, so the agent could not load
+either deployment or confirm the `/` → `/3d.html` redirect. That check was left to Michele.
+
 ## 30 Sep 2026 — phones get the intro, and a "plays on a desktop" card
 
 **What the human decided.** People were opening the published link on their phones and getting a

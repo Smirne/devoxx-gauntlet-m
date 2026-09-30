@@ -939,7 +939,7 @@ export interface BreakfastState {
 }
 
 const OBJECTIVE =
-  'Chapter 3 · <b>Breakfast</b>. The main entrance is open and 3,000 people are gonna walk in. <b>Stephan</b> ' +
+  'Chapter 3 · <b>Breakfast</b>. The main entrance is open and 3,000 people are about to walk in. <b>Stephan</b> ' +
   'stands at the main staircase and wants three things before he opens it: his <b>tomato soup</b> — at ' +
   "breakfast, yes — the <b>keynote speaker</b>, and <b>tonight's beer delivery</b> out of the aisle and onto " +
   'the bar. Droid: the ladle. Biggy: the pot and the crates. Voxxy: open queues (E), find the speaker. The ' +

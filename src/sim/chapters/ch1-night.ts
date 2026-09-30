@@ -30,7 +30,7 @@ import {
   roomDoor,
   roomScreen,
 } from '../geometry';
-import { JAMMED_DOOR_SPEED, MOUNT_BIGGY_MAX_SPEED, MOUNT_REACH, SPEED_SCALE, T, W } from '../constants';
+import { DEFS, JAMMED_DOOR_SPEED, MOUNT_BIGGY_MAX_SPEED, MOUNT_REACH, SPEED_SCALE, T, W } from '../constants';
 import { PX_PER_M, m } from '../units';
 import { buildLights, clueLit, litBy } from '../lights';
 import { dist, speed } from '../bot';
@@ -1217,7 +1217,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       .sort((a, b) => a.slot - b.slot)
       .map((c) => ({
         id: `clue${c.slot}`,
-        text: `light the ${c.label} mix`,
+        // 'all three' is a count, not a colour pair: "light the all three mix" was
+        // how the run sheet read it.
+        text: c.label === 'all three' ? 'light the mix of all three lamps' : `light the ${c.label} mix`,
         done: c.found,
         // The first robot the mix needs. A two-colour mix needs both, and the
         // panel says so from `need` — but an arrow can only point for one, and
@@ -1230,7 +1232,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           ...gate(c.slot),
           c.need.length === 3
             ? 'Biggy: all three of us, and mine has to come off the screen. Back of the room, aim at the picture'
-            : `Voxxy: ${c.need.join(' and ')}, same spot, both lamps on it at once`,
+            : // Said by the first robot the mix needs, about the other one, by name:
+              // it used to be Voxxy reading out the ids ("voxxy and droid"), even for
+              // the green + blue mix she has no part in.
+              `${DEFS[c.need[0]].name}: me and ${DEFS[c.need[1]].name}, same spot, both lamps on it at once`,
         ],
       }));
     out.push({

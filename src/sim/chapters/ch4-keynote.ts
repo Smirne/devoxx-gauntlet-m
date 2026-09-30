@@ -309,6 +309,9 @@ const SPEAKER_WAITING =
 const SPEAKER_READY = 'Up you come. I am not walking out there alone in a cape.';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
+  // The run's length is this chapter's to take, when its film starts (`startReel`):
+  // one from a film an earlier attempt got to is not this attempt's.
+  delete ctx.score.total;
   ctx.setFloor('up');
   ctx.setView(VIEW_DEVOXX);
   ctx.setWalls(floor1Walls());
@@ -897,6 +900,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let curtainHeld = -1;
 
   function startReel(): void {
+    // The run's length is taken HERE, when the keynote starts: the film says it
+    // ("198 seconds, from lights-out to the keynote") and the final card after it
+    // must say the same, not the same plus the film (critic round, 30 Sep).
+    ctx.score.total = Math.round(ctx.t);
     reelCards = buildReel(ctx.score, ctx.swag, ctx.t, ctx.skipped);
     reelT = 0;
     dealMarks();

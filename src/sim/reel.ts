@@ -158,7 +158,7 @@ export function buildReel(
   if (bloopers.length === 0) {
     cards.push({ title: 'A flawless night.', sub: 'Suspicious.', hold: 2.8, kind: 'blooper' });
   } else {
-    cards.push({ title: 'The bloopers', sub: 'Every number below really happened.', hold: 1.8, kind: 'title' });
+    cards.push({ title: 'The bloopers', sub: 'Every number that follows really happened.', hold: 1.8, kind: 'title' });
     cards.push(...bloopers);
   }
   if (swag.length > 0) {
