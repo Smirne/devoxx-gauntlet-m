@@ -152,7 +152,7 @@ export function buildReel(
    * just the second one"*): his credit, with his picture, says it once.
    */
   const cards: ReelCard[] = [
-    { title: 'AFTER DARK', sub: 'Devoxx Belgium · Kinepolis Antwerpen', hold: 3.4, kind: 'splash' },
+    { title: 'AFTER DARK', sub: 'Devoxx Belgium · Kinepolis Antwerp', hold: 3.4, kind: 'splash' },
     { title: `${Math.round(total)} seconds`, sub: 'From lights-out to the keynote.', hold: 2.2, kind: 'stat' },
   ];
   if (bloopers.length === 0) {
