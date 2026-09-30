@@ -16,6 +16,9 @@ const vercelAnalytics = (): Plugin => ({
 export default defineConfig({
   base: './',
   plugins: [vercelAnalytics()],
+  // The published Vercel build keeps the error count out of the tab title (see
+  // `titleFor` in main.ts / main3d.ts); every other build shows it.
+  define: { 'import.meta.env.VITE_VERCEL': JSON.stringify(process.env.VERCEL === '1') },
   server: { port: 5173, host: true },
   build: {
     target: 'es2022',

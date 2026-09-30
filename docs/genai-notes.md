@@ -7224,3 +7224,23 @@ belong in render or the app shell, never in `src/sim`.
 **Checked.** A plain `pnpm build` leaves the tag out of both pages; `VERCEL=1 pnpm build` puts it in
 both. Whether page views are actually recorded can only be checked on the deployment, after
 Analytics is enabled.
+
+## 30 Sep 2026 — the published tab reads "AFTER DARK 3D - The Devoxx Game"
+
+**What the human decided.** Michele asked for the tab title on the live site to leave out
+`ERRORS: 0`, and to read `AFTER DARK 3D - The Devoxx Game`.
+
+**What the agent did.** The count stays everywhere it is read (`pnpm dev`, `preview`, the gauntlet's
+`--dump-dom` check). Only the Vercel build drops it, keyed on the same `VERCEL=1` signal as the
+analytics tag, through a `define` in `vite.config.ts`. There the 3D tab reads
+`AFTER DARK 3D - The Devoxx Game`, and the 2.5D tab reads `AFTER DARK - The Devoxx Game`, a
+wording the agent chose to match. `?errors=1` brings the count back on the live site. Errors are
+still recorded either way. The README's "always reads" line now names the exception.
+
+**What was rejected, and why.** Dropping the count in every production build
+(`import.meta.env.PROD`): `pnpm preview` and the publish builds are production builds too, and the
+critics' "no console errors" check reads the title there.
+
+**Checked.** Opened in a browser: under a `VERCEL=1` build, both clean titles, and
+`?errors=1` → `After Dark 3D · ERRORS:0`. A plain build still reads `After Dark 3D · ERRORS:0`.
+Typecheck and all tests are green.

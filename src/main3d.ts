@@ -43,13 +43,19 @@ import { fillSplash } from './render3d/splash';
 /* ====================================================== error reporting ==== */
 
 const TITLE_BASE = 'After Dark 3D · ERRORS:';
+// The published Vercel build shows players a clean title; `?errors=1` brings the
+// count back there. Every other build (dev, preview, the gauntlet) always shows it.
+const TITLE_CLEAN = 'AFTER DARK 3D - The Devoxx Game';
+const TITLE_COUNTS =
+  import.meta.env.VITE_VERCEL !== true || new URLSearchParams(location.search).has('errors');
+const titleFor = (count: number): string => (TITLE_COUNTS ? TITLE_BASE + count : TITLE_CLEAN);
 const errors: string[] = [];
 function recordError(line: string): void {
   errors.push(line);
-  document.title = TITLE_BASE + errors.length;
+  document.title = titleFor(errors.length);
 }
 {
-  document.title = `${TITLE_BASE}0`;
+  document.title = titleFor(0);
   const original = console.error.bind(console);
   console.error = (...args: unknown[]): void => {
     recordError(`console.error: ${args.map((a) => (a instanceof Error ? `${a.name}: ${a.message}` : String(a))).join(' ')}`);

@@ -209,9 +209,11 @@ anywhere, including the title screen.
 | `?nohud=1` | Hide the DOM overlay |
 | `?physics=1` | Start with the physics view up (`P` toggles it in play) |
 
-`document.title` always reads `After Dark 3D · ERRORS:<count>` in the 3D build and
+`document.title` reads `After Dark 3D · ERRORS:<count>` in the 3D build and
 `After Dark · ERRORS:<count>` in the 2.5D one, where `<pre id="console-log">` also carries the lines,
-so "no console errors" can be read straight out of `--dump-dom`.
+so "no console errors" can be read straight out of `--dump-dom`. The one exception is the published
+Vercel build, whose tab reads `AFTER DARK 3D - The Devoxx Game` (or `AFTER DARK - The Devoxx Game`)
+for players; add `?errors=1` there to get the count back.
 
 ## Who you will meet
 
