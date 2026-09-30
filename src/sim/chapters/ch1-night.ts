@@ -1212,6 +1212,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         ];
       return [];
     };
+    /*
+     * Where each clue is, in the words the building shows the player: the foyer,
+     * the popcorn kiosk, and two rooms by the letter on their orange panel. The run
+     * sheet and the hint said who and what, never where (critic round 2, 30 Sep).
+     */
+    const WHERE: Record<number, string> = { 1: 'in the foyer', 2: 'at the popcorn kiosk', 3: 'in Zaal B', 4: 'in Zaal E' };
     const out: Task[] = clues
       .slice()
       .sort((a, b) => a.slot - b.slot)
@@ -1219,7 +1225,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         id: `clue${c.slot}`,
         // 'all three' is a count, not a colour pair: "light the all three mix" was
         // how the run sheet read it.
-        text: c.label === 'all three' ? 'light the mix of all three lamps' : `light the ${c.label} mix`,
+        text: `${c.label === 'all three' ? 'light the mix of all three lamps' : `light the ${c.label} mix`} ${WHERE[c.slot] ?? ''}`.trim(),
         done: c.found,
         // The first robot the mix needs. A two-colour mix needs both, and the
         // panel says so from `need` — but an arrow can only point for one, and
@@ -1231,11 +1237,11 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         hint: [
           ...gate(c.slot),
           c.need.length === 3
-            ? 'Biggy: all three of us, and mine has to come off the screen. Back of the room, aim at the picture'
+            ? 'Biggy: all three of us, in Zaal E, and mine has to come off the screen. Back of the room, aim at the picture'
             : // Said by the first robot the mix needs, about the other one, by name:
               // it used to be Voxxy reading out the ids ("voxxy and droid"), even for
               // the green + blue mix she has no part in.
-              `${DEFS[c.need[0]].name}: me and ${DEFS[c.need[1]].name}, same spot, both lamps on it at once`,
+              `${DEFS[c.need[0]].name}: me and ${DEFS[c.need[1]].name}, ${WHERE[c.slot] ?? 'here'}: both lamps on the same spot at once`,
         ],
       }));
     out.push({
