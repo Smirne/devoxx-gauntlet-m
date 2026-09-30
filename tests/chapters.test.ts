@@ -1953,6 +1953,9 @@ describe('the game rig', () => {
     g.skipChapter();
     expect(g.snapshot().phase).toBe('done');
     expect(g.snapshot().card).toContain('skipped: 1, 2, 3, 4');
+    // A skipped chapter has no figures: the card printed the ones `defaultScore`
+    // fills in, "Soup 100% at 100°" for a soup nobody carried (critic round, 30 Sep).
+    expect(g.snapshot().card).toContain('Night — · Expo — · Soup — · Stage — · Swag 0/3');
 
     // Skipping the END CARD skips nothing: it used to push chapter 4 a second
     // time, so the card read "skipped: 1, 2, 3, 4, 4".
