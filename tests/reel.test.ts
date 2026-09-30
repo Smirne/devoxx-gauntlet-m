@@ -20,13 +20,15 @@ describe('the opening video', () => {
    * Michele, 29 Sep: *"I'd start with Devoxx After Dark (like in the splash
    * screen), A game by Michele Giacobazzi (pic of my char?). Then the bloopers /
    * notes? Or credits in film version?"* The title as the splash draws it, the
-   * author, the night, the credits, and the running joke last.
+   * author, the night, the credits, and the running joke last. Then, 30 Sep:
+   * *"my card appears twice. Keep just the second one"* — he is named once, on
+   * his credit — and WellD is credited *"With the support of"*, not "Sponsor".
    */
-  it('opens on the title and its author, and ends on the credits and the running joke', () => {
+  it('opens on the title, names its author once, and ends on the credits and the running joke', () => {
     const cards = buildReel(perfect, [], 400);
     expect(cards[0]).toMatchObject({ title: 'AFTER DARK', kind: 'splash' });
-    expect(cards[1].kind).toBe('byline');
-    expect(cards[1].title).toContain('Michele Giacobazzi');
+    expect(cards.filter((c) => `${c.title} ${c.sub}`.includes('Michele Giacobazzi'))).toHaveLength(1);
+    expect(cards.find((c) => c.title === 'WellD')?.sub).toBe('With the support of');
     expect(cards[cards.length - 1]).toMatchObject({ title: 'KEYNOTE SPEAKER', sub: 'TBA', kind: 'end' });
     const credits = cards.filter((c) => c.kind === 'credit');
     expect(credits.map((c) => c.title)).toEqual(['Michele Giacobazzi', 'Claude, in Claude Code', 'Ronny Shamano', 'WellD', 'Voxxy, Droid and Biggy']);
@@ -112,7 +114,7 @@ describe('the opening video', () => {
     const cards = buildReel({ ...perfect, complaints: 5, oom: 2 }, ['duck'], 300);
     const len = reelLength(cards);
     expect(len).toBeGreaterThan(10);
-    // The title, the byline and four credit cards made it a film rather than a
+    // The title and the credit cards made it a film rather than a
     // clip (29 Sep); the worst case, every blooper slot and the swag, still ends
     // inside three quarters of a minute.
     expect(len).toBeLessThan(45);

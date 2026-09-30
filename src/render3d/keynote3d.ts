@@ -68,7 +68,7 @@ const SCREEN_BOTTOM = 3.35;
 const SCREEN_W = 6.5;
 const SCREEN_H = (SCREEN_W * 9) / 16;
 
-const INK: Record<ReelCard['kind'], string> = { splash: '#ff7a1a', byline: '#e8e6e1', title: '#ff7a1a', stat: '#e8e6e1', blooper: '#ffd27a', credit: '#e8e6e1', end: '#ff7a1a' };
+const INK: Record<ReelCard['kind'], string> = { splash: '#ff7a1a', title: '#ff7a1a', stat: '#e8e6e1', blooper: '#ffd27a', credit: '#e8e6e1', end: '#ff7a1a' };
 /**
  * The curtain call's camera, m: `back` from the apron towards the house, `h` up
  * off the stage floor, looking at a point `look` up over the apron.
@@ -106,7 +106,7 @@ function spaced(g: CanvasRenderingContext2D, px: number): number {
 /**
  * `photo` photographs one of the game's people by name (`portraitOf`, which
  * needs the renderer): the film shows the two who made the game as their own
- * characters — Michele beside his byline, and both of them on their credits.
+ * characters, on their credits.
  * Without it those cards are type only.
  */
 export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanvasElement | null): Keynote3D {
@@ -435,7 +435,7 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
    * 2026, on the byline's picture of him: *"You should be in the credits too."*
    */
   let portraits: ReadonlyMap<string, HTMLCanvasElement> | null = null;
-  /** The maker a card names, if it names one: the first word of the credited name, or the byline's. */
+  /** The maker a card names, if it names one: the first word of the credited name. */
   const makerIn = (text: string): HTMLCanvasElement | null => {
     for (const [name, pic] of portraits ?? []) if (new RegExp(`\\b${name}\\b`).test(text)) return pic;
     return null;
@@ -472,7 +472,6 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
     film.textAlign = 'center';
     film.textBaseline = 'alphabetic';
     if (card?.kind === 'splash') paintSplash(card);
-    else if (card?.kind === 'byline') paintByline(card);
     else if (card?.kind === 'credit') paintCredit(card);
     else if (card) {
       const k = w / 1024;
@@ -540,48 +539,9 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
   }
 
   /** Whose game it is: his character on the left, the name on the right. */
-  function paintByline(card: ReelCard): void {
-    const w = FILM_W;
-    const h = FILM_H;
-    const bg = film.createLinearGradient(0, 0, w, h);
-    bg.addColorStop(0, '#10131a');
-    bg.addColorStop(1, '#050608');
-    film.fillStyle = bg;
-    film.fillRect(0, 0, w, h);
-    let textX = w * 0.12;
-    const pic = makerIn(card.title);
-    if (pic) {
-      framed(pic, PIC.x, PIC.y, PIC.w, PIC.h);
-      textX = PIC.x + PIC.w + w * 0.06;
-    }
-    const room = w - textX - w * 0.06;
-    const split = /^(.*\bby)\s+(.+)$/i.exec(card.title);
-    film.textAlign = 'left';
-    if (split) {
-      const small = Math.round(h * 0.04);
-      film.font = `500 ${small}px ${FILM_FONT}`;
-      spaced(film, small * 0.25);
-      film.fillStyle = '#f5b638';
-      film.fillText(split[1].toUpperCase(), textX, h * 0.4, room);
-      spaced(film, 0);
-      const big = Math.round(h * 0.09);
-      film.font = `600 ${big}px ${FILM_FONT}`;
-      film.fillStyle = '#f2efe8';
-      film.fillText(split[2], textX, h * 0.4 + big * 1.25, room);
-      film.fillStyle = 'rgba(245,182,56,.7)';
-      film.fillRect(textX, h * 0.4 + big * 1.6, Math.min(room, w * 0.3), 3);
-      robotInk(card.sub, textX, h * 0.4 + big * 2.35, Math.round(h * 0.04), room);
-    } else {
-      film.font = `600 ${Math.round(h * 0.08)}px ${FILM_FONT}`;
-      film.fillStyle = '#f2efe8';
-      film.fillText(card.title, textX, h * 0.5, room);
-      robotInk(card.sub, textX, h * 0.62, Math.round(h * 0.04), room);
-    }
-  }
-
   /**
    * A line of film credits: the job small and spaced out, the name under it —
-   * and for the two who made it, their character beside it, as on the byline.
+   * and for the two who made it, their character beside it.
    */
   function paintCredit(card: ReelCard): void {
     const w = FILM_W;
@@ -1085,7 +1045,7 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
       const reel = snap.reel;
       if (reel) {
         // The photograph is taken in the film's first dark seconds, not on the
-        // frame the byline comes up.
+        // frame the first credit comes up.
         if (portraits === null) {
           const got = new Map<string, HTMLCanvasElement>();
           for (const name of SECOND_ROW) {

@@ -7,7 +7,7 @@
  * Room 8's second row in chapter 4 (`src/sim/cameos.ts`) — built by the same
  * code that builds him there (`createPeople`), stood up in a studio of its own
  * well away from the venue, and rendered once into a 2D canvas that the house
- * screen paints like any other picture (`keynote3d.ts`, the byline card).
+ * screen paints like any other picture (`keynote3d.ts`, the credit cards).
  *
  * It reads the sim's look for the person and nothing else; it decides nothing.
  */

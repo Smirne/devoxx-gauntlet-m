@@ -147,10 +147,12 @@ export function buildReel(
    * in the splash screen), A game by Michele Giacobazzi (pic of my char?). Then
    * the bloopers / notes? Or credits in film version?"* Both, in that order: the
    * night's numbers and bloopers, then the credits, and the running joke last.
+   *
+   * No byline card any more (Michele, 30 Sep: *"my card appears twice. Keep
+   * just the second one"*): his credit, with his picture, says it once.
    */
   const cards: ReelCard[] = [
     { title: 'AFTER DARK', sub: 'Devoxx Belgium · Kinepolis Antwerpen', hold: 3.4, kind: 'splash' },
-    { title: 'A game by Michele Giacobazzi', sub: 'Starring Voxxy, Droid and Biggy', hold: 3.2, kind: 'byline' },
     { title: `${Math.round(total)} seconds`, sub: 'From lights-out to the keynote.', hold: 2.2, kind: 'stat' },
   ];
   if (bloopers.length === 0) {
@@ -182,7 +184,7 @@ const FILM_CREDITS: readonly ReelCard[] = [
   { title: 'Michele Giacobazzi', sub: 'Direction, design, and every playtest', hold: 2.4, kind: 'credit' },
   { title: 'Claude, in Claude Code', sub: 'The simulation, the venue, the robots, the chapter scores and the tests', hold: 2.4, kind: 'credit' },
   { title: 'Ronny Shamano', sub: 'Music help: \u201cHeroic Motif\u201d, the opening track', hold: 2.2, kind: 'credit' },
-  { title: 'WellD', sub: 'Sponsor', hold: 2.0, kind: 'credit' },
+  { title: 'WellD', sub: 'With the support of', hold: 2.0, kind: 'credit' },
   { title: 'Voxxy, Droid and Biggy', sub: 'Courtesy of the Devoxx Robot Games', hold: 2.4, kind: 'credit' },
 ];
 
