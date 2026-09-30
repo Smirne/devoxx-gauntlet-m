@@ -267,7 +267,7 @@ export interface KeynoteState {
 }
 
 /** Seconds at the start of the opening video in which no key can skip it. */
-const REEL_GRACE = 1.5;
+const REEL_GRACE = 3;
 /** Keys a player is holding down to steer, which are never a wish to skip. */
 const REEL_IGNORES: ReadonlySet<string> = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',

@@ -1765,9 +1765,9 @@ describe('chapter 4 — keynote', () => {
       steps(g, 1);
       expect(g.snapshot().reel, 'the video never started').not.toBeNull();
 
-      // Two seconds in — long enough that a player has seen the first card and
-      // decided they have had enough of it.
-      steps(g, 60);
+      // Past the grace period (`REEL_GRACE`, 3 s) — long enough that a player has
+      // seen the first card and decided they have had enough of it.
+      steps(g, 100);
       expect(g.snapshot().reel).not.toBeNull();
       // Skip chapter is a key like any other here: the chapter was played to the
       // end, so skipping its video must not call it skipped.

@@ -274,7 +274,7 @@ describe('the curtain call', () => {
   it('stops dead when the video is skipped', () => {
     const g = createGame({ seed: SEED, chapter: 4, cards: false }) as DebugGame;
     toTheVideo(g);
-    steps(g, 60);
+    steps(g, 100);
     g.key('KeyE');
     expect(g.snapshot().reel, 'the video survived the skip').toBeNull();
     expect(g.snapshot().phase).toBe('done');
@@ -303,7 +303,7 @@ describe('the curtain call', () => {
     g.key('ShiftLeft');
     g.key('KeyE');
     expect(g.snapshot().reel, 'a key in the first moments skipped the video').not.toBeNull();
-    steps(g, 60);
+    steps(g, 100);
     g.key('KeyD');
     g.key('ArrowLeft');
     g.key('ShiftLeft');
