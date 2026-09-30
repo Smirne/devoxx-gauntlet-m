@@ -7007,3 +7007,14 @@ files — on the tree merged with `main`; `tools/playthrough/run.mjs` drove all 
 opening through the real 3D page to the final card, 234 s of sim clock, no console errors; and the
 chapter-start profile, run again on the merged tree: no program compiled at any chapter start,
 chapter 3's people 43 ms. Four commits, one step each, a merge of `main`, and these notes.
+
+**Merged again, the morning of the 30th.** Michele merged PR #6 and then the Devoxx flavour (PR #9,
+because PR #8 had landed on #6's branch rather than on `main`) before this one, the order the review
+asked for, and the branch took `main` in a second merge. The notes and the credits were the only
+conflicts. Every entry was kept, `main`'s first. The credits were recounted on the merged tree:
+commits, lines, files, tests and words. The commits now run to the 30th, so the label reads 8 days
+and the footnote says when the repository was counted. On the merged tree `pnpm typecheck` and
+`pnpm build` are clean and `pnpm test` is green, 946 tests in 71 files; the playthrough reached the
+final card again, 236 s of sim clock, no console errors; and the chapter-start profile, run a third
+time with the hall's new screens and banners in, found no program compiled at any chapter start and
+chapter 3's people at 35 ms.
