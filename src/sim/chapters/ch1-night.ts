@@ -287,7 +287,7 @@ const OBJECTIVE =
   'Chapter 1 · <b>Night</b>. The power is out in the closed cinema section. The fire door to the Devoxx ' +
   'rooms has a keypad: find the <b>4 digits</b>, each visible only under the right <b>mix of lights</b>. ' +
   'Droid might need help from Biggy (E). Biggy can break jammed doors.';
-const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb / hold Biggy / Voxxy jumps · 4-9 at the keypad (Backspace) · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics \u00b7 C: credits';
+const KEYS = '1/2/3/Tab: switch · WASD · E: use / climb / hold Biggy / Voxxy jumps · 4-9: type at the keypad (Backspace erases) · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics \u00b7 C: credits';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
   ctx.setFloor('up');

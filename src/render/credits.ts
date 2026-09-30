@@ -87,7 +87,7 @@ export const CREDIT_STATS: readonly CreditStat[] = [
   },
   {
     n: '2D → 2.5D → 3D',
-    label: 'three engines, one simulation',
+    label: 'three renderers, one simulation',
     note:
       'flat canvas prototypes, then an isometric renderer on a headless 2D sim, then a third-person ' +
       'camera on the same sim, unchanged',

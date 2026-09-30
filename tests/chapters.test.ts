@@ -1301,7 +1301,7 @@ describe('chapter 3 — breakfast', () => {
     // Sixty since 25 Sep 2026, up from thirty-six — Michele, once the figures had
     // bodies worth looking at: *"Raise a bit, 60?"* Hard-coded rather than read
     // off the chapter's own constant on purpose: this is the number the card's
-    // "3,000 people walk in" is standing in for, and it should not be able to
+    // "three thousand people are inside" is standing in for, and it should not be able to
     // drift without somebody editing this line.
     expect(breakfast.crowd).toBe(60);
     expect(g.snapshot().people.filter((p) => p.role === 'visitor')).toHaveLength(60);
