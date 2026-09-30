@@ -375,9 +375,12 @@ window.addEventListener('keydown', (ev) => {
   }
   if (code === 'Tab' || code === 'Space') ev.preventDefault();
   if (ev.repeat) return;
+  // Neither switch changes anything on screen, so each says what it did (critic
+  // round, 30 Sep: "M and N give no visible feedback").
   if (code === 'KeyM') {
     muted = !muted;
     audio.mute(muted);
+    hud.say(muted ? 'Sound off \u00b7 M to turn it back on' : 'Sound on');
   }
   // The 2.5D page's overlay keys, the same way: N the score on its own, I the
   // run sheet, H the escalating hint, Escape closes the sheet. The sim never
@@ -385,6 +388,7 @@ window.addEventListener('keydown', (ev) => {
   if (code === 'KeyN') {
     musicOff = !musicOff;
     audio.muteMusic(musicOff);
+    hud.say(musicOff ? 'Music off \u00b7 N to bring it back' : 'Music on');
   }
   if (!game.snapshot().typing) {
     if (code === 'KeyI') hud.toggleTasks();

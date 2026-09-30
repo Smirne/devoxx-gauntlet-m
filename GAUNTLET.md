@@ -81,17 +81,18 @@ again; the next change is another human decision.
 | radius (sim px) | 4.75 | 6.25 | 9 |
 | radius (m) — measured off the rig | 0.38 | 0.50 | 0.72 |
 | accel (s⁻¹) | 12 | 4 | 1.5 (was 0.6; Michele, 29 Sep) |
-| top speed (px/s) | 72.5 | 28.75 | 58.75 |
-| top speed (m/s) | 5.8 | 2.3 | 4.7 |
+| top speed (px/s) | 72.5 | 40.25 (28.75 × 1.4; Michele, 23 Sep) | 58.75 |
+| top speed (m/s) | 5.8 | 3.2 | 4.7 |
 | drag (s⁻¹) — unscaled | 9 | 7 | 0.35 |
 | brake (s⁻¹), driven and stick released | = drag | = drag | 1.2 (new; Michele, 29 Sep) |
 | mass — unscaled | 1 | 3 | 7 |
 | lamp — unscaled | cone 0.38 rad, range 280, orange | pool range 95, green | cone 1.0 rad, range 300, blue |
 
-Every px/s quantity is the prototype's number × `SPEED_SCALE = 0.25`, and that is the only thing the
-rescale did to speeds — the prototype's own values are still read out of the POC and checked against
-the factor in `tests/frozen-constants.test.ts`, so "one factor, no exceptions" is a test and not a
-claim. Lengths did not move, so a clock a robot has to travel against scales the other way, by
+Every px/s quantity is the prototype's number × `SPEED_SCALE = 0.25`, with one exception: Droid's top
+speed, which Michele lifted by a further × 1.4 the same day, after playing the rescale (*"droid in
+particular is a bit cumbersome to move around"*; `DROID_SPEED_SCALE` in `src/sim/constants.ts`). The
+prototype's own values are still read out of the POC and checked against those factors in
+`tests/frozen-constants.test.ts`, so the factors are a test and not a claim. Lengths did not move, so a clock a robot has to travel against scales the other way, by
 `TRAVEL_TIME_SCALE = 4`.
 
 Also frozen: wall restitution 0.45 for Biggy and 0.05 for the others; robot–robot restitution 0.3;

@@ -645,6 +645,8 @@ describe('chapter 2 — expo', () => {
 
     // No prompt: R is restart, and a restart now puts you back at the top of THIS
     // chapter rather than at the top of the run (Michele: "not the whole game!").
+    // Twice: in a chapter the first R only asks.
+    g.key('KeyR');
     g.key('KeyR');
     expect(g.snapshot().chapter).toBe(2);
     expect(g.snapshot().t).toBe(0);
@@ -1278,7 +1280,11 @@ describe('chapter 3 — breakfast', () => {
       for (let i = 0; i < CRATE_STACK_LIMIT - 1; i++) liftCrate(g);
       expect(bg.mass).toBeGreaterThan(DEFS.biggy.mass);
       if (escape === 'skip') g.skipChapter();
-      else g.key('KeyR');
+      else {
+        // Twice: in a chapter the first R only asks.
+        g.key('KeyR');
+        g.key('KeyR');
+      }
       // `R` restarts the chapter rather than the run, so the escape it tests is
       // now "back to the top of chapter 3" — and the load must not survive that
       // either, which is the same `restoreIdentity` this test exists for.
@@ -2076,6 +2082,8 @@ describe('the game rig', () => {
     expect(g.snapshot().phase).toBe('play');
     steps(g, 10);
     expect(g.snapshot().t).toBeGreaterThan(0);
+    // Twice: in a chapter the first R only asks.
+    g.key('KeyR');
     g.key('KeyR');
     expect(g.snapshot().chapter, 'R threw the player back to the title').toBe(1);
     expect(g.snapshot().t, 'the chapter clock did not restart').toBe(0);
