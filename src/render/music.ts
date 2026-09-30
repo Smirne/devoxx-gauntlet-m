@@ -285,7 +285,7 @@ const BREAKFAST: Score = {
     { voice: 'bass', gain: 0.14, steps: on([0, 6, 8, 14], 0), len: 3, shift: -12 },
     { voice: 'pluck', gain: 0.085, steps: seq([2, 4, 3, 5, 4, 6], 2, 0), len: 2 },
     { voice: 'bell', gain: 0.06, steps: on([11], 5), len: 3 },
-    { voice: 'shaker', gain: 0.1, steps: on([0, 3, 4, 7, 8, 11, 12, 15], 1), len: 1 },
+    { voice: 'shaker', gain: 0.06, steps: on([0, 3, 4, 7, 8, 11, 12, 15], 1), len: 1 },
     { voice: 'kick', gain: 0.34, steps: on([0, 8], 1), len: 1, from: 1 },
     { voice: 'rim', gain: 0.14, steps: on([4, 12], 1), len: 1, from: 1 },
   ],

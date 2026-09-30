@@ -1157,8 +1157,9 @@ export function createAudio(): Audio {
         break;
       case 3:
         // Breakfast: three thousand people and a queue for tomato soup.
-        bandNoise({ type: 'bandpass', f: 480, q: 0.8 }, 0.09, 0.17, 0.035);
-        bandNoise({ type: 'bandpass', f: 1250, q: 1.1 }, 0.03, 0.23, 0.012);
+        // Kept low and narrow: wide, loud band noise under a score reads as static.
+        bandNoise({ type: 'bandpass', f: 420, q: 2.2 }, 0.03, 0.17, 0.012);
+        bandNoise({ type: 'bandpass', f: 950, q: 2.5 }, 0.008, 0.23, 0.004);
         drone('sine', 96, 0.015);
         break;
       case 4:

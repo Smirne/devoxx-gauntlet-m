@@ -7704,3 +7704,15 @@ but it does nothing about the all-interfaces case, which was the real problem.
 **Checked.** `tsc` passes and the full suite passes. Tested by hand: the port conflict with the
 dummy server, the dev redirect with and without a query, `/index.html` → 200, and the preview
 redirect on a production build.
+
+## 30 Sep 2026 — chapter 3 white noise
+
+**Reported by Michele:** chapter 3's music "seems off, there's white noise."
+
+**What the agent did.** Found the source in the chapter 3 ambient bed (`audio.ts`): two wide
+band-passed noise layers at 0.09 and 0.03, 2–3× louder than any other chapter's bed and with no
+tonal content, sitting under a shaker (`music.ts`) that is also noise. It cut the bed to 0.03 and
+0.008, narrowed the bands (Q 0.8→2.2, 1.1→2.5) and lowered the shaker from 0.1 to 0.06.
+
+**Not checked.** No ears in the loop: levels were chosen by comparison with the other beds, not
+listened to. Michele should play chapter 3 and say if it is still too hissy.
