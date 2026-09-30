@@ -7270,9 +7270,10 @@ those constants are frozen.
 
 **What the agent did.** All three changes are in `src/render/robots/`. The 2.5D and 3D builds both
 use these files, so both builds change.
-- *Droid* (`droid.ts`). The one trim material (`#cf6d28`) is now two. `rim`, a worn bronze
-  (`#86664a`), goes on the shoulder hoops only. That is where the sheet's one warm edge is, and the
-  hoops keep the demo's shape, which Michele likes. `trim`, a worn gunmetal (`#5c6068`), goes on
+- *Droid* (`droid.ts`). The one trim material (`#cf6d28`) is now two. `rim` keeps the demo's hot
+  orange (`#cf6d28`) and goes on the shoulder hoops only. That is where the sheet's one warm edge
+  is, and the hoops keep the demo's shape and colour, which Michele likes. `trim`, a worn gunmetal
+  (`#5c6068`), goes on
   the collar lip, the vent frames, the waist seam and the joint rings. The X harness on the pelvis
   keeps its shape but is now dark panel, like the sheet's crossed pelvis plates. The face and skull
   are unchanged.
@@ -7293,7 +7294,12 @@ use these files, so both builds change.
   stop she leans back about twice as far as before (−0.30 rad against −0.16), then rocks forward
   once and comes to rest.
 
-**What was rejected, and why.** Recolouring the hip rings bronze as well: the sheet shows copper
+**What was rejected, and why.** A worn bronze (`#86664a`) on the hoops as well, which was the
+first version of this change. The review of the PR found that it reversed a preference already
+recorded in `droid.ts`: Michele likes the demo's orange hoops, and they are "not to be corrected
+toward the sheet". It also left Droid an almost all-dark figure from across the corridor. Asked,
+Michele chose the middle ground: hot orange back on the hoop rims only, with the vents, joint rings
+and X harness staying muted. Recolouring the hip rings bronze as well: the sheet shows copper
 wear at the hips, but warm rings on every joint was what the critic objected to. Swinging her arms
 forward on braking: the lean and the hip drop already read clearly, and more would start to look
 drunk. Changing any test: none checked the old colour or ear shape.

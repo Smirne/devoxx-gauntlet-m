@@ -10,10 +10,10 @@
  * What makes it read as Droid and not as a generic humanoid:
  *   - 2.1 m tall and lanky: narrow everywhere, the smallest width/height ratio
  *     of the three, with a forward-hunched posture;
- *   - DRUM PAULDRONS mounted outboard of the chest, each ringed by a worn
- *     bronze hoop — the single most recognisable feature on the model, present
+ *   - DRUM PAULDRONS mounted outboard of the chest, each ringed by a hot
+ *     orange hoop — the single most recognisable feature on the model, present
  *     on the sheet as a copper band round a panelled drum and on the demo as a
- *     hot orange hoop round a dome (the demo's shape, the sheet's colour);
+ *     hot orange hoop round a dome (the demo's shape and the demo's colour);
  *   - a SMOOTH ROUNDED SKULL — an elongated dome on a superellipse section, so
  *     the sides read flat — flaring at the temples into two dark cheek plates,
  *     with two small round amber eyes set WIDE and a dark mesh grille where a
@@ -30,17 +30,19 @@
  * with a ring on the rim — are not on the sheet. They are the organisers'
  * demo, Michele likes them, and they are not to be "corrected" toward the
  * sheet's angular pauldrons. Same for the piping, the X harness and the ribbed
- * joint stacks — the GEOMETRY stays; the COLOUR goes back to the sheet (below). The FACE is the opposite case: the round
+ * joint stacks: their GEOMETRY stays, and only the hoops keep the demo's hot
+ * orange (below). The FACE is the opposite case: the round
  * that took its helmet from the demo lost the character, and the face is what
  * makes a character recognisable, so the head is the sheet's and only the
  * sheet's.
  *
- * THE BRONZE RULE (was the orange rule; Michele, 30 Sep 2026, on a critic's
+ * THE HOOP RULE (was the orange rule; Michele, 30 Sep 2026). A critic found
  * "far too much hot orange trim vs the sheet's weathered grey with faint bronze
- * on the shoulder rims"). The sheet has exactly one warm accent: a worn bronze
- * edge round each shoulder. So the shoulder hoops are the ONLY warm metal on
- * him, and a muted, weathered bronze rather than the demo's hot orange; every
- * other ring and pipe is worn gunmetal, and the X harness is dark panel.
+ * on the shoulder rims". A round that muted all of it, hoops included, left
+ * Droid an almost all-dark figure from across the corridor, so Michele chose
+ * the middle: the shoulder hoops keep the demo's hot orange and are the ONLY
+ * warm metal on him (the sheet also has its one warm edge there); every other
+ * ring and pipe is worn gunmetal, and the X harness is dark panel.
  * Warm still appears as PIPING AND RINGS ONLY, never as a filled
  * area and never as a weathering wash over a big panel. That restraint is most
  * of why the demo does not read as a toy, and an earlier round of this file
@@ -400,18 +402,17 @@ export function buildDroid(): RobotRig {
   /*
    * TRIM, in two metals.
    *
-   * `rim` is the sheet's faint bronze, and it goes on the shoulder hoops and
-   * nowhere else: that is where the sheet's only warm edge is. It is kept a
-   * shade smoother than the panels so the hoops still catch a highlight across
-   * a dark room — what makes the demo's shoulder the thing you remember about
-   * it — but it is weathered bronze, not the old hot orange #cf6d28, which lit
-   * up on every joint and read as a toy's piping.
+   * `rim` is the demo's hot orange #cf6d28, and it goes on the shoulder hoops
+   * and nowhere else: that is where the sheet's only warm edge is, and the hoop
+   * is what you remember Droid by across a dark room. It used to be on every
+   * joint as well, where it read as a toy's piping; a bronze hoop, tried after
+   * that, lost him in the dark (Michele: the middle ground).
    *
    * `trim` is everything else that used to be orange — collar lip, vent frames,
    * joint rings, waist seam: worn gunmetal a few steps lighter than the panels,
    * so the ring and pipe geometry still separates the parts without shouting.
    */
-  const rim = panelMaterial('#86664a', 0.35, { roughness: 0.6, metalness: 0.38 });
+  const rim = panelMaterial('#cf6d28', 0.2, { roughness: 0.58, metalness: 0.22 });
   const trim = panelMaterial('#5c6068', 0.4, { roughness: 0.62, metalness: 0.45 });
   const grime = panelMaterial('#181b21', 0.3, { roughness: 0.9, metalness: 0.2 });
   // Amber. At intensity 2.4 the green channel clipped to 255 and Droid's eyes
