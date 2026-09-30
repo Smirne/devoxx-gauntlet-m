@@ -777,7 +777,9 @@ export function applyGait(rig: RobotRig, params: GaitParams): void {
   // Hips drop into a hard stop, so the knees are seen to take her weight.
   const dip = p.brakeDip ? clamp(-st.accel * p.brakeDip, 0, 0.03) : 0;
   pelvis.position.y += bob - crouch - dip;
-  pelvis.rotation.x += clamp(lean, -0.45, 0.45);
+  // A ball has no posture: the lean goes as he tucks, or it tips the lid forward
+  // off the top of him for as long as he rolls.
+  pelvis.rotation.x += clamp(lean, -0.45, 0.45) * walkAmt;
   pelvis.rotation.z += Math.sin(st.phase * TAU) * p.sway * moving * calm;
   pelvis.rotation.y += -Math.sin(st.phase * TAU) * p.twist * moving * calm;
 
@@ -1216,6 +1218,27 @@ function tipBiggy(rig: RobotRig, th: number, standH: number, axis: 'x' | 'z', ri
   }
 }
 
+/**
+ * Turn `bone` by `a` radians about its parent's x axis through `pivot`, a point in
+ * the parent's frame: `tipBiggy` for a pivot that is not straight below the joint.
+ */
+function turnAboutX(bone: THREE.Object3D, pivot: THREE.Vector3, a: number): void {
+  const y = bone.position.y - pivot.y;
+  const z = bone.position.z - pivot.z;
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  bone.position.y = pivot.y + y * c - z * s;
+  bone.position.z = pivot.z + y * s + z * c;
+  bone.rotation.x += a;
+}
+const _gut = new THREE.Vector3();
+const _turnQ = new THREE.Quaternion();
+/**
+ * How far round the ball the lid rides and comes back as he rolls, radians each
+ * way, once a revolution: the face shows the roll without leaving the top of him.
+ */
+const LID_RIDE = 0.3;
+
 /** Biggy's gut as a fraction of his height — the sheet's ball is 0.83 across. */
 const GUT_R_PER_H = 0.415;
 /** How far he goes over on each roll, radians at full tilt. */
@@ -1412,20 +1435,42 @@ function applyShove(
       sh.rotation.x += (-0.5 - sh.rotation.x) * k;
       sh.rotation.z += ((L === 'L' ? 0.45 : -0.45) - sh.rotation.z) * k;
     }
-    // Down onto the ball, then the spin about its centre. `standH - gutC` is the
-    // pivot's depth below the pelvis, which is negative: the centre is ABOVE it.
+    /*
+     * Down onto the ball, then the spin about its centre, which is `up` above the
+     * pelvis joint: the gut's height off the sole less the pelvis's own.
+     *
+     * It used to be measured off `standH`, the hip's height over the ANKLE, which
+     * is the leg's business and not the floor, and placed as if the pelvis were
+     * upright when the walk's lean (it rises with speed) had tipped it forward. So
+     * the pivot sat about 15 cm off the ball's real centre: the ball hopped 30 cm
+     * off the floor every revolution, and the lid, which rides on top of it, came
+     * away from it.
+     */
+    const up = gutC - (st.base.get(b.pelvis)?.py ?? st.hipRestY);
     rig.bones.pelvis.position.y -= (gutC - gutR) * k;
-    tipBiggy(rig, st.rollA * k, standH - gutC, 'x', 0);
+    // The centre as the pelvis holds it now, in the frame the pelvis hangs in.
+    turnAboutX(b.pelvis, _gut.set(0, up, 0).applyEuler(b.pelvis.rotation).add(b.pelvis.position), st.rollA * k);
     /*
      * The lid keeps its head, mostly.
      *
      * A full counter-rotation would weld his face to the camera and lose the roll;
      * none at all tumbles him through a full revolution three times a second and
-     * loses HIM. 0.8 leaves a fifth of the turn on the lid, so the face rides
-     * round a little and comes back up — recognisable beats precise (CLAUDE.md),
-     * and what has to stay recognisable is the face.
+     * loses HIM. So the face rides round a little and comes back up (`LID_RIDE`),
+     * once a revolution — recognisable beats precise (CLAUDE.md), and what has to
+     * stay recognisable is the face.
+     *
+     * ...and it is turned back about the BALL'S centre, not its own. Michele,
+     * 30 Sep 2026: *"when rolling now biggy's elmet seems detached"*. It was. The
+     * lid used to be turned back 80% of the roll about the head's own pivot, and
+     * that pivot sits on the neck, which goes round with the ball: the lid stayed
+     * nearly upright while its base orbited the gut, standing out of the ball's
+     * side at a quarter turn and sunk into its underside at a half — and when
+     * `rollA` wrapped, the 80% wrapped with it and the lid jumped 72 degrees. Now
+     * the collar and lid turn back about the gut's centre, the pivot the ball turns
+     * on, so they stay seated on top and the ball turns under them.
      */
-    b.head.rotation.x -= st.rollA * k * 0.8;
+    const gutInTorso = _gut.set(0, up, 0).sub(b.torso.position).applyQuaternion(_turnQ.setFromEuler(b.torso.rotation).invert());
+    turnAboutX(b.neck, gutInTorso, -st.rollA * k + LID_RIDE * k * Math.sin(st.rollA));
     // Rolling has no footfalls.
     if (k > 0.5) {
       st.contact[0] = false;

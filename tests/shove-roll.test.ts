@@ -23,6 +23,7 @@
  * nothing else.
  */
 
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -347,6 +348,44 @@ describe('the ball has no feet, and nobody rolls it but a shove', () => {
     expect(t.legScale).toBeLessThan(0.3);
     // ...and the body turning through whole revolutions rather than stepping.
     expect(t.pelvisSwing).toBeGreaterThan(2);
+  });
+
+  /*
+   * ...about his OWN centre, with the lid on top of him.
+   *
+   * Michele, 30 Sep 2026: *"when rolling now biggy's elmet seems detached"*. The
+   * ball turned about a point some 15 cm off its centre, taken off the hip's
+   * height over the ankle rather than over the floor, and tipped further by the
+   * walk's lean: it hopped 30 cm off the floor every revolution. And the lid was turned
+   * back about its own base, which rides round with the ball, so it stood out of
+   * his side and sank into his underside. The gut's centre is `GUT_CY_PER_H` of
+   * his height up standing, and a ball rolling on the floor keeps it one radius up.
+   */
+  it('rolls about his own centre, one radius off the floor, with the lid kept on top', () => {
+    const rig = createRobot('biggy');
+    const gutR = rig.height * 0.415;
+    rig.root.updateMatrixWorld(true);
+    const inTorso = rig.bones.torso.worldToLocal(new THREE.Vector3(0, rig.height * 0.507, 0));
+    const gut = new THREE.Vector3();
+    const head = new THREE.Vector3();
+    let lo = Infinity;
+    let hi = -Infinity;
+    let lidLow = Infinity;
+    for (let i = 0; i * DT < 4; i++) {
+      updateRobot(rig, { speedMps: 5.7, heading: 0, dt: DT, shoved: 1 });
+      if (i * DT < 2) continue;
+      rig.root.updateMatrixWorld(true);
+      gut.copy(inTorso).applyMatrix4(rig.bones.torso.matrixWorld);
+      rig.bones.head.getWorldPosition(head);
+      lo = Math.min(lo, gut.y);
+      hi = Math.max(hi, gut.y);
+      lidLow = Math.min(lidLow, head.y - gut.y);
+    }
+    expect(rig.bones.thighL.scale.y, 'he never tucked up').toBeLessThan(0.3);
+    expect(hi - lo, 'the ball hops as it rolls').toBeLessThan(0.01);
+    expect(Math.abs(lo - gutR), 'the ball is not rolling on the floor').toBeLessThan(0.01);
+    // Upright, the head's joint is 0.41 m over the centre; the lid rides ~17 degrees.
+    expect(lidLow, 'the lid came off the top of him').toBeGreaterThan(0.36);
   });
 
   it('gives the legs back the moment the roll lets go', () => {
