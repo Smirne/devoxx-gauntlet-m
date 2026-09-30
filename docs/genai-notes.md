@@ -7113,3 +7113,17 @@ container Vite prints a `spawn xdg-open ENOENT` stack trace, and the gauntlet cr
 
 **Checked.** `pnpm build` is green, and `dist/` holds both pages. The redirect itself can only be
 checked on the Vercel deployment.
+
+## 30 Sep 2026 — the published links go into the README
+
+**What the human decided.** Michele deployed both sites on Vercel himself: the game at
+<https://devoxx-after-dark.vercel.app/> and the earlier prototypes at
+<https://devoxx-game-pocs.vercel.app/>. The repo stays public on his account at
+<https://github.com/Smirne/devoxx-gauntlet-m>; moving it to the company account was considered and
+dropped.
+
+**What the agent did.** Put the three links at the top of the README, where a judge who opens the
+repo first will see them, and pointed `docs/ideas-history.md` at the prototypes site.
+
+**Not checked.** This container's network policy blocks `*.vercel.app`, so the agent could not load
+either deployment or confirm the `/` → `/3d.html` redirect. That check was left to Michele.
