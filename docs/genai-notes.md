@@ -119,7 +119,7 @@ agents and never shipped, and WellD's logo on the credits screen, inlined as a v
 
 ## The method: the gauntlet loop
 
-Full rules in [`GAUNTLET.md`](../GAUNTLET.md). In short: the game is cut into pieces, each piece is
+Inspired by Matt Shumer's gauntlet loop; this project's version is in [`GAUNTLET.md`](../GAUNTLET.md). In short: the game is cut into pieces, each piece is
 built by a **builder**, then torn apart by a **critic** that gets fresh context every round, never
 sees the builder's diff or self-report, and only ever judges the running build. A piece is done when
 the critic says a stranger would mistake our version for the professionally-shipped game — or when it
@@ -7314,7 +7314,8 @@ of his own:
 - The speed meter's raw sim line shows only while the physics view is up.
 - The three robot visual tweaks go to a separate follow-up PR, built by another agent while the
   first submission went in.
-He also named the music tool: Suno.
+He also named the music tool, Suno, and the method's inspiration, Matt Shumer's gauntlet loop, which
+`GAUNTLET.md` and these notes now credit.
 
 **What the agent did.** It checked the rules against the live pages. It found no compliance gap,
 but a different submission form: five fields, one combined "Tech and genAI used" field worth 5

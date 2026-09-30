@@ -1,5 +1,7 @@
 # GAUNTLET.md — how "After Dark" gets built
 
+*Inspired by Matt Shumer's gauntlet loop; what follows is this project's own version of it.*
+
 The gauntlet loop is the build methodology, not a polish pass bolted on at the end. Every piece of
 this game is produced by a **builder**, then torn apart by a **critic on fresh context** who never
 sees the builder's diff, only the running build. A piece is done when the critic says our version
