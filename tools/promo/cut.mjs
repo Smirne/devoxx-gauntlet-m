@@ -82,7 +82,10 @@ const ACTS = {
   opening: { file: 'opening.wav', src: 0, level: -19, sync: true, fadeIn: 1.2 },
   ch1: { file: 'score1.wav', src: 12.6, level: -23 },
   ch2: { file: 'score2.wav', src: 1.0, level: -22 },
-  ch3: { file: 'score3.wav', src: 1.0, level: -22 },
+  // Chapter 3's score runs on bright hats and a shaker, noise bursts. Lifted to
+  // the other chapters' level they read as hiss under the picture (Michele, 30
+  // Sep: "chapter 3 has some white noise"), so the top comes down under the trailer.
+  ch3: { file: 'score3.wav', src: 1.0, level: -22, filter: 'treble=g=-12:f=4500,lowpass=f=9000' },
   ch4: { file: 'score4.wav', src: 1.0, level: -21 },
 };
 
@@ -190,7 +193,7 @@ for (const [act, a] of Object.entries(ACTS)) {
   actGain[act] = gain;
   for (let at = t0; at < t1 - 0.05; ) {
     const len = Math.min(srcLen, t1 - at);
-    pieces.push({ file, src: a.src, at, len, gain, end: at + len >= T - 0.05, fadeIn: a.fadeIn });
+    pieces.push({ file, src: a.src, at, len, gain, end: at + len >= T - 0.05, fadeIn: a.fadeIn, filter: a.filter });
     if (len < srcLen) break;
     at += len - XF;
   }
@@ -209,14 +212,14 @@ EDIT.forEach((s, i) => {
   const peak = meanDb(file, s.from / FPS, s.len / FPS, 'max');
   const gain = Math.min(actGain[s.act] ?? 0, SFX_PEAK - peak) + (s.sfxDb ?? 0);
   console.log(`sound: ${s.clip} ${s.from}+${s.len} cues ${gain >= 0 ? '+' : ''}${gain.toFixed(1)} dB`);
-  pieces.push({ file, src: s.from / FPS, at: starts[i], len: s.len / FPS, gain, end: false, fadeIn: 0.12, fadeOut: 0.2 });
+  pieces.push({ file, src: s.from / FPS, at: starts[i], len: s.len / FPS, gain, end: false, fadeIn: 0.12, fadeOut: 0.2, filter: ACTS[s.act]?.filter });
 });
 const aIn = segs.length;
 let audio = '';
 pieces.forEach((p, k) => {
   const fadeIn = p.fadeIn ?? (p.at === 0 ? 1.5 : XF);
   const fadeOut = p.fadeOut ?? (p.end ? 1.6 : XF);
-  audio += `[${aIn + k}:a]aresample=48000,atrim=${p.src.toFixed(3)}:${(p.src + p.len).toFixed(3)},asetpts=PTS-STARTPTS,` +
+  audio += `[${aIn + k}:a]aresample=48000,atrim=${p.src.toFixed(3)}:${(p.src + p.len).toFixed(3)},asetpts=PTS-STARTPTS,${p.filter ? `${p.filter},` : ''}` +
     `volume=${p.gain.toFixed(2)}dB,afade=in:d=${fadeIn},afade=out:st=${(p.len - fadeOut).toFixed(3)}:d=${fadeOut},` +
     `adelay=${Math.round(p.at * 1000)}:all=1,apad[a${k}];`;
 });
