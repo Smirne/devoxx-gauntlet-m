@@ -699,6 +699,29 @@ function toastLifeMs(until: number, snapT: number): number {
   return Math.max(900, Math.min(8000, ms));
 }
 
+/**
+ * How long a line takes to READ, ms: a second to notice it, then about four words
+ * a second, up to twelve seconds. The chapters give a line its life in sim time,
+ * and the long ones came up for four seconds and went — the shutter's forty-five
+ * words, the fire door's twenty (critic round, 30 Sep). A short line keeps its
+ * own life; a long one stays until it can have been read.
+ */
+function readMs(text: string): number {
+  const words = text.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
+  return Math.min(12000, 1000 + words * 230);
+}
+
+/**
+ * The same READOUT with a new figure: "Voxxy pushes Biggy — 5.8 m/s and climbing",
+ * then 6.1. That is one line being updated, not a second line — stacked, a push
+ * filled the three places and pushed the story out. Only for measured speeds:
+ * two clues differ only in their digits too, and both have to stay on screen.
+ */
+function sameReadout(a: string, b: string): boolean {
+  const stem = (s: string): string => s.replace(/\d+(?:[.,]\d+)*/g, '#');
+  return a.includes('m/s') && b.includes('m/s') && stem(a) === stem(b);
+}
+
 /** Clear air left between two bubbles that would otherwise touch, in px. */
 const BUBBLE_GAP = 6;
 
@@ -1348,13 +1371,18 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
       const key = `${t.t}|${t.until}`;
       if (key !== lastToastKey) {
         lastToastKey = key;
-        const life = toastLifeMs(t.until, snap.t);
+        const life = Math.max(toastLifeMs(t.until, snap.t), readMs(t.t));
         // The same sentence twice is one message that is still true, not two
         // messages: leaning on a door re-fires its `why` every throttle window, and
         // stacking those produced six identical toasts down the middle of the
         // screen. Refresh the existing line's timer instead.
-        const repeat = live.find((lt) => !lt.out && lt.text === t.t);
+        const repeat = live.find((lt) => !lt.out && (lt.text === t.t || sameReadout(lt.text, t.t)));
         if (repeat) {
+          if (repeat.text !== t.t) {
+            repeat.text = t.t;
+            const line = repeat.node.querySelector('.ad-line');
+            if (line) line.innerHTML = t.t;
+          }
           repeat.dieAt = now + life;
           repeat.removeAt = now + life + 340;
         } else {
