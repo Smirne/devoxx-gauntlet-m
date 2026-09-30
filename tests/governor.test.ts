@@ -40,6 +40,39 @@ describe('the frame governor', () => {
     expect(g.rung).toBe(bottom);
   });
 
+  /**
+   * A chapter start: the environment capture, the cast, the first shadow maps,
+   * then a few frames paying for first uses. The chapter-start profile (29 Sep)
+   * caught the governor stepping down on exactly these, and the step itself —
+   * every render target reallocated — was one more stall. The world now pauses
+   * it at the end of such a frame.
+   */
+  it('ignores a chapter being set up when the world says so, and steps down for the same frames when it does not', () => {
+    const chapterStart = (told: boolean): number => {
+      const g = new Governor();
+      const clock = { t: 0 };
+      g.frame(0, 16);
+      run(g, clock, 3, 16);
+      clock.t += 900;
+      if (told) g.pause(clock.t, 1500);
+      g.frame(clock.t, 900);
+      run(g, clock, 1.2, 300);
+      run(g, clock, 3, 16);
+      return g.rung;
+    };
+    expect(chapterStart(false), 'the set-up frames alone should step it down, or this proves nothing').toBeGreaterThan(0);
+    expect(chapterStart(true)).toBe(0);
+  });
+
+  it('still adapts a machine that is slow after a pause', () => {
+    const g = new Governor();
+    const clock = { t: 0 };
+    g.frame(0, 16);
+    g.pause(clock.t, 1500);
+    run(g, clock, 3, 100);
+    expect(g.rung).toBeGreaterThanOrEqual(1);
+  });
+
   it('adapts a machine that runs at 4 fps (the old stepper called every such frame a hitch)', () => {
     const g = new Governor();
     const clock = { t: 0 };

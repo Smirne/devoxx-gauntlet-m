@@ -95,19 +95,19 @@ export const CREDIT_STATS: readonly CreditStat[] = [
       'then a third-person camera reading the same sim, unchanged',
   },
   {
-    n: '371',
-    label: 'commits in 7 days',
-    note: '366 of them written by the model, 5 by the human — 22 to 29 September 2026',
+    n: '455',
+    label: 'commits in 8 days',
+    note: '446 of them written by the model, 9 by the human — 22 to 30 September 2026',
   },
   {
-    n: '91,219',
+    n: '92,426',
     label: 'lines of TypeScript',
-    note: '66,454 of game in 94 files, 24,765 of tests in 73 — 940 tests, no physics engine',
+    note: '67,475 of game in 95 files, 24,951 of tests in 74 — 946 tests, no physics engine',
   },
   {
-    n: '123,022',
+    n: '126,912',
     label: 'words of notes',
-    note: '85,975 of them the GenAI record: what was built, what a human decided, what was rejected',
+    note: '89,865 of them the GenAI record: what was built, what a human decided, what was rejected',
   },
   {
     n: '44+',
@@ -132,8 +132,8 @@ export const CREDIT_STATS: readonly CreditStat[] = [
  * session's, and this game was built across several.
  */
 export const CREDIT_FOOTNOTE =
-  'Counted off the repository and off the sessions\u2019 own records on 29 September 2026. The tokens are ' +
-  'the whole of the four sessions that built this; the tool calls and the subagents are what one of many ' +
-  'sessions could count, so those two are a floor, not a total.';
+  'Counted off the repository on 30 September 2026 and off the sessions\u2019 own records on 29 September. ' +
+  'The tokens are the whole of the four sessions that built this; the tool calls and the subagents are what ' +
+  'one of many sessions could count, so those two are a floor, not a total.';
 
 export const CREDIT_CLOSE = 'C or Esc to close';

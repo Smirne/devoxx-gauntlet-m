@@ -47,6 +47,14 @@ export interface World3D {
    * does not start on a stall of a hundred shaders. Resolves when compiled.
    */
   prewarm(snap: GameSnapshot, progress?: (share: number) => void): Promise<void>;
+  /**
+   * Dress the cast of the chapters still to come, from those chapters' opening
+   * snapshots, before `prewarm`: their portraits are sculpted, their costumes
+   * built and their shaders compiled behind the loading screen, not on the
+   * chapter's first frame. The figures stay in the pool, hidden, for the
+   * chapter to take over.
+   */
+  rehearse(snaps: GameSnapshot[]): void;
   /** Photo mode: depth of field focused on the driven robot. */
   photo: boolean;
   /** Debug: refresh cinema E's mirror (on by default). */
@@ -402,6 +410,7 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     let i = 0;
     for (const r of robots.values()) r.lamp.intensity = lamps[i++];
     envBaked = true;
+    setUp = true;
   }
 
   let w = 4;
@@ -442,6 +451,14 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     resize(w, h);
   }
   let lastWall = performance.now();
+  /**
+   * This frame set something up — a chapter began, a floor was shown, the
+   * environment was captured. The governor is paused at the frame's end, so
+   * neither it nor the first-use frames after it are judged (`Governor.pause`).
+   */
+  let setUp = false;
+  let setUpChapter = -1;
+  const SETUP_MS = 1500;
   function govern(): void {
     if (opts.preserveDrawingBuffer) return; // screenshot mode: never
     const now = performance.now();
@@ -690,6 +707,10 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     if (draw) {
       govern();
       timer.begin();
+    }
+    if (snap.chapter !== setUpChapter) {
+      setUpChapter = snap.chapter;
+      setUp = true;
     }
     // Chapters 2 and 3 are downstairs; chapter 4 climbs back to Room 8.
     const ground3 = snap.chapter === 2 || snap.chapter === 3;
@@ -952,6 +973,10 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     // frame, so the shadow maps it samples exist and are this frame's.
     if (mir && mirrored) mir.render(renderer, scene, cam.camera);
     timer.end();
+    if (setUp) {
+      setUp = false;
+      governor.pause(performance.now(), SETUP_MS);
+    }
   }
 
   const _v = new THREE.Vector3();
@@ -993,6 +1018,9 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
     struggling: false,
     cam,
     render,
+    rehearse(snaps: GameSnapshot[]): void {
+      for (const s of snaps) people.update(s, 0);
+    },
     prewarm(snap: GameSnapshot, progress?: (share: number) => void): Promise<void> {
       // Three set-up frames: props are built from the first snapshots, and the
       // box-projection patch and the light pools take them over the first three.
