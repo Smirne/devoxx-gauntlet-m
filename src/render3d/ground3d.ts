@@ -16,14 +16,14 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
-import { DRINK_FRIDGES, DUKE, GF, HIGH_TABLES, LOBBY_RISE_M, MAIN_STAIR_TOP_M, WIFI_TAG, entranceBayOpenings, groundPlates, groundRiseM, groundWallsFor, stairDoors, stairMidLanding, stairRamps } from '../sim/geometry';
+import { DRINK_FRIDGES, DUKE, GF, HALL_COLUMNS, HIGH_TABLES, LOBBY_RISE_M, MAIN_STAIR_TOP_M, WIFI_TAG, entranceBayOpenings, groundPlates, groundRiseM, groundWallsFor, stairDoors, stairMidLanding, stairRamps } from '../sim/geometry';
 import { DOOR_H, stairFlight } from '../render/venue/props';
 import type { Plate, Wall } from '../sim/types';
 import { m } from '../sim/units';
 
 import type { Materials } from './materials';
 import { box } from './materials';
-import { OLD_DEVOXX, exitSign, vintagePoster } from './signs';
+import { OLD_DEVOXX, beerCentralFlyer, devoxxBanner, exitSign, scheduleScreen, vintagePoster } from './signs';
 import { buildDuke } from './duke';
 import { BOOTH_SCHEMES } from '../render/venue/signage';
 import type { VolumePoint } from './pipeline';
@@ -692,6 +692,13 @@ function hallFurniture(group: THREE.Group, mats: Materials): THREE.Object3D[] {
       hd.rotation.y = Math.PI;
       group.add(hd);
     }
+    // Somebody taped a flyer to the first fridge's door: the party afterwards.
+    if (f === DRINK_FRIDGES[0]) {
+      const flyer = new THREE.Mesh(new THREE.PlaneGeometry(0.21, 0.297), new THREE.MeshStandardMaterial({ map: beerCentralFlyer(), roughness: 0.7 }));
+      flyer.position.set(m(f.x) + w * 1.5, 1.3, m(f.y + f.h / 2) - d / 2 - 0.012);
+      flyer.rotation.set(0, Math.PI, 0.06);
+      group.add(flyer);
+    }
   }
   return b.build(group);
 }
@@ -738,6 +745,46 @@ function storePosters(group: THREE.Group): void {
     sheet.name = `store-poster-${s.year}`;
     group.add(sheet);
   }
+}
+
+/**
+ * THE SCHEDULE SCREENS: a TV on each long face of four columns down the middle
+ * of the hall, the Devoxx "now and next" board that stands at every crossing of
+ * the real one. On the east-west aisles, the long walks through the booths, and
+ * on the hall's circuit (`glowing`): dark in chapter 2 until the breakers are in.
+ * The sim's column rects are the mounting faces, so nothing a robot touches moves.
+ */
+function scheduleScreens(group: THREE.Group, mats: Materials): void {
+  const at = [
+    [533, 333],
+    [853, 333],
+    [373, 473],
+    [693, 473],
+  ];
+  // One material a board and one mesh a material: eight screens and their
+  // bezels are three draws, not sixteen (the perf pass's rule, `merge.ts`).
+  const boards = [false, true].map((later) =>
+    glowing(new THREE.MeshBasicMaterial({ map: scheduleScreen(later), color: new THREE.Color(1.25, 1.25, 1.25), toneMapped: false })),
+  );
+  const out = new Buckets();
+  const SW = 1.0;
+  const SH = SW * (9 / 16);
+  const Y = 2.55;
+  let n = 0;
+  for (const [cx, cy] of at) {
+    const col = HALL_COLUMNS.find((c) => c.x === cx && c.y === cy);
+    if (!col) continue;
+    const z = m(col.y + col.h / 2);
+    for (const side of [-1, 1] as const) {
+      const face = side < 0 ? m(col.x) : m(col.x + col.w);
+      out.add(mats.blackGloss, box(0.05, SH + 0.06, SW + 0.06, V(face + side * 0.03, Y, z)));
+      const screen = new THREE.PlaneGeometry(SW, SH);
+      screen.rotateY(side * (Math.PI / 2));
+      screen.translate(face + side * 0.058, Y, z);
+      out.add(boards[n++ % 2], screen);
+    }
+  }
+  out.build(group, false);
 }
 
 /** Reception's lit things, switched with the hall's power: material, full colour. */
@@ -935,6 +982,7 @@ export function buildGround(mats: Materials): Ground3D {
   colliders.push(...hallFurniture(group, mats));
   colliders.push(...reception(group, mats));
   storePosters(group);
+  scheduleScreens(group, mats);
   {
     // Duke, on his sim footprint, facing the doors.
     const duke = buildDuke();
@@ -1129,6 +1177,44 @@ export function buildGround(mats: Materials): Ground3D {
   const panels: THREE.MeshStandardMaterial[] = [];
   const strips: Array<{ mat: THREE.MeshBasicMaterial; base: THREE.Color }> = [];
   const tables: Array<{ rect: { x: number; y: number; w: number; h: number }; mats: THREE.MeshStandardMaterial[]; fade: number }> = [];
+  /*
+   * DEVOXX BANNERS from the roof trusses, over the black above the booths: the
+   * orange one with the name down it and the black one with the motto, in turn.
+   * Hung where the trusses at x 330 and 690 cross the east-west aisles, a little
+   * south of each crossing's column, facing along the aisle so a robot walking
+   * it sees them flat on; two sheets back to back, so both sides read. Their
+   * print catches the hall's lights (`panels`), so chapter 2's dark hall keeps
+   * them dark. They hang from 3.2 m up: nothing in the game reaches that high.
+   */
+  {
+    const bottomChord = HALL_H - 0.9 - 0.21;
+    const BW = 1.2;
+    const BH = 2.8;
+    const hem = new THREE.CylinderGeometry(0.02, 0.02, BW + 0.08, 8);
+    hem.rotateX(Math.PI / 2);
+    const spots: Array<[number, number]> = [[690, 240], [690, 380], [690, 520], [690, 665], [330, 380], [330, 520]];
+    // The two prints, one material each, and everything baked into one mesh a
+    // material: six banners are four draws.
+    const prints = [0, 1].map((v) => {
+      const map = devoxxBanner(v);
+      const mat = new THREE.MeshStandardMaterial({ map, roughness: 0.85, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.05 });
+      panels.push(mat);
+      return mat;
+    });
+    const out = new Buckets();
+    const top = bottomChord - 0.3;
+    spots.forEach(([x, y], i) => {
+      for (const side of [-1, 1]) {
+        const sheet = new THREE.PlaneGeometry(BW, BH);
+        sheet.rotateY(side * (Math.PI / 2));
+        sheet.translate(m(x) + side * 0.004, top - BH / 2, m(y));
+        out.add(prints[i % 2], sheet);
+      }
+      for (const hy of [top, top - BH]) out.add(mats.steel, hem.clone().translate(m(x), hy, m(y)));
+      for (const dz of [-BW / 2, BW / 2]) out.add(mats.darkMetal, new THREE.CylinderGeometry(0.004, 0.004, 0.3, 4).translate(m(x), top + 0.15, m(y) + dz));
+    });
+    out.build(group, false);
+  }
   let focusX = -1e9;
   let focusZ = -1e9;
   const beltGroup = new THREE.Group();

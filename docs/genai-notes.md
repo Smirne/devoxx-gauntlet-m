@@ -6889,3 +6889,58 @@ credits screen showing the new tiles.
 #6). PR #7, from another session, recounts the credits too, so whichever of #6 and #7 lands second
 will need `main` merged in over one tile. The pasted verdict: his sentence is kept, and the one clue
 the puzzle needs from the old line after it. And the full recount of the credits, at the last commit.
+
+## 30 Sep 2026 (overnight) — the hall made Devoxx's
+
+**What the human decided.** Going to sleep, Michele left the night to refinement rounds, *"in
+particular graphics and making the location more devoxx-like, especially the exhibition hall"*, in a
+second PR stacked on the backlog, a commit a round (*"ok fine"*). The agent asked what the hall was
+missing before he went. WellD: *"WellD is not a Devoxx sponsor, no booth (but put some sticker also
+on chap 4)."* The high tables were already there, off his own photographs. And two things of his
+own: *"There's a movie night each year so we could have a poster for that. And hints to a party at
+Beer Central?"* Everything else, *"i think we got those."*
+
+**What the agent did.** One commit a round, each looked at in a headless render of the real page from
+where a player would stand.
+
+- *WellD, on chapter 4's laptops.* The lab tables had laptop bases and no screens: every lid was
+  geometry baked at its place in the corridor and then turned about the world origin, which swung it
+  five metres under the floor or six up into the ceiling. They are hinged at their own base now, the
+  screen towards whoever sits there, and the white die-cut WellD sticker the corridor laptop already
+  carried is a factory (`welld.ts`) that four of those lids use: the backs of wall-side lids where the
+  room-side seat is empty, the only backs no other lid stands in front of from the corridor.
+- *The movie night.* The backlit frame just east of Room 8's door, the first the three pass in
+  chapter 4, bills DEVOXX MOVIE NIGHT as a cinema marquee — bulbs, the bill in black letters on a white
+  letter board, "TONIGHT · ROOM 8 · FILM: TBA", like the keynote speaker.
+- *Beer Central,* as hearsay and never as an event Devoxx runs: a chalkboard on the back wall of
+  chapter 3's bar ("first round: whoever broke the build") and a flyer taped to a drinks fridge
+  ("everyone ends up there · you did not hear it from Stephan").
+- *The schedule screens.* Devoxx's "now and next" board on eight faces of four columns down the hall,
+  DEVOXX in the orange bar, a clock, invented talks with the plan's rooms as orange pills; two boards
+  alternate so a column's faces differ.
+- *The banners.* Six from the roof trusses over the black above the booths, the orange DEVOXX /
+  BELGIUM 2026 and the black "for developers, by developers", hung where the trusses cross the
+  east-west aisles so they face the walk. Screens and banners are on the hall's circuit: chapter 2's
+  dark hall keeps them dark until the breakers are in.
+- *Then made cheap.* Those two rounds had added about fifty separate meshes; batched by material the
+  way the performance pass batches everything static, they are seven. Over a whole frame at two
+  chapter 3 poses: 1255 draw calls became 1242, and 1072 became 1050.
+
+**Caught and rejected.**
+- The Beer Central chalkboard first hung over the bar's own status sign; it moved left of the neon.
+- Roll-up banners beside the booths, the most conference-looking prop there is, were dropped: built
+  stands are solid pods and table stands are open underneath (Voxxy drives under them), so a banner
+  would have been either invisible or walked through, and giving it a collider on the last night
+  would have moved the routes three path tests measure.
+- The hall's light was left where Michele put it the day before (*"chap 3 lighting seems a bit too
+  much"*): the rounds added lit things rather than more light.
+
+**Checked.** `pnpm test` green at every commit (941 tests in 70 files); `tsc --noEmit` clean; the
+render changes looked at in the page, each from a player's spot. `tools/playthrough/run.mjs` drove all
+four chapters on this branch through the real 3D page to the final card: 236 s of game clock, five
+legs, no errors — and the final card it reached still said "cable 1155 px", which is how the last
+three pixel readouts were found and fixed in the backlog PR.
+
+**For Michele to decide.** The Beer Central hints place it "by Antwerpen-Centraal": worth a glance
+from someone who drinks there. The talks on the screens and the movie night's "TONIGHT · ROOM 8" are
+fiction on real rooms. And the merge: this PR after #6, retargeted to `main`.
