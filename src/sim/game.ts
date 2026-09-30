@@ -873,16 +873,20 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       Math.min(9, Math.round(3 + (soup / 100) * 2 + temp / 100 + spare / (40 * TRAVEL_TIME_SCALE) - complaints * 0.3 + swag.length * 0.5)),
     );
     score.points = pts;
-    score.total = Math.round(t);
+    // From lights-out to the keynote, which is what the film has just said: chapter
+    // 4 takes it when the film starts. A run that never showed the film (a skip)
+    // ends here, so the clock here is the same thing.
+    const total = score.total ?? Math.round(t);
+    score.total = total;
     const nightT = score.nightT ?? 0;
     const expoT = score.expoT ?? 0;
     const sk = skipped.length ? ` · skipped: ${skipped.join(', ')}` : '';
     card =
-      `<b>Keynote starts.</b> ${pts}/9<br>` +
+      `<b>Keynote starts.</b> Score ${pts}/9<br>` +
       `<span class="sub">Night ${nightT}s · Expo ${Math.max(0, expoT - nightT)}s (cable ${Math.round((score.cable ?? 0) / PX_PER_M)} m) · ` +
       `Soup ${soup}% at ${temp}° (${score.complaints ?? 0} complaint${(score.complaints ?? 0) === 1 ? '' : 's'}) · ` +
       `Stage ready with ${spare}s to spare (${score.keynoteComplaints ?? 0} complaint${(score.keynoteComplaints ?? 0) === 1 ? '' : 's'}) · ` +
-      `Swag ${swag.length}/3 · Total ${Math.round(t)}s${sk}</span><small>R to play again \u00b7 C for credits</small>`;
+      `Swag ${swag.length}/3 · Total ${total}s${sk}</span><small>R to play again \u00b7 C for credits</small>`;
   }
 
   function finish(): void {
