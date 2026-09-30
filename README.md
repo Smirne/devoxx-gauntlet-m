@@ -50,8 +50,8 @@ into the bundle.
 | Mouse (click to lock the pointer) | Look around; the camera drifts back behind the robot while you drive |
 | Mouse wheel | Zoom the camera |
 | `1` `2` `3` / `Tab` | Switch to Voxxy / Droid / Biggy / the next robot |
-| `E` | Act — fix, carry, take, talk, and mount Biggy when Droid stands beside him. With nothing to act on, the robot's party trick |
-| `Space` | Take hold of Biggy with the robot standing beside him, or let go of him |
+| `E` | Act — fix, carry, take, talk, and mount Biggy when Droid stands beside him. Beside Biggy with nothing else to act on, take hold of him, or let go. With nothing at all, the robot's party trick |
+| `Space` | The same grab as `E`: take hold of Biggy, or let go of him |
 | number keys | Type the code, **standing at the fire-door keypad** |
 | `I` | The run sheet: every job in the chapter, who does it, what is done |
 | `H` | A hint, and an arrow to where it points |
@@ -69,8 +69,8 @@ into the bundle.
 | `W` `A` `S` `D` or arrow keys | Move the selected robot |
 | `1` `2` `3` | Switch to Voxxy / Droid / Biggy |
 | `Tab` | Cycle to the next robot |
-| `E` | Act — fix, carry, take, and mount Biggy when Droid stands beside him |
-| `Space` | Take hold of Biggy with the robot standing beside him, or let go of him |
+| `E` | Act — fix, carry, take, and mount Biggy when Droid stands beside him. Beside Biggy with nothing else to act on, take hold of him, or let go |
+| `Space` | The same grab as `E`: take hold of Biggy, or let go of him |
 | number keys | Type the code, **standing at the fire-door keypad**. Away from the pad, `1` `2` `3` still switch robot |
 | `M` | Mute everything |
 | `N` | Music on / off, leaving the sound effects alone |

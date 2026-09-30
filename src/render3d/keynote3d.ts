@@ -682,8 +682,13 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
     }
     // The pit floor, from the stage wall to the first row.
     group.add(new THREE.Mesh(box(x1 - x0, 0.2, m(seatY0 - r8y), V(cx, -RAKE_DEPTH - 0.1, m((r8y + seatY0) / 2)), 3), carpet));
-    // The side walls come down into the pit.
+    // The side walls come down into the pit, and so does the drape behind the
+    // stage: it stopped at corridor level, and under it the wings looked out
+    // at the city (Michele, 29 Sep: "seeing through the room 8 wall").
     for (const wx of [x0 + 0.06, x1 - 0.06]) group.add(new THREE.Mesh(box(0.1, RAKE_DEPTH, z1 - z0, V(wx, -RAKE_DEPTH / 2, (z0 + z1) / 2)), mats.acoustic));
+    const pitDrape = new THREE.Mesh(box(x1 - x0 - 0.1, RAKE_DEPTH, 0.12, V(cx, -RAKE_DEPTH / 2, z0 + 0.1)), mats.drape);
+    pitDrape.receiveShadow = true;
+    group.add(pitDrape);
     // A balcony rail along the front of the cross-aisle, as in the photograph —
     // over the seat blocks only, on posts, so the two aisles stay open. It ran
     // the room's full width, across the aisles the robots walk down (Michele,

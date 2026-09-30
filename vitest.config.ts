@@ -4,6 +4,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    // Lets the worker read its RPC replies between synchronous tests (see the file).
+    setupFiles: ['tests/yield-between-tests.ts'],
     /*
      * Scratch files are not the suite.
      *

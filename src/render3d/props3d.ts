@@ -119,6 +119,28 @@ class Sparks {
 
 /* -------------------------------------------------------------------- make */
 
+/**
+ * How far a note taped to a `doorPair` leaf stands off the leaf's middle, m: just
+ * over the studs (0.05 + 0.018) and the porthole's rim (0.05) on the 0.09 m slab.
+ */
+const NOTE_ON_LEAF = 0.072;
+
+/**
+ * Lay a notice, just attached to a door leaf (or to the door that holds its
+ * leaves), flat on that leaf's face, on whichever side it was hanging.
+ *
+ * Michele, 29 Sep 2026, with a screenshot of cinema B's door standing open and
+ * its note in mid-air beside it: *"the paper note is still floating, should be
+ * attached to the door."* It was attached — it swung with the leaf — but the
+ * sheet is placed off the 2.5D prop's rect, which put it 0.31 m from the leaf's
+ * middle: 26 cm proud of a 9 cm door. Shut, that reads as on the door; open, it
+ * hangs in the air a hand's breadth off the leaf. Both frames have the leaf's
+ * slab at z = 0, so this is the one number to fix.
+ */
+function onLeafFace(note: THREE.Object3D): void {
+  note.position.z = Math.sign(note.position.z || 1) * NOTE_ON_LEAF;
+}
+
 function doorPair(mats: Materials, width: number): THREE.Group {
   const g = new THREE.Group();
   const leafMat = new THREE.MeshPhysicalMaterial({ color: 0x2a0d10, roughness: 0.55, metalness: 0, sheen: 0.6, sheenColor: new THREE.Color(0.5, 0.2, 0.2) });
@@ -658,6 +680,7 @@ export function createProps(parent: THREE.Object3D, mats: Materials, floor: 'fir
                 // Taped to whichever leaf it sits on, so it swings with it.
                 const leaf = o.children.reduce((best, l) => (Math.abs(l.getWorldPosition(new THREE.Vector3()).x - other.position.x) < Math.abs(best.getWorldPosition(new THREE.Vector3()).x - other.position.x) ? l : best));
                 leaf.attach(other);
+                onLeafFace(other);
                 o.userData.noteTaken = true;
               }
             }
@@ -675,6 +698,7 @@ export function createProps(parent: THREE.Object3D, mats: Materials, floor: 'fir
               for (const other of byKey.values()) {
                 if (other.userData.notice && other.parent !== o && Math.hypot(other.position.x - o.position.x, other.position.z - o.position.z) < 2) {
                   o.attach(other);
+                  onLeafFace(other);
                   o.userData.noteTaken = true;
                 }
               }

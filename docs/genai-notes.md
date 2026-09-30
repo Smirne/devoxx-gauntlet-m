@@ -6774,3 +6774,118 @@ notes. The credits were recounted as before (`git log`, a walk of `src` and `tes
 clear it to watch the curtain call behind it; if that matters more, the other way out of the dead end
 is a line on the HUD that says the run is over. And the frame rate on the laptops that were slow is
 still his to see: everything here ran on a software renderer.
+
+## 29 Sep 2026 (the last day, and the evening) — the film at the end, two playtest lists, the text review
+
+**What the human decided.** Michele's list for the last day: publish from `main` and play it once
+end to end, republish the text review page, a one-page GenAI summary, a README checked from a fresh
+clone. Then a playtest, filed as it happened, and a priority order he approved in four words —
+*"priority is fine"* — with three amendments: the cake moves up to A; *"I'd prefer all robots to
+talk"* (the agent had proposed Droid and Biggy saying "Voxxy does the talking", and he turned it
+down); and chapter 4's corridor should stop at the secondary stairs, *"add some tables with
+breakfast or other things if you want a reason."* He approved the raked Room 8 after trying it
+(*"rake room looks good"*), so it is on by default in 3D. He asked for the ending in one message —
+*"After the last robot reaches the stage, they should regroup, camera zooms on the screen, and the
+movie should start … I'd start with Devoxx After Dark (like in the splash screen), A game by Michele
+Giacobazzi (pic of my char?) Then the bloopers / notes? Or credits in film version?"* — and, seeing
+it, added one line: *"You should be in the credits too."* People walking sideways in Room 8 were a
+bug, not a joke: *"If it's a crab joke, i appreciate, but it doesn't go in the game."*
+
+In the evening, a feature freeze and a rule: *"from now on, all goes through MRs."* A second
+playtest list, one screenshot at a time — a note floating off a door, the technical room's plank
+*"in english"* (while *"RECEPTIE · RECEPTION is fine"*), *"More crates here, and adorn the walls with
+old devoxx posters"*, *"leave out the floating bottle on biggy, taps are enough"*, Room 8's door still
+shut in chapter 4, *"i think I'm seeing through the room 8 wall here?"*, and chapter 1's robots
+stopping before the transition, *"Minor, delayable."* The text review came back with 32 verdicts, and
+one key for every text: *"Space or E are both fine, but choose 1."* The agent chose `E`. The model
+names stay on the credits screen (*"keep them"*); the per-session figures do not say "one session"
+any more (*"many session is more honest, if we don't have a count"*); the full recount waits for the
+last commit (*"hang on that. We have still work to do"*).
+
+Then, going to sleep: *"Finish the current backlog, open PR (s?). Then make some refinement rounds."*
+The backlog is this entry and PR #6; the refinements went into a second PR stacked on it, a commit a
+round (*"ok fine"*), with an entry of its own.
+
+**What the agent did.** One coordinating session; four helpers, each in its own git worktree,
+merged one at a time with the full suite run after each merge.
+
+- *The ending.* The reel gained a dark beat before the first card (`REEL_PREROLL`, 2.2 s): the three
+  regroup on the apron, watched from the front rows, and the camera rises to the house screen and
+  fills the frame with it. The film is set like one — AFTER DARK drawn with the splash screen's own
+  wordmark and Antwerp skyline, the byline with a portrait of Michele's character, the night's
+  numbers and bloopers, then credits: Michele and Claude each beside their own character, Ronny
+  Shamano for the opening track, WellD, and the robots' names in their lamps' colours. The portraits
+  are the cameo figures from Room 8's second row, built by the same code in a studio of their own
+  below the venue and rendered once into the screen's canvas (`src/render3d/portrait.ts`). The camera
+  holds on the screen to the last card, then goes back to the stage for the curtain call behind the
+  final card, which the 3D build now puts at the top of the frame so the bow is not behind it.
+- *Found while filming it.* Droid sat 1.8 m in the air over Biggy for the whole curtain call: his
+  mounted height was Biggy's top measured from zero, and on the raked stage Biggy stands in the pit.
+  Room 8's floor cans had never pointed at the stage — `lookAt` was handed a point in the parent's
+  frame — so they now rest nose-down and swing up when lit, as Michele asked. Duke stood across the
+  holding slide's text.
+- *The helpers, merged.* Breakers thrown from under the board, every handle its own animated pull;
+  the keynote speaker walking round a table Voxxy drove under instead of into it (a person-sized
+  detour, `src/sim/detour.ts`); chapter 4's crowd facing the way it walks, and a cake Biggy has to
+  touch to push; all three robots talking, each opening in its own voice; chapter 4 starting faced at
+  Room 8 with the stairs behind guarded; the corridor's shut doors made walls, dressed like chapter
+  1's, closed at the secondary stairs by the speakers' breakfast; a carried letter that stops short
+  of the wall instead of going through it; Droid's ladle clearing the shelf and landing in the pot at
+  the end of the move; Biggy stepping into his roll at the roller door and rolling on after the
+  smash while Voxxy stays at the door; and the chapter 2→3 let-in — the three regroup inside, the
+  doors open on Stephan, and he pats Voxxy.
+- *Smaller.* The credits key the 3D build never had; the quality button moved beside Skip; signs as
+  planks on walls; two soup pots; beer crates; "P: photo"; `#rake`/`#flat` on the published link; the
+  WebGL "feedback loop" warnings every run, traced per draw call to the stair treads sharing the
+  corridor floor's reflective material; a vitest worker that timed out its own RPC between
+  synchronous tests, so the suite exited 1 with every test green.
+- *The evening's list (PR #6).* Room 8's door was shut because the performance pass merges the
+  venue's static meshes by material, door leaves included, so hiding the door hid nothing: that one
+  door stays out of the merge. The wall was the rake: the drape behind the stage stopped at corridor
+  level and the pit is 2.4 m below it, so the wings looked out at the city backdrop. A ray sweep from
+  210 points on Room 8's floors — 3,381 of 63,000 rays escaping before, 213 after, every one of them
+  through the open door. The store has eight pallets, sim colliders all, stacked as cartons, and six
+  past editions on its wall, JavaPolis 2005 to Devoxx 2022, invented designs yellowed by age. Chapter
+  1's three stood still for 0.89 s under the closing fade, because the walk ends against the head of
+  the stairs; the fade now comes down over the last second of the walk (`CutOptions.fadeEarly`), and a
+  test that fails at 0.59 s of standing without it.
+- *The text review.* All 28 changes applied, found by their text rather than the review's line
+  numbers, which had moved. Where Michele's own wording met the code, the wording stayed his and the
+  code's truth was kept: "It's already starting" when the cable goes in only when the printer really
+  is online; the stage hint names the spotlights the stage still waits for; two typos fixed; one
+  verdict with half the review page pasted into it kept to his sentence. "Bart" is gone, Room 8's
+  crowd is 746, `E` is the key every text names for the grab (Space still does it, and the README
+  says both). The chapter 1 no-digit test forbids 4 to 9 now, the code's alphabet: the keypad hint he
+  chose names 1, 2 and 3, the robot keys. The full playthrough then found the cable still in pixels
+  where the review had not looked — the HUD's meter, chapter 2's status line and the final card — and
+  all three read in metres now.
+- *The credits.* The per-session tiles read "44+" and "4,453+", "many sessions", and the footnote says
+  what one of them could count. PR #5's merge had left `main` red on the credits test — the recount
+  was taken before its code landed — so the lines tile was recounted, and only that.
+
+**Caught and rejected.**
+- The first cut pulled the camera back to the stage at the first credit; the credits shrank to a line
+  nobody could read. The camera now stays on the screen for the whole film.
+- A helper published an intermediate build over the live one for two hours. The live build was a
+  strict subset of the merged one, so nothing was lost; helpers were told not to publish.
+- The agent's reading of "stairs should not be closed … robots pointing to the room" as chapter 3 did
+  not survive a look at chapter 3's opening, which has no stairs in view; it fits the head of the main
+  staircase at the start of chapter 4, which is what changed. Michele: *"i think so."*
+- After PR #5 merged, the agent went to rebase the remaining commits onto `main`; the session's own
+  safety check refused a history rewrite, and `main` was merged in instead — the same result for the
+  PR, nothing rewritten.
+- The old posters first went on all the store's walls, and two of them are drapes: a taped sheet
+  floated in front of the folds. All six are on the one hard wall.
+
+**Checked.** `tsc --noEmit` clean; `pnpm test` green at every commit, 941 tests in 70 files at the
+last; `vite build` for both pages. Every render change was looked at in a headless render of the real
+page, from the spot a player would stand — the doorway, the wings, the store and its posters, the
+stair head. `tools/playthrough/run.mjs` drove all four chapters through the real 3D page to the final
+card, on the branch stacked on this one (which carries all of it): 236 s of game clock, five legs, no
+errors. The build of this PR was published and loaded from a plain static server with no errors, its
+credits screen showing the new tiles.
+
+**For Michele to decide.** The merge order: #6 first, then #8 retargeted to `main` (it is stacked on
+#6). PR #7, from another session, recounts the credits too, so whichever of #6 and #7 lands second
+will need `main` merged in over one tile. The pasted verdict: his sentence is kept, and the one clue
+the puzzle needs from the old line after it. And the full recount of the credits, at the last commit.

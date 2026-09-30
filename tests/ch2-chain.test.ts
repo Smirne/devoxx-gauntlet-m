@@ -520,7 +520,7 @@ describe('chapter 2 — what the player is told, and what they have to find', ()
     expect(plate!.y + (plate!.h ?? 0)).toBeLessThanOrEqual(gapY[1] + 2);
     expect(plate!.x).toBeLessThan(GF.tech.x + GF.tech.w);
     expect(plate!.x + (plate!.w ?? 0)).toBeGreaterThan(GF.tech.x + GF.tech.w);
-    expect(props(g, 'sign').some((p) => (p.label ?? '').includes('TECHNISCHE'))).toBe(true);
+    expect(props(g, 'sign').some((p) => (p.label ?? '').includes('TECHNICAL ROOM'))).toBe(true);
 
     // Biggy is told what the room is from OUTSIDE it, not once he is already in.
     g.debug.select('biggy');

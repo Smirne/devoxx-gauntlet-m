@@ -13,6 +13,7 @@
  */
 
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { CFP_WALL, GF, WIFI_TAG, groundPlates, groundRiseM, groundWallsFor } from '../sim/geometry';
 import { BELT_H, GATE_H, beltU, nastriRun } from '../sim/nastri';
@@ -883,14 +884,50 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
       }
       case 'crate': {
         if (p.label?.startsWith('beer')) return buildCh3(p, pw, ph);
-        // Pallets of crated Devoxx t-shirts behind the shutter.
-        const h = 0.5 * (p.v ?? 1) + 0.15;
+        // Pallets of crated Devoxx t-shirts behind the shutter: cartons, two by
+        // two, `v` layers high, each a slightly different brown with its tape
+        // strip — a stack of boxes rather than one brown block. One mesh a pallet.
+        const layers = p.v ?? 1;
         const pallet = new THREE.Mesh(box(w, 0.14, d, V(cx, 0.07, cz)), mats.counter);
-        const load = new THREE.Mesh(box(w * 0.92, h, d * 0.92, V(cx, 0.14 + h / 2, cz)), new THREE.MeshStandardMaterial({ color: 0xb08a5a, roughness: 0.85 }));
-        const label = emitter(canvasText(['DEVOXX', 'T-SHIRTS · XL'], { bg: '#000', fg: '#ff7a1a' }), w * 0.7, 0.2, 1.2, 0xffffff);
-        label.position.set(cx, 0.14 + h * 0.6, cz + (d * 0.92) / 2 + 0.01);
+        const cw = (w * 0.92) / 2 - 0.02;
+        const cd = (d * 0.92) / 2 - 0.02;
+        const ch = 0.48;
+        let seed = Math.round(p.x * 31 + p.y * 17) || 1;
+        const rnd = (): number => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+        const parts: THREE.BufferGeometry[] = [];
+        const tint = (geo: THREE.BufferGeometry, r: number, gg: number, b: number): THREE.BufferGeometry => {
+          const n = geo.getAttribute('position').count;
+          const col = new Float32Array(n * 3);
+          for (let i = 0; i < n; i++) col.set([r, gg, b], i * 3);
+          geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+          return geo;
+        };
+        for (let L = 0; L < layers; L++) {
+          for (const sx of [-1, 1]) {
+            for (const sz of [-1, 1]) {
+              const k = 0.86 + rnd() * 0.22;
+              const px = cx + sx * (cw / 2 + 0.01);
+              const pz = cz + sz * (cd / 2 + 0.01);
+              const py = 0.14 + L * 0.5 + ch / 2;
+              parts.push(tint(box(cw, ch, cd, V(px, py, pz)).toNonIndexed(), 0.69 * k, 0.54 * k, 0.35 * k));
+              parts.push(tint(box(cw * 0.2, 0.006, cd + 0.004, V(px, py + ch / 2 + 0.003, pz)).toNonIndexed(), 0.55, 0.47, 0.32));
+            }
+          }
+        }
+        const load = new THREE.Mesh(mergeGeometries(parts) ?? parts[0], new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
+        // The size, stencilled: on the south face and on the west, the face a
+        // robot sees first coming through the shutter.
+        const size = ['S', 'M', 'L', 'XL', 'XXL'][Math.round(p.x + p.y) % 5];
+        const labelTex = canvasText(['DEVOXX', `T-SHIRTS · ${size}`], { bg: '#000', fg: '#ff7a1a' });
+        const top = 0.14 + (layers - 1) * 0.5 + ch * 0.55;
+        const south = emitter(labelTex, w * 0.7, 0.2, 1.2, 0xffffff);
+        south.position.set(cx, top, cz + (d * 0.92) / 2 + 0.01);
+        const west = emitter(labelTex, d * 0.7, 0.2, 1.2, 0xffffff);
+        west.position.set(cx - (w * 0.92) / 2 - 0.01, top, cz);
+        west.rotation.y = -Math.PI / 2;
         pallet.castShadow = load.castShadow = true;
-        g.add(pallet, load, label);
+        load.receiveShadow = true;
+        g.add(pallet, load, south, west);
         return g;
       }
       case 'gate': {
@@ -1518,16 +1555,15 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
         g.add(puddle);
         return g;
       }
-      case 'toast': {
-        // The glass Biggy raises when the bar is done: a tulip of Belgian gold.
-        const glass = new THREE.Mesh(
-          new THREE.LatheGeometry([[0.02, 0], [0.02, 0.06], [0.05, 0.1], [0.04, 0.2]].map(([r0, y]) => new THREE.Vector2(r0, y)), 14),
-          beerMat,
-        );
-        g.add(glass);
-        g.userData = { glass };
+      case 'toast':
+        /*
+         * The glass Biggy used to raise off his lid when the bar was done — a
+         * tulip of Belgian gold, drawn half a metre above a robot with no hand
+         * there to hold it. Michele, 29 Sep 2026: *"leave out the floating bottle
+         * on biggy, taps are enough."* The sim still publishes the beat (the
+         * 2.5D build and the toast's line use it); the 3D build draws nothing.
+         */
         return g;
-      }
       case 'beer-glass': {
         // Four Belgian shapes by `v`: tulip, goblet, flute, chalice.
         g.position.set(m(p.x), 1.1, m(p.y));

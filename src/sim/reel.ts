@@ -136,7 +136,7 @@ export function buildReel(
    */
   if (lateT > 0) {
     add(
-      `${lateT}s of three thousand people waiting`,
+      `${lateT}s of 746 people waiting`,
       'The stage was still being built. They were extremely polite about it.',
     );
   }
@@ -173,12 +173,15 @@ export function buildReel(
 }
 
 /**
- * The credits as the film runs them: the three the credits screen names (`C`,
- * `src/render/credits.ts`), a line each, and the robots' own makers last.
+ * The credits as the film runs them: the four the credits screen names (`C`,
+ * `src/render/credits.ts`), a line each, and the robots' own makers last. The
+ * music is Ronny's track and the chapter scores, so it is credited as the
+ * screen credits it: the scores to Claude, "Heroic Motif" to Ronny.
  */
 const FILM_CREDITS: readonly ReelCard[] = [
   { title: 'Michele Giacobazzi', sub: 'Direction, design, and every playtest', hold: 2.4, kind: 'credit' },
-  { title: 'Claude, in Claude Code', sub: 'The simulation, the venue, the robots, the music and the tests', hold: 2.4, kind: 'credit' },
+  { title: 'Claude, in Claude Code', sub: 'The simulation, the venue, the robots, the chapter scores and the tests', hold: 2.4, kind: 'credit' },
+  { title: 'Ronny Shamano', sub: 'Music help: \u201cHeroic Motif\u201d, the opening track', hold: 2.2, kind: 'credit' },
   { title: 'WellD', sub: 'Sponsor', hold: 2.0, kind: 'credit' },
   { title: 'Voxxy, Droid and Biggy', sub: 'Courtesy of the Devoxx Robot Games', hold: 2.4, kind: 'credit' },
 ];

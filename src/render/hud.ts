@@ -17,7 +17,7 @@
 
 import { CABLE_MAX, TOAST_MS } from '../sim/constants';
 import type { Bot, GameSnapshot, Prop, RobotKind, Task } from '../sim/types';
-import { displayMps } from '../sim/units';
+import { PX_PER_M, displayMps } from '../sim/units';
 import { CARDS as INTRO_CARDS } from '../sim/opening';
 import { GOAL, STORY } from '../sim/story';
 import {
@@ -612,7 +612,7 @@ function collectMeters(snap: GameSnapshot): MeterView[] {
         out.push({
           key: 'cable',
           label: p.label ?? 'cable reel',
-          value: `${Math.round(used)} / ${CABLE_MAX} px`,
+          value: `${Math.round(used / PX_PER_M)} / ${Math.round(CABLE_MAX / PX_PER_M)} m`,
           frac: f,
           colour: rgb(mixRgb(AMBER, ALARM, (f - 0.75) / 0.2)),
           warn: tight,

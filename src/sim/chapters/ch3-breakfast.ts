@@ -736,7 +736,7 @@ function setupMinigames(ctx: ChapterCtx, hints: () => readonly Task[]): Minigame
     // The one this robot can actually do, if there is one — a hint about somebody
     // else's job is a hint about the wrong problem (`Task.hint`).
     const mine = open.find((t) => t.who?.includes(b.kind)) ?? open[0];
-    if (!mine) return 'Biggy: "Everything is done." The duck agrees.';
+    if (!mine) return `${b.name}: "Everything is done." The duck agrees.`;
     const line = Array.isArray(mine.hint) ? mine.hint[0] : mine.hint;
     return typeof line === 'string' && line.length > 0 ? line : `Still open: ${mine.text}.`;
   }
@@ -770,7 +770,7 @@ function setupMinigames(ctx: ChapterCtx, hints: () => readonly Task[]): Minigame
             '"…keep it." Swag +1',
         );
       } else if (b.kind === 'voxxy') {
-        ctx.flash('Voxxy: "The holographic one?" — "Top shelf." I am 38 cm of robot. DROID!');
+        ctx.flash('Voxxy: "The holographic one?" — "Top shelf." I am not a top-shelf robot. DROID!');
       } else {
         ctx.flash('Biggy: I leaned on the stand to reach and the whole stand leaned back. Droid does this one.');
       }
@@ -939,14 +939,11 @@ export interface BreakfastState {
 }
 
 const OBJECTIVE =
-  'Chapter 3 · <b>Breakfast</b>. The main entrance is open and 3,000 people walk in. <b>Stephan</b> stands ' +
-  'at the main staircase and wants three things before he opens it: his <b>tomato soup</b> — at breakfast, ' +
-  'yes — the <b>keynote speaker</b>, and <b>tonight\'s beer delivery</b> out of the aisle and onto the bar. Droid: the ladle ' +
-  'is on the high shelf. Biggy: carry the pot (bumps spill it, and it cools), and stack the crates — he is ' +
-  'the only one who can lift one, and only so many at a time — they go to <b>The Finally Block</b>, the bar ' +
-  'with the lit mark on the floor, and that errand is his alone. Voxxy: clear a catering queue (E), find the ' +
-  'speaker at a built booth. The sponsor booths are open and running their games: three bits of ' +
-  '<b>swag</b> to be won on the way, all optional.';
+  'Chapter 3 · <b>Breakfast</b>. The main entrance is open and 3,000 people are gonna walk in. <b>Stephan</b> ' +
+  'stands at the main staircase and wants three things before he opens it: his <b>tomato soup</b> — at ' +
+  "breakfast, yes — the <b>keynote speaker</b>, and <b>tonight's beer delivery</b> out of the aisle and onto " +
+  'the bar. Droid: the ladle. Biggy: the pot and the crates. Voxxy: open queues (E), find the speaker. The ' +
+  'sponsor booths are open and running their games: three bits of <b>swag</b> to be won on the way, all optional.';
 // "talk", for any of the three (`talk`). It said "ask", which read as the queues.
 const KEYS =
   '1/2/3/Tab: switch · WASD · E: use / lift / talk / clear a queue / play a game / tow Biggy / Voxxy jumps · R: restart \u00b7 I: run sheet \u00b7 H: hint \u00b7 P: physics \u00b7 C: credits';
@@ -1112,8 +1109,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         b.kind === 'voxxy'
           ? `${b.name}: that one is still clipped. Wait — Stephan is working down the line`
           : b.kind === 'droid'
-            ? `${b.name}: this nastro has not wound in yet. Four seconds of patience, at most`
-            : `${b.name}: a webbing belt would not stop me, and I am not going to be the robot that finds out in front of Stephan`,
+            ? `${b.name}: this belt has not wound in yet. Four seconds of patience, at most`
+            : `${b.name}: webbing. I could go through it. Not in front of Stephan`,
     },
   }));
 

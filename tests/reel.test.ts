@@ -29,7 +29,7 @@ describe('the opening video', () => {
     expect(cards[1].title).toContain('Michele Giacobazzi');
     expect(cards[cards.length - 1]).toMatchObject({ title: 'KEYNOTE SPEAKER', sub: 'TBA', kind: 'end' });
     const credits = cards.filter((c) => c.kind === 'credit');
-    expect(credits.map((c) => c.title)).toEqual(['Michele Giacobazzi', 'Claude, in Claude Code', 'WellD', 'Voxxy, Droid and Biggy']);
+    expect(credits.map((c) => c.title)).toEqual(['Michele Giacobazzi', 'Claude, in Claude Code', 'Ronny Shamano', 'WellD', 'Voxxy, Droid and Biggy']);
     // ...all of them after the night's own cards, and right before the joke.
     const firstCredit = cards.findIndex((c) => c.kind === 'credit');
     expect(cards.slice(firstCredit, -1).every((c) => c.kind === 'credit')).toBe(true);

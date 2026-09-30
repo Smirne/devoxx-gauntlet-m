@@ -481,12 +481,21 @@ const NO_MIRRORS: Mirror[] = [];
  * he can still get into the room: wider than he is, narrow enough that he has to
  * come off the throttle first. The tall pallets finish at 1.06 m, so they are solid
  * rather than `low` — see the note on the wall itself.
+ *
+ * Eight since 29 Sep (Michele: *"More crates here"*): a third column against the
+ * east wall and two along the south one, all east of the first column, so the
+ * doorway, Biggy's roll and the lane between the rows are what they were. `v` is
+ * how many crates high (the renderer's height; every pallet is solid either way).
  */
-const STORE_PALLETS: readonly Vec2[] = [
-  { x: GF.store.x + 34, y: GF.store.y + 30 },
-  { x: GF.store.x + 34, y: GF.store.y + 72 },
-  { x: GF.store.x + 80, y: GF.store.y + 30 },
-  { x: GF.store.x + 80, y: GF.store.y + 72 },
+const STORE_PALLETS: ReadonlyArray<Vec2 & { v: 1 | 2 }> = [
+  { x: GF.store.x + 34, y: GF.store.y + 30, v: 2 },
+  { x: GF.store.x + 34, y: GF.store.y + 72, v: 1 },
+  { x: GF.store.x + 80, y: GF.store.y + 30, v: 2 },
+  { x: GF.store.x + 80, y: GF.store.y + 72, v: 1 },
+  { x: GF.store.x + 120, y: GF.store.y + 30, v: 1 },
+  { x: GF.store.x + 120, y: GF.store.y + 72, v: 2 },
+  { x: GF.store.x + 80, y: GF.store.y + 96, v: 2 },
+  { x: GF.store.x + 120, y: GF.store.y + 96, v: 1 },
 ];
 
 /* ==================================================================== chapter */
@@ -769,7 +778,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       b.kind === 'biggy'
         ? `Biggy: roller door. I'd need ${m(ROLLER_DOOR_SPEED).toFixed(1)} m/s and I top out at ${m(b.max).toFixed(1)}. Unless someone grabs hold of me (E, right beside me) and runs me down that lane`
         : b.kind === 'voxxy'
-          ? "Voxxy: roller door — every badge and polo is behind it. I bounce off. Biggy at full tilt isn't enough either, so I'll take hold of him (E, right beside him) and run him down the whole top lane"
+          ? 'Voxxy: roller door — the t-shirts are behind it. I bounce off, and Biggy alone is too slow. I can help him gain speed, but I might need to grab him (E, right beside him)'
           : 'Droid: a slatted roller door. Mass, not leverage. Biggy needs a longer run than he can give himself — and a straighter one than I can give him. Voxxy has the legs for it',
     // Horizontal door: the speed that counts is the one along the lane.
     onHit: (b) => {
@@ -782,7 +791,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         rollerLast = printerOnline();
         ctx.removeWall(roller);
         ctx.flash(
-          `CRASH — Biggy rolls through at ${m(b.vx).toFixed(1)} m/s. The Devoxx crew and 3,000 badges are free`,
+          `CRASH — Biggy rolls through at ${m(b.vx).toFixed(1)} m/s. Three thousand Devoxx t-shirts are free`,
           3500,
         );
         b.vx *= 0.4;
@@ -958,9 +967,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       router.cabinetOpen
         ? null
         : b.kind === 'voxxy'
-          ? "Voxxy: router cabinet, and the door is shut. I got both grippers under the lip and lifted MYSELF off the floor. One kilo of me against a steel door — that is a Biggy door"
+          ? 'Voxxy: router cabinet, shut. I got both grippers under the lip and lifted MYSELF off the floor. That is a Biggy door'
           : b.kind === 'droid'
-            ? 'Droid: the hinges have not moved since 2019. Three times Voxxy and still nothing, and there is no lever on a flush door. This wants weight. Biggy'
+            ? 'Droid: hinges seized since 2019, and no lever on a flush door. This wants weight, not reach. Biggy'
             : null,
   };
   ctx.walls.push(cabinet);
@@ -1026,7 +1035,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       'At the far end, reception: the <b>badge printer</b> is dark, and with no network behind it ' +
       'nobody who walks through that door in an hour gets a badge.<br><br>' +
       'Taped to the technical room door, the crew\'s run sheet, in biro. The top line has been torn ' +
-      'off. Under the gap, in a different hand: <b>\u201cwifi\u2019s on the wall, Bart did it in orange\u201d</b>.</span>' +
+      'off. Under the gap, in a different hand: <b>\u201cwifi\u2019s on the wall, somebody did it in orange\u201d</b>.</span>' +
       '<small>Press any key</small>',
   );
 
@@ -1140,11 +1149,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      */
     ctx.flash(
       (b.kind === 'droid'
-        ? 'Droid: <b>AUTHORISATION?</b>, it says — the venue WiFi password, because of course it is the same ' +
-          'one for everything. That label will be taped inside the lid, up at the top; from Biggy\'s ' +
+        ? "Droid: <b>AUTHORISATION?</b> — the venue WiFi password. It will be taped inside the lid, up top. From Biggy's " +
           'shoulders I could read it'
-        : 'Voxxy: <b>AUTHORISATION?</b>, it says — the venue WiFi password. Nobody writes those down. Except ' +
-          'that somebody sprayed it on the side of the Legacy Systems stand, in orange, and small paint is what I am for') +
+        : 'Voxxy: <b>AUTHORISATION?</b>, it says — the venue WiFi password. Somebody sprayed it on the side of the ' +
+          'Legacy Systems stand, in orange') +
         '. Type it: A–Z, Backspace fixes a slip, Esc steps away',
       4600,
     );
@@ -1310,9 +1318,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       if (dist(b, posterAt) < POSTER_READ) {
         ctx.flash(
           router.known
-            ? 'Droid: orange paint, a wifi symbol, and DevoxxForever. Read it already'
-            : 'Droid: somebody has been at this wall with a spray can. I can see a wifi symbol and then ' +
-                'thirteen letters of orange fog. My eyes are for reaching things, not for reading them. Voxxy',
+            ? 'Droid: orange paint, a wifi symbol, and DevoxxForever. We have it already'
+            : "Droid: a spray can's been at this wall. A wifi symbol and then thirteen letters of orange fog. " +
+                'Too small for my lamp. Voxxy',
           4000,
         );
         return true;
@@ -1374,7 +1382,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       if (dist(b, posterAt) < POSTER_READ) {
         ctx.flash(
           router.known
-            ? 'Voxxy: read it already — DevoxxForever. And no, you cannot change it'
+            ? 'Voxxy: got it already — DevoxxForever. And no, you cannot change it'
             : 'Voxxy: orange spray, a wifi symbol, and something under it in letters half my size. Not a ' +
                 'poking job — hold the beam on it',
           3600,
@@ -1486,8 +1494,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     cable.plugHold = { x: v.x, y: v.y };
     cable.pts = [...cable.pts, { x: printerAt.x, y: printerAt.y }];
     ctx.flash(
-      `Cable in — the run is made (${Math.trunc(cable.len)} of ${CABLE_MAX} px used). ` +
-        'The printer has its wire. Now it wants the other end of it to be awake',
+      `Cable in — ${Math.round(m(cable.len))} of ${Math.round(m(CABLE_MAX))} m of reel used. The printer has its wire. ` +
+        (printerOnline() ? "It's already starting." : 'Now it wants the other end of it to be awake'),
       3000,
     );
   }
@@ -1616,9 +1624,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      * the one she is talking over.
      */
     ctx.flash(
-      'Voxxy: oh — <i>that</i> password. A wifi symbol, a metre of orange, and under it ' +
-        '<b>DevoxxForever</b> — <i>(and no, you can\u2019t change it)</i>. Bart. Now the terminal in the ' +
-        'technical room',
+      'Voxxy: oh — <i>that</i> password. <b>DevoxxForever</b> — <i>(and no, you can\u2019t change it)</i>. ' +
+        'Now the terminal in the technical room',
       4600,
     );
   }
@@ -2191,7 +2198,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         w: 5,
         h: 18,
         state: hallLit() ? 'done' : power ? 'active' : 'idle',
-        label: 'TECHNISCHE RUIMTE · TECHNICAL',
+        label: 'TECHNICAL ROOM',
       },
       {
         kind: 'sign',
@@ -2371,7 +2378,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         // out for itself. It is the second half of "where does the cable go": the
         // bar stops being an abstract budget and becomes "62 m left, 118 m of reel".
         label: cable.connected
-          ? `cable reel — in at reception (${Math.round(cable.len)} px used)`
+          ? `cable reel — in at reception (${Math.round(m(cable.len))} m used)`
           : cable.carrying
             ? `cable reel — ${Math.round(dist(ctx.byKind('voxxy'), printerAt) / 12.5)} m still to reception`
             : 'cable reel',
@@ -2437,20 +2444,20 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
           ? 'roller door — torn up, jammed in its housing'
           : 'roller door — shirts & gadgets, shut',
       },
-      ...STORE_PALLETS.map((pt, i): Prop => ({
+      ...STORE_PALLETS.map((pt): Prop => ({
         kind: 'crate',
         x: pt.x,
         y: pt.y,
         w: 16,
         h: 14,
-        v: i % 2 === 0 ? 2 : 1,
+        v: pt.v,
         state: 'idle',
         label: 'Devoxx t-shirts',
       })),
       { kind: 'gate', ...GF.gate, state: 'shut', label: 'registration gate' },
       // The lane the prototype drew as a dashed hint: this is where Voxxy has to
       // shove Biggy from, and it is sim data so the renderer need not guess.
-      { kind: 'lane', x: 370, y: 160, w: GF.roller.x - 4 - 370, h: T, state: rollerBroken ? 'done' : 'idle', label: 'run-up lane → (Voxxy pushes Biggy)' },
+      { kind: 'lane', x: 370, y: 160, w: GF.roller.x - 4 - 370, h: T, state: rollerBroken ? 'done' : 'idle', label: 'run-up lane → (Voxxy grabs Biggy · E)' },
     ];
     return out;
   }
@@ -2510,7 +2517,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       : cable.snapped
         ? 'cable snapped — back to the rack'
         : cable.carrying
-          ? `cable ${Math.round(cable.len)}/${CABLE_MAX} px${cable.taut ? ' — TAUT' : ''} → reception`
+          ? `cable ${Math.round(m(cable.len))}/${Math.round(m(CABLE_MAX))} m${cable.taut ? ' — TAUT' : ''} → reception`
           : 'cable: on the reel at the rack';
     const store = rollerBroken
       ? 'shirts & gadgets ✓'
@@ -2640,7 +2647,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
          */
         who: ['voxxy', 'biggy'],
         at: storeStand,
-        hint: 'Voxxy: he cannot get up to what that shutter wants on his own. I take hold of him — E, right beside him — at the far end of the top lane, and we run the whole length of it',
+        hint: 'Voxxy: Biggy alone is too slow for that shutter. I grab him — E, right beside him — at the far end of the top lane, and we run the whole length of it',
       },
       ...(doorsDue
         ? [

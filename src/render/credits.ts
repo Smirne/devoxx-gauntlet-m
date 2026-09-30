@@ -67,8 +67,10 @@ export const CREDIT_ROLES: readonly CreditRole[] = [
  * so the four that built this game add up rather than being extrapolated from the
  * one whose transcript is readable from in here. The tool calls and the subagents
  * cannot be had the same way \u2014 they live in transcripts this container cannot
- * open \u2014 so those two say which session they came from and the footnote calls
- * them a floor.
+ * open \u2014 so those two are what one session could count, marked with a `+`, and
+ * labelled with the many sessions they are a floor of. They used to say "one
+ * session", which read as if one session built the game; Michele, 29 Sep 2026:
+ * *"many session is more honest, if we don't have a count."*
  */
 export const CREDIT_STATS: readonly CreditStat[] = [
   {
@@ -98,9 +100,9 @@ export const CREDIT_STATS: readonly CreditStat[] = [
     note: '366 of them written by the model, 5 by the human — 22 to 29 September 2026',
   },
   {
-    n: '86,213',
+    n: '91,219',
     label: 'lines of TypeScript',
-    note: '63,451 of game in 92 files, 22,762 of tests in 69 — 886 tests, no physics engine',
+    note: '66,454 of game in 94 files, 24,765 of tests in 73 — 940 tests, no physics engine',
   },
   {
     n: '123,022',
@@ -108,14 +110,14 @@ export const CREDIT_STATS: readonly CreditStat[] = [
     note: '85,975 of them the GenAI record: what was built, what a human decided, what was rejected',
   },
   {
-    n: '44',
-    label: 'subagents, one session',
-    note: 'critics, explorers and builders, plus 6 orchestrated workflows \u2014 counted in this session alone',
+    n: '44+',
+    label: 'subagents, many sessions',
+    note: 'critics, explorers and builders, plus 6 orchestrated workflows \u2014 the ones one session could count',
   },
   {
-    n: '4,453',
-    label: 'tool calls, one session',
-    note: '3,906 of them a shell — 7,245 model turns answering 233 messages from Michele',
+    n: '4,453+',
+    label: 'tool calls, many sessions',
+    note: '3,906 of them a shell — 7,245 model turns answering 233 messages from Michele, in one session alone',
   },
   {
     n: '17.5 B',
@@ -131,7 +133,7 @@ export const CREDIT_STATS: readonly CreditStat[] = [
  */
 export const CREDIT_FOOTNOTE =
   'Counted off the repository and off the sessions\u2019 own records on 29 September 2026. The tokens are ' +
-  'the whole of the four sessions that built this; the tool calls and the subagents are one session\u2019s, ' +
-  'so those two are a floor, not a total.';
+  'the whole of the four sessions that built this; the tool calls and the subagents are what one of many ' +
+  'sessions could count, so those two are a floor, not a total.';
 
 export const CREDIT_CLOSE = 'C or Esc to close';
