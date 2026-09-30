@@ -93,19 +93,19 @@ export const CREDIT_STATS: readonly CreditStat[] = [
       'camera on the same sim, unchanged',
   },
   {
-    n: '513',
+    n: '523',
     label: 'commits in 9 days',
-    note: '494 of them written by the model, 19 by the human — 22 to 30 September 2026',
+    note: '502 of them written by the model, 21 by the human — 22 to 30 September 2026',
   },
   {
-    n: '93,052',
+    n: '93,152',
     label: 'lines of TypeScript',
-    note: '67,911 of game in 95 files, 25,141 of tests in 74 — 952 tests, no physics engine',
+    note: '68,011 of game in 95 files, 25,141 of tests in 74 — 952 tests, no physics engine',
   },
   {
-    n: '131,485',
+    n: '133,133',
     label: 'words of notes',
-    note: '94,345 of them the GenAI record: what was built, what a human decided, what was rejected',
+    note: '95,993 of them the GenAI record: what was built, what a human decided, what was rejected',
   },
   {
     n: '44+',
