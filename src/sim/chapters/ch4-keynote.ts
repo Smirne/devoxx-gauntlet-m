@@ -266,6 +266,14 @@ export interface KeynoteState {
   reelT: number;
 }
 
+/** Seconds at the start of the opening video in which no key can skip it. */
+const REEL_GRACE = 3;
+/** Keys a player is holding down to steer, which are never a wish to skip. */
+const REEL_IGNORES: ReadonlySet<string> = new Set([
+  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+  'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight',
+]);
+
 /** Seconds between one line from the room and the next. */
 const MURMUR_EVERY = 9;
 /**
@@ -755,7 +763,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    * of taking hold of Biggy with a 1.1 m O in his arms.
    */
   function key(code: string): boolean {
-    if (reelKey()) return true;
+    if (reelKey(code)) return true;
     const b = ctx.bots[ctx.cur];
     ctx.switchKey(code);
     if (code !== 'KeyE') return false;
@@ -915,15 +923,38 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     ctx.flash('The house screen wakes up. <b>Devoxx opening video</b> \u2014 any key to skip', 3200);
   }
 
-  /** True if the reel took the key. Any key skips to the final card. */
-  function reelKey(): boolean {
+  /**
+   * True if the reel took the key. A deliberate key skips to the final card.
+   *
+   * Michele, 30 Sep 2026: *"the screening did not start"*. The last robot walks
+   * onto the stage under the player's fingers, so the film began with a movement
+   * key still down, and the next fresh keydown (a second direction, a switch, a
+   * nudge of shift) counted as "any key" and skipped it in the first frame.
+   * Movement and modifier keys never skip, and nothing skips for the first
+   * `REEL_GRACE` seconds: the film gets to be seen before it can be dismissed.
+   */
+  function reelKey(code: string): boolean {
     if (reelT < 0) return false;
-    endReel(true);
+    if (reelT >= REEL_GRACE && !REEL_IGNORES.has(code)) endReel(true);
     return true;
   }
 
   function endReel(skipped: boolean): void {
     reelT = -1;
+    /*
+     * Whatever they were doing when the film stopped, they are not doing it now.
+     * The sim stands still behind the final card, and the renderer walks a robot's
+     * legs off its velocity: a skip mid-walk left Droid stepping on the spot for as
+     * long as the card stayed up (Michele, 30 Sep).
+     */
+    if (skipped) {
+      for (const b of ctx.bots) {
+        b.vx = 0;
+        b.vy = 0;
+        b.ix = 0;
+        b.iy = 0;
+      }
+    }
     // Skipped: the camera goes back out to the room and everything stops, which is
     // what a player who pressed a key to get past this asked for. Ran to the end:
     // keep the shot, and keep the room alive behind the card — see `curtainHeld`.

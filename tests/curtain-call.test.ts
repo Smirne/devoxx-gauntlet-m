@@ -274,7 +274,7 @@ describe('the curtain call', () => {
   it('stops dead when the video is skipped', () => {
     const g = createGame({ seed: SEED, chapter: 4, cards: false }) as DebugGame;
     toTheVideo(g);
-    steps(g, 60);
+    steps(g, 100);
     g.key('KeyE');
     expect(g.snapshot().reel, 'the video survived the skip').toBeNull();
     expect(g.snapshot().phase).toBe('done');
@@ -284,5 +284,31 @@ describe('the curtain call', () => {
     for (let i = 0; i < before.length; i++) {
       expect(Math.hypot(after[i].x - before[i].x, after[i].y - before[i].y), 'a robot kept walking').toBeLessThan(0.5);
     }
+    // The renderer steps a robot's legs off its velocity, so a frozen robot with a
+    // velocity is one walking on the spot behind the card (Michele, 30 Sep).
+    for (const b of g.snapshot().bots) {
+      expect(Math.hypot(b.vx, b.vy), `${b.kind} is walking in place behind the card`).toBe(0);
+    }
+  });
+
+  /**
+   * Michele, 30 Sep 2026: *"the screening did not start"*. The last robot arrives
+   * under the player's fingers, so a movement key is still down, or goes down, as
+   * the film begins. That is not a wish to skip it.
+   */
+  it('is not skipped by the keys the player steers with, nor in its first moments', () => {
+    const g = createGame({ seed: SEED, chapter: 4, cards: false }) as DebugGame;
+    toTheVideo(g);
+    g.key('KeyD');
+    g.key('ShiftLeft');
+    g.key('KeyE');
+    expect(g.snapshot().reel, 'a key in the first moments skipped the video').not.toBeNull();
+    steps(g, 100);
+    g.key('KeyD');
+    g.key('ArrowLeft');
+    g.key('ShiftLeft');
+    expect(g.snapshot().reel, 'a movement key skipped the video').not.toBeNull();
+    g.key('KeyE');
+    expect(g.snapshot().reel, 'a deliberate key no longer skips').toBeNull();
   });
 });
