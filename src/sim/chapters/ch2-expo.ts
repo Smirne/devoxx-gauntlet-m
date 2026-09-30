@@ -2517,7 +2517,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       : cable.snapped
         ? 'cable snapped — back to the rack'
         : cable.carrying
-          ? `cable ${Math.round(cable.len)}/${CABLE_MAX} px${cable.taut ? ' — TAUT' : ''} → reception`
+          ? `cable ${Math.round(m(cable.len))}/${Math.round(m(CABLE_MAX))} m${cable.taut ? ' — TAUT' : ''} → reception`
           : 'cable: on the reel at the rack';
     const store = rollerBroken
       ? 'shirts & gadgets ✓'

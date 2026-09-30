@@ -59,6 +59,7 @@ import type {
 } from './types';
 import { CHAPTERS, type ChapterCtx, type ChapterRuntime, type ChapterState, type PrevVel } from './chapters';
 import { makeQuips } from './quips';
+import { PX_PER_M } from './units';
 
 export const CHAPTER_COUNT = 4;
 
@@ -874,7 +875,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     const sk = skipped.length ? ` · skipped: ${skipped.join(', ')}` : '';
     card =
       `<b>Keynote starts.</b> ${pts}/9<br>` +
-      `<span class="sub">Night ${nightT}s · Expo ${Math.max(0, expoT - nightT)}s (cable ${score.cable ?? 0} px) · ` +
+      `<span class="sub">Night ${nightT}s · Expo ${Math.max(0, expoT - nightT)}s (cable ${Math.round((score.cable ?? 0) / PX_PER_M)} m) · ` +
       `Soup ${soup}% at ${temp}° (${score.complaints ?? 0} complaint${(score.complaints ?? 0) === 1 ? '' : 's'}) · ` +
       `Stage ready with ${spare}s to spare (${score.keynoteComplaints ?? 0} complaint${(score.keynoteComplaints ?? 0) === 1 ? '' : 's'}) · ` +
       `Swag ${swag.length}/3 · Total ${Math.round(t)}s${sk}</span><small>R to play again \u00b7 C for credits</small>`;
