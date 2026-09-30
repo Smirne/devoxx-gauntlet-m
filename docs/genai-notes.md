@@ -7518,3 +7518,23 @@ drunk. Changing any test: none checked the old colour or ear shape.
 pages: `?pose=voxxy` and `?pose=droid` portraits, and a side-on frame sequence of Voxxy's start and
 stop in the 3D build (`shot=1`, stick driven through `__ad3d.game`, 1/30 s per frame). The agent
 compared them side by side with both sheets. The screenshots are not committed.
+
+## 30 Sep 2026 — the published tab reads "AFTER DARK 3D - The Devoxx Game"
+
+**What the human decided.** Michele asked for the tab title on the live site to leave out
+`ERRORS: 0`, and to read `AFTER DARK 3D - The Devoxx Game`.
+
+**What the agent did.** The count stays everywhere it is read (`pnpm dev`, `preview`, the gauntlet's
+`--dump-dom` check). Only the Vercel build drops it, keyed on the same `VERCEL=1` signal as the
+analytics tag, through a `define` in `vite.config.ts`. There the 3D tab reads
+`AFTER DARK 3D - The Devoxx Game`, and the 2.5D tab reads `AFTER DARK - The Devoxx Game`, a
+wording the agent chose to match. `?errors=1` brings the count back on the live site. Errors are
+still recorded either way. The README's "always reads" line now names the exception.
+
+**What was rejected, and why.** Dropping the count in every production build
+(`import.meta.env.PROD`): `pnpm preview` and the publish builds are production builds too, and the
+critics' "no console errors" check reads the title there.
+
+**Checked.** Opened in a browser: under a `VERCEL=1` build, both clean titles, and
+`?errors=1` → `After Dark 3D · ERRORS:0`. A plain build still reads `After Dark 3D · ERRORS:0`.
+Typecheck and all tests are green.
