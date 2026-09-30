@@ -1,0 +1,107 @@
+<!doctype html>
+<!--
+  tools/promo/cards.html — the promo's text, one card per ?card=, shot by
+  `cut.mjs` as a transparent 1920×1080 PNG and laid over the footage. The type
+  and colours are the game's own: the HUD's condensed face, the splash's gold
+  and its chromatic AFTER DARK.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<style>
+  html, body { margin: 0; width: 1920px; height: 1080px; background: transparent; overflow: hidden; }
+  body { font-family: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", sans-serif; color: #fff4dc; }
+  .card { display: none; position: absolute; inset: 0; }
+  .card.on { display: block; }
+
+  /* Lower third: a gold kicker and one line, on a soft dark band. */
+  .lower { position: absolute; left: 0; right: 0; bottom: 0; height: 330px;
+    background: linear-gradient(to top, rgba(0,0,0,.78), rgba(0,0,0,0)); }
+  .lower .txt { position: absolute; left: 110px; bottom: 96px; }
+  .kick { font-size: 30px; letter-spacing: .34em; text-transform: uppercase; color: #f5b638;
+    text-shadow: 0 0 18px rgba(245,182,56,.45); }
+  .line { margin-top: 10px; font-size: 64px; font-weight: 700; letter-spacing: .02em; line-height: 1.05;
+    text-shadow: 0 2px 18px rgba(0,0,0,.8); }
+  .bar { width: 120px; height: 4px; background: #f5b638; margin-bottom: 22px; box-shadow: 0 0 12px rgba(245,182,56,.8); }
+
+  /* Full card: the "how we made it" beats, centred on a dark scrim. */
+  .full { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 50%, rgba(8,5,2,.6) 0%, rgba(0,0,0,.85) 80%);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .full .kick { font-size: 30px; }
+  .full .big { margin-top: 26px; font-size: 92px; font-weight: 700; line-height: 1.02; max-width: 1500px; }
+  .full .small { margin-top: 30px; font-size: 38px; color: #d8cfc9; letter-spacing: .03em; max-width: 1400px; line-height: 1.3; }
+  .full .facts { margin-top: 44px; display: flex; gap: 70px; }
+  .fact b { display: block; font-size: 84px; color: #f5b638; text-shadow: 0 0 22px rgba(245,182,56,.5); }
+  .fact span { font-size: 26px; letter-spacing: .24em; text-transform: uppercase; color: #d8cfc9; }
+  .o { color: #ff8a1f; } .g { color: #4fe08a; } .b { color: #5aa8ff; }
+
+  /* End card, over the splash's own sky and wordmark. */
+  .end { position: absolute; left: 0; right: 0; top: 700px; text-align: center; }
+  .end .play { font-size: 40px; letter-spacing: .3em; text-transform: uppercase; color: #fff4dc; }
+  .end .url { margin-top: 18px; font-size: 44px; color: #f5b638; letter-spacing: .04em; text-shadow: 0 0 18px rgba(245,182,56,.5); }
+  .end .fine { margin-top: 34px; font-size: 24px; letter-spacing: .2em; text-transform: uppercase; color: #9d8f84; }
+</style>
+</head>
+<body>
+
+<div class="card" id="tagline"><div class="lower"><div class="txt">
+  <div class="bar"></div>
+  <div class="kick">Kinepolis Antwerp · 02:00</div>
+  <div class="line">The power is out. Doors open at eight.</div>
+</div></div></div>
+
+<div class="card" id="light"><div class="lower"><div class="txt">
+  <div class="kick">Light is the mechanic</div>
+  <div class="line"><span class="o">Beam</span> · <span class="g">pool</span> · <span class="b">flood</span> — mix them to read the clues</div>
+</div></div></div>
+
+<div class="card" id="robots"><div class="lower"><div class="txt">
+  <div class="kick">Three robots, three jobs</div>
+  <div class="line"><span class="o">Voxxy</span> · <span class="g">Droid</span> · <span class="b">Biggy</span> — every gate needs the right one</div>
+</div></div></div>
+
+<div class="card" id="venue"><div class="lower"><div class="txt">
+  <div class="kick">The real venue</div>
+  <div class="line">Built from the Devoxx floor plans</div>
+</div></div></div>
+
+<div class="card" id="keynote"><div class="lower"><div class="txt">
+  <div class="kick">Chapter 4</div>
+  <div class="line">Save the keynote</div>
+</div></div></div>
+
+<div class="card" id="made1"><div class="full">
+  <div class="kick">How we made it</div>
+  <div class="big">Every line written by Claude,<br>in Claude Code</div>
+  <div class="small">Every decision, every playtest, the plans and the photos: one human.</div>
+</div></div>
+
+<div class="card" id="made2"><div class="full">
+  <div class="kick">How we made it</div>
+  <div class="big">Builder → critic → playtest</div>
+  <div class="small">A critic on fresh context judges the running build, never the diff. One headless simulation is the only truth; its tests freeze the physics.</div>
+</div></div>
+
+<div class="card" id="made3"><div class="full">
+  <div class="kick">How we made it</div>
+  <div class="facts">
+    <div class="fact"><b>9</b><span>days</span></div>
+    <div class="fact"><b>460+</b><span>commits</span></div>
+    <div class="fact"><b>900+</b><span>tests</span></div>
+    <div class="fact"><b>0</b><span>3D asset files</span></div>
+  </div>
+  <div class="small">Every mesh, texture and sound effect is generated in code.</div>
+</div></div>
+
+<div class="card" id="end"><div class="end">
+  <div class="play">Devoxx Robot Games 2026 · MIT</div>
+  <div class="url">github.com/Smirne/devoxx-gauntlet-m</div>
+  <div class="fine">Music: “Heroic Motif” by Ronny Shamano · chapter scores generated in code</div>
+</div></div>
+
+<script>
+  const id = new URLSearchParams(location.search).get('card');
+  document.getElementById(id)?.classList.add('on');
+</script>
+</body>
+</html>

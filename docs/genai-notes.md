@@ -7066,3 +7066,28 @@ Shipping the MP3 as a separate file: the build must stay one self-contained page
 **Checked.** `tests/music.test.ts` asserts that the bytes round-trip to the same base64 with an
 `ID3` header, and that the decoder receives the track while `fetch` is refused. On the old code, both
 new tests fail. Typecheck and the full suite are green.
+
+## 30 Sep 2026 — a 30-second promo video, shot from the game itself
+
+**What the human asked.** Michele: *"Could we make a promo video for the game? 30 sec max, splash
+screen, gameplay, transitions? And some info on how we made it?"*
+
+**What the agent did.** It shot the whole trailer from the real 3D build, headless Chromium on the
+real GPU, at `q=high` and 1920×1080. `tools/promo/scout.mjs` plays the full-run choreography
+(`tests/full-run.test.ts`) and keeps one frame per second, each named by sim step. The agent
+picked the shots from a contact sheet of those frames. `capture.mjs` replays the same seeded run
+and renders every sim step inside the chosen windows, with a 45-frame lead so the follow camera
+settles the way it does in play. It also shoots the splash and the opening's introductions, with
+the key help and the skip button hidden. `cut.mjs` holds the edit: 17 segments, xfade transitions,
+lower-third and full cards from `cards.html` (the HUD's typeface and the splash's gold), and a
+29.0 s cut that refuses to run over 30 s. The music is the opening's "Heroic Motif", followed by
+the expo's and then the keynote's procedural scores, rendered by `tools/render-audio/`. The card
+figures are the repo's own: 9 days (22–30 Sep), 460+ commits, 900+ tests (948 today), and no 3D
+or sound-effect asset files.
+
+**What was rejected, and why.** A "Droid climbs Biggy" caption: the scripted run never films the
+climb, and a caption the shot does not show is a claim the video does not back up. The caption
+now names all three robots over a shot that has all three in it. `loudnorm` on the rendered
+scores: on clips this short its dynamic mode pumped and left a 3-second hole in the music. It was
+replaced with fixed gains. Committing the MP4 (30 MB): it goes to the ignored `dist-promo/` and is
+Michele's to publish.
