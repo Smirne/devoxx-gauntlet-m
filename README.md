@@ -68,7 +68,7 @@ into the bundle.
 | `M` / `N` | Mute everything / music on or off |
 | `R` | Restart the chapter: the first press asks, a second one within 3 s restarts |
 | `C` | The credits; `C` or `Esc` closes them |
-| **Skip chapter ▸** (top right) | Jump to the next chapter |
+| **Skip chapter ▸** (top right) | Jump to the next chapter; in chapter 4, to its ending — the opening video and the curtain call — and a second press skips the video |
 
 ## Controls (2.5D diorama build)
 
@@ -85,7 +85,7 @@ into the bundle.
 | `P` | **The physics view** — collision circles at each robot's real radius, velocity arrows to scale, and every contact the solver resolved this frame drawn on its own normal and sized by the impulse, with the numbers beside them. It reads the simulation; it does not re-derive it |
 | `R` | Restart the chapter: the first press asks, a second one within 3 s restarts |
 | `C` | The credits; `C` or `Esc` closes them |
-| **Skip chapter ▸** (button, top right) | Jump to the next chapter if you are stuck, or to see the later ones |
+| **Skip chapter ▸** (button, top right) | Jump to the next chapter if you are stuck, or to see the later ones; in chapter 4 it plays the ending, and a second press skips the video |
 | **the briefing** (top of the screen) | Folds itself to one line a few seconds in, so it is not sitting over the diorama all chapter. Click it to unfold or refold |
 
 A ring on the floor, in that robot's lamp colour, marks the one you are driving. The line across the
