@@ -7730,3 +7730,38 @@ listened to. Michele should play chapter 3 and say if it is still too hissy.
 "click click" (he guessed footsteps) he found acceptable but too loud, and he asked for more music.
 The agent halved Voxxy's footstep tick and the score's rim click (0.14 → 0.07), added a slow bell
 melody from bar 3 (chord tones 4-3-4-2) and a second, quiet pad voice. Not listened to by the agent.
+
+## 30 Sep 2026 — the keynote speaker waits beside Stephan, and one drop zone takes both deliveries
+
+**What the human found and decided.** Michele, playing chapter 3: *"when the keynote speaker
+reaches the drop zone, he keeps walking on place. He should reach Stephan and wait."* While that
+fix was in progress he added: *"the dropzone per speaker and soup could be the same."*
+
+**What the agent did.**
+- It found the cause of the walking on the spot. The hand-over ended the follow on the frame the
+  speaker reached the mark, and nothing set their speed back to 0, so the renderer kept playing
+  the walk cycle for the rest of the chapter, 4–5 m short of Stephan.
+- After the hand-over the speaker now walks on to Stephan's side and stops there. That spot is
+  between him and the barrier, or on the glazing side or in front of him if a wall is in the way.
+  They then turn at Stephan's pace to face the doors. If something holds them up, they stop where
+  they are instead of walking in place. The robots keep out of them again once they are Stephan's.
+- It merged the two marks. The soup's box round Stephan became the one mark: one floor patch, one
+  ring, amber until both the soup and the speaker are in, then green. The speaker's hint arrow, and
+  where they head once Voxxy is on the mark, now point at Stephan's feet.
+- Tests:
+  - The soup-chain test now requires the speaker to come to a stop within reach of Stephan and stay
+    stopped. It fails on the old code with "the speaker is still walking".
+  - The chapter now publishes one labelled mark at Stephan instead of two.
+  - The speaker tests walk Voxxy to the south end of that mark. Its centre is where Stephan
+    stands, so she cannot get there.
+
+**What was rejected, and why.** A long box covering both old marks, so the tests could keep walking
+to its centre. It made a 10 m strip on the concourse to avoid changing three test lines. The
+handed-over speaker staying on the mark: Biggy's pot comes to the same box now, so they move out of
+its way.
+
+**Checked.** `tsc` passes and the full suite passes (952 tests). A page check in the 3D build, using
+the sim's own debug moves, found no page errors:
+- The ring is still amber after the soup is in.
+- It turns green when the speaker arrives.
+- The speaker stops 1.5 m from Stephan and stays at speed 0.
