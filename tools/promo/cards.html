@@ -1,0 +1,149 @@
+<!doctype html>
+<!--
+  tools/promo/cards.html — the promo's text, one card per ?card=, shot by
+  `cut.mjs` as a transparent 1920×1080 PNG and laid over the footage. The type
+  and colours are the game's own: the HUD's condensed face, the splash's gold.
+  ?url= sets the repo on the end card.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<style>
+  html, body { margin: 0; width: 1920px; height: 1080px; background: transparent; overflow: hidden; }
+  body { font-family: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", sans-serif; color: #fff4dc; }
+  .card { display: none; position: absolute; inset: 0; }
+  .card.on { display: block; }
+
+  /* Lower third: a gold kicker and one line, on a soft dark band. */
+  .lower { position: absolute; left: 0; right: 0; bottom: 0; height: 330px;
+    background: linear-gradient(to top, rgba(0,0,0,.78), rgba(0,0,0,0)); }
+  .lower .txt { position: absolute; left: 110px; bottom: 96px; }
+  .kick { font-size: 30px; letter-spacing: .34em; text-transform: uppercase; color: #f5b638;
+    text-shadow: 0 0 18px rgba(245,182,56,.45); }
+  .line { margin-top: 10px; font-size: 58px; font-weight: 700; letter-spacing: .02em; line-height: 1.05;
+    text-shadow: 0 2px 18px rgba(0,0,0,.8); }
+  .bar { width: 120px; height: 4px; background: #f5b638; margin-bottom: 22px; box-shadow: 0 0 12px rgba(245,182,56,.8); }
+
+  /* Spoiler tag on the splash. */
+  .tag { position: absolute; top: 56px; right: 64px; padding: 12px 22px; border: 2px solid #ff5a4e; border-radius: 4px;
+    font-size: 26px; letter-spacing: .32em; text-transform: uppercase; color: #ff8a7f; background: rgba(0,0,0,.45);
+    box-shadow: 0 0 22px rgba(255,90,78,.35); }
+
+  /* Full card: the "how we made it" beats, centred on a dark scrim. */
+  .full { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 50%, rgba(8,5,2,.6) 0%, rgba(0,0,0,.85) 80%);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .full .kick { font-size: 30px; }
+  .full .big { margin-top: 26px; font-size: 84px; font-weight: 700; line-height: 1.04; max-width: 1600px; }
+  .full .small { margin-top: 30px; font-size: 38px; color: #d8cfc9; letter-spacing: .03em; max-width: 1450px; line-height: 1.32; }
+  .full .facts { margin-top: 44px; display: flex; gap: 90px; }
+  .fact b { display: block; font-size: 96px; color: #f5b638; text-shadow: 0 0 22px rgba(245,182,56,.5); }
+  .fact span { font-size: 26px; letter-spacing: .24em; text-transform: uppercase; color: #d8cfc9; }
+  .o { color: #ff8a1f; } .g { color: #4fe08a; } .b { color: #5aa8ff; }
+
+  /* End card, over the splash's own sky and wordmark. */
+  .end { position: absolute; left: 0; right: 0; top: 660px; text-align: center; }
+  .end .play { font-size: 40px; letter-spacing: .3em; text-transform: uppercase; color: #fff4dc; }
+  .end .url { margin-top: 18px; font-size: 44px; color: #f5b638; letter-spacing: .04em; text-shadow: 0 0 18px rgba(245,182,56,.5); }
+  .end .url.code { margin-top: 10px; font-size: 34px; color: #d8cfc9; text-shadow: none; }
+  .end .lbl { font-size: 24px; letter-spacing: .3em; text-transform: uppercase; color: #9d8f84; margin-right: 14px; }
+  .full .link { margin-top: 26px; font-size: 30px; color: #f5b638; letter-spacing: .04em; }
+  .end .fine { margin-top: 34px; font-size: 24px; letter-spacing: .2em; text-transform: uppercase; color: #9d8f84; }
+</style>
+</head>
+<body>
+
+<div class="card" id="spoilers"><div class="tag">Contains spoilers</div></div>
+
+<div class="card" id="tagline"><div class="lower"><div class="txt">
+  <div class="bar"></div>
+  <div class="kick">Kinepolis Antwerp · 02:00</div>
+  <div class="line">The power is out. Doors open at eight.</div>
+</div></div></div>
+
+<div class="card" id="light"><div class="lower"><div class="txt">
+  <div class="kick">Light is the mechanic</div>
+  <div class="line" style="font-size: 48px"><span class="o">Orange beam</span>, <span class="g">green pool</span>, <span class="b">blue flood</span>. Only the right mix shows the code.</div>
+</div></div></div>
+
+<div class="card" id="lever"><div class="lower"><div class="txt">
+  <div class="kick">Droid can’t reach the lever</div>
+  <div class="line">He stretches. Still too high.</div>
+</div></div></div>
+
+<div class="card" id="climb"><div class="lower"><div class="txt">
+  <div class="kick">Droid can’t reach the lever</div>
+  <div class="line">So he climbs Biggy.</div>
+</div></div></div>
+
+<div class="card" id="roller"><div class="lower"><div class="txt">
+  <div class="kick">Biggy</div>
+  <div class="line">Heavy, inertial, and he rolls.</div>
+</div></div></div>
+
+<div class="card" id="printer"><div class="lower"><div class="txt">
+  <div class="kick">Voxxy wires the badge printer</div>
+  <div class="line">First badge out: VOXY. It has always been two X’s.</div>
+</div></div></div>
+
+<div class="card" id="venue"><div class="lower"><div class="txt">
+  <div class="kick">The real Kinepolis Antwerp</div>
+  <div class="line">Built room by room from the Devoxx floor plans.</div>
+</div></div></div>
+
+<div class="card" id="stephan"><div class="lower"><div class="txt">
+  <div class="kick">08:00</div>
+  <div class="line">Stephan lost the keys. The robots let him in.</div>
+</div></div></div>
+
+<div class="card" id="gate"><div class="lower"><div class="txt">
+  <div class="kick">Soup, speaker, beer</div>
+  <div class="line">Stephan’s three conditions. Then he opens the stairs.</div>
+</div></div></div>
+
+<div class="card" id="keynote"><div class="lower"><div class="txt">
+  <div class="kick">Chapter 4</div>
+  <div class="line">Letter by letter, #DEVOXX goes up. Keynote saved.</div>
+</div></div></div>
+
+<div class="card" id="cameo"><div class="lower"><div class="txt">
+  <div class="kick">Spot the cameo</div>
+  <div class="line">Michele and Claude, pair-programming over breakfast.</div>
+</div></div></div>
+
+<div class="card" id="made1"><div class="full">
+  <div class="kick">How we made it</div>
+  <div class="big">A game by Michele Giacobazzi<br>and Claude Code</div>
+  <div class="small">Every line written by Claude, using multiple agents and gauntlet loops.<br>Every decision, most playtests, sticking to the plan: one human.</div>
+</div></div>
+
+<div class="card" id="made2"><div class="full">
+  <div class="kick">How we made it</div>
+  <div class="big">Builder → critic → playtest</div>
+  <div class="small">A critic on fresh context judges the running build, never the diff.<br>12 proofs of concept, two 2.5D versions, one final 3D game.</div>
+  <div class="link" id="pocs">devoxx-game-pocs.vercel.app</div>
+</div></div>
+
+<div class="card" id="made3"><div class="full">
+  <div class="kick">How we made it</div>
+  <div class="facts">
+    <div class="fact"><b>460+</b><span>commits</span></div>
+    <div class="fact"><b>900+</b><span>tests</span></div>
+    <div class="fact"><b>0</b><span>3D asset files</span></div>
+  </div>
+  <div class="small">Every mesh, texture and sound effect is generated in code.</div>
+</div></div>
+
+<div class="card" id="end"><div class="end">
+  <div class="play">Devoxx Robot Games 2026 · MIT</div>
+  <div class="url"><span class="lbl">Play</span> <span id="play">devoxx-after-dark.vercel.app</span></div>
+  <div class="url code"><span class="lbl">Code</span> <span id="url">github.com/Smirne/devoxx-gauntlet-m</span></div>
+  <div class="fine">Music: “Heroic Motif” by Ronny Shamano · chapter scores generated in code</div>
+</div></div>
+
+<script>
+  const q = new URLSearchParams(location.search);
+  document.getElementById(q.get('card'))?.classList.add('on');
+  for (const k of ['url', 'play', 'pocs']) if (q.get(k)) document.getElementById(k).textContent = q.get(k);
+</script>
+</body>
+</html>

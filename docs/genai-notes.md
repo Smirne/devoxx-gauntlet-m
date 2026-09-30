@@ -7538,3 +7538,141 @@ critics' "no console errors" check reads the title there.
 **Checked.** Opened in a browser: under a `VERCEL=1` build, both clean titles, and
 `?errors=1` → `After Dark 3D · ERRORS:0`. A plain build still reads `After Dark 3D · ERRORS:0`.
 Typecheck and all tests are green.
+
+## 30 Sep 2026 — a 30-second promo video, shot from the game itself
+
+**What the human asked.** Michele: *"Could we make a promo video for the game? 30 sec max, splash
+screen, gameplay, transitions? And some info on how we made it?"*
+
+**What the agent did.** It shot the whole trailer from the real 3D build, headless Chromium on the
+real GPU, at `q=high` and 1920×1080. `tools/promo/scout.mjs` plays the full-run choreography
+(`tests/full-run.test.ts`) and keeps one frame per second, each named by sim step. The agent
+picked the shots from a contact sheet of those frames. `capture.mjs` replays the same seeded run
+and renders every sim step inside the chosen windows, with a 45-frame lead so the follow camera
+settles the way it does in play. It also shoots the splash and the opening's introductions, with
+the key help and the skip button hidden. `cut.mjs` holds the edit: 17 segments, xfade transitions,
+lower-third and full cards from `cards.html` (the HUD's typeface and the splash's gold), and a
+29.0 s cut that refuses to run over 30 s. The music is the opening's "Heroic Motif", followed by
+the expo's and then the keynote's procedural scores, rendered by `tools/render-audio/`. The card
+figures are the repo's own: 9 days (22–30 Sep), 460+ commits, 900+ tests (948 today), and no 3D
+or sound-effect asset files.
+
+**What was rejected, and why.** A "Droid climbs Biggy" caption: the scripted run never films the
+climb, and a caption the shot does not show is a claim the video does not back up. The caption
+now names all three robots over a shot that has all three in it. `loudnorm` on the rendered
+scores: on clips this short its dynamic mode pumped and left a 3-second hole in the music. It was
+replaced with fixed gains. Committing the MP4 (30 MB): it goes to the ignored `dist-promo/` and is
+Michele's to publish.
+
+## 30 Sep 2026 — the promo grows to a minute and leads with originality
+
+**What the human asked.** Michele gave these notes on the 29 s cut: *"Some animation are moving fast.
+Keep the video short (1 minute max) and lead with originality"*. He named the light-overlap
+reading, Droid climbing Biggy, Biggy's roll and the real venue, plus one special action per robot
+and a *"contains spoilers"* tag. Then: *"keep the full intro, no cuts"*, *"keep also stephan opening
+the stairs"*, and *"Biggy's roll is the big roll in chapter 2 smashing the shutter door"*. He wrote
+the "how we made it" cards himself, gave the URLs to keep the script ready for, and, on seeing his
+cameo, said *"me and claude would be perfect. I'd like to show the backpack that is soooo coool"*.
+
+**What the agent did.** Two new kinds of shot were added. The run windows from the seeded full run
+come first: the shutter smash (filmed side-on) through to Stephan's stairs. The staged shots
+(`STAGED` in `capture.mjs`) set a chapter up with the debug API and script robots and camera one
+frame at a time. The staged light shot holds Voxxy's orange alone until nothing has happened, then
+walks Droid's green in so the 9 rises. The lever shot shows Droid's "too high" first, then the
+climb and the lever. The cameo holds and pushes in on Michele's WellD backpack, then swings round
+the open side of the high table to a two-shot of Michele and Claude. The page's own stick handler
+zeroes the stick every frame, so the staged robots walk on a held `__stick`, the way a held key
+would. The cut is exactly 60.0 s, and `cut.mjs` refuses to go longer. The URLs are flags
+(`--play`, `--url`, `--pocs`), so a new domain only needs a re-cut.
+
+**Human decisions.** Michele decided every beat, kept the opening uncut, kept the "VOXY" joke, and
+wrote the made-with cards. The agent only fixed their grammar ("most playtests", "12 proofs of
+concept, two 2.5D versions").
+
+**What was rejected, and why.** Filming the cameo walking: in the game Michele stands at the
+chapter-3 high table, and making him walk would mean a sim change for a trailer. Keeping Voxxy in
+the cameo: she crowded the two-shot. Fridge toasts over the cameo: they were hidden for that shot
+only. Showing Droid's "too high" bubble on its own: it is on screen for about a second and too
+small to read at 1080p, so the caption carries the beat.
+
+## 30 Sep 2026 — the promo's second pass: fixed cameras, the game's own sound, readable cards
+
+**What the human asked.** Michele watched the 60 s cut and sent a list. The title trembled. The
+music started abruptly. The light shot had a reflection and no sound: *"We should hear droid
+walking and the hint solved sound."* Droid should stretch to show he is trying. The lever needed
+a camera facing the door, with Droid closer to it. Voxxy should pull the cable and plug in the
+printer. Stephan should appear when he enters. The cameo should be shorter. Some robots
+*"move like mad"*, the final cards were too short to read, and the robots were shaking under the
+number. Midway through: *"you should not need to modify the game"*.
+
+**What the agent found and did.**
+- The "accelerated" footage was the follow camera, not the clock. The run steps at the sim's own
+  DT_MAX, but the pilot switches robot often and the camera swings behind each new one. The
+  chapter-4 and Stephan shots now use fixed cameras (`pose` in `SHOTS`).
+- The run moves Voxxy on the instant the cable is in, so the plug-in animation never played. The
+  printer is now a staged shot: the tests' run plays up to step 1037, the pilot is stopped by an
+  exception out of `g.update`, and Voxxy is walked to the socket and pressed E by hand.
+- Droid's stretch is the game's own party trick, E away from anything. It is filmed just outside
+  the panel's reach, with no game change.
+- Sound: the capture records one snapshot per frame, and a new `renderSnapshots` in the
+  render-audio harness plays them through the real cue player offline. The edit lays the result
+  under each shot, capped at −6 dB peak.
+- The splash's slow zoom is done on a 4× upscale (zoompan crops on whole pixels, hence the
+  tremble). The opening's track fades in over 1.2 s; in the game it starts on the key press, at
+  full level. The made cards run 3.3–3.9 s.
+
+**What was checked and not changed.** The "shaking": the sim positions, the rig's root and every
+bone were logged frame by frame and are steady. Consecutive frames differ only by the render's
+grain (the same PSNR between any pair). The light shot moved to a new camera and the glare went
+with it. The shake needs checking on the new footage.
+
+**Rejected.** Changing the game to make Droid stretch on "too high" (Michele: no game changes).
+Speeding the cameo up in the edit: the camera move was re-timed at capture instead.
+
+## 30 Sep 2026 — the promo's third pass: the lever, one straight carry, still cards
+
+**What the human asked.** On the lever: *"Droid must be nearer both on the first try then on the
+good one. Don't show the jump on biggy but fade on Droid already on him. Biggy should not move so
+much when Droid pulls the lever."* Cut the lobby clip, because it showed Stephan before his
+entrance, and keep the pat. Droid's letter carry had *"abrupt movement … turning multiple time
+fast"*. Put the cameo before the letters, and maybe zoom to the screen before the titles. The
+scenes under the made cards were *"blurry and very shaky … Evaluate other scene or no action"*.
+Then, on length: *"63 is fine"*.
+
+**What the agent found and did.**
+- The letter "turning" was the pilot's eight-way steering. Each zig of its route round Stephan and
+  the speaker snapped Droid's heading, and the letter in his hands flipped from side-on to
+  face-on. No window of the run was clean, so the keynote became a staged shot: the tests' run
+  plays, unfilmed, until Droid is carrying the last X due west along the lane. From there he
+  walks one straight line, turns once, and drops it. Then the camera rises to the house screen,
+  the way the game's own film shot does, and the made cards sit over that frame, held still and
+  dimmed.
+- Lever: the stretch is filmed at 52 px, two past the panel's reach, from low behind Droid looking
+  up, so the depth folds and he stands under it. The climb is cut; a fade goes to him already up.
+  Driven flat out, Biggy overshot the panel and slid along the wall, so he now creeps (the stick
+  only while he is slower than a walk). He stops dead under the panel before E.
+- The mix was hitting 0 dBFS: ffmpeg's `alimiter` re-normalises its output to 0 dB by default
+  (`level=1`), so the limit never held. It now peaks at −1.8 dB.
+
+Then, on the next cut: *"leave out the transparency in the credits part, just switch / fade
+from movie screen to the scenes"*. The cards went on plain black. On the stretch, *"droid needs
+to be closer to the lever"*. On Biggy under the panel, *"here they start pointing in the wrong
+direction"*, and *"the walk was fun, if it stops right"*. And *"skip the printer"*.
+- Droid can't be closer for the stretch: within 50 px of the panel, E is "too high". So the
+  camera does it. Droid stands on the line from the lens to the panel, and the lens sits near
+  his raised hands' height, so in the frame his hands close either side of it.
+- Biggy's creep had come in on a diagonal, so the two of them ended facing north-east and
+  Droid's reach went off to the side. Biggy now creeps in two legs: in line under the panel
+  first, which is not shown, then straight north at it. He stops facing it (heading −1.65).
+- The printer shot is out of the edit; the staged shot stays in `capture.mjs`. The cut is
+  61 s, within Michele's *"63 is fine"*.
+
+**Rejected.** Blurred gameplay under the cards (the complaint). The dimmed screen under them:
+its own words fought the cards'.
+
+Last, on the stretch: *"can you bypass that rule? change the code temporarily? The actual scene is
+absurd, he says he can't reach it, but he's so far.."* The game's files were not edited. For the
+lever shot only, `capture.mjs` (`STAGED_PATCH`) rewrites `ch1-night.ts` as the dev server sends it
+to the page, so E right under the panel falls through to the stretch instead of "too high". The
+patch fails loudly if that line ever changes. On the pull, *"a bit slow"*: Biggy's last leg is
+shorter and quicker, and Droid grabs two frames after Biggy stops.
