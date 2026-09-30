@@ -707,6 +707,8 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
   }
   /** The chapter the follow camera last framed; see the reset below. */
   let camChapter = -1;
+  /** The chapter clock on the last frame: it only runs backwards when R restarts one. */
+  let camT = 0;
   /** `draw` false: everything but the drawing — for `prewarm`, behind the title gate. */
   function render(snap: GameSnapshot, dt: number, intro = false, draw = true): void {
     time += dt;
@@ -901,12 +903,27 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       // robot. The camera used to keep its old yaw and came up jammed beside
       // Voxxy at the start of chapter 2 (Michele, 28 Sep: "camera should reset
       // on Voxxy's view, selected").
-      if (inCut || snap.chapter !== camChapter) {
+      const fresh = snap.chapter !== camChapter || snap.t < camT - 0.25;
+      camT = snap.t;
+      if (inCut || fresh) {
         inCut = false;
         camChapter = snap.chapter;
         cam.yaw = Math.atan2(-Math.cos(active.face), -Math.sin(active.face));
         cam.pitch = 0.3;
         cam.zoom = 1;
+        /*
+         * Chapter 1 starts a stride in front of the crates however it starts, and
+         * at the usual pitch the camera behind Voxxy wanted to be inside hers: it
+         * swung round and the first frame was the back of a crate (critic round,
+         * 30 Sep; Michele: "I'd fix this"). The opening's hand-off already looks
+         * down over them, so R and the reload a quality change makes, which skip
+         * the opening, now start on the same framing, settling once she walks.
+         */
+        if (fresh && snap.chapter === 1 && crates.root.visible) {
+          cam.yaw = HAND_YAW;
+          cam.pitch = HAND_PITCH;
+          cam.settlePitch = 0.22;
+        }
         cam.cut();
       }
       grade.dofAmount = world.photo ? 0.9 : 0;
