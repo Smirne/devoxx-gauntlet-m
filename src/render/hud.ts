@@ -95,6 +95,12 @@ export interface Hud {
    * arrow pointing at nothing.
    */
   nudge(): void;
+  /**
+   * A line from the shell itself, in the stack and in flavour grey: for a key
+   * whose effect is not on screen (the sound switches), so it still says what it
+   * did.
+   */
+  say(text: string): void;
   dispose(): void;
   /** The overlay root, for hosts that need to measure or reparent it. */
   readonly root: HTMLElement;
@@ -399,11 +405,32 @@ const CSS = `
 .ad-cwd svg{display:block;width:132px;height:auto}
 .ad-cwd .ad-csite{font-size:13px;color:${WELLD_RED};font-weight:600;letter-spacing:.02em}
 .ad-cnote2{flex:1 1 280px;min-width:0;font-size:11px;line-height:1.45;color:${MUTED}}
-.ad-ckey{margin-top:10px;font-size:11px;letter-spacing:.06em;color:${MUTED};text-align:right}
+/* The way out is at the top, where it cannot fall below the fold: at the bottom
+   of the panel it was the first thing a short screen cut off (critic round, 30 Sep). */
+.ad-credits .ad-cbox{position:relative}
+.ad-ckey{position:absolute;top:18px;right:26px;font-size:11px;letter-spacing:.06em;color:${MUTED};text-align:right}
 @media (max-width:860px){ .ad-cstats{grid-template-columns:repeat(2,minmax(0,1fr))} }
 @media (max-width:560px){
   .ad-credits .ad-cbox{padding:20px 18px 16px}
   .ad-cstats{grid-template-columns:1fr}
+}
+/* A 720p screen leaves the panel 662 px, and the credits ran past it: the last
+   row of figures and the close key were below the fold with nothing to say so
+   (critic round, 30 Sep). Tighter type and air on short screens, so they fit. */
+@media (max-height:800px){
+  .ad-credits{padding:10px}
+  .ad-credits .ad-cbox{max-height:96vh;padding:14px 24px 10px}
+  .ad-credits h3{font-size:21px}
+  .ad-credits .ad-csub{margin:0 0 8px}
+  .ad-crole{margin-bottom:5px;font-size:12px;line-height:1.38}
+  .ad-crole b{font-size:13px}
+  .ad-chead{margin:8px 0 6px;padding-top:8px}
+  .ad-cstats{gap:7px 18px}
+  .ad-cstat .ad-cn{font-size:17px}
+  .ad-cstat .ad-cnote{font-size:10.5px;line-height:1.3}
+  .ad-cfoot{margin-top:8px;padding-top:8px}
+  .ad-cwd svg{width:112px}
+  .ad-ckey{top:14px}
 }
 .ad-peek{display:flex;align-items:center;justify-content:space-between;gap:12px;
   font-size:13px;color:#cdc9c2}
@@ -697,6 +724,29 @@ function toastLifeMs(until: number, snapT: number): number {
   else ms = (until - snapT) * 1000;
   if (!Number.isFinite(ms)) ms = TOAST_MS;
   return Math.max(900, Math.min(8000, ms));
+}
+
+/**
+ * How long a line takes to READ, ms: a second to notice it, then about four words
+ * a second, up to twelve seconds. The chapters give a line its life in sim time,
+ * and the long ones came up for four seconds and went — the shutter's forty-five
+ * words, the fire door's twenty (critic round, 30 Sep). A short line keeps its
+ * own life; a long one stays until it can have been read.
+ */
+function readMs(text: string): number {
+  const words = text.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
+  return Math.min(12000, 1000 + words * 230);
+}
+
+/**
+ * The same READOUT with a new figure: "Voxxy pushes Biggy — 5.8 m/s and climbing",
+ * then 6.1. That is one line being updated, not a second line — stacked, a push
+ * filled the three places and pushed the story out. Only for measured speeds:
+ * two clues differ only in their digits too, and both have to stay on screen.
+ */
+function sameReadout(a: string, b: string): boolean {
+  const stem = (s: string): string => s.replace(/\d+(?:[.,]\d+)*/g, '#');
+  return a.includes('m/s') && b.includes('m/s') && stem(a) === stem(b);
 }
 
 /** Clear air left between two bubbles that would otherwise touch, in px. */
@@ -1348,13 +1398,18 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
       const key = `${t.t}|${t.until}`;
       if (key !== lastToastKey) {
         lastToastKey = key;
-        const life = toastLifeMs(t.until, snap.t);
+        const life = Math.max(toastLifeMs(t.until, snap.t), readMs(t.t));
         // The same sentence twice is one message that is still true, not two
         // messages: leaning on a door re-fires its `why` every throttle window, and
         // stacking those produced six identical toasts down the middle of the
         // screen. Refresh the existing line's timer instead.
-        const repeat = live.find((lt) => !lt.out && lt.text === t.t);
+        const repeat = live.find((lt) => !lt.out && (lt.text === t.t || sameReadout(lt.text, t.t)));
         if (repeat) {
+          if (repeat.text !== t.t) {
+            repeat.text = t.t;
+            const line = repeat.node.querySelector('.ad-line');
+            if (line) line.innerHTML = t.t;
+          }
           repeat.dieAt = now + life;
           repeat.removeAt = now + life + 340;
         } else {
@@ -1669,5 +1724,9 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     }
   }
 
-  return { update, toggleTasks, closeTasks, creditsKey, pageTasks, turnStory, nudge, dispose, root };
+  function say(text: string): void {
+    if (lastSnap) pushLine(text, lastSnap, TOAST_MS, true);
+  }
+
+  return { update, toggleTasks, closeTasks, creditsKey, pageTasks, turnStory, nudge, say, dispose, root };
 }

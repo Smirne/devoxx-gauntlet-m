@@ -34,10 +34,16 @@ shape and only the unit on the velocity axis changed.
 | | prototype | now | m/s |
 |---|---|---|---|
 | Voxxy `max` | 290 | 72.5 | **5.8** |
-| Droid `max` | 115 | 28.75 | **2.3** |
+| Droid `max` | 115 | 40.25 (28.75 × 1.4) | **3.2** |
 | Biggy `max` | 235 | 58.75 | **4.7** |
 | `JAMMED_DOOR_SPEED` | 70 | 17.5 | 1.4 |
 | `ROLLER_DOOR_SPEED` | 270 | 67.5 | 5.4 |
+
+Droid is the one exception, and it is Michele's: after playing the rescaled build on 23 Sep 2026 he
+found *"the other 2 are a bit too slow now, droid in particular is a bit cumbersome to move
+around"*, so Droid's factor is `DROID_SPEED_SCALE = SPEED_SCALE × 1.4` (2.3 → 3.2 m/s). Biggy could
+not have one: his top speed has to stay below the roller door's. `src/sim/constants.ts` has the
+reasoning and `tests/frozen-constants.test.ts` asserts both.
 
 The honest factor that makes the geometry scale and the old HUD scale agree exactly is
 12.5 / 72.5 = 0.1724, i.e. Voxxy at 4 m/s. It was measured against the chapters and rejected: it
