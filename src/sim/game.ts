@@ -1026,8 +1026,24 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       next();
       return;
     }
-    skipped.push(chapter);
-    defaultScore(chapter);
+    /*
+     * THE LAST CHAPTER'S ENDING PLAYS, SKIPPED OR NOT.
+     *
+     * Skip in chapter 4 went straight to the final card: no stage, no video, no
+     * curtain call (critic round, 30 Sep; Michele: "I'd fix this"). A chapter with
+     * an ending of its own now plays it and puts the card up itself when it is
+     * over. Pressed again during that ending, Skip only skips the video: the
+     * chapter is over already and counts as whatever it was, played or skipped.
+     */
+    const inEnding = (runtime?.reel?.() ?? null) !== null;
+    if (!inEnding && !skipped.includes(chapter)) {
+      skipped.push(chapter);
+      defaultScore(chapter);
+    }
+    if (runtime?.skip) {
+      dropTow();
+      if (runtime.skip()) return;
+    }
     if (chapter < CHAPTER_COUNT) startChapter(chapter + 1);
     else {
       phase = 'done';

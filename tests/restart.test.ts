@@ -64,6 +64,8 @@ describe('R restarts the chapter, not the run', () => {
 
   it('still restarts the whole run from the end card', () => {
     const g = createGame({ seed: 20260930, chapter: 4, cards: false });
+    // The chapter, then the video it ends on.
+    g.skipChapter();
     g.skipChapter();
     expect(g.snapshot().phase).toBe('done');
     g.key('KeyR');

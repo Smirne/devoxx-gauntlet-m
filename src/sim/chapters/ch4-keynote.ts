@@ -928,6 +928,72 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     ctx.finish();
   }
 
+  /*
+   * SKIP CHAPTER STILL ENDS WITH THE KEYNOTE.
+   *
+   * It went from anywhere in this room straight to the final card: no stage, no
+   * video, no curtain call, the three of them left in the corridor under a
+   * countdown (critic round, 30 Sep; Michele: "I'd fix this"). The ending is what a
+   * player who skips the last chapter came for, so a skip plays it: the jobs done
+   * as somebody else would have done them, the room seated, the three of them on
+   * their marks, and the video. During the video a skip is a key like any other and
+   * goes to the card. The card still lists the chapter as skipped and scores it
+   * nothing (`game.ts`).
+   */
+  function skip(): boolean {
+    if (reelT >= 0) {
+      endReel(true);
+      return true;
+    }
+    if (ended) return false;
+    // The cake on its mark...
+    crate.x = crateMark.x + crateMark.w / 2;
+    crate.y = crateMark.y + crateMark.h / 2;
+    crate.vx = 0;
+    crate.vy = 0;
+    // ...every letter in its gap, the one Droid may be carrying included...
+    for (const l of letters) {
+      if (l.at === 'sign') continue;
+      if (l.wall) ctx.removeWall(l.wall);
+      l.at = 'sign';
+      l.rect = slotRect(l.slot);
+      l.face = FACE_HOUSE;
+      standUp(l);
+    }
+    // ...and the four spotlights on.
+    for (const p of spots) p.on = true;
+    nextSpot = spots.length + 1;
+    // The room, seated: three thousand people do not wait for a skip either.
+    for (let i = crowd.length; i < N; i++) spawnAttendee();
+    for (const a of crowd) {
+      if (a.seated) continue;
+      a.x = a.seat.x;
+      a.y = a.seat.y;
+      a.vx = 0;
+      a.vy = 0;
+      a.seated = true;
+      seated++;
+    }
+    // The three of them on the apron, facing the house — placed, not walked: from
+    // the top of the stairs there is a corridor and a door between them and it.
+    for (const b of ctx.bots) {
+      const at = callMarks[b.kind];
+      b.mounted = false;
+      b.x = at.x;
+      b.y = at.y;
+      b.vx = 0;
+      b.vy = 0;
+      b.ix = 0;
+      b.iy = 0;
+      b.face = Math.PI / 2;
+    }
+    loadDroid(ctx.byKind('droid'), false);
+    ready = true;
+    ended = true;
+    startReel();
+    return true;
+  }
+
   /* --------------------------------------------------- the curtain call ---- */
 
   /**
@@ -1576,6 +1642,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     behindCard,
     /** The opening video, while it is running. `null` every other frame. */
     reel: (): ReelView | null => (reelT < 0 ? null : reelAt(reelCards, reelT)),
+    skip,
     placeProp(kind: string, x: number, y: number): boolean {
       if (kind !== 'cake') return false;
       crate.x = x;
