@@ -7044,3 +7044,25 @@ as "Sponsor — the tokens, the time…", and `tests/credits.test.ts` asserts th
 about the film, so the screen was left for Michele to call.
 
 **Checked.** Typecheck, and the 941 tests in 70 files, are green.
+
+## 30 Sep 2026 — the opening plays "Heroic Motif" in the published build, not the synth score
+
+**What the human decided.** Michele, after playing the published build: *"The game has the old
+music! Should play the ronny shamano track on intro"*.
+
+**What the agent did.** The track was in the bundle, but `startMusic` loaded it with
+`fetch(dataURL)`. The artifact sandbox's content policy refuses a fetch of a `data:` URL. The decode
+never started, and the `.catch` handed the opening back to the synthesised score without a word.
+The agent reproduced it in Chromium by serving the live 3D artifact under `connect-src 'none'`. The
+console said `Refused to connect to 'data:audio/mpeg…'`, nothing was decoded, and the old score
+played. `trackBytes` (`src/render/music.ts`) now turns the inlined base64 into bytes in place and
+hands them to `decodeAudioData`, so no network permission is involved. Under the same policy, the
+new build decodes the 12.9 s file and starts it. Both artifacts were republished from commit
+541f51d. The 2.5D artifact was also found stale: it still had no track and carried Biggy's old accel.
+
+**What was rejected, and why.** Relaxing the page's policy: the sandbox is not ours to configure.
+Shipping the MP3 as a separate file: the build must stay one self-contained page (`GAUNTLET.md`).
+
+**Checked.** `tests/music.test.ts` asserts that the bytes round-trip to the same base64 with an
+`ID3` header, and that the decoder receives the track while `fetch` is refused. On the old code, both
+new tests fail. Typecheck and the full suite are green.
