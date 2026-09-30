@@ -7765,3 +7765,26 @@ the sim's own debug moves, found no page errors:
 - The ring is still amber after the soup is in.
 - It turns green when the speaker arrives.
 - The speaker stops 1.5 m from Stephan and stays at speed 0.
+
+## 30 Sep 2026 — the opening video skipped itself, and Droid walked on the spot
+
+**What Michele reported.** A screenshot of the final card over Room 8's stage: *"the screening did not
+start, and droid keeps on walking in place."* The run had reached the end, but the film had not played.
+
+**What the agent did.** It traced both faults to the same moment, the frame the video starts.
+
+- `reelKey()` in `ch4-keynote.ts` skipped the film on any fresh keydown. The last robot walks onto the
+  stage under the player's fingers, so a second direction key or a shift press arrived a frame or two
+  into the film and dismissed it. Movement and modifier keys no longer skip, and nothing skips in the
+  first 3 s (1.5 s at first; Michele asked for a longer grace). Any other key still skips, as the "any key to skip" prompt promises.
+- A skip stopped the sim but left each robot's velocity alone, and the 3D renderer steps the legs off
+  that velocity. Droid was frozen mid-stride with a speed, so he walked on the spot behind the card.
+  `endReel(true)` now zeroes every robot's velocity and stick.
+- It added a test to `tests/curtain-call.test.ts` for the keys that must not skip, and extended the
+  skip test to assert zero velocity behind the card.
+
+**What was rejected, and why.** Making only the first seconds key-proof: a player still holding W at
+second two would skip it anyway. Removing skipping from the film altogether: a player who has seen it
+should still be able to get past it.
+
+**Checked.** `tsc` passes and the full suite passes (953 tests). Not checked in a browser.
