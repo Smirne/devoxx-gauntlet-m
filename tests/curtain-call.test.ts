@@ -243,6 +243,30 @@ describe('the curtain call', () => {
   });
 
   /**
+   * One run, one length. The film says how long the night took, from lights-out
+   * to the keynote, and the final card straight after it used to say that plus
+   * the film's own running time (critic round, 30 Sep: "198 seconds", then
+   * "Total 232s").
+   */
+  it('gives the run the same length on the film and on the final card', () => {
+    const g = createGame({ seed: SEED, chapter: 4, cards: false }) as DebugGame;
+    for (let i = 0; i < 300; i++) g.update(DT_MAX);
+    toTheVideo(g);
+    let said: number | null = null;
+    const frames = Math.ceil(g.snapshot().reel!.len / DT_MAX) + 8;
+    for (let i = 0; i < frames && g.snapshot().reel !== null; i++) {
+      const m = /^(\d+) seconds$/.exec(g.snapshot().reel?.card?.title ?? '');
+      if (m) said = Number(m[1]);
+      g.update(DT_MAX);
+    }
+    expect(said, 'the film never said how long the run took').not.toBeNull();
+    expect(g.snapshot().phase).toBe('done');
+    const total = /Total (\d+)s/.exec(g.snapshot().card ?? '');
+    expect(total, 'the final card lost its total').not.toBeNull();
+    expect(Number(total![1]), 'the card and the film disagree on the run').toBe(said);
+  });
+
+  /**
    * A skipped video skips the act with it: the chapter is over, and a robot left
    * walking to a mark after the final card is a robot the player can see moving
    * behind it.
