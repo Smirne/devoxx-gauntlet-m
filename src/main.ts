@@ -180,6 +180,7 @@ scene.setFogEnabled(wantFog);
 scene.setTopDown(wantTopDown);
 scene.setPhysicsView(wantPhysics);
 physicsPanel.setEnabled(wantPhysics);
+hud.setPhysics(wantPhysics);
 scene.posePortrait(pose);
 
 function resize(): void {
@@ -341,6 +342,7 @@ function onKeyDown(ev: KeyboardEvent): void {
       const on = !physicsPanel.enabled();
       scene.setPhysicsView(on);
       physicsPanel.setEnabled(on);
+      hud.setPhysics(on);
     }
     /*
      * `Shift+D` — the shadow rig, the body-occlusion demo (`DEMO_CHAPTER`).

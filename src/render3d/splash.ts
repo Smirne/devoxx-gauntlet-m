@@ -300,7 +300,7 @@ export function skyline(w: number, h: number, dpr = Math.min(2, window.devicePix
  * `note`, when given, is a line under the prompt — the phone's "the game
  * itself needs a desktop", see `main3d.ts`.
  */
-export function fillSplash(el: HTMLElement, prompt = 'Press any key', note?: string): () => void {
+export function fillSplash(el: HTMLElement, prompt = 'Press any key to begin', note?: string): () => void {
   const vw = Math.max(320, window.innerWidth);
   const vh = Math.max(320, window.innerHeight);
   el.innerHTML = '';

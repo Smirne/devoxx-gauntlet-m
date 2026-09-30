@@ -12,6 +12,20 @@ carries a different lamp: Voxxy a narrow orange beam, Droid a small green pool, 
 flood. Light is the mechanic. Where two colours overlap you can read what is written there, and the
 only way through a locked door is to put the right robots in the right places at the same time.
 
+## What you have not played before
+
+- **Light is the key, literally.** Each robot carries a lamp of its own colour, and clues are
+  written so that they only appear where the right colours overlap. Reading the room means
+  arranging the robots, not finding an item.
+- **The robots are told apart by physics, not by an inventory.** Mass, height and width decide
+  who can do what: Biggy is too heavy to stop and so breaks a jammed door, Droid is too tall for a
+  low passage but climbs onto Biggy to reach a high panel, and Voxxy is light enough to shove Biggy
+  past his own top speed. It is one physics step, not a script.
+- **A night shift, not a race.** The venue before Devoxx opens: the dark cinema wing, the expo with
+  the power off, the lunch queue, and Room 8 for the keynote.
+- **The ending is your run.** The keynote's opening film is cut from how you actually played it:
+  the soup you spilled, the cable you dragged, the scenes you skipped.
+
 ## Run it
 
 Node 20 or newer (developed on Node 22) and [pnpm](https://pnpm.io) 10 — `corepack enable` gives you
@@ -141,7 +155,7 @@ is the only source of truth for game state; `src/render` is Three.js and only ev
 robots are procedural primitives on a bone rig with a procedurally animated gait, the venue is built
 from the floor plans, and every sound is synthesised with the Web Audio API at runtime — including
 the music, which is a four-bar score per chapter played by oscillators rather than a file. The one
-file is the opening's: "Heroic Motif" by Ronny Shamano, AI-generated and given to the game, cut to
+file is the opening's: "Heroic Motif" by Ronny Shamano, made with Suno and given to the game, cut to
 the crates (`src/render/opening-track.mp3`); the synthesised opening score is its fallback.
 
 Built with generative AI, deliberately and with the process written down:
@@ -226,8 +240,8 @@ three robots, starts a conversation.
 ## Licence
 
 MIT — see [LICENSE](LICENSE). It covers the code and the generated content, which is all of the game
-but one file: no third-party art, models or textures ship in the build, and the only audio file is
-the opening's track, "Heroic Motif" by Ronny Shamano, AI-generated and given to this game with
-permission — credited on the credits screen (`C`). The robot model sheets (`robots/`),
+but two things: the opening's track, "Heroic Motif" by Ronny Shamano, made with Suno and given to
+this game with permission, and WellD's logo on the credits screen (`C`), which credits both. No other
+third-party art, models, textures or audio ship in the build. The robot model sheets (`robots/`),
 floor plans (`plans/`) and venue photographs (`media/`) are the organisers' own reference material
 from <https://game.devoxx.be/references.html>, kept here only as build references.

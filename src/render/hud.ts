@@ -96,6 +96,13 @@ export interface Hud {
    */
   nudge(): void;
   /**
+   * The physics view is up (`P` in the 2.5D build). The speed meter's raw sim
+   * line (`… px/s (sim)`) shows only then: it is for a physics judge, and to a
+   * player it read as debug noise (critic panel, 30 Sep). The 3D build has no
+   * physics view and never calls this, so there the line stays hidden.
+   */
+  setPhysics(on: boolean): void;
+  /**
    * A line from the shell itself, in the stack and in flavour grey: for a key
    * whose effect is not on screen (the sound switches), so it still says what it
    * did.
@@ -229,6 +236,7 @@ const CSS = `
 .ad-speed .ad-v{font:600 18px/1.1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
 .ad-speed .ad-state{font-size:10px;letter-spacing:.12em;color:${MUTED}}
 .ad-speed .ad-cap{font-size:10px;color:${MUTED}}
+.ad-speed .ad-cap[hidden]{display:none}
 .ad-speed.ad-boost .ad-state{color:${ACCENT}}
 
 .ad-track{height:4px;border-radius:2px;background:#22262e;overflow:hidden;margin-top:5px}
@@ -1000,6 +1008,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
   const speedFill = el('div', 'ad-fill', speedTrack);
   speedFill.dataset['k'] = 'speed';
   const speedCap = el('div', 'ad-cap', speedBox);
+  speedCap.hidden = true;
 
   /* bottom-right: chapter meters */
   const meters = el('div', 'ad-meters ad-chrome', root);
@@ -1732,5 +1741,9 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     if (lastSnap) pushLine(text, lastSnap, TOAST_MS, true);
   }
 
-  return { update, toggleTasks, closeTasks, creditsKey, pageTasks, turnStory, nudge, say, dispose, root };
+  function setPhysics(on: boolean): void {
+    speedCap.hidden = !on;
+  }
+
+  return { update, toggleTasks, closeTasks, creditsKey, pageTasks, turnStory, nudge, setPhysics, say, dispose, root };
 }
