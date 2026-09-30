@@ -708,11 +708,21 @@ function setupMinigames(ctx: ChapterCtx, hints: () => readonly Task[]): Minigame
   let stickerDone = ctx.swag.includes('sticker');
 
   const rxB = booth('Regex Racing');
+  /*
+   * The four markers stand at the MIDDLE of each side of the stand, not at its
+   * corners. The hall's column grid (`HALL_COLUMNS`) is phased half a bay off the
+   * booth grid, so its columns stand exactly on the aisle crossings at a stand's
+   * corners — and the south-west marker was drawn inside one, with the south-east
+   * 9 px off the next (Michele, 30 Sep 2026, playing chapter 3, with a screenshot:
+   * "one of the race marker is under a column"). The midpoints are half a bay from
+   * every column; the stand still sits inside the lap, so the route still goes
+   * round its corners, north, east, south, west.
+   */
   const racePts: Vec2[] = [
-    { x: rxB.x - 24, y: rxB.y - 16 },
-    { x: rxB.x + rxB.w + 24, y: rxB.y - 16 },
-    { x: rxB.x + rxB.w + 24, y: rxB.y + rxB.h + 16 },
-    { x: rxB.x - 24, y: rxB.y + rxB.h + 16 },
+    { x: rxB.x + rxB.w / 2, y: rxB.y - 16 },
+    { x: rxB.x + rxB.w + 24, y: rxB.y + rxB.h / 2 },
+    { x: rxB.x + rxB.w / 2, y: rxB.y + rxB.h + 16 },
+    { x: rxB.x - 24, y: rxB.y + rxB.h / 2 },
   ];
   /**
    * The lap is a fixed length of floor, so the budget is a required speed wearing a
