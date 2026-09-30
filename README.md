@@ -58,7 +58,7 @@ into the bundle.
 | `Q` / **Quality** button (top right) | One quality level down (reloads into the same chapter) |
 | `P` | Photo mode: hide the HUD, depth of field on the robot |
 | `M` / `N` | Mute everything / music on or off |
-| `R` | Restart the chapter |
+| `R` | Restart the chapter: the first press asks, a second one within 3 s restarts |
 | `C` | The credits; `C` or `Esc` closes them |
 | **Skip chapter ▸** (top right) | Jump to the next chapter |
 
@@ -75,7 +75,7 @@ into the bundle.
 | `M` | Mute everything |
 | `N` | Music on / off, leaving the sound effects alone |
 | `P` | **The physics view** — collision circles at each robot's real radius, velocity arrows to scale, and every contact the solver resolved this frame drawn on its own normal and sized by the impulse, with the numbers beside them. It reads the simulation; it does not re-derive it |
-| `R` | Restart the run |
+| `R` | Restart the chapter: the first press asks, a second one within 3 s restarts |
 | `C` | The credits; `C` or `Esc` closes them |
 | **Skip chapter ▸** (button, top right) | Jump to the next chapter if you are stuck, or to see the later ones |
 | **the briefing** (top of the screen) | Folds itself to one line a few seconds in, so it is not sitting over the diorama all chapter. Click it to unfold or refold |

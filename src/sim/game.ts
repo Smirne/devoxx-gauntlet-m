@@ -266,6 +266,8 @@ const NO_PLATES: Plate[] = [];
 
 /** Seconds after typing into a prompt during which R does not restart. */
 const TYPING_GRACE = 2;
+/** Seconds a first R in a chapter stays armed: a second R inside it restarts. */
+const RESTART_CONFIRM = 3;
 
 export function createGame(opts: GameOptions = {}): DebugGame {
   const showCards = opts.cards !== false;
@@ -342,6 +344,8 @@ export function createGame(opts: GameOptions = {}): DebugGame {
 
   /** Sim time of the last key pressed while a chapter had the keyboard; see `KeyR`. */
   let typedAt = -Infinity;
+  /** Sim time of the R that asked to restart the chapter, or -Infinity; see `KeyR`. */
+  let restartAskedAt = -Infinity;
 
   function flash(text: string, ms: number = TOAST_MS, flavour = false): void {
     toast = { t: text, until: t + ms / 1000, flavour };
@@ -942,6 +946,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     phase = 'play';
     cur = 0;
     toast = null;
+    restartAskedAt = -Infinity;
     cut = null;
     /*
      * Any opening still running belongs to the chapter being left.
@@ -1351,9 +1356,22 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     const typingNow = runtime?.typing?.() ?? false;
     if (typingNow) typedAt = t;
     if (code === 'KeyR' && !typingNow && t - typedAt < TYPING_GRACE) return;
+    /*
+     * ...and in a chapter, only when asked twice. One R used to wipe the chapter
+     * at once, and R sits beside E, the key every chapter is played with: the
+     * critic round of 30 Sep put all three robots back at spawn with one stray
+     * press and nothing on screen to say why. The first R asks, on screen; a
+     * second one while the question is up restarts. The title and the end card
+     * have nothing to lose, so R there still starts the run at once.
+     */
     if (code === 'KeyR' && !typingNow) {
-      if (chapter >= 1 && phase === 'play') restartChapter();
-      else restart();
+      if (chapter >= 1 && phase === 'play') {
+        if (t >= restartAskedAt && t - restartAskedAt <= RESTART_CONFIRM) restartChapter();
+        else {
+          restartAskedAt = t;
+          flash('Restart the chapter from the beginning? <b>R</b> again to restart', RESTART_CONFIRM * 1000);
+        }
+      } else restart();
       return;
     }
     if (phase !== 'play' || !runtime) return;

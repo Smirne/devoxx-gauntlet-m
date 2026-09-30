@@ -289,6 +289,8 @@ describe('the #DEVOXX sign', () => {
     const g = mk();
     lift(g);
     expect(bot(g, 'droid').mass).not.toBe(DEFS.droid.mass);
+    // Twice: in a chapter the first R only asks.
+    g.key('KeyR');
     g.key('KeyR');
     steps(g, 1);
     const d: Bot = bot(g, 'droid');
