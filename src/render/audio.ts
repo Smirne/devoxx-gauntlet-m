@@ -1064,8 +1064,8 @@ export function createAudio(): Audio {
     switch (kind) {
       case 'voxxy':
         // Light and quick: a plastic tick, barely any body to it.
-        noise({ t0, dur: 0.035, peak: 0.055 * i, filter: { type: 'highpass', f: 2300 } });
-        tone({ type: 'sine', f0: 1150, f1: 760, t0, dur: 0.045, peak: 0.03 * i });
+        noise({ t0, dur: 0.035, peak: 0.03 * i, filter: { type: 'highpass', f: 2300 } });
+        tone({ type: 'sine', f0: 1150, f1: 760, t0, dur: 0.045, peak: 0.016 * i });
         break;
       case 'droid':
         // A servo turning over, then a flat foot put down deliberately.
@@ -1157,8 +1157,9 @@ export function createAudio(): Audio {
         break;
       case 3:
         // Breakfast: three thousand people and a queue for tomato soup.
-        bandNoise({ type: 'bandpass', f: 480, q: 0.8 }, 0.09, 0.17, 0.035);
-        bandNoise({ type: 'bandpass', f: 1250, q: 1.1 }, 0.03, 0.23, 0.012);
+        // Kept low and narrow: wide, loud band noise under a score reads as static.
+        bandNoise({ type: 'bandpass', f: 420, q: 2.2 }, 0.03, 0.17, 0.012);
+        bandNoise({ type: 'bandpass', f: 950, q: 2.5 }, 0.008, 0.23, 0.004);
         drone('sine', 96, 0.015);
         break;
       case 4:
