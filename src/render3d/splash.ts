@@ -295,8 +295,12 @@ export function skyline(w: number, h: number, dpr = Math.min(2, window.devicePix
   return c;
 }
 
-/** The splash's contents, into `el`. Returns a stop function for its sparks. */
-export function fillSplash(el: HTMLElement): () => void {
+/**
+ * The splash's contents, into `el`. Returns a stop function for its sparks.
+ * `note`, when given, is a line under the prompt — the phone's "the game
+ * itself needs a desktop", see `main3d.ts`.
+ */
+export function fillSplash(el: HTMLElement, prompt = 'Press any key', note?: string): () => void {
   const vw = Math.max(320, window.innerWidth);
   const vh = Math.max(320, window.innerHeight);
   el.innerHTML = '';
@@ -318,8 +322,14 @@ export function fillSplash(el: HTMLElement): () => void {
   el.appendChild(sub);
   const press = document.createElement('p');
   press.className = 'ad3d-press';
-  press.textContent = 'Press any key';
+  press.textContent = prompt;
   el.appendChild(press);
+  if (note) {
+    const n = document.createElement('p');
+    n.className = 'ad3d-sub ad3d-note';
+    n.textContent = note;
+    el.appendChild(n);
+  }
 
   // Gold dust drifting up, as behind the video's logo.
   const dpr = Math.min(2, window.devicePixelRatio || 1);

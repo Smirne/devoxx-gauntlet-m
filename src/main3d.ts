@@ -15,6 +15,7 @@
  *   ?nohud=1                   hide the DOM overlay
  *   ?shot=1                    no animation loop; `window.__ad3d.step()` drives
  *                              frames, for deterministic screenshots
+ *   ?desktop=1                 play on a touch-only device anyway (see `touchOnly`)
  *
  * Controls: WASD / arrows (camera-relative), mouse to look (click to lock the
  * pointer), wheel to zoom, 1/2/3/Tab to switch robot, E use/climb, Space tow,
@@ -136,6 +137,31 @@ const shotMode = flag('shot');
 KEYNOTE_RAKE.on = params.get('rake') !== null ? flag('rake') : hash !== '#flat';
 const hideHud = flag('nohud') || (shotMode && !flag('hud'));
 const warm = Math.max(0, Math.min(int('warm') ?? 0, 20000));
+/*
+ * A PHONE OR A TABLET. People opened the published link on their phones
+ * (30 Sep) and got a gate that asked for a key they did not have. The game
+ * needs a keyboard — WASD, E, 1/2/3, the keypad — so on a device whose only
+ * pointer is a finger the gate says so and offers the one part that works
+ * there: the opening, started with a tap. When it ends, a card says the rest
+ * plays on a desktop. An iPad reports itself as a Mac, hence the touch points;
+ * a touch laptop has a fine pointer too, and is left alone.
+ *
+ * A tablet with a keyboard CAN play (Michele: "an ipad with keyboard could
+ * play it?"): the first physical key it sends clears `touchOnly`, and from
+ * there it is the desktop game — the card, if it is up, comes down. Without a
+ * mouse the camera still settles behind the robot and A/D turn it.
+ */
+function isTouchOnly(): boolean {
+  try {
+    const ua = navigator.userAgent;
+    if (/android|iphone|ipod|ipad|mobile/i.test(ua)) return true;
+    if (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1) return true;
+    return window.matchMedia('(pointer: coarse)').matches && !window.matchMedia('(any-pointer: fine)').matches;
+  } catch {
+    return false;
+  }
+}
+let touchOnly = !shotMode && !flag('desktop') && isTouchOnly();
 
 /* ======================================================= loading screen ==== */
 
@@ -176,6 +202,8 @@ const fadeEl = document.createElement('div');
 fadeEl.id = 'fade';
 app.appendChild(fadeEl);
 if (hideHud) document.body.classList.add('ad-nohud');
+// No mouse and no Q on a phone: their hints come down (`hudTheme.ts`).
+if (touchOnly) document.body.classList.add('ad3d-touch');
 installHudTheme();
 
 // Play starts with the sim's opening (the crates), exactly as the 2.5D page
@@ -204,8 +232,18 @@ const game: DebugGame = createGame({
 let titleUp = withOpening && !shotMode;
 const titleEl = document.createElement('div');
 titleEl.className = 'ad3d-title ad3d-gate';
-const stopSplash = titleUp ? fillSplash(titleEl) : (): void => undefined;
+const stopSplash = titleUp
+  ? touchOnly
+    ? fillSplash(titleEl, 'Tap for the intro', 'The game itself needs a keyboard — got one? Press any key to play.')
+    : fillSplash(titleEl)
+  : (): void => undefined;
 if (titleUp) app.appendChild(titleEl);
+// The gate covers the canvas, so the click (or the tap) that takes it down is its own.
+titleEl.addEventListener('pointerdown', (ev) => {
+  if (loadingUp) return;
+  ev.preventDefault();
+  dismissTitle();
+});
 /**
  * When the gate went, ms. For `GATE_GRACE` after it the opening ignores keys:
  * a player mashing to get past the gate otherwise skipped the opening with the
@@ -228,7 +266,8 @@ const hud: Hud = createHud(app, {
   project: (x, y, h) => world.projectHint(x, y, h ?? 0),
   // P is photo mode here; the physics view is the 2.5D page's (Michele, 29 Sep:
   // "is P photo or physics? the effect is photo").
-  keys: (line) => line.replace('P: physics', 'P: photo'),
+  // On a phone the opening's "Any key to skip" is a tap.
+  keys: (line) => (touchOnly ? line.replace('Any key to skip', 'Tap to skip') : line).replace('P: physics', 'P: photo'),
 });
 const audio: Audio = createAudio();
 
@@ -328,6 +367,15 @@ window.addEventListener('keydown', (ev) => {
   if (loadingUp) {
     ev.preventDefault();
     return;
+  }
+  if (touchOnly) {
+    const cardUp = desktopCard !== null;
+    keyboardFound();
+    // The key that took the card down does nothing else.
+    if (cardUp) {
+      ev.preventDefault();
+      return;
+    }
   }
   if (titleUp) {
     dismissTitle();
@@ -434,8 +482,13 @@ canvas.addEventListener('mousedown', (ev) => {
     dismissTitle();
     return;
   }
+  // A tap is a skip, not a look, and a phone has no pointer to lock.
+  if (touchOnly) return;
   dragging = true;
-  if (ev.button === 0 && document.pointerLockElement !== canvas) canvas.requestPointerLock?.();
+  // A tablet with a keyboard taps here too, and may refuse the lock: the drag still looks.
+  if (ev.button === 0 && document.pointerLockElement !== canvas) {
+    (canvas.requestPointerLock?.() as Promise<void> | undefined)?.catch?.(() => undefined);
+  }
 });
 window.addEventListener('mouseup', () => (dragging = false));
 window.addEventListener('mousemove', (ev) => {
@@ -445,6 +498,16 @@ canvas.addEventListener('wheel', (ev) => {
   world.cam.onWheel(ev.deltaY);
   ev.preventDefault();
 }, { passive: false });
+
+// On a phone a tap is the only key there is: during the opening it skips it,
+// with the same grace after the gate as a key.
+if (touchOnly) {
+  canvas.addEventListener('pointerdown', () => {
+    if (loadingUp || titleUp || !game.snapshot().opening) return;
+    if (performance.now() - gateOffAt < GATE_GRACE) return;
+    game.key('Space');
+  });
+}
 
 /* =============================================================== audio ===== */
 
@@ -465,6 +528,32 @@ function showEnd(): void {
     '<p><button type="button" id="ad3d-replay">Play again</button></p>';
   app.appendChild(card);
   card.querySelector('#ad3d-replay')?.addEventListener('click', () => window.location.reload());
+}
+
+/** On a touch-only device, once the opening is over: the rest needs a desktop. */
+let desktopCard: HTMLElement | null = null;
+function showDesktopOnly(): void {
+  if (desktopCard) return;
+  audio.mute(true);
+  const card = document.createElement('div');
+  card.className = 'ad3d-end';
+  card.innerHTML =
+    '<h1>THIS GAME PLAYS ON A DESKTOP</h1>' +
+    '<p>Three robots, two floors of Kinepolis, four chapters — driven with a keyboard and a mouse.</p>' +
+    '<p>Open this page on a computer to play the night through — or, on a tablet with a keyboard, press any key.</p>' +
+    '<p><button type="button" id="ad3d-replay">Watch the intro again</button></p>';
+  app.appendChild(card);
+  card.querySelector('#ad3d-replay')?.addEventListener('click', () => window.location.reload());
+  desktopCard = card;
+}
+/** A physical key on a touch device: it has a keyboard, so it gets the whole game. */
+function keyboardFound(): void {
+  touchOnly = false;
+  document.body.classList.remove('ad3d-touch');
+  if (!desktopCard) return;
+  desktopCard.remove();
+  desktopCard = null;
+  audio.mute(muted);
 }
 
 /* ======================================================= quality control === */
@@ -610,6 +699,10 @@ function frame(dt: number): void {
   const snap = game.snapshot();
   if (snap.chapter > 4) {
     showEnd();
+    return;
+  }
+  if (touchOnly && !snap.opening) {
+    showDesktopOnly();
     return;
   }
   world.render(snap, dt);
