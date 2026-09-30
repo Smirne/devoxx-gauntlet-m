@@ -95,6 +95,12 @@ export interface Hud {
    * arrow pointing at nothing.
    */
   nudge(): void;
+  /**
+   * A line from the shell itself, in the stack and in flavour grey: for a key
+   * whose effect is not on screen (the sound switches), so it still says what it
+   * did.
+   */
+  say(text: string): void;
   dispose(): void;
   /** The overlay root, for hosts that need to measure or reparent it. */
   readonly root: HTMLElement;
@@ -1697,5 +1703,9 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
     }
   }
 
-  return { update, toggleTasks, closeTasks, creditsKey, pageTasks, turnStory, nudge, dispose, root };
+  function say(text: string): void {
+    if (lastSnap) pushLine(text, lastSnap, TOAST_MS, true);
+  }
+
+  return { update, toggleTasks, closeTasks, creditsKey, pageTasks, turnStory, nudge, say, dispose, root };
 }
