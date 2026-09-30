@@ -2983,7 +2983,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     for (const b of ctx.bots) {
       for (const n of npcs) standOff(b, n);
       standOff(b, stephan);
-      if (!speaker.following) standOff(b, speaker);
+      if (!speaker.following || speaker.withStephan) standOff(b, speaker);
     }
 
     if (speaker.following && !speaker.withStephan) {
@@ -3094,7 +3094,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         speaker.withStephan = true;
         ctx.flash('Keynote speaker: "Stephan! Sorry — the queues." — Stephan: "You are here. Nothing else matters."', 3600);
       }
-    }
+    } else if (speaker.withStephan && scene < 0) joinStephan(dt);
 
     /*
      * THE BAR PAYS OFF — the taps run and Biggy raises one.
@@ -3587,6 +3587,70 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   const soupStand: Vec2 = { x: station.x, y: food.soup.y + food.soup.h + 22 };
   /** The speaker's own mark at Stephan's feet, one body south of the soup's. */
   const speakerAt: Vec2 = { x: speakerSpot.x + speakerSpot.w / 2, y: speakerSpot.y + speakerSpot.h / 2 };
+
+  /*
+   * ...AND THEN THEY GO TO HIM, AND WAIT.
+   *
+   * Michele, 30 Sep 2026: *"when the keynote speaker reaches the drop zone, he
+   * keeps walking on place. He should reach Stephan and wait."* The mark ended the
+   * follow on the frame the speaker stepped onto it, and nothing set `sp` back to
+   * 0: they stood on the mark's edge, five metres short of the man, walking on the
+   * spot for the rest of the chapter. The mark still hands them over; then they walk
+   * the rest of the way, to his side, and stand there watching the doors he is
+   * watching. His side is the pocket between him and the barrier, clear of the way
+   * the soup comes in; the glazing side or his front if a wall is ever in it.
+   */
+  let waitAt: Vec2 | null = null;
+  let waitStall = 0;
+  function speakerWaitSpot(): Vec2 {
+    const gap = stephan.r + speaker.r + 3;
+    const tries: Vec2[] = [
+      { x: stephan.x - gap, y: stephan.y + 4 },
+      { x: stephan.x + gap, y: stephan.y + 4 },
+      { x: stephan.x, y: stephan.y + gap },
+    ];
+    return tries.find((p) => !ctx.walls.some((w) => circleRect({ ...p, r: speaker.r }, w))) ?? { x: speaker.x, y: speaker.y };
+  }
+  function joinStephan(dt: number): void {
+    waitAt ??= speakerWaitSpot();
+    const dx = waitAt.x - speaker.x;
+    const dy = waitAt.y - speaker.y;
+    const dd = Math.hypot(dx, dy);
+    if (dd < 0.5 || waitStall >= SPEAKER_STALL) {
+      // Standing: facing the way in, turned at the pace Stephan turns.
+      speaker.sp = 0;
+      const want = Math.atan2(doors.y - speaker.y, doors.x - speaker.x);
+      const d = Math.atan2(Math.sin(want - speaker.face), Math.cos(want - speaker.face));
+      const turn = STEPHAN_TURN * dt;
+      speaker.face = Math.abs(d) <= turn ? want : speaker.face + Math.sign(d) * turn;
+      return;
+    }
+    const was: Vec2 = { x: speaker.x, y: speaker.y };
+    const step = Math.min(dd, SPEAKER_WALK * dt);
+    speaker.sp = SPEAKER_WALK;
+    speaker.face = Math.atan2(dy, dx);
+    speaker.x += (dx / dd) * step;
+    speaker.y += (dy / dd) * step;
+    for (const w of ctx.walls) {
+      const hit = circleRect(speaker, w);
+      if (hit) {
+        speaker.x += hit.nx * hit.pen;
+        speaker.y += hit.ny * hit.pen;
+      }
+    }
+    // Round Stephan, not through him.
+    const sx = speaker.x - stephan.x;
+    const sy = speaker.y - stephan.y;
+    const sd = Math.hypot(sx, sy);
+    const min = speaker.r + stephan.r;
+    if (sd > 0 && sd < min) {
+      speaker.x = stephan.x + (sx / sd) * min;
+      speaker.y = stephan.y + (sy / sd) * min;
+    }
+    // Held up by something for a moment: they stop where they are rather than
+    // walk on the spot, which is the thing this is here to end.
+    waitStall = dist(was, speaker) < step / 4 ? waitStall + dt : 0;
+  }
   const soupAt: Vec2 = { x: soupSpot.x + soupSpot.w / 2, y: soupSpot.y + soupSpot.h / 2 };
   /** Stephan's own feet, at the foot of the flight he is not opening yet. */
   const stephanAt: Vec2 = { x: stephan.x, y: stephan.y + 14 };

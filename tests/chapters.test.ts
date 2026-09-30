@@ -1125,6 +1125,16 @@ describe('chapter 3 — breakfast', () => {
     expect(walkTo(g, 'voxxy', spkAt)).toBe(true);
     expect(until(g, () => breakfast().speaker.withStephan, 900)).toBe(true);
 
+    // ...and then walks the rest of the way to him and WAITS, standing. Michele,
+    // 30 Sep 2026: "when the keynote speaker reaches the drop zone, he keeps
+    // walking on place. He should reach Stephan and wait."
+    const person = (role: string) => g.snapshot().people.find((p) => p.role === role)!;
+    expect(until(g, () => person('speaker').speed === 0, 150), 'the speaker is still walking').toBe(true);
+    const gap = Math.hypot(person('speaker').x - person('stephan').x, person('speaker').y - person('stephan').y);
+    expect(gap, 'the speaker stopped short of Stephan').toBeLessThan(26);
+    steps(g, 30);
+    expect(person('speaker').speed, 'the speaker set off again').toBe(0);
+
     // Soup and speaker are BOTH in, and the stairs stay shut: the beer delivery
     // is Stephan's third condition, not decoration (`gameplay-additions.md` §3).
     expect(breakfast().beer.done).toBe(false);
