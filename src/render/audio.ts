@@ -1064,8 +1064,8 @@ export function createAudio(): Audio {
     switch (kind) {
       case 'voxxy':
         // Light and quick: a plastic tick, barely any body to it.
-        noise({ t0, dur: 0.035, peak: 0.055 * i, filter: { type: 'highpass', f: 2300 } });
-        tone({ type: 'sine', f0: 1150, f1: 760, t0, dur: 0.045, peak: 0.03 * i });
+        noise({ t0, dur: 0.035, peak: 0.03 * i, filter: { type: 'highpass', f: 2300 } });
+        tone({ type: 'sine', f0: 1150, f1: 760, t0, dur: 0.045, peak: 0.016 * i });
         break;
       case 'droid':
         // A servo turning over, then a flat foot put down deliberately.

@@ -7716,3 +7716,8 @@ tonal content, sitting under a shaker (`music.ts`) that is also noise. It cut th
 
 **Not checked.** No ears in the loop: levels were chosen by comparison with the other beds, not
 listened to. Michele should play chapter 3 and say if it is still too hissy.
+
+**Follow-up, same day.** Michele played the preview: the white noise was gone, but chapter 3 had a
+"click click" (he guessed footsteps) he found acceptable but too loud, and he asked for more music.
+The agent halved Voxxy's footstep tick and the score's rim click (0.14 → 0.07), added a slow bell
+melody from bar 3 (chord tones 4-3-4-2) and a second, quiet pad voice. Not listened to by the agent.
