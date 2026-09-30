@@ -250,6 +250,15 @@ export interface ChapterRuntime {
    * other chapter, and every other frame of chapter 4, returns null or nothing.
    */
   reel?(): ReelView | null;
+  /**
+   * Skip chapter, in a chapter with an ending of its own to play. True if it took
+   * the skip: the ending is running, and the chapter calls `finish()` when it is
+   * over. Nothing, or false, and `game.ts` moves on as for any other chapter.
+   *
+   * Only chapter 4 has one — the stage, the opening video, the curtain call — and a
+   * skip during that video is a key like any other, which goes to the card.
+   */
+  skip?(): boolean;
   /** Read-only internals, for tests and the debug overlay. */
   state(): ChapterState;
 }

@@ -56,6 +56,12 @@ import { createScene, type DioramaScene } from './render/scene';
 /* ====================================================== error reporting ==== */
 
 const TITLE_BASE = 'After Dark · ERRORS:';
+// The published Vercel build shows players a clean title; `?errors=1` brings the
+// count back there. Every other build (dev, preview, the gauntlet) always shows it.
+const TITLE_CLEAN = 'AFTER DARK - The Devoxx Game';
+const TITLE_COUNTS =
+  import.meta.env.VITE_VERCEL !== true || new URLSearchParams(location.search).has('errors');
+const titleFor = (count: number): string => (TITLE_COUNTS ? TITLE_BASE + count : TITLE_CLEAN);
 const errors: string[] = [];
 let logEl: HTMLPreElement | null = null;
 
@@ -72,7 +78,7 @@ function fmt(v: unknown): string {
 function recordError(line: string): void {
   errors.push(line);
   if (logEl) logEl.textContent = `${logEl.textContent ?? ''}${line}\n`;
-  document.title = TITLE_BASE + errors.length;
+  document.title = titleFor(errors.length);
 }
 
 function installErrorReporting(): void {
@@ -86,7 +92,7 @@ function installErrorReporting(): void {
   if (document.body) attach();
   else document.addEventListener('DOMContentLoaded', attach, { once: true });
 
-  document.title = `${TITLE_BASE}0`;
+  document.title = titleFor(0);
 
   const original = console.error.bind(console);
   console.error = (...args: unknown[]): void => {
@@ -180,6 +186,7 @@ scene.setFogEnabled(wantFog);
 scene.setTopDown(wantTopDown);
 scene.setPhysicsView(wantPhysics);
 physicsPanel.setEnabled(wantPhysics);
+hud.setPhysics(wantPhysics);
 scene.posePortrait(pose);
 
 function resize(): void {
@@ -341,6 +348,7 @@ function onKeyDown(ev: KeyboardEvent): void {
       const on = !physicsPanel.enabled();
       scene.setPhysicsView(on);
       physicsPanel.setEnabled(on);
+      hud.setPhysics(on);
     }
     /*
      * `Shift+D` — the shadow rig, the body-occlusion demo (`DEMO_CHAPTER`).

@@ -10,38 +10,46 @@
  * What makes it read as Droid and not as a generic humanoid:
  *   - 2.1 m tall and lanky: narrow everywhere, the smallest width/height ratio
  *     of the three, with a forward-hunched posture;
- *   - DRUM PAULDRONS mounted outboard of the chest, each ringed by a bright
+ *   - DRUM PAULDRONS mounted outboard of the chest, each ringed by a hot
  *     orange hoop — the single most recognisable feature on the model, present
  *     on the sheet as a copper band round a panelled drum and on the demo as a
- *     hot orange hoop round a dome;
+ *     hot orange hoop round a dome (the demo's shape and the demo's colour);
  *   - a SMOOTH ROUNDED SKULL — an elongated dome on a superellipse section, so
  *     the sides read flat — flaring at the temples into two dark cheek plates,
  *     with two small round amber eyes set WIDE and a dark mesh grille where a
  *     mouth would be, plugged into a THICK DARK COLLAR RING sunk in the chest;
- *   - a TAPERED KEYSTONE chest carrying real panel work — orange-piped vents, a
+ *   - a TAPERED KEYSTONE chest carrying real panel work — metal-piped vents, a
  *     recessed central louvre, fine grilles;
  *   - EXPOSED JOINTS at shoulder, elbow, hip, knee and ankle, the hips and knees
- *     built as stacked ribbed discs with an orange ring round the outermost, and
+ *     built as stacked ribbed discs with a worn-metal ring round the outermost, and
  *     BANDED LIMB SEGMENTS — a sleeve of fine rings over the top of each forearm
  *     and shin, a short ribbed collar where each thigh and upper arm meets its
  *     joint, which is how the sheet's arms and legs are put together.
  *
  * WHAT CAME FROM THE DEMO AND STAYS. The hoop shoulders — a lathed disc-dome
- * with a hot orange ring on the rim — are not on the sheet. They are the
- * organisers' demo, Michele likes them, and they are not to be "corrected"
- * toward the sheet's angular pauldrons. Same for the orange piping, the X
- * harness and the ribbed joint stacks. The FACE is the opposite case: the round
+ * with a ring on the rim — are not on the sheet. They are the organisers'
+ * demo, Michele likes them, and they are not to be "corrected" toward the
+ * sheet's angular pauldrons. Same for the piping, the X harness and the ribbed
+ * joint stacks: their GEOMETRY stays, and only the hoops keep the demo's hot
+ * orange (below). The FACE is the opposite case: the round
  * that took its helmet from the demo lost the character, and the face is what
  * makes a character recognisable, so the head is the sheet's and only the
  * sheet's.
  *
- * THE ORANGE RULE. Orange appears as PIPING AND RINGS ONLY, never as a filled
+ * THE HOOP RULE (was the orange rule; Michele, 30 Sep 2026). A critic found
+ * "far too much hot orange trim vs the sheet's weathered grey with faint bronze
+ * on the shoulder rims". A round that muted all of it, hoops included, left
+ * Droid an almost all-dark figure from across the corridor, so Michele chose
+ * the middle: the shoulder hoops keep the demo's hot orange and are the ONLY
+ * warm metal on him (the sheet also has its one warm edge there); every other
+ * ring and pipe is worn gunmetal, and the X harness is dark panel.
+ * Warm still appears as PIPING AND RINGS ONLY, never as a filled
  * area and never as a weathering wash over a big panel. That restraint is most
  * of why the demo does not read as a toy, and an earlier round of this file
  * proved the converse: a copper-tinted wear pass over the chest plate and a
  * solid copper hip disc photographed as painted orange pads. Large shells now
  * weather toward a cool light grey — a fine chip-and-scuff speckle on dark navy
- * — and the hot orange is reserved for trim geometry.
+ * — and the one warm metal is reserved for the shoulder hoops.
  *
  * "It has been in this building a long time": weathering is high, roughness is
  * high, nothing on this robot is glossy.
@@ -392,15 +400,20 @@ export function buildDroid(): RobotRig {
   const panelDark = panelMaterial('#272d39', 0.5, { roughness: 0.75, metalness: 0.45 });
   const barrel = panelMaterial('#4a5260', 0.45, { roughness: 0.5, metalness: 0.72 });
   /*
-   * TRIM. The hot orange, and the ONLY hot orange on the robot.
+   * TRIM, in two metals.
    *
-   * It exists on ring and piping geometry exclusively — shoulder hoops, collar,
-   * vent frames, joint rings, the groin harness. Nothing filled, nothing
-   * weathered toward it. Kept fairly smooth so the hoops catch a highlight and
-   * read from across a dark room, which is what makes the demo's shoulder the
-   * thing you remember about it.
+   * `rim` is the demo's hot orange #cf6d28, and it goes on the shoulder hoops
+   * and nowhere else: that is where the sheet's only warm edge is, and the hoop
+   * is what you remember Droid by across a dark room. It used to be on every
+   * joint as well, where it read as a toy's piping; a bronze hoop, tried after
+   * that, lost him in the dark (Michele: the middle ground).
+   *
+   * `trim` is everything else that used to be orange — collar lip, vent frames,
+   * joint rings, waist seam: worn gunmetal a few steps lighter than the panels,
+   * so the ring and pipe geometry still separates the parts without shouting.
    */
-  const trim = panelMaterial('#cf6d28', 0.2, { roughness: 0.58, metalness: 0.22 });
+  const rim = panelMaterial('#cf6d28', 0.2, { roughness: 0.58, metalness: 0.22 });
+  const trim = panelMaterial('#5c6068', 0.4, { roughness: 0.62, metalness: 0.45 });
   const grime = panelMaterial('#181b21', 0.3, { roughness: 0.9, metalness: 0.2 });
   // Amber. At intensity 2.4 the green channel clipped to 255 and Droid's eyes
   // photographed as lemon yellow — the one colour both the bio and GAUNTLET Stage 1
@@ -476,13 +489,15 @@ export function buildDroid(): RobotRig {
   crotch.position.set(0, -0.11, 0.01);
   pelvis.add(crotch);
   /*
-   * The X HARNESS across the groin: two orange straps crossing on the front of
-   * the pelvis. It is on the demo, it is the lowest piece of trim on the robot,
-   * and it does the job of tying the two legs back into one body — without it
-   * the pelvis reads as a spare block the thighs happen to hang off.
+   * The X HARNESS across the groin: two straps crossing on the front of the
+   * pelvis. It does the job of tying the two legs back into one body — without
+   * it the pelvis reads as a spare block the thighs happen to hang off. It was
+   * hot orange, and a big orange X at the crotch was the loudest thing on him;
+   * the sheet's pelvis has crossing plates there too, but in the same dark
+   * graphite as the rest, so that is what it is now.
    */
   for (const sx of [-1, 1] as const) {
-    const strap = part(slab(0.2, 0.014, 0.016), trim);
+    const strap = part(slab(0.2, 0.014, 0.016), panelDark, scuff(0.35, 15 + sx));
     strap.position.set(0, -0.005, 0.106);
     strap.rotation.z = sx * 0.72;
     pelvis.add(strap);
@@ -531,7 +546,7 @@ export function buildDroid(): RobotRig {
     chestAt.add(o);
   };
 
-  /** A rectangle of orange piping — four thin bars, no fill inside. */
+  /** A rectangle of metal piping — four thin bars, no fill inside. */
   const pipeFrame = (parent: THREE.Object3D, w: number, h: number, t = 0.0075, d = 0.014): void => {
     const rails: Array<[number, number, number, number]> = [
       [w, t, 0, h / 2 - t / 2],
@@ -562,7 +577,7 @@ export function buildDroid(): RobotRig {
   statusLamp.position.set(0, -0.082, 0.014);
   louvreWell.add(statusLamp);
 
-  // The two orange-piped vents either side of it, each divided into three cells.
+  // The two piped vents either side of it, each divided into three cells.
   for (const sx of [-1, 1] as const) {
     const vent = new THREE.Object3D();
     onChest(vent, sx * 0.098, 0.045, 0.002);
@@ -600,7 +615,7 @@ export function buildDroid(): RobotRig {
   }
 
   /*
-   * ONE line of orange piping, on the waist seam.
+   * ONE line of piping, on the waist seam.
    *
    * There were two, the second a 30 cm bar across the chest under the collar. On
    * a body this dark a bright horizontal bar at the widest point of the keystone
@@ -792,7 +807,7 @@ export function buildDroid(): RobotRig {
   const socketFloor = part(puck(0.064, 0.01, 24), grime);
   socketFloor.position.y = -0.012;
   neck.add(socketFloor);
-  // The orange piping stays, on the rim's outer lip where it outlines the
+  // The piping stays, on the rim's outer lip where it outlines the
   // socket instead of competing with the dark ring inside it.
   const collarTrim = part(new THREE.TorusGeometry(0.1055, 0.0046, 6, 30), trim);
   collarTrim.rotation.x = Math.PI / 2;
@@ -890,7 +905,7 @@ export function buildDroid(): RobotRig {
      * concentric orange rings on a drum twice this long read as a cotton reel:
      * one hoop on a shallow disc is the demo's shape and the demo's restraint.
      */
-    const hoop = part(new THREE.TorusGeometry(0.16, 0.0085, 8, 32), trim);
+    const hoop = part(new THREE.TorusGeometry(0.16, 0.0085, 8, 32), rim);
     hoop.rotation.y = Math.PI / 2;
     hoop.position.x = side * 0.046;
     shoulder.add(hoop);
@@ -1021,7 +1036,7 @@ export function buildDroid(): RobotRig {
     const foot = joint(bones, shin, `foot${L}`, 0, -SHIN, 0);
 
     /*
-     * STACKED RIBBED DISCS, like washers on a shaft, with an orange ring round
+     * STACKED RIBBED DISCS, like washers on a shaft, with a metal ring round
      * the outermost. This is the demo's joint vocabulary and it is what turns a
      * bare cylinder into something that looks like it turns. A solid copper disc
      * 0.14 m across used to sit here and photographed as a painted orange pad on
@@ -1089,7 +1104,7 @@ export function buildDroid(): RobotRig {
     shin.add(calfCable);
 
     /*
-     * A FLAT WEDGE SLAB on an orange-ringed ankle disc.
+     * A FLAT WEDGE SLAB on a ringed ankle disc.
      *
      * The ankle ring is the cheapest piece of trim on the robot and one of the
      * most useful: it is at eye level for the floor-level chapter cameras, where

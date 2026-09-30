@@ -465,10 +465,23 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     const ms = F1.mainStair;
     const steps = new Buckets();
     const n = 18;
+    /*
+     * Navy carpet with a pale nosing on every tread, as in the venue's photograph
+     * (image-1790032674926.webp). The treads were grey terrazzo, and from the
+     * head of the stair — where chapter 4 starts — a dark flight of grey steps
+     * read as a pit with a wall behind it (critic round, 30 Sep): the nosings are
+     * what make a flight read as steps from the top. Nothing lights the flight,
+     * though, so the nosings carry step lights too, as the secondary stairs'
+     * do: at both walls and either side of the two handrails.
+     */
+    const noses: THREE.Vector3[] = [];
+    const lanes = [m(CY0) + 0.3, m(ms.y + ms.h / 3) - 0.25, m(ms.y + ms.h / 3) + 0.25, m(ms.y + (ms.h * 2) / 3) - 0.25, m(ms.y + (ms.h * 2) / 3) + 0.25, m(CY1) - 0.3];
     for (let i = 0; i < n; i++) {
       const top = -((i + 1) / n) * STOREY_H_M;
       const x0 = ms.x + (ms.w * i) / n;
-      steps.add(mats.terrazzoMatte, box(m(ms.w / n), 0.18, m(CY1 - CY0), V(m(x0 + ms.w / n / 2), top - 0.09 + STOREY_H_M / n, m((CY0 + CY1) / 2)), 2));
+      steps.add(mats.carpet, box(m(ms.w / n), 0.18, m(CY1 - CY0), V(m(x0 + ms.w / n / 2), top - 0.09 + STOREY_H_M / n, m((CY0 + CY1) / 2)), 2));
+      steps.add(mats.plaster, box(0.06, 0.03, m(CY1 - CY0), V(m(x0 + ms.w / n) - 0.03, top + STOREY_H_M / n + 0.012, m((CY0 + CY1) / 2)), 2));
+      for (const z of lanes) noses.push(V(m(x0 + ms.w / n) - 0.06, top + STOREY_H_M / n + 0.035, z));
     }
     steps.add(mats.darkMetal, box(m(CORRIDOR_END - ms.x), 0.1, m(CY1 - CY0), V(m((ms.x + CORRIDOR_END) / 2), -STOREY_H_M - 0.05, m((CY0 + CY1) / 2)), 2));
     for (const z of [CY0 - T / 2, CY1 + T / 2]) {
@@ -495,6 +508,7 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
       steps.add(mats.steel, rail);
     }
     steps.build(group);
+    addStepLights(group, noses);
   }
 
   /* -------------------------------------------------------------- ceilings */

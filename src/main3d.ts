@@ -15,6 +15,7 @@
  *   ?nohud=1                   hide the DOM overlay
  *   ?shot=1                    no animation loop; `window.__ad3d.step()` drives
  *                              frames, for deterministic screenshots
+ *   ?desktop=1                 play on a touch-only device anyway (see `touchOnly`)
  *
  * Controls: WASD / arrows (camera-relative), mouse to look (click to lock the
  * pointer), wheel to zoom, 1/2/3/Tab to switch robot, E use/climb, Space tow,
@@ -43,13 +44,19 @@ import { fillSplash } from './render3d/splash';
 /* ====================================================== error reporting ==== */
 
 const TITLE_BASE = 'After Dark 3D · ERRORS:';
+// The published Vercel build shows players a clean title; `?errors=1` brings the
+// count back there. Every other build (dev, preview, the gauntlet) always shows it.
+const TITLE_CLEAN = 'AFTER DARK 3D - The Devoxx Game';
+const TITLE_COUNTS =
+  import.meta.env.VITE_VERCEL !== true || new URLSearchParams(location.search).has('errors');
+const titleFor = (count: number): string => (TITLE_COUNTS ? TITLE_BASE + count : TITLE_CLEAN);
 const errors: string[] = [];
 function recordError(line: string): void {
   errors.push(line);
-  document.title = TITLE_BASE + errors.length;
+  document.title = titleFor(errors.length);
 }
 {
-  document.title = `${TITLE_BASE}0`;
+  document.title = titleFor(0);
   const original = console.error.bind(console);
   console.error = (...args: unknown[]): void => {
     recordError(`console.error: ${args.map((a) => (a instanceof Error ? `${a.name}: ${a.message}` : String(a))).join(' ')}`);
@@ -136,6 +143,31 @@ const shotMode = flag('shot');
 KEYNOTE_RAKE.on = params.get('rake') !== null ? flag('rake') : hash !== '#flat';
 const hideHud = flag('nohud') || (shotMode && !flag('hud'));
 const warm = Math.max(0, Math.min(int('warm') ?? 0, 20000));
+/*
+ * A PHONE OR A TABLET. People opened the published link on their phones
+ * (30 Sep) and got a gate that asked for a key they did not have. The game
+ * needs a keyboard — WASD, E, 1/2/3, the keypad — so on a device whose only
+ * pointer is a finger the gate says so and offers the one part that works
+ * there: the opening, started with a tap. When it ends, a card says the rest
+ * plays on a desktop. An iPad reports itself as a Mac, hence the touch points;
+ * a touch laptop has a fine pointer too, and is left alone.
+ *
+ * A tablet with a keyboard CAN play (Michele: "an ipad with keyboard could
+ * play it?"): the first physical key it sends clears `touchOnly`, and from
+ * there it is the desktop game — the card, if it is up, comes down. Without a
+ * mouse the camera still settles behind the robot and A/D turn it.
+ */
+function isTouchOnly(): boolean {
+  try {
+    const ua = navigator.userAgent;
+    if (/android|iphone|ipod|ipad|mobile/i.test(ua)) return true;
+    if (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1) return true;
+    return window.matchMedia('(pointer: coarse)').matches && !window.matchMedia('(any-pointer: fine)').matches;
+  } catch {
+    return false;
+  }
+}
+let touchOnly = !shotMode && !flag('desktop') && isTouchOnly();
 
 /* ======================================================= loading screen ==== */
 
@@ -176,6 +208,8 @@ const fadeEl = document.createElement('div');
 fadeEl.id = 'fade';
 app.appendChild(fadeEl);
 if (hideHud) document.body.classList.add('ad-nohud');
+// No mouse and no Q on a phone: their hints come down (`hudTheme.ts`).
+if (touchOnly) document.body.classList.add('ad3d-touch');
 installHudTheme();
 
 // Play starts with the sim's opening (the crates), exactly as the 2.5D page
@@ -204,8 +238,18 @@ const game: DebugGame = createGame({
 let titleUp = withOpening && !shotMode;
 const titleEl = document.createElement('div');
 titleEl.className = 'ad3d-title ad3d-gate';
-const stopSplash = titleUp ? fillSplash(titleEl) : (): void => undefined;
+const stopSplash = titleUp
+  ? touchOnly
+    ? fillSplash(titleEl, 'Tap for the intro', 'The game itself needs a keyboard — got one? Press any key to play.')
+    : fillSplash(titleEl)
+  : (): void => undefined;
 if (titleUp) app.appendChild(titleEl);
+// The gate covers the canvas, so the click (or the tap) that takes it down is its own.
+titleEl.addEventListener('pointerdown', (ev) => {
+  if (loadingUp) return;
+  ev.preventDefault();
+  dismissTitle();
+});
 /**
  * When the gate went, ms. For `GATE_GRACE` after it the opening ignores keys:
  * a player mashing to get past the gate otherwise skipped the opening with the
@@ -228,7 +272,8 @@ const hud: Hud = createHud(app, {
   project: (x, y, h) => world.projectHint(x, y, h ?? 0),
   // P is photo mode here; the physics view is the 2.5D page's (Michele, 29 Sep:
   // "is P photo or physics? the effect is photo").
-  keys: (line) => line.replace('P: physics', 'P: photo'),
+  // On a phone the opening's "Any key to skip" is a tap.
+  keys: (line) => (touchOnly ? line.replace('Any key to skip', 'Tap to skip') : line).replace('P: physics', 'P: photo'),
 });
 const audio: Audio = createAudio();
 
@@ -329,11 +374,22 @@ window.addEventListener('keydown', (ev) => {
     ev.preventDefault();
     return;
   }
+  if (touchOnly) {
+    const cardUp = desktopCard !== null;
+    keyboardFound();
+    // The key that took the card down does nothing else.
+    if (cardUp) {
+      ev.preventDefault();
+      return;
+    }
+  }
   if (titleUp) {
     dismissTitle();
     ev.preventDefault();
     return;
   }
+  // A quality reload waiting to be confirmed: any key but Q calls it off.
+  if (code !== 'KeyQ') disarmQuality();
   // The credits, as on the 2.5D page (`src/main.ts`): a modal, taken before the
   // sim hears the key. This page never wired them, so the final card's own
   // "C for credits" opened nothing and only took the card down (29 Sep).
@@ -373,9 +429,12 @@ window.addEventListener('keydown', (ev) => {
   }
   if (code === 'Tab' || code === 'Space') ev.preventDefault();
   if (ev.repeat) return;
+  // Neither switch changes anything on screen, so each says what it did (critic
+  // round, 30 Sep: "M and N give no visible feedback").
   if (code === 'KeyM') {
     muted = !muted;
     audio.mute(muted);
+    hud.say(muted ? 'Sound off \u00b7 M to turn it back on' : 'Sound on');
   }
   // The 2.5D page's overlay keys, the same way: N the score on its own, I the
   // run sheet, H the escalating hint, Escape closes the sheet. The sim never
@@ -383,6 +442,7 @@ window.addEventListener('keydown', (ev) => {
   if (code === 'KeyN') {
     musicOff = !musicOff;
     audio.muteMusic(musicOff);
+    hud.say(musicOff ? 'Music off \u00b7 N to bring it back' : 'Music on');
   }
   if (!game.snapshot().typing) {
     if (code === 'KeyI') hud.toggleTasks();
@@ -393,10 +453,11 @@ window.addEventListener('keydown', (ev) => {
   // do"). Only the overlay keys that act on the sheet or the view leave it open;
   // a movement key closes it and moves.
   if (!SHEET_KEEPS.has(code)) hud.closeTasks();
-  // Q cycles the render quality. The pipeline is built for one quality, so the
-  // choice is remembered and the page reloads into it.
+  // Q asks to change the render quality; a second Q confirms. The pipeline is
+  // built for one quality, so the choice is remembered and the page reloads
+  // into it — back to the chapter's start, which is why it asks first.
   if (code === 'KeyQ' && !game.snapshot().typing) {
-    cycleQuality();
+    askQuality();
     return;
   }
   if (code === 'KeyP') {
@@ -427,8 +488,13 @@ canvas.addEventListener('mousedown', (ev) => {
     dismissTitle();
     return;
   }
+  // A tap is a skip, not a look, and a phone has no pointer to lock.
+  if (touchOnly) return;
   dragging = true;
-  if (ev.button === 0 && document.pointerLockElement !== canvas) canvas.requestPointerLock?.();
+  // A tablet with a keyboard taps here too, and may refuse the lock: the drag still looks.
+  if (ev.button === 0 && document.pointerLockElement !== canvas) {
+    (canvas.requestPointerLock?.() as Promise<void> | undefined)?.catch?.(() => undefined);
+  }
 });
 window.addEventListener('mouseup', () => (dragging = false));
 window.addEventListener('mousemove', (ev) => {
@@ -438,6 +504,16 @@ canvas.addEventListener('wheel', (ev) => {
   world.cam.onWheel(ev.deltaY);
   ev.preventDefault();
 }, { passive: false });
+
+// On a phone a tap is the only key there is: during the opening it skips it,
+// with the same grace after the gate as a key.
+if (touchOnly) {
+  canvas.addEventListener('pointerdown', () => {
+    if (loadingUp || titleUp || !game.snapshot().opening) return;
+    if (performance.now() - gateOffAt < GATE_GRACE) return;
+    game.key('Space');
+  });
+}
 
 /* =============================================================== audio ===== */
 
@@ -458,6 +534,32 @@ function showEnd(): void {
     '<p><button type="button" id="ad3d-replay">Play again</button></p>';
   app.appendChild(card);
   card.querySelector('#ad3d-replay')?.addEventListener('click', () => window.location.reload());
+}
+
+/** On a touch-only device, once the opening is over: the rest needs a desktop. */
+let desktopCard: HTMLElement | null = null;
+function showDesktopOnly(): void {
+  if (desktopCard) return;
+  audio.mute(true);
+  const card = document.createElement('div');
+  card.className = 'ad3d-end';
+  card.innerHTML =
+    '<h1>THIS GAME PLAYS ON A DESKTOP</h1>' +
+    '<p>Three robots, two floors of Kinepolis, four chapters — driven with a keyboard and a mouse.</p>' +
+    '<p>Open this page on a computer to play the night through — or, on a tablet with a keyboard, press any key.</p>' +
+    '<p><button type="button" id="ad3d-replay">Watch the intro again</button></p>';
+  app.appendChild(card);
+  card.querySelector('#ad3d-replay')?.addEventListener('click', () => window.location.reload());
+  desktopCard = card;
+}
+/** A physical key on a touch device: it has a keyboard, so it gets the whole game. */
+function keyboardFound(): void {
+  touchOnly = false;
+  document.body.classList.remove('ad3d-touch');
+  if (!desktopCard) return;
+  desktopCard.remove();
+  desktopCard = null;
+  audio.mute(muted);
 }
 
 /* ======================================================= quality control === */
@@ -503,19 +605,52 @@ function reloadAt(next: QualityName): void {
 const qBtn = document.createElement('button');
 qBtn.type = 'button';
 qBtn.className = 'ad3d-quality';
-qBtn.textContent = `Quality: ${quality.toUpperCase()} (Q)`;
-qBtn.title = `Q: ${quality === 'low' ? 'back up to high' : `down to ${DOWN[quality]}`} (reloads into the same chapter)`;
+qBtn.title = `Q: ${quality === 'low' ? 'back up to high' : `down to ${DOWN[quality]}`} (asks first: the reload restarts the chapter)`;
 qBtn.addEventListener('click', (e) => {
   e.preventDefault();
-  cycleQuality();
+  askQuality();
 });
 if (!shotMode) hud.root.querySelector('.ad-skip')?.before(qBtn);
 let warnedSlow = false;
+/**
+ * A quality change is never taken on one press. Q sits between W and A, and
+ * a stray one reloaded the page back to the chapter's start mid-play (Michele,
+ * 30 Sep: "My playthrough was reset to chapter start"). The first Q or click
+ * only asks; a second one within `ARM_MS` reloads; any other key, or the time
+ * running out, calls it off. Nothing changes the tier on its own.
+ */
+const ARM_MS = 5000;
+let armedTimer: number | undefined;
+function qLabel(): void {
+  const armed = armedTimer !== undefined;
+  qBtn.textContent = armed
+    ? `Reload at ${DOWN[quality].toUpperCase()}? Q again — restarts the chapter`
+    : warnedSlow
+      ? `Running slow — click for lower quality (now ${quality})`
+      : `Quality: ${quality.toUpperCase()} (Q)`;
+  qBtn.classList.toggle('ad3d-slow', armed || warnedSlow);
+}
+qLabel();
+function askQuality(): void {
+  if (armedTimer !== undefined) {
+    cycleQuality();
+    return;
+  }
+  // With the HUD hidden the question could not be seen, so there is nothing to confirm.
+  if (photo || hideHud) return;
+  armedTimer = window.setTimeout(disarmQuality, ARM_MS);
+  qLabel();
+}
+function disarmQuality(): void {
+  if (armedTimer === undefined) return;
+  window.clearTimeout(armedTimer);
+  armedTimer = undefined;
+  qLabel();
+}
 function checkSlow(): void {
   if (warnedSlow || !world.struggling || quality === 'low') return;
   warnedSlow = true;
-  qBtn.textContent = `Running slow — click for lower quality (now ${quality})`;
-  qBtn.classList.add('ad3d-slow');
+  qLabel();
 }
 
 /*
@@ -570,6 +705,10 @@ function frame(dt: number): void {
   const snap = game.snapshot();
   if (snap.chapter > 4) {
     showEnd();
+    return;
+  }
+  if (touchOnly && !snap.opening) {
+    showDesktopOnly();
     return;
   }
   world.render(snap, dt);

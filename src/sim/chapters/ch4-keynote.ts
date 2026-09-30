@@ -126,6 +126,8 @@ const CAKE_TOUCH = PUSH_REACH;
 const CAKE_NEAR = 32;
 /** ...and how square to it he has to be pushing. Wider than a robot-on-robot shove. */
 const CAKE_LEAN = 0.12;
+/** How often a robot that is not Biggy says why the cake will not move for it, s. */
+const CAKE_SAY_EVERY = 6;
 /**
  * How much of the push follows BIGGY'S STICK rather than the line of contact, 0..1.
  *
@@ -309,6 +311,9 @@ const SPEAKER_WAITING =
 const SPEAKER_READY = 'Up you come. I am not walking out there alone in a cape.';
 
 function setup(ctx: ChapterCtx): ChapterRuntime {
+  // The run's length is this chapter's to take, when its film starts (`startReel`):
+  // one from a film an earlier attempt got to is not this attempt's.
+  delete ctx.score.total;
   ctx.setFloor('up');
   ctx.setView(VIEW_DEVOXX);
   ctx.setWalls(floor1Walls());
@@ -608,6 +613,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let ready = false;
   let spare = 0;
   let ended = false;
+  /** When a robot that is not Biggy last said why the cake will not move for it. */
+  let cakeSaidAt = -Infinity;
 
   ctx.objective(
     `Chapter 4 · <b>Keynote</b>. Top of the main staircase — the crowd is right behind you: first attendees in ${Math.round(HEAD)}s, ${Math.round(ARRIVAL)}s to fill Room 8, front rows first. Before they sit: <b>Biggy</b> pushes the cake onto the stage, <b>Droid</b> finishes the <b>#DEVOXX</b> sign (the O and both X's lean in the wing — E to lift one, E at its gap), <b>Voxxy</b> lights spotlights 1→4. Then <b>all three on stage</b> with Stephan and the speaker.`,
@@ -897,6 +904,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   let curtainHeld = -1;
 
   function startReel(): void {
+    // The run's length is taken HERE, when the keynote starts: the film says it
+    // ("198 seconds, from lights-out to the keynote") and the final card after it
+    // must say the same, not the same plus the film (critic round, 30 Sep).
+    ctx.score.total = Math.round(ctx.t);
     reelCards = buildReel(ctx.score, ctx.swag, ctx.t, ctx.skipped);
     reelT = 0;
     dealMarks();
@@ -919,6 +930,72 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     if (skipped) ctx.setView(VIEW_DEVOXX);
     else curtainHeld = 0;
     ctx.finish();
+  }
+
+  /*
+   * SKIP CHAPTER STILL ENDS WITH THE KEYNOTE.
+   *
+   * It went from anywhere in this room straight to the final card: no stage, no
+   * video, no curtain call, the three of them left in the corridor under a
+   * countdown (critic round, 30 Sep; Michele: "I'd fix this"). The ending is what a
+   * player who skips the last chapter came for, so a skip plays it: the jobs done
+   * as somebody else would have done them, the room seated, the three of them on
+   * their marks, and the video. During the video a skip is a key like any other and
+   * goes to the card. The card still lists the chapter as skipped and scores it
+   * nothing (`game.ts`).
+   */
+  function skip(): boolean {
+    if (reelT >= 0) {
+      endReel(true);
+      return true;
+    }
+    if (ended) return false;
+    // The cake on its mark...
+    crate.x = crateMark.x + crateMark.w / 2;
+    crate.y = crateMark.y + crateMark.h / 2;
+    crate.vx = 0;
+    crate.vy = 0;
+    // ...every letter in its gap, the one Droid may be carrying included...
+    for (const l of letters) {
+      if (l.at === 'sign') continue;
+      if (l.wall) ctx.removeWall(l.wall);
+      l.at = 'sign';
+      l.rect = slotRect(l.slot);
+      l.face = FACE_HOUSE;
+      standUp(l);
+    }
+    // ...and the four spotlights on.
+    for (const p of spots) p.on = true;
+    nextSpot = spots.length + 1;
+    // The room, seated: three thousand people do not wait for a skip either.
+    for (let i = crowd.length; i < N; i++) spawnAttendee();
+    for (const a of crowd) {
+      if (a.seated) continue;
+      a.x = a.seat.x;
+      a.y = a.seat.y;
+      a.vx = 0;
+      a.vy = 0;
+      a.seated = true;
+      seated++;
+    }
+    // The three of them on the apron, facing the house — placed, not walked: from
+    // the top of the stairs there is a corridor and a door between them and it.
+    for (const b of ctx.bots) {
+      const at = callMarks[b.kind];
+      b.mounted = false;
+      b.x = at.x;
+      b.y = at.y;
+      b.vx = 0;
+      b.vy = 0;
+      b.ix = 0;
+      b.iy = 0;
+      b.face = Math.PI / 2;
+    }
+    loadDroid(ctx.byKind('droid'), false);
+    ready = true;
+    ended = true;
+    startReel();
+    return true;
   }
 
   /* --------------------------------------------------- the curtain call ---- */
@@ -1175,6 +1252,26 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
 
     stepBot(crate, dt, ctx.walls);
     for (const b of ctx.bots) botsCollide(b, crate, 0.1);
+    /*
+     * ...AND ANYBODY ELSE SAYS WHY IT HARDLY MOVES. Voxxy drove into it at full
+     * speed, it rolled 4 px, and nobody said a word (critic round, 30 Sep): every
+     * gate says why a robot is blocked, in that robot's voice. Leaning into it, the
+     * way Biggy's push is read, and not more than once every few seconds.
+     */
+    const drv = ctx.bots[ctx.cur];
+    if (drv.kind !== 'biggy' && !drv.mounted && !cakeOnMark() && t >= cakeSaidAt + CAKE_SAY_EVERY) {
+      const cx = crate.x - drv.x;
+      const cy = crate.y - drv.y;
+      const cd = Math.hypot(cx, cy);
+      if (cd > 0 && cd < drv.r + crate.r + CAKE_TOUCH && (drv.ix * cx + drv.iy * cy) / cd > CAKE_LEAN) {
+        cakeSaidAt = t;
+        ctx.flash(
+          drv.kind === 'voxxy'
+            ? 'Voxxy: a cake on a board, and the board outweighs me. Biggy pushes this one'
+            : 'Droid: I could carry the cake. Not the board under it. Biggy pushes this one',
+        );
+      }
+    }
     /*
      * BIGGY PUSHES THE CAKE, and it goes where he is pushing.
      *
@@ -1569,6 +1666,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     behindCard,
     /** The opening video, while it is running. `null` every other frame. */
     reel: (): ReelView | null => (reelT < 0 ? null : reelAt(reelCards, reelT)),
+    skip,
     placeProp(kind: string, x: number, y: number): boolean {
       if (kind !== 'cake') return false;
       crate.x = x;
