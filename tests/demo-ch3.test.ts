@@ -41,9 +41,13 @@ describe('demo: entering chapter 3 (Breakfast)', () => {
     expect(g.snapshot().tasks?.find((t) => t.id === 'soup')?.done).toBe(false);
     const v = bot(g, 'voxxy');
     const b = bot(g, 'biggy');
-    expect(g.snapshot().bots.find((o) => o.driven)?.kind).toBe('voxxy');
-    expect(b.x - v.x).toBeGreaterThan(700);
-    expect(findPath(g, 'biggy', { x: 110, y: 266 }).length, 'Biggy cannot reach the soup doorway').toBeGreaterThan(0);
+    const d = bot(g, 'droid');
+    expect(g.snapshot().bots.find((o) => o.driven)?.kind).toBe('biggy');
+    // Biggy waits at the back of the soup queue, Voxxy beside it; Droid is nowhere near
+    expect(Math.hypot(b.x - 114, b.y - 292)).toBeLessThan(10);
+    expect(Math.hypot(v.x - 102, v.y - 240)).toBeLessThan(60);
+    expect(d.x - v.x).toBeGreaterThan(700);
+    expect(findPath(g, 'biggy', { x: 102, y: 280 }).length, 'Biggy is walled in').toBeGreaterThan(0);
   });
 
   it('one E from Voxxy clears the soup queue, and Biggy then fills the pot', () => {
@@ -52,8 +56,12 @@ describe('demo: entering chapter 3 (Breakfast)', () => {
     g.key('KeyE');
     expect(st(g).queues[0].open, 'the staged spot does not clear the queue').toBeGreaterThan(0);
 
+    // ...and Biggy, from where he waits, drives in through the gap before it closes again
     g.debug.select('biggy');
-    g.debug.place('biggy', 105, 180);
+    g.setStick(0, -1);
+    for (let i = 0; i < 400 && bot(g, 'biggy').y > 185; i++) g.update(DT_MAX);
+    g.setStick(0, 0);
+    expect(bot(g, 'biggy').y, 'Biggy cannot get in').toBeLessThanOrEqual(185);
     g.key('KeyE');
     expect(st(g).carrying).toBe(true);
   });

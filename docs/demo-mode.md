@@ -8,7 +8,7 @@ briefing sheet over the scene.
 | Press in | You see | You land in |
 |---|---|---|
 | Chapter 1 | the chapter's own stair-exit walk | Chapter 2 — everything done but the roller door: Biggy on the run-up, Voxxy right behind him (E, then push) |
-| Chapter 2 | the chapter's own let-in walk | Chapter 3 — ladle in, Voxxy and Droid at the soup queue, Biggy at the east end of the hall |
+| Chapter 2 | the chapter's own let-in walk | Chapter 3 — ladle in; Biggy (the robot you drive) waits outside the soup doorway behind the queue, Voxxy beside it to ask the queue to make way (E), Droid away across the hall |
 | Chapter 3 | a fade, no cutscene | Chapter 4, straight in — all done but the last banner letter: Droid stands at the orange X in the wing (E lifts it, E at its gap sets it), Voxxy and Biggy on the stage, the room nearly full |
 | Chapter 4 | nothing: it plays out | the opening video, the curtain call |
 
