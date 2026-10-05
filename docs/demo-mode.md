@@ -9,10 +9,10 @@ briefing sheet over the scene.
 |---|---|---|
 | Chapter 1 | the chapter's own stair-exit walk | Chapter 2 — everything done but the roller door: Biggy on the run-up, Voxxy right behind him (E, then push) |
 | Chapter 2 | the chapter's own let-in walk | Chapter 3 — ladle in, Voxxy and Droid at the soup queue, Biggy at the east end of the hall |
-| Chapter 3 | Stephan opens the gate, the main staircase | Chapter 4 — all done but the last banner letter: Droid holds the orange X, a short step from its gap (E), Voxxy and Biggy already on the stage |
+| Chapter 3 | a fade, no cutscene | Chapter 4, straight in — all done but the last banner letter: Droid stands at the orange X in the wing (E lifts it, E at its gap sets it), Voxxy and Biggy on the stage, the room nearly full |
 | Chapter 4 | nothing: it plays out | the opening video, the curtain call |
 
-The opening and chapter 1 play as usual (any key, PageDown included, skips the opening). In chapter 1 Droid also reaches the projector panel on his own (E beside it), so the talk need not stack him on Biggy; the real game still asks for the climb.
+The opening and chapter 1 play as usual (any key, PageDown included, skips the opening). In chapter 1, E beside the projector panel makes Droid stretch and fail ("too high, even for me") — the same in the real game; he still needs Biggy to open it.
 
 How it works: `GameOptions.demo` (set in `src/main3d.ts`) lets the game's key handler take PageDown and call
 `demoNext()` in `src/sim/game.ts`. A chapter opts in with two optional hooks on `ChapterRuntime`: `demoExit()`

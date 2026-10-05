@@ -78,6 +78,8 @@ const SIGN_BACK = 3;
 const FACE_HOUSE = Math.PI / 2;
 /** Centre-to-centre spacing of the three letters leaning in the wing, sim px. */
 const WING_PITCH = 14;
+/** Stage demo: how many seats are left for the arrival clock, so the room is nearly full from the first frame. */
+const DEMO_LATECOMERS = 8;
 /** Clear floor between the end of the screen wall and the first letter in the wing, sim px. */
 const WING_CLEAR = 6;
 /** How close Voxxy must pass a spotlight to switch it on. */
@@ -1700,9 +1702,9 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     skip,
     /**
      * Stage demo: everything done but the last letter. Cake on its mark, four spotlights on, the sign up but for its
-     * final letter, which Droid is already holding a few steps from its gap; Voxxy and Biggy wait on their curtain-call
-     * marks, so the reel starts the moment he sets it down. The crowd is left to arrive: a full room with the stage
-     * unready only murmurs, it never fails the chapter.
+     * final letter, still leaning in the wing, with Droid standing at it ready to lift it (E) and carry it to its gap;
+     * Voxxy and Biggy wait on their curtain-call marks, so the reel starts the moment he sets it down. The room is
+     * seated but for the last few, who walk in on the real clock: a full room with the stage unready only murmurs.
      */
     demoStage(): void {
       crate.x = crateMark.x + crateMark.w / 2;
@@ -1721,23 +1723,30 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         standUp(l);
       }
       const droid = ctx.byKind('droid');
-      const gap = centre(slotRect(last.slot));
-      const at = { x: gap.x, y: gap.y + LETTER_D / 2 + droid.r + SLOT_REACH - 2 };
+      const wing = centre(last.rect);
+      // Facing the leaning letter from the front, inside his reach for E.
+      const at = { x: wing.x, y: wing.y + LETTER_D / 2 + droid.r + 4 };
       ctx.place(
         [callMarks.voxxy.x, callMarks.voxxy.y, Math.PI / 2],
         [at.x, at.y, -Math.PI / 2],
         [callMarks.biggy.x, callMarks.biggy.y, Math.PI / 2],
       );
-      last.at = 'held';
-      if (last.wall) ctx.removeWall(last.wall);
-      last.wall = null;
-      loadDroid(droid, true);
       ctx.handOver('droid');
+      for (let i = crowd.length; i < N - DEMO_LATECOMERS; i++) spawnAttendee();
+      for (const a of crowd) {
+        if (a.seated) continue;
+        a.x = a.seat.x;
+        a.y = a.seat.y;
+        a.vx = 0;
+        a.vy = 0;
+        a.seated = true;
+        seated++;
+      }
       ctx.objective(
-        'Chapter 4 · <b>Keynote</b>. Everything is ready but the last letter: <b>Droid</b> sets the orange X into the sign (E at its gap), and the stage is complete.',
+        'Chapter 4 · <b>Keynote</b>. Everything is ready but the last letter: <b>Droid</b> lifts the orange X from the wing (E) and sets it into the sign (E at its gap), and the stage is complete.',
         KEYS,
       );
-      ctx.flash(`${sign()} — Droid has the orange X. E at its gap, at the back of the stage`, 5000);
+      ctx.flash(`${sign()} — the orange X is still in the wing. Droid: E to lift it, E again at its gap`, 5000);
     },
     placeProp(kind: string, x: number, y: number): boolean {
       if (kind !== 'cake') return false;

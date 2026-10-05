@@ -3786,20 +3786,6 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       ctx.flash('Voxxy: E clears the soup queue. Then Biggy: fill the pot and carry it to Stephan, smoothly.', 8000);
     },
     /**
-     * THE STAGE DEMO'S EXIT (`ChapterRuntime.demoExit`): the real one — Stephan opens the staircase and the
-     * three climb it — with the jobs marked done whatever state they are in, a pot mid-carry included.
-     */
-    demoExit: (): boolean => {
-      if (gateOpen) return false;
-      ladle = 'in';
-      carrying = false;
-      delivered = true;
-      speaker.following = false;
-      speaker.withStephan = true;
-      done();
-      return true;
-    },
-    /**
      * `crate` moves the first crate still on the floor; `crate3` moves that one
      * whatever state it is in, which is how a test takes a load off Biggy without
      * a heap error. Anything else is the minigames' (the shuffleboard duck).

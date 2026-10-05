@@ -60,17 +60,18 @@ describe('demo: entering chapter 3 (Breakfast)', () => {
 });
 
 describe('demo: leaving chapter 3', () => {
-  it('PageDown from a fresh chapter climbs the main staircase into chapter 4', () => {
+  it('PageDown goes straight into the keynote room, with no cutscene', () => {
     const g = mk(3);
     for (let i = 0; i < 5; i++) g.update(DT_MAX);
     g.key('PageDown');
-    expect(until(g, () => g.snapshot().chapter === 4, 3000)).toBe(true);
+    expect(g.snapshot().chapter).toBe(4);
+    expect(g.snapshot().phase).toBe('play');
     const sc = g.snapshot().score;
     expect(sc.breakfastT).toBeDefined();
     expect(sc.soup).toBeDefined();
   });
 
-  it('PageDown with the soup mid-carry and the gate shut still gets there', () => {
+  it('PageDown with the soup mid-carry still goes straight to chapter 4', () => {
     const g = mk(3);
     g.debug.select('droid');
     g.debug.place('droid', 176, 150);
@@ -82,8 +83,6 @@ describe('demo: leaving chapter 3', () => {
     g.key('KeyE');
     expect(st(g).carrying).toBe(true);
     g.key('PageDown');
-    expect(st(g).gateOpen).toBe(true);
-    expect(g.snapshot().shot?.name).toBe('stair-gate');
-    expect(until(g, () => g.snapshot().chapter === 4, 3000)).toBe(true);
+    expect(g.snapshot().chapter).toBe(4);
   });
 });

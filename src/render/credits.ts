@@ -98,9 +98,9 @@ export const CREDIT_STATS: readonly CreditStat[] = [
     note: '524 of them written by the model, 29 by the human — 22 to 30 September 2026',
   },
   {
-    n: '93,853',
+    n: '93,844',
     label: 'lines of TypeScript',
-    note: '68,363 of game in 95 files, 25,490 of tests in 78 — 966 tests, no physics engine',
+    note: '68,355 of game in 95 files, 25,489 of tests in 78 — 966 tests, no physics engine',
   },
   {
     n: '136,874',

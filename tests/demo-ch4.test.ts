@@ -24,20 +24,24 @@ function staged(): DebugGame {
 }
 
 describe('demo: chapter 4 (Keynote)', () => {
-  it('lands with everything done but the last letter, Droid holding it', () => {
+  it('lands with everything done but the last letter, Droid at it, and a nearly full room', () => {
     const g = staged();
     const k = keynote(g);
     expect(k.cake).toBe(true);
     expect(k.spots).toBe(4);
     expect(k.ready).toBe(false);
+    expect(k.seated).toBeGreaterThan(60);
     expect(g.snapshot().card).toBeFalsy();
     const snap = g.snapshot();
     expect(snap.bots[snap.active].kind).toBe('droid');
-    expect(snap.props.some((p) => p.kind === 'letter-held')).toBe(true);
+    expect(snap.props.some((p) => p.kind === 'letter-held')).toBe(false);
   });
 
-  it('setting the last letter down finishes the stage and starts the ending', () => {
+  it('E lifts the last letter, then E at its gap finishes the stage and starts the ending', () => {
     const g = staged();
+    g.key('KeyE');
+    g.update(DT_MAX);
+    expect(g.snapshot().props.some((p) => p.kind === 'letter-held')).toBe(true);
     const slot = g.snapshot().props.find((p) => p.kind === 'letter-slot' && p.v === 6);
     expect(slot).toBeDefined();
     const droid = bot(g, 'droid');

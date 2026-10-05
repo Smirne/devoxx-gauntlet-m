@@ -44,8 +44,6 @@ export interface PrevVel {
  * renderer is handed a snapshot, never a `ChapterCtx`.
  */
 export interface ChapterCtx {
-  /** Stage-demo mode (`GameOptions.demo`): a few reaches are eased so a four-minute run fits. */
-  readonly demo: boolean;
   /** The three robots, always in order voxxy, droid, biggy. */
   readonly bots: Bot[];
   /** The live wall list. Chapters push and splice it, as the prototype did. */

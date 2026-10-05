@@ -1015,6 +1015,12 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     defaultScore(from);
     demoPending = from + 1;
     dropTow();
+    if (from === 3) {
+      // Chapter 3 → 4 has no cutscene in the demo: straight into the room, from black.
+      fade = 1;
+      startChapter(4);
+      return;
+    }
     if (runtime?.demoExit?.()) return;
     startCut([], () => startChapter(from + 1), view);
   }
@@ -1204,7 +1210,6 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   /* ----------------------------------------------------------------- context */
 
   const ctx: ChapterCtx = {
-    demo: opts.demo === true,
     bots,
     walls,
     setWalls(next: Wall[]): void {

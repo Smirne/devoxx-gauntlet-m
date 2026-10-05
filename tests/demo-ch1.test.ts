@@ -34,7 +34,7 @@ describe('demo: leaving chapter 1 (Night)', () => {
   });
 });
 
-describe('demo: Droid stretches to the projector panel', () => {
+describe('Droid at the projector panel on his own', () => {
   const atPanel = (demo: boolean): DebugGame => {
     const g = createGame({ seed: 20260930, chapter: 1, cards: false, demo });
     const dB = roomDoor(R('B'));
@@ -44,17 +44,13 @@ describe('demo: Droid stretches to the projector panel', () => {
     return g;
   };
 
-  it('E at the panel opens the door without Biggy', () => {
-    const g = atPanel(true);
-    g.key('KeyE');
-    g.update(DT_MAX);
-    expect((g.debug.chapter() as NightState).panelOn).toBe(true);
-  });
-
-  it('is demo-only: the real game still says it is too high', () => {
-    const g = atPanel(false);
+  it.each([true, false])('tries, stretches, and fails with the toast kept (demo %s)', (demo) => {
+    const g = atPanel(demo);
     g.key('KeyE');
     g.update(DT_MAX);
     expect((g.debug.chapter() as NightState).panelOn).toBe(false);
+    expect(g.snapshot().toast?.t).toContain('too high');
+    const droid = g.snapshot().bots.find((b) => b.kind === 'droid');
+    expect(droid?.flair ?? 0).toBeGreaterThan(0);
   });
 });

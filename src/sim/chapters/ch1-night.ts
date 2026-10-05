@@ -33,7 +33,7 @@ import {
 import { DEFS, JAMMED_DOOR_SPEED, MOUNT_BIGGY_MAX_SPEED, MOUNT_REACH, SPEED_SCALE, T, W } from '../constants';
 import { PX_PER_M, m } from '../units';
 import { buildLights, clueLit, litBy } from '../lights';
-import { dist, speed } from '../bot';
+import { dist, partyTrick, speed } from '../bot';
 import type { Clue, CutRoute, LightSource, Mirror, Plate, Prop, Rect, Task, Vec2, Wall } from '../types';
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 import { CRATE_RECTS, STAND_AT, STAND_FACE } from '../opening';
@@ -877,14 +877,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         return true;
       }
       if (!panelOn && !canMount && !d.mounted && b.kind === 'droid' && dist(b, panelAt) < PANEL_REACH) {
-        if (ctx.demo) {
-          // Stage demo: Droid stretches for it on his own, so the talk need not stack him on Biggy first.
-          panelOn = true;
-          ctx.removeWall(lock);
-          ctx.walls.push(lockLeaf);
-          ctx.flash("Droid stretches up to the projector panel — the magnetic lock lets go and the middle cinema's door swings open");
-          return true;
-        }
+        // He still tries: the stretch plays, with its own line swallowed so this one stays on screen.
+        partyTrick(ctx.bots, d, () => {});
         ctx.flash('Droid: too high, even for me. If I stood on Biggy…');
         return true;
       }
