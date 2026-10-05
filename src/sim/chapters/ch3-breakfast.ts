@@ -3771,6 +3771,35 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     tasks,
     shot,
     /**
+     * THE STAGE DEMO'S LANDING (`ChapterRuntime.demoStage`): the soup run, and only the soup run.
+     *
+     * Everything the soup needs is done — the ladle is in the pot, Droid's half of the errand — and nothing
+     * after it is: the speaker and the beer are the gate's other two jobs and nothing here waits on them.
+     * Voxxy stands in front of the soup doorway (the spot `tests/chapters.test.ts` asks the queue from), so one
+     * `E` clears it; Droid beside her; Biggy at the east end of the hall, the length of the north aisle from
+     * the counter, so the carry is a long straight run.
+     */
+    demoStage: (): void => {
+      ladle = 'in';
+      ctx.place([110, 262, -Math.PI / 2], [142, 262, -Math.PI / 2], [1000, 180, Math.PI]);
+      ctx.cur = 0;
+      ctx.flash('Voxxy: E clears the soup queue. Then Biggy: fill the pot and carry it to Stephan, smoothly.', 8000);
+    },
+    /**
+     * THE STAGE DEMO'S EXIT (`ChapterRuntime.demoExit`): the real one — Stephan opens the staircase and the
+     * three climb it — with the jobs marked done whatever state they are in, a pot mid-carry included.
+     */
+    demoExit: (): boolean => {
+      if (gateOpen) return false;
+      ladle = 'in';
+      carrying = false;
+      delivered = true;
+      speaker.following = false;
+      speaker.withStephan = true;
+      done();
+      return true;
+    },
+    /**
      * `crate` moves the first crate still on the floor; `crate3` moves that one
      * whatever state it is in, which is how a test takes a load off Biggy without
      * a heap error. Anything else is the minigames' (the shuffleboard duck).
