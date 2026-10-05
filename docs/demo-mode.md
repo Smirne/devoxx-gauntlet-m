@@ -12,7 +12,7 @@ briefing sheet over the scene.
 | Chapter 3 | Stephan opens the gate, the main staircase | Chapter 4 — all done but the last banner letter: Droid holds the orange X, a short step from its gap (E), Voxxy and Biggy already on the stage |
 | Chapter 4 | nothing: it plays out | the opening video, the curtain call |
 
-The opening and chapter 1 play as usual (any key, PageDown included, skips the opening).
+The opening and chapter 1 play as usual (any key, PageDown included, skips the opening). In chapter 1 Droid also reaches the projector panel on his own (E beside it), so the talk need not stack him on Biggy; the real game still asks for the climb.
 
 How it works: `GameOptions.demo` (set in `src/main3d.ts`) lets the game's key handler take PageDown and call
 `demoNext()` in `src/sim/game.ts`. A chapter opts in with two optional hooks on `ChapterRuntime`: `demoExit()`

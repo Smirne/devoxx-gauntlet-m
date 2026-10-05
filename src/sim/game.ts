@@ -1204,6 +1204,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   /* ----------------------------------------------------------------- context */
 
   const ctx: ChapterCtx = {
+    demo: opts.demo === true,
     bots,
     walls,
     setWalls(next: Wall[]): void {

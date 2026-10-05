@@ -877,6 +877,14 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         return true;
       }
       if (!panelOn && !canMount && !d.mounted && b.kind === 'droid' && dist(b, panelAt) < PANEL_REACH) {
+        if (ctx.demo) {
+          // Stage demo: Droid stretches for it on his own, so the talk need not stack him on Biggy first.
+          panelOn = true;
+          ctx.removeWall(lock);
+          ctx.walls.push(lockLeaf);
+          ctx.flash("Droid stretches up to the projector panel — the magnetic lock lets go and the middle cinema's door swings open");
+          return true;
+        }
         ctx.flash('Droid: too high, even for me. If I stood on Biggy…');
         return true;
       }

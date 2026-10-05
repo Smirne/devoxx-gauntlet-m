@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { DT_MAX, createGame, type DebugGame } from '../src/sim';
+import { CY0, DT_MAX, R, createGame, roomDoor, type DebugGame, type NightState } from '../src/sim';
 
 /** A stage-demo game, no chapter cards, started in chapter 1. */
 const mk = (): DebugGame => createGame({ seed: 20260930, chapter: 1, cards: false, demo: true });
@@ -31,5 +31,30 @@ describe('demo: leaving chapter 1 (Night)', () => {
     g.update(DT_MAX);
     g.key('PageDown');
     expect(until(g, () => g.snapshot().chapter === 2)).toBe(true);
+  });
+});
+
+describe('demo: Droid stretches to the projector panel', () => {
+  const atPanel = (demo: boolean): DebugGame => {
+    const g = createGame({ seed: 20260930, chapter: 1, cards: false, demo });
+    const dB = roomDoor(R('B'));
+    g.debug.place('droid', dB.x + dB.w + 24, CY0 + 19 + 3 + 22);
+    g.debug.select('droid');
+    g.update(DT_MAX);
+    return g;
+  };
+
+  it('E at the panel opens the door without Biggy', () => {
+    const g = atPanel(true);
+    g.key('KeyE');
+    g.update(DT_MAX);
+    expect((g.debug.chapter() as NightState).panelOn).toBe(true);
+  });
+
+  it('is demo-only: the real game still says it is too high', () => {
+    const g = atPanel(false);
+    g.key('KeyE');
+    g.update(DT_MAX);
+    expect((g.debug.chapter() as NightState).panelOn).toBe(false);
   });
 });
