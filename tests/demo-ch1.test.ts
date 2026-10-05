@@ -14,7 +14,7 @@ function until(g: DebugGame, done: () => boolean, budget = 1500): boolean {
 }
 
 describe('demo: leaving chapter 1 (Night)', () => {
-  it('PageDown with nothing solved walks out through the stairs into chapter 2', () => {
+  it('PageDown with nothing solved goes into chapter 2 (its let-in)', () => {
     const g = mk();
     for (let i = 0; i < 5; i++) g.update(DT_MAX);
     expect(g.snapshot().chapter).toBe(1);

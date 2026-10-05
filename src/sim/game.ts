@@ -1015,6 +1015,18 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     defaultScore(from);
     demoPending = from + 1;
     dropTow();
+    if (from === 1) {
+      // Chapter 2 is skipped but for its own let-in (the robots open the doors, Stephan comes in): the hall is
+      // staged lit and powered under the black, the let-in plays at once, and chapter 3's soup run follows it.
+      fade = 1;
+      demoPending = 2;
+      startChapter(2);
+      toast = null;
+      demoPending = 3;
+      if (runtime?.demoExit?.()) return;
+      startCut([], () => startChapter(3), view);
+      return;
+    }
     if (from === 3) {
       // Chapter 3 → 4 has no cutscene in the demo: straight into the room, from black.
       fade = 1;
