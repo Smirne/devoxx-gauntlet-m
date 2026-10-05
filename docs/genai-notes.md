@@ -7877,3 +7877,25 @@ attendees and staff in a public MIT repo, which the repo's own earlier note (the
 was deliberately not committed) already ruled out. The agent had committed them anyway. Removed the
 images and kept the captions and the in-game renders; the cups now read TOMATO SOUP instead of the
 caterer's cup brand. Whether to also rewrite the branch history is left to Michele.
+
+## Stage demo mode (4 minutes at Devoxx)
+
+**What the agent did.**
+- First built it on the wrong repository (an older 2D debug build with no shared history) and redid it here once
+  Michele named the right one; the first draft PR there is closed.
+- Added `GameOptions.demo` and `demoNext()` in `src/sim/game.ts`: PageDown ends the running chapter and opens the
+  next one mid-action. Two optional `ChapterRuntime` hooks, `demoExit()` (leave through the chapter's own cutscene)
+  and `demoStage()` (arrive staged), so the staged state is written from inside each chapter's own closure.
+- Ran one subagent per chapter for the hooks and tests; staged spots come from the existing pilot tests, not guessed.
+- Browser check found two things the unit tests could not: the run sheet swallowed the key and then covered the
+  staged scene. PageDown now bypasses it and a staged chapter does not open its sheet.
+
+**What a human decided.** The storyboard: normal start, then roller push, soup run and the last banner letter, one
+key per jump. The key itself (`N` was already the music toggle).
+
+**What was rejected, and why.**
+- A new "chapter select" screen: one key on a clicker is the whole requirement.
+- Faking the earlier chapters' score as played: the demo fills defaults the way Skip chapter does.
+
+**Checked.** `tsc` and the full suite pass; the four-chapter chain was driven in the browser through the real
+cutscenes to chapter 4's opening video.

@@ -411,6 +411,13 @@ window.addEventListener('keydown', (ev) => {
     ev.preventDefault();
     return;
   }
+  // Stage demo: the presenter's key is never a page turn or a "close the sheet" press, whatever is open.
+  if (code === 'PageDown' && !ev.repeat) {
+    ev.preventDefault();
+    hud.closeTasks();
+    game.key(code);
+    return;
+  }
   // With the run sheet open, left/right turn its page (the night / this
   // chapter) instead of steering.
   if ((code === 'ArrowLeft' || code === 'ArrowRight') && hud.pageTasks(code === 'ArrowLeft' ? -1 : 1)) {

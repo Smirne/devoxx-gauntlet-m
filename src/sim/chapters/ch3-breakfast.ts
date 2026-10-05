@@ -3776,12 +3776,12 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      * Everything the soup needs is done — the ladle is in the pot, Droid's half of the errand — and nothing
      * after it is: the speaker and the beer are the gate's other two jobs and nothing here waits on them.
      * Voxxy stands in front of the soup doorway (the spot `tests/chapters.test.ts` asks the queue from), so one
-     * `E` clears it; Droid beside her; Biggy at the east end of the hall, the length of the north aisle from
+     * `E` clears it; Droid beside her; Biggy at the east end of the hall, the whole width of the hall from
      * the counter, so the carry is a long straight run.
      */
     demoStage: (): void => {
       ladle = 'in';
-      ctx.place([110, 262, -Math.PI / 2], [142, 262, -Math.PI / 2], [1000, 180, Math.PI]);
+      ctx.place([110, 262, -Math.PI / 2], [142, 262, -Math.PI / 2], [1010, 240, Math.PI]);
       ctx.cur = 0;
       ctx.flash('Voxxy: E clears the soup queue. Then Biggy: fill the pot and carry it to Stephan, smoothly.', 8000);
     },

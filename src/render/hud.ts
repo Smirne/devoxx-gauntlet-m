@@ -1544,7 +1544,7 @@ export function createHud(host: HTMLElement, opts: HudOptions = {}): Hud {
      */
     if (snap.phase === 'play' && snap.opening === null && snap.card === null && snap.chapter !== briefedFor) {
       briefedFor = snap.chapter;
-      sheetOpen = true;
+      sheetOpen = !snap.demoStaged;
       // The chapter opens the BRIEFING. `I` is what turns it into the run sheet.
       sheetFull = false;
       // The run opens on the night; every later chapter on its own page.

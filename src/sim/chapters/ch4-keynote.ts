@@ -1698,6 +1698,47 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     /** The opening video, while it is running. `null` every other frame. */
     reel: (): ReelView | null => (reelT < 0 ? null : reelAt(reelCards, reelT)),
     skip,
+    /**
+     * Stage demo: everything done but the last letter. Cake on its mark, four spotlights on, the sign up but for its
+     * final letter, which Droid is already holding a few steps from its gap; Voxxy and Biggy wait on their curtain-call
+     * marks, so the reel starts the moment he sets it down. The crowd is left to arrive: a full room with the stage
+     * unready only murmurs, it never fails the chapter.
+     */
+    demoStage(): void {
+      crate.x = crateMark.x + crateMark.w / 2;
+      crate.y = crateMark.y + crateMark.h / 2;
+      crate.vx = 0;
+      crate.vy = 0;
+      for (const p of spots) p.on = true;
+      nextSpot = spots.length + 1;
+      const last = letters[SIGN.length - 1];
+      for (const l of letters) {
+        if (l === last || l.at === 'sign') continue;
+        if (l.wall) ctx.removeWall(l.wall);
+        l.at = 'sign';
+        l.rect = slotRect(l.slot);
+        l.face = FACE_HOUSE;
+        standUp(l);
+      }
+      const droid = ctx.byKind('droid');
+      const gap = centre(slotRect(last.slot));
+      const at = { x: gap.x, y: gap.y + LETTER_D / 2 + droid.r + SLOT_REACH - 2 };
+      ctx.place(
+        [callMarks.voxxy.x, callMarks.voxxy.y, Math.PI / 2],
+        [at.x, at.y, -Math.PI / 2],
+        [callMarks.biggy.x, callMarks.biggy.y, Math.PI / 2],
+      );
+      last.at = 'held';
+      if (last.wall) ctx.removeWall(last.wall);
+      last.wall = null;
+      loadDroid(droid, true);
+      ctx.handOver('droid');
+      ctx.objective(
+        'Chapter 4 · <b>Keynote</b>. Everything is ready but the last letter: <b>Droid</b> sets the orange X into the sign (E at its gap), and the stage is complete.',
+        KEYS,
+      );
+      ctx.flash(`${sign()} — Droid has the orange X. E at its gap, at the back of the stage`, 5000);
+    },
     placeProp(kind: string, x: number, y: number): boolean {
       if (kind !== 'cake') return false;
       crate.x = x;

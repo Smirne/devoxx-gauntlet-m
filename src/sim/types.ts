@@ -746,6 +746,8 @@ export interface GameSnapshot {
    * as movement — see `src/main.ts`.
    */
   typing: boolean;
+  /** Stage demo: this chapter was entered mid-action, so the HUD does not open its briefing over the scene. */
+  demoStaged?: boolean;
   /**
    * The text field to draw at the centre of the screen, or `null` for none.
    * Open exactly when `typing` is true. See `TextPrompt`.

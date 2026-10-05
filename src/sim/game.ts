@@ -957,6 +957,8 @@ export function createGame(opts: GameOptions = {}): DebugGame {
   const quips = makeQuips();
   /** The chapter a demo jump is heading for: when its setup is done it is staged (`ChapterRuntime.demoStage`). */
   let demoPending = 0;
+  /** True from a staged chapter's `demoStage` until the next `startChapter`. */
+  let demoStaged = false;
   function startChapter(n: number, seed?: number): void {
     const def = CHAPTERS[n - 1];
     if (!def) throw new Error(`no chapter ${n}`);
@@ -985,8 +987,10 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     walls.length = 0;
     restoreIdentity();
     runtime = def.setup(ctx);
+    demoStaged = false;
     if (demoPending === n) {
       demoPending = 0;
+      demoStaged = true;
       card = null;
       runtime.demoStage?.();
     }
@@ -1530,6 +1534,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       tow: tow ? { holder: tow.holder, dir: tow.dir, aim: tow.aim } : null,
       entered: r?.entered?.() ?? '',
       typing: r?.typing?.() ?? false,
+      demoStaged,
       prompt: r?.prompt?.() ?? null,
       score,
       swag,
