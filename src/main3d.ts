@@ -225,6 +225,7 @@ const game: DebugGame = createGame({
   chapter: resuming ? resumeAt : withOpening ? undefined : (int('chapter') ?? 1),
   cards: withOpening || resuming,
   clueSpot: CLUE_SPOT_3D,
+  demo: !flag('nodemo'),
 });
 
 /*

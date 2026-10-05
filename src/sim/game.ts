@@ -227,6 +227,11 @@ export interface GameOptions {
   cards?: boolean;
   /** A clue's patch radius, sim px; see `CLUE_SPOT`. The 3D build is more generous. */
   clueSpot?: number;
+  /**
+   * Stage-demo mode: PageDown (what a presenter's clicker sends) ends the running chapter and starts the next
+   * one already mid-action, the earlier chapters' jobs done. See `demoNext`.
+   */
+  demo?: boolean;
 }
 
 /** Test and debug-overlay access to state the renderer has no business reading. */
@@ -950,6 +955,8 @@ export function createGame(opts: GameOptions = {}): DebugGame {
    * it is made once and reset with the chapter, like everything else here.
    */
   const quips = makeQuips();
+  /** The chapter a demo jump is heading for: when its setup is done it is staged (`ChapterRuntime.demoStage`). */
+  let demoPending = 0;
   function startChapter(n: number, seed?: number): void {
     const def = CHAPTERS[n - 1];
     if (!def) throw new Error(`no chapter ${n}`);
@@ -978,6 +985,34 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     walls.length = 0;
     restoreIdentity();
     runtime = def.setup(ctx);
+    if (demoPending === n) {
+      demoPending = 0;
+      card = null;
+      runtime.demoStage?.();
+    }
+  }
+
+  /**
+   * THE STAGE DEMO'S NEXT-CHAPTER KEY (not part of the game).
+   *
+   * Four minutes on a stage cannot play four chapters. The presenter's key ends the running chapter the way the
+   * chapter itself would — its own exit cutscene (`ChapterRuntime.demoExit`) or, without one, a plain fade — and
+   * the next chapter opens already mid-action (`demoStage`). Nothing is scored for what was not played: the
+   * skipped chapter's defaults fill in, as for Skip chapter, but it is not listed as skipped, since the demo is
+   * not a player cutting corners.
+   */
+  function demoNext(): void {
+    if (!opts.demo || chapter < 1 || chapter >= CHAPTER_COUNT || opening !== null) return;
+    if (phase !== 'play' && phase !== 'done') return;
+    if (runtime?.typing?.()) return;
+    const from = chapter;
+    card = null;
+    phase = 'play';
+    defaultScore(from);
+    demoPending = from + 1;
+    dropTow();
+    if (runtime?.demoExit?.()) return;
+    startCut([], () => startChapter(from + 1), view);
   }
 
   /** Fill in whatever the skipped chapter would have scored, so the card still adds up. */
@@ -1344,6 +1379,10 @@ export function createGame(opts: GameOptions = {}): DebugGame {
      */
     if (opening !== null) {
       endOpening();
+      return;
+    }
+    if (opts.demo && code === 'PageDown') {
+      demoNext();
       return;
     }
     /*

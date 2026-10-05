@@ -259,6 +259,17 @@ export interface ChapterRuntime {
    * skip during that video is a key like any other, which goes to the card.
    */
   skip?(): boolean;
+  /**
+   * Stage-demo only (`GameOptions.demo`, `docs/demo-mode.md`): leave this chapter the way it ends for real —
+   * its own exit cutscene, whose `next` starts the following chapter — as if its jobs were all done, whatever
+   * state they are really in. True if a cutscene was started; false and `game.ts` fades to the next chapter.
+   */
+  demoExit?(): boolean;
+  /**
+   * Stage-demo only: called once, right after `setup`, when this chapter was entered through the demo key. Put
+   * the chapter in the middle of its action, everything that comes before it done, with the robots in place.
+   */
+  demoStage?(): void;
   /** Read-only internals, for tests and the debug overlay. */
   state(): ChapterState;
 }
