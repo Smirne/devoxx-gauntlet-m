@@ -7822,3 +7822,58 @@ seems detached"*.
 - `tsc` passes and the full suite passes (953 tests).
 - The new roll test fails on the old code with "the ball hops as it rolls" (0.31 m) and passes now.
 - The frame strip in the build shows the helmet on top through the whole turn, with no page errors.
+
+## 6 Oct 2026 — second venue photo batch
+
+**What the agent did.**
+- Saved Michele's eleven new Devoxx photos as 1600 px webp in `media/venue-photos-2026-10-06/`, with
+  a captioned table. Compared each against `docs/venue-photos.md`: reception, cloakroom and the
+  top-of-stair landing were already recorded; the Laser Ultra door, ring handles, the poke buffet,
+  the blue-wall stair and the reception step platform are new.
+- Made no geometry or render changes.
+
+**What a human decided.** Michele will say tonight which stair, floor and room photos 1, 4, 5, 6
+and 11 show, and is taking extra photos (reception/cloakroom wide shot, toilet signage).
+
+**What was rejected, and why.** Moving geometry from photos with unknown placement. `plans/` wins
+over photos for positions (CLAUDE.md), so the answers come first.
+
+## 6 Oct 2026 — photos put to use
+
+**What the agent did.**
+- Redrew the backdrop behind the entrance glass as autumn trees (red, orange and yellow-green
+  crowns on trunks), swapped the corridor doors' straight bars for round ring handles, and added a
+  DEVOXX 2026 board over Room 5's door in the style of the cinema's LASER ULTRA one.
+- Found the reception step platform already modelled (the raised lobby), so left it.
+- Typecheck and the 954 tests pass. Not looked at in a browser this session.
+
+**What a human decided.** Michele identified each photo's place and asked for the autumn trees and
+the Devoxx-ified door panel; he said not to touch the secondary-stair doors if it risks problems.
+
+**What was rejected, and why.** Copying the LASER ULTRA brand itself: it is a third party's mark;
+the board is redrawn for the conference. Changing the secondary-stair doors: no gain, some risk.
+
+**Later, 6 Oct — toilets and BOF doors.** Checked photo 8 against the build: the 3D hall drew both
+blocks as bare plaster. Added a white framed door and a "TOILETTEN" plate on the toilet block and
+white framed open doors on the BOF doorways, render-only. Michele decided: keep three BOF rooms,
+do not rework the layout. Rejected: cutting BOF to two rooms (sim and test change, and the plan's
+five storage rooms do not say which two). Typecheck and 954 tests pass; not viewed in a browser.
+
+**6 Oct, second round of photo work.** Michele answered that photo 18 was taken from the hall facing
+reception, which settled the cloakroom/reception order as correct. He asked for lots of cups at the
+soup station and left the order of the rest to the agent. Done, render-only: soup cups, crates, flowers
+and lanterns; hot-water urn; lectern front, table and tripod; schedule screens and a red portal at
+Rooms 4 and 5. Left out and said so: caption strip, landing freezer and poufs, photo backdrop, glass
+booths. Typecheck and 954 tests pass; the 3D build loads with no console errors, but the new props were
+not inspected in a live chapter.
+
+**6 Oct, checked in a browser.** Rendered the soup counter, Room 4 and Room 5 doors in the real 3D build
+(`media/changes-2026-10-06/`, low quality, software GL). The first soup render showed the cups as specks
+beside the cartoon-sized pots, so they are now drawn 1.8x with blocks of them either side of the pots.
+Not rendered: the keynote lectern and the hot-water urn.
+
+**6 Oct, review fix.** The review of PR #32 found that the committed photographs showed identifiable
+attendees and staff in a public MIT repo, which the repo's own earlier note (the first photo batch
+was deliberately not committed) already ruled out. The agent had committed them anyway. Removed the
+images and kept the captions and the in-game renders; the cups now read TOMATO SOUP instead of the
+caterer's cup brand. Whether to also rewrite the branch history is left to Michele.

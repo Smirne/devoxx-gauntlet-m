@@ -111,3 +111,36 @@ Use: the view out through the entrance doors (the backdrop), if anyone looks bac
   board with vegetables across its top ("Sandwiches · CHICKEN CURRY"), a big vase of flowers.
 - **Stage with the #DEVOXX letters**: the crew holding giant 3D letters, the last X in orange —
   in use on another branch, not here.
+
+## 6 Oct 2026 batch
+
+Eleven more photographs, captioned in `media/venue-photos-2026-10-06/CAPTIONS.md` with Michele's
+placements (only photos 03 and 05, which show nobody, are committed; the rest show people). Used so far: autumn-coloured trees behind the entrance glass; round steel ring handles
+on the corridor's double doors; a black DEVOXX 2026 board over Room 5's door, adapted from the
+cinema's LASER ULTRA one. Already in the build: the stepped lobby up to reception (photo 11).
+Not changed: the secondary-stair doors (5, 6), per his instruction.
+
+Photo 8 (toilets and BOF): the 3D hall now draws a white framed door under a grey "TOILETTEN" plate
+on the toilet block (shut, as the sim has it) and white framed doors, standing open, in the three
+BOF doorways. Michele, 6 Oct: keep three BOF rooms (the real hall has two doors there; not changed).
+
+Second 6 Oct set (photos 12-16, same folder): keynote stage with the DEVOXX BELGIUM lectern and caption
+strip; the tomato-soup tables ("A HOT CUP" kraft cups, wooden crates, autumn flowers, copper lanterns);
+the coffee and hot-water station; Room 5 and 4 doors wide; the landing with stairwell, Coca-Cola chest
+freezer and bean-bag lounge. Saved only; not yet used in the build.
+
+Third 6 Oct set (photos 17-22; captions only): Room 3's LASER ULTRA door and neighbouring glass booths; the wide
+reception and cloakroom shots (a step-and-repeat DEVOXX backdrop beside the cloakroom, a column between
+the two counters); the main flight and entrance seen from the foot; the moss-green mezzanine edge above
+reception. Not committed.
+
+Photo 18 answered: Michele stood in the main hall facing reception, the main entrance beyond it. Facing
+east, the cloakroom (left) is north of reception (right), which is what `GF` has. No change needed.
+
+Used from the second set (6 Oct, Michele: "lot of cups for the soup station. Go in any order"):
+kraft "A HOT CUP" cups (about 250, every other one with soup) and wooden crates with autumn flowers and
+lanterns on the soup counter; a hot-water urn with chalkboard on the coffee counter; the Devoxx
+Belgium lectern front and a black-clothed table with a camera tripod on the keynote stage; a wall
+schedule screen beside Room 4's and Room 5's doors and a red box portal round Room 4's. Not done: the
+live-caption strip under the keynote screen, the landing's Coca-Cola freezer and bean-bag poufs (no
+agreed spot for them), the DEVOXX photo backdrop by the cloakroom, the glass sponsor booths by Room 3.
