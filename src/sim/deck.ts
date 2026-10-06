@@ -8,18 +8,19 @@
  * decides what is on the screen, the renderer paints a card — so the deck is data.
  */
 
-import { FILM_CREDITS, REEL_PREROLL } from './reel';
+import { FILM_CREDITS } from './reel';
 import type { ReelCard, ReelView } from './types';
 
 /** Where the game lives, for the QR code and the closing slide. */
 export const PLAY_URL = 'https://devoxx-after-dark.vercel.app';
 
 /**
- * Dark seconds before the first slide. The film's own (`REEL_PREROLL`) ends while the camera
- * is still easing up to the screen (about a tenth of the move left), which on a title that is
- * fading in reads as a zoom; the deck waits for the camera to land.
+ * Dark seconds before the first slide. Michele, 7 Oct: *"reduce the 4 seconds to 2"*. The
+ * film's own beat (`REEL_PREROLL`) is spent regrouping and ends with the camera still
+ * easing up to the screen, which on a fading title reads as a zoom; in a deck the camera
+ * goes straight up (`world.ts` keys on `len === Infinity`) and has landed by now.
  */
-export const DECK_PREROLL = REEL_PREROLL + 1.8;
+export const DECK_PREROLL = 2;
 
 /** Fade-in of a slide after a key, seconds. */
 const FADE = 0.4;
