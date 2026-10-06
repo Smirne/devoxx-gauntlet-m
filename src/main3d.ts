@@ -412,10 +412,11 @@ window.addEventListener('keydown', (ev) => {
     return;
   }
   // Stage demo: the presenter's key is never a page turn or a "close the sheet" press, whatever is open.
-  if (code === 'PageDown' && !ev.repeat) {
+  // PageDown, or "-" (matched by character, not position: on an Italian keyboard it is not where the US one is).
+  if ((code === 'PageDown' || ev.key === '-' || code === 'NumpadSubtract') && !ev.repeat) {
     ev.preventDefault();
     hud.closeTasks();
-    game.key(code);
+    game.key('PageDown');
     return;
   }
   // With the run sheet open, left/right turn its page (the night / this

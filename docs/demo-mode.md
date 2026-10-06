@@ -1,6 +1,6 @@
 # Stage demo mode
 
-For a 4-minute talk: **PageDown** (what a presenter's clicker sends) ends the running chapter and starts the next
+For a 4-minute talk: **PageDown** (what a presenter's clicker sends) or **-** (the minus key, on any layout) ends the running chapter and starts the next
 one already mid-action, with the earlier chapters' jobs done. It is on by default in this build; `?nodemo=1` turns
 it off. PageDown works whatever is on screen (briefing card, run sheet), and a staged chapter does not open its
 briefing sheet over the scene.
