@@ -29,7 +29,7 @@ import type { VolumePoint } from './pipeline';
 import { mergeStatic, noMerge } from './merge';
 import type { PlanarReflection } from './reflector';
 import { adScreen, ledTicker } from './screens';
-import { POSTERS, backlitGlass, cityscape, emitter, exitSign, menuBoard, movieNightPoster, neonText, poster, rainMask, wayfinding, zaalPanel } from './signs';
+import { POSTERS, backlitGlass, cityscape, doorBrandPanel, emitter, exitSign, menuBoard, movieNightPoster, neonText, poster, rainMask, wayfinding, zaalPanel } from './signs';
 import { wellDSticker } from './welld';
 
 /** Where chapter 1's geometry stops, sim px: just past the fire door. */
@@ -1517,10 +1517,17 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
     for (const sgn of [-1, 1]) {
       const leaf = new THREE.Mesh(new THREE.BoxGeometry(m(d.w) / 2 - 0.02, H, 0.09), mats.darkMetal);
       leaf.position.set((sgn * m(d.w)) / 4, H / 2, 0);
-      const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, m(d.w) * 0.3, 10), mats.steel);
-      bar.rotation.z = Math.PI / 2;
-      bar.position.set((sgn * m(d.w)) / 4, 1.05, r.side < 0 ? 0.1 : -0.1);
+      // A round steel ring handle, as the real doors (6 Oct photographs), half on each leaf.
+      const bar = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.014, 8, 28), mats.steel);
+      bar.position.set(sgn * 0.02, 1.3, r.side < 0 ? 0.08 : -0.08);
       g.add(leaf, bar);
+    }
+    // Room 5 wears the sponsor's black door panel, restyled for the conference.
+    if (r.n === 5) {
+      const dp = emitter(doorBrandPanel(), 2.4, 0.75, 1.0, 0xffffff, false);
+      dp.position.set(0, H + 0.45, r.side < 0 ? 0.06 : -0.06);
+      dp.rotation.y = r.side < 0 ? 0 : Math.PI;
+      g.add(dp);
     }
     g.position.set(m(d.cx), 0, leafZ);
     // Named, so chapter 4 can open Room 8's (keynote3d.ts builds its inside).

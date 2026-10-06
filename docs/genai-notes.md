@@ -7837,3 +7837,18 @@ and 11 show, and is taking extra photos (reception/cloakroom wide shot, toilet s
 
 **What was rejected, and why.** Moving geometry from photos with unknown placement. `plans/` wins
 over photos for positions (CLAUDE.md), so the answers come first.
+
+## 6 Oct 2026 — photos put to use
+
+**What the agent did.**
+- Redrew the backdrop behind the entrance glass as autumn trees (red, orange and yellow-green
+  crowns on trunks), swapped the corridor doors' straight bars for round ring handles, and added a
+  DEVOXX 2026 board over Room 5's door in the style of the cinema's LASER ULTRA one.
+- Found the reception step platform already modelled (the raised lobby), so left it.
+- Typecheck and the 954 tests pass. Not looked at in a browser this session.
+
+**What a human decided.** Michele identified each photo's place and asked for the autumn trees and
+the Devoxx-ified door panel; he said not to touch the secondary-stair doors if it risks problems.
+
+**What was rejected, and why.** Copying the LASER ULTRA brand itself: it is a third party's mark;
+the board is redrawn for the conference. Changing the secondary-stair doors: no gain, some risk.

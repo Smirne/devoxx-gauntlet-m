@@ -1,7 +1,6 @@
 # Venue photos, 6 Oct 2026 (taken by Michele at Devoxx, sent in chat)
 
-Eleven stills, downsized to 1600 px. **Placement of several is unconfirmed** (marked "?"): Michele
-is answering from desktop and sending extra photos. Do not move geometry from these until then.
+Eleven stills, downsized to 1600 px. **Placements confirmed by Michele, 6 Oct** (see Notes below).
 
 | file | what it shows | status |
 |---|---|---|
@@ -16,3 +15,12 @@ is answering from desktop and sending extra photos. Do not move geometry from th
 | `09-reception-counter` | reception counter, plants, wood-slat wall (same as earlier set) | matches notes |
 | `10-cloakroom-reception` | cloakroom counter beside reception, "Cloakroom" screen, "Toilets" signs on stands | matches notes |
 | `11-reception-step-platform` | **wide five-step platform** from the expo hall up to the reception glass doors; people sit on the steps | new: steps |
+
+## Notes (Michele, 6 Oct 2026)
+
+- 1, 2: seen from the top of the main stair (ground floor to cinema floor), 2 a few metres further back. The autumn trees outside the glass are wanted.
+- 3: a cinema-room door. The LASER ULTRA board is new to him; adapt the design to Devoxx 2026.
+- 4: the secondary stair, seen from the bottom, inside.
+- 5, 6: doors to the secondary stair, in the exhibition hall. Do not change them if that risks problems.
+- 8: toilets plus the BOF part; the two white doors are the two BOF rooms.
+- 11: the small stair from the main exhibition hall up to reception.

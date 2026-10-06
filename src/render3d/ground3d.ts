@@ -502,20 +502,26 @@ function facade(group: THREE.Group, mats: Materials, updaters: Array<(t: number,
   sky.addColorStop(1, '#f5f5f0');
   x.fillStyle = sky;
   x.fillRect(0, 0, 1024, 256);
-  // Trees: soft grey-green blobs along the bottom, as the photo's blurred ones.
+  // Trees in autumn, as Michele's 6 Oct photographs from the stair landing: red, orange and
+  // yellow-green crowns on thin trunks, soft because the glass and the distance blur them.
   let seed = 7;
   const rnd = (): number => {
     seed = (seed * 16807) % 2147483647;
     return seed / 2147483647;
   };
-  for (let i = 0; i < 90; i++) {
-    const tx = rnd() * 1024;
-    const ty = 120 + rnd() * 100;
-    const r = 18 + rnd() * 40;
-    x.fillStyle = `rgba(${90 + rnd() * 40 | 0},${110 + rnd() * 40 | 0},${90 + rnd() * 30 | 0},0.35)`;
-    x.beginPath();
-    x.arc(tx, ty, r, 0, Math.PI * 2);
-    x.fill();
+  const leaves = ['200,60,50', '225,110,50', '215,150,60', '150,170,70', '190,70,70'];
+  for (let t = 0; t < 14; t++) {
+    const tx = (t + 0.2 + rnd() * 0.6) * (1024 / 14);
+    x.fillStyle = 'rgba(80,70,60,0.55)';
+    x.fillRect(tx - 3, 150, 6, 80);
+    for (let i = 0; i < 9; i++) {
+      const bx = tx + (rnd() - 0.5) * 70;
+      const by = 85 + rnd() * 70;
+      x.fillStyle = `rgba(${leaves[(rnd() * leaves.length) | 0]},0.55)`;
+      x.beginPath();
+      x.arc(bx, by, 16 + rnd() * 22, 0, Math.PI * 2);
+      x.fill();
+    }
   }
   x.fillStyle = '#b9bbb5';
   x.fillRect(0, 226, 1024, 30);

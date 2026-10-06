@@ -140,6 +140,35 @@ export function zaalPanel(letter: string): THREE.CanvasTexture {
   return tex(c);
 }
 
+/**
+ * The black panel over Room 5's door: the cinema's "LASER ULTRA" board (6 Oct photograph),
+ * redrawn as DEVOXX 2026 on the same black-and-red streaks.
+ */
+export function doorBrandPanel(): THREE.CanvasTexture {
+  const [c, x] = canvas(512, 160);
+  x.fillStyle = '#0c0c10';
+  x.fillRect(0, 0, 512, 160);
+  x.lineWidth = 6;
+  for (const [y, col] of [[40, '#ff3050'], [66, '#ff7a1a'], [118, '#c01040']] as const) {
+    x.strokeStyle = col;
+    x.globalAlpha = 0.55;
+    x.beginPath();
+    x.moveTo(0, y + 30);
+    x.lineTo(512, y - 30);
+    x.stroke();
+  }
+  x.globalAlpha = 1;
+  x.fillStyle = '#fff';
+  x.textAlign = 'center';
+  x.textBaseline = 'middle';
+  x.font = 'bold 74px "Helvetica Neue", Arial, sans-serif';
+  x.fillText('DEVOXX', 256, 62);
+  x.font = 'bold 54px "Helvetica Neue", Arial, sans-serif';
+  x.fillStyle = '#ff7a1a';
+  x.fillText('2026', 256, 122);
+  return tex(c);
+}
+
 /** Blue Dutch wayfinding (CAPTIONS.md #1): white text, white arrows. */
 export function wayfinding(lines: Array<[string, string]>): THREE.CanvasTexture {
   const [c, x] = canvas(512, 256);
