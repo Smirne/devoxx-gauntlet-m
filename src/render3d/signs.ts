@@ -169,6 +169,19 @@ export function doorBrandPanel(): THREE.CanvasTexture {
   return tex(c);
 }
 
+/** The grey "TOILETTEN" plate over the toilet door (6 Oct photograph, no. 8). */
+export function toilettenSign(): THREE.CanvasTexture {
+  const [c, x] = canvas(512, 128);
+  x.fillStyle = '#c9c9c6';
+  x.fillRect(0, 0, 512, 128);
+  x.fillStyle = '#4a4a4a';
+  x.font = '600 64px "Helvetica Neue", Arial, sans-serif';
+  x.textAlign = 'center';
+  x.textBaseline = 'middle';
+  x.fillText('TOILETTEN', 256, 66);
+  return tex(c);
+}
+
 /** Blue Dutch wayfinding (CAPTIONS.md #1): white text, white arrows. */
 export function wayfinding(lines: Array<[string, string]>): THREE.CanvasTexture {
   const [c, x] = canvas(512, 256);

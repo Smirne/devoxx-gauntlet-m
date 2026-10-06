@@ -7852,3 +7852,9 @@ the Devoxx-ified door panel; he said not to touch the secondary-stair doors if i
 
 **What was rejected, and why.** Copying the LASER ULTRA brand itself: it is a third party's mark;
 the board is redrawn for the conference. Changing the secondary-stair doors: no gain, some risk.
+
+**Later, 6 Oct — toilets and BOF doors.** Checked photo 8 against the build: the 3D hall drew both
+blocks as bare plaster. Added a white framed door and a "TOILETTEN" plate on the toilet block and
+white framed open doors on the BOF doorways, render-only. Michele decided: keep three BOF rooms,
+do not rework the layout. Rejected: cutting BOF to two rooms (sim and test change, and the plan's
+five storage rooms do not say which two). Typecheck and 954 tests pass; not viewed in a browser.

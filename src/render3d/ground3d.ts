@@ -23,7 +23,7 @@ import { m } from '../sim/units';
 
 import type { Materials } from './materials';
 import { box } from './materials';
-import { OLD_DEVOXX, beerCentralFlyer, devoxxBanner, exitSign, scheduleScreen, vintagePoster } from './signs';
+import { OLD_DEVOXX, beerCentralFlyer, devoxxBanner, exitSign, scheduleScreen, toilettenSign, vintagePoster } from './signs';
 import { buildDuke } from './duke';
 import { BOOTH_SCHEMES } from '../render/venue/signage';
 import type { VolumePoint } from './pipeline';
@@ -830,6 +830,50 @@ function glowing(mat: THREE.MeshBasicMaterial): THREE.MeshBasicMaterial {
   receptionGlows.push({ mat, base: mat.color.clone() });
   return mat;
 }
+/**
+ * The toilet block's door and the BOF rooms' doors, off Michele's 6 Oct photograph (no. 8): plain
+ * white framed doors in the plaster face, a grey "TOILETTEN" plate over the toilet one. Render-only:
+ * the toilets stay shut and the BOF doorways keep their sim width.
+ */
+function toiletAndBofDoors(group: THREE.Group): void {
+  const white = new THREE.MeshStandardMaterial({ color: 0xf2f1ed, roughness: 0.5 });
+  const DH = 2.1;
+  const frame = (cx: number, zFace: number, w: number, rise: number): void => {
+    for (const sx of [-1, 1]) {
+      const post = new THREE.Mesh(box(0.06, DH, 0.12, V(0, 0, 0)), white);
+      post.position.set(cx + (sx * w) / 2, rise + DH / 2, zFace);
+      group.add(post);
+    }
+    const lintel = new THREE.Mesh(box(w + 0.12, 0.06, 0.12, V(0, 0, 0)), white);
+    lintel.position.set(cx, rise + DH + 0.03, zFace);
+    group.add(lintel);
+  };
+  const tl = GF.toilets;
+  const zT = m(tl.y + tl.h);
+  const cxT = m(tl.x + tl.w / 2);
+  const riseT = groundRiseM(tl.x);
+  frame(cxT, zT, 0.9, riseT);
+  const leaf = new THREE.Mesh(box(0.86, DH - 0.02, 0.04, V(0, 0, 0)), white);
+  leaf.position.set(cxT, riseT + DH / 2, zT + 0.07);
+  group.add(leaf);
+  const plate = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.3), new THREE.MeshBasicMaterial({ map: toilettenSign(), toneMapped: false }));
+  plate.position.set(cxT, riseT + DH + 0.3, zT + 0.065);
+  group.add(plate);
+  const b = GF.bof;
+  const zB = m(b.y + b.h);
+  const edges = [0, ...GF.bofSplits, b.w];
+  for (let i = 0; i < edges.length - 1; i++) {
+    const cx = m(b.x + (edges[i] + edges[i + 1]) / 2);
+    const rise = groundRiseM(b.x);
+    const w = m(44);
+    frame(cx, zB, w, rise);
+    // Standing open, 90 degrees into the room, hinged on the west post.
+    const op = new THREE.Mesh(box(0.04, DH - 0.02, w - 0.04, V(0, 0, 0)), white);
+    op.position.set(cx - w / 2 + 0.03, rise + DH / 2, zB - (w - 0.04) / 2);
+    group.add(op);
+  }
+}
+
 function reception(group: THREE.Group, mats: Materials): THREE.Object3D[] {
   const b = new Buckets();
   const white = new THREE.MeshStandardMaterial({ color: 0xf1efea, roughness: 0.35 });
@@ -1020,6 +1064,7 @@ export function buildGround(mats: Materials): Ground3D {
   colliders.push(...mainStairSides(group, mats));
   colliders.push(...hallFurniture(group, mats));
   colliders.push(...reception(group, mats));
+  toiletAndBofDoors(group);
   storePosters(group);
   scheduleScreens(group, mats);
   {

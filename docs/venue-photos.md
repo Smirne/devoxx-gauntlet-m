@@ -119,3 +119,7 @@ placements. Used so far: autumn-coloured trees behind the entrance glass; round 
 on the corridor's double doors; a black DEVOXX 2026 board over Room 5's door, adapted from the
 cinema's LASER ULTRA one. Already in the build: the stepped lobby up to reception (photo 11).
 Not changed: the secondary-stair doors (5, 6), per his instruction.
+
+Photo 8 (toilets and BOF): the 3D hall now draws a white framed door under a grey "TOILETTEN" plate
+on the toilet block (shut, as the sim has it) and white framed doors, standing open, in the three
+BOF doorways. Michele, 6 Oct: keep three BOF rooms (the real hall has two doors there; not changed).
