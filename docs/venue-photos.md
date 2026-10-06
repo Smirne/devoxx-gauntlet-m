@@ -128,3 +128,8 @@ Second 6 Oct set (photos 12-16, same folder): keynote stage with the DEVOXX BELG
 strip; the tomato-soup tables ("A HOT CUP" kraft cups, wooden crates, autumn flowers, copper lanterns);
 the coffee and hot-water station; Room 5 and 4 doors wide; the landing with stairwell, Coca-Cola chest
 freezer and bean-bag lounge. Saved only; not yet used in the build.
+
+Third 6 Oct set (photos 17-22): Room 3's LASER ULTRA door and neighbouring glass booths; the wide
+reception and cloakroom shots (a step-and-repeat DEVOXX backdrop beside the cloakroom, a column between
+the two counters); the main flight and entrance seen from the foot; the moss-green mezzanine edge above
+reception. Saved only.

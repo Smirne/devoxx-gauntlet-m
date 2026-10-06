@@ -21,6 +21,13 @@ Eleven stills, downsized to 1600 px. **Placements confirmed by Michele, 6 Oct** 
 | `15-room5-laser-ultra-wide` | Room 5 wide: lit LASER ULTRA logo over a black open door with a half-ring handle, a blue LED strip on the ceiling, a huge white "5" over red-and-orange streak graphics, a schedule screen on a stand ("Devoxx Belgium 2026 · Room 5"), the red box portal with a big "4" beside it, rope stanchions, an OUT/IN sign stand | room 5 and 4 doors |
 | `16-landing-stairwell-lounge` | corridor from the top of a stair: open stairwell with wood-topped railing, a red Coca-Cola chest freezer, a drinks table with water bottles and plants, white tensile funnels, a blue LED line on the sloping ceiling, a wayfinding arrow with a toilets pictogram on a dark column, a lounge with bean-bag poufs | landing dressing |
 
+| `17-room3-laser-ultra-cjx-booth` | Room 3's door: the same LASER ULTRA board, a big white "3", a schedule screen on a stand, two folding chairs; to the left a glass-walled sponsor booth (CJX Solar, QR code) with a floor spot, to the right another glass booth (a poster, a plant, a bar stool) | the board is on every cinema door |
+| `18-reception-cloakroom-wide-from-doors` | the wide shot Michele promised, from just inside the entrance doors: long **cloakroom counter** along the back wall (left), the **reception desk** to its right behind a square white column, hanging plants over both, ring pendants, a "Toilets" sign stand with chevrons, a bin | relative positions |
+| `19-cloakroom-backdrop-toilets-sign` | the cloakroom from the side: a black **DEVOXX photo backdrop** (step-and-repeat) on a trolley beside a white column, a "Cloakroom" screen on the column, the staff-side screens behind the counter, a "Toilets" sign stand | new: backdrop |
+| `20-main-stair-flight-up` | the main flight from its foot: grey steel rails with diagonal bars and "no entry" signs on the gates, speckled treads, white tensile funnels at the top, hanging stage spots, people sitting on the stair | stair detail |
+| `21-entrance-doors-stair-lobby` | looking in through the open entrance doors: Devoxx beach flags and posters on the glass, the lobby carpet, the stair on the right with a white side wall, a palm and a board, rope stanchions, the mezzanine above | entrance view |
+| `22-reception-under-mezzanine` | reception seen from the hall side: a curved concrete mezzanine edge with a **moss-green** trim and a steel rail above, the white counter with a warm LED strip, a ring pendant, a palm, folding glass doors to the hall on the left | mezzanine edge |
+
 ## Notes (Michele, 6 Oct 2026)
 
 - 1, 2: seen from the top of the main stair (ground floor to cinema floor), 2 a few metres further back. The autumn trees outside the glass are wanted.
