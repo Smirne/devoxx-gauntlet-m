@@ -1264,7 +1264,7 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
 
     /*
      * A LOT OF CUPS (Michele, 6 Oct 2026, off his photographs of the soup tables): rows of kraft
-     * "TOMATO SOUP" paper cups along the back of the counter, every other one with tomato soup in it,
+     * "A HOT SOUP" paper cups along the back of the counter, every other one with tomato soup in it,
      * between pairs of weathered wooden crates carrying autumn flowers and a copper lantern.
      */
     {
@@ -1280,7 +1280,7 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
       cx2.textAlign = 'center';
       cx2.textBaseline = 'middle';
       cx2.font = '900 15px "Rockwell", "Courier New", serif';
-      cx2.fillText('TOMATO', 64, 22);
+      cx2.fillText('A HOT', 64, 22);
       cx2.fillText('SOUP', 64, 42);
       const cupTex = new THREE.CanvasTexture(cc);
       cupTex.colorSpace = THREE.SRGBColorSpace;

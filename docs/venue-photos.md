@@ -115,7 +115,7 @@ Use: the view out through the entrance doors (the backdrop), if anyone looks bac
 ## 6 Oct 2026 batch
 
 Eleven more photographs, captioned in `media/venue-photos-2026-10-06/CAPTIONS.md` with Michele's
-placements (the images themselves are not committed: they show people). Used so far: autumn-coloured trees behind the entrance glass; round steel ring handles
+placements (only photos 03 and 05, which show nobody, are committed; the rest show people). Used so far: autumn-coloured trees behind the entrance glass; round steel ring handles
 on the corridor's double doors; a black DEVOXX 2026 board over Room 5's door, adapted from the
 cinema's LASER ULTRA one. Already in the build: the stepped lobby up to reception (photo 11).
 Not changed: the secondary-stair doors (5, 6), per his instruction.
