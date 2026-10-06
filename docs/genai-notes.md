@@ -7899,3 +7899,17 @@ key per jump. The key itself (`N` was already the music toggle).
 
 **Checked.** `tsc` and the full suite pass; the four-chapter chain was driven in the browser through the real
 cutscenes to chapter 4's opening video.
+
+## Stage demo: the closing slides (6 Oct 2026)
+
+- **Human:** Michele sent his talk deck and decided the order (title track, how it was found, the gauntlet loop —
+  "one prompt, one loop, one benchmark" — credits, then play it at lunch with links and a QR), dropped the bloopers
+  for time, and chose to have his slides redrawn in the game's style instead of pasted in. He also reported the
+  jerky walk after the last letter.
+- **Agent:** found the jerk by logging Droid's stick frame by frame (the steering flipped sign every frame against
+  his hard brake) and made the last stretch a glide; built the arrow-driven deck, the painters and a small QR
+  encoder, and checked the QR by decoding it with macOS's own detector (it reads the same address as the QR in
+  Michele's slide).
+- **Rejected:** embedding his slide images (image files are out of bounds, and they would blur on the screen);
+  a QR library (no new dependencies without asking); keeping Ronny's credit card in the deck (time).
+

@@ -51,7 +51,46 @@ describe('demo: chapter 4 (Keynote)', () => {
     for (let i = 0; i < 10; i++) g.update(DT_MAX);
     expect(keynote(g).ready).toBe(true);
     expect(g.snapshot().reel).not.toBeNull();
-    expect(until(g, () => g.snapshot().phase === 'done', 6000)).toBe(true);
+  });
+
+  it('ends on the presenter\'s slides: splash, then one slide per right arrow, back with left, never on a timer', () => {
+    const g = staged();
+    g.key('KeyE');
+    g.update(DT_MAX);
+    const slot = g.snapshot().props.find((p) => p.kind === 'letter-slot' && p.v === 6)!;
+    const droid = bot(g, 'droid');
+    driveTo(g, 'droid', [{ x: slot.x + (slot.w ?? 0) / 2, y: slot.y + (slot.h ?? 0) + droid.r + 2 }], 4);
+    g.key('KeyE');
+    // dark through the regroup, then the title; keys before the screen is up do nothing
+    g.update(DT_MAX);
+    expect(g.snapshot().reel).not.toBeNull();
+    g.key('ArrowRight');
+    expect(g.snapshot().reel?.card).toBeNull();
+    for (let i = 0; i < 3 * 60; i++) g.update(DT_MAX);
+    expect(g.snapshot().reel?.card?.kind).toBe('splash');
+    // a full minute later it is still the title: nothing advances by itself
+    for (let i = 0; i < 60 * 60; i++) g.update(DT_MAX);
+    expect(g.snapshot().reel?.index).toBe(0);
+    expect(g.snapshot().phase).toBe('play');
+
+    const seen: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      g.key('ArrowRight');
+      g.update(DT_MAX);
+      const c = g.snapshot().reel!.card!;
+      seen.push(c.layout ?? c.kind);
+    }
+    expect(seen).toEqual(['flow', 'loop', 'credit', 'credit', 'credit', 'play']);
+    // the last slide is the end of the deck
+    g.key('ArrowRight');
+    expect(g.snapshot().reel?.card?.layout).toBe('play');
+    g.key('ArrowLeft');
+    g.update(DT_MAX);
+    expect(g.snapshot().reel?.card?.kind).toBe('credit');
+    // the chapter-jump key turns them too (no PageDown on every keyboard)
+    g.key('PageDown');
+    g.update(DT_MAX);
+    expect(g.snapshot().reel?.card?.layout).toBe('play');
   });
 
   it('Droid eases to his curtain-call mark without juddering', () => {

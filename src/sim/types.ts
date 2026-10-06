@@ -632,7 +632,13 @@ export interface ReelCard {
    * one line of the film's credits (the 3D screen shows the makers' characters
    * beside theirs).
    */
-  kind: 'splash' | 'title' | 'stat' | 'blooper' | 'credit' | 'end';
+  kind: 'splash' | 'title' | 'stat' | 'blooper' | 'credit' | 'end' | 'slide';
+  /** `slide` only: which of the stage deck's layouts paints it (`src/sim/deck.ts`). */
+  layout?: 'flow' | 'loop' | 'play';
+  /** `slide` only: the layout's own lines — circles, columns or links, by layout. */
+  items?: readonly string[];
+  /** `slide` only: the address the `play` layout's QR code opens. */
+  link?: string;
 }
 
 /** The reel's state this frame. `card: null` is the black beat between two cards. */

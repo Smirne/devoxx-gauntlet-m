@@ -37,7 +37,8 @@ import {
 } from '../letters';
 import { CAMEO_LOOKS, SECOND_ROW } from '../cameos';
 import { FRONT_ROW, KEYNOTE_LOOK, SPEAKER_LOOKS } from '../speakers';
-import { buildReel, reelAt, reelLength } from '../reel';
+import { buildDeck, deckAt as deckView } from '../deck';
+import { REEL_PREROLL, buildReel, reelAt, reelLength } from '../reel';
 import type { Bot, Person, Plate, Prop, Rect, ReelCard, ReelView, RobotKind, Task, Vec2, Wall } from '../types';
 
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
@@ -913,16 +914,29 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    */
   let curtainHeld = -1;
 
+  /**
+   * Stage demo: the ending is the presenter's own slides (`src/sim/deck.ts`), turned by
+   * hand — right/back — instead of the timed film. `deckAt` is the slide on screen and
+   * `deckSince` the seconds since the key that brought it up, for the fade.
+   */
+  let deck = false;
+  let deckAt = 0;
+  let deckSince = 0;
+  const NEXT_KEYS: ReadonlySet<string> = new Set(['ArrowRight', 'Space', 'Enter', 'PageDown']);
+  const BACK_KEYS: ReadonlySet<string> = new Set(['ArrowLeft', 'Backspace', 'PageUp']);
+
   function startReel(): void {
     // The run's length is taken HERE, when the keynote starts: the film says it
     // ("198 seconds, from lights-out to the keynote") and the final card after it
     // must say the same, not the same plus the film (critic round, 30 Sep).
     ctx.score.total = Math.round(ctx.t);
-    reelCards = buildReel(ctx.score, ctx.swag, ctx.t, ctx.skipped);
+    reelCards = deck ? buildDeck() : buildReel(ctx.score, ctx.swag, ctx.t, ctx.skipped);
     reelT = 0;
+    deckAt = 0;
+    deckSince = 0;
     dealMarks();
     ctx.setView(VIEW_REEL);
-    ctx.flash('The house screen wakes up. <b>Devoxx opening video</b> \u2014 any key to skip', 3200);
+    if (!deck) ctx.flash('The house screen wakes up. <b>Devoxx opening video</b> \u2014 any key to skip', 3200);
   }
 
   /**
@@ -937,6 +951,17 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
    */
   function reelKey(code: string): boolean {
     if (reelT < 0) return false;
+    if (deck) {
+      // Not before the screen is up, and never past the ends of the deck.
+      if (reelT >= REEL_PREROLL) {
+        const to = deckAt + (NEXT_KEYS.has(code) ? 1 : BACK_KEYS.has(code) ? -1 : 0);
+        if (to !== deckAt && to >= 0 && to < reelCards.length) {
+          deckAt = to;
+          deckSince = 0;
+        }
+      }
+      return true;
+    }
     if (reelT >= REEL_GRACE && !REEL_IGNORES.has(code)) endReel(true);
     return true;
   }
@@ -1275,9 +1300,10 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
        * started, and a still room under a playing screen reads as a crash.
        */
       reelT += dt;
+      deckSince += dt;
       for (const a of crowd) stepAttendee(a, dt);
       curtainCall(dt, reelT);
-      if (reelT >= reelLength(reelCards)) endReel(false);
+      if (!deck && reelT >= reelLength(reelCards)) endReel(false);
       return;
     }
     t += dt;
@@ -1708,7 +1734,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     tasks,
     behindCard,
     /** The opening video, while it is running. `null` every other frame. */
-    reel: (): ReelView | null => (reelT < 0 ? null : reelAt(reelCards, reelT)),
+    reel: (): ReelView | null => (reelT < 0 ? null : deck ? deckView(reelCards, deckAt, reelT, deckSince) : reelAt(reelCards, reelT)),
     skip,
     /**
      * Stage demo: everything done but the last letter. Cake on its mark, four spotlights on, the sign up but for its
@@ -1717,6 +1743,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
      * seated but for the last few, who walk in on the real clock: a full room with the stage unready only murmurs.
      */
     demoStage(): void {
+      deck = true;
       crate.x = crateMark.x + crateMark.w / 2;
       crate.y = crateMark.y + crateMark.h / 2;
       crate.vx = 0;

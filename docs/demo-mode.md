@@ -9,7 +9,7 @@ briefing sheet over the scene.
 |---|---|---|
 | Chapter 1 | a fade, then chapter 2's own let-in: the robots open the front doors and Stephan comes in (the roller push is skipped) | Chapter 3 — ladle in; Biggy (the robot you drive) waits outside the soup doorway behind the queue, Voxxy beside it to ask the queue to make way (E), Droid away across the hall |
 | Chapter 3 | a fade, no cutscene | Chapter 4, straight in — all done but the last banner letter: Droid stands at the orange X in the wing (E lifts it, E at its gap sets it), Voxxy and Biggy on the stage, the room nearly full |
-| Chapter 4 | nothing: it plays out | the opening video, the curtain call |
+| Chapter 4 | arrows (below) | the curtain call, then the presenter's closing slides on the house screen instead of the bloopers film |
 
 The opening and chapter 1 play as usual (any key, PageDown included, skips the opening). In chapter 1, E beside the projector panel makes Droid stretch and fail ("too high, even for me") — the same in the real game; he still needs Biggy to open it.
 
@@ -18,3 +18,13 @@ How it works: `GameOptions.demo` (set in `src/main3d.ts`) lets the game's key ha
 leaves through the chapter's own exit cutscene (as if every job were done, whatever state it is in), and
 `demoStage()` puts the next chapter in its mid-action state once its setup has run. Without `demo: true` the sim is
 unchanged. Tests: `tests/demo-ch1.test.ts` … `demo-ch4.test.ts`.
+
+## The closing slides
+
+In demo mode the ending film is Michele's last slides, turned by hand (`src/sim/deck.ts`, painted by
+`src/render3d/deck-paint.ts`): the title as the splash draws it, *Find the game before you build it*, the gauntlet
+loop (*one prompt, one loop, one benchmark*), the credits (Michele, Claude, the three robots), then *Play it at
+lunch* with the links, the WellD mark and a QR code (`src/render3d/qr.ts`, generated, no image file).
+
+**→ / Space / Enter / `-` / PageDown** next, **←** back. Nothing advances on a timer, and the first key is ignored until
+the screen is up. The last slide is the end of the deck. The normal game still ends with the bloopers film.

@@ -12,6 +12,7 @@ export * from './surface';
 export * from './bot';
 export * from './contacts';
 export * from './reel';
+export * from './deck';
 export * from './crates';
 export * from './letters';
 export * from './cameos';

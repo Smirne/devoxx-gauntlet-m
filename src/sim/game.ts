@@ -1404,7 +1404,9 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       return;
     }
     if (opts.demo && code === 'PageDown') {
-      demoNext();
+      // The key that jumps chapters also turns the closing slides (not every keyboard has PageDown).
+      if (phase === 'play' && runtime && (runtime.reel?.() ?? null) !== null) runtime.key('ArrowRight');
+      else demoNext();
       return;
     }
     /*
