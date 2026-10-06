@@ -14,6 +14,13 @@ import type { ReelCard, ReelView } from './types';
 /** Where the game lives, for the QR code and the closing slide. */
 export const PLAY_URL = 'https://devoxx-after-dark.vercel.app';
 
+/**
+ * Dark seconds before the first slide. The film's own (`REEL_PREROLL`) ends while the camera
+ * is still easing up to the screen (about a tenth of the move left), which on a title that is
+ * fading in reads as a zoom; the deck waits for the camera to land.
+ */
+export const DECK_PREROLL = REEL_PREROLL + 1.8;
+
 /** Fade-in of a slide after a key, seconds. */
 const FADE = 0.4;
 /** A slide waits for a key, so its hold is nominal. */
@@ -69,6 +76,6 @@ export function buildDeck(): ReelCard[] {
  * film's contract; a deck has no end but the presenter's.
  */
 export function deckAt(cards: readonly ReelCard[], index: number, t: number, since: number): ReelView {
-  if (t < REEL_PREROLL) return { t, len: Infinity, index: 0, card: null, alpha: 0 };
+  if (t < DECK_PREROLL) return { t, len: Infinity, index: 0, card: null, alpha: 0 };
   return { t, len: Infinity, index, card: cards[index] ?? null, alpha: Math.max(0, Math.min(1, since / FADE)) };
 }

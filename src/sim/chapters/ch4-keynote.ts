@@ -37,8 +37,8 @@ import {
 } from '../letters';
 import { CAMEO_LOOKS, SECOND_ROW } from '../cameos';
 import { FRONT_ROW, KEYNOTE_LOOK, SPEAKER_LOOKS } from '../speakers';
-import { buildDeck, deckAt as deckView } from '../deck';
-import { REEL_PREROLL, buildReel, reelAt, reelLength } from '../reel';
+import { DECK_PREROLL, buildDeck, deckAt as deckView } from '../deck';
+import { buildReel, reelAt, reelLength } from '../reel';
 import type { Bot, Person, Plate, Prop, Rect, ReelCard, ReelView, RobotKind, Task, Vec2, Wall } from '../types';
 
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
@@ -953,7 +953,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     if (reelT < 0) return false;
     if (deck) {
       // Not before the screen is up, and never past the ends of the deck.
-      if (reelT >= REEL_PREROLL) {
+      if (reelT >= DECK_PREROLL) {
         const to = deckAt + (NEXT_KEYS.has(code) ? 1 : BACK_KEYS.has(code) ? -1 : 0);
         if (to !== deckAt && to >= 0 && to < reelCards.length) {
           deckAt = to;

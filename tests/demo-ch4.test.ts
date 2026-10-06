@@ -66,7 +66,7 @@ describe('demo: chapter 4 (Keynote)', () => {
     expect(g.snapshot().reel).not.toBeNull();
     g.key('ArrowRight');
     expect(g.snapshot().reel?.card).toBeNull();
-    for (let i = 0; i < 3 * 60; i++) g.update(DT_MAX);
+    for (let i = 0; i < 5 * 60; i++) g.update(DT_MAX);
     expect(g.snapshot().reel?.card?.kind).toBe('splash');
     // a full minute later it is still the title: nothing advances by itself
     for (let i = 0; i < 60 * 60; i++) g.update(DT_MAX);

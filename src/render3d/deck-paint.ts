@@ -72,7 +72,7 @@ function flow(p: DeckPen, card: ReelCard): void {
   backdrop(p);
   heading(p, card.sub, card.title);
   const items = card.items ?? [];
-  const r = Math.min(w * 0.086, h * 0.17);
+  const r = Math.min(w * 0.068, h * 0.14);
   const cy = h * 0.62;
   const x0 = w * 0.07 + r;
   const x1 = w * 0.93 - r;
@@ -97,10 +97,10 @@ function flow(p: DeckPen, card: ReelCard): void {
     g.fillStyle = last ? YELLOW : ORANGE;
     g.font = `600 ${Math.round(h * 0.034)}px ${p.font}`;
     g.fillText(String(i + 1), cx, cy - r * 0.42);
-    const size = Math.round(h * 0.04);
+    const size = Math.round(h * 0.032);
     g.font = `600 ${size}px ${p.font}`;
     g.fillStyle = PAPER;
-    const ls = lines(g, label.toUpperCase(), r * 1.6);
+    const ls = lines(g, label.toUpperCase(), r * 1.7);
     ls.forEach((ln, j) => g.fillText(ln, cx, cy + r * 0.1 + (j - (ls.length - 1) / 2) * size * 1.25 + size * 0.5));
     if (i < items.length - 1) {
       const gap = (x1 - x0) / (items.length - 1);
