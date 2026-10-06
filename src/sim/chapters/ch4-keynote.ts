@@ -1174,6 +1174,16 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       return true;
     }
     const want = Math.min(1, d / MARK_SLOW) * b.max;
+    if (d < MARK_SLOW) {
+      // The last stretch is a glide, not a fight with the brake: chasing the
+      // velocity error flips the stick every frame (the hard brake overshoots,
+      // the soft accel undershoots) and the robot judders into its mark.
+      b.vx = (dx / d) * want;
+      b.vy = (dy / d) * want;
+      b.ix = (dx / d) * (want / b.max);
+      b.iy = (dy / d) * (want / b.max);
+      return false;
+    }
     const ex = (dx / d) * want - b.vx;
     const ey = (dy / d) * want - b.vy;
     const el = Math.hypot(ex, ey) || 1;

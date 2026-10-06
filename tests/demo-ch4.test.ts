@@ -53,4 +53,25 @@ describe('demo: chapter 4 (Keynote)', () => {
     expect(g.snapshot().reel).not.toBeNull();
     expect(until(g, () => g.snapshot().phase === 'done', 6000)).toBe(true);
   });
+
+  it('Droid eases to his curtain-call mark without juddering', () => {
+    const g = staged();
+    g.key('KeyE');
+    g.update(DT_MAX);
+    const slot = g.snapshot().props.find((p) => p.kind === 'letter-slot' && p.v === 6)!;
+    const droid = bot(g, 'droid');
+    driveTo(g, 'droid', [{ x: slot.x + (slot.w ?? 0) / 2, y: slot.y + (slot.h ?? 0) + droid.r + 2 }], 4);
+    g.key('KeyE');
+    // the stick must not flip sign frame after frame while he is still moving
+    let flips = 0;
+    let prev = 0;
+    for (let i = 0; i < 90; i++) {
+      g.update(DT_MAX);
+      const d = bot(g, 'droid');
+      const dir = Math.sign(d.iy);
+      if (dir !== 0 && prev !== 0 && dir !== prev && Math.hypot(d.vx, d.vy) > 1) flips++;
+      if (dir !== 0) prev = dir;
+    }
+    expect(flips).toBeLessThan(2);
+  });
 });
