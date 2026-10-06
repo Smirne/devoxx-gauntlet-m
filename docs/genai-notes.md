@@ -7866,3 +7866,8 @@ and lanterns; hot-water urn; lectern front, table and tripod; schedule screens a
 Rooms 4 and 5. Left out and said so: caption strip, landing freezer and poufs, photo backdrop, glass
 booths. Typecheck and 954 tests pass; the 3D build loads with no console errors, but the new props were
 not inspected in a live chapter.
+
+**6 Oct, checked in a browser.** Rendered the soup counter, Room 4 and Room 5 doors in the real 3D build
+(`media/changes-2026-10-06/`, low quality, software GL). The first soup render showed the cups as specks
+beside the cartoon-sized pots, so they are now drawn 1.8x with blocks of them either side of the pots.
+Not rendered: the keynote lectern and the hot-water urn.

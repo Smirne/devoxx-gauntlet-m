@@ -1289,13 +1289,27 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
       const backZ = m(f.soup.y);
       const cupList: THREE.Matrix4[] = [];
       const soupList: THREE.Matrix4[] = [];
-      for (let row = 0; row < 4; row++) {
-        for (let x = sx0 + 1.35; x < sx1 - 1.35; x += 0.115) {
-          const z = backZ + 0.22 + row * 0.115;
-          const k = cupList.length;
-          put(cupList, x, TOP + 0.0425, z, rnd(k) * Math.PI * 2);
-          if (k % 2 === 0) put(soupList, x, TOP + 0.075, z);
+      const CS = 1.8; // the cups are drawn 1.8x life size: the pots are, and a real cup is a speck from the queue
+      const cxMid = (sx0 + sx1) / 2;
+      const addCup = (x: number, z: number): void => {
+        const k = cupList.length;
+        put(cupList, x, TOP + 0.0425 * CS, z, rnd(k) * Math.PI * 2, CS, CS, CS);
+        if (k % 2 === 0) put(soupList, x, TOP + 0.075 * CS, z, 0, CS, 1, CS);
+      };
+      // Three rows along the back of the counter...
+      for (let row = 0; row < 3; row++) {
+        for (let x = sx0 + 1.5; x < sx1 - 1.5; x += 0.17) {
+          const z = backZ + 0.28 + row * 0.17;
+          if (row === 2 && Math.abs(x - cxMid) < 1.05) continue;
+          addCup(x, z);
         }
+      }
+      // ...and blocks of them either side of the pots, in front of the queue.
+      for (const [bx0, bx1] of [
+        [sx0 + 1.4, cxMid - 1.1],
+        [cxMid + 1.1, sx1 - 2.0],
+      ]) {
+        for (let x = bx0; x < bx1; x += 0.17) for (let z = backZ + 0.95; z < backZ + 1.5; z += 0.17) addCup(x, z);
       }
       inst(new THREE.CylinderGeometry(0.043, 0.031, 0.085, 12, 1, true), new THREE.MeshStandardMaterial({ map: cupTex, roughness: 0.8, side: THREE.DoubleSide }), cupList);
       const soupGeo = new THREE.CircleGeometry(0.036, 12);
