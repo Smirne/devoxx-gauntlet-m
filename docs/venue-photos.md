@@ -123,3 +123,8 @@ Not changed: the secondary-stair doors (5, 6), per his instruction.
 Photo 8 (toilets and BOF): the 3D hall now draws a white framed door under a grey "TOILETTEN" plate
 on the toilet block (shut, as the sim has it) and white framed doors, standing open, in the three
 BOF doorways. Michele, 6 Oct: keep three BOF rooms (the real hall has two doors there; not changed).
+
+Second 6 Oct set (photos 12-16, same folder): keynote stage with the DEVOXX BELGIUM lectern and caption
+strip; the tomato-soup tables ("A HOT CUP" kraft cups, wooden crates, autumn flowers, copper lanterns);
+the coffee and hot-water station; Room 5 and 4 doors wide; the landing with stairwell, Coca-Cola chest
+freezer and bean-bag lounge. Saved only; not yet used in the build.

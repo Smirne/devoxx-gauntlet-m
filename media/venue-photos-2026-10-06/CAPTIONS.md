@@ -15,6 +15,11 @@ Eleven stills, downsized to 1600 px. **Placements confirmed by Michele, 6 Oct** 
 | `09-reception-counter` | reception counter, plants, wood-slat wall (same as earlier set) | matches notes |
 | `10-cloakroom-reception` | cloakroom counter beside reception, "Cloakroom" screen, "Toilets" signs on stands | matches notes |
 | `11-reception-step-platform` | **wide five-step platform** from the expo hall up to the reception glass doors; people sit on the steps | new: steps |
+| `12-keynote-stage-lectern` | Room 8 from the raked seats: black lectern with the DEVOXX BELGIUM logo, a black-clothed table with a camera on a tripod, 3D white **#DE…VOXX** letters, black slatted back wall, dark grey seats with a QR tag on each back; huge screen over the stage with a live-caption strip on a cloud-photo band | keynote: lectern and caption strip |
+| `13-soup-counter-hot-cup` | **tomato soup**: black-clothed tables packed with rows of kraft "A HOT CUP" paper cups, staff in white shirts pouring from jugs, weathered wooden crates with tall vases of dark autumn flowers and copper lanterns, a wicker bread basket | soup beat: cups and crates |
+| `14-coffee-tea-station` | wood-topped black counter: two black coffee urns, milk bottles, stacks of black paper cups, a steel urn with a chalkboard "Hot water", sugar cubes, a flower vase, a table lamp, in front of a lit LED wall showing the Devoxx robots | new prop idea |
+| `15-room5-laser-ultra-wide` | Room 5 wide: lit LASER ULTRA logo over a black open door with a half-ring handle, a blue LED strip on the ceiling, a huge white "5" over red-and-orange streak graphics, a schedule screen on a stand ("Devoxx Belgium 2026 · Room 5"), the red box portal with a big "4" beside it, rope stanchions, an OUT/IN sign stand | room 5 and 4 doors |
+| `16-landing-stairwell-lounge` | corridor from the top of a stair: open stairwell with wood-topped railing, a red Coca-Cola chest freezer, a drinks table with water bottles and plants, white tensile funnels, a blue LED line on the sloping ceiling, a wayfinding arrow with a toilets pictogram on a dark column, a lounge with bean-bag poufs | landing dressing |
 
 ## Notes (Michele, 6 Oct 2026)
 
