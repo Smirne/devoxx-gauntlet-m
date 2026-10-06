@@ -1,6 +1,6 @@
 # Venue photos, 6 Oct 2026 (taken by Michele at Devoxx, sent in chat)
 
-Eleven stills, downsized to 1600 px. **Placements confirmed by Michele, 6 Oct** (see Notes below).
+**The images are NOT in the repo**: several show attendees and staff who did not agree to be published in a public MIT repo. They stay with Michele; this file is the caption list only, numbered as he sent them. Twenty-two stills. **Placements confirmed by Michele, 6 Oct** (see Notes below).
 
 | file | what it shows | status |
 |---|---|---|

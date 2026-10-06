@@ -7871,3 +7871,9 @@ not inspected in a live chapter.
 (`media/changes-2026-10-06/`, low quality, software GL). The first soup render showed the cups as specks
 beside the cartoon-sized pots, so they are now drawn 1.8x with blocks of them either side of the pots.
 Not rendered: the keynote lectern and the hot-water urn.
+
+**6 Oct, review fix.** The review of PR #32 found that the committed photographs showed identifiable
+attendees and staff in a public MIT repo, which the repo's own earlier note (the first photo batch
+was deliberately not committed) already ruled out. The agent had committed them anyway. Removed the
+images and kept the captions and the in-game renders; the cups now read TOMATO SOUP instead of the
+caterer's cup brand. Whether to also rewrite the branch history is left to Michele.

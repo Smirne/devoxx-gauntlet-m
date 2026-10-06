@@ -114,8 +114,8 @@ Use: the view out through the entrance doors (the backdrop), if anyone looks bac
 
 ## 6 Oct 2026 batch
 
-Eleven more photographs, saved in `media/venue-photos-2026-10-06/` with captions and Michele's
-placements. Used so far: autumn-coloured trees behind the entrance glass; round steel ring handles
+Eleven more photographs, captioned in `media/venue-photos-2026-10-06/CAPTIONS.md` with Michele's
+placements (the images themselves are not committed: they show people). Used so far: autumn-coloured trees behind the entrance glass; round steel ring handles
 on the corridor's double doors; a black DEVOXX 2026 board over Room 5's door, adapted from the
 cinema's LASER ULTRA one. Already in the build: the stepped lobby up to reception (photo 11).
 Not changed: the secondary-stair doors (5, 6), per his instruction.
@@ -129,10 +129,10 @@ strip; the tomato-soup tables ("A HOT CUP" kraft cups, wooden crates, autumn flo
 the coffee and hot-water station; Room 5 and 4 doors wide; the landing with stairwell, Coca-Cola chest
 freezer and bean-bag lounge. Saved only; not yet used in the build.
 
-Third 6 Oct set (photos 17-22): Room 3's LASER ULTRA door and neighbouring glass booths; the wide
+Third 6 Oct set (photos 17-22; captions only): Room 3's LASER ULTRA door and neighbouring glass booths; the wide
 reception and cloakroom shots (a step-and-repeat DEVOXX backdrop beside the cloakroom, a column between
 the two counters); the main flight and entrance seen from the foot; the moss-green mezzanine edge above
-reception. Saved only.
+reception. Not committed.
 
 Photo 18 answered: Michele stood in the main hall facing reception, the main entrance beyond it. Facing
 east, the cloakroom (left) is north of reception (right), which is what `GF` has. No change needed.
