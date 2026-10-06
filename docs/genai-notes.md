@@ -7822,3 +7822,18 @@ seems detached"*.
 - `tsc` passes and the full suite passes (953 tests).
 - The new roll test fails on the old code with "the ball hops as it rolls" (0.31 m) and passes now.
 - The frame strip in the build shows the helmet on top through the whole turn, with no page errors.
+
+## 6 Oct 2026 — second venue photo batch
+
+**What the agent did.**
+- Saved Michele's eleven new Devoxx photos as 1600 px webp in `media/venue-photos-2026-10-06/`, with
+  a captioned table. Compared each against `docs/venue-photos.md`: reception, cloakroom and the
+  top-of-stair landing were already recorded; the Laser Ultra door, ring handles, the poke buffet,
+  the blue-wall stair and the reception step platform are new.
+- Made no geometry or render changes.
+
+**What a human decided.** Michele will say tonight which stair, floor and room photos 1, 4, 5, 6
+and 11 show, and is taking extra photos (reception/cloakroom wide shot, toilet signage).
+
+**What was rejected, and why.** Moving geometry from photos with unknown placement. `plans/` wins
+over photos for positions (CLAUDE.md), so the answers come first.
