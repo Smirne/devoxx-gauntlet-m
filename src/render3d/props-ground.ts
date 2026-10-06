@@ -1262,6 +1262,73 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
     inst(new THREE.CylinderGeometry(0.08, 0.09, 0.26, 14), glassShell, jugs);
     inst(new THREE.CylinderGeometry(0.075, 0.085, 0.26, 14), juiceMat, juice);
 
+    /*
+     * A LOT OF CUPS (Michele, 6 Oct 2026, off his photographs of the soup tables): rows of kraft
+     * "A HOT CUP" paper cups along the back of the counter, every other one with tomato soup in it,
+     * between pairs of weathered wooden crates carrying autumn flowers and a copper lantern.
+     */
+    {
+      const cc = document.createElement('canvas');
+      cc.width = 128;
+      cc.height = 64;
+      const cx2 = cc.getContext('2d')!;
+      cx2.fillStyle = '#d9c19a';
+      cx2.fillRect(0, 0, 128, 64);
+      cx2.fillStyle = 'rgba(120,90,50,0.25)';
+      for (let i = 0; i < 128; i += 6) cx2.fillRect(i, 0, 2, 64);
+      cx2.fillStyle = '#1d1a16';
+      cx2.textAlign = 'center';
+      cx2.textBaseline = 'middle';
+      cx2.font = '900 15px "Rockwell", "Courier New", serif';
+      cx2.fillText('A HOT', 64, 22);
+      cx2.fillText('CUP', 64, 42);
+      const cupTex = new THREE.CanvasTexture(cc);
+      cupTex.colorSpace = THREE.SRGBColorSpace;
+      const sx0 = m(f.soup.x);
+      const sx1 = m(f.soup.x + f.soup.w);
+      const backZ = m(f.soup.y);
+      const cupList: THREE.Matrix4[] = [];
+      const soupList: THREE.Matrix4[] = [];
+      for (let row = 0; row < 4; row++) {
+        for (let x = sx0 + 1.35; x < sx1 - 1.35; x += 0.115) {
+          const z = backZ + 0.22 + row * 0.115;
+          const k = cupList.length;
+          put(cupList, x, TOP + 0.0425, z, rnd(k) * Math.PI * 2);
+          if (k % 2 === 0) put(soupList, x, TOP + 0.075, z);
+        }
+      }
+      inst(new THREE.CylinderGeometry(0.043, 0.031, 0.085, 12, 1, true), new THREE.MeshStandardMaterial({ map: cupTex, roughness: 0.8, side: THREE.DoubleSide }), cupList);
+      const soupGeo = new THREE.CircleGeometry(0.036, 12);
+      soupGeo.rotateX(-Math.PI / 2);
+      inst(soupGeo, new THREE.MeshStandardMaterial({ color: 0xe8541c, roughness: 0.4, emissive: new THREE.Color(0.35, 0.08, 0.02) }), soupList);
+      // The crates, a vase of autumn flowers on each pair, a copper lantern beside.
+      const wood = new THREE.MeshStandardMaterial({ color: 0x9a8a72, roughness: 0.9 });
+      const glass = new THREE.MeshStandardMaterial({ color: 0x4a3322, roughness: 0.2, metalness: 0.1 });
+      const bloom = [0x7a1f4a, 0xc2562a, 0xe0a030, 0x5a2a46, 0x9a3a2a];
+      for (const gx of [sx0 + 0.55, sx1 - 0.95]) {
+        for (let i = 0; i < 2; i++) {
+          const crate = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.62, 0.4), wood);
+          crate.position.set(gx + i * 0.42, TOP + 0.31, backZ + 0.3);
+          crate.castShadow = true;
+          out.add(crate);
+          const vase = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.4, 12), glass);
+          vase.position.set(crate.position.x, TOP + 0.62 + 0.2, crate.position.z);
+          out.add(vase);
+          for (let b = 0; b < 9; b++) {
+            const flower = new THREE.Mesh(
+              new THREE.SphereGeometry(0.07 + rnd(b + i) * 0.04, 8, 6),
+              new THREE.MeshStandardMaterial({ color: bloom[(b + i) % bloom.length], roughness: 0.8 }),
+            );
+            flower.position.set(crate.position.x + (rnd(b * 3 + i) - 0.5) * 0.3, TOP + 1.12 + rnd(b * 7 + i) * 0.28, crate.position.z + (rnd(b * 5 + i) - 0.5) * 0.2);
+            out.add(flower);
+          }
+        }
+        const lantern = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.2, 10), new THREE.MeshStandardMaterial({ color: 0xb8683a, roughness: 0.4, metalness: 0.6, emissive: new THREE.Color(0.55, 0.25, 0.08) }));
+        lantern.position.set(gx + 0.21, TOP + 0.1, backZ + 0.72);
+        out.add(lantern);
+      }
+    }
+
     /* ---- the sandwich counter: a pyramid of broodjes krab */
     const cx = m(f.sandwich.x + f.sandwich.w / 2);
     const cz = front(f.sandwich) - 1.0;
@@ -1323,6 +1390,30 @@ export function createGroundProps(mats: Materials, colliders: THREE.Object3D[]):
     for (let i = 0; i < 6; i++) put(cups, kx + 1.3 + (i % 3) * 0.16, TOP + 0.045, front(f.coffee) - 0.35 - Math.floor(i / 3) * 0.16);
     // Paper cups, kraft brown: a conference pours coffee into a thousand of them.
     inst(new THREE.CylinderGeometry(0.048, 0.034, 0.09, 12, 1, true), new THREE.MeshStandardMaterial({ color: 0xa8743f, roughness: 0.8, side: THREE.DoubleSide }), cups);
+    // The steel hot-water urn with its chalkboard, as at the real station (6 Oct photograph).
+    {
+      const hx = kx + kw - 1.55;
+      const urn = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.2, 0.55, 18), new THREE.MeshStandardMaterial({ color: 0xd4d8de, metalness: 0.8, roughness: 0.25 }));
+      urn.position.set(hx, TOP + 0.275, back - 0.25);
+      urn.castShadow = true;
+      out.add(urn);
+      const cvs = document.createElement('canvas');
+      cvs.width = 128;
+      cvs.height = 64;
+      const cg = cvs.getContext('2d')!;
+      cg.fillStyle = '#2b2b2a';
+      cg.fillRect(0, 0, 128, 64);
+      cg.fillStyle = '#f2efe6';
+      cg.font = '28px "Chalkboard SE", "Segoe Print", cursive';
+      cg.textAlign = 'center';
+      cg.textBaseline = 'middle';
+      cg.fillText('Hot water', 64, 34);
+      const ct = new THREE.CanvasTexture(cvs);
+      ct.colorSpace = THREE.SRGBColorSpace;
+      const board = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.1), new THREE.MeshBasicMaterial({ map: ct, toneMapped: false }));
+      board.position.set(hx, TOP + 0.3, back - 0.25 + 0.205);
+      out.add(board);
+    }
     const koffie = neonBoard('COFFEE', 1.1, '#ffd08a');
     koffie.position.set(kx + kw / 2, TOP + 1.05, m(f.coffee.y) + 0.12);
     out.add(koffie);

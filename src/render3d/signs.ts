@@ -182,6 +182,41 @@ export function toilettenSign(): THREE.CanvasTexture {
   return tex(c);
 }
 
+/** The wall schedule screen by a room's door: "Devoxx Belgium 2026 · Room N" over a yellow session band. */
+export function roomScreen(n: number): THREE.CanvasTexture {
+  const [c, x] = canvas(512, 288);
+  x.fillStyle = '#f3f3f1';
+  x.fillRect(0, 0, 512, 288);
+  x.fillStyle = '#111a2e';
+  x.fillRect(0, 0, 512, 44);
+  x.fillStyle = '#fff';
+  x.font = 'bold 24px "Helvetica Neue", Arial, sans-serif';
+  x.textBaseline = 'middle';
+  x.textAlign = 'left';
+  x.fillText('Devoxx Belgium 2026', 16, 23);
+  x.textAlign = 'right';
+  x.fillText(`Room ${String(n)}`, 496, 23);
+  x.fillStyle = '#f5b335';
+  x.fillRect(0, 52, 380, 56);
+  x.fillStyle = '#1b1b1b';
+  x.textAlign = 'left';
+  x.font = 'bold 22px "Helvetica Neue", Arial, sans-serif';
+  x.fillText('Tomorrow: the robots build the agent', 12, 80, 360);
+  x.fillStyle = '#2b6fd0';
+  x.fillRect(392, 52, 108, 56);
+  x.fillStyle = '#fff';
+  x.textAlign = 'center';
+  x.font = 'bold 30px "Helvetica Neue", Arial, sans-serif';
+  x.fillText('16:34', 446, 80);
+  x.fillStyle = '#c9c9c6';
+  for (let i = 0; i < 6; i++) x.fillRect(16, 130 + i * 24, 360 - (i % 3) * 40, 8);
+  x.fillStyle = '#111a2e';
+  x.fillRect(396, 130, 100, 100);
+  x.fillStyle = '#fff';
+  for (let i = 0; i < 25; i++) if ((i * 7 + n) % 3 !== 0) x.fillRect(404 + (i % 5) * 17, 138 + Math.floor(i / 5) * 17, 11, 11);
+  return tex(c);
+}
+
 /** Blue Dutch wayfinding (CAPTIONS.md #1): white text, white arrows. */
 export function wayfinding(lines: Array<[string, string]>): THREE.CanvasTexture {
   const [c, x] = canvas(512, 256);

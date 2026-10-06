@@ -736,12 +736,29 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
     o.userData.edge = edgeMat;
     // A lectern at stage left, against the drape: where the speaker will stand.
     const lect = new THREE.Group();
+    // The Devoxx Belgium lectern (6 Oct photograph): a black frame, a navy front with the white logo.
     const body = new THREE.Mesh(box(0.6, 1.1, 0.45, V(0, 0.55 + DAIS, 0)), mats.darkMetal);
     const top = new THREE.Mesh(box(0.7, 0.05, 0.55, V(0, 1.15 + DAIS, 0.03)), mats.blackGloss);
     top.rotation.x = 0.2;
-    const logo = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.12), new THREE.MeshBasicMaterial({ map: word('DEVOXX', '#ff7a1a'), transparent: true, toneMapped: false }));
-    logo.position.set(0, 0.8 + DAIS, 0.231);
+    const logo = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.3), new THREE.MeshBasicMaterial({ map: lecternLogo(), toneMapped: false }));
+    logo.position.set(0, 0.85 + DAIS, 0.231);
     lect.add(body, top, logo);
+    // ...and beside it the black-clothed table with a camera on a tripod.
+    if (w > 5) {
+      const cloth = new THREE.Mesh(box(1.8, 0.75, 0.7, V(0, 0.375 + DAIS, 0)), mats.blackGloss);
+      cloth.position.x = -1.5;
+      lect.add(cloth);
+      const camX = -1.5 + 0.2;
+      for (const a of [0, 2.1, 4.2]) {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1.3, 6), mats.darkMetal);
+        leg.position.set(camX + Math.cos(a) * 0.18, 0.62 + DAIS, 0.75 + Math.sin(a) * 0.18);
+        leg.rotation.set(Math.sin(a) * 0.14, 0, -Math.cos(a) * 0.14);
+        lect.add(leg);
+      }
+      const cam = new THREE.Mesh(box(0.22, 0.2, 0.3, V(0, 0, 0)), mats.darkMetal);
+      cam.position.set(camX, 1.36 + DAIS, 0.75);
+      lect.add(cam);
+    }
     lect.position.set(sx + w / 2 - 0.9, topY - DAIS, m(p.y) + 0.6);
     o.add(lect);
     return o;
@@ -1166,6 +1183,29 @@ function word(text: string, ink: string, bg: string | null = null, w = 512, h = 
   x.textAlign = 'center';
   x.textBaseline = 'middle';
   x.fillText(text, w / 2, h * 0.54, w * 0.94);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/** The lectern's front: DEVOXX BELGIUM in white on dark navy. */
+function lecternLogo(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 154;
+  const x = c.getContext('2d')!;
+  x.fillStyle = '#121a30';
+  x.fillRect(0, 0, 256, 154);
+  x.strokeStyle = '#ffffff';
+  x.lineWidth = 3;
+  x.strokeRect(10, 40, 236, 74);
+  x.fillStyle = '#fff';
+  x.textAlign = 'center';
+  x.textBaseline = 'middle';
+  x.font = '800 40px system-ui, "Helvetica Neue", Arial, sans-serif';
+  x.fillText('DEVOXX', 128, 68);
+  x.font = '800 22px system-ui, "Helvetica Neue", Arial, sans-serif';
+  x.fillText('BELGIUM', 128, 98);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;

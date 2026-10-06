@@ -29,7 +29,7 @@ import type { VolumePoint } from './pipeline';
 import { mergeStatic, noMerge } from './merge';
 import type { PlanarReflection } from './reflector';
 import { adScreen, ledTicker } from './screens';
-import { POSTERS, backlitGlass, cityscape, doorBrandPanel, emitter, exitSign, menuBoard, movieNightPoster, neonText, poster, rainMask, wayfinding, zaalPanel } from './signs';
+import { POSTERS, backlitGlass, cityscape, doorBrandPanel, roomScreen, emitter, exitSign, menuBoard, movieNightPoster, neonText, poster, rainMask, wayfinding, zaalPanel } from './signs';
 import { wellDSticker } from './welld';
 
 /** Where chapter 1's geometry stops, sim px: just past the fire door. */
@@ -1521,6 +1521,27 @@ export function buildVenue(mats: Materials, refl: PlanarReflection): Venue3D {
       const bar = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.014, 8, 28), mats.steel);
       bar.position.set(sgn * 0.02, 1.3, r.side < 0 ? 0.08 : -0.08);
       g.add(leaf, bar);
+    }
+    // Rooms 4 and 5: a wall schedule screen beside the door, as on the real corridor (6 Oct).
+    if (r.n === 4 || r.n === 5) {
+      const toward = r.side < 0 ? 1 : -1;
+      const scr = emitter(roomScreen(r.n), 0.95, 0.534, 0.9, 0xffffff, false);
+      scr.position.set(m(d.w) / 2 + 0.9, 1.65, toward * 0.06);
+      scr.rotation.y = r.side < 0 ? 0 : Math.PI;
+      g.add(scr);
+    }
+    // Room 4's door sits in a red box portal, a big white numeral beside it.
+    if (r.n === 4) {
+      const toward = r.side < 0 ? 1 : -1;
+      const red = new THREE.MeshStandardMaterial({ color: 0xd2283c, roughness: 0.6 });
+      for (const sx of [-1, 1]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.4, H + 0.4, 0.3), red);
+        post.position.set(sx * (m(d.w) / 2 + 0.2), (H + 0.4) / 2, toward * 0.15);
+        g.add(post);
+      }
+      const lintel = new THREE.Mesh(new THREE.BoxGeometry(m(d.w) + 0.8, 0.4, 0.3), red);
+      lintel.position.set(0, H + 0.2, toward * 0.15);
+      g.add(lintel);
     }
     // Room 5 wears the sponsor's black door panel, restyled for the conference.
     if (r.n === 5) {

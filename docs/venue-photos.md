@@ -133,3 +133,14 @@ Third 6 Oct set (photos 17-22): Room 3's LASER ULTRA door and neighbouring glass
 reception and cloakroom shots (a step-and-repeat DEVOXX backdrop beside the cloakroom, a column between
 the two counters); the main flight and entrance seen from the foot; the moss-green mezzanine edge above
 reception. Saved only.
+
+Photo 18 answered: Michele stood in the main hall facing reception, the main entrance beyond it. Facing
+east, the cloakroom (left) is north of reception (right), which is what `GF` has. No change needed.
+
+Used from the second set (6 Oct, Michele: "lot of cups for the soup station. Go in any order"):
+kraft "A HOT CUP" cups (about 250, every other one with soup) and wooden crates with autumn flowers and
+lanterns on the soup counter; a hot-water urn with chalkboard on the coffee counter; the Devoxx
+Belgium lectern front and a black-clothed table with a camera tripod on the keynote stage; a wall
+schedule screen beside Room 4's and Room 5's doors and a red box portal round Room 4's. Not done: the
+live-caption strip under the keynote screen, the landing's Coca-Cola freezer and bean-bag poufs (no
+agreed spot for them), the DEVOXX photo backdrop by the cloakroom, the glass sponsor booths by Room 3.

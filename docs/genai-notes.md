@@ -7858,3 +7858,11 @@ blocks as bare plaster. Added a white framed door and a "TOILETTEN" plate on the
 white framed open doors on the BOF doorways, render-only. Michele decided: keep three BOF rooms,
 do not rework the layout. Rejected: cutting BOF to two rooms (sim and test change, and the plan's
 five storage rooms do not say which two). Typecheck and 954 tests pass; not viewed in a browser.
+
+**6 Oct, second round of photo work.** Michele answered that photo 18 was taken from the hall facing
+reception, which settled the cloakroom/reception order as correct. He asked for lots of cups at the
+soup station and left the order of the rest to the agent. Done, render-only: soup cups, crates, flowers
+and lanterns; hot-water urn; lectern front, table and tripod; schedule screens and a red portal at
+Rooms 4 and 5. Left out and said so: caption strip, landing freezer and poufs, photo backdrop, glass
+booths. Typecheck and 954 tests pass; the 3D build loads with no console errors, but the new props were
+not inspected in a live chapter.
