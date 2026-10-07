@@ -632,7 +632,13 @@ export interface ReelCard {
    * one line of the film's credits (the 3D screen shows the makers' characters
    * beside theirs).
    */
-  kind: 'splash' | 'title' | 'stat' | 'blooper' | 'credit' | 'end';
+  kind: 'splash' | 'title' | 'stat' | 'blooper' | 'credit' | 'end' | 'slide';
+  /** `slide` only: which of the stage deck's layouts paints it (`src/sim/deck.ts`). */
+  layout?: 'flow' | 'loop' | 'play';
+  /** `slide` only: the layout's own lines — circles, columns or links, by layout. */
+  items?: readonly string[];
+  /** `slide` only: the address the `play` layout's QR code opens. */
+  link?: string;
 }
 
 /** The reel's state this frame. `card: null` is the black beat between two cards. */
@@ -746,6 +752,8 @@ export interface GameSnapshot {
    * as movement — see `src/main.ts`.
    */
   typing: boolean;
+  /** Stage demo: this chapter was entered mid-action, so the HUD does not open its briefing over the scene. */
+  demoStaged?: boolean;
   /**
    * The text field to draw at the centre of the screen, or `null` for none.
    * Open exactly when `typing` is true. See `TextPrompt`.

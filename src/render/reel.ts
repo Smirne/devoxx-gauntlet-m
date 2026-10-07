@@ -37,6 +37,7 @@ const INK: Record<ReelCard['kind'], string> = {
   blooper: '#ffd27a',
   credit: '#e8e6e1',
   end: '#ff7a1a',
+  slide: '#e8e6e1',
 };
 
 export interface ReelScreen {

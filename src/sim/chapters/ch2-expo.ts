@@ -1901,21 +1901,26 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
       }
     }
     if (doorsOpenAt !== null && !doorsCut && ctx.t - doorsOpenAt >= DOORS_CUT_DELAY) {
-      doorsCut = true;
-      scene = -1;
-      // In, not out (`LET_IN`): the three regroup in front of the doors — the
-      // placing, under the black — Stephan comes in through them in the hold, and
-      // the walk is theirs, after him, up to the stairs.
-      const routes: CutRoute[] = (['voxxy', 'droid', 'biggy'] as const).map((kind) => ({
-        kind,
-        pts: [letInMarks[kind].at, letInMarks[kind].to],
-      }));
-      ctx.startCut(routes, () => ctx.startChapter(3), VIEW_GROUND, {
-        walkTime: beat.walk,
-        hold: () => scene < beat.follow,
-        tick: letIn,
-      });
+      startLetIn();
     }
+  }
+
+  /** The let-in: this chapter's exit cutscene, into chapter 3. Real play and the stage demo both start it here. */
+  function startLetIn(): void {
+    doorsCut = true;
+    scene = -1;
+    // In, not out (`LET_IN`): the three regroup in front of the doors — the
+    // placing, under the black — Stephan comes in through them in the hold, and
+    // the walk is theirs, after him, up to the stairs.
+    const routes: CutRoute[] = (['voxxy', 'droid', 'biggy'] as const).map((kind) => ({
+      kind,
+      pts: [letInMarks[kind].at, letInMarks[kind].to],
+    }));
+    ctx.startCut(routes, () => ctx.startChapter(3), VIEW_GROUND, {
+      walkTime: beat.walk,
+      hold: () => scene < beat.follow,
+      tick: letIn,
+    });
   }
 
   /* ------------------------------------------------------------------ the let-in */
@@ -2706,9 +2711,48 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     };
   }
 
+  /**
+   * STAGE DEMO: the chapter's every job done but the roller door, so the one thing left to show is Biggy's push.
+   * Biggy at the west end of the top lane, nose to the shutter, Voxxy against his back on the tow bar's spot —
+   * the pair `tests/roller-smash.test.ts` runs — so one E takes hold and the stick towards the door does the rest.
+   */
+  function demoStage(): void {
+    breakersLeft = 0;
+    power = true;
+    router.cabinetOpen = true;
+    cabinetSwing = 1;
+    for (const l of cabinetLeaves) if (!ctx.walls.includes(l)) ctx.walls.push(l);
+    router.known = true;
+    router.online = true;
+    router.prompting = false;
+    router.typed = PASSWORD;
+    cable.connected = true;
+    cable.carrying = false;
+    cable.plugLeft = 0;
+    cable.len = Math.min(CABLE_MAX, dist(rackAt, printerAt));
+    cable.pts = [{ x: rackAt.x, y: rackAt.y }, { x: printerAt.x, y: printerAt.y }];
+    badgeSaid = true;
+    badgeAt = ctx.t;
+    hailedStore = true;
+    hailedReception = true;
+    ctx.place([386, 160, 0], [372, 200, 0], [400, 160, 0]);
+    ctx.cur = ctx.bots.indexOf(ctx.byKind('voxxy'));
+    ctx.flash('Biggy is lined up on the run-up. Voxxy: E to take hold of him, then push the stick towards the shutter and hold it', 6000);
+  }
+
+  /** STAGE DEMO: leave by the chapter's own let-in, as if the shutter, the cable and the front doors were all done. */
+  function demoExit(): boolean {
+    doorsDue = true;
+    doorsOpenAt ??= ctx.t;
+    startLetIn();
+    return true;
+  }
+
   return {
     key,
     update,
+    demoStage,
+    demoExit,
     props,
     people,
     shot: letInShot,

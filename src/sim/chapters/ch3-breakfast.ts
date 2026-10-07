@@ -3771,6 +3771,21 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     tasks,
     shot,
     /**
+     * THE STAGE DEMO'S LANDING (`ChapterRuntime.demoStage`): the soup run, and only the soup run.
+     *
+     * Everything the soup needs is done — the ladle is in the pot, Droid's half of the errand — and nothing
+     * after it is: the speaker and the beer are the gate's other two jobs and nothing here waits on them.
+     * Voxxy stands beside the soup doorway, inside the queue's earshot, so one `E` clears it (she is the only
+     * one near it); Biggy is the one the queue is in the way of — at the back of the line outside the doorway,
+     * nose to the front rank, and the robot under control; Droid is away across the hall, where he left the ladle.
+     */
+    demoStage: (): void => {
+      ladle = 'in';
+      ctx.place([140, 262, -Math.PI / 2], [1010, 240, Math.PI], [114, 292, -Math.PI / 2]);
+      ctx.handOver('biggy');
+      ctx.flash('Biggy is stuck behind the soup queue. Voxxy (1): E asks it to make way. Then Biggy: fill the pot.', 8000);
+    },
+    /**
      * `crate` moves the first crate still on the floor; `crate3` moves that one
      * whatever state it is in, which is how a test takes a load off Biggy without
      * a heap error. Anything else is the minigames' (the shuffleboard duck).

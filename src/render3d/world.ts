@@ -889,9 +889,11 @@ export function createWorld3D(canvas: HTMLCanvasElement, opts: WorldOptions = {}
       const reel = snap.reel;
       if (reel?.card?.kind === 'end') filmBow = true;
       const bow = !reel || filmBow;
-      const regroup = !bow && reel.t < REEL_PREROLL - FILM_RISE;
+      // A deck (`len` infinite, `src/sim/deck.ts`) goes straight up to the screen, and faster.
+      const deck = !!reel && reel.len === Infinity;
+      const regroup = !bow && !deck && reel.t < REEL_PREROLL - FILM_RISE;
       const shot = bow || regroup ? keynote.stageView() : keynote.screenView(c.aspect, c.fov);
-      const k = 1 - Math.exp(-dt * (bow ? 0.4 : regroup ? 2.4 : 1.9));
+      const k = 1 - Math.exp(-dt * (bow ? 0.4 : regroup ? 2.4 : deck ? 3.2 : 1.9));
       _cutPos.lerp(shot.pos, k);
       _cutLook.lerp(shot.look, k);
       c.position.copy(_cutPos);

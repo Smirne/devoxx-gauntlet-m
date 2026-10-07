@@ -33,8 +33,9 @@ import { yawFromSimHeading } from '../render/robots';
 
 import type { Materials } from './materials';
 import { box } from './materials';
+import { paintDeckSlide } from './deck-paint';
 import { skyline, wordmark } from './splash';
-import { wellDSticker } from './welld';
+import { paintWellD, wellDSticker } from './welld';
 import { addSeats, HEIGHTS } from './venue';
 
 export interface Keynote3D {
@@ -68,7 +69,7 @@ const SCREEN_BOTTOM = 3.35;
 const SCREEN_W = 6.5;
 const SCREEN_H = (SCREEN_W * 9) / 16;
 
-const INK: Record<ReelCard['kind'], string> = { splash: '#ff7a1a', title: '#ff7a1a', stat: '#e8e6e1', blooper: '#ffd27a', credit: '#e8e6e1', end: '#ff7a1a' };
+const INK: Record<ReelCard['kind'], string> = { splash: '#ff7a1a', title: '#ff7a1a', stat: '#e8e6e1', blooper: '#ffd27a', credit: '#e8e6e1', end: '#ff7a1a', slide: '#e8e6e1' };
 /**
  * The curtain call's camera, m: `back` from the apron towards the house, `h` up
  * off the stage floor, looking at a point `look` up over the apron.
@@ -473,7 +474,21 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
     film.textBaseline = 'alphabetic';
     if (card?.kind === 'splash') paintSplash(card);
     else if (card?.kind === 'credit') paintCredit(card);
-    else if (card) {
+    else if (card?.kind === 'slide') {
+      paintDeckSlide(
+        {
+          g: film,
+          w,
+          h,
+          font: FILM_FONT,
+          spaced: (px) => spaced(film, px),
+          // The mark decodes asynchronously the first time (`paintWellD`); it is loaded at
+          // the film's start, so by a slide it draws at once, before the next card paints.
+          logo: (x, y, lw) => paintWellD(film, x, y, lw, {}, () => (filmTex.needsUpdate = true)),
+        },
+        card,
+      );
+    } else if (card) {
       const k = w / 1024;
       film.fillStyle = INK[card.kind];
       film.font = `600 ${Math.round(84 * k)}px ${FILM_FONT}`;
@@ -1070,6 +1085,9 @@ export function buildKeynote(mats: Materials, photo?: (name: string) => HTMLCanv
             if (pic) got.set(name, pic);
           }
           portraits = got;
+          // Start decoding the WellD mark now, so the closing slide can draw it at once.
+          const warm = document.createElement('canvas').getContext('2d');
+          if (warm) paintWellD(warm, 0, 0, 8, {}, () => undefined);
         }
         const key = `r|${reel.index}|${reel.card ? reel.card.title : ''}`;
         if (key !== scrKey) {

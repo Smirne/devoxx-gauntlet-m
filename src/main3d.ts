@@ -225,6 +225,7 @@ const game: DebugGame = createGame({
   chapter: resuming ? resumeAt : withOpening ? undefined : (int('chapter') ?? 1),
   cards: withOpening || resuming,
   clueSpot: CLUE_SPOT_3D,
+  demo: !flag('nodemo'),
 });
 
 /*
@@ -408,6 +409,14 @@ window.addEventListener('keydown', (ev) => {
   // swallow every key; Escape or a click outside closes them.
   if (!game.snapshot().typing && hud.creditsKey(code)) {
     ev.preventDefault();
+    return;
+  }
+  // Stage demo: the presenter's key is never a page turn or a "close the sheet" press, whatever is open.
+  // PageDown, or "-" (matched by character, not position: on an Italian keyboard it is not where the US one is).
+  if ((code === 'PageDown' || ev.key === '-' || code === 'NumpadSubtract') && !ev.repeat) {
+    ev.preventDefault();
+    hud.closeTasks();
+    game.key('PageDown');
     return;
   }
   // With the run sheet open, left/right turn its page (the night / this

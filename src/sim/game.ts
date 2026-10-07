@@ -227,6 +227,11 @@ export interface GameOptions {
   cards?: boolean;
   /** A clue's patch radius, sim px; see `CLUE_SPOT`. The 3D build is more generous. */
   clueSpot?: number;
+  /**
+   * Stage-demo mode: PageDown (what a presenter's clicker sends) ends the running chapter and starts the next
+   * one already mid-action, the earlier chapters' jobs done. See `demoNext`.
+   */
+  demo?: boolean;
 }
 
 /** Test and debug-overlay access to state the renderer has no business reading. */
@@ -950,6 +955,10 @@ export function createGame(opts: GameOptions = {}): DebugGame {
    * it is made once and reset with the chapter, like everything else here.
    */
   const quips = makeQuips();
+  /** The chapter a demo jump is heading for: when its setup is done it is staged (`ChapterRuntime.demoStage`). */
+  let demoPending = 0;
+  /** True from a staged chapter's `demoStage` until the next `startChapter`. */
+  let demoStaged = false;
   function startChapter(n: number, seed?: number): void {
     const def = CHAPTERS[n - 1];
     if (!def) throw new Error(`no chapter ${n}`);
@@ -978,6 +987,54 @@ export function createGame(opts: GameOptions = {}): DebugGame {
     walls.length = 0;
     restoreIdentity();
     runtime = def.setup(ctx);
+    demoStaged = false;
+    if (demoPending === n) {
+      demoPending = 0;
+      demoStaged = true;
+      card = null;
+      runtime.demoStage?.();
+    }
+  }
+
+  /**
+   * THE STAGE DEMO'S NEXT-CHAPTER KEY (not part of the game).
+   *
+   * Four minutes on a stage cannot play four chapters. The presenter's key ends the running chapter the way the
+   * chapter itself would — its own exit cutscene (`ChapterRuntime.demoExit`) or, without one, a plain fade — and
+   * the next chapter opens already mid-action (`demoStage`). Nothing is scored for what was not played: the
+   * skipped chapter's defaults fill in, as for Skip chapter, but it is not listed as skipped, since the demo is
+   * not a player cutting corners.
+   */
+  function demoNext(): void {
+    if (!opts.demo || chapter < 1 || chapter >= CHAPTER_COUNT || opening !== null) return;
+    if (phase !== 'play' && phase !== 'done') return;
+    if (runtime?.typing?.()) return;
+    const from = chapter;
+    card = null;
+    phase = 'play';
+    defaultScore(from);
+    demoPending = from + 1;
+    dropTow();
+    if (from === 1) {
+      // Chapter 2 is skipped but for its own let-in (the robots open the doors, Stephan comes in): the hall is
+      // staged lit and powered under the black, the let-in plays at once, and chapter 3's soup run follows it.
+      fade = 1;
+      demoPending = 2;
+      startChapter(2);
+      toast = null;
+      demoPending = 3;
+      if (runtime?.demoExit?.()) return;
+      startCut([], () => startChapter(3), view);
+      return;
+    }
+    if (from === 3) {
+      // Chapter 3 → 4 has no cutscene in the demo: straight into the room, from black.
+      fade = 1;
+      startChapter(4);
+      return;
+    }
+    if (runtime?.demoExit?.()) return;
+    startCut([], () => startChapter(from + 1), view);
   }
 
   /** Fill in whatever the skipped chapter would have scored, so the card still adds up. */
@@ -1346,6 +1403,12 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       endOpening();
       return;
     }
+    if (opts.demo && code === 'PageDown') {
+      // The key that jumps chapters also turns the closing slides (not every keyboard has PageDown).
+      if (phase === 'play' && runtime && (runtime.reel?.() ?? null) !== null) runtime.key('ArrowRight');
+      else demoNext();
+      return;
+    }
     /*
      * ...except the card that ends the run. Dismissed, it left the last room on
      * screen with nobody to drive and nothing saying why — players took it for a
@@ -1491,6 +1554,7 @@ export function createGame(opts: GameOptions = {}): DebugGame {
       tow: tow ? { holder: tow.holder, dir: tow.dir, aim: tow.aim } : null,
       entered: r?.entered?.() ?? '',
       typing: r?.typing?.() ?? false,
+      demoStaged,
       prompt: r?.prompt?.() ?? null,
       score,
       swag,

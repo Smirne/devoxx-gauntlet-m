@@ -33,7 +33,7 @@ import {
 import { DEFS, JAMMED_DOOR_SPEED, MOUNT_BIGGY_MAX_SPEED, MOUNT_REACH, SPEED_SCALE, T, W } from '../constants';
 import { PX_PER_M, m } from '../units';
 import { buildLights, clueLit, litBy } from '../lights';
-import { dist, speed } from '../bot';
+import { dist, partyTrick, speed } from '../bot';
 import type { Clue, CutRoute, LightSource, Mirror, Plate, Prop, Rect, Task, Vec2, Wall } from '../types';
 import type { ChapterCtx, ChapterDef, ChapterRuntime } from './index';
 import { CRATE_RECTS, STAND_AT, STAND_FACE } from '../opening';
@@ -817,6 +817,23 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
     ctx.startCut(stairExitRoutes(), () => ctx.startChapter(2), VIEW_F1, { fadeEarly: true });
   }
 
+  /**
+   * Stage demo: leave through the real exit walk whatever has been solved. It is `done()` without the wait —
+   * the same walls come out, the same leaves come to rest, the same score is written — and the door is
+   * already fully open, so the walk is not shoved by a swing nobody watched.
+   */
+  function demoExit(): boolean {
+    if (!fireOpen) {
+      done();
+      fireSwing = 1;
+      for (const l of swungLeaves) ctx.removeWall(l);
+      for (const l of swungLeaves) ctx.walls.push(l);
+    }
+    leaveAt = -1;
+    leave();
+    return true;
+  }
+
   /* --------------------------------------------------------------------- keys */
 
   /**
@@ -860,6 +877,8 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
         return true;
       }
       if (!panelOn && !canMount && !d.mounted && b.kind === 'droid' && dist(b, panelAt) < PANEL_REACH) {
+        // He still tries: the stretch plays, with its own line swallowed so this one stays on screen.
+        partyTrick(ctx.bots, d, () => {});
         ctx.flash('Droid: too high, even for me. If I stood on Biggy…');
         return true;
       }
@@ -1275,6 +1294,7 @@ function setup(ctx: ChapterCtx): ChapterRuntime {
   return {
     key,
     update,
+    demoExit,
     props,
     progress,
     tasks,
